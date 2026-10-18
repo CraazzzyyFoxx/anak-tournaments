@@ -51,7 +51,7 @@ interface ResolveRoleConflictDialogProps {
 }
 
 function playerName(player: DraftPlayer): string {
-  return player.battle_tag ?? `#${player.id}`;
+  return player.identity?.handle ?? `#${player.id}`;
 }
 
 export function ResolveRoleConflictDialog({

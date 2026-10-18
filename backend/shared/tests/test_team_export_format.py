@@ -151,7 +151,7 @@ class TeamExportFormatTests(IsolatedAsyncioTestCase):
         )
         starter = self.members[0]
         # Different import identity forms resolve to the same player.
-        alias = replace(starter, workspace_member_id=None, battle_tag=starter.name)
+        alias = replace(starter, workspace_member_id=None, handle=starter.name)
         with self.assertRaises(ApiHTTPException) as caught:
             await materialize_teams(
                 self.session,

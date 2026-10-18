@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from shared.schemas.identity import PlayerIdentityRead
 from shared.schemas.role import RoleRef
 from src.schemas.admission import AdmissionRead
 from src.schemas.base import BaseRead
@@ -326,7 +327,7 @@ class BalancerRegistrationRankAutofillRole(BaseModel):
 class BalancerRegistrationRankAutofillPlayer(BaseModel):
     registration_id: int
     display_name: str | None = None
-    battle_tag: str | None = None
+    identity: PlayerIdentityRead | None = None
     status: RankAutofillPlayerStatus
     reason: str | None = None
     will_add_to_balancer: bool = False

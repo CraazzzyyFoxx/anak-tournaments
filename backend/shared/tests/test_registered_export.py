@@ -22,6 +22,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.team_export import registered  # noqa: E402
 from shared.services.team_export.registered import build_registered_export  # noqa: E402
 
@@ -57,7 +58,7 @@ def _roster(
 ) -> PlayerRoster:
     return PlayerRoster(
         registration_id=registration_id,
-        battle_tag=battle_tag,
+        identity=PlayerIdentityRead.of("battlenet", battle_tag),
         display_name=display_name,
         player_id=None,
         auth_user_id=None,

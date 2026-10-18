@@ -3,6 +3,7 @@
 import type { RosterRoleSlotCode, RosterShape, RosterSlotCode } from "@/lib/roster/shape";
 import type { FormField } from "@/types/forms.types";
 import type { RoleRef } from "@/lib/roster/role-ref";
+import type { PlayerIdentity } from "@/types/identity.types";
 
 export type DraftStatus = "setup" | "ready" | "live" | "paused" | "completed" | "cancelled";
 
@@ -88,7 +89,7 @@ export interface DraftPlayer {
   session_id: number;
   registration_id: number;
   user_id: number | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   /**
    * `null` when the player has no playable role left — an organizer can strip
    * every rank mid-draft. Render that as "no role", never as a default one.
@@ -115,7 +116,7 @@ export interface DraftPlayer {
   role_ranks: Record<string, number>;
   /** Per-role provenance of `role_ranks`, keyed the same way. */
   role_sources: Record<string, DraftRankSource>;
-  role_top_heroes: Record<string, Array<string | { slug: string; image_path: string | null }>>;
+  role_top_characters: Record<string, Array<{ entity_id: number | null; slug: string; image_path: string | null }>>;
   /** Sub-role per playable role (hitscan, main heal…), keyed like `role_ranks`; absent when none. */
   role_sub_roles: Record<string, string>;
   notes: string | null;

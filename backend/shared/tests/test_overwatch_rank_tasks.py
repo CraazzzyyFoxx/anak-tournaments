@@ -228,6 +228,28 @@ class ProcessFetchTests(IsolatedAsyncioTestCase):
 
 
 class RegistrationHookTests(IsolatedAsyncioTestCase):
+    async def test_generic_identity_is_converted_to_a_battletag_only_at_the_ow_boundary(self) -> None:
+        for identity, expected in [
+            ({"provider": "battlenet", "handle": "Battle#1234"}, "Battle#1234"),
+            ({"provider": "riot", "handle": "Riot Name#EUW"}, None),
+            (None, None),
+        ]:
+            session = SimpleNamespace(commit=AsyncMock())
+            with (
+                patch.object(
+                    tasks.settings_provider,
+                    "get_rank_collection_config",
+                    AsyncMock(return_value=RankCollectionConfig()),
+                ),
+                patch.object(tasks.service, "resolve_registration_targets", AsyncMock(return_value=[])) as targets,
+            ):
+                count = await tasks.handle_registration_approved(
+                    {"tournament_id": 1, "workspace_id": 1, "registration_id": 2, "user_id": 50, "identity": identity},
+                    session_factory=_session_factory(session),
+                )
+            self.assertEqual(count, 0)
+            self.assertEqual(targets.await_args.kwargs["fallback_battle_tag"], expected)
+
     async def test_enqueues_priority_for_each_user_tag(self) -> None:
         session = SimpleNamespace(commit=AsyncMock())
         data = {

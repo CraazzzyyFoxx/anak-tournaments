@@ -23,6 +23,7 @@ type PickupAddPlayersDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
+  discipline: string;
   /** Workspace right: whether a new BattleTag can be added to the roster. */
   canEdit: boolean;
   /**
@@ -65,6 +66,7 @@ export function PickupAddPlayersDialog({
   open,
   onOpenChange,
   workspaceId,
+  discipline,
   canEdit,
   canEditRanks,
   canWrite,
@@ -74,6 +76,7 @@ export function PickupAddPlayersDialog({
 }: Readonly<PickupAddPlayersDialogProps>) {
   const picker = useRosterPicker({
     workspaceId,
+    discipline,
     open,
     hostUserId,
     rows,
@@ -122,7 +125,7 @@ export function PickupAddPlayersDialog({
                   value={picker.search}
                   onChange={(event) => picker.onSearchChange(event.target.value)}
                   onKeyDown={picker.onSearchKeyDown}
-                  placeholder={"Type a name or BattleTag \u2014 \u2191\u2193 to move, Enter to add"}
+                  placeholder={"Type a name or game handle \u2014 \u2191\u2193 to move, Enter to add"}
                   aria-label="Search the workspace roster"
                   autoComplete="off"
                   className="h-11 rounded-xl border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-10 pr-24 text-sm"
@@ -148,6 +151,7 @@ export function PickupAddPlayersDialog({
                 canEdit={canEdit}
                 canWrite={canWrite}
                 workspaceId={workspaceId}
+                discipline={discipline}
                 onTogglePlayer={onTogglePlayer}
               />
             </div>
@@ -201,10 +205,10 @@ export function PickupAddPlayersDialog({
                   }
                   description={
                     deferredSearch
-                      ? "Try a different name, or add the BattleTag above."
+                      ? "Try a different name, or add a game identity above."
                       : picker.activeAuthorLabel != null
                         ? "Set a rank on a player in Everyone to add them here."
-                        : "Add a BattleTag above to start the roster this workspace balances from."
+                        : "Add a game identity above to start the roster this workspace balances from."
                   }
                   className="px-4 py-10"
                 />

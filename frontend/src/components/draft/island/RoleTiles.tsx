@@ -52,7 +52,7 @@ export function RoleTiles({
 }: Readonly<RoleTilesProps>) {
   const t = useTranslations("draftRedesign");
   const roles = playerRoles(player);
-  const displayName = player.battle_tag ?? `#${player.id}`;
+  const displayName = player.identity?.handle ?? `#${player.id}`;
   // The team a tile selects for; tiles are read-only chips without one.
   const team = player.status === "available" ? actingTeam : null;
   const interactive = team != null;

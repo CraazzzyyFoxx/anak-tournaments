@@ -122,7 +122,7 @@ function hasUnverifiedRole(player: RegistrationRankAutofillPlayer): boolean {
 }
 
 function playerLabel(player: RegistrationRankAutofillPlayer): string {
-  return player.battle_tag ?? player.display_name ?? `#${player.registration_id}`;
+  return player.identity?.handle ?? player.display_name ?? `#${player.registration_id}`;
 }
 
 function RankAutofillRolePill({
@@ -266,7 +266,7 @@ export function RankAutofillPreviewTables({
   const query = search.trim().toLowerCase();
   const matchesSearch = (player: RegistrationRankAutofillPlayer) =>
     query === "" ||
-    (player.battle_tag ?? "").toLowerCase().includes(query) ||
+    (player.identity?.handle ?? "").toLowerCase().includes(query) ||
     (player.display_name ?? "").toLowerCase().includes(query) ||
     String(player.registration_id).includes(query);
 

@@ -28,6 +28,7 @@ from shared.core.enums import (  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 
 DEFAULT_ROSTER_SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
@@ -225,12 +226,12 @@ def test_player_read_of_a_seat_with_no_roster_states_no_role_instead_of_guessing
     assert read.registration_id == 120
     assert read.primary_role is None
     assert "sub_role" not in read.model_dump()
-    assert read.battle_tag is None
+    assert read.identity is None
     assert read.is_flex is False
     assert read.secondary_roles == []
     assert read.role_ranks == {}
     assert read.role_sources == {}
-    assert read.role_top_heroes == {}
+    assert read.role_top_characters == {}
     assert read.role_sub_roles == {}
     assert read.notes is None
     assert read.effective_rank is None
@@ -707,7 +708,7 @@ def test_board_projects_public_answers_and_never_ships_the_rest(monkeypatch) -> 
                 20: roster(
                     120,
                     ranks={"support": 3000},
-                    battle_tag="Ana#1",
+                    handle="Ana#1",
                     public_notes="prefers Ana",
                     custom_fields={"vk": "vk.com/ana", "phone": "+70000000000"},
                 )
@@ -728,7 +729,7 @@ def test_board_projects_public_answers_and_never_ships_the_rest(monkeypatch) -> 
     assert [(f.key, f.label, f.type, f.value) for f in read.custom_fields] == [
         ("vk", "VK profile", "url", "vk.com/ana")
     ]
-    assert read.battle_tag == "Ana#1"
+    assert read.identity == PlayerIdentityRead(provider="battlenet", handle="Ana#1")
     assert read.notes == "prefers Ana"
     # The organizers-only answer leaves the service in NO shape — the public
     # board carries every PUBLIC question and nothing else.
@@ -743,7 +744,7 @@ def test_board_ranks_a_player_on_their_own_role_under_role_slots(monkeypatch) ->
     # with; the maximum belongs to a role-less roster, where nobody is assigned
     # a role at all. Contract: DraftPlayerRead.effective_rank's docstring.
     player = _seat(21)
-    resolved = roster(121, ranks={"support": 2800, "damage": 4000}, primary="support", battle_tag="Ana#2")
+    resolved = roster(121, ranks={"support": 2800, "damage": 4000}, primary="support", handle="Ana#2")
     monkeypatch.setattr(board.board_service, "rosters", _FakeRosters({21: resolved}))
 
     async def _role_shape(*_args, **_kwargs):

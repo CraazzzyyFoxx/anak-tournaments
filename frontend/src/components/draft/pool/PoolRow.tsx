@@ -92,7 +92,7 @@ export function PoolRow({
   onPrefetchCard
 }: Readonly<PoolRowProps>) {
   const t = useTranslations("draftRedesign");
-  const name = player.battle_tag ?? `#${player.id}`;
+  const name = player.identity?.handle ?? `#${player.id}`;
   const roles = playerRoles(player);
   const available = player.status === "available";
   // The team this row selects for; `null` → every role is a read-only chip.

@@ -18,9 +18,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.balancer_registration_statuses import is_balancer_status_excluded
-from shared.core.social import SocialProvider
 from shared.disciplines import discipline
 from shared.domain.roster import PlayerRoster
+from shared.schemas.identity import PlayerIdentityRead
 from shared.services.roster import roster_engine
 from src import models
 from src.services.registration._common import (
@@ -36,7 +36,7 @@ from src.services.registration.rank_sources import (
     _build_priority_rank_data,
     _OwRankSignals,
     _RankData,
-    primary_battlenet_key,
+    primary_identity_key,
     rank_sources_service,
 )
 
@@ -103,7 +103,8 @@ def build_registration_rank_autofill_plan(
     rank_snapshots_by_role: dict[str, models.UserRankSnapshot | Any],
     *,
     roster: PlayerRoster | None,
-    battle_tag_linked: bool,
+    provider: str | None,
+    identity_linked: bool,
     overwrite_existing: bool,
     allow_partial: bool = False,
     applied: bool = False,
@@ -116,7 +117,7 @@ def build_registration_rank_autofill_plan(
     the rows it exists to fill: under a non-optional flex mode all three roles are
     the player's, and a sheet row whose rank did not parse landed inactive.
 
-    Parsed ranks are expected to come from the registration's main battle tag
+    Parsed ranks are expected to come from the registration's main owner-provider handle
     only. With ``allow_partial`` the found role ranks are still applied when other
     roles have no parsed rank (instead of skipping the whole registration);
     unfilled roles are left untouched -- an existing rank is never cleared. A role
@@ -125,19 +126,20 @@ def build_registration_rank_autofill_plan(
     """
 
     display_name = getattr(registration, "display_name", None)
-    battle_tag = registration.primary_handle(SocialProvider.BATTLENET)
+    handle = registration.primary_handle(provider) if provider is not None else None
+    identity = PlayerIdentityRead.of(provider, handle)
     row = {
         "registration_id": registration.id,
         "display_name": display_name,
-        "battle_tag": battle_tag,
+        "identity": identity.model_dump() if identity is not None else None,
         "status": "skipped",
         "reason": None,
         "partial": False,
         "roles": [],
     }
 
-    if not battle_tag:
-        row["reason"] = "Registration has no main BattleTag."
+    if identity is None:
+        row["reason"] = "Registration has no primary game identity."
         return row, []
 
     # The plan WRITES ``registration_role.rank_value``, so a declared role with no
@@ -150,8 +152,8 @@ def build_registration_rank_autofill_plan(
         row["reason"] = "Registration has no active roles."
         return row, []
 
-    if not battle_tag_linked:
-        row["reason"] = "Main BattleTag is not linked to an analytics player account."
+    if not identity_linked:
+        row["reason"] = "Primary game identity is not linked to a player account."
         return row, []
 
     updates: list[tuple[Any, Any]] = []
@@ -369,6 +371,7 @@ class RankAutofillService:
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)
         enabled_sources = autofill_sources(enabled_sources, getattr(tournament, "discipline", None))
+        provider = discipline(tournament.discipline).identity_provider if tournament is not None else None
         grid = await self.common.get_tournament_grid(session, tournament_id)
         # Loop-invariant: one autofill run is scoped to one tournament, and every
         # inherited rank layer below is read through its workspace.
@@ -377,7 +380,9 @@ class RankAutofillService:
         registrations = await self.rank_sources._load_rank_autofill_registrations(
             session, tournament_id, registration_ids
         )
-        battle_tags_by_key = await self.rank_sources._load_main_battle_tags_by_key(session, registrations)
+        accounts_by_key = await self.rank_sources._load_primary_accounts_by_key(
+            session, registrations, provider=provider
+        )
         # One resolve for the whole run: the role SET the plan fills, and the
         # "would this be complete" verdict, both come from these rosters.
         rosters = await roster_engine.resolve(
@@ -391,7 +396,7 @@ class RankAutofillService:
             ow_week_window = timedelta(days=ow_lookback_days) if ow_lookback_days else OW_RANK_WEEK_WINDOW
             ow_signals_by_tag_id = await self.rank_sources._load_ow_rank_signals_by_social_account_id(
                 session,
-                [account.id for account in battle_tags_by_key.values()],
+                [account.id for account in accounts_by_key.values()],
                 now,
                 ow_week_window,
             )
@@ -401,9 +406,7 @@ class RankAutofillService:
         balancer_history_by_user_id: dict[int, dict[str, int]] = {}
         analytics_history_by_user_id: dict[int, dict[str, int]] = {}
         if tournament is not None and ({"division_history", "analytics"} & enabled_sources):
-            user_ids = [
-                battle_tag.user_id for battle_tag in battle_tags_by_key.values() if battle_tag.user_id is not None
-            ]
+            user_ids = [battle_tag.user_id for battle_tag in accounts_by_key.values() if battle_tag.user_id is not None]
             # Normalize historical ranks from each source tournament's grid version into this
             # tournament's grid. Best-effort: skip when the target version is unknown or the
             # normalizer cannot be built (loaders then fall back to raw ranks).
@@ -435,10 +438,10 @@ class RankAutofillService:
         balancer_additions = 0
 
         for registration in registrations:
-            tag_key = primary_battlenet_key(registration)
-            main_battle_tag = battle_tags_by_key.get(tag_key or "")
-            ow_signals_by_role = ow_signals_by_tag_id.get(main_battle_tag.id, {}) if main_battle_tag else {}
-            user_id = getattr(main_battle_tag, "user_id", None) if main_battle_tag else None
+            tag_key = primary_identity_key(registration, provider=provider)
+            primary_account = accounts_by_key.get(tag_key or "")
+            ow_signals_by_role = ow_signals_by_tag_id.get(primary_account.id, {}) if primary_account else {}
+            user_id = getattr(primary_account, "user_id", None) if primary_account else None
             balancer_by_role = balancer_history_by_user_id.get(user_id or -1, {})
             analytics_by_role = analytics_history_by_user_id.get(user_id or -1, {})
 
@@ -464,7 +467,8 @@ class RankAutofillService:
                 registration,
                 rank_data_by_role,
                 roster=roster,
-                battle_tag_linked=main_battle_tag is not None,
+                provider=provider,
+                identity_linked=primary_account is not None,
                 overwrite_existing=overwrite_existing,
                 allow_partial=allow_partial,
                 applied=apply,

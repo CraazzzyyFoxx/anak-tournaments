@@ -75,8 +75,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _search(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             query = c.q1(data, "query", str, "")
-            fields = c.q(data, "fields") or []
-            return await user_service.search_by_name(session, query, fields)
+            return await user_service.search_by_name(session, query)
 
         return await c.envelope(logger, "users.search", op, session_factory=_SF)
 

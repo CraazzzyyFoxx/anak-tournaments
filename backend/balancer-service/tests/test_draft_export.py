@@ -47,7 +47,7 @@ def _player(
 ) -> DraftPlayer:
     """A seat plus the roster the engine resolves for it.
 
-    ``draftreg1``: battle_tag, sub_role and every rank live on the REGISTRATION
+    ``draftreg1``: handle, sub_role and every rank live on the REGISTRATION
     now, so they arrive through ``PlayerRoster`` instead of columns on the row.
     ``role``/``rank`` name the lead role and its rank; ``role_ranks`` adds or
     overrides the rest of the catalogue.
@@ -63,7 +63,7 @@ def _player(
         1000 + pid,
         ranks={role: rank, **(role_ranks or {})},
         primary=role,
-        battle_tag=bt,
+        handle=bt,
         subroles={role: sub} if sub is not None else None,
     )
     return seat
@@ -99,7 +99,7 @@ def test_payload_orders_by_draft_position() -> None:
     assert [p.name for p in payload] == ["Acap#1", "Bcap#1"]  # position 1 (A) first
 
 
-def test_payload_uses_captain_battle_tag_as_name() -> None:
+def test_payload_uses_captain_handle_as_name() -> None:
     teams = [_team(1, 1, "Display")]
     roster_by_team = {1: [_player(10, captain=True, bt="Captain#1234"), _player(11, bt="Mate#1")]}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE)

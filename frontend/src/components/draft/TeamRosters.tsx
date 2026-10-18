@@ -408,7 +408,7 @@ function RosterCell({
   }
 
   const { player } = cell;
-  const tag = player.battle_tag ?? `#${player.id}`;
+  const tag = player.identity?.handle ?? `#${player.id}`;
   const rank = slotRankForPlayer(player, cell.role, { has_role_slots: hasRoleSlots });
   const division = resolveDivisionFromRank(divisionGrid, rank);
   const divisionLabel = division == null ? null : getDivisionLabel(divisionGrid, division);

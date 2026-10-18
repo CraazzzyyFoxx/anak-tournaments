@@ -147,6 +147,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.add_co_host": Op(request=custom_game.CustomGameCoHostPatch),
     "rpc.balancer.custom.swap_seats": Op(request=custom_game.CustomGameSeatSwap),
     "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
+    "rpc.balancer.custom.stats": Op(
+        query_params=(
+            QueryParam("discipline", description="Enabled discipline; defaults to the workspace's first."),
+            QueryParam("since", description="ISO 8601 instant; only matches recorded on or after it."),
+        )
+    ),
     "rpc.balancer.custom.rotation": Op(
         query_params=(
             QueryParam(
@@ -160,11 +166,12 @@ OPERATIONS: dict[str, Op] = {
     # Ad-hoc query keys read by ``src/rpc/players.py`` (``_list_params``,
     # ``_author_to_read``, ``_author_only``) rather than a query model.
     "rpc.balancer.players.list": Op(
+        response=Paginated[schemas.WorkspacePlayerRead],
         query_params=(
             QueryParam("discipline", description="Enabled discipline; defaults to the workspace's first."),
             QueryParam("page", "integer", description="1-based page, default 1."),
             QueryParam("per_page", "integer", description="Page size, clamped to 1..100, default 30."),
-            QueryParam("query", description="Needle matched against battle_tag, display_name and name."),
+            QueryParam("query", description="Needle matched against the identity handle, display_name and name."),
             QueryParam(
                 "author_user_id",
                 "integer",
@@ -175,8 +182,9 @@ OPERATIONS: dict[str, Op] = {
                 "boolean",
                 description="Keep only members that read author has personally ranked.",
             ),
-        )
+        ),
     ),
+    "rpc.balancer.players.upsert": Op(request=schemas.WorkspacePlayerUpsert, response=schemas.WorkspacePlayerRead),
     "rpc.balancer.players.summary": Op(
         query_params=(
             QueryParam(
@@ -194,7 +202,7 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("page", "integer", description="1-based page, default 1."),
             QueryParam("per_page", "integer", description="Page size, clamped to 1..200, default 50."),
             QueryParam("player_id", "integer", description="Only this players.user id."),
-            QueryParam("q", description="Needle matched against battle_tag, display_name and name."),
+            QueryParam("q", description="Needle matched against the identity handle, display_name and name."),
             QueryParam(
                 "layer",
                 array=True,

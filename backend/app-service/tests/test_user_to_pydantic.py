@@ -31,7 +31,7 @@ def test_to_user_read_returns_unified_social_accounts():
         _acc(3, SocialProvider.TWITCH, "streamer"),
         _acc(4, SocialProvider.BOOSTY, "patron", url="https://boosty.to/patron"),
     ]
-    res = UserService.to_read(_user_with(accounts), ["battle_tag", "discord", "twitch"])
+    res = UserService.to_read(_user_with(accounts), ["social_accounts"])
 
     assert len(res.social_accounts) == 4
     assert {s.provider for s in res.social_accounts} == {"battlenet", "discord", "twitch", "boosty"}
@@ -62,7 +62,7 @@ def test_to_user_read_serializes_loaded_visibility_scopes():
     hidden = _acc(2, SocialProvider.TWITCH, "hidden", is_verified=True)
     hidden.visibilities = []  # loaded but no rows -> hidden from the public profile
 
-    res = UserService.to_read(_user_with([shown, hidden]), ["discord", "twitch"])
+    res = UserService.to_read(_user_with([shown, hidden]), ["social_accounts"])
 
     shown_read = next(s for s in res.social_accounts if s.username == "shown")
     hidden_read = next(s for s in res.social_accounts if s.username == "hidden")
@@ -76,5 +76,5 @@ def test_to_user_read_defaults_visible_when_visibilities_unloaded():
     # No visibilities loaded (transient account) -> fail-open to visible_global=True,
     # never touching the relationship (avoids a lazy load outside the greenlet).
     acc = _acc(1, SocialProvider.DISCORD, "coolguy", is_verified=True)
-    res = UserService.to_read(_user_with([acc]), ["discord"])
+    res = UserService.to_read(_user_with([acc]), ["social_accounts"])
     assert res.social_accounts[0].visible_global is True

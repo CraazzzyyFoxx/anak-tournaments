@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.core.social import SocialProvider, normalize_social_handle
+from shared.core.social import GAME_PROVIDERS, SocialProvider, normalize_social_handle
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.models.stats.match import mv_entity_global_stats
@@ -56,14 +56,11 @@ class UserProfileQueries:
         result_total = await session.execute(total_query)
         return result.unique().scalars().all(), result_total.scalar_one()
 
-    async def search_by_name(
-        self, session: AsyncSession, query: str, fields: list[str]
-    ) -> typing.Sequence[models.SocialAccount]:
-        """Search battlenet ``social_account`` rows by handle (autocomplete).
+    async def search_by_name(self, session: AsyncSession, query: str) -> typing.Sequence[models.SocialAccount]:
+        """Search game-provider ``social_account`` rows by handle (autocomplete).
 
-        ``fields`` is accepted for API compatibility; search is always on the unified
-        ``social_account.username`` (battlenet). Returns up to 10 matches ranked by
-        exact / prefix / trigram similarity.
+        Always on the unified ``social_account.username`` of every game identity provider.
+        Returns up to 10 matches ranked by exact / prefix / trigram similarity.
         """
         query = query.strip().replace("-", "#")
         if not query or len(query) < 2:
@@ -84,7 +81,7 @@ class UserProfileQueries:
         stmt = (
             sa.select(models.SocialAccount)
             .where(
-                models.SocialAccount.provider == SocialProvider.BATTLENET,
+                models.SocialAccount.provider.in_(GAME_PROVIDERS),
                 sa.or_(*conditions),
                 # Accounts hidden from the public profile (no global visibility row)
                 # must not surface in search either.

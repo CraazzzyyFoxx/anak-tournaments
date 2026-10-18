@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from shared.schemas.identity import PlayerIdentityRead
 from shared.schemas.role import RoleRef
 
 
@@ -439,7 +440,10 @@ class RegistrationApprovedEvent(BaseEvent):
     workspace_id: int = Field(..., description="Workspace ID")
     registration_id: int = Field(..., description="Registration ID")
     user_id: int | None = Field(default=None, description="Player user ID when linked")
-    battle_tag: str | None = Field(default=None, description="Approved registration battle tag")
+    identity: PlayerIdentityRead | None = Field(
+        default=None,
+        description="Approved registration's primary handle for its tournament's identity provider",
+    )
 
 
 class RegistrationRankCheckRequestedEvent(RegistrationApprovedEvent):
@@ -460,7 +464,10 @@ class RegistrationRejectedEvent(BaseEvent):
     workspace_id: int = Field(..., description="Workspace ID")
     registration_id: int = Field(..., description="Registration ID")
     user_id: int | None = Field(default=None, description="Player user ID when linked")
-    battle_tag: str | None = Field(default=None, description="Rejected registration battle tag")
+    identity: PlayerIdentityRead | None = Field(
+        default=None,
+        description="Rejected registration's primary handle for its tournament's identity provider",
+    )
 
 
 class TournamentStateChangedEvent(BaseEvent):

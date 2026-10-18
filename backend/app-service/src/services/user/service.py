@@ -1025,13 +1025,9 @@ class UserService:
             grid=grid,
         )
 
-    async def search_by_name(self, session: AsyncSession, name: str, fields: list[str]) -> list[schemas.UserSearch]:
-        """Battle-tag autocomplete matches as ``UserSearch`` rows.
-
-        ``fields`` is accepted for API compatibility only; the search always runs on the
-        unified battlenet handle.
-        """
-        users = await self.profile.search_by_name(session, name, fields)
+    async def search_by_name(self, session: AsyncSession, name: str) -> list[schemas.UserSearch]:
+        """Game-handle autocomplete matches (any game identity provider) as ``UserSearch`` rows."""
+        users = await self.profile.search_by_name(session, name)
         return [schemas.UserSearch(id=user.user_id, name=user.username) for user in users]
 
     async def get_read(self, session: AsyncSession, user_id: int, entities: list[str]) -> schemas.UserRead:

@@ -73,7 +73,7 @@ function row(overrides: Partial<RankOverviewRow> = {}): RankOverviewRow {
     player_id: 42,
     member_id: 9,
     display_name: "Alice",
-    battle_tag: "Alice#2100",
+    identity: { provider: "battlenet", handle: "Alice#2100" },
     author_user_id: null,
     author_name: null,
     role: "tank",

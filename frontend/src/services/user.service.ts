@@ -67,7 +67,7 @@ export default class userService {
     const apiName = name.replace("#", "-");
     return apiFetch(`/api/v1/users/${encodeURIComponent(apiName)}`, {
       query: {
-        entities: ["twitch", "discord", "battle_tag"]
+        entities: ["social_accounts"]
       },
       next: { revalidate: USER_TTL_SECONDS, tags: ["users"] }
     }).then((res) => res.json());
@@ -311,10 +311,7 @@ export default class userService {
   }
   static async searchUsers(query: string, signal?: AbortSignal): Promise<MinimizedUser[]> {
     return apiFetch(`/api/v1/users/search`, {
-      query: {
-        query: query,
-        fields: ["battle_tag"]
-      },
+      query: { query },
       signal
     }).then((res) => res.json());
   }

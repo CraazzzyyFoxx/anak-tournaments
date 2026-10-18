@@ -447,9 +447,9 @@ class CustomGameService:
         self.ranker = ranker if ranker is not None else mix_ranker_service
 
     async def members(
-        self, session: AsyncSession, workspace_id: int, member_ids: Sequence[int]
+        self, session: AsyncSession, workspace_id: int, member_ids: Sequence[int], *, discipline: str
     ) -> dict[int, RosterMember]:
-        """Named roster rows for a lineup -- and the tenancy check on the way in.
+        """Named roster rows for a lineup, identified by ``discipline``'s provider -- and the tenancy check on the way in.
 
         ``list_roster`` already filters by ``workspace_id``, so an id absent from
         the result either does not exist or belongs to another workspace. Both are
@@ -459,7 +459,12 @@ class CustomGameService:
         ids = _uniq(member_ids)
         if not ids:
             return {}
-        found = await self.load_roster(session, workspace_id=workspace_id, member_ids=ids)
+        found = await self.load_roster(
+            session,
+            workspace_id=workspace_id,
+            provider=DISCIPLINES[discipline].identity_provider,
+            member_ids=ids,
+        )
         if len(found) != len(ids):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
         return found
@@ -491,8 +496,10 @@ class CustomGameService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game not found")
         return game
 
-    async def list(self, session: AsyncSession, *, workspace_id: int) -> list[models.CustomGame]:
-        return list(await self.games.list_for_workspace(session, workspace_id))
+    async def list(
+        self, session: AsyncSession, *, workspace_id: int, discipline: str | None = None
+    ) -> list[models.CustomGame]:
+        return list(await self.games.list_for_workspace(session, workspace_id, discipline))
 
     async def _writable(
         self,
@@ -659,7 +666,6 @@ class CustomGameService:
         if not trimmed:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="name is required")
         ids = _uniq(member_ids)
-        members = dict(await self.members(session, workspace_id, ids))
 
         source: models.CustomGame | None = None
         source_rows: list[models.CustomGamePlayer] = []
@@ -669,6 +675,7 @@ class CustomGameService:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mix not found")
 
         effective = source.discipline if source is not None else discipline
+        members = dict(await self.members(session, workspace_id, ids, discipline=effective))
         workspace = await self.workspaces.get(session, workspace_id)
         if workspace is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
@@ -688,6 +695,7 @@ class CustomGameService:
             surviving = await self.load_roster(
                 session,
                 workspace_id=workspace_id,
+                provider=DISCIPLINES[effective].identity_provider,
                 member_ids=_uniq([row.workspace_member_id for row in candidates]),
             )
             source_rows = [row for row in candidates if row.workspace_member_id in surviving]
@@ -787,7 +795,7 @@ class CustomGameService:
             actor_is_superuser=actor_is_superuser,
         )
         ids = _uniq(member_ids)
-        members = await self.members(session, workspace_id, ids)
+        members = await self.members(session, workspace_id, ids, discipline=game.discipline)
         existing = {row.workspace_member_id: row for row in await self.roster.list_for_game(session, game.id)}
         wanted = set(ids)
         for member_id, row in existing.items():
@@ -1237,7 +1245,11 @@ class CustomGameService:
             return await self.self_state(
                 session, custom_game_id=custom_game_id, auth_user=auth_user, workspace_id=workspace_id
             )
-        await self._seed_host_ranks(session, ctx.game, await self.members(session, ctx.game.workspace_id, [member.id]))
+        await self._seed_host_ranks(
+            session,
+            ctx.game,
+            await self.members(session, ctx.game.workspace_id, [member.id], discipline=ctx.game.discipline),
+        )
         await session.flush()
         await emit_pickup_mix_changed(
             session,
@@ -1371,7 +1383,10 @@ class CustomGameService:
         roster = list(await self.roster.list_for_game(session, game.id))
         stored = await self.player_roles.roles_for_players(session, [row.id for row in roster])
         members = await self.load_roster(
-            session, workspace_id=game.workspace_id, member_ids=[row.workspace_member_id for row in roster]
+            session,
+            workspace_id=game.workspace_id,
+            provider=DISCIPLINES[game.discipline].identity_provider,
+            member_ids=[row.workspace_member_id for row in roster],
         )
         host_names = await self.hosts(session, game.workspace_id, [game.host_user_id])
         # The numbers the balancer will balance them at: the host's own book
@@ -1390,7 +1405,7 @@ class CustomGameService:
         for row in roster:
             member_id = row.workspace_member_id
             member = members.get(member_id)
-            name = (member.display_name or member.battle_tag) if member else None
+            name = (member.display_name or member.handle) if member else None
             roles = stored.get(row.id, []) if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT else None
             ranks = {
                 role: found.value
@@ -1573,7 +1588,9 @@ class CustomGameService:
         histories_by_member = {
             history.member_id: history for history in await self._rotation_histories(session, game, lineup)
         }
-        members = await self.members(session, game.workspace_id, [row.workspace_member_id for row in lineup])
+        members = await self.members(
+            session, game.workspace_id, [row.workspace_member_id for row in lineup], discipline=game.discipline
+        )
         resolved = await self.ranks.resolve(
             session,
             workspace_id=game.workspace_id,
@@ -1619,7 +1636,7 @@ class CustomGameService:
             fairness = rotation_priority(histories_by_member[row.workspace_member_id])
             player_nodes[str(member.member_id)] = {
                 "identity": {
-                    "name": member.display_name or member.battle_tag or f"player-{member.member_id}",
+                    "name": member.display_name or member.handle or f"player-{member.member_id}",
                     "isFullFlex": row.is_flex,
                     "mustPlay": row.participation == MixParticipation.MUST_PLAY,
                     "rotationPriority": fairness,
@@ -2899,16 +2916,17 @@ class CustomGameService:
         return list(await self.mix_rounds.list_for_custom_game(session, game.id))
 
     async def mix_stats(
-        self, session: AsyncSession, *, workspace_id: int, since: datetime | None
+        self, session: AsyncSession, *, workspace_id: int, discipline: str, since: datetime | None
     ) -> list[dict[str, Any]]:
-        """Per-member win/loss record across every mix this workspace ever ran.
+        """Per-member win/loss record across every ``discipline`` mix this workspace ever ran.
 
         Workspace-wide on purpose: the scoreboard answers "how does this person
-        do in our mixes", which no single game can say. Names come from the
-        *current* roster, so a member who has since left keeps their record and
-        loses only their label -- the seats still carry their member id.
+        do in our mixes", which no single mix can say -- but one game at a time,
+        since a role tally and an identity only mean something within a discipline.
+        Names come from the *current* roster, so a member who has since left keeps
+        their record and loses only their label -- the seats still carry their member id.
         """
-        rows = await self.mix_rounds.seats(session, workspace_id=workspace_id, since=since)
+        rows = await self.mix_rounds.seats(session, workspace_id=workspace_id, discipline=discipline, since=since)
         seats = [
             SeatOutcome(
                 member_id=row.workspace_member_id,
@@ -2924,13 +2942,16 @@ class CustomGameService:
             return []
 
         members = await self.load_roster(
-            session, workspace_id=workspace_id, member_ids=[entry.member_id for entry in stats]
+            session,
+            workspace_id=workspace_id,
+            provider=DISCIPLINES[discipline].identity_provider,
+            member_ids=[entry.member_id for entry in stats],
         )
         return [
             {
                 "workspace_member_id": entry.member_id,
                 "display_name": member.display_name if member is not None else None,
-                "battle_tag": member.battle_tag if member is not None else None,
+                "identity": member.identity.model_dump() if member is not None and member.identity else None,
                 "games": entry.games,
                 "wins": entry.wins,
                 "losses": entry.losses,

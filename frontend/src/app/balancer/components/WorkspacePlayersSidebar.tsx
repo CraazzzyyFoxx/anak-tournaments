@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useDeferredValue, useId, useRef, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PanelRightClose,
   PanelRightOpen,
@@ -38,9 +38,11 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
 import { getDefaultDivisionGrid, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roster/roles";
+import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
 import {
   workspacePlayerKeys,
@@ -61,13 +63,14 @@ const SCOPE_CAPTION =
 
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
+  discipline: string;
   canEdit: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
 };
 
 function memberLabel(member: RosterMember): string {
-  return member.display_name || member.battle_tag || `#${member.member_id}`;
+  return member.display_name || member.identity?.handle || `#${member.member_id}`;
 }
 
 /** `1–30 of 224`, using the real page length so the last page is not overstated. */
@@ -188,7 +191,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
                 ) : (
                   <span className="text-label text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
                 )}
-                {member.battle_tag ? <BattleTagCopyButton battleTag={member.battle_tag} /> : null}
+                {member.identity?.handle ? <BattleTagCopyButton battleTag={member.identity?.handle} /> : null}
               </div>
             </div>
           </div>
@@ -200,7 +203,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
           <Pencil className="h-4 w-4" />
           Edit ranks
         </ContextMenuItem>
-        {member.battle_tag ? <BattleTagContextMenuItems battleTags={[member.battle_tag]} /> : null}
+        {member.identity?.handle ? <BattleTagContextMenuItems battleTags={[member.identity?.handle]} /> : null}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -208,11 +211,15 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
 
 export function WorkspacePlayersSidebar({
   workspaceId,
+  discipline,
   canEdit,
   collapsed = false,
   onToggleCollapsed,
 }: Readonly<WorkspacePlayersSidebarProps>) {
   const queryClient = useQueryClient();
+  const metadata = useDisciplineMetadata(workspaceId, discipline);
+  const provider = metadata.data?.discipline.identity_provider;
+  const identityConfig = provider ? getSocialProviderConfig(provider) : null;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [battleTag, setBattleTag] = useState("");
@@ -225,22 +232,20 @@ export function WorkspacePlayersSidebar({
   const battleTagId = useId();
   const battleTagHintId = `${battleTagId}-hint`;
 
-  const listParams = { page, perPage: PER_PAGE, query: deferredSearch };
+  const listParams = { page, perPage: PER_PAGE, query: deferredSearch, discipline };
   const membersQuery = useQuery({
     queryKey: workspacePlayerKeys.list(workspaceId, listParams),
-    queryFn: () => workspacePlayerService.list(workspaceId, listParams),
-    // Every keystroke and page click is a new key: without this the rows are
-    // replaced by skeletons mid-typing and the panel flickers per character.
-    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) => workspacePlayerService.list(workspaceId, listParams, { signal }),
   });
 
   const addPlayer = useMutation({
-    mutationFn: (tag: string) => workspacePlayerService.upsert(workspaceId, tag),
-    onSuccess: async (_member, tag) => {
+    mutationFn: (input: { workspaceId: number; discipline: string; identity: { provider: string; handle: string } }) =>
+      workspacePlayerService.upsert(input.workspaceId, { discipline: input.discipline, identity: input.identity }),
+    onSuccess: async (_member, input) => {
       setBattleTag("");
       setIsAddOpen(false);
-      notify.success(`${tag} saved to the workspace`);
-      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
+      notify.success(`${input.identity.handle} saved to the workspace`);
+      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(input.workspaceId) });
     },
     onError: (error) => notify.apiError(error),
   });
@@ -314,14 +319,15 @@ export function WorkspacePlayersSidebar({
   }
 
   const submitBattleTag = () => {
-    const tag = battleTag.trim();
+    if (!provider) return;
+    const tag = displaySocialHandle(provider, battleTag);
     if (!tag) {
-      setAddError("Enter a BattleTag, for example Name#1234.");
+      setAddError(`Enter a ${identityConfig?.label ?? "game"} handle, for example ${identityConfig?.placeholder ?? "Name#TAG"}.`);
       battleTagRef.current?.focus();
       return;
     }
     setAddError(null);
-    addPlayer.mutate(tag);
+    addPlayer.mutate({ workspaceId, discipline, identity: { provider, handle: tag } });
   };
 
   const clearSearch = () => {
@@ -381,7 +387,7 @@ export function WorkspacePlayersSidebar({
                     htmlFor={battleTagId}
                     className="block text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
                   >
-                    Add by BattleTag
+                    Add by {identityConfig?.label ?? "game"} identity
                   </label>
                   <div className="flex gap-1.5">
                     <Input
@@ -392,7 +398,7 @@ export function WorkspacePlayersSidebar({
                         setBattleTag(event.target.value);
                         if (addError) setAddError(null);
                       }}
-                      placeholder="Name#1234"
+                      placeholder={identityConfig?.placeholder ?? ""}
                       autoComplete="off"
                       aria-invalid={addError ? true : undefined}
                       aria-describedby={battleTagHintId}
@@ -405,7 +411,7 @@ export function WorkspacePlayersSidebar({
                       type="submit"
                       size="sm"
                       className="h-9 shrink-0 px-3"
-                      disabled={addPlayer.isPending}
+                      disabled={addPlayer.isPending || !provider || !metadata.data?.discipline.enabled}
                     >
                       {addPlayer.isPending ? (
                         <Spinner className="size-3.5" />

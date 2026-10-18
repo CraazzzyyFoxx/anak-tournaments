@@ -26,8 +26,10 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 from shared.core.enums import MixParticipation, MixRoleSelectionMode  # noqa: E402
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services import ontology  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
 from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
@@ -52,8 +54,12 @@ class _Games:
     async def get(self, _session: Any, game_id: int, **_options: Any) -> Any:
         return self.rows.get(game_id)
 
-    async def list_for_workspace(self, _session: Any, workspace_id: int) -> list[Any]:
-        return [row for row in self.rows.values() if row.workspace_id == workspace_id]
+    async def list_for_workspace(self, _session: Any, workspace_id: int, discipline: str | None = None) -> list[Any]:
+        return [
+            row
+            for row in self.rows.values()
+            if row.workspace_id == workspace_id and (discipline is None or row.discipline == discipline)
+        ]
 
     async def delete(self, _session: Any, row: Any) -> None:
         self.rows.pop(row.id, None)
@@ -272,11 +278,11 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             ranks=self.ranks,
             scoring_rules=SimpleNamespace(create=AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)),
             load_roster=AsyncMock(
-                side_effect=lambda _s, *, workspace_id, member_ids: {
+                side_effect=lambda _s, *, workspace_id, provider, member_ids: {
                     member_id: RosterMember(
                         member_id=member_id,
                         player_id=member_id * 10,
-                        battle_tag=f"P{member_id}#1",
+                        identity=PlayerIdentityRead.of(SocialProvider.BATTLENET, f"P{member_id}#1"),
                         display_name=f"P{member_id}",
                         auth_user_id=member_id * 100,
                     )

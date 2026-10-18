@@ -26,7 +26,7 @@ class PlayersListParamsTests(TestCase):
         self.assertEqual(params.page, 2)
         self.assertEqual(params.per_page, 100)
         self.assertEqual(params.query, "Ana#1")
-        self.assertIn("battle_tag", params.fields)
+        self.assertIn("handle", params.fields)
 
         params = _list_params({"query": {"page": "nope", "per_page": -5}})
         self.assertEqual(params.page, 1)

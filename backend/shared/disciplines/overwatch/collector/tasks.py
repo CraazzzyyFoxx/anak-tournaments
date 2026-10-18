@@ -16,6 +16,7 @@ from loguru import logger
 
 from shared.clients.circuit_breaker import CircuitBreakerOpen
 from shared.core import enums
+from shared.core.social import SocialProvider
 from shared.messaging.config import RANK_FETCH_PRIORITY_QUEUE, RANK_FETCH_QUEUE
 from shared.observability import publish_message
 from shared.observability.broker import require_broker
@@ -131,7 +132,9 @@ async def handle_registration_approved(
         tags = await service.resolve_registration_targets(
             session,
             registration_id=event.registration_id,
-            fallback_battle_tag=event.battle_tag,
+            fallback_battle_tag=event.identity.handle
+            if event.identity and event.identity.provider == SocialProvider.BATTLENET
+            else None,
             user_id=event.user_id,
             extra_accounts=cfg.extra_accounts_per_registration,
         )

@@ -157,6 +157,7 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         *,
         workspace_id: int,
         encounter_id: int | None = None,
+        discipline: str | None = None,
         since: datetime | None = None,
     ) -> Sequence[sa.Row]:
         """``seat_rows_select`` of this workspace, oldest round first: the leaderboard, the ranker replay and
@@ -164,6 +165,8 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         stmt = self.seat_rows_select(workspace_id).order_by(models.Encounter.id, models.EncounterTeamMember.id)
         if encounter_id is not None:
             stmt = stmt.where(models.Encounter.id == encounter_id)
+        if discipline is not None:
+            stmt = stmt.where(models.Encounter.discipline == discipline)
         if since is not None:
             stmt = stmt.where(models.Encounter.created_at >= since)
         return (await session.execute(stmt)).all()

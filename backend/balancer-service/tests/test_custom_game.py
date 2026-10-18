@@ -31,10 +31,12 @@ from shared.core.enums import (  # noqa: E402
     MixStatus,
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roles import UnknownRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.schemas.events import PickupMixChangedEvent  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from shared.services import (
@@ -233,7 +235,7 @@ def _members(*member_ids: int) -> dict[int, RosterMember]:
         member_id: RosterMember(
             member_id=member_id,
             player_id=member_id * 10,
-            battle_tag=f"P{member_id}#1",
+            identity=PlayerIdentityRead.of(SocialProvider.BATTLENET, f"P{member_id}#1"),
             display_name=f"P{member_id}",
         )
         for member_id in member_ids
@@ -416,7 +418,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self._messages_patch.start()
         self.addCleanup(self._messages_patch.stop)
         # Every requested member exists in this workspace unless a test says otherwise.
-        self.load_roster = AsyncMock(side_effect=lambda _s, *, workspace_id, member_ids: _members(*member_ids))
+        self.load_roster = AsyncMock(
+            side_effect=lambda _s, *, workspace_id, provider, member_ids: _members(*member_ids)
+        )
         # No workspace member resolves to a host name unless a test says
         # otherwise -- `transfer_host` treats an unresolved id as "not a member".
         self.load_hosts = AsyncMock(return_value={})
@@ -797,8 +801,13 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.roster.list_for_game.return_value = [_roster_row(1, 7, 0), _roster_row(2, 8, 1)]
         self.load_roster.side_effect = None
         self.load_roster.return_value = {
-            7: RosterMember(member_id=7, player_id=70, battle_tag="Ana#1", display_name=None),
-            8: RosterMember(member_id=8, player_id=80, battle_tag=None, display_name=None),
+            7: RosterMember(
+                member_id=7,
+                player_id=70,
+                identity=PlayerIdentityRead.of(SocialProvider.BATTLENET, "Ana#1"),
+                display_name=None,
+            ),
+            8: RosterMember(member_id=8, player_id=80, identity=None, display_name=None),
         }
         self.ranks.resolve.return_value = _ranks(7, 8)
         self.run_balance.return_value = {"teams": []}
@@ -2691,16 +2700,18 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.load_roster.side_effect = None
         self.load_roster.return_value = _members(7)
 
-        members = await self.service.mix_stats(self.session, workspace_id=1, since=None)
+        members = await self.service.mix_stats(self.session, workspace_id=1, discipline="overwatch", since=None)
 
-        self.mix_rounds.seats.assert_awaited_once_with(self.session, workspace_id=1, since=None)
+        self.mix_rounds.seats.assert_awaited_once_with(self.session, workspace_id=1, discipline="overwatch", since=None)
+        # The roster is read under the discipline's own identity provider.
+        self.assertEqual(self.load_roster.await_args.kwargs["provider"], SocialProvider.BATTLENET)
         self.assertEqual(
             members,
             [
                 {
                     "workspace_member_id": 7,
                     "display_name": "P7",
-                    "battle_tag": "P7#1",
+                    "identity": {"provider": "battlenet", "handle": "P7#1"},
                     "games": 1,
                     "wins": 1,
                     "losses": 0,
@@ -2714,7 +2725,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 {
                     "workspace_member_id": 8,
                     "display_name": None,
-                    "battle_tag": None,
+                    "identity": None,
                     "games": 1,
                     "wins": 0,
                     "losses": 1,

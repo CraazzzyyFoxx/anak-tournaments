@@ -36,9 +36,11 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 os.environ["DEBUG"] = "false"
 
 from shared.core.enums import HeroClass  # noqa: E402
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
-from shared.domain.roster import HeroRef, PlayerRoster, RosterRole  # noqa: E402
+from shared.domain.roster import CharacterRef, PlayerRoster, RosterRole  # noqa: E402
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.roster import RosterEngine  # noqa: E402
 from src.domain.balancer.player_loader import load_players_from_dict  # noqa: E402
 
@@ -58,12 +60,14 @@ def _roster(
     registration_id: int,
     roles: tuple[RosterRole, ...],
     *,
-    battle_tag: str | None = None,
+    handle: str | None = None,
     **overrides: object,
 ) -> PlayerRoster:
     return PlayerRoster(
         registration_id=registration_id,
-        battle_tag=battle_tag if battle_tag is not None else f"player{registration_id}#2100",
+        identity=PlayerIdentityRead.of(
+            SocialProvider.BATTLENET, handle if handle is not None else f"player{registration_id}#2100"
+        ),
         display_name=None,
         player_id=None,
         auth_user_id=None,
@@ -82,7 +86,7 @@ def _role(
     is_primary: bool = False,
     subrole: str | None = None,
     source: str = "registration",
-    top_heroes: tuple[HeroRef, ...] = (),
+    top_characters: tuple[CharacterRef, ...] = (),
 ) -> RosterRole:
     return RosterRole(
         role=role.slot_code,
@@ -91,7 +95,7 @@ def _role(
         is_primary=is_primary,
         priority=priority,
         subrole=subrole,
-        top_heroes=top_heroes,
+        top_characters=top_characters,
     )
 
 
@@ -225,7 +229,7 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
                 is_primary=True,
                 subrole="tank_main_tank",
                 source="native",
-                top_heroes=(HeroRef(id=3, slug="dva", image_path="/dva.png"),),
+                top_characters=(CharacterRef(id=3, slug="dva", image_path="/dva.png"),),
             ),
         ),
     )
@@ -247,7 +251,7 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
             "priority": 0,
             "playable": True,
             "division": {"number": 12, "name": "Diamond 2"},
-            "top_heroes": [{"hero_id": 3, "slug": "dva", "image_path": "/dva.png"}],
+            "top_characters": [{"entity_id": 3, "slug": "dva", "image_path": "/dva.png"}],
         }
     ]
     assert owt["primary_role"] == {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"}
@@ -294,7 +298,7 @@ def test_private_answers_are_withheld_unless_asked_for() -> None:
         admin_notes="banned last season",
         custom_fields={"shirt": "L"},
         identities={"discord": "player#0001"},
-        smurf_tags=("alt#1111",),
+        additional_handles=("alt#1111",),
     )
     kwargs = {
         "shape": RosterShape(entries=tuple(ROLE_MASK.items())),
@@ -310,4 +314,4 @@ def test_private_answers_are_withheld_unless_asked_for() -> None:
     assert private["private"]["public_notes"] == "prefers off-tank"
     assert private["private"]["custom_fields"] == {"shirt": "L"}
     assert private["private"]["identities"] == {"discord": "player#0001"}
-    assert private["private"]["smurf_tags"] == ["alt#1111"]
+    assert private["private"]["additional_handles"] == ["alt#1111"]

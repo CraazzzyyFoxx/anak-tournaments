@@ -8,7 +8,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from shared.core.social import SocialProvider
+from shared.disciplines import discipline as discipline_spec
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.schemas.events import (
@@ -17,6 +17,7 @@ from shared.schemas.events import (
     RegistrationRejectedEvent,
     TournamentStateChangedEvent,
 )
+from shared.schemas.identity import PlayerIdentityRead
 from shared.services.encounter import events as shared_encounter_events
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit, enqueue_invalidation_outbox
@@ -157,6 +158,29 @@ async def get_registration_workspace_id(session: AsyncSession, tournament_id: in
     return int(workspace_id)
 
 
+async def registration_identity(
+    session: AsyncSession,
+    registration: models.BalancerRegistration,
+) -> PlayerIdentityRead | None:
+    """The registration's primary handle for its tournament's identity provider, as the events carry it.
+
+    Never another provider's handle: a tournament whose discipline declares no provider has no identity.
+    """
+    owner = registration.__dict__.get("tournament")
+    code = (
+        owner.discipline
+        if owner is not None
+        else await session.scalar(
+            sa.select(models.Tournament.discipline).where(models.Tournament.id == registration.tournament_id)
+        )
+    )
+    provider = discipline_spec(code).identity_provider if code is not None else None
+    if provider is None:
+        return None
+    primary = registration.primary_game_identity(provider=provider)
+    return PlayerIdentityRead.of(provider, primary.handle if primary is not None else None)
+
+
 async def get_registration_player_id(
     session: AsyncSession,
     registration: models.BalancerRegistration,
@@ -245,7 +269,7 @@ async def enqueue_registration_approved(
             workspace_id=workspace_id,
             registration_id=registration.id,
             user_id=player_id,
-            battle_tag=registration.primary_handle(SocialProvider.BATTLENET),
+            identity=await registration_identity(session, registration),
             source_service="tournament-service",
         ),
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
@@ -277,7 +301,7 @@ async def enqueue_registration_rejected(
             workspace_id=workspace_id,
             registration_id=registration.id,
             user_id=player_id,
-            battle_tag=registration.primary_handle(SocialProvider.BATTLENET),
+            identity=await registration_identity(session, registration),
             source_service="tournament-service",
         ),
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
@@ -300,7 +324,7 @@ async def enqueue_registration_rank_check(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
-    """Ask stats-service to re-fetch the registrant's battle tags (the profile check)."""
+    """Ask the discipline's rank collector to re-fetch the registrant's accounts (the profile check)."""
     await enqueue_outbox_event(
         session,
         RegistrationRankCheckRequestedEvent(
@@ -308,7 +332,7 @@ async def enqueue_registration_rank_check(
             workspace_id=await get_registration_workspace_id(session, registration.tournament_id),
             registration_id=registration.id,
             user_id=await get_registration_player_id(session, registration),
-            battle_tag=registration.primary_handle(SocialProvider.BATTLENET),
+            identity=await registration_identity(session, registration),
             source_service="tournament-service",
         ),
         exchange=TOURNAMENT_EVENTS_EXCHANGE,

@@ -135,7 +135,7 @@ export function DraftOrderGrid({
               const state = pickState(pick);
               const player =
                 state === "done" && pick.picked_player_id != null ? playerById.get(pick.picked_player_id) : null;
-              const tag = player ? (player.battle_tag ?? `#${player.id}`) : null;
+              const tag = player ? (player.identity?.handle ?? `#${player.id}`) : null;
               const away = picksAway(board, pick);
               const sub =
                 state === "done"

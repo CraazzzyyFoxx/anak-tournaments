@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models, schemas
 
-_IDENTITY_ENTITIES = ("social_accounts", "battle_tag", "discord", "twitch")
+_IDENTITY_ENTITIES = ("social_accounts",)
 
 
 def user_to_read(user: models.User, entities: list[str]) -> schemas.UserRead:
@@ -30,8 +30,7 @@ class UserFlowsService:
         """Convert a `User` to ``UserRead``. Identities come from the unified
         ``user.social_accounts`` relationship and are only accessed (and serialized)
         when an identity entity was requested — and therefore eager-loaded — so this
-        never triggers a lazy load outside the async greenlet. Legacy entity tokens
-        (``battle_tag``/``discord``/``twitch``) are still honored as triggers.
+        never triggers a lazy load outside the async greenlet.
         """
         return user_to_read(user, entities)
 

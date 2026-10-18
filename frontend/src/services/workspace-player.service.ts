@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/fetch";
+import type { PlayerIdentity } from "@/types/identity.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 
 /**
@@ -20,7 +21,7 @@ export type RosterMember = {
    * ranked and rostered, but can never be picked as a host or co-host.
    */
   auth_user_id: number | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   display_name: string | null;
   ranks: Record<string, number>;
   author_ranks: Record<string, number>;
@@ -48,6 +49,7 @@ export type RosterAuthor = {
 export type RankScope = "workspace" | "author";
 
 export type WorkspacePlayerListParams = {
+  discipline?: string;
   page?: number;
   perPage?: number;
   query?: string;
@@ -86,11 +88,11 @@ export const RANK_OVERVIEW_ROLES = ["tank", "damage", "support"] as const;
 
 /**
  * What a row is *about* beyond the member: the tournament it was registered
- * for, the mix it was seated in, or the battle tag it was scraped from. For
- * `battle_tag`, `team` carries the OW platform rather than a team name.
+ * for, the mix it was seated in, or the native account it was scraped from.
+ * For `native_account`, `team` carries the native platform rather than a team name.
  */
 export type RankOverviewContext = {
-  kind: "tournament" | "mix" | "battle_tag";
+  kind: "tournament" | "mix" | "native_account";
   id: number | null;
   label: string;
   team: string | null;
@@ -103,7 +105,7 @@ export type RankOverviewRow = {
   player_id: number;
   member_id: number;
   display_name: string | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   /** `auth.user` id of the author, mix book owner or casual host. */
   author_user_id: number | null;
   author_name: string | null;
@@ -128,11 +130,12 @@ export type RankOverviewRow = {
 };
 
 export type RankOverviewListParams = {
+  discipline?: string;
   page?: number;
   perPage?: number;
   /** `players.user` id -- the person tab's fixed filter. */
   playerId?: number;
-  /** Free text over battle tag and display name. */
+  /** Free text over the owner provider's handle and display name. */
   query?: string;
   layer?: string[];
   authorUserId?: number[];
@@ -153,6 +156,7 @@ export const workspacePlayerKeys = {
   list: (workspaceId: number, params: WorkspacePlayerListParams = {}) =>
     [
       ...workspacePlayerKeys.all(workspaceId),
+      params.discipline ?? null,
       params.page ?? 1,
       params.perPage ?? 30,
       params.query ?? "",
@@ -165,15 +169,17 @@ export const workspacePlayerKeys = {
 };
 
 export const workspacePlayerService = {
-  list(workspaceId: number, params: WorkspacePlayerListParams = {}): Promise<PaginatedResponse<RosterMember>> {
+  list(workspaceId: number, params: WorkspacePlayerListParams = {}, opts?: { signal?: AbortSignal }): Promise<PaginatedResponse<RosterMember>> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/players`, {
       query: {
+        discipline: params.discipline,
         page: params.page ?? 1,
         per_page: params.perPage ?? 30,
         query: params.query ?? "",
         ...(params.authorUserId == null ? {} : { author_user_id: params.authorUserId }),
         ...(params.authorOnly ? { author_only: 1 } : {}),
       },
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 
@@ -198,9 +204,11 @@ export const workspacePlayerService = {
   listRanks(
     workspaceId: number,
     params: RankOverviewListParams = {},
+    opts?: { signal?: AbortSignal },
   ): Promise<PaginatedResponse<RankOverviewRow>> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/ranks`, {
       query: {
+        discipline: params.discipline,
         page: params.page ?? 1,
         per_page: params.perPage ?? 30,
         ...(params.playerId == null ? {} : { player_id: params.playerId }),
@@ -216,13 +224,19 @@ export const workspacePlayerService = {
         ...(params.sort ? { sort: params.sort } : {}),
         ...(params.order ? { order: params.order } : {}),
       },
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 
-  upsert(workspaceId: number, battleTag: string, displayName?: string): Promise<RosterMember> {
+  upsert(
+    workspaceId: number,
+    input: { discipline: string; identity: PlayerIdentity; display_name?: string | null },
+    opts?: { signal?: AbortSignal },
+  ): Promise<RosterMember> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/players`, {
       method: "POST",
-      body: { battle_tag: battleTag, display_name: displayName || undefined },
+      body: input,
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 

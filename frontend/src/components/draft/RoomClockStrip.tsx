@@ -102,7 +102,7 @@ export function RoomClockStrip({
     announceParts.push(
       t("shell.strip.announceLast", {
         team: teamName(last.draft_team_id),
-        player: lastPlayer.battle_tag ?? `#${lastPlayer.id}`
+        player: lastPlayer.identity?.handle ?? `#${lastPlayer.id}`
       })
     );
   if (current != null)
@@ -124,7 +124,7 @@ export function RoomClockStrip({
   const whoName = done ? t("shell.strip.picksMade", { count: totalPicks }) : (clockTeam?.name ?? "—");
   // Teams are named after their captain by default: the tag next to the team
   // name only earns its place when it says something the name doesn't.
-  const captainTag = captain ? (captain.battle_tag ?? `#${captain.id}`) : null;
+  const captainTag = captain ? (captain.identity?.handle ?? `#${captain.id}`) : null;
   const showCaptainTag = captainTag != null && captainTag !== whoName;
 
   const tickTone = (pick: DraftPick) => {
@@ -155,7 +155,7 @@ export function RoomClockStrip({
       ? t("shell.strip.tickPlayer", {
           pick: pick.overall_no,
           team: teamName(pick.draft_team_id),
-          player: player.battle_tag ?? `#${player.id}`
+          player: player.identity?.handle ?? `#${player.id}`
         })
       : t("shell.strip.tick", { pick: pick.overall_no, team: teamName(pick.draft_team_id) });
   };
@@ -270,7 +270,7 @@ export function RoomClockStrip({
               <span className="truncate">{teamName(last.draft_team_id)}</span>
               <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden />
               <span className="truncate font-semibold text-[color:var(--aqt-fg)]">
-                {lastPlayer.battle_tag ?? `#${lastPlayer.id}`}
+                {lastPlayer.identity?.handle ?? `#${lastPlayer.id}`}
               </span>
               {last.target_role && (
                 <span title={t(`roles.${last.target_role.role as DraftRole}`)} className="inline-flex shrink-0">

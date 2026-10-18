@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/api/fetch";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { RoleRef } from "@/lib/roster/team-format";
 import type { DiscordVoicePermission } from "@/types/discord.types";
+import type { PlayerIdentity } from "@/types/identity.types";
 
 /** Where an effective rank came from, strongest first. */
 export type RankSource = "author" | "workspace" | "native";
@@ -38,7 +39,7 @@ export type CustomGamePlayer = {
   id: number;
   workspace_member_id: number;
   display_name: string | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   sort_order: number;
   participation: MixParticipation;
   role_selection_mode: MixRoleSelectionMode;
@@ -164,6 +165,7 @@ export type CustomGameDiscordPost = {
 export type CustomGame = {
   id: number;
   workspace_id: number;
+  discipline: string;
   host_user_id: number;
   /** Extra workspace members who write this mix exactly like the host (see `custom.add_co_host`). */
   co_hosts: CustomGameCoHost[];
@@ -405,7 +407,7 @@ export type MixRoleTally = {
 export type MixMemberStats = {
   workspace_member_id: number;
   display_name: string | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   games: number;
   wins: number;
   losses: number;
@@ -455,8 +457,8 @@ export const customGameKeys = {
    */
   voiceOptions: (workspaceId: number, gameId: number) =>
     ["custom-games", workspaceId, gameId, "voice-options"] as const,
-  stats: (workspaceId: number, since: string | null) =>
-    ["custom-games", workspaceId, "stats", since ?? "all"] as const,
+  stats: (workspaceId: number, since: string | null, discipline?: string) =>
+    ["custom-games", workspaceId, "stats", since ?? "all", discipline ?? null] as const,
 };
 
 export const customGameService = {
@@ -607,11 +609,12 @@ export const customGameService = {
    * the permanent match log rather than from any one mix. `since` (ISO) counts
    * only matches recorded from then on; `null` counts all time.
    */
-  stats(workspaceId: number, since: string | null = null): Promise<MixStatsResponse> {
+  stats(workspaceId: number, since: string | null = null, discipline?: string, opts?: { signal?: AbortSignal }): Promise<MixStatsResponse> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/stats`, {
       skipWorkspace: true,
       // `apiFetch` drops a null query value, so all time sends no `since` at all.
-      query: { since },
+      query: { since, discipline },
+      signal: opts?.signal,
     }).then((r) => r.json());
   },
 

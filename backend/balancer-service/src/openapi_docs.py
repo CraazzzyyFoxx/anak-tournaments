@@ -536,9 +536,11 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: public; no authentication required. "
             "Per-member wins/losses/draws, win rate, current streak and the per-role split across "
-            "every mix this workspace has run, best record first. The optional since query parameter "
-            "(ISO 8601) narrows it to matches recorded on or after that moment; without it the whole "
-            "history counts. Read-only."
+            "every mix of one discipline this workspace has run, best record first; `identity` is the member's "
+            "handle for that discipline's identity provider. The optional `discipline` query parameter defaults to "
+            "the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional "
+            "since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it "
+            "the whole history counts. Read-only."
         ),
     },
     "rpc.balancer.custom.close": {
@@ -585,8 +587,9 @@ DOCS: dict[str, dict] = {
             "which is what lets a row say whether a number is its own or inherited. Another "
             "organiser's book is readable through `author_user_id`. "
             "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
-            "are held on; omitted, the workspace's first enabled discipline "
-            "(422 `discipline_not_enabled` for another)."
+            "are held on and whose identity provider names each row's `identity`; omitted, the workspace's "
+            "first enabled discipline (422 `discipline_not_enabled` for another). Observation-only anchors "
+            "are not roster members and never listed."
         ),
     },
     "rpc.balancer.players.summary": {
@@ -597,11 +600,14 @@ DOCS: dict[str, dict] = {
         "summary": "Upsert workspace player",
         "description": (
             "Permission: workspace member holding team.create or custom_game.create (a mix host); setting "
-            "display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns "
-            "it shaped exactly like a roster row; 422 when battle_tag is missing or blank. "
-            "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
-            "are held on; omitted, the workspace's first enabled discipline "
-            "(422 `discipline_not_enabled` for another)."
+            "display_name requires team.create. Admits (or reuses) the workspace member a game identity "
+            "denotes and returns it shaped exactly like a roster row. The body is "
+            "`{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the "
+            "workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity "
+            "provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the "
+            "provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle "
+            "is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as the old "
+            "`battle_tag`) are 422."
         ),
     },
     "rpc.balancer.players.set_ranks": {

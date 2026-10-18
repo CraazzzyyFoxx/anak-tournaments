@@ -8,7 +8,7 @@ function member(overrides: Partial<MixMemberStats> = {}): MixMemberStats {
   return {
     workspace_member_id: 1,
     display_name: "Aria",
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     games: 10,
     wins: 6,
     losses: 4,

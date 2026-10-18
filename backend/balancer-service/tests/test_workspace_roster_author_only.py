@@ -126,6 +126,7 @@ class RosterPageAuthorOnlyTests(IsolatedAsyncioTestCase):
             rows, total = await workspace_roster.roster_page(
                 session,
                 workspace_id=self.workspace_id,
+                provider="battlenet",
                 author_user_id=self.host_id,
                 author_only=True,
             )
@@ -137,6 +138,7 @@ class RosterPageAuthorOnlyTests(IsolatedAsyncioTestCase):
             rows, total = await workspace_roster.roster_page(
                 session,
                 workspace_id=self.workspace_id,
+                provider="battlenet",
                 author_user_id=self.other_host_id,
                 author_only=True,
             )
@@ -148,6 +150,7 @@ class RosterPageAuthorOnlyTests(IsolatedAsyncioTestCase):
             _rows, total = await workspace_roster.roster_page(
                 session,
                 workspace_id=self.workspace_id,
+                provider="battlenet",
                 author_user_id=self.host_id,
                 author_only=False,
             )

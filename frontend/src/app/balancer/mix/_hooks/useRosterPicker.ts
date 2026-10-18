@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import type { CustomGamePlayer } from "@/services/custom-game.service";
 import {
@@ -25,7 +25,7 @@ const VISIBLE_AUTHOR_CHIPS = 4;
  */
 export type RosterRow = {
   memberId: number;
-  battleTag: string | null;
+  handle: string | null;
   displayName: string | null;
   ranks: Record<string, number>;
   authorRanks: Record<string, number>;
@@ -45,6 +45,7 @@ export type RosterFilter = "all" | "mine" | number;
  */
 export function useRosterPicker({
   workspaceId,
+  discipline,
   open,
   hostUserId,
   rows,
@@ -52,6 +53,7 @@ export function useRosterPicker({
   onTogglePlayer
 }: Readonly<{
   workspaceId: number;
+  discipline: string;
   open: boolean;
   hostUserId: number | null;
   rows: CustomGamePlayer[];
@@ -73,6 +75,7 @@ export function useRosterPicker({
   // existed; a named chip instead reads that account's book.
   const activeAuthorUserId = usingNamedAuthor ? filter : (hostUserId ?? undefined);
   const listParams = {
+    discipline,
     page,
     perPage: PER_PAGE,
     query: deferredSearch,
@@ -81,12 +84,8 @@ export function useRosterPicker({
   };
   const rosterQuery = useQuery({
     queryKey: workspacePlayerKeys.list(workspaceId, listParams),
-    queryFn: () => workspacePlayerService.list(workspaceId, listParams),
+    queryFn: ({ signal }) => workspacePlayerService.list(workspaceId, listParams, { signal }),
     enabled: open,
-    // Every keystroke and page click is a new key: without this the rows are
-    // replaced by skeletons mid-typing and the whole column flickers per
-    // character.
-    placeholderData: keepPreviousData
   });
 
   // Both chip counts, independent of which filter is active: `rosterQuery`'s
@@ -132,7 +131,7 @@ export function useRosterPicker({
     () =>
       (pageData?.results ?? []).map((member: RosterMember) => ({
         memberId: member.member_id,
-        battleTag: member.battle_tag,
+        handle: member.identity?.handle ?? null,
         displayName: member.display_name,
         // Effective = canon overridden by this host's own book, the same
         // precedence the balancer applies.
@@ -149,7 +148,7 @@ export function useRosterPicker({
   // rather than in an effect — the cursor is derived from the query, so a
   // cascading second render is exactly what must not happen between the list
   // changing and the highlight moving.
-  const resultKey = `${filter}|${page}|${deferredSearch}`;
+  const resultKey = `${workspaceId}|${discipline}|${filter}|${page}|${deferredSearch}`;
   if (cursorKey !== resultKey) {
     setCursorKey(resultKey);
     setCursor(0);

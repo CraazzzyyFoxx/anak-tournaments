@@ -65,7 +65,7 @@ from src.services.user.service import users as user_service
 from . import _common as c
 
 _SF = db.async_session_maker
-_ENTITIES = ["discord", "battle_tag", "twitch"]
+_ENTITIES = ["social_accounts"]
 
 
 def _gate(data: dict, action: str) -> Any:

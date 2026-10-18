@@ -92,19 +92,19 @@ function MemberSearchCombobox({
     >
       <CommandGroup>
         {results.map((member) => {
-          const label = member.display_name || member.battle_tag || `#${member.auth_user_id}`;
+          const label = member.display_name || member.identity?.handle || `#${member.auth_user_id}`;
           return (
             <CommandItem
               key={member.member_id}
-              value={`${member.display_name ?? ""} ${member.battle_tag ?? ""} ${member.auth_user_id}`}
+              value={`${member.display_name ?? ""} ${member.identity?.handle ?? ""} ${member.auth_user_id}`}
               // `fetchResults` above already filtered out every member with
               // no linked account, so this is never actually null here.
               onSelect={() => handleSelect({ authUserId: member.auth_user_id as number, label })}
             >
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{label}</span>
-                {member.battle_tag ? (
-                  <span className="truncate text-xs text-muted-foreground">{member.battle_tag}</span>
+                {member.identity?.handle ? (
+                  <span className="truncate text-xs text-muted-foreground">{member.identity?.handle}</span>
                 ) : null}
               </div>
             </CommandItem>

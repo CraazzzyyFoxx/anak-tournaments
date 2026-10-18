@@ -461,7 +461,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert ow["tank"]["ow_division"] == "grandmaster"
         assert ow["tank"]["ow_tier"] == 3
         assert ow["tank"]["context"] == {
-            "kind": "battle_tag",
+            "kind": "native_account",
             "id": None,
             "label": self.battle_tag,
             "team": "pc",

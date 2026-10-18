@@ -167,7 +167,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
           className="font-medium text-primary underline-offset-2 hover:underline"
           onClick={(event) => event.stopPropagation()}
         >
-          {row.original.display_name || row.original.battle_tag || `#${row.original.player_id}`}
+          {row.original.display_name || row.original.identity?.handle || `#${row.original.player_id}`}
         </Link>
       ),
     };
@@ -311,9 +311,9 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
                 : context.kind === "mix"
                   ? `/balancer/mix/${context.id}`
                   : null;
-          // On a battle-tag row `team` is the OW platform, not a team name.
+          // On a native-account row `team` is the native platform, not a team name.
           const detail = [
-            context.kind === "battle_tag" ? null : context.team,
+            context.kind === "native_account" ? null : context.team,
             context.lobby_index == null
               ? null
               : // A..F, the same glyph the mix surface gives a lobby. Spelled out
@@ -338,7 +338,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
               {detail ? (
                 <span className="truncate text-xs text-muted-foreground">{detail}</span>
               ) : null}
-              {context.kind === "battle_tag" && context.team ? (
+              {context.kind === "native_account" && context.team ? (
                 <span className="truncate text-xs uppercase text-muted-foreground">
                   {context.team}
                 </span>

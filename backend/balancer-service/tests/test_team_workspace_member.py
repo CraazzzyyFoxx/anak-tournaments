@@ -129,7 +129,7 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
             ),
             patch.object(
                 materialization_module,
-                "find_users_by_battle_tags",
+                "find_users_by_handles",
                 AsyncMock(return_value={"Roster#0000": member_user}),
             ),
             patch.object(

@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
+import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
 import { workspacePlayerKeys, workspacePlayerService } from "@/services/workspace-player.service";
 
@@ -20,41 +22,50 @@ import { workspacePlayerKeys, workspacePlayerService } from "@/services/workspac
  * *because* that person is in the lobby right now, so making them find the new
  * row afterwards was busywork.
  */
-export function AddBattleTagPopover({
+export function AddPlayerIdentityPopover({
   workspaceId,
+  discipline,
   canWrite,
   onTogglePlayer
 }: Readonly<{
   workspaceId: number;
+  discipline: string;
   /** Mix right: a closed mix still accepts a roster addition, it just cannot seat them. */
   canWrite: boolean;
   onTogglePlayer: (memberId: number) => void;
 }>) {
   const queryClient = useQueryClient();
-  const [battleTag, setBattleTag] = useState("");
+  const [handle, setHandle] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const metadata = useDisciplineMetadata(workspaceId, discipline);
+  const provider = metadata.data?.discipline.identity_provider;
+  const config = provider ? getSocialProviderConfig(provider) : null;
 
-  const addByTag = useMutation({
-    mutationFn: (tag: string) => workspacePlayerService.upsert(workspaceId, tag),
-    onSuccess: async (member, tag) => {
-      setBattleTag("");
+  const addIdentity = useMutation({
+    mutationFn: (input: {
+      workspaceId: number; discipline: string; identity: { provider: string; handle: string };
+      onAdded?: (memberId: number) => void;
+    }) => workspacePlayerService.upsert(input.workspaceId, { discipline: input.discipline, identity: input.identity }),
+    onSuccess: async (member, input) => {
+      setHandle("");
       setIsAddOpen(false);
-      notify.success(`${tag} joined the workspace roster`);
-      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(workspaceId) });
-      if (canWrite) onTogglePlayer(member.member_id);
+      notify.success(`${input.identity.handle} joined the workspace roster`);
+      await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(input.workspaceId) });
+      input.onAdded?.(member.member_id);
     },
     onError: (error) => notify.apiError(error)
   });
 
-  const submitBattleTag = () => {
-    const tag = battleTag.trim();
-    if (!tag) {
-      setAddError("Enter a BattleTag, for example Name#1234.");
+  const submitIdentity = () => {
+    if (!provider) return;
+    const shown = displaySocialHandle(provider, handle);
+    if (!shown) {
+      setAddError(`Enter a ${config?.label ?? "game"} handle, for example ${config?.placeholder ?? "Name#TAG"}.`);
       return;
     }
     setAddError(null);
-    addByTag.mutate(tag);
+    addIdentity.mutate({ workspaceId, discipline, identity: { provider, handle: shown }, onAdded: canWrite ? onTogglePlayer : undefined });
   };
 
   return (
@@ -68,6 +79,7 @@ export function AddBattleTagPopover({
       <PopoverTrigger asChild>
         <button
           type="button"
+          disabled={!provider || !metadata.data?.discipline.enabled}
           className={cn(
             "ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed px-3",
             "border-[color:var(--aqt-border-2)] text-label text-[color:var(--aqt-fg-dim)]",
@@ -75,7 +87,8 @@ export function AddBattleTagPopover({
           )}
         >
           <UserPlus className="size-3.5" aria-hidden="true" />
-          New BattleTag
+          {config?.icon ? <img src={config.icon} alt="" className="size-3.5" /> : null}
+          New {config?.label ?? "game"} identity
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3">
@@ -83,19 +96,19 @@ export function AddBattleTagPopover({
           className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
-            submitBattleTag();
+            submitIdentity();
           }}
         >
           <p className={EYEBROW_CLASS}>Add someone new</p>
           <div className="flex gap-1.5">
             <Input
-              value={battleTag}
+              value={handle}
               onChange={(event) => {
-                setBattleTag(event.target.value);
+                setHandle(event.target.value);
                 if (addError) setAddError(null);
               }}
-              placeholder="Name#1234"
-              aria-label="New BattleTag"
+              placeholder={config?.placeholder ?? ""}
+              aria-label={`New ${config?.label ?? "game"} identity`}
               autoComplete="off"
               aria-invalid={addError ? true : undefined}
               // `min-w-0`: an `<input>` carries an intrinsic ~170px
@@ -103,8 +116,8 @@ export function AddBattleTagPopover({
               className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm"
             />
             {/* Enabled while empty on purpose: submit validates and says why. */}
-            <Button type="submit" size="sm" className="h-9 shrink-0 px-3" disabled={addByTag.isPending}>
-              {addByTag.isPending ? <Spinner className="size-3.5" /> : null}
+            <Button type="submit" size="sm" className="h-9 shrink-0 px-3" disabled={addIdentity.isPending || !provider}>
+              {addIdentity.isPending ? <Spinner className="size-3.5" /> : null}
               Add
             </Button>
           </div>
@@ -114,7 +127,7 @@ export function AddBattleTagPopover({
               addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {addError ?? "Joins the workspace roster and drops straight into this mix."}
+            {addError ?? (metadata.isError ? "Unable to load the identity provider." : "Self-declared identity; this does not verify ownership.")}
           </p>
         </form>
       </PopoverContent>

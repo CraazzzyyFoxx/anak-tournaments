@@ -23,6 +23,12 @@ import type { RosterMember } from "@/services/workspace-player.service";
 
 import { WorkspacePlayersSidebar } from "./WorkspacePlayersSidebar";
 
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: () => ({
+    data: { discipline: { identity_provider: "battlenet", enabled: true } }
+  })
+}));
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -79,7 +85,7 @@ function member(memberId: number, battleTag: string, overrides: Partial<RosterMe
   return {
     member_id: memberId,
     player_id: memberId * 10,
-    battle_tag: battleTag,
+    identity: { provider: "battlenet", handle: battleTag },
     display_name: null,
     ranks: {},
     author_ranks: {},
@@ -126,6 +132,7 @@ async function mount(
       <QueryClientProvider client={client}>
         <WorkspacePlayersSidebar
           workspaceId={WORKSPACE_ID}
+          discipline="overwatch"
           canEdit={props.canEdit ?? true}
           collapsed={props.collapsed ?? false}
         />
@@ -275,13 +282,15 @@ describe("WorkspacePlayersSidebar", () => {
     await click(submit);
 
     expect(upsert).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain("Enter a BattleTag");
+    expect(document.body.textContent).toContain("Enter a Battle.net handle");
     expect(battleTag.getAttribute("aria-invalid")).toBe("true");
 
     await type(battleTag, "Cyrus#3333");
     await click(button(document.body, "Add player"));
 
-    expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, "Cyrus#3333");
+    expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, {
+      discipline: "overwatch", identity: { provider: "battlenet", handle: "Cyrus#3333" }
+    });
   });
 
   it("edits ranks in the sheet rather than in the row", async () => {
@@ -395,4 +404,3 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.querySelector("button[title='Edit Borys#2222']")).not.toBeNull();
   });
 });
-

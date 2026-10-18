@@ -19,7 +19,7 @@ function member(overrides: Partial<MixMemberStats> = {}): MixMemberStats {
   return {
     workspace_member_id: 1,
     display_name: "Aria",
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     games: 20,
     wins: 12,
     losses: 8,
@@ -134,12 +134,12 @@ describe("PickupLeaderboard", () => {
 
   it("falls back to the battletag or raw member id when display name is not set", async () => {
     const { container: tagContainer } = await mount([
-      member({ display_name: null, battle_tag: "Aria#1111" })
+      member({ display_name: null, identity: { provider: "battlenet", handle: "Aria#1111" } })
     ]);
     expect(tagContainer.textContent).toContain("Aria#1111");
 
     const { container: idContainer } = await mount([
-      member({ display_name: null, battle_tag: null, workspace_member_id: 42 })
+      member({ display_name: null, identity: null, workspace_member_id: 42 })
     ]);
     expect(idContainer.textContent).toContain("#42");
   });

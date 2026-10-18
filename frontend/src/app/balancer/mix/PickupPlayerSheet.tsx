@@ -208,8 +208,8 @@ export function PickupPlayerSheet({
                 {suffix}
               </span>
             ) : null}
-            {row?.battle_tag ? (
-              <BattleTagCopyButton battleTag={row.battle_tag} className="ml-0.5 shrink-0" />
+            {row?.identity?.handle ? (
+              <BattleTagCopyButton battleTag={row.identity?.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
           {mixRecord ? <span className={cn(CAPTION_CLASS, "pt-1")}>{mixRecord}</span> : null}
@@ -358,14 +358,16 @@ export function PickupPlayerSheet({
             {/* The one thing the mix cannot tell the host: what this player is
                 actually ranked in Overwatch right now. Read-only, and the same
                 component the tournament sheet uses. */}
+            {row.identity?.provider === "battlenet" ? (
             <section className="space-y-2 px-5 py-4">
               <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
                 Live rank (OverFast)
               </Label>
               <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                <RankHistory battleTag={row.battle_tag} />
+                <RankHistory battleTag={row.identity?.handle} />
               </div>
             </section>
+            ) : null}
           </div>
         )}
 

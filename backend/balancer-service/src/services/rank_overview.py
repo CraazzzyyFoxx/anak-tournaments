@@ -34,14 +34,15 @@ from shared.division_grid import DivisionGrid, division_case_expr
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.overwatch_rank import BattleTagRankState, UserRankSnapshot
 from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
+from shared.schemas.identity import PlayerIdentityRead
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
 
-# ``_filters``/``_main_battle_tag`` are the roster's own search predicates and
-# primary-BattleTag scalar: what ``q`` matches stays one definition, shared with
+# ``_filters``/``main_handle`` are the roster's own search predicates and
+# primary-handle scalar: what ``q`` matches stays one definition, shared with
 # ``rpc.balancer.players.list``.
 from shared.services.workspace_roster import _filters as _roster_filters
-from shared.services.workspace_roster import _main_battle_tag, hosts_by_user_id
+from shared.services.workspace_roster import hosts_by_user_id, main_handle
 from src.domain.mix_ranker import RankerSettings
 
 # The layer/sort vocabulary lives in the schemas module so the OpenAPI export
@@ -163,7 +164,7 @@ def _row(
         members.c.member_id.label("member_id"),
         members.c.player_id.label("player_id"),
         members.c.display_name.label("display_name"),
-        members.c.battle_tag.label("battle_tag"),
+        members.c.handle.label("handle"),
         (author_user_id if author_user_id is not None else _null(sa.Integer)).label("author_user_id"),
         sa.cast(role, sa.String).label("role"),
         sa.cast(rank_value, sa.Integer).label("rank_value"),
@@ -183,8 +184,8 @@ def _row(
     ]
 
 
-def _members_cte(workspace_id: int, filters: RankOverviewFilters) -> Any:
-    where = _roster_filters(workspace_id, filters.query)
+def _members_cte(workspace_id: int, provider: str | None, filters: RankOverviewFilters) -> Any:
+    where = _roster_filters(workspace_id, filters.query, provider)
     if filters.player_id is not None:
         where.append(models.WorkspaceMember.player_id == filters.player_id)
     return (
@@ -192,7 +193,7 @@ def _members_cte(workspace_id: int, filters: RankOverviewFilters) -> Any:
             models.WorkspaceMember.id.label("member_id"),
             models.WorkspaceMember.player_id.label("player_id"),
             sa.func.coalesce(models.WorkspaceMember.display_name, models.User.name).label("display_name"),
-            _main_battle_tag().label("battle_tag"),
+            (main_handle(provider) if provider is not None else sa.cast(sa.null(), sa.String)).label("handle"),
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
         .where(*where)
@@ -345,7 +346,7 @@ def _branches(
                     rank_value=ow_latest.c.rank_value,
                     ow_division=ow_latest.c.division,
                     ow_tier=ow_latest.c.tier,
-                    context_kind=sa.literal("battle_tag"),
+                    context_kind=sa.literal("native_account"),
                     context_label=ow_latest.c.battle_tag,
                     context_team=ow_latest.c.platform,
                     at=ow_latest.c.captured_at,
@@ -578,13 +579,14 @@ def _context(row: Any) -> dict[str, Any] | None:
     }
 
 
-def _dump(row: Any, author_names: dict[int, str | None]) -> dict[str, Any]:
+def _dump(row: Any, provider: str | None, author_names: dict[int, str | None]) -> dict[str, Any]:
+    identity = PlayerIdentityRead.of(provider, row.handle)
     return {
         "layer": row.layer,
         "player_id": row.player_id,
         "member_id": row.member_id,
         "display_name": row.display_name,
-        "battle_tag": row.battle_tag,
+        "identity": identity.model_dump() if identity is not None else None,
         "author_user_id": row.author_user_id,
         "author_name": author_names.get(row.author_user_id) if row.author_user_id is not None else None,
         "role": row.role,
@@ -614,7 +616,8 @@ async def rank_overview_page(
 
     ws_grid = await get_effective_division_grid(session, workspace_id, discipline=discipline)
     dimension_id = await CatalogRoleRepository().rated_dimension_id(session, discipline=discipline)
-    members = _members_cte(workspace_id, filters)
+    provider = discipline_spec(discipline).identity_provider
+    members = _members_cte(workspace_id, provider, filters)
     branches = _branches(
         workspace_id,
         discipline,
@@ -646,7 +649,7 @@ async def rank_overview_page(
         workspace_id=workspace_id,
         user_ids=[row.author_user_id for row in page if row.author_user_id is not None],
     )
-    return [_dump(row, author_names) for row in page], int(total or 0)
+    return [_dump(row, provider, author_names) for row in page], int(total or 0)
 
 
 def parse_layers(raw: Sequence[str] | None) -> tuple[str, ...]:

@@ -29,7 +29,7 @@ import { notify } from "@/lib/notify";
 import { customGameKeys, customGameService } from "@/services/custom-game.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 /**
  * One mix in two columns: the **lineup** a host curates, and the **matchup** the
@@ -104,18 +104,6 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
   // Whether this viewer may write the mix, which decides the voice read below;
   // set once the mix has loaded (see `canWrite`).
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  // The OW catalogue with its gamemodes: the roll pool for the next map and
-  // the manual picker. Which map is *chosen* is the lobby's own `next_map_id`,
-  // so a co-host in another tab sees the same roll.
-  const mapsQuery = useMapsCatalog({ withGamemode: true });
-  // All-time only: the sheet reports a player's standing, and a window would
-  // make that read differently depending on what the list page was last set to.
-  const statsQuery = useQuery({
-    queryKey: customGameKeys.stats(workspaceId ?? 0, null),
-    queryFn: () => customGameService.stats(workspaceId as number, null),
-    enabled: workspaceId != null,
-    staleTime: 60_000,
-  });
 
   const {
     selectedGameId,
@@ -162,6 +150,15 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
   });
 
   const game = gameQuery.data;
+  // The mix's own game's maps with their modes: the roll pool for the next map and the manual picker. Which map is
+  // *chosen* is the lobby's own `next_map_id`, so a co-host in another tab sees the same roll.
+  const mapsQuery = useCatalogEntities(game?.discipline, "map");
+  const statsQuery = useQuery({
+    queryKey: customGameKeys.stats(workspaceId ?? 0, null, game?.discipline),
+    queryFn: ({ signal }) => customGameService.stats(workspaceId as number, null, game?.discipline, { signal }),
+    enabled: workspaceId != null && game != null,
+    staleTime: 60_000,
+  });
   const rows = game?.players ?? [];
   const lobbies = game?.lobbies ?? [];
   const lobby = lobbies.find((row) => row.lobby_index === activeLobby);
@@ -217,7 +214,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
   const copyBattleTags = () => {
     const tags = rows
       .filter((row) => row.participation !== "benched")
-      .map((row) => row.battle_tag ?? playerLabel(row));
+      .map((row) => row.identity?.handle ?? playerLabel(row));
     if (tags.length === 0) {
       notify.error("Nobody is in the balance yet");
       return;
@@ -385,10 +382,12 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
         </div>
       </div>
 
+      {game ? (
       <PickupAddPlayersDialog
         open={isPoolOpen}
         onOpenChange={setIsPoolOpen}
         workspaceId={workspaceId}
+        discipline={game.discipline}
         canEdit={canEdit}
         canEditRanks={canEditRanks}
         canWrite={canWrite}
@@ -396,6 +395,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
         rows={rows}
         onTogglePlayer={togglePoolMember}
       />
+      ) : null}
 
       <PickupAccessDialog
         open={isAccessOpen}

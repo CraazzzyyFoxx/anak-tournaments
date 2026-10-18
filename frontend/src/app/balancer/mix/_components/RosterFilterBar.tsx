@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import type { RosterAuthor } from "@/services/workspace-player.service";
 
 import type { RosterFilter } from "../_hooks/useRosterPicker";
-import { AddBattleTagPopover } from "./AddBattleTagPopover";
+import { AddPlayerIdentityPopover } from "./AddPlayerIdentityPopover";
 
 /**
  * Which rank book the roster list reads through: the workspace canon, this
@@ -26,6 +26,7 @@ export function RosterFilterBar({
   canEdit,
   canWrite,
   workspaceId,
+  discipline,
   onTogglePlayer
 }: Readonly<{
   filter: RosterFilter;
@@ -39,6 +40,7 @@ export function RosterFilterBar({
   canEdit: boolean;
   canWrite: boolean;
   workspaceId: number;
+  discipline: string;
   onTogglePlayer: (memberId: number) => void;
 }>) {
   const [isAuthorMenuOpen, setIsAuthorMenuOpen] = useState(false);
@@ -117,8 +119,9 @@ export function RosterFilterBar({
         </Popover>
       ) : null}
       {canEdit ? (
-        <AddBattleTagPopover
+        <AddPlayerIdentityPopover
           workspaceId={workspaceId}
+          discipline={discipline}
           canWrite={canWrite}
           onTogglePlayer={onTogglePlayer}
         />

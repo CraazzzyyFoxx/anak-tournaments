@@ -55,11 +55,14 @@ from shared.core.enums import MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.domain.custom_game_round import winner_slot
+from shared.rpc.query import build_query_model
+from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.schemas.role import RoleRef
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER
+from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.core.config import config
 from src.domain.balancer.result_serializer import as_lobby_document
@@ -201,7 +204,7 @@ def _dump_row(
         "id": row.id,
         "workspace_member_id": row.workspace_member_id,
         "display_name": getattr(member, "display_name", None),
-        "battle_tag": getattr(member, "battle_tag", None),
+        "identity": identity.model_dump() if (identity := getattr(member, "identity", None)) is not None else None,
         "sort_order": row.sort_order,
         # One field for the whole lineup state: must_play | pool | benched.
         "participation": row.participation,
@@ -615,7 +618,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id = _int(data, "workspace_id")
-            rows = await custom_game_service.list(session, workspace_id=workspace_id)
+            discipline = build_query_model(DisciplineFilterQuery, data.get("query")).discipline
+            rows = await custom_game_service.list(session, workspace_id=workspace_id, discipline=discipline)
             game_ids = [row.id for row in rows]
             host_names = await custom_game_service.hosts(session, workspace_id, [row.host_user_id for row in rows])
             # One grouped read per per-row column (activity, team names, points
@@ -1376,7 +1380,12 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id = _int(data, "workspace_id")
             since = _since(data)
-            members = await custom_game_service.mix_stats(session, workspace_id=workspace_id, since=since)
+            discipline = await workspace_discipline(
+                session, workspace_id=workspace_id, requested=c.q1(data, "discipline")
+            )
+            members = await custom_game_service.mix_stats(
+                session, workspace_id=workspace_id, discipline=discipline, since=since
+            )
             # The filter is echoed back normalized: the client renders the
             # window it actually got, not the string it happened to send.
             return {"since": since.isoformat() if since is not None else None, "members": members}

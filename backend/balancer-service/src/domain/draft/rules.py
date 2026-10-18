@@ -113,9 +113,7 @@ def unranked_pool_error(rosters: Sequence[PlayerRoster]) -> ApiHTTPException:
     them into the pool, where autopick scored them 0 and took them last. There
     is no honest default: the fix is a rank in the balancer, so say so.
     """
-    names = ", ".join(
-        roster.battle_tag or roster.display_name or f"#{roster.registration_id}" for roster in rosters[:10]
-    )
+    names = ", ".join(roster.handle or roster.display_name or f"#{roster.registration_id}" for roster in rosters[:10])
     more = f" and {len(rosters) - 10} more" if len(rosters) > 10 else ""
     return _err(
         "draft_pool_unranked",
@@ -138,7 +136,7 @@ def validate_captain_roles(
             continue
         roster = rosters[seat.registration_id]
         if shape.role_slots.get(seat.captain_role, 0) < 1 or seat.captain_role not in roster.playable_roles:
-            name = roster.battle_tag or roster.display_name or f"#{roster.registration_id}"
+            name = roster.handle or roster.display_name or f"#{roster.registration_id}"
             raise _err(
                 "captain_role_invalid",
                 f"{name} cannot captain on {seat.captain_role}: the role must be one they play "

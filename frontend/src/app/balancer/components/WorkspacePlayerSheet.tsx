@@ -63,7 +63,7 @@ export function WorkspacePlayerSheet({
   onOpenChange,
   onSaveRank,
 }: Readonly<WorkspacePlayerSheetProps>) {
-  const label = member ? member.display_name || member.battle_tag || `#${member.member_id}` : "";
+  const label = member ? member.display_name || member.identity?.handle || `#${member.member_id}` : "";
   const { name, suffix } = splitBattleTag(label);
 
   return (
@@ -81,8 +81,8 @@ export function WorkspacePlayerSheet({
                 {suffix}
               </span>
             ) : null}
-            {member?.battle_tag ? (
-              <BattleTagCopyButton battleTag={member.battle_tag} className="ml-0.5 shrink-0" />
+            {member?.identity?.handle ? (
+              <BattleTagCopyButton battleTag={member.identity?.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
           <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
@@ -128,13 +128,13 @@ export function WorkspacePlayerSheet({
             {/* The one thing the roster cannot tell an organiser: what this
                 player is actually ranked in Overwatch right now. Read-only, and
                 the same component both other sheets use. */}
-            {member.battle_tag ? (
+            {member.identity?.provider === "battlenet" ? (
               <section className="space-y-2 px-5 py-4">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
                   Live rank (OverFast)
                 </Label>
                 <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                  <RankHistory battleTag={member.battle_tag} />
+                  <RankHistory battleTag={member.identity?.handle} />
                 </div>
               </section>
             ) : null}

@@ -46,7 +46,7 @@ export function DraftJournal({ id, board, entries, isLoading, isError, onRetry }
     board.teams.find((team) => team.id === teamId)?.name ?? t("shell.journal.unknownTeam");
   const playerTag = (playerId: number | null) => {
     const player = board.players.find((entry) => entry.id === playerId);
-    return player ? (player.battle_tag ?? `#${player.id}`) : t("shell.journal.unknownPlayer");
+    return player ? (player.identity?.handle ?? `#${player.id}`) : t("shell.journal.unknownPlayer");
   };
 
   const describe = (entry: DraftJournalEntry) =>

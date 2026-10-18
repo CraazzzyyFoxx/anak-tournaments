@@ -52,5 +52,5 @@ export function formatRecord(member: MixMemberStats): string {
 
 /** The roster name if the member is still on it, their battletag if not, the raw id as a last resort. */
 export function memberLabel(member: MixMemberStats): string {
-  return member.display_name ?? member.battle_tag ?? `#${member.workspace_member_id}`;
+  return member.display_name ?? member.identity?.handle ?? `#${member.workspace_member_id}`;
 }

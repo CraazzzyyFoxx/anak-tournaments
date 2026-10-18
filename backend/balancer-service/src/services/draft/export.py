@@ -45,9 +45,9 @@ def _draft_to_balancer_payload(
 ) -> list[BalancerTeam]:
     """Pure mapping: draft rosters -> balancer export payload.
 
-    The team name is the captain's battle_tag so the export's
-    ``find_users_by_battle_tags`` resolves the captain; members carry their
-    battle_tag, the slot they were *drafted into* (tank/damage/support), and the
+    The team name is the captain's handle so the export's
+    ``find_users_by_handles`` resolves the captain; members carry their
+    handle, the slot they were *drafted into* (tank/damage/support), and the
     rank that pick froze. Mirrors the balancer's own payload (assigned role +
     assigned rating) so both feed ``bulk_create_from_balancer`` identically.
 
@@ -64,7 +64,7 @@ def _draft_to_balancer_payload(
         roster = roster_by_team.get(team.id, [])
         captain = next((p for p in roster if p.is_captain), None)
         captain_roster = rosters.get(captain.id) if captain is not None else None
-        team_name = (captain_roster.battle_tag if captain_roster is not None else None) or team.name
+        team_name = (captain_roster.handle if captain_roster is not None else None) or team.name
 
         members: list[BalancerTeamMember] = []
         total_sr = 0
@@ -89,7 +89,7 @@ def _draft_to_balancer_payload(
             members.append(
                 BalancerTeamMember(
                     uuid=str(p.user_id) if p.user_id is not None else str(uuid4()),
-                    name=(player_roster.battle_tag if player_roster is not None else None) or "",
+                    name=(player_roster.handle if player_roster is not None else None) or "",
                     sub_role=workspace_sub_role_slug(role, role_entry.subrole)
                     if role_entry and role_entry.subrole
                     else None,

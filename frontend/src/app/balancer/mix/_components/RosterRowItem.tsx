@@ -32,7 +32,7 @@ export function RosterRowItem({
   canWrite: boolean;
   onToggle: () => void;
 }>) {
-  const label = row.displayName || row.battleTag || `#${row.memberId}`;
+  const label = row.displayName || row.handle || `#${row.memberId}`;
   const { name, suffix } = splitBattleTag(label);
 
   return (

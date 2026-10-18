@@ -107,7 +107,7 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }
       <ol>
         {shownHistory.map((pick) => {
           const player = pick.picked_player_id == null ? null : playerById.get(pick.picked_player_id);
-          const tag = player?.battle_tag ?? (player ? `#${player.id}` : "—");
+          const tag = player?.identity?.handle ?? (player ? `#${player.id}` : "—");
           return (
             <li
               key={pick.id}

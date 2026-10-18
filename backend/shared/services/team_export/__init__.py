@@ -6,7 +6,7 @@ implementations; ``team_materialization`` owns the destructive export sequence
 to each carry a copy of.
 """
 
-from shared.services.team_export.identity import find_users_by_battle_tags
+from shared.services.team_export.identity import find_users_by_handles
 from shared.services.team_export.materialization import (
     MaterializationMember,
     MaterializationResult,
@@ -31,7 +31,7 @@ __all__ = (
     "MaterializationTeam",
     "OnUnresolved",
     "TeamMaterializationService",
-    "find_users_by_battle_tags",
+    "find_users_by_handles",
     "materialize_teams",
     "resolve_slot_role",
     "sync_player_ranks",

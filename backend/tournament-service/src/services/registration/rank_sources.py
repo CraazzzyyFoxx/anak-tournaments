@@ -39,7 +39,7 @@ from shared.services.roster import registration_load_options
 from src import models
 from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
 
-__all__ = ("native_ranks_by_registration", "primary_battlenet_key", "rank_sources_service")
+__all__ = ("native_ranks_by_registration", "primary_identity_key", "rank_sources_service")
 
 
 async def native_ranks_by_registration(
@@ -73,18 +73,10 @@ async def native_ranks_by_registration(
     )
 
 
-def primary_battlenet_key(registration: models.BalancerRegistration) -> str | None:
-    """The normalized PRIMARY battlenet handle of a registration, or ``None``.
-
-    ``handle_normalized`` is written with the battletag rule, so it is exactly the
-    ``social_account.username_normalized`` the OW rank tables key on.
-    """
+def primary_identity_key(registration: models.BalancerRegistration, *, provider: str | None) -> str | None:
+    """The normalized position-zero handle of the owner's provider, never another game's."""
     return next(
-        (
-            row.handle_normalized
-            for row in registration.identities
-            if row.provider == SocialProvider.BATTLENET and row.position == 0
-        ),
+        (row.handle_normalized for row in registration.identities if row.provider == provider and row.position == 0),
         None,
     )
 
@@ -648,24 +640,24 @@ class RankSourcesService:
         result = await session.execute(query)
         return list(result.scalars().all())
 
-    async def _load_main_battle_tags_by_key(
+    async def _load_primary_accounts_by_key(
         self,
         session: AsyncSession,
         registrations: list[models.BalancerRegistration],
+        *,
+        provider: str | None,
     ) -> dict[str, models.SocialAccount]:
-        """Map normalized battletag key → the battlenet ``social_account`` it belongs to.
-
-        A registration's ``handle_normalized`` IS ``social_account.username_normalized``
-        for battlenet, so the keys match directly.
-        """
-        tag_keys = {key for registration in registrations if (key := primary_battlenet_key(registration))}
+        """Map the owner's normalized primary handle to its provider-scoped social account."""
+        tag_keys = {
+            key for registration in registrations if (key := primary_identity_key(registration, provider=provider))
+        }
         if not tag_keys:
             return {}
 
         acc = models.SocialAccount
         result = await session.execute(
             self.social_repo.select().where(
-                acc.provider == SocialProvider.BATTLENET,
+                acc.provider == provider,
                 acc.username_normalized.in_(tag_keys),
             )
         )

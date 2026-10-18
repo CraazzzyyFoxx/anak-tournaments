@@ -1,15 +1,18 @@
-"""The roster a workspace balances from: its members, by BattleTag.
+"""The roster a workspace balances from: its members, by the handle of the discipline's identity provider.
 
 ``workspace_member`` is the anchor registrations, teams, drafts and achievements
 already use, so it is also the roster the mix tools read -- there is no separate
-balancer-local player list to keep in sync with it. Adding somebody by BattleTag
-therefore provisions the same identity a registration would: find-or-create the
-``players.user``, attach the battlenet handle, anchor the membership.
+balancer-local player list to keep in sync with it. Adding somebody by game
+identity therefore provisions the same identity a registration would: find-or-create
+the ``players.user``, attach the provider handle, admit the membership.
 
 This is the reusable half of ``registration_service.ensure_player_identity``.
 The registration-specific precedence (prefer the registering account's own
-player, collapse a shadow player's handle onto it, walk declared smurfs) stays
-there -- a tag typed into the mix roster carries no claim of ownership.
+player, collapse a shadow player's handle onto it, walk declared extra handles) stays
+there -- a handle typed into the mix roster carries no claim of ownership.
+
+Observation anchors (``workspace_member.observed_only``, made by stats ingestion) are not
+members: the roster never lists them, and ``ensure_member_for_identity`` is a real admission.
 """
 
 from __future__ import annotations
@@ -22,17 +25,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import http_status as status
-from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.social import SocialProvider, normalize_social_handle
-from shared.repository import UserRepository, get_or_create_workspace_member
+from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.social import display_social_handle, get_provider, matches_handle_pattern, normalize_social_handle
+from shared.disciplines import DISCIPLINES
+from shared.repository import (
+    SocialAccountRepository,
+    UserRepository,
+    get_or_create_workspace_member,
+)
+from shared.schemas.identity import PlayerIdentityRead
+from shared.services.ontology import workspace_discipline
 from shared.services.social_identity import social_identity_service
-from shared.services.team_export.identity import find_users_by_battle_tags
 
 __all__ = (
     "RosterMember",
-    "ensure_member_for_battle_tag",
+    "ensure_member_for_identity",
     "hosts_by_user_id",
     "list_roster",
+    "main_handle",
     "workspace_member_user_ids",
     "roster_page",
     "roster_summary",
@@ -41,11 +51,12 @@ __all__ = (
 
 @dataclass(frozen=True, slots=True)
 class RosterMember:
-    """One roster row: the membership, its player, and the tag it is known by."""
+    """One roster row: the membership, its player, and the game identity it is known by."""
 
     member_id: int
     player_id: int
-    battle_tag: str | None
+    #: The player's primary account of the requested discipline's identity provider.
+    identity: PlayerIdentityRead | None
     display_name: str | None
     #: The player's linked login identity (``players.user.auth_user_id``), or
     #: ``None`` if they have never signed in. ``auth.user.id`` is the space a
@@ -55,18 +66,24 @@ class RosterMember:
     #: and pass the write check.
     auth_user_id: int | None = None
 
+    @property
+    def handle(self) -> str | None:
+        """The identity's handle, for labels that fall back to it when there is no display name."""
+        return self.identity.handle if self.identity is not None else None
 
-def _main_battle_tag() -> sa.ScalarSelect[str]:
-    """The player's primary battlenet handle, as a correlated scalar.
 
-    A scalar subquery rather than a join: a player with declared smurfs owns
-    several battlenet rows, and joining them would multiply the roster.
+def main_handle(provider: str) -> sa.ScalarSelect[str]:
+    """The player's primary ``provider`` handle, as a correlated scalar.
+
+    A scalar subquery rather than a join: a player with several accounts of one
+    provider (extra Battle.net accounts) owns several rows, and joining them would
+    multiply the roster.
     """
     return (
         sa.select(models.SocialAccount.username)
         .where(
             models.SocialAccount.user_id == models.User.id,
-            models.SocialAccount.provider == SocialProvider.BATTLENET,
+            models.SocialAccount.provider == provider,
         )
         .order_by(models.SocialAccount.is_primary.desc(), models.SocialAccount.id.asc())
         .limit(1)
@@ -78,11 +95,16 @@ def _main_battle_tag() -> sa.ScalarSelect[str]:
 def _filters(
     workspace_id: int,
     search: str | None,
+    provider: str | None,
     *,
     author_user_id: int | None = None,
     author_only: bool = False,
 ) -> list[sa.ColumnElement[bool]]:
-    filters: list[sa.ColumnElement[bool]] = [models.WorkspaceMember.workspace_id == workspace_id]
+    filters: list[sa.ColumnElement[bool]] = [
+        models.WorkspaceMember.workspace_id == workspace_id,
+        # An observation anchor is not a member (P5): the roster never shows it.
+        models.WorkspaceMember.observed_only.is_(False),
+    ]
     if author_only and author_user_id is not None:
         # The "My ranks" shortcut: only members this author has personally
         # corrected -- the book that outranks the canon when *their* mixes
@@ -98,35 +120,61 @@ def _filters(
     if not needle:
         return filters
     like = f"%{needle}%"
-    # ``username_normalized`` is casefolded and space-free, so the needle has to
-    # be put through the same normalizer to match "Foo # 1234" against "foo#1234".
-    normalized = f"%{normalize_social_handle(SocialProvider.BATTLENET, needle)}%"
-    filters.append(
-        sa.or_(
-            models.WorkspaceMember.display_name.ilike(like),
-            models.User.name.ilike(like),
+    matches = [models.WorkspaceMember.display_name.ilike(like), models.User.name.ilike(like)]
+    if provider is not None:
+        # ``username_normalized`` is the provider's normal form, so the needle has to
+        # be put through the same normalizer to match "Foo # 1234" against "foo#1234".
+        normalized = f"%{normalize_social_handle(provider, needle)}%"
+        matches.append(
             sa.exists().where(
                 models.SocialAccount.user_id == models.User.id,
-                models.SocialAccount.provider == SocialProvider.BATTLENET,
+                models.SocialAccount.provider == provider,
                 models.SocialAccount.username_normalized.like(normalized),
-            ),
+            )
         )
-    )
+    filters.append(sa.or_(*matches))
     return filters
+
+
+def _identity_column(provider: str | None) -> sa.ColumnElement[str | None]:
+    return main_handle(provider) if provider is not None else sa.cast(sa.null(), sa.String)
+
+
+def _roster_member(
+    provider: str | None,
+    member_id: int,
+    player_id: int,
+    display_name: str | None,
+    player_name: str,
+    auth_user_id: int | None,
+    handle: str | None,
+) -> RosterMember:
+    return RosterMember(
+        member_id=member_id,
+        player_id=player_id,
+        identity=PlayerIdentityRead.of(provider, handle),
+        display_name=display_name or player_name,
+        auth_user_id=auth_user_id,
+    )
 
 
 async def roster_page(
     session: AsyncSession,
     *,
     workspace_id: int,
+    provider: str | None,
     search: str | None = None,
     page: int = 1,
     per_page: int = 30,
     author_user_id: int | None = None,
     author_only: bool = False,
 ) -> tuple[list[RosterMember], int]:
-    """One page of the workspace roster, newest-agnostic (ordered by member id)."""
-    filters = _filters(workspace_id, search, author_user_id=author_user_id, author_only=author_only)
+    """One page of the workspace roster, newest-agnostic (ordered by member id).
+
+    ``provider`` is the discipline's identity provider: the handle each row is known by and the
+    account a search needle matches. ``None`` (a discipline with no provider) leaves every identity empty.
+    """
+    filters = _filters(workspace_id, search, provider, author_user_id=author_user_id, author_only=author_only)
     joined = sa.select(models.WorkspaceMember.id).join(models.User, models.User.id == models.WorkspaceMember.player_id)
     total = await session.scalar(sa.select(sa.func.count()).select_from(joined.where(*filters).subquery()))
     result = await session.execute(
@@ -136,7 +184,7 @@ async def roster_page(
             models.WorkspaceMember.display_name,
             models.User.name,
             models.User.auth_user_id,
-            _main_battle_tag(),
+            _identity_column(provider),
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
         .where(*filters)
@@ -144,16 +192,7 @@ async def roster_page(
         .limit(per_page)
         .offset(max(page - 1, 0) * per_page)
     )
-    rows = [
-        RosterMember(
-            member_id=member_id,
-            player_id=player_id,
-            battle_tag=battle_tag,
-            display_name=display_name or player_name,
-            auth_user_id=auth_user_id,
-        )
-        for member_id, player_id, display_name, player_name, auth_user_id, battle_tag in result.all()
-    ]
+    rows = [_roster_member(provider, *row) for row in result.all()]
     return rows, int(total or 0)
 
 
@@ -169,7 +208,7 @@ async def roster_summary(
     joined = (
         sa.select(models.WorkspaceMember.id)
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-        .where(models.WorkspaceMember.workspace_id == workspace_id)
+        .where(models.WorkspaceMember.workspace_id == workspace_id, models.WorkspaceMember.observed_only.is_(False))
         .subquery()
     )
     if author_user_id is None:
@@ -192,9 +231,9 @@ async def roster_summary(
 
 
 async def list_roster(
-    session: AsyncSession, *, workspace_id: int, member_ids: Sequence[int]
+    session: AsyncSession, *, workspace_id: int, provider: str | None, member_ids: Sequence[int]
 ) -> dict[int, RosterMember]:
-    """Named roster rows for an explicit set of members (a mix lineup)."""
+    """Named roster rows for an explicit set of members (a mix lineup), identified by ``provider`` handles."""
     if not member_ids:
         return {}
     result = await session.execute(
@@ -204,24 +243,16 @@ async def list_roster(
             models.WorkspaceMember.display_name,
             models.User.name,
             models.User.auth_user_id,
-            _main_battle_tag(),
+            _identity_column(provider),
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
         .where(
             models.WorkspaceMember.workspace_id == workspace_id,
+            models.WorkspaceMember.observed_only.is_(False),
             models.WorkspaceMember.id.in_(list(member_ids)),
         )
     )
-    return {
-        member_id: RosterMember(
-            member_id=member_id,
-            player_id=player_id,
-            battle_tag=battle_tag,
-            display_name=display_name or player_name,
-            auth_user_id=auth_user_id,
-        )
-        for member_id, player_id, display_name, player_name, auth_user_id, battle_tag in result.all()
-    }
+    return {row[0]: _roster_member(provider, *row) for row in result.all()}
 
 
 async def hosts_by_user_id(
@@ -314,29 +345,83 @@ async def workspace_member_user_ids(
     return set(result.all())
 
 
-async def ensure_member_for_battle_tag(
+def _handle_error(provider: str, key: str) -> ApiHTTPException:
+    return ApiHTTPException(
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        [ApiExc(msg=f"Invalid {provider} handle", code=key, field="identity.handle")],
+    )
+
+
+async def _free_player_name(session: AsyncSession, handle: str) -> str:
+    """``players.user.name`` is unique and a display name proves nothing: a taken name is suffixed, never reused."""
+    users = UserRepository()
+    name, n = handle, 1
+    while await users.get_by_name(session, name) is not None:
+        n += 1
+        name = f"{handle} ({n})"
+    return name
+
+
+async def ensure_member_for_identity(
     session: AsyncSession,
     *,
     workspace_id: int,
-    battle_tag: str,
+    discipline: str,
+    provider: str,
+    handle: str,
     display_name: str | None = None,
 ) -> models.WorkspaceMember:
-    """Find-or-create the membership a BattleTag denotes in this workspace.
+    """Find-or-admit the membership a game identity denotes in this workspace.
 
-    The player row is deliberately created without ``auth_user_id``: a tag typed
-    into the roster is somebody the host is ranking, not the host's own account,
-    and ``get_or_create_workspace_member`` only hands out the baseline RBAC role
-    to auth-linked players -- so this never grants anybody workspace access.
+    ``provider`` must be the discipline's own identity provider and ``handle`` must fit its grammar. Exactly one
+    existing player carrying that normalized handle is reused; none creates an unlinked player named after the
+    handle; several distinct players is a ``409 identity_conflict`` before anything is written. A handle is
+    never matched through a display name, and creating one confers no verification, provider subject or login.
+
+    The player row is deliberately created without ``auth_user_id``: a handle typed into the roster is somebody
+    the host is ranking, not the host's own account, and ``get_or_create_workspace_member`` only hands out the
+    baseline RBAC role to auth-linked players -- so this never grants anybody workspace access. It is a real
+    admission (clears ``observed_only``). Flushes only; the caller commits.
     """
-    tag = (battle_tag or "").strip()
-    if not tag:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="battle_tag is required")
+    await workspace_discipline(session, workspace_id=workspace_id, requested=discipline)
+    declared = DISCIPLINES[discipline].identity_provider
+    if declared is None or declared != provider:
+        raise ApiHTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            [
+                ApiExc(
+                    msg=f"{discipline!r} identifies players by {declared!r}, not {provider!r}",
+                    code="identity.provider_mismatch",
+                    field="identity.provider",
+                )
+            ],
+        )
+    spec = get_provider(provider)
+    error_key = spec.handle_error_key if spec is not None else "identity.format"
+    shown = display_social_handle(provider, handle)
+    if not shown or not matches_handle_pattern(provider, shown):
+        raise _handle_error(provider, error_key)
 
-    found = await find_users_by_battle_tags(session, [tag])
-    user = found.get(tag)
-    if user is None:
-        user = await UserRepository().create(session, models.User(name=tag))
-    await social_identity_service.upsert(session, user_id=user.id, provider=SocialProvider.BATTLENET, username=tag)
+    normalized = normalize_social_handle(provider, shown)
+    owners = await SocialAccountRepository().find_players_by_handle(
+        session, provider=provider, username_normalized=normalized
+    )
+    if len(owners) > 1:
+        raise ApiHTTPException(
+            status.HTTP_409_CONFLICT,
+            [
+                ApiExc(
+                    msg="Several players carry this handle; merge them first",
+                    code="identity_conflict",
+                    field="identity.handle",
+                )
+            ],
+        )
+    if owners:
+        user = owners[0]
+    else:
+        user = await UserRepository().create(session, models.User(name=await _free_player_name(session, shown)))
+        await social_identity_service.upsert(session, user_id=user.id, provider=provider, username=shown)
     member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=user.id)
     if display_name is not None:
         member.display_name = display_name or None

@@ -104,7 +104,7 @@ def _sub_role_for(roster: PlayerRoster, role: str | None) -> str | None:
 
 
 def _member_name(roster: PlayerRoster) -> str:
-    return roster.battle_tag or roster.display_name or f"registration-{roster.registration_id}"
+    return roster.handle or roster.display_name or f"registration-{roster.registration_id}"
 
 
 async def build_registered_export(
@@ -204,7 +204,7 @@ async def build_registered_export(
                     rank=roster.rank_on(role) or 0,
                     slot_code=registration.team_slot_code,
                     sub_role=_sub_role_for(roster, role),
-                    battle_tag=roster.battle_tag,
+                    handle=roster.handle,
                     workspace_member_id=registration.workspace_member_id,
                     is_substitute=bool(registration.is_substitute),
                     non_rated_roles=tuple(

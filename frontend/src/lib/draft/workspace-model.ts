@@ -66,7 +66,7 @@ export function filterDraftPlayers(
   const matches = players.filter((player) => {
     const roles = playerRoles(player);
     const haystack = [
-      player.battle_tag ?? `#${player.id}`,
+      player.identity?.handle ?? `#${player.id}`,
       subRoleSlugOf(player.primary_role) ?? "",
       ...Object.values(player.role_sub_roles ?? {}),
       ...roles.flatMap((r) => ROLE_LABELS[r] ?? [r]),
@@ -82,7 +82,7 @@ export function filterDraftPlayers(
   const role = filters.role;
   return matches.sort((left, right) => {
     if (filters.sort === "name") {
-      return (left.battle_tag ?? "").localeCompare(right.battle_tag ?? "");
+      return (left.identity?.handle ?? "").localeCompare(right.identity?.handle ?? "");
     }
     // Filtered to one role, the rank ON that role is the one being compared.
     const rankOf = (player: DraftPlayer) =>
@@ -180,7 +180,7 @@ export function buildRosterByTeam(players: DraftPlayer[]): Map<number, DraftPlay
 }
 
 export function normalizeTopHeroes(
-  entries: DraftPlayer["role_top_heroes"][string] | undefined
+  entries: DraftPlayer["role_top_characters"][string] | undefined
 ): { slug: string; imagePath: string | null }[] {
   if (!entries) return [];
   return entries.map((e) =>
@@ -189,13 +189,13 @@ export function normalizeTopHeroes(
 }
 
 export function roleTopHeroes(player: DraftPlayer, role: DraftRole) {
-  return normalizeTopHeroes(player.role_top_heroes?.[role]);
+  return normalizeTopHeroes(player.role_top_characters?.[role]);
 }
 
-/** Deduped hero list for a player across every role bucket in `role_top_heroes`. */
+/** Deduped character list for a player across every role bucket in `role_top_characters`. */
 export function allPlayerHeroes(player: DraftPlayer): { slug: string; imagePath: string | null }[] {
   const seen = new Map<string, string | null>();
-  for (const heroes of Object.values(player.role_top_heroes ?? {})) {
+  for (const heroes of Object.values(player.role_top_characters ?? {})) {
     for (const hero of normalizeTopHeroes(heroes)) {
       if (!seen.has(hero.slug)) seen.set(hero.slug, hero.imagePath);
     }

@@ -23,6 +23,7 @@ from shared.core.enums import (
 )
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster_shape import RosterShape
+from shared.schemas.identity import PlayerIdentityRead
 from shared.schemas.role import RoleRef
 from shared.schemas.roster_slots import RosterShapeRead
 from src.domain.draft.ranks import seat_role, slot_rank
@@ -282,7 +283,8 @@ class DraftPlayerRead(BaseRead):
     #: straight to the pool row an organizer must edit to change a rank.
     registration_id: int
     user_id: int | None
-    battle_tag: str | None
+    #: The seat's primary handle for the tournament's identity provider; null when the registrant gave none.
+    identity: PlayerIdentityRead | None
     #: The role this player leads with, over their PLAYABLE roles. ``None`` when
     #: the balancer ranks them on no role at all -- possible mid-draft if an
     #: organizer clears their ranks. Clients must render that as "no role", not
@@ -307,7 +309,8 @@ class DraftPlayerRead(BaseRead):
     role_sources: dict[str, str] = Field(default_factory=dict)
     #: ``{top-level code: sub-role slug}`` over playable roles that declare one.
     role_sub_roles: dict[str, str] = Field(default_factory=dict)
-    role_top_heroes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    #: ``{slot_code: [{entity_id, slug, image_path}]}`` -- the registrant's declared top characters per role.
+    role_top_characters: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     #: The registration's ``public_notes``: captains read them in the Player
     #: Inspector. The wire name stays ``notes`` -- clients depend on it, and the
     #: organizers-only ``organizer_notes``/``admin_notes`` are deliberately NOT
@@ -343,7 +346,7 @@ class DraftPlayerRead(BaseRead):
             session_id=player.session_id,
             registration_id=player.registration_id,
             user_id=player.user_id,
-            battle_tag=roster.battle_tag if roster is not None else None,
+            identity=roster.identity if roster is not None else None,
             primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,
@@ -362,7 +365,7 @@ class DraftPlayerRead(BaseRead):
             }
             if roster is not None
             else {},
-            role_top_heroes=roster.role_top_heroes if roster is not None else {},
+            role_top_characters=roster.role_top_characters if roster is not None else {},
             notes=roster.public_notes if roster is not None else None,
             # The player's OWN role under role slots -- a support main is not
             # worth their damage rank on the pool card, and a captain seated on

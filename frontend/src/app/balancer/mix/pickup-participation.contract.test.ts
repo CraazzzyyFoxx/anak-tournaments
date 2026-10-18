@@ -9,7 +9,7 @@ function row(participation: "must_play" | "pool" | "benched", sortOrder = 0): Cu
     id: sortOrder + 1,
     workspace_member_id: sortOrder + 7,
     display_name: null,
-    battle_tag: null,
+    identity: null,
     participation,
     role_selection_mode: "all_ranked",
     sort_order: sortOrder,

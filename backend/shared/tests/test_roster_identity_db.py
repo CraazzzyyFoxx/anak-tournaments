@@ -97,8 +97,8 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
                 rosters = await roster_engine.for_tournament(s, tournament_id)
             expected = [second, first, missing] if code == "lol" else [first, second, missing]
             assert list(rosters) == expected
-            assert (rosters[first].battle_tag, rosters[first].smurf_tags) == (
+            assert (rosters[first].handle, rosters[first].additional_handles) == (
                 ("Zulu Riot#KR1", ("Alt Riot#KR2",)) if code == "lol" else ("Alpha#1234", ("Alt#1111",))
             )
-            assert rosters[missing].battle_tag is None
-            assert rosters[missing].smurf_tags == ()
+            assert rosters[missing].identity is None
+            assert rosters[missing].additional_handles == ()

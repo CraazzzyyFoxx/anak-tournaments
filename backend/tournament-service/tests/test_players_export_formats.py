@@ -28,6 +28,7 @@ os.environ.setdefault("DEBUG", "false")
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.rpc import _helpers as helpers  # noqa: E402
 from src.rpc import integrations  # noqa: E402
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity  # noqa: E402
@@ -57,7 +58,7 @@ class _FakeResult:
 def _roster() -> PlayerRoster:
     return PlayerRoster(
         registration_id=1,
-        battle_tag="player#2100",
+        identity=PlayerIdentityRead(provider="battlenet", handle="player#2100"),
         display_name=None,
         player_id=None,
         auth_user_id=None,

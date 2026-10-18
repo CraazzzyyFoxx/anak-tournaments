@@ -92,7 +92,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     id: 1,
     workspace_member_id: 7,
     display_name: null,
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     sort_order: 0,
     participation: "pool",
     roles: null,
@@ -198,8 +198,8 @@ describe("PickupLobbyPanel columns", () => {
   it("splits players into must-play, pool and benched columns", async () => {
     const scope = await mount([
       row({ participation: "must_play" }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" }),
-      row({ id: 3, workspace_member_id: 9, battle_tag: "Cora#3333", participation: "benched" }),
+      row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" } }),
+      row({ id: 3, workspace_member_id: 9, identity: { provider: "battlenet", handle: "Cora#3333" }, participation: "benched" }),
     ]);
 
     expect(byLabel(scope, "Must play")?.textContent).toContain("Aria#1111");
@@ -216,7 +216,7 @@ describe("PickupLobbyPanel columns", () => {
 
 describe("PickupLobbyPanel drag and drop", () => {
   it("wires every row as a drag source for a host who can write", async () => {
-    await mount([row(), row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" })]);
+    await mount([row(), row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" } })]);
 
     expect(dndSpies.useDraggable).toHaveBeenCalledTimes(2);
     for (const call of dndSpies.useDraggable.mock.calls) {
@@ -437,7 +437,7 @@ describe("PickupLobbyPanel", () => {
   it("freezes the role rail for a benched row, but not for pool or must-play", async () => {
     const scope = await mount([
       row({ roles: [{ dimension: "player_role", role: "tank" }] }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: [{ dimension: "player_role", role: "tank" }], participation: "benched" }),
+      row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" }, roles: [{ dimension: "player_role", role: "tank" }], participation: "benched" }),
     ]);
 
     expect(
@@ -456,7 +456,7 @@ describe("PickupLobbyPanel", () => {
       row({
         id: 2,
         workspace_member_id: 8,
-        battle_tag: "Borys#2222",
+        identity: { provider: "battlenet", handle: "Borys#2222" },
         roles: [{ dimension: "player_role", role: "damage" }],
         ranks: { damage: 2500 },
       }),
@@ -497,7 +497,7 @@ describe("PickupLobbyPanel", () => {
   it("confirms before emptying the lobby", async () => {
     const scope = await mount([
       row(),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222" }),
+      row({ id: 2, workspace_member_id: 8, identity: { provider: "battlenet", handle: "Borys#2222" } }),
     ]);
 
     await click(byName(scope, "Empty the lobby"));
@@ -555,10 +555,10 @@ describe("PickupLobbyPanel", () => {
   it("says which lobby each player is in once the mix runs more than one", async () => {
     const scope = await mount(
       [
-        row({ workspace_member_id: 1, battle_tag: "Aria#1111", current_lobby: 0 }),
-        row({ workspace_member_id: 2, battle_tag: "Bex#2222", current_lobby: 1 }),
-        row({ workspace_member_id: 3, battle_tag: "Cy#3333", current_lobby: 5 }),
-        row({ workspace_member_id: 4, battle_tag: "Dez#4444", current_lobby: null }),
+        row({ workspace_member_id: 1, identity: { provider: "battlenet", handle: "Aria#1111" }, current_lobby: 0 }),
+        row({ workspace_member_id: 2, identity: { provider: "battlenet", handle: "Bex#2222" }, current_lobby: 1 }),
+        row({ workspace_member_id: 3, identity: { provider: "battlenet", handle: "Cy#3333" }, current_lobby: 5 }),
+        row({ workspace_member_id: 4, identity: { provider: "battlenet", handle: "Dez#4444" }, current_lobby: null }),
       ],
       { lobbyCount: 6 },
     );

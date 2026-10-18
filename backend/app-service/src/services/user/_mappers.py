@@ -21,7 +21,7 @@ from src import models, schemas
 from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
 
-_IDENTITY_ENTITIES = ("social_accounts", "battle_tag", "discord", "twitch")
+_IDENTITY_ENTITIES = ("social_accounts",)
 
 
 def _is_globally_visible(account: models.SocialAccount) -> bool:

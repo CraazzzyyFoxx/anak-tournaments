@@ -33,11 +33,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import balancer_pool_included_clause
+from shared.core.social import display_social_handle
 from shared.disciplines import identity_provider, rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain.member_rank import RankScope, ResolvedRank
 from shared.domain.player_sub_roles import workspace_sub_role_slug
-from shared.domain.roster import HeroRef, PlayerRoster, RosterRole, flex_role_mode
+from shared.domain.roster import CharacterRef, PlayerRoster, RosterRole, flex_role_mode
 from shared.domain.roster_shape import RosterShape
 from shared.models.registration.registration import (
     BalancerRegistration,
@@ -49,6 +50,7 @@ from shared.models.registration.registration import (
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository import TournamentRepository
+from shared.schemas.identity import PlayerIdentityRead
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import TOURNAMENT_ORDER, MemberRankService, member_rank_service
@@ -103,9 +105,9 @@ def _pool_clauses(tournament_id: int) -> tuple[Any, ...]:
     )
 
 
-def _hero_refs(role: BalancerRegistrationRole) -> tuple[HeroRef, ...]:
+def _character_refs(role: BalancerRegistrationRole) -> tuple[CharacterRef, ...]:
     return tuple(
-        HeroRef(id=entry.entity.id, slug=entry.entity.slug, image_path=entry.entity.image_path)
+        CharacterRef(id=entry.entity.id, slug=entry.entity.slug, image_path=entry.entity.image_path)
         for entry in sorted(role.hero_entries or [], key=lambda entry: entry.priority)
         if entry.entity is not None
     )
@@ -393,7 +395,7 @@ class RosterEngine:
                     is_primary=bool(row.is_primary) if row is not None else False,
                     priority=priority,
                     subrole=row.subrole if row is not None else None,
-                    top_heroes=_hero_refs(row) if row is not None else (),
+                    top_characters=_character_refs(row) if row is not None else (),
                 )
             )
 
@@ -427,10 +429,10 @@ class RosterEngine:
 
         member = reg.workspace_member
         player = member.player if member is not None else None
-        battle_tags = reg.handles(provider)
+        primary = reg.primary_game_identity(provider=provider)
         return PlayerRoster(
             registration_id=reg.id,
-            battle_tag=battle_tags[0] if battle_tags else None,
+            identity=PlayerIdentityRead.of(provider, primary.handle if primary is not None else None),
             display_name=reg.display_name,
             player_id=member.player_id if member is not None else None,
             auth_user_id=player.auth_user_id if player is not None else None,
@@ -449,7 +451,11 @@ class RosterEngine:
             is_substitute=bool(reg.is_substitute),
             identities={identity.provider: identity.handle for identity in reg.identities if identity.position == 0},
             stream_pov=bool(reg.stream_pov),
-            smurf_tags=tuple(battle_tags[1:]),
+            additional_handles=tuple(
+                display_social_handle(provider, row.handle)
+                for row in sorted(reg.identities, key=lambda row: row.position)
+                if row.provider == provider and row.position > 0
+            ),
         )
 
     # -- algorithm input -----------------------------------------------------
@@ -526,7 +532,7 @@ class RosterEngine:
             primary = roster.primary
             owt: dict[str, Any] = {
                 "registration_id": roster.registration_id,
-                "battle_tag": roster.battle_tag,
+                "identity": roster.identity.model_dump() if roster.identity is not None else None,
                 "display_name": roster.display_name,
                 "player_id": roster.player_id,
                 "auth_user_id": roster.auth_user_id,
@@ -556,7 +562,7 @@ class RosterEngine:
                     "custom_fields": dict(roster.custom_fields),
                     "identities": dict(roster.identities),
                     "stream_pov": roster.stream_pov,
-                    "smurf_tags": list(roster.smurf_tags),
+                    "additional_handles": list(roster.additional_handles),
                 }
             players[str(getattr(roster, key))] = {
                 "identity": {
@@ -598,12 +604,12 @@ def _as_dict(entry: RosterRole) -> dict[str, Any]:
         "is_primary": entry.is_primary,
         "priority": entry.priority,
         "subrole": entry.subrole,
-        "top_heroes": entry.top_heroes,
+        "top_characters": entry.top_characters,
     }
 
 
 def _export_name(roster: PlayerRoster) -> str:
-    return roster.battle_tag or roster.display_name or f"registration-{roster.registration_id}"
+    return roster.handle or roster.display_name or f"registration-{roster.registration_id}"
 
 
 def _role_export(entry: RosterRole, grid: DivisionGrid | None, *, dimension: str) -> dict[str, Any]:
@@ -620,9 +626,7 @@ def _role_export(entry: RosterRole, grid: DivisionGrid | None, *, dimension: str
         "priority": entry.priority,
         "playable": entry.is_playable,
         "division": None if tier is None else {"number": tier.number, "name": tier.name},
-        "top_heroes": [
-            {"hero_id": hero.id, "slug": hero.slug, "image_path": hero.image_path} for hero in entry.top_heroes
-        ],
+        "top_characters": [character.wire() for character in entry.top_characters],
     }
 
 

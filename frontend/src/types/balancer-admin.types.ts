@@ -2,6 +2,7 @@ import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/roster/player-r
 import type { RoleRef } from "@/lib/roster/role-ref";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type { Answers, FormField, FormSchema } from "@/types/forms.types";
+import type { PlayerIdentity } from "@/types/identity.types";
 import type {
   Admission,
   StatusKind,
@@ -108,7 +109,7 @@ interface SavedBalancerTeam {
   exported_team_id: number | null;
   name: string;
   balancer_name: string;
-  captain_battle_tag: string | null;
+  captain_identity: PlayerIdentity | null;
   avg_sr: number;
   total_sr: number;
   roster_json: Record<string, unknown>;
@@ -273,7 +274,7 @@ export interface RegistrationRankAutofillRole {
 export interface RegistrationRankAutofillPlayer {
   registration_id: number;
   display_name: string | null;
-  battle_tag: string | null;
+  identity: PlayerIdentity | null;
   status: RegistrationRankAutofillPlayerStatus;
   reason: string | null;
   will_add_to_balancer: boolean;

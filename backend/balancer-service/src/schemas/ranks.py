@@ -14,6 +14,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from shared.schemas.identity import PlayerIdentityRead
+
 __all__ = (
     "CURRENT_LAYERS",
     "HISTORY_LAYERS",
@@ -57,12 +59,12 @@ class RankContext(BaseModel):
     """What the row belongs to, when it belongs to something.
 
     ``tournament`` for registration/roster rows, ``mix`` for a recorded casual
-    match, ``battle_tag`` for an Overwatch snapshot -- whose ``team`` carries the
-    snapshot's platform, the only thing a battle tag is further split by.
+    match, ``native_account`` for a game-native rank snapshot (Overwatch: a BattleTag) --
+    whose ``team`` carries the snapshot's platform, the only thing an account is further split by.
     """
 
-    kind: Literal["tournament", "mix", "battle_tag"]
-    id: int | None = Field(default=None, description="Tournament or custom-game id; null for a battle tag.")
+    kind: Literal["tournament", "mix", "native_account"]
+    id: int | None = Field(default=None, description="Tournament or custom-game id; null for a native account.")
     label: str
     team: str | None = Field(default=None, description="Roster team name, or the platform on an ow row.")
     lobby_index: int | None = Field(default=None, description="Which lobby of the mix played the match.")
@@ -73,7 +75,9 @@ class RankOverviewRow(BaseModel):
     player_id: int = Field(description="players.user id -- the identity /admin/people/[id] is keyed by.")
     member_id: int = Field(description="workspace_member id.")
     display_name: str | None = None
-    battle_tag: str | None = None
+    identity: PlayerIdentityRead | None = Field(
+        default=None, description="The member's primary handle for the discipline's identity provider."
+    )
     author_user_id: int | None = Field(
         default=None, description="auth.user id of the book's author, the mix's host, or null."
     )

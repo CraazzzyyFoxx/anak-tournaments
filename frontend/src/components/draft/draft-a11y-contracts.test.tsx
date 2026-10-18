@@ -29,7 +29,7 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
     session_id: 1,
     registration_id: id * 10,
     user_id: null,
-    battle_tag: `P${id}#1`,
+    identity: { provider: "battlenet", handle: `P${id}#1` },
     status: "available",
     primary_role: { dimension: "player_role", role: "damage" },
     is_flex: false,
@@ -38,7 +38,7 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
     secondary_roles: [],
     role_ranks: { damage: 2500 },
     role_sources: {},
-    role_top_heroes: {},
+    role_top_characters: {},
     role_sub_roles: {},
     drafted_by_team_id: null,
     notes: null,
@@ -49,7 +49,7 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
 }
 
 const ana = makePlayer(7, {
-  battle_tag: "Ana#1234",
+  identity: { provider: "battlenet", handle: "Ana#1234" },
   primary_role: { dimension: "player_role", role: "support" },
   effective_rank: 3000,
   secondary_roles: [{ dimension: "player_role", role: "damage" }],

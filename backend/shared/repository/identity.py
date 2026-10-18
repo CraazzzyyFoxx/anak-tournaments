@@ -75,9 +75,8 @@ class UserRepository(BaseRepository[models.User]):
             sa.update(models.User).where(models.User.auth_user_id == auth_user_id).values(avatar_url=avatar_url)
         )
 
-    # Legacy entity tokens are still accepted for caller/API compatibility; all
-    # four select the same unified `user.social_accounts` relationship.
-    IDENTITY_ENTITY_TOKENS: ClassVar[tuple[str, ...]] = ("social_accounts", "battle_tag", "discord", "twitch")
+    # The one entity token that selects the unified `user.social_accounts` relationship.
+    IDENTITY_ENTITY_TOKENS: ClassVar[tuple[str, ...]] = ("social_accounts",)
 
     @staticmethod
     def identity_options(in_entities: Sequence[str], child: _AbstractLoad | None = None) -> list[_AbstractLoad]:

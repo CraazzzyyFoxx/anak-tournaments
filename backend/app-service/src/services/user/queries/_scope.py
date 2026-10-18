@@ -51,10 +51,8 @@ def user_entities(in_entities: list[str], child: typing.Any | None = None) -> li
     instead of loading straight off ``User``.
     """
     entities = []
-    # Unified identity source consumed by ``UserService.to_read``. Loaded whenever any
-    # identity entity token is requested (legacy ``battle_tag``/``discord``/
-    # ``twitch`` tokens are still accepted for caller/API compatibility).
-    if any(name in in_entities for name in ("social_accounts", "battle_tag", "discord", "twitch")):
+    # Unified identity source consumed by ``UserService.to_read``, loaded when ``social_accounts`` is requested.
+    if "social_accounts" in in_entities:
         # Eager-load each account's visibility rows alongside it so ``to_read`` can
         # compute ``visible_global`` and (on public reads) drop hidden accounts
         # without a lazy load outside the async greenlet.

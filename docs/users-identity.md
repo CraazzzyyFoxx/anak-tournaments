@@ -203,15 +203,29 @@ The admin member list (`list_by_workspace`) filters on `auth_user_id IS NOT NULL
 
 ### 3.4. The mix roster is the same `workspace_member`
 
-There is no separate `workspace_player` table any more. The pool the balancer sees is `workspace_roster`: member + BattleTag + `display_name`.
+There is no separate `workspace_player` table. The balancer roster is `workspace_member` + the owner's
+`identity: {provider, handle} | null` + `display_name`; the requested discipline selects its provider.
 
-`ensure_member_for_battle_tag` (`backend/shared/services/workspace_roster.py`):
+`POST /api/v1/balancer/workspaces/{workspace_id}/players` accepts exactly
+`{discipline, identity: {provider, handle}, display_name?}`. Unknown keys (including `battle_tag`) are 422.
+`ensure_member_for_identity` (`backend/shared/services/workspace_roster.py`) validates the enabled discipline,
+its declared provider (422 `identity.provider_mismatch`) and provider grammar before any mutation. Matching
+uses the provider-normalized **exact handle**, never the display name or a BattleTag prefix:
 
-1. Find a `players.user` by battlenet handle.
-2. Otherwise create a virtual `players.user(name=tag)` and an unverified battlenet social account.
-3. `get_or_create_workspace_member`. The RBAC role `player` is not granted — the new player has no `auth_user_id`.
+1. No owner creates an unlinked `players.user` and an unverified social account, without an OAuth subject.
+2. One owner reuses that real player, preserving existing verification, subject and auth linkage.
+3. Several distinct owners return 409 `identity_conflict` without changing either person.
+4. `get_or_create_workspace_member` performs real admission: an observation-only anchor becomes a member;
+   roster reads and counts exclude observation-only anchors until that admission.
 
-`display_name` on `workspace_member` is the workspace-local nickname; otherwise `players.user.name` is used.
+A mix host (`custom_game.create`) may add players, but changing `display_name` still needs `team.create`.
+Commits and realtime/outbox writes remain caller-owned. The response is exactly one `players.list` row;
+both rank layers remain separate. Reads select only that provider's primary account (`is_primary DESC, id ASC`)
+and search handles with the same provider normalizer. Missing provider identity stays null.
+
+Registration approval/rejection/rank-check events likewise carry `identity` (never `battle_tag`): position zero
+of the owning tournament's provider. The OW collector converts only a `battlenet` identity to its native
+`fallback_battle_tag`. Actual OAuth, OW collection payloads and rank histories retain their native vocabulary.
 
 ### 3.5. Ranks
 

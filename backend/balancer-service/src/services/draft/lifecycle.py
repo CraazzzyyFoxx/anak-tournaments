@@ -290,7 +290,7 @@ class DraftLifecycleService:
                 session_id=draft_session.id,
                 captain_workspace_member_id=_member_id(roster),
                 captain_auth_user_id=roster.auth_user_id,
-                name=seat.team_name or roster.battle_tag or roster.display_name or f"Team {position}",
+                name=seat.team_name or roster.handle or roster.display_name or f"Team {position}",
                 draft_position=position,
             )
             teams.append(team)

@@ -28,11 +28,12 @@ from typing import Any
 from shared.domain.forms import RolesParams, schema_from_form
 from shared.domain.member_rank import RankSource
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.schemas.identity import PlayerIdentityRead
 
 __all__ = (
     "FLEX_ROLE_MODES",
+    "CharacterRef",
     "FlexRoleMode",
-    "HeroRef",
     "PlayerRoster",
     "RosterRole",
     "flex_role_mode",
@@ -73,12 +74,15 @@ def flex_role_mode(form: Any | None) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class HeroRef:
-    """One of a role's "top heroes", ready for both the FK and the wire."""
+class CharacterRef:
+    """One of a role's top characters, ready for both the FK and the wire."""
 
     id: int | None
     slug: str
     image_path: str | None
+
+    def wire(self) -> dict[str, Any]:
+        return {"entity_id": self.id, "slug": self.slug, "image_path": self.image_path}
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +96,7 @@ class RosterRole:
     is_primary: bool
     priority: int
     subrole: str | None
-    top_heroes: tuple[HeroRef, ...] = ()
+    top_characters: tuple[CharacterRef, ...] = ()
 
     @property
     def is_playable(self) -> bool:
@@ -113,9 +117,10 @@ class PlayerRoster:
     """
 
     registration_id: int
-    #: The registrant's PRIMARY battlenet handle (``registration_identity``
-    #: ``provider='battlenet'``, ``position=0``); ``None`` when they gave none.
-    battle_tag: str | None
+    #: The registrant's PRIMARY handle of the owning tournament's identity provider
+    #: (``registration_identity`` ``position=0``); ``None`` when they gave none of that
+    #: provider -- never another game's handle.
+    identity: PlayerIdentityRead | None
     display_name: str | None
     #: ``players.user.id`` via ``workspace_member`` -- ``None`` for a registration
     #: with no member (an admin-created row, or a sheet row never provisioned).
@@ -148,12 +153,17 @@ class PlayerRoster:
     # ── Contact/private answers ─────────────────────────────────────────────
     #: ``provider -> PRIMARY handle`` from ``registration_identity``; absent
     #: provider = the registrant answered nothing for it. Extra handles of a
-    #: provider (smurfs) are not here; battlenet's are in :attr:`smurf_tags`.
+    #: provider are not here; the owner provider's are in :attr:`additional_handles`.
     identities: Mapping[str, str] = field(default_factory=dict)
     stream_pov: bool = False
-    #: The registrant's battlenet handles beyond the primary one, in the order
-    #: given. :attr:`battle_tag` is the primary.
-    smurf_tags: tuple[str, ...] = ()
+    #: The registrant's owner-provider handles beyond the primary one, in the order
+    #: given. :attr:`identity` is the primary.
+    additional_handles: tuple[str, ...] = ()
+
+    @property
+    def handle(self) -> str | None:
+        """The primary handle alone, for labels that fall back to a display name."""
+        return self.identity.handle if self.identity is not None else None
 
     # -- roles ---------------------------------------------------------------
 
@@ -221,13 +231,11 @@ class PlayerRoster:
         return {entry.role: entry.source for entry in self.playable}
 
     @property
-    def role_top_heroes(self) -> dict[str, list[dict[str, Any]]]:
+    def role_top_characters(self) -> dict[str, list[dict[str, Any]]]:
         return {
-            entry.role: [
-                {"hero_id": hero.id, "slug": hero.slug, "image_path": hero.image_path} for hero in entry.top_heroes
-            ]
+            entry.role: [character.wire() for character in entry.top_characters]
             for entry in self.playable
-            if entry.top_heroes
+            if entry.top_characters
         }
 
     @property

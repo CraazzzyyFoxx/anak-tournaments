@@ -50,7 +50,7 @@ from shared.repository.roles import CatalogRoleRepository
 from shared.schemas.role import RoleRef
 from shared.services.newcomer_status import load_prior_participation
 from shared.services.ontology import rated_leaf, resolve_role_ref
-from shared.services.team_export.identity import find_users_by_battle_tags
+from shared.services.team_export.identity import find_users_by_handles
 from shared.services.team_format import tournament_format
 
 __all__ = (
@@ -88,28 +88,28 @@ def resolve_slot_role(role: str | None, *, discipline_code: str, on_unresolved: 
 class MaterializationMember:
     """One roster slot to be written as a ``tournament.player`` row.
 
-    Identity is either resolved from ``battle_tag`` (balancer/draft/stats
-    imports) or supplied pre-resolved as ``workspace_member_id`` (registered
-    teams, whose members are already anchored — no tag lookup, and the
-    silently-skipped-player failure mode is unreachable).
+    Identity is either resolved from ``handle`` -- a handle of the tournament's identity
+    provider (balancer/draft/stats imports) -- or supplied pre-resolved as
+    ``workspace_member_id`` (registered teams, whose members are already anchored — no
+    lookup, and the silently-skipped-player failure mode is unreachable).
     """
 
     name: str
     rank: int
     slot_code: str | None
     sub_role: str | None = None
-    battle_tag: str | None = None
+    handle: str | None = None
     workspace_member_id: int | None = None
     is_substitute: bool = False
     role_ref: RoleRef | None = None
     non_rated_roles: tuple[CatalogRole, ...] = ()
 
     @property
-    def identity_tag(self) -> str | None:
-        """The tag to resolve this member by; ``name`` is the historical default."""
+    def identity_handle(self) -> str | None:
+        """The handle to resolve this member by; ``name`` is the historical default."""
         if self.workspace_member_id is not None:
             return None
-        return self.battle_tag if self.battle_tag is not None else self.name
+        return self.handle if self.handle is not None else self.name
 
 
 @dataclass(frozen=True)
@@ -117,14 +117,14 @@ class MaterializationTeam:
     """One team to be written as a ``tournament.team`` row.
 
     ``balancer_name`` is stored verbatim on ``Team.balancer_name`` and is also,
-    by long-standing convention, the captain's battle tag; ``Team.name`` is the
+    by long-standing convention, the captain's handle; ``Team.name`` is the
     part before ``#``. Pass ``captain_player_id`` to anchor a captain without a
-    tag lookup.
+    handle lookup.
     """
 
     balancer_name: str
     members: tuple[MaterializationMember, ...] = ()
-    captain_battle_tag: str | None = None
+    captain_handle: str | None = None
     captain_player_id: int | None = None
 
     @property
@@ -134,10 +134,10 @@ class MaterializationTeam:
         return self.balancer_name.split("#")[0]
 
     @property
-    def captain_tag(self) -> str | None:
+    def captain_lookup(self) -> str | None:
         if self.captain_player_id is not None:
             return None
-        return self.captain_battle_tag if self.captain_battle_tag is not None else self.balancer_name
+        return self.captain_handle if self.captain_handle is not None else self.balancer_name
 
 
 @dataclass
@@ -148,10 +148,10 @@ class MaterializationResult:
     advisories: list[str] = field(default_factory=list)
 
 
-def _require_resolved(tag: str) -> None:
+def _require_resolved(handle: str) -> None:
     raise ApiHTTPException(
         status_code=400,
-        detail=[ApiExc(code="not_found", msg=f"User with battle tag {tag} not found.")],
+        detail=[ApiExc(code="not_found", msg=f"User with handle {handle} not found.")],
     )
 
 
@@ -187,18 +187,20 @@ async def materialize_teams(
     leaves: dict[tuple[str | None, str | None, RoleRef | None], CatalogRole | None] = {}
 
     # ── Batch phase: resolve everything the build loop needs up front ──────────
-    # 1. Resolve every battle tag (captains + members) in one pass. Ordered so a
-    #    strict caller raises on the same tag it always did.
-    ordered_tags: list[str] = []
+    # 1. Resolve every handle (captains + members) in one pass under the tournament's identity
+    #    provider. Ordered so a strict caller raises on the same handle it always did.
+    ordered_handles: list[str] = []
     for team_data in teams:
-        for tag in (team_data.captain_tag, *(m.identity_tag for m in team_data.members)):
-            if tag:
-                ordered_tags.append(tag)
-    users_by_tag = await find_users_by_battle_tags(session, ordered_tags)
+        for handle in (team_data.captain_lookup, *(m.identity_handle for m in team_data.members)):
+            if handle:
+                ordered_handles.append(handle)
+    users_by_handle = await find_users_by_handles(
+        session, ordered_handles, provider=discipline(tournament.discipline).identity_provider
+    )
     if on_unresolved == "error":
-        for tag in ordered_tags:
-            if tag not in users_by_tag:
-                _require_resolved(tag)
+        for handle in ordered_handles:
+            if handle not in users_by_handle:
+                _require_resolved(handle)
 
     # Pre-resolved members (registered teams) come in as workspace_member ids;
     # the newcomer + dedup logic below is keyed on the domain player id.
@@ -250,7 +252,7 @@ async def materialize_teams(
             assigned = (() if leaf is None else (leaf,)) + member.non_rated_roles
             assignments[id(member)] = assigned
 
-    resolved_user_ids = {user.id for user in users_by_tag.values()} | set(player_id_by_member_id.values())
+    resolved_user_ids = {user.id for user in users_by_handle.values()} | set(player_id_by_member_id.values())
 
     # 2. Batch-load existing teams for this tournament by lowercased name.
     team_names = {team_data.display_name.lower() for team_data in teams}
@@ -331,7 +333,7 @@ async def materialize_teams(
                         detail=[ApiExc(code="not_found", msg=f"Workspace member {member_id} not found.")],
                     )
             else:
-                user = users_by_tag.get(member.identity_tag or "")
+                user = users_by_handle.get(member.identity_handle or "")
                 player_id = user.id if user is not None else None
             if player_id is None:
                 logger.warning("User %s not found, skipping player creation", member.name)
@@ -365,8 +367,8 @@ async def materialize_teams(
         captain: User | None = None
         captain_id = team_data.captain_player_id
         if captain_id is None:
-            captain_tag = team_data.captain_tag
-            captain = users_by_tag.get(captain_tag) if captain_tag else None
+            captain_lookup = team_data.captain_lookup
+            captain = users_by_handle.get(captain_lookup) if captain_lookup else None
             captain_id = captain.id if captain else None
 
         team = existing_teams.get(name.lower())

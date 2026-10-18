@@ -68,7 +68,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     id: 1,
     workspace_member_id: 7,
     display_name: null,
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     sort_order: 0,
     participation: "pool",
     roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
@@ -349,7 +349,7 @@ describe("PickupPlayerSheet mix record", () => {
     return {
       workspace_member_id: 7,
       display_name: null,
-      battle_tag: "Aria#1111",
+      identity: { provider: "battlenet", handle: "Aria#1111" },
       games: 20,
       wins: 12,
       losses: 8,

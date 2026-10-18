@@ -65,6 +65,7 @@ from .draft import (
     DraftTeamQueueResponse,
     DraftTeamRead,
 )
+from .players import WorkspacePlayerRead, WorkspacePlayerUpsert
 from .ranks import RankContext, RankOverviewRow
 from .user_prefs import UserMixPreferencesRead, UserMixPreferencesUpsert
 
@@ -136,4 +137,6 @@ __all__ = [
     "RankOverviewRow",
     "UserMixPreferencesRead",
     "UserMixPreferencesUpsert",
+    "WorkspacePlayerRead",
+    "WorkspacePlayerUpsert",
 ]

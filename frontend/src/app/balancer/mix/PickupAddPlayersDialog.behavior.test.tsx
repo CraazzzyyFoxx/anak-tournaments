@@ -26,6 +26,12 @@ import type { RosterMember } from "@/services/workspace-player.service";
 
 import { PickupAddPlayersDialog } from "./PickupAddPlayersDialog";
 
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: (_axis: number, code: string) => ({
+    data: { discipline: { identity_provider: code === "lol" ? "riot" : "battlenet", enabled: true } }
+  })
+}));
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -103,7 +109,7 @@ function member(
   return {
     member_id: memberId,
     player_id: memberId * 10,
-    battle_tag: battleTag,
+    identity: { provider: "battlenet", handle: battleTag },
     display_name: null,
     ranks: {},
     author_ranks: {},
@@ -116,7 +122,7 @@ function seated(memberId: number, battleTag: string, overrides: Partial<CustomGa
     id: memberId,
     workspace_member_id: memberId,
     display_name: null,
-    battle_tag: battleTag,
+    identity: { provider: "battlenet", handle: battleTag },
     sort_order: memberId,
     participation: "pool",
     roles: [{ dimension: "player_role", role: "tank" }],
@@ -138,6 +144,7 @@ const onTogglePlayer = vi.fn();
 async function mount(
   props: {
     rows?: CustomGamePlayer[];
+    discipline?: string;
     canEdit?: boolean;
     canEditRanks?: boolean;
     canWrite?: boolean;
@@ -154,6 +161,7 @@ async function mount(
           open
           onOpenChange={vi.fn()}
           workspaceId={WORKSPACE_ID}
+          discipline={props.discipline ?? "overwatch"}
           canEdit={props.canEdit ?? true}
           canEditRanks={props.canEditRanks ?? true}
           canWrite={props.canWrite ?? true}
@@ -239,6 +247,27 @@ beforeEach(() => {
 });
 
 describe("PickupAddPlayersDialog", () => {
+  it("adds a LoL identity with the owner discipline and normalized Riot handle", async () => {
+    upsert.mockResolvedValueOnce(member(7, "Riot Name#EUW"));
+    const scope = await mount({ discipline: "lol" });
+    const trigger = Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.includes("New Riot")
+    );
+    await click(trigger);
+    const input = document.body.querySelector<HTMLInputElement>("input[aria-label='New Riot ID identity']")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "  Riot Name # EUW  ");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const submit = input.closest("form")!.querySelector<HTMLButtonElement>("button[type='submit']")!;
+    await click(submit);
+    await settle();
+    expect(upsert).toHaveBeenCalledWith(WORKSPACE_ID, {
+      discipline: "lol", identity: { provider: "riot", handle: "Riot Name#EUW" }
+    });
+    expect(onTogglePlayer).toHaveBeenCalledWith(7);
+  });
+
   it("counts the lobby against a full one and names the overflow", async () => {
     const rows = Array.from({ length: 12 }, (_unused, index) =>
       seated(100 + index, `P${index}#1000`),
@@ -298,11 +327,12 @@ describe("PickupAddPlayersDialog", () => {
     expect(list).toHaveBeenLastCalledWith(
       WORKSPACE_ID,
       expect.objectContaining({ authorOnly: true, authorUserId: HOST_USER_ID }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
 
     await click(findChip(scope, "Everyone"));
 
-    expect(list).toHaveBeenLastCalledWith(WORKSPACE_ID, expect.objectContaining({ authorOnly: false }));
+    expect(list).toHaveBeenLastCalledWith(WORKSPACE_ID, expect.objectContaining({ authorOnly: false }), expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("shows both chip counts before either filter is clicked", async () => {
@@ -322,6 +352,7 @@ describe("PickupAddPlayersDialog", () => {
     expect(list).toHaveBeenCalledWith(
       WORKSPACE_ID,
       expect.objectContaining({ authorUserId: HOST_USER_ID }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -390,6 +421,7 @@ describe("PickupAddPlayersDialog", () => {
     const scope = await mount();
 
     await click(findChip(scope, "My ranks"));
+    await settle();
 
     expect(scope.textContent).toContain("You haven't ranked anyone yet");
   });
@@ -415,6 +447,7 @@ describe("PickupAddPlayersDialog", () => {
     expect(list).toHaveBeenLastCalledWith(
       WORKSPACE_ID,
       expect.objectContaining({ authorUserId: 501, authorOnly: true }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 

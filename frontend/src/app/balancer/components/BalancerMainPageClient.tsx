@@ -695,10 +695,11 @@ export function BalancerMainPageClient() {
   // would be a viewport-wide strip of vertical text — so the rail only exists
   // beside the editor.
   const playersElement =
-    workspaceId == null ? null : (
+    workspaceId == null || !tournamentQuery.data ? null : (
       <WorkspacePlayersSidebar
         key={workspaceId}
         workspaceId={workspaceId}
+        discipline={tournamentQuery.data.discipline}
         canEdit={canAccessPermission("team.update", workspaceId)}
         collapsed={isWideLayout && isPlayersSidebarCollapsed}
         onToggleCollapsed={

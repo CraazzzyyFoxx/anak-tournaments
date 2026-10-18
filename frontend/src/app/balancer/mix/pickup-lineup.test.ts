@@ -22,7 +22,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     id: 1,
     workspace_member_id: 7,
     display_name: null,
-    battle_tag: "Aria#1111",
+    identity: { provider: "battlenet", handle: "Aria#1111" },
     sort_order: 0,
     participation: "pool",
     role_selection_mode: "all_ranked",
@@ -441,6 +441,6 @@ describe("playerLabel", () => {
   it("prefers a display name, then the tag, then the id", () => {
     expect(playerLabel(row({ display_name: "Aria" }))).toBe("Aria");
     expect(playerLabel(row({ display_name: null }))).toBe("Aria#1111");
-    expect(playerLabel(row({ display_name: null, battle_tag: null }))).toBe("#7");
+    expect(playerLabel(row({ display_name: null, identity: null }))).toBe("#7");
   });
 });

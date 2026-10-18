@@ -93,9 +93,9 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
   );
   if (!player) return liveRegion;
 
-  const displayName = player.battle_tag ?? `#${player.id}`;
+  const displayName = player.identity?.handle ?? `#${player.id}`;
   const available = player.status === "available";
-  const profileSlug = player.battle_tag ? getPlayerSlug(player.battle_tag) : null;
+  const profileSlug = player.identity?.handle ? getPlayerSlug(player.identity?.handle) : null;
   const headerDivision = resolveDivisionFromRank(divisionGrid, player.effective_rank);
   const myTurn = isMyTurnFor(gating, actingTeam);
   const hasAccount = player.user_id != null;
@@ -352,7 +352,7 @@ function IslandFooter({
   const current = board.current_pick;
   const countdown = usePickCountdown(current, board.session.status === "paused");
   const isConnected = connectionState === "connected";
-  const displayName = player.battle_tag ?? `#${player.id}`;
+  const displayName = player.identity?.handle ?? `#${player.id}`;
   // The action is about the card's player: a selection of somebody else is not confirmable from here.
   const chosen = selection?.playerId === player.id ? selection : null;
   const withRole = board.session.roster_shape.has_role_slots;
@@ -410,7 +410,7 @@ function IslandFooter({
   let hint: string | null = null;
   if (!overrideMode && gating.myTeamId != null) {
     const previewName = autopickPreview
-      ? (board.players.find((entry) => entry.id === autopickPreview.player_id)?.battle_tag ?? null)
+      ? (board.players.find((entry) => entry.id === autopickPreview.player_id)?.identity?.handle ?? null)
       : null;
     if (current != null && turnsUntil(board, gating.myTeamId) == null) hint = t("island.hint.noPicksLeft");
     else if (myTurn && chosen)
@@ -423,7 +423,7 @@ function IslandFooter({
         : t("island.hint.chooseRole");
     else hint = queue && queue.ids.length > 0 ? t("island.hint.prepareQueue") : t("island.hint.prepare");
   }
-  const captainTag = actingTeam.roster.find((entry) => entry.is_captain)?.battle_tag ?? actingTeam.team.name;
+  const captainTag = actingTeam.roster.find((entry) => entry.is_captain)?.identity?.handle ?? actingTeam.team.name;
 
   return (
     <div className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3.5 pb-3 pt-2.5">
