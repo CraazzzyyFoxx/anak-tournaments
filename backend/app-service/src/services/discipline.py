@@ -36,6 +36,7 @@ __all__ = ("list_disciplines", "metadata")
 #: ``workspace_id=all``: the global view. A missing parameter means the same (the gateway has already filled in a
 #: single-workspace credential's scope before it gets here).
 _ALL = "all"
+_MAX_ID = 2**63 - 1
 _roles = CatalogRoleRepository()
 _workspaces = WorkspaceRepository()
 
@@ -48,12 +49,14 @@ def _scope(raw: str | None) -> int | None:
     """``None`` for the global view, else a workspace id; anything else is a 422 the client can branch on."""
     if raw is None or raw == _ALL:
         return None
-    if not (raw.isascii() and raw.isdigit()):
+    digits = raw.lstrip("0")
+    # ``catalog``/``workspace`` ids are BigInteger: anything longer or larger can never name a workspace row.
+    if not (raw.isascii() and raw.isdigit()) or len(digits) > 19 or int(digits or "0") > _MAX_ID:
         raise ApiHTTPException(
             status_code=422,
             detail=[ApiExc(code="invalid_workspace_id", msg="workspace_id must be a workspace id or 'all'")],
         )
-    return int(raw) if len(raw) <= 9 else 0  # longer cannot be an id; 0 reads as the unknown workspace
+    return int(digits or "0")  # 0 is no workspace: the unknown-workspace 404 below
 
 
 async def _visible_workspace(session: AsyncSession, workspace_id: int, viewer: AuthUser | None) -> models.Workspace:

@@ -45,6 +45,10 @@ _MATE_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
 # Reusable ad-hoc query params (handlers read these via c.q/c.q1, no query model).
 _ENTITIES = QueryParam("entities", array=True)
 _WS = QueryParam("workspace_id", "integer")
+# The discipline reads take an explicit scope: a workspace id or the literal "all" (global view), so not an integer.
+_WS_OR_ALL = QueryParam(
+    "workspace_id", "string", description='Workspace id (positive integer) or the literal "all" for the global view'
+)
 _TID = QueryParam("tournament_id", "integer")
 
 OPERATIONS: dict[str, Op] = {
@@ -70,8 +74,8 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.maps.lookup": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.gamemodes.lookup": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.catalog.legacy": Op(response=schemas.CatalogLegacyRead),
-    "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS,)),
-    "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS,)),
+    "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS_OR_ALL,)),
+    "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS_OR_ALL,)),
     # ── heroes (bespoke) ───────────────────────────────────────────────────
     "rpc.app.heroes.playtime": Op(
         response=Paginated[schemas.HeroPlaytime], query=schemas.HeroPlaytimeQueryPaginationParams

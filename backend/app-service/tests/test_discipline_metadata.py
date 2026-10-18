@@ -49,6 +49,14 @@ def test_both_subjects_are_registered_documented_and_typed() -> None:
         assert openapi_schemas.OPERATIONS[subject].response is not None
 
 
+def test_the_scope_query_param_is_documented_as_an_id_or_the_literal_all() -> None:
+    for subject in (LIST, METADATA):
+        (param,) = openapi_schemas.OPERATIONS[subject].query_params
+        assert (param.name, param.type, param.array, param.required) == ("workspace_id", "string", False, False)
+        assert "all" in param.description and "integer" in param.description
+        assert param is not openapi_schemas._WS  # the plain integer param would reject the literal
+
+
 class DisciplineMetadataTests(IsolatedAsyncioTestCase):
     if sys.platform == "win32":
         loop_factory = asyncio.SelectorEventLoop  # psycopg async cannot run on the Proactor loop
@@ -182,10 +190,35 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
                 self.assertFalse(reply["ok"], scope)
                 self.assertEqual("unprocessable", reply["error"]["code"])
                 self.assertEqual("invalid_workspace_id", reply["error"]["details"]["fields"][0]["code"])
-            for scope in ("2000000000", "0", "9" * 40):
+            for scope in ("2000000000", "1000000000", "0", "00", "0000", str(2**63 - 1)):
                 reply = await call(scope)
                 self.assertEqual("not_found", reply["error"]["code"], scope)
                 self.assertEqual("Workspace not found", reply["error"]["message"])
+            for scope in (str(2**63), "9" * 40, "1" + "0" * 5000):  # beyond BigInteger: never an id
+                reply = await call(scope)
+                self.assertEqual("unprocessable", reply["error"]["code"], scope[:12])
+                self.assertEqual("invalid_workspace_id", reply["error"]["details"]["fields"][0]["code"])
+
+    async def test_any_bigint_id_and_its_leading_zero_forms_reach_the_real_visibility_check(self) -> None:
+        for index, ws_id in enumerate((999_999_999, 1_000_000_000, 5_000_000_000 + uuid.uuid4().int % 10**6)):
+            hidden = models.Workspace(
+                id=ws_id,
+                slug=f"{self.tag}-big{index}",
+                name=f"{self.tag}-big{index}",
+                disciplines_enabled=["overwatch"],
+                verification_status="verified",
+                is_hidden=True,
+            )
+            self.session.add(hidden)
+            await self.session.flush()
+            for form in (str(ws_id), f"000{ws_id}"):
+                member = await self.metadata("overwatch", form, _viewer(9, ws_id))
+                self.assertTrue(member["ok"], (form, member))
+                self.assertEqual(ws_id, member["data"]["workspace_id"])
+                for identity in (None, _viewer(9, ws_id + 1)):  # a hidden workspace is the same 404 for outsiders
+                    for reply in (await self.metadata("overwatch", form, identity), await self.list(form, identity)):
+                        self.assertEqual("not_found", reply["error"]["code"], form)
+                self.assertTrue((await self.list(form, _viewer(1, superuser=True)))["ok"])
 
     # --- hidden workspaces ----------------------------------------------------------------------------------------
 
