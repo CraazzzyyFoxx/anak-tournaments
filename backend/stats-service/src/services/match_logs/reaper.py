@@ -53,6 +53,12 @@ __all__ = ("ReaperResult", "reclaim_stalled_logs", "stalled_conditions")
 
 LEADER_LOCK_KEY = "log_processing:reaper:leader"
 
+
+def leader_lock_key(disciplines: Sequence[str] | None) -> str:
+    """One leader per discipline set: a worker only reaps its own disciplines, so it must not starve another's."""
+    return LEADER_LOCK_KEY if not disciplines else f"{LEADER_LOCK_KEY}:{','.join(sorted(set(disciplines)))}"
+
+
 _scheduler = IntervalScheduler(job_id="match_log_stall_reaper", label="Match-log stall reaper")
 _log_processing_repo = IngestJobRepository()
 
@@ -152,7 +158,7 @@ async def reclaim_stalled_logs(
     try:
         token = await acquire_distributed_lock(
             redis,
-            LEADER_LOCK_KEY,
+            leader_lock_key(disciplines),
             ttl_seconds=cfg.log_reaper_tick_seconds * 2,
             acquire_timeout_seconds=0.5,
         )

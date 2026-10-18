@@ -12,6 +12,7 @@ from collections.abc import Awaitable
 import sqlalchemy as sa
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
+from sqlalchemy.exc import SQLAlchemyError
 
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.disciplines import jobs as discipline_jobs
@@ -264,11 +265,15 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
 async def process_replay_message(discipline: str, data: dict, msg: RabbitMessage) -> None:
     """The revision-fenced reparse of one DONE job from ``stats.ingest.<discipline>.replay``.
 
-    Run only by a worker serving the job's discipline; stale/busy is reported per job and acknowledged (a refusal is a
-    result, not a failure), nothing is published to the uploader. A job of another discipline is rejected to the DLQ.
+    Run only by a worker serving the job's discipline. Stale/busy is a result, acknowledged and reported per job;
+    a transient storage failure (``ingest_unavailable``, a database error) is requeued, never acknowledged as a
+    result, because this queue is the only record of the replay request. Anything else is poison and rejected to
+    ``.replay.dlq``. A job of another discipline is rejected the same way; nothing is published to the uploader.
     """
     queue = ingest_replay_queue(discipline)
-    async with observe_message_processing(queue=queue, handler="process_ingest_replay", message=msg, logger=logger):
+    async with observe_message_processing(
+        queue=queue, handler="process_ingest_replay", message=msg, logger=logger
+    ) as context:
         event = ProcessIngestJobEvent.model_validate(data)
         if event.reparse_expected_revision is None:
             raise ValueError(f"Job {event.ingest_job_id} on {queue.name} carries no expected revision")
@@ -291,12 +296,15 @@ async def process_replay_message(discipline: str, data: dict, msg: RabbitMessage
                     s3=s3_client,
                 )
             except IngestRejected as exc:
-                outcome = "refused"
-                log.warning("Reparse of log {} refused: {}", event.ingest_job_id, exc.code)
-            except Exception:
-                outcome = "refused"
-                log.exception("Reparse of log {} failed", event.ingest_job_id)
+                outcome = "requeued" if exc.code == "ingest_unavailable" else "refused"
+                log.warning("Reparse of log {} {}: {}", event.ingest_job_id, outcome, exc.code)
+            except SQLAlchemyError:
+                outcome = "requeued"
+                log.exception("Reparse of log {} hit a database error", event.ingest_job_id)
         metrics.count("stats.ingest.replayed", 1, attributes={"outcome": outcome, "discipline": discipline})
+        if outcome == "requeued":
+            await msg.nack(requeue=True)
+            context.set_status("requeued")
 
 
 def _replay_consumer(discipline: str):

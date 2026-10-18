@@ -38,6 +38,22 @@ class MatchLogReaperTests(IsolatedAsyncioTestCase):
         self.assertEqual(0, result.touched)
         factory.assert_not_called()
 
+    async def test_each_discipline_set_has_its_own_leader_and_a_busy_one_never_blocks_another(self):
+        acquire = AsyncMock(return_value="owned")
+        with (
+            patch.object(reaper.settings, "log_reaper_enabled", True),
+            patch.object(reaper, "acquire_distributed_lock", acquire),
+            patch.object(reaper, "release_distributed_lock", AsyncMock()),
+            patch.object(reaper, "_claim_stalled", AsyncMock(return_value=([], []))),
+        ):
+            for disciplines in (["overwatch"], ["lol"], ["lol", "overwatch"], ["overwatch", "lol"]):
+                await reaper.reclaim_stalled_logs(
+                    redis=object(), session_factory=session_factory(SimpleNamespace()), disciplines=disciplines
+                )
+        keys = [call.args[1] for call in acquire.await_args_list]
+        self.assertEqual(3, len(set(keys)))
+        self.assertEqual(keys[2], keys[3], "the key depends on the set, not on its order")
+
     async def test_empty_claim_releases_leadership(self):
         release = AsyncMock()
         with (

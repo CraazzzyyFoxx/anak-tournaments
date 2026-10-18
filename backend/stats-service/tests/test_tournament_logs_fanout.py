@@ -18,6 +18,7 @@ os.environ["DEBUG"] = "true"
 
 import aio_pika
 from aiormq.exceptions import DeliveryError
+from sqlalchemy.exc import SQLAlchemyError
 
 from shared.messaging import config, topology
 from src.services.match_logs.log_records import TournamentRequeue
@@ -194,6 +195,40 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
                 )
             reparse.assert_awaited_once_with(session, job_id=601, expected_revision=3, s3=serve.s3_client)
             claim.assert_not_awaited()
+
+    async def test_the_replay_consumer_requeues_transient_failures_and_rejects_poison(self):
+        session = SimpleNamespace(scalar=AsyncMock(return_value="overwatch"), rollback=AsyncMock())
+        transient = (serve.IngestRejected(503, "ingest_unavailable", "down"), SQLAlchemyError("conn"))
+        for effect in transient:
+            msg = SimpleNamespace(headers={}, message_id=None, raw_message=None, nack=AsyncMock())
+            with (
+                self.subTest(type(effect).__name__),
+                patch.object(serve.db, "async_session_maker", session_factory(session)),
+                patch.object(serve, "reparse_authorized_job", AsyncMock(side_effect=effect)),
+            ):
+                await serve.process_replay_message(
+                    "overwatch", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg
+                )
+            msg.nack.assert_awaited_once_with(requeue=True)
+        for effect in (serve.IngestRejected(409, "stale_revision", "stale"), None):
+            msg = SimpleNamespace(headers={}, message_id=None, raw_message=None, nack=AsyncMock())
+            with (
+                self.subTest("acknowledged"),
+                patch.object(serve.db, "async_session_maker", session_factory(session)),
+                patch.object(serve, "reparse_authorized_job", AsyncMock(side_effect=effect)),
+            ):
+                await serve.process_replay_message(
+                    "overwatch", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg
+                )
+            msg.nack.assert_not_awaited()
+        msg = SimpleNamespace(headers={}, message_id=None, raw_message=None, nack=AsyncMock())
+        with (
+            patch.object(serve.db, "async_session_maker", session_factory(session)),
+            patch.object(serve, "reparse_authorized_job", AsyncMock(side_effect=RuntimeError("poison"))),
+            self.assertRaises(RuntimeError),
+        ):
+            await serve.process_replay_message("overwatch", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg)
+        msg.nack.assert_not_awaited()
 
     async def test_a_replay_delivered_to_a_worker_of_another_discipline_is_refused_undecoded(self):
         msg = SimpleNamespace(headers={}, message_id=None, raw_message=None)
