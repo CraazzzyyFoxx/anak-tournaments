@@ -99,8 +99,9 @@ duplicate-URI rows) in the receipt, and a rehearsed apply + rollback before the 
 **Exact unpickler allowlist (P9 must review any addition).** Parsing uses joblib's `NumpyUnpickler` with only
 `find_class` narrowed to an audited exact `(module, name)` set (`_ALLOWED_GLOBALS` in the tool: recorded by loading every
 fixture state file, a frame and an ndarray, plus numpy's `_reconstruct`) and the artifact's own legacy globals (the
-wrapper, and `_ConstantClassifier` for performance only). A dotted `name`, an object-dtype ndarray payload and any other
-global are rejected before `REDUCE`; nested pickles use the same checker. A real artifact that references a global
+wrapper, and `_ConstantClassifier` for performance only). A dotted `name` and any other global are rejected before
+`REDUCE`; nested pickles (object-dtype ndarray payloads included) get the same exact-global checks, so such a payload
+loads only if every global it references is on the list. A real artifact that references a global
 outside the set (e.g. `threadpoolctl`, `functools`) **blocks** until it is reviewed and added — never widened to a
 package prefix. Image identity strings (`--old-image/--new-image`) are recorded, not verified: the operator proves the
 retained image and lockfile equality.

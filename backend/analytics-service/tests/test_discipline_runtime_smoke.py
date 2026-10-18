@@ -28,6 +28,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+
+_REAL_DEFAULT_RNG = np.random.default_rng
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import event
@@ -75,6 +77,7 @@ OW = "overwatch"
 NEW_MODULE = "shared.disciplines.overwatch.analytics.models."
 NAMES = {row[0]: row[1] for row in ROWS}
 LEGACY_SCHEMAS = ("matches", "log_processing")
+_REAL_DEFAULT_RNG = np.random.default_rng
 #: The registry itself is not a runtime output; everything else under ``analytics`` is.
 NOT_OUTPUT = ("ml_model_artifact", "algorithms", "alembic_version")
 
@@ -132,11 +135,14 @@ async def _outputs(session: AsyncSession) -> dict[str, list[dict[str, typing.Any
 
 
 async def _run_runtime(url: str, ids: dict[str, int], role: str) -> tuple[dict[str, int], dict[str, list]]:
-    async with _session(url, role) as session:
-        await _assert_no_legacy_access(session)
-        summary = await run_for_tournament(session, ids["tournament"], workspace_id=ids["workspace"])
-        await session.rollback()  # the runners commit their own work; nothing is left open under the role
-        return summary, await _outputs(session)
+    # `simulate_standings` draws from an unseeded `np.random.default_rng()`; both runs get the same stream so the
+    # distribution it persists is a pure function of the (bit-identical) model.
+    with patch("numpy.random.default_rng", lambda *_a, **_k: _REAL_DEFAULT_RNG(20261018)):
+        async with _session(url, role) as session:
+            await _assert_no_legacy_access(session)
+            summary = await run_for_tournament(session, ids["tournament"], workspace_id=ids["workspace"])
+            await session.rollback()  # the runners commit their own work; nothing is left open under the role
+            return summary, await _outputs(session)
 
 
 async def _register_independent_artifacts(url: str, tmp_path: Path) -> None:
@@ -322,17 +328,10 @@ def test_converted_artifacts_serve_the_runtime_with_unchanged_outputs_and_roll_b
         with native_role(baseline_url, write=True) as baseline_role:
             baseline_summary, baseline_rows = asyncio.run(_run_runtime(baseline_url, ids, baseline_role))
     assert summary == baseline_summary
-    # Standings simulation draws unseeded Monte Carlo samples: its rows can only agree statistically (the model that
-    # feeds it is bit-identical, see the receipts and the match-quality rows); every other table is exact.
-    simulated = "standings_distribution"
-    assert converted_rows.keys() == baseline_rows.keys()
-    assert {t: rows for t, rows in converted_rows.items() if t != simulated} == {
-        t: rows for t, rows in baseline_rows.items() if t != simulated
-    }
-    if simulated in converted_rows:
-        got, want = converted_rows[simulated], baseline_rows[simulated]
-        assert [(r["team_id"], r["tournament_id"]) for r in got] == [(r["team_id"], r["tournament_id"]) for r in want]
-        assert all(abs(g["prob_top1"] - w["prob_top1"]) < 0.05 for g, w in zip(got, want, strict=True))
+    # The simulation's generator is fixed in `_run_runtime`, so every table -- the whole standings distribution
+    # included (mean, quantiles, prob_top1/3/8, histogram) -- is compared exactly, and standings must exist.
+    assert "standings_distribution" in converted_rows and "standings_distribution" in baseline_rows
+    assert converted_rows == baseline_rows
 
     # 4. rollback: the original URI set, every other column untouched, old image's files never modified
     tool.rollback(receipt_path, url)

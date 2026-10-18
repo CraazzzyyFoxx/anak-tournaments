@@ -61,8 +61,9 @@ artifact (active and historical) must be converted in a maintenance window with
    the receipt) → review `receipt.json` → `apply` (one transaction, rows locked in id order, **only** `storage_uri`
    updated, current old URI required).
 4. **Exact allowlist.** The unpickler resolves only an audited exact `(module, name)` set plus the artifact's own legacy
-   classes; dotted names, object-dtype payloads and any other global are rejected before `REDUCE`. An unlisted library
-   global blocks the release until reviewed and added.
+   classes; dotted names and any other global are rejected before `REDUCE`, and nested pickles (object-dtype ndarray
+   payloads included) get the same exact-global checks. An unlisted library global blocks the release until reviewed
+   and added.
 5. **Rollback.** `rollback --receipt` restores the original URI set (the old image is needed to read the old bytes);
    originals and converted files are never deleted. Originals' SHA256 and the new SHA256 are both recorded (they differ by
    design).
