@@ -113,6 +113,10 @@ class TournamentService:
             query = query.where(models.Tournament.workspace_id == params.workspace_id)
             total_query = total_query.where(models.Tournament.workspace_id == params.workspace_id)
 
+        if params.discipline is not None:
+            query = query.where(models.Tournament.discipline == params.discipline)
+            total_query = total_query.where(models.Tournament.discipline == params.discipline)
+
         if params.status is not None:
             # Applied to the count query too, like every other filter here: a
             # filter missing from the total makes `total` describe a different set

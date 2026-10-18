@@ -16,11 +16,14 @@ class CustomGameRepository(BaseRepository[models.CustomGame]):
     def __init__(self) -> None:
         super().__init__(models.CustomGame)
 
-    async def list_for_workspace(self, session: AsyncSession, workspace_id: int) -> Sequence[models.CustomGame]:
-        """Every mix of the workspace, newest first."""
-        result = await session.scalars(
-            self.select().where(self.model.workspace_id == workspace_id).order_by(self.model.id.desc())
-        )
+    async def list_for_workspace(
+        self, session: AsyncSession, workspace_id: int, discipline: str | None = None
+    ) -> Sequence[models.CustomGame]:
+        """Every mix of the workspace, newest first; one game's when ``discipline`` is given."""
+        query = self.select().where(self.model.workspace_id == workspace_id)
+        if discipline is not None:
+            query = query.where(self.model.discipline == discipline)
+        result = await session.scalars(query.order_by(self.model.id.desc()))
         return result.all()
 
 

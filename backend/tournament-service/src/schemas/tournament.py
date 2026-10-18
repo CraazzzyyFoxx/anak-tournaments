@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, BeforeValidator, computed_field
 
 from shared.disciplines import identity_provider as discipline_identity_provider
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.roster_slots import RosterShapeRead
 from shared.services.workspace_scope import ALL_WORKSPACES
 from src.core import enums, pagination
@@ -119,6 +120,7 @@ class TournamentPaginationSortSearchQueryParams(
     is_league: bool | None = None
     workspace_id: WorkspaceFilter = None
     status: enums.TournamentStatus | None = None
+    discipline: InstalledDisciplineFilter = None
 
 
 @dataclass
@@ -126,6 +128,7 @@ class TournamentPaginationSortSearchParams(pagination.PaginationSortSearchParams
     is_league: bool | None = None
     workspace_id: int | None = None
     status: enums.TournamentStatus | None = None
+    discipline: str | None = None
 
     @classmethod
     def from_query_params(cls, query_params: pagination.PaginationQueryParams):
@@ -154,6 +157,7 @@ class TournamentFacetsQueryParams(BaseModel):
     workspace_id: WorkspaceFilter = None
     status: enums.TournamentStatus | None = None
     is_league: bool | None = None
+    discipline: InstalledDisciplineFilter = None
     query: str = ""
 
 

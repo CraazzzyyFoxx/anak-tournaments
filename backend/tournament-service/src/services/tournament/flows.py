@@ -336,6 +336,7 @@ class TournamentFlowsService:
         workspace_id: int | None = None,
         status: enums.TournamentStatus | None = None,
         is_league: bool | None = None,
+        discipline: str | None = None,
         query: str = "",
     ) -> schemas.TournamentFacets:
         """Chip counters for the public tournaments page (rpc.tournament.tournaments_facets).
@@ -363,6 +364,8 @@ class TournamentFlowsService:
         """
         base = visible_tournaments_predicate(viewer)
         scope = [base] if workspace_id is None else [base, models.Tournament.workspace_id == workspace_id]
+        if discipline is not None:
+            scope.append(models.Tournament.discipline == discipline)
         search = [models.Tournament.name.ilike(f"%{query}%")] if query else []
         league = [] if is_league is None else [models.Tournament.is_league.is_(is_league)]
         status_filter = [] if status is None else [models.Tournament.status == status]

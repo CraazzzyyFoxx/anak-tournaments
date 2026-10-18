@@ -83,7 +83,7 @@ var RosterRoutes = []edge.RouteSpec{
 	// none of these handlers looks at the caller -- the ranks they return are
 	// the host's own book, resolved from the mix's host_user_id. Every write
 	// below stays AuthRequired plus host-or-co-host in the worker.
-	{Method: "GET", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.list", Path: []string{"workspace_id"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
+	{Method: "GET", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.list", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games", Queue: "rpc.balancer.custom.create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// Workspace-wide mix scoreboard, not a per-game read. ServeMux precedence
 	// already gives this literal segment the win over {game_id} whatever the

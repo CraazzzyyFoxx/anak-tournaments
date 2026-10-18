@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
@@ -109,6 +110,9 @@ func TestTournamentFacetsRouteContract(t *testing.T) {
 	}
 	if facets.Method != "GET" || facets.Queue != "rpc.tournament.tournaments_facets" || facets.Auth != edge.AuthOptional {
 		t.Fatalf("unexpected facets contract: %#v", *facets)
+	}
+	if !slices.Contains(facets.Query, "discipline") {
+		t.Fatalf("facets must forward the discipline filter the list honours: %#v", facets.Query)
 	}
 }
 

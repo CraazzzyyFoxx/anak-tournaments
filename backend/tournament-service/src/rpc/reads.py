@@ -264,6 +264,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=qp.workspace_id,
                 status=qp.status,
                 is_league=qp.is_league,
+                discipline=qp.discipline,
                 query=qp.query,
             )
 
