@@ -3410,6 +3410,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stats/ingest-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a canonical ingest job
+         * @description Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).
+         *
+         *     RPC subject: `rpc.stats.ingest.get`
+         */
+        get: operations["get__api_v1_stats_ingest_jobs__id_"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit a canonical match document
+         * @description Permission: a workspace API key whose `stats.ingest` scope is backed by the owner's effective `stats.ingest` permission; sessions, service tokens and owner privilege alone are refused (403 `api_key_required` / `scope_required`). The request body is the bare `owt.match/1` document (Content-Type `application/json`, up to 25 MiB); the workspace is always the key's own. Idempotent per `(source.kind, source.external_id)` when an external id is present, otherwise per the SHA-256 of the exact request bytes: the same bytes return the existing job, changed bytes or discipline under one external id answer 409 `idempotency_conflict`. Answers 202 with the job while it is `pending`/`processing`, and 200 with the actual job when it already finished (`done`, `awaiting_link`, `failed`; a failed duplicate is never retried implicitly). A structurally valid document whose codes do not resolve is persisted as a failed job with diagnostics and answers 422 with `ingest_job_id`; malformed JSON answers 400, a non-JSON content type 415, an oversized body 413.
+         *
+         *     RPC subject: `rpc.stats.ingest.submit`
+         */
+        post: operations["post__api_v1_stats_matches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/streams/tournament/{tournament_id}": {
         parameters: {
             query?: never;
@@ -6458,6 +6502,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/logs/{id}/bind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind an unlinked ingest job to a game
+         * @description Permission: workspace `log.update` in the job's workspace. Binds an `awaiting_link` (or `failed`) job's stored document or raw source to `encounter_game_id` with the operator's complete `teams` map (`document team key -> encounter.team id`, a bijection onto the game's participating teams; a participant contradicting the chosen team is refused, zero overlap is allowed) and publishes it in the same transaction, returning the committed job. The client never sends the document. When the target game already has an observation `expected_revision` is required (`0` = none, `n` = replace exactly revision `n`) and is compared again under the final lock: 409 `stale_revision` / `expected_revision_required`. A `done` job is replayed only by retry with `reparse=true`; a busy job answers 409 `ingest_busy`. Refusals roll back and leave the job as it was: 404 `binding_target_not_found`, 409 `binding_mismatch` / `identity_conflict`, 422 `invalid_team_map`.
+         *
+         *     RPC subject: `rpc.stats.ingest.bind`
+         */
+        post: operations["post__api_v1_admin_logs__id__bind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/logs/{id}/retry": {
         parameters: {
             query?: never;
@@ -6469,7 +6535,7 @@ export interface paths {
         put?: never;
         /**
          * Retry log processing
-         * @description Permission: workspace `log.update` in the record's workspace. Resets a failed/processed log record to pending, re-enqueues it for processing and returns the updated record, 404ing when the record does not exist. An optional `encounter_id` first attaches the log to that encounter of the record's tournament (404 unknown encounter, 400 another tournament's, 409 on a processed record), which is how an `encounter_ambiguous` failure is resolved.
+         * @description Permission: workspace `log.update` in the record's workspace. Resets a failed or awaiting-link log record to pending, re-enqueues it for processing and returns the updated record (with its structured `error`, current `observation_revision`/`is_current_provenance` and, for an awaiting-link record, the document `teams` a bind map is keyed by), 404ing when the record does not exist. A `done` record is never replayed implicitly: 409 `reparse_required`; send `reparse=true` with the `expected_revision` the operator saw to replace its observations directly (409 `stale_revision` when another revision was written, 409 `stale_binding` once the job is no longer the game's current evidence). An optional `encounter_id` first attaches the log to that encounter of the record's tournament (404 unknown encounter, 400 another tournament's, 409 on a processed record), which is how an `encounter_ambiguous` failure is resolved.
          *
          *     RPC subject: `rpc.parser.logs.retry`
          */
@@ -16183,6 +16249,258 @@ export interface components {
             /** User Id */
             user_id: number | null;
         };
+        /**
+         * IngestBinding
+         * @description The match this job is still the current evidence for; absent once superseded or while unbound.
+         */
+        "parser.IngestBinding": {
+            /** Encounter Game Id */
+            encounter_game_id: number;
+            /** Match Id */
+            match_id: number;
+            /** Revision */
+            revision: number;
+        };
+        /** IngestError */
+        "parser.IngestError": {
+            /** Code */
+            code: string;
+            /**
+             * Issues
+             * @default []
+             */
+            issues: components["schemas"]["parser.IngestIssueRead"][];
+            /** Message */
+            message: string;
+        };
+        /** IngestIssueRead */
+        "parser.IngestIssueRead": {
+            /** Code */
+            code: string;
+            /**
+             * Kind
+             * @default null
+             */
+            kind: string | null;
+            /** Message */
+            message: string;
+            /** Path */
+            path: (string | number)[];
+            /**
+             * Raw Name
+             * @default null
+             */
+            raw_name: string | null;
+        };
+        /** IngestJobRead */
+        "parser.IngestJobRead": {
+            /** Attempts */
+            attempts: number;
+            /** @default null */
+            binding: components["schemas"]["parser.IngestBinding"] | null;
+            /** Content Hash */
+            content_hash: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discipline */
+            discipline: string;
+            /** @default null */
+            error: components["schemas"]["parser.IngestError"] | null;
+            /** External Id */
+            external_id: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: number;
+            /** Source Kind */
+            source_kind: string;
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["parser.IngestJobStatus"];
+            /** Updated At */
+            updated_at: string | null;
+            /** Workspace Id */
+            workspace_id: number;
+        };
+        /**
+         * IngestJobStatus
+         * @enum {string}
+         */
+        "parser.IngestJobStatus": ParserIngestJobStatus;
+        /** MatchDoc */
+        "parser.MatchDoc": {
+            /** Discipline */
+            discipline: string;
+            /** Duration S */
+            duration_s: number;
+            /** Events */
+            events?: components["schemas"]["parser.MatchEventDoc"][];
+            /** Facts */
+            facts?: components["schemas"]["parser.MatchFactDoc"][];
+            /** @default null */
+            hint: components["schemas"]["parser.MatchHint"] | null;
+            /** Map */
+            map: string;
+            /** Participants */
+            participants: components["schemas"]["parser.MatchParticipantDoc"][];
+            /**
+             * Played At
+             * Format: date-time
+             */
+            played_at: string;
+            /** Protocol */
+            protocol: string;
+            /** Segments */
+            segments?: components["schemas"]["parser.MatchSegmentDoc"][];
+            source: components["schemas"]["parser.MatchSource"];
+            /** Teams */
+            teams: components["schemas"]["parser.MatchTeamDoc"][];
+        };
+        /** MatchEventDoc */
+        "parser.MatchEventDoc": {
+            /**
+             * Actor
+             * @default null
+             */
+            actor: string | null;
+            /**
+             * Actor Team
+             * @default null
+             */
+            actor_team: string | null;
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Entity
+             * @default null
+             */
+            entity: string | null;
+            /**
+             * Related Entity
+             * @default null
+             */
+            related_entity: string | null;
+            /**
+             * Segment
+             * @default 0
+             */
+            segment: number;
+            /** T */
+            t: number;
+            /**
+             * Target
+             * @default null
+             */
+            target: string | null;
+            /**
+             * Target Team
+             * @default null
+             */
+            target_team: string | null;
+            /** Type */
+            type: string;
+        };
+        /** MatchFactDoc */
+        "parser.MatchFactDoc": {
+            /**
+             * Entity
+             * @default null
+             */
+            entity: string | null;
+            /**
+             * Participant
+             * @default null
+             */
+            participant: string | null;
+            /**
+             * Segment
+             * @default 0
+             */
+            segment: number;
+            /** Stat */
+            stat: string;
+            /**
+             * Team
+             * @default null
+             */
+            team: string | null;
+            /** Value */
+            value: number;
+        };
+        /**
+         * MatchHint
+         * @description Candidate constraints only: never authority, never a workspace selector.
+         */
+        "parser.MatchHint": {
+            /**
+             * Encounter Game Id
+             * @default null
+             */
+            encounter_game_id: number | null;
+            /**
+             * Encounter Id
+             * @default null
+             */
+            encounter_id: number | null;
+            /**
+             * Tournament Id
+             * @default null
+             */
+            tournament_id: number | null;
+        };
+        /** MatchIdentity */
+        "parser.MatchIdentity": {
+            /** Id */
+            id: string;
+            /** Provider */
+            provider: string;
+        };
+        /** MatchParticipantDoc */
+        "parser.MatchParticipantDoc": {
+            identity: components["schemas"]["parser.MatchIdentity"];
+            /** Key */
+            key: string;
+            /** @default null */
+            role: components["schemas"]["parser.RoleRef"] | null;
+            /** Team */
+            team: string;
+        };
+        /** MatchSegmentDoc */
+        "parser.MatchSegmentDoc": {
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            };
+            /** Index */
+            index: number;
+            /** Kind */
+            kind: string;
+        };
+        /** MatchSource */
+        "parser.MatchSource": {
+            /**
+             * External Id
+             * @default null
+             */
+            external_id: string | null;
+            /** Kind */
+            kind: string;
+        };
+        /** MatchTeamDoc */
+        "parser.MatchTeamDoc": {
+            /** Key */
+            key: string;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+        };
         /** RankHistoryPoint */
         "parser.RankHistoryPoint": {
             /**
@@ -16236,6 +16554,21 @@ export interface components {
             role: string;
             /** Social Account Id */
             social_account_id: number;
+        };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "parser.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
         };
         /**
          * StreamEntryRead
@@ -19358,6 +19691,11 @@ export interface components {
              */
             logo_url: string | null;
             /**
+             * Logs Official
+             * @default false
+             */
+            logs_official: boolean;
+            /**
              * Loss Points
              * @default 0
              */
@@ -22105,6 +22443,27 @@ export interface components {
              */
             slug: string | null;
         };
+        /**
+         * BindIngestRequest
+         * @description An operator's complete team map for one stored document: ``document team key -> encounter.team id``.
+         *
+         *     The document itself is never part of the request: bind retries the job's stored canonical document or raw source.
+         *     ``expected_revision`` is the operator's view of the target game: ``0`` = no observation yet, ``n`` = replace exactly
+         *     revision ``n``. It is required when the target is occupied and compared again under the final lock.
+         */
+        "parser.BindIngestRequest": {
+            /** Encounter Game Id */
+            encounter_game_id: number;
+            /**
+             * Expected Revision
+             * @default null
+             */
+            expected_revision: number | null;
+            /** Teams */
+            teams: {
+                [key: string]: number;
+            };
+        };
         /** CollectTriggerRequest */
         "parser.CollectTriggerRequest": {
             /**
@@ -22316,6 +22675,21 @@ export interface components {
              */
             user_id: number | null;
         };
+        /**
+         * IngestTeamKey
+         * @description A document team in canonical order, so an operator UI can build the bind team map for an awaiting job.
+         */
+        "parser.IngestTeamKey": {
+            /** Key */
+            key: string;
+            /**
+             * Participants
+             * @default []
+             */
+            participants: string[];
+            /** Source Position */
+            source_position: number;
+        };
         /** LogHistoryResponse */
         "parser.LogHistoryResponse": {
             /** Items */
@@ -22341,6 +22715,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** @default null */
+            error: components["schemas"]["parser.IngestError"] | null;
             /** Error Message */
             error_message: string | null;
             /** Filename */
@@ -22349,6 +22725,16 @@ export interface components {
             finished_at: string | null;
             /** Id */
             id: number;
+            /**
+             * Is Current Provenance
+             * @default false
+             */
+            is_current_provenance: boolean;
+            /**
+             * Observation Revision
+             * @default null
+             */
+            observation_revision: number | null;
             /** Raw Available */
             raw_available: boolean;
             raw_status: components["schemas"]["parser.RawSourceStatus"];
@@ -22358,6 +22744,11 @@ export interface components {
             started_at: string | null;
             /** Status */
             status: string;
+            /**
+             * Teams
+             * @default []
+             */
+            teams: components["schemas"]["parser.IngestTeamKey"][];
             /** Tournament Id */
             tournament_id: number | null;
             /** Tournament Name */
@@ -22377,6 +22768,16 @@ export interface components {
              * @default null
              */
             encounter_id: number | null;
+            /**
+             * Expected Revision
+             * @default null
+             */
+            expected_revision: number | null;
+            /**
+             * Reparse
+             * @default false
+             */
+            reparse: boolean;
         };
         /**
          * LogStatsRead
@@ -27459,6 +27860,11 @@ export interface components {
              */
             is_league: boolean;
             /**
+             * Logs Official
+             * @default false
+             */
+            logs_official: boolean;
+            /**
              * Loss Points
              * @default 0
              */
@@ -27657,6 +28063,11 @@ export interface components {
              * @default null
              */
             is_league: boolean | null;
+            /**
+             * Logs Official
+             * @default null
+             */
+            logs_official: boolean | null;
             /**
              * Loss Points
              * @default null
@@ -40215,6 +40626,164 @@ export interface operations {
             };
         };
     };
+    get__api_v1_stats_ingest_jobs__id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["parser.IngestJobRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_stats_matches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["parser.MatchDoc"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["parser.IngestJobRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_streams_tournament__tournament_id_: {
         parameters: {
             query?: never;
@@ -51254,6 +51823,88 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["parser.LogUploadResponse"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_admin_logs__id__bind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["parser.BindIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["parser.IngestJobRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -73462,6 +74113,13 @@ export enum IdentityTokenPayloadCredential_type {
     access_token = "access_token",
     api_key = "api_key",
     discord = "discord"
+}
+export enum ParserIngestJobStatus {
+    pending = "pending",
+    processing = "processing",
+    awaiting_link = "awaiting_link",
+    done = "done",
+    failed = "failed"
 }
 export enum StreamStreamEntryReadPlatform {
     twitch = "twitch",

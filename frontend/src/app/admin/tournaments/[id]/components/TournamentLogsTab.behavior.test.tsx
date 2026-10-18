@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useEffect, useState, type ReactNode } from "react";
+import { act, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -12,6 +13,7 @@ import type {
 import type { Encounter } from "@/types/encounter.types";
 import { notify } from "@/lib/notify";
 import { TournamentLogsTab } from "./TournamentLogsTab";
+import { ApiError } from "@/lib/api/error";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -23,6 +25,7 @@ const getLogStats = vi.fn();
 const getLogHistory = vi.fn();
 const retryLogRecord = vi.fn();
 const getEncounter = vi.fn();
+const bindLogRecord = vi.fn();
 
 vi.mock("@/services/encounter.service", () => ({
   default: { getEncounter: (...args: unknown[]) => getEncounter(...args) }
@@ -33,6 +36,7 @@ vi.mock("@/services/admin.service", () => ({
     getLogStats: (...args: unknown[]) => getLogStats(...args),
     getLogHistory: (...args: unknown[]) => getLogHistory(...args),
     retryLogRecord: (...args: unknown[]) => retryLogRecord(...args),
+    bindLogRecord: (...args: unknown[]) => bindLogRecord(...args),
     processAllTournamentLogs: vi.fn()
   }
 }));
@@ -84,10 +88,14 @@ function record(id: number, overrides: Partial<LogProcessingRecord> = {}): LogPr
     raw_available: true,
     uploader_name: "operator",
     error_message: null,
+    error: null,
     attempts: 1,
     created_at: "2026-07-30T17:00:00Z",
     started_at: "2026-07-30T17:00:00Z",
     finished_at: "2026-07-30T17:00:04Z",
+    observation_revision: null,
+    is_current_provenance: false,
+    teams: [],
     ...overrides
   };
 }
@@ -226,6 +234,8 @@ beforeEach(() => {
   });
   vi.mocked(notify.success).mockClear();
   vi.mocked(notify.apiError).mockClear();
+  vi.mocked(notify.error).mockClear();
+  bindLogRecord.mockReset();
   window.history.replaceState(null, "", "/admin/tournaments/78/matches/logs");
 });
 
@@ -536,5 +546,179 @@ describe("TournamentLogsTab", () => {
 
     expect(scope.textContent).toContain("No logs for this tournament yet");
     expect(scope.textContent).not.toContain("Clear filters");
+  });
+
+  it("reparses a processed log with the revision its row showed", async () => {
+    getLogHistory.mockResolvedValue({
+      items: [record(30, { is_current_provenance: true, observation_revision: 3, attached_encounter_game_id: 801 })],
+      total: 1
+    });
+    const scope = await mount();
+    await click(scope.querySelector('button[aria-label="Actions for round_30.txt"]'));
+    await click(menuItem("Reparse log"));
+    expect(retryLogRecord).toHaveBeenCalledWith(30, { reparse: true, expected_revision: 3 });
+    expect(notify.success).toHaveBeenCalledWith("1 log queued or reparsed");
+  });
+
+  it("bulk-reparses with each row's captured revision and names the rows that went stale or busy", async () => {
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(30, { is_current_provenance: true, observation_revision: 2 }),
+        record(31, { is_current_provenance: true, observation_revision: 5 }),
+        record(32, { is_current_provenance: true, observation_revision: 1 }),
+        record(33, { status: "failed" }),
+        // Superseded: no longer any game's current evidence, so it cannot be reparsed or selected.
+        record(34, { is_current_provenance: false, observation_revision: null })
+      ],
+      total: 5
+    });
+    retryLogRecord.mockImplementation(async (id: number) => {
+      if (id === 31) throw new ApiError(409, [{ msg: "changed", code: "stale_revision" }]);
+      if (id === 32) throw new ApiError(409, [{ msg: "busy", code: "ingest_busy" }]);
+      return record(id);
+    });
+    const scope = await mount();
+    expect(scope.querySelector('button[aria-label="Select row 34"]')).toBeNull();
+    for (const id of [30, 31, 32, 33]) await click(scope.querySelector(`button[aria-label="Select row ${id}"]`));
+    await click(button(scope, "Retry 4"));
+
+    expect(retryLogRecord).toHaveBeenCalledWith(30, { reparse: true, expected_revision: 2 });
+    expect(retryLogRecord).toHaveBeenCalledWith(31, { reparse: true, expected_revision: 5 });
+    expect(retryLogRecord).toHaveBeenCalledWith(32, { reparse: true, expected_revision: 1 });
+    expect(retryLogRecord).toHaveBeenCalledWith(33, undefined);
+    const [title, options] = vi.mocked(notify.error).mock.calls[0]!;
+    expect(title).toBe("Processed 2 of 4 logs");
+    const description = renderToStaticMarkup(options?.description as ReactElement);
+    expect(description).toContain("round_31.txt: The game’s statistics changed");
+    expect(description).toContain("round_32.txt: This log is being processed right now");
+    expect(description).not.toContain("round_30.txt");
+  });
+
+  it("shows the structured error code and its issue paths, and keeps awaiting jobs awaiting", async () => {
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(40, {
+          status: "failed",
+          error_message: "The document is invalid",
+          error: {
+            code: "invalid_document",
+            message: "The document is invalid",
+            issues: [{ path: ["teams", 0, "players"], code: "unknown_hero", message: "Unknown hero Ana2" }]
+          }
+        }),
+        record(41, { status: "awaiting_link" })
+      ],
+      total: 2
+    });
+    const scope = await mount();
+    expect(scope.textContent).toContain("Invalid document");
+    expect(scope.querySelector("pre")?.textContent).toBe(
+      "The document is invalid\nteams.0.players: Unknown hero Ana2"
+    );
+    expect(scope.textContent).toContain("Waiting for a game");
+    expect(scope.textContent).not.toContain("Processed");
+  });
+
+  it.each([
+    [4, "This game already has statistics (revision 4)"],
+    [0, null]
+  ] as const)("binds an awaiting job with the complete team map and expected_revision %i", async (revision, notice) => {
+    getEncounter.mockResolvedValue({
+      ...PLAYOFF,
+      teams: [{ id: 11, name: "Home" }, { id: 22, name: "Away" }],
+      games: [{ ...game(801, 1), teams: [{ encounter_team_id: 11 }, { encounter_team_id: 22 }] }]
+    });
+    const occupant = record(30, {
+      is_current_provenance: true,
+      observation_revision: revision,
+      attached_encounter_id: 6662,
+      attached_encounter_game_id: 801
+    });
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(17, {
+          status: "awaiting_link",
+          teams: [
+            { key: "alpha", source_position: 1, participants: ["Ana#1"] },
+            { key: "beta", source_position: 2, participants: ["Bea#2"] }
+          ]
+        }),
+        ...(revision > 0 ? [occupant] : [])
+      ],
+      total: 2
+    });
+    bindLogRecord.mockResolvedValue({ id: 17, status: "done", error: null, binding: null });
+    const scope = await mount(78, [PLAYOFF]);
+
+    await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
+    expect(menuItem("Attach to encounter…")).toBeUndefined();
+    await click(menuItem("Bind to game…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 1 · Ilios · #801"));
+    // The map is the operator's: nothing is preselected and nothing binds until every log team is seated.
+    expect(button(document, "Bind and publish")?.disabled).toBe(true);
+    expect(document.body.textContent).toContain("Ana#1");
+    await click(document.querySelector('button[aria-label="Game team for log team alpha"]'));
+    await click(commandItem("Away"));
+    expect(button(document, "Bind and publish")?.disabled).toBe(true);
+    await click(document.querySelector('button[aria-label="Game team for log team beta"]'));
+    // A seat already given to another log team is not offered twice.
+    expect(commandItem("Away")).toBeUndefined();
+    await click(commandItem("Home"));
+    if (notice) expect(document.body.textContent).toContain(notice);
+    await click(button(document, "Bind and publish"));
+
+    expect(bindLogRecord).toHaveBeenCalledWith(17, {
+      encounter_game_id: 801,
+      teams: { alpha: 22, beta: 11 },
+      expected_revision: revision
+    });
+    expect(notify.success).toHaveBeenCalledWith("Log bound and published");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("keeps the bind dialog open and re-reads the game when the operator's revision is stale", async () => {
+    getEncounter.mockResolvedValue({
+      ...PLAYOFF,
+      teams: [{ id: 11, name: "Home" }, { id: 22, name: "Away" }],
+      games: [{ ...game(801, 1), teams: [{ encounter_team_id: 11 }, { encounter_team_id: 22 }] }]
+    });
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(17, {
+          status: "awaiting_link",
+          teams: [
+            { key: "alpha", source_position: 1, participants: [] },
+            { key: "beta", source_position: 2, participants: [] }
+          ]
+        })
+      ],
+      total: 1
+    });
+    bindLogRecord.mockRejectedValue(new ApiError(409, [{ msg: "changed", code: "stale_revision" }]));
+    const scope = await mount(78, [PLAYOFF]);
+    await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
+    await click(menuItem("Bind to game…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 1 · Ilios · #801"));
+    await click(document.querySelector('button[aria-label="Game team for log team alpha"]'));
+    await click(commandItem("Home"));
+    await click(document.querySelector('button[aria-label="Game team for log team beta"]'));
+    await click(commandItem("Away"));
+    const reads = getLogHistory.mock.calls.length;
+    await click(button(document, "Bind and publish"));
+
+    expect(notify.error).toHaveBeenCalledWith(
+      expect.stringContaining("statistics changed"),
+      expect.objectContaining({ description: "changed" })
+    );
+    expect(notify.success).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    await settle();
+    expect(getLogHistory.mock.calls.length).toBeGreaterThan(reads);
   });
 });

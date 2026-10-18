@@ -1628,17 +1628,79 @@ export interface LogProcessingRecord {
   raw_status: RawSourceStatus;
   raw_available: boolean;
   uploader_name: string | null;
+  /** The human message of `error` (or the historical text itself). */
   error_message: string | null;
+  /** Structured failure/awaiting explanation; historical text reads as code `historical`. */
+  error: LogIngestError | null;
   /** Times the record entered processing; >1 means the stall reaper requeued it. */
   attempts: number;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** Revision of the observation this job is the evidence for; null while it is not. Reparse sends it back. */
+  observation_revision: number | null;
+  /** True while this job is the current provenance of its game's observation. */
+  is_current_provenance: boolean;
+  /** Document teams in canonical order, awaiting_link only: the bind team map is keyed by `key`. */
+  teams: LogDocumentTeam[];
+}
+
+export interface LogIngestIssue {
+  path: (string | number)[];
+  code: string;
+  message: string;
+  kind?: string | null;
+  raw_name?: string | null;
+}
+
+export interface LogIngestError {
+  code: string;
+  message: string;
+  issues: LogIngestIssue[];
+}
+
+export interface LogDocumentTeam {
+  key: string;
+  source_position: number;
+  participants: string[];
 }
 
 export interface LogRetryRequest {
   encounter_id?: number | null;
   encounter_game_id?: number | null;
+  /** Explicit reparse of a done job; requires `expected_revision` and never re-attaches. */
+  reparse?: boolean;
+  expected_revision?: number;
+}
+
+/** `teams` maps every document team key to the `encounter.team` id seated in the game. */
+export interface LogBindRequest {
+  encounter_game_id: number;
+  teams: Record<string, number>;
+  /** 0 = the game has no observation, n = replace exactly revision n; required when it is occupied. */
+  expected_revision?: number;
+}
+
+/** Machine codes of a refused bind/reparse/retry (`ApiError.details[].code`). */
+export type LogOperationErrorCode =
+  | "expected_revision_required"
+  | "stale_revision"
+  | "stale_binding"
+  | "binding_mismatch"
+  | "identity_conflict"
+  | "invalid_team_map"
+  | "binding_target_not_found"
+  | "ingest_busy"
+  | "ingest_pending"
+  | "reparse_required"
+  | "job_not_done";
+
+/** `IngestJobRead` as the bind endpoint commits it. */
+export interface LogBindResponse {
+  id: number;
+  status: LogProcessingStatus;
+  error: LogIngestError | null;
+  binding: { encounter_game_id: number; match_id: number; revision: number } | null;
 }
 
 export interface LogHistoryResponse {

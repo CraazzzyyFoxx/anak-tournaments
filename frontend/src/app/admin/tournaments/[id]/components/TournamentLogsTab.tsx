@@ -17,25 +17,12 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
-
 import { columnMeta, createKebabColumn, DataTable } from "@/components/data-table";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { type Tone } from "@/components/kit/tone";
 import { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import SearchableImageSelect from "@/components/ui/searchable-image-select";
-import { encounterScopeLabel } from "@/components/admin/encounters/EncounterCells";
-import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -43,9 +30,16 @@ import { useInvalidation } from "@/hooks/useInvalidation";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import encounterService from "@/services/encounter.service";
-import { encounterQueryKeys } from "@/lib/encounters/query-keys";
+import { AttachLogDialog } from "./AttachLogDialog";
+import {
+  getLogFileName,
+  getRetryKind,
+  logOperationErrorCode,
+  retryRequestFor
+} from "./logs.helpers";
+import { getApiErrorMessage } from "@/lib/api/error";
 import type {
+  LogBindRequest,
   LogProcessingRecord,
   LogProcessingStats,
   LogProcessingStatus
@@ -96,10 +90,6 @@ interface TournamentLogsTabProps {
   canUploadLogs: boolean;
 }
 
-function getLogFileName(filename: string) {
-  return filename.split(/[\\/]/).at(-1) ?? filename;
-}
-
 function getRetryRefusal(record: LogProcessingRecord): "retryRawUnavailable" | "retryHistorical" | "retryUnbound" | null {
   if (!record.raw_available) return "retryRawUnavailable";
   if (record.source === "historical_reference") return "retryHistorical";
@@ -107,6 +97,11 @@ function getRetryRefusal(record: LogProcessingRecord): "retryRawUnavailable" | "
     return "retryUnbound";
   }
   return null;
+}
+
+/** Done rows reparse (current evidence only); unfinished ones retry; nothing is offered while a source is refused. */
+function isRetryable(record: LogProcessingRecord) {
+  return getRetryKind(record) != null && getRetryRefusal(record) == null;
 }
 
 function formatDuration(record: LogProcessingRecord) {
@@ -129,19 +124,30 @@ function formatLogTime(format: DateFormatter, value: string) {
   });
 }
 
-function getErrorSummary(errorMessage: string | null) {
-  if (!errorMessage) return null;
+/** A structured error names its code; historical text (code `historical`) keeps the legacy status parse. */
+function getErrorSummary(record: LogProcessingRecord) {
+  const structured = record.error && record.error.code !== "historical" ? record.error : null;
+  const errorMessage = record.error_message;
+  if (!structured && !errorMessage) return null;
 
-  const codeMatch = errorMessage.match(/['"]code['"]:\s*['"]([^'"]+)['"]/);
-  const statusMatch = errorMessage.match(/^(\d{3})/);
-  const code = codeMatch?.[1]?.replaceAll("_", " ");
+  const codeMatch = errorMessage?.match(/['"]code['"]:\s*['"]([^'"]+)['"]/);
+  const statusMatch = errorMessage?.match(/^(\d{3})/);
+  const code = (structured?.code ?? codeMatch?.[1])?.replaceAll("_", " ");
 
   if (code) {
     const formattedCode = code.charAt(0).toUpperCase() + code.slice(1);
     return statusMatch ? `${statusMatch[1]} · ${formattedCode}` : formattedCode;
   }
 
-  return errorMessage.replace(/^(\d{3}:\s*)?/, "").slice(0, 120);
+  return errorMessage!.replace(/^(\d{3}:\s*)?/, "").slice(0, 120);
+}
+
+/** The message plus every issue path the validator reported. */
+function getErrorDetail(record: LogProcessingRecord) {
+  const issues = record.error && record.error.code !== "historical" ? record.error.issues : [];
+  return [record.error_message, ...issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`)]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
@@ -160,120 +166,6 @@ function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
 /** Counts come from the server aggregate, so a chip shows its real size. */
 function getFilterCount(filter: LogFilter, stats: LogProcessingStats | undefined) {
   return stats ? stats[filter] : undefined;
-}
-
-/** Two encounters of one pair share a name, so the stage and round tell them apart. */
-function encounterOptionLabel(
-  encounter: Encounter,
-  formatRound: ReturnType<typeof useBracketRoundLabel>
-) {
-  return `${encounter.name} · ${encounterScopeLabel(encounter)} · ${formatRound(encounter.round, UNKNOWN_ROUND_SHAPE)}`;
-}
-
-function AttachLogDialog({
-  record,
-  encounters,
-  isPending,
-  onAttach,
-  onClose
-}: Readonly<{
-  record: LogProcessingRecord;
-  encounters: Encounter[];
-  isPending: boolean;
-  onAttach: (encounterId: number, encounterGameId: number) => void;
-  onClose: () => void;
-}>) {
-  const t = useTranslations("adminTournament.logs");
-  const formatRound = useBracketRoundLabel();
-  const [value, setValue] = useState(
-    record.attached_encounter_id != null ? String(record.attached_encounter_id) : undefined
-  );
-  const [gameId, setGameId] = useState(
-    record.attached_encounter_game_id != null ? String(record.attached_encounter_game_id) : undefined
-  );
-  const encounterId = value === undefined ? undefined : Number(value);
-  const gamesQuery = useQuery({
-    queryKey: encounterQueryKeys.detail(encounterId),
-    queryFn: () => encounterService.getEncounter(encounterId!),
-    enabled: encounterId !== undefined
-  });
-  const games = gamesQuery.data?.games.filter((game) => game.state !== "cancelled") ?? [];
-  const selectedGame = games.find((game) => String(game.id) === gameId);
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (open) return;
-        onClose();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t("attachTitle")}</DialogTitle>
-          <DialogDescription className="break-all">
-            {t("attachDescriptionWithFile", { filename: getLogFileName(record.filename) })}
-          </DialogDescription>
-        </DialogHeader>
-        <SearchableImageSelect
-          value={value}
-          onValueChange={(next) => {
-            setValue(next);
-            setGameId(undefined);
-          }}
-          disabled={isPending}
-          ariaLabel={t("pickEncounter")}
-          options={encounters.map((encounter) => ({
-            value: String(encounter.id),
-            label: encounterOptionLabel(encounter, formatRound)
-          }))}
-          placeholder={t("pickEncounter")}
-          searchPlaceholder={t("searchEncounter")}
-          triggerClassName="h-9"
-        />
-        <SearchableImageSelect
-          value={selectedGame ? String(selectedGame.id) : undefined}
-          onValueChange={setGameId}
-          options={games.map((game) => ({
-            value: String(game.id),
-            label: t("gameOption", {
-              position: game.position,
-              map: game.map?.name ?? t("unknownMap"),
-              id: game.id
-            })
-          }))}
-          placeholder={t("pickGame")}
-          ariaLabel={t("pickGame")}
-          searchPlaceholder={t("searchGame")}
-          disabled={encounterId === undefined || gamesQuery.isFetching || gamesQuery.isError || isPending}
-          triggerClassName="h-9"
-        />
-        {encounterId !== undefined && gamesQuery.isFetching ? (
-          <p role="status" className="text-sm text-muted-foreground">{t("loadingGames")}</p>
-        ) : gamesQuery.isError ? (
-          <div role="alert" className="space-y-2 text-sm text-danger">
-            <p>{t("gamesLoadFailed")}</p>
-            <Button variant="outline" size="sm" onClick={() => void gamesQuery.refetch()}>
-              {t("reloadGames")}
-            </Button>
-          </div>
-        ) : encounterId !== undefined && gamesQuery.isSuccess && games.length === 0 ? (
-          <p role="status" className="text-sm text-muted-foreground">{t("noGames")}</p>
-        ) : null}
-        <DialogFooter>
-          <Button
-            disabled={!selectedGame || gamesQuery.isFetching || gamesQuery.isError || isPending}
-            onClick={() => {
-              if (encounterId !== undefined && selectedGame) onAttach(encounterId, selectedGame.id);
-            }}
-          >
-            {isPending ? <Spinner /> : <Link2 aria-hidden />}
-            {t("attach")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export function TournamentLogsTab({
@@ -355,25 +247,38 @@ export function TournamentLogsTab({
     tournamentId
   });
 
+  const failureMessage = (reason: unknown) => {
+    const code = logOperationErrorCode(reason);
+    return code ? tx(`opError.${code}`) : getApiErrorMessage(reason);
+  };
+
   const retryMutation = useMutation({
-    mutationFn: async (recordIds: number[]) => {
+    // Each row is its own request: a done row reparses with the revision captured when the page was read, so
+    // a stale, busy or superseded row fails alone and is reported by name.
+    mutationFn: async (records: LogProcessingRecord[]) => {
       const results = await Promise.allSettled(
-        recordIds.map((recordId) => adminService.retryLogRecord(recordId))
+        records.map((record) => adminService.retryLogRecord(record.id, retryRequestFor(record)))
       );
-      return results.filter((result) => result.status === "rejected").length;
+      return results.flatMap((result, index) =>
+        result.status === "rejected" ? [{ record: records[index]!, reason: result.reason }] : []
+      );
     },
-    onSuccess: (failedCount, recordIds) => {
-      const queued = recordIds.length - failedCount;
-      if (failedCount > 0) {
-        notify.error(t("retryQueuedSummary", { queued, total: recordIds.length }), {
-          description: tx("retryQueued", { count: failedCount })
+    onSuccess: (failures, records) => {
+      const ok = records.length - failures.length;
+      if (failures.length > 0) {
+        notify.error(tx("retryPartial", { ok, total: records.length }), {
+          description: (
+            <ul className="list-disc pl-4">
+              {failures.map(({ record, reason }) => (
+                <li key={record.id}>{`${getLogFileName(record.filename)}: ${failureMessage(reason)}`}</li>
+              ))}
+            </ul>
+          )
         });
+      } else if (records.some((record) => getRetryKind(record) === "reparse")) {
+        notify.success(tx("retryProcessed", { count: ok }));
       } else {
-        notify.success(
-          queued === 1
-            ? t("retryQueuedSingle")
-            : t("retryQueuedPlural", { count: queued })
-        );
+        notify.success(ok === 1 ? t("retryQueuedSingle") : t("retryQueuedPlural", { count: ok }));
       }
       refreshAll();
     }
@@ -401,6 +306,29 @@ export function TournamentLogsTab({
       refreshAll();
     },
     onError: (error) => notify.apiError(error)
+  });
+
+  const bindMutation = useMutation({
+    mutationFn: ({ recordId, request }: { recordId: number; request: LogBindRequest }) =>
+      adminService.bindLogRecord(recordId, request),
+    onSuccess: (job) => {
+      if (job.status === "done") {
+        notify.success(tx("bound"));
+      } else {
+        notify.error(tx("boundNotDone", { status: job.status }), { description: job.error?.message });
+      }
+      setAttachTarget(null);
+      refreshAll();
+    },
+    onError: (error) => {
+      const code = logOperationErrorCode(error);
+      if (code == null) return notify.apiError(error);
+      notify.error(tx(`opError.${code}`), { description: getApiErrorMessage(error) });
+      // The operator's view is stale: re-read the list and the game's occupancy before another attempt.
+      if (code === "stale_revision" || code === "expected_revision_required" || code === "stale_binding") {
+        refreshAll();
+      }
+    }
   });
 
   const columns: ColumnDef<LogProcessingRecord>[] = [
@@ -460,6 +388,9 @@ export function TournamentLogsTab({
             <p className="text-xs text-muted-foreground">
               <RawLogStatus raw_status={record.raw_status} raw_available={record.raw_available} />
             </p>
+            {record.status === "awaiting_link" ? (
+              <p className="text-xs text-muted-foreground">{tx("awaitingLinkHint")}</p>
+            ) : null}
             {refusal ? (
               <>
                 <p id={`log-retry-refusal-${record.id}`} className="text-xs text-muted-foreground">
@@ -482,7 +413,7 @@ export function TournamentLogsTab({
       accessorFn: (record) => record.error_message ?? "",
       enableSorting: false,
       cell: ({ row }) => {
-        const errorSummary = getErrorSummary(row.original.error_message);
+        const errorSummary = getErrorSummary(row.original);
         if (!errorSummary) return null;
         return (
           <details className="group max-w-[28rem]">
@@ -500,7 +431,7 @@ export function TournamentLogsTab({
               tabIndex={0}
               className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/20 p-2 text-xs text-muted-foreground"
             >
-              {row.original.error_message}
+              {getErrorDetail(row.original)}
             </pre>
           </details>
         );
@@ -534,17 +465,20 @@ export function TournamentLogsTab({
     createKebabColumn<LogProcessingRecord>(
       (record) => [
         {
-          label: record.status === "failed" ? tx("retryLog") : tx("requeueLog"),
+          label: getRetryKind(record) === "reparse"
+            ? tx("reparseLog")
+            : record.status === "failed" ? tx("retryLog") : tx("requeueLog"),
           icon: RotateCcw,
-          hidden: record.status === "done" || record.status === "processing" || getRetryRefusal(record) != null,
+          hidden: !isRetryable(record),
           onSelect: () => {
-            if (getRetryRefusal(record) == null) retryMutation.mutate([record.id]);
+            if (isRetryable(record)) retryMutation.mutate([record]);
           }
         },
-        // A processed log already filed its match; only an unfinished one can
-        // be re-filed. The workspace-wide console holds no encounter list.
+        // An awaiting job that kept its document teams is bound with an explicit team map; any other
+        // unfinished one is only re-filed through a hint. A processed log already filed its match.
+        // The workspace-wide console holds no encounter list.
         {
-          label: t("attachTo"),
+          label: record.status === "awaiting_link" && record.teams.length > 0 ? tx("bindToGame") : t("attachTo"),
           icon: Link2,
           hidden: record.status === "done" || record.status === "processing" || encounters.length === 0 || getRetryRefusal(record) != null,
           onSelect: () => {
@@ -619,20 +553,17 @@ export function TournamentLogsTab({
             });
             return { results: response.items, total: response.total, page, per_page: pageSize };
           }}
-          enableRowSelection={(row) => row.original.status !== "done" && row.original.status !== "processing" && getRetryRefusal(row.original) == null}
+          enableRowSelection={(row) => isRetryable(row.original)}
           bulkActions={(selected, clearSelection) => (
             <Button
               variant="outline"
               size="sm"
               className="h-8"
-              disabled={retryMutation.isPending || !selected.some((record) => getRetryRefusal(record) == null)}
+              disabled={retryMutation.isPending || !selected.some(isRetryable)}
               onClick={() => {
-                const retryable = selected.filter((record) => getRetryRefusal(record) == null);
+                const retryable = selected.filter(isRetryable);
                 if (retryable.length > 0) {
-                  retryMutation.mutate(
-                    retryable.map((record) => record.id),
-                    { onSuccess: clearSelection }
-                  );
+                  retryMutation.mutate(retryable, { onSuccess: clearSelection });
                 }
               }}
             >
@@ -719,10 +650,13 @@ export function TournamentLogsTab({
           encounters={encounters.filter((encounter) =>
             attachTarget.tournament_id == null || encounter.tournament_id === attachTarget.tournament_id
           )}
-          isPending={attachMutation.isPending}
+          historyKey={historyKey}
+          workspaceId={workspaceId}
+          isPending={attachMutation.isPending || bindMutation.isPending}
           onAttach={(encounterId, encounterGameId) =>
             attachMutation.mutate({ recordId: attachTarget.id, encounterId, encounterGameId })
           }
+          onBind={(request) => bindMutation.mutate({ recordId: attachTarget.id, request })}
           onClose={() => setAttachTarget(null)}
         />
       ) : null}

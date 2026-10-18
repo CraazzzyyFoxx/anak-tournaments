@@ -92,6 +92,8 @@ import {
   UserMergeExecuteResponse,
   DiscordChannelRead,
   DiscordChannelInput,
+  LogBindRequest,
+  LogBindResponse,
   LogHistoryResponse,
   LogProcessingRecord,
   LogProcessingStats,
@@ -1525,6 +1527,19 @@ class AdminService {
   /** Omitted hints preserve the job's current binding; game IDs are never series positions. */
   async retryLogRecord(recordId: number, request: LogRetryRequest = {}): Promise<LogProcessingRecord> {
     const response = await apiFetch(`/api/v1/admin/logs/${recordId}/retry`, {
+      method: "POST",
+      body: request
+    });
+    return response.json();
+  }
+
+  /**
+   * Binds an awaiting_link job's stored document to one game with the operator's complete team map and
+   * publishes it in the same transaction. The client never sends the document; `expected_revision` is the
+   * operator's view of the target game (0 = empty) and is required when the game already has an observation.
+   */
+  async bindLogRecord(recordId: number, request: LogBindRequest): Promise<LogBindResponse> {
+    const response = await apiFetch(`/api/v1/admin/logs/${recordId}/bind`, {
       method: "POST",
       body: request
     });
