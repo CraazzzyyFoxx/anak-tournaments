@@ -29,12 +29,12 @@ const game = (code: string, collects: boolean, enabled = true): DisciplineDescri
 });
 const INSTALLED = [game("overwatch", true), game("lol", false), game("old", true, false)];
 
-const replace = vi.fn();
+const push = vi.fn();
 const saveChoice = vi.fn();
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(search),
   usePathname: () => "/admin/people/42",
-  useRouter: () => ({ replace })
+  useRouter: () => ({ push })
 }));
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
   useDisciplines: () => ({ data: INSTALLED, isLoading: false, isError: false })
@@ -103,12 +103,12 @@ describe("useNativeRankCollector", () => {
     }
   });
 
-  it("selecting a game saves the choice and writes it to ?discipline= without a history entry", () => {
+  it("selecting a game saves the choice and pushes it to ?discipline= as a history entry", () => {
     search = "tab=ranks&discipline=chess";
     run().select("overwatch");
 
     expect(saveChoice).toHaveBeenCalledWith("overwatch");
-    expect(replace).toHaveBeenCalledWith("/admin/people/42?tab=ranks&discipline=overwatch", { scroll: false });
+    expect(push).toHaveBeenCalledWith("/admin/people/42?tab=ranks&discipline=overwatch", { scroll: false });
   });
 
   it("lets the owning game outrank the URL and the preference", () => {

@@ -20,7 +20,7 @@ export interface NativeRankCollector {
   /** `null` until the installed games are known. Invalid/empty resolutions are surfaced, never replaced by a game. */
   resolved: ResolvedDiscipline | null;
   disciplines: DisciplineDescriptor[] | undefined;
-  /** The way out of an invalid selection: saves the choice and writes it to `?discipline=` (replace). */
+  /** The way out of an invalid selection: saves the choice and pushes it to `?discipline=` (a user selection, §2.4). */
   select: (value: string) => void;
   descriptor: DisciplineDescriptor | null;
   supported: boolean;
@@ -56,7 +56,7 @@ export function useNativeRankCollector(
     setBrowsingDiscipline(value);
     const next = new URLSearchParams(searchParams?.toString() ?? "");
     next.set(DISCIPLINE_PARAM, value);
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    router.push(`${pathname}?${next.toString()}`, { scroll: false });
   };
   return {
     resolved,
