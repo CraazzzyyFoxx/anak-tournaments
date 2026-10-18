@@ -56,7 +56,7 @@ export const tournamentQueryKeys = {
   /** `discipline` null/absent is every game; a concrete code narrows every aggregate and strip. */
   encountersOverview: (workspaceId?: number | "all" | null, discipline?: string | null) =>
     workspaceId == null
-      ? (["encounters", "overview"] as const)
+      ? (["encounters", "overview", discipline ?? "all"] as const)
       : (["encounters", "overview", workspaceId, discipline ?? "all"] as const),
   overallStatistics: (workspaceId?: number | "all" | null) =>
     workspaceId == null

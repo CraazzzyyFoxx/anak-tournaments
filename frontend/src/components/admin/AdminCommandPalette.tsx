@@ -18,6 +18,7 @@ import {
   adminRouteAccessOptions,
   type AdminNavGroup,
 } from "@/components/admin/admin-navigation";
+import { useBrowsingHrefResolver } from "@/hooks/useBrowsingHref";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -48,15 +49,16 @@ function ResultCountAnnouncer() {
 export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<AdminCommandPaletteProps>) {
   const t = useTranslations("adminShell");
   const router = useRouter();
+  const browsingHref = useBrowsingHrefResolver();
   const { canAccessAdminRoute } = usePermissions();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const handleSelect = useCallback(
     (href: string) => {
       onOpenChange(false);
-      router.push(href);
+      router.push(browsingHref(href));
     },
-    [router, onOpenChange],
+    [router, browsingHref, onOpenChange],
   );
 
   // A view is a route of its own, and one entry's views can carry different
