@@ -674,6 +674,147 @@ joblib.dump(PerformanceTrainingResult(role='tank', model=tank, metrics={}, featu
         "--output", str(tmp_path / "out_no_frames"), "--old-image", OLD_IMAGE,
     )  # fmt: skip
     assert done.returncode == 2 and "artifact 9005" in done.stderr and "differ from required" in done.stderr
+    # A poisoned verification frame blocks too, after the (legitimate) artifact itself is read in the old image.
+    poisoned = _object_array_pickle(str(tmp_path / "frame_executed"))
+    frame_path = workspace.root / "doctored" / "poisoned_frame.joblib"
+    frame_path.write_bytes(poisoned)
+    ref = {"storage_uri": _uri(frame_path), "sha256": tool._sha(poisoned), "length": len(poisoned)}
+    inventory = tmp_path / "poisoned_frame.json"
+    inventory.write_text(
+        json.dumps({"format": 1, "artifacts": [{**shift, "frames": {"frame": ref}}]}), encoding="utf-8"
+    )
+    done = run_old(
+        old_tree, "export", "--inventory", str(inventory), "--model-root", str(workspace.root),
+        "--output", str(tmp_path / "out_poisoned_frame"), "--old-image", OLD_IMAGE,
+    )  # fmt: skip
+    assert done.returncode == 2 and "frame 'frame'" in done.stderr and "non-allowlisted global" in done.stderr
+    assert not (tmp_path / "frame_executed").exists() and not (tmp_path / "out_poisoned_frame").exists()
+
+
+class _Mkdir:
+    """Executable reduction: unpickling it creates ``path`` (a side effect the tests can observe)."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def __reduce__(self) -> tuple:
+        return (os.mkdir, (self.path,))
+
+
+def _dotted_traversal_pickle(path: str) -> bytes:
+    """Protocol 4: STACK_GLOBAL('joblib.numpy_pickle', 'os.mkdir') applied to ``path`` by REDUCE."""
+
+    def text(value: str) -> bytes:
+        raw = value.encode()
+        assert len(raw) < 256
+        return b"\x8c" + bytes([len(raw)]) + raw
+
+    return b"\x80\x04" + text("joblib.numpy_pickle") + text("os.mkdir") + b"\x93" + text(path) + b"\x85R."
+
+
+def _object_array_pickle(path: str) -> bytes:
+    buffer = io.BytesIO()
+    joblib.dump({"state": np.array([_Mkdir(path)], dtype=object)}, buffer)  # nested pickle inside the ndarray payload
+    return buffer.getvalue()
+
+
+def test_the_poisoned_payloads_really_execute_under_an_unrestricted_loader(tmp_path: Path) -> None:
+    """Calibration for the regressions below: both payloads create their marker when loaded the ordinary way."""
+    import pickle
+
+    dotted, nested = tmp_path / "dotted", tmp_path / "nested"
+    pickle.loads(_dotted_traversal_pickle(str(dotted)))
+    joblib.load(io.BytesIO(_object_array_pickle(str(nested))))
+    assert dotted.is_dir() and nested.is_dir()
+
+
+@pytest.mark.parametrize(
+    "payload", [_dotted_traversal_pickle, _object_array_pickle], ids=["dotted-name", "object-array"]
+)
+def test_restricted_loader_rejects_before_any_reduce(tmp_path: Path, payload: typing.Callable[[str], bytes]) -> None:
+    marker = tmp_path / "executed"
+    data = payload(str(marker))
+    with pytest.raises(tool.ConversionError, match="non-allowlisted global"):
+        tool._load(data, ("src.services.ml.models.shift_v2.ShiftModelV2",))  # even with an allowed application global
+    with pytest.raises(tool.ConversionError, match="frame 'frame': .*non-allowlisted global"):
+        tool._load_plain(data, "frame 'frame'")
+    assert not marker.exists()
+
+
+def test_package_prefix_is_not_an_allowlist() -> None:
+    for module, name in (
+        ("numpy", "load"),
+        ("pandas", "read_pickle"),
+        ("sklearn.utils", "os.system"),
+        ("joblib", "load"),
+    ):
+        with pytest.raises(tool.ConversionError, match="non-allowlisted global"):
+            tool._load(
+                b"\x80\x04" + b"".join(b"\x8c" + bytes([len(v)]) + v.encode() for v in (module, name)) + b"\x93.", ()
+            )
+
+
+def test_object_array_payload_is_restricted_for_artifacts_and_bundles(
+    workspace: Workspace, exported: Path, tmp_path: Path
+) -> None:
+    marker = tmp_path / "executed"
+    poisoned = _object_array_pickle(str(marker))
+    # Artifact surface (checked before any legacy import, so it runs under the new runtime).
+    path = workspace.model_root / "object_array.joblib"
+    path.write_bytes(poisoned)
+    entry = {
+        **next(e for e in workspace.inventory["artifacts"] if e["id"] == 9005),
+        "id": 9501,
+        "storage_uri": _uri(path),
+        "sha256": tool._sha(poisoned),
+        "length": len(poisoned),
+    }
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps({"format": 1, "artifacts": [entry]}), encoding="utf-8")
+    with pytest.raises(tool.ConversionError, match=r"artifact 9501 .*non-allowlisted global"):
+        tool.export(inventory, workspace.model_root, tmp_path / "bundle", OLD_IMAGE)
+    # State-bundle surface: a bundle whose SHA256 matches the receipt but carries the poisoned payload.
+    bundle = _copy_bundle(exported, tmp_path / "poisoned_bundle")
+    receipt = _receipt(bundle)
+    receipt["artifacts"][0]["bundle"].update(sha256=tool._sha(poisoned), length=len(poisoned))
+    (bundle / "receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
+    (bundle / "artifacts/9001.state.joblib").write_bytes(poisoned)
+    with pytest.raises(tool.ConversionError, match=r"artifact 9001 state bundle: .*non-allowlisted global"):
+        tool.stage(bundle, tmp_path / "new", NEW_IMAGE)
+    assert not marker.exists()
+
+
+def test_export_preflights_the_whole_inventory_before_deserializing_anything(
+    workspace: Workspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def never(*_a: typing.Any, **_k: typing.Any) -> typing.NoReturn:
+        raise AssertionError("an artifact was deserialized before the whole inventory was validated")
+
+    monkeypatch.setattr(tool, "_load", never)
+    monkeypatch.setattr(tool, "_load_plain", never)
+    by_id = {e["id"]: e for e in workspace.inventory["artifacts"]}
+    first, second = by_id[9005], by_id[9006]
+    outside = tmp_path / "outside.joblib"
+    shutil.copyfile(workspace.model_root / "shift_tuned.joblib", outside)
+    cases = {
+        "missing": ({"storage_uri": _uri(workspace.model_root / "gone.joblib")}, "file is missing"),
+        "outside": ({"storage_uri": _uri(outside)}, "outside the approved model root"),
+        "artifact_sha": ({"sha256": "0" * 64}, "differ from the inventory"),
+        "frame_sha": (
+            {"frames": {"frame": {**second["frames"]["frame"], "sha256": "0" * 64}}},
+            r"frame 'frame'.*differ from the inventory",
+        ),
+        "frame_missing": (
+            {"frames": {"frame": {**second["frames"]["frame"], "storage_uri": _uri(tmp_path / "nope.joblib")}}},
+            r"frame 'frame'.*file is missing",
+        ),
+    }
+    for name, (changes, message) in cases.items():
+        inventory = tmp_path / f"{name}.json"
+        inventory.write_text(json.dumps({"format": 1, "artifacts": [first, {**second, **changes}]}), encoding="utf-8")
+        with pytest.raises(tool.ConversionError, match=message):
+            tool.export(inventory, workspace.model_root, tmp_path / f"out_{name}", OLD_IMAGE)
+        assert not (tmp_path / f"out_{name}").exists(), name
 
 
 # ---------------------------------------------------------------------------

@@ -86,26 +86,36 @@ CLASSES: dict[str, dict[str, typing.Any]] = {
 }
 FRAME_NAMES = ("frame", "main", "coarse", "baseline", "matrix")
 LIBRARIES = ("numpy", "pandas", "sklearn", "scipy", "lightgbm", "xgboost", "joblib")
-_PLAIN_ROOTS = frozenset(
-    {"numpy", "pandas", "sklearn", "scipy", "lightgbm", "xgboost", "joblib", "collections", "copyreg", "_codecs"}
-)
-_PLAIN_BUILTINS = frozenset(
+# Audited exact (module, name) allowlist: what the supported estimator graphs, DataFrames/ndarrays (incl. the
+# object-dtype payloads joblib pickles) and verification frames reference. Nothing is allowed by package prefix; a
+# real artifact that needs another global blocks until a reviewer adds it here.
+_ALLOWED_GLOBALS = frozenset(
     {
-        "set",
-        "frozenset",
-        "dict",
-        "list",
-        "tuple",
-        "slice",
-        "complex",
-        "bytearray",
-        "range",
-        "object",
-        "int",
-        "float",
-        "str",
-        "bytes",
-        "bool",
+        ("builtins", "slice"),
+        ("collections", "OrderedDict"),
+        ("collections", "defaultdict"),
+        ("joblib.numpy_pickle", "NumpyArrayWrapper"),
+        ("lightgbm.basic", "Booster"),
+        ("lightgbm.sklearn", "LGBMRegressor"),
+        ("numpy", "dtype"),
+        ("numpy", "ndarray"),
+        ("numpy._core.multiarray", "_reconstruct"),
+        ("numpy._core.multiarray", "scalar"),
+        ("pandas._libs.internals", "_unpickle_block"),
+        ("pandas.core.frame", "DataFrame"),
+        ("pandas.core.indexes.base", "Index"),
+        ("pandas.core.indexes.base", "_new_Index"),
+        ("pandas.core.indexes.range", "RangeIndex"),
+        ("pandas.core.internals.managers", "BlockManager"),
+        ("sklearn.calibration", "CalibratedClassifierCV"),
+        ("sklearn.calibration", "_CalibratedClassifier"),
+        ("sklearn.impute._base", "SimpleImputer"),
+        ("sklearn.isotonic", "IsotonicRegression"),
+        ("sklearn.linear_model._logistic", "LogisticRegression"),
+        ("sklearn.pipeline", "Pipeline"),
+        ("sklearn.preprocessing._data", "StandardScaler"),
+        ("xgboost.core", "Booster"),
+        ("xgboost.sklearn", "XGBClassifier"),
     }
 )
 _REGISTRY_FIELDS = (
@@ -220,31 +230,50 @@ def _libraries() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _is_plain_global(module: str, name: str) -> bool:
-    if module == "builtins":
-        return name in _PLAIN_BUILTINS
-    return module.split(".", 1)[0] in _PLAIN_ROOTS
-
-
 def _load(data: bytes, allowed: typing.Collection[str], seen: set[str] | None = None) -> typing.Any:
-    """``joblib.load`` of verified bytes where only library globals and ``allowed`` application globals resolve."""
+    """``joblib.load`` of verified bytes where only the exact (module, name) globals in ``_ALLOWED_GLOBALS`` plus the
+    artifact's own ``allowed`` application globals resolve.
+
+    The same resolver guards every nested pickle: joblib reads object-dtype ndarray payloads with a plain
+    ``pickle.load``, so that module reference is replaced by a proxy whose ``load`` uses the restricted unpickler.
+    Dotted names are rejected outright (``find_class`` would otherwise walk attributes such as ``os.system``).
+    """
+    import pickle
     from unittest import mock
 
     import joblib
+    from joblib import numpy_pickle
     from joblib.numpy_pickle import NumpyUnpickler
 
-    original = NumpyUnpickler.find_class
+    exact = {tuple(full.rsplit(".", 1)) for full in allowed}
 
-    def find_class(self: typing.Any, module: str, name: str) -> typing.Any:
-        full = f"{module}.{name}"
-        if full in allowed:
-            if seen is not None:
-                seen.add(full)
-        elif not _is_plain_global(module, name):
-            raise ConversionError(f"pickle references a non-allowlisted global: {full}")
-        return original(self, module, name)
+    def check(module: str, name: str) -> None:
+        if "." in name or ((module, name) not in exact and (module, name) not in _ALLOWED_GLOBALS):
+            raise ConversionError(f"pickle references a non-allowlisted global: {module}.{name}")
+        if seen is not None and (module, name) in exact:
+            seen.add(f"{module}.{name}")
 
-    with mock.patch.object(NumpyUnpickler, "find_class", find_class):
+    def numpy_find_class(self: typing.Any, module: str, name: str) -> typing.Any:
+        check(module, name)
+        return pickle._Unpickler.find_class(self, module, name)  # joblib's pure-Python base
+
+    class Restricted(pickle.Unpickler):
+        def find_class(self, module: str, name: str) -> typing.Any:
+            check(module, name)
+            return super().find_class(module, name)
+
+    class RestrictedPickle:
+        def __getattr__(self, attribute: str) -> typing.Any:
+            return getattr(pickle, attribute)
+
+        @staticmethod
+        def load(file: typing.Any, *args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+            return Restricted(file, *args, **kwargs).load()
+
+    with (
+        mock.patch.object(NumpyUnpickler, "find_class", numpy_find_class),
+        mock.patch.object(numpy_pickle, "pickle", RestrictedPickle()),
+    ):
         return joblib.load(io.BytesIO(data))
 
 
@@ -477,10 +506,21 @@ def _validate_inventory(raw: dict[str, typing.Any]) -> list[dict[str, typing.Any
     return sorted(entries, key=lambda e: e["id"])
 
 
-def _export_one(entry: dict[str, typing.Any], root: Path) -> tuple[dict[str, typing.Any], dict[str, bytes]]:
+def _preflight(entry: dict[str, typing.Any], root: Path) -> tuple[bytes, dict[str, bytes]]:
+    label = f"artifact {entry['id']} ({entry['storage_uri']})"
+    data = _read_verified(entry["storage_uri"], root, entry["sha256"], entry["length"], label)
+    frames = {
+        name: _read_verified(ref["storage_uri"], root, ref["sha256"], ref["length"], f"{label} frame {name!r}")
+        for name, ref in sorted(entry["frames"].items())
+    }
+    return data, frames
+
+
+def _export_one(
+    entry: dict[str, typing.Any], data: bytes, frame_bytes: dict[str, bytes]
+) -> tuple[dict[str, typing.Any], dict[str, bytes]]:
     label = f"artifact {entry['id']} ({entry['storage_uri']})"
     spec = CLASSES[entry["expected_class"]]
-    data = _read_verified(entry["storage_uri"], root, entry["sha256"], entry["length"], label)
     seen: set[str] = set()
     try:
         obj = _load(data, (entry["expected_class"], *spec["globals"]), seen)
@@ -495,7 +535,7 @@ def _export_one(entry: dict[str, typing.Any], root: Path) -> tuple[dict[str, typ
     files: dict[str, bytes] = {}
     frame_receipt: dict[str, typing.Any] = {}
     for name, ref in sorted(entry["frames"].items()):
-        raw = _read_verified(ref["storage_uri"], root, ref["sha256"], ref["length"], f"{label} frame {name!r}")
+        raw = frame_bytes[name]
         frames[name] = _load_plain(raw, f"{label} frame {name!r}")
         relative = f"frames/{ref['sha256']}.joblib"
         files[relative] = raw
@@ -547,8 +587,11 @@ def export(inventory: Path, model_root: Path, output: Path, old_image: str) -> d
         raise ConversionError(f"inventory: invalid JSON: {exc}") from exc
     entries = _validate_inventory(raw if isinstance(raw, dict) else {})
     root = model_root.resolve(strict=True)
-    # The whole batch is read, verified and converted in memory before the first output byte is written.
-    converted = [_export_one(entry, root) for entry in entries]
+    # Pass 1: every artifact and frame path, root, length and SHA256 is proven and its bytes retained BEFORE anything is
+    # deserialized, so a bad later entry can never follow the execution of an earlier pickle.
+    preflight = [_preflight(entry, root) for entry in entries]
+    # Pass 2: the whole batch is converted in memory before the first output byte is written.
+    converted = [_export_one(entry, *loaded) for entry, loaded in zip(entries, preflight, strict=True)]
     artifacts = [artifact for artifact, _ in converted]
     receipt = {
         "format": FORMAT,
