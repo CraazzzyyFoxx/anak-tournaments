@@ -18,7 +18,7 @@ from src import models
 from src.core.analytics_exports import tournament_module
 
 from ..features.standings_features import build_standings_training_frame
-from ..models.base import ARTIFACT_UNAVAILABLE, load_artifact
+from ..models.base import load_artifact_or_none
 from ..training.registry import registry_service
 
 logger = logging.getLogger(__name__)
@@ -93,9 +93,8 @@ async def _standings_win_probability(
     )
     if artifact is None:
         return None
-    try:
-        model: StandingsModel = load_artifact(artifact.storage_uri)
-    except ARTIFACT_UNAVAILABLE:
+    model: StandingsModel | None = load_artifact_or_none(artifact.storage_uri)
+    if model is None:
         logger.warning("Missing standings v2 artifact at %s; predictability stays neutral", artifact.storage_uri)
         return None
     return pd.Series(model.predict_proba(encounters), index=encounters.index, name="p_home_wins")

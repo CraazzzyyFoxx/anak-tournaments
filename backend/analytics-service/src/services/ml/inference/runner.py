@@ -23,7 +23,7 @@ from src.core.workspace import get_division_grid, get_tournament_workspace_id
 from ..features.aggregations import build_match_features_with_strength
 from ..features.shift_features import build_shift_feature_frame
 from ..features.standings_features import build_standings_forecast_frame
-from ..models.base import ARTIFACT_UNAVAILABLE, load_artifact
+from ..models.base import load_artifact_or_none
 from ..training.registry import registry_service
 from .player_anomaly_runner import run_player_anomalies_for_tournament
 
@@ -131,10 +131,11 @@ async def run_performance_for_tournament(
         code = role_codes.get(art.role_id) if art.role_id is not None else None
         if code is None:
             continue
-        try:
-            models_by_role[code] = load_artifact(art.storage_uri)
-        except ARTIFACT_UNAVAILABLE:
+        loaded = load_artifact_or_none(art.storage_uri)
+        if loaded is None:
             logger.warning("Missing artifact file for role=%s (uri=%s)", code, art.storage_uri)
+        else:
+            models_by_role[code] = loaded
 
     if not models_by_role:
         return 0
@@ -246,9 +247,8 @@ async def run_shift_for_tournament(
         logger.warning("No active Shift v2 artifact; run training first")
         return 0
 
-    try:
-        model: ShiftModel = load_artifact(artifact.storage_uri)
-    except ARTIFACT_UNAVAILABLE:
+    model: ShiftModel | None = load_artifact_or_none(artifact.storage_uri)
+    if model is None:
         logger.warning("Missing shift v2 artifact file at %s", artifact.storage_uri)
         return 0
 
@@ -353,9 +353,8 @@ async def run_standings_for_tournament(
     if artifact is None:
         logger.warning("No active Standings v2 artifact; run training first")
         return 0
-    try:
-        model: StandingsModel = load_artifact(artifact.storage_uri)
-    except ARTIFACT_UNAVAILABLE:
+    model: StandingsModel | None = load_artifact_or_none(artifact.storage_uri)
+    if model is None:
         logger.warning("Missing standings v2 artifact at %s", artifact.storage_uri)
         return 0
 

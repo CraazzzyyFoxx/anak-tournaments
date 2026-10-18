@@ -15,10 +15,11 @@ Deploy stats, app, gateway and frontend together: there is no old-wire compatibi
   a missing version and `hero_id` are explicit validation errors (a named message in the admin UI, no request sent for a
   v1 file); there is no alias, silent discard or auto-converter. A batch is validated whole before the first rule or image
   write; a missing, foreign or wrong-kind `entity_id` rejects the batch with the slug and the problem in the message.
-  `min_tournament_id` names a tournament of the target workspace and the rule's game: a file import (no source workspace
-  or the same workspace) rejects an unknown one; a library import from another workspace cannot translate it, so it drops
-  the cutoff and reports a per-rule warning in the import result. Set the cutoff in the target workspace afterwards:
-  until then the copied rule evaluates from the first tournament.
+  `min_tournament_id` names a tournament of the target workspace and the rule's game. An import whose resolved source
+  workspace differs from the target (a library import, or a file naming another source workspace) cannot translate it:
+  the cutoff is dropped with a per-rule warning in the import result, a new rule starts without one and an existing rule
+  keeps its own. An import with no source workspace or the same one validates the cutoff and rejects an unknown id. Set
+  the cutoff in the target workspace afterwards: until then a copied rule evaluates from the first tournament.
 * **Discipline on every achievement API.** Create, seed/reset, condition metadata (`condition-types`), validate, evaluate,
   calculate, export, library list/import/workspaces and the overrides list name the discipline (body or `?discipline=`);
   a request without it is a 422. An existing rule's discipline is immutable (the update wire has no `discipline`), a slug
@@ -65,8 +66,10 @@ artifact (active and historical) must be converted in a maintenance window with
    the receipt) → review `receipt.json` → `apply` (one transaction, rows locked in id order, **only** `storage_uri`
    updated, current old URI required).
    `apply` also blocks, naming the ids, when a performance/shift/standings registry row outside the receipt still
-   points at a non-converted URI (an incomplete inventory), and a missing or unloadable artifact makes the runners log and
-   fall back to their neutral result.
+   points at a non-converted URI (an incomplete inventory), and the runners fall back to their neutral
+   result for a missing file (warning) or an unconverted/damaged pickle (`ModuleNotFoundError` naming
+   `src.services.ml.models`, or an unpickling error: logged at ERROR with the traceback). Any other import failure, such
+   as an estimator library missing from the image, is not swallowed.
 4. **Exact allowlist.** The unpickler resolves only an audited exact `(module, name)` set plus the artifact's own legacy
    classes; dotted names and any other global are rejected before `REDUCE`, and nested pickles (object-dtype ndarray
    payloads included) get the same exact-global checks. An unlisted library global blocks the release until reviewed

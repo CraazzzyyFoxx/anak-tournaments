@@ -35,7 +35,7 @@ from src.services.ml.inference.backfill import backfill_range
 from src.services.ml.inference.match_quality_runner import _match_scores, run_match_quality_for_tournament
 from src.services.ml.inference.player_anomaly_runner import run_player_anomalies_for_tournament
 from src.services.ml.inference.runner import run_for_tournament, run_performance_for_tournament
-from src.services.ml.models.base import artifact_path, load_artifact, save_artifact
+from src.services.ml.models.base import artifact_path, load_artifact, load_artifact_or_none, save_artifact
 from src.services.ml.training.orchestrator import train_all_models
 from src.services.ml.training.registry import registry_service
 from src.services.ml.training.splits import tournament_ids_up_to
@@ -287,6 +287,27 @@ def test_match_quality_runs_on_the_real_declared_standings_artifact(stats_parity
     asyncio.run(check())
 
 
+def test_load_artifact_or_none_distinguishes_unconverted_artifacts_from_a_broken_environment(tmp_path, caplog) -> None:
+    gone = tmp_path / "gone.joblib"
+    stale = tmp_path / "stale.joblib"
+    stale.write_bytes(b"csrc.services.ml.models.performance_v2\nPerformanceModelV2\n)\x81.")
+    no_library = (
+        tmp_path / "no_library.joblib"
+    )  # an estimator package missing from the image is NOT an artifact problem
+    no_library.write_bytes(b"cnot_an_installed_estimator_lib\nBooster\n)\x81.")
+    damaged = tmp_path / "damaged.joblib"
+    damaged.write_bytes(b"not a pickle at all")
+
+    assert load_artifact_or_none(f"file://{gone.as_posix()}") is None  # missing file: quiet neutral fallback
+    assert not caplog.records
+    with caplog.at_level("ERROR"):
+        assert load_artifact_or_none(f"file://{stale.as_posix()}") is None
+        assert load_artifact_or_none(f"file://{damaged.as_posix()}") is None
+    assert [r.levelname for r in caplog.records] == ["ERROR", "ERROR"] and all(r.exc_info for r in caplog.records)
+    with pytest.raises(ModuleNotFoundError, match="not_an_installed_estimator_lib"):
+        load_artifact_or_none(f"file://{no_library.as_posix()}")
+
+
 def test_runners_fall_back_when_an_artifact_names_a_class_path_that_no_longer_exists(
     stats_parity_database, tmp_path
 ) -> None:
@@ -324,6 +345,27 @@ def test_runners_fall_back_when_an_artifact_names_a_class_path_that_no_longer_ex
             )
             assert await run_match_quality_for_tournament(session, tid, workspace_id=workspace) == len(neutral) > 0
             assert await run_performance_for_tournament(session, tid, workspace_id=workspace, include_shap=False) == 0
+
+            # A missing estimator library is not an unconverted artifact: the pass fails loudly instead of going neutral.
+            library = tmp_path / "no_library.joblib"
+            library.write_bytes(b"cnot_an_installed_estimator_lib\nBooster\n)\x81.")
+            await registry_service.register_artifact(
+                session,
+                discipline=OW,
+                algorithm_id=(
+                    await registry_service.ensure_algorithm(session, exports.MODELS["standings"].algorithm_name)
+                ).id,
+                model_kind="standings",
+                role_id=None,
+                version="9.9.9",
+                storage_uri=f"file://{library.as_posix()}",
+                feature_version="test",
+                training_cutoff_tournament_id=None,
+                metrics=None,
+                feature_importance=None,
+            )
+            with pytest.raises(ModuleNotFoundError, match="not_an_installed_estimator_lib"):
+                await run_match_quality_for_tournament(session, tid, workspace_id=workspace)
 
     asyncio.run(check())
 

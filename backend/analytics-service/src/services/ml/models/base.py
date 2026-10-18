@@ -10,6 +10,7 @@ Models are persisted as ``<algorithm_id>/<version>/<file>.joblib`` under the
 
 from __future__ import annotations
 
+import logging
 import os
 import pickle
 import tempfile
@@ -24,12 +25,13 @@ __all__ = (
     "artifact_path",
     "save_artifact",
     "load_artifact",
-    "ARTIFACT_UNAVAILABLE",
+    "load_artifact_or_none",
 )
 
-# A registry row whose file is gone or whose pickle still names a pre-conversion class path (module moved) is
-# unusable; runners log it and fall back to their neutral result instead of failing the pass.
-ARTIFACT_UNAVAILABLE = (FileNotFoundError, ModuleNotFoundError, pickle.UnpicklingError)
+logger = logging.getLogger(__name__)
+
+#: The pre-P6 home of the concrete model classes: a pickle naming it was never converted (``scripts/convert_discipline_artifacts.py``).
+_OLD_MODEL_MODULES = "src.services.ml.models"
 
 
 def artifact_path(algorithm_id: int, version: str, filename: str, *, root: str | None = None) -> Path:
@@ -67,3 +69,23 @@ def load_artifact(storage_uri: str) -> typing.Any:
         return joblib.load(storage_uri.removeprefix("file://"))
     # Future: s3://, gs:// — implement when the storage backend changes.
     raise NotImplementedError(f"Unsupported storage scheme: {storage_uri}")
+
+
+def load_artifact_or_none(storage_uri: str) -> typing.Any | None:
+    """:func:`load_artifact`, or ``None`` when the artifact is unusable and the caller has a neutral fallback.
+
+    Unusable: the file is missing, the pickle is damaged, or it names a class path of the pre-conversion layout
+    (``ModuleNotFoundError`` for ``src.services.ml.models...``: logged at ERROR, the registry row was not converted).
+    Any other failure - notably a missing estimator library - is not an artifact problem and propagates.
+    """
+    try:
+        return load_artifact(storage_uri)
+    except FileNotFoundError:
+        return None
+    except (ModuleNotFoundError, pickle.UnpicklingError) as exc:
+        if isinstance(exc, ModuleNotFoundError) and not (exc.name or "").startswith(_OLD_MODEL_MODULES):
+            raise
+        logger.error(
+            "Artifact %s is unusable (unconverted or damaged); using the neutral fallback", storage_uri, exc_info=True
+        )
+        return None
