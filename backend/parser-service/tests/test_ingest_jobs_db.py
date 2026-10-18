@@ -493,3 +493,86 @@ def test_reaper_requeues_a_stalled_canonical_job_for_selected_disciplines_only(i
         assert again == [] and len(await requests(env, job_id)) == 2
 
     run(ingest_database, scenario)
+
+
+def test_failed_job_keeps_validated_hints_and_stays_in_scope(ingest_database):
+    async def scenario(env):
+        hint = {
+            "tournament_id": env.ids["A"]["tournament"],
+            "encounter_id": env.ids["A"]["encounter"],
+            "encounter_game_id": env.ids["A"]["game"],
+        }
+        with pytest.raises(jobs.IngestRejected) as caught:
+            await submit(env, make_doc("hinted", map="nowhere", hint=hint))
+        stored = await row(env, caught.value.details["ingest_job_id"])
+        assert stored.status == FAILED
+        assert (stored.hint_tournament_id, stored.hint_encounter_id, stored.hint_encounter_game_id) == (
+            hint["tournament_id"],
+            hint["encounter_id"],
+            hint["encounter_game_id"],
+        )
+        # An unresolved hint next to vocabulary misses is never persisted: the failed job carries NULL hints.
+        with pytest.raises(jobs.IngestRejected) as caught:
+            await submit(env, make_doc("badhint", map="nowhere", hint={"tournament_id": env.ids["B"]["tournament"]}))
+        assert caught.value.code == "unknown_code"
+        unsafe = await row(env, caught.value.details["ingest_job_id"])
+        assert (unsafe.hint_tournament_id, unsafe.hint_encounter_id, unsafe.hint_encounter_game_id) == (
+            None,
+            None,
+            None,
+        )
+
+    run(ingest_database, scenario)
+
+
+def test_canonical_submission_never_reuses_a_raw_upload_job_with_the_same_bytes(ingest_database):
+    async def scenario(env):
+        raw = body(make_doc(None, source={"kind": "manual"}))
+        sha = hashlib.sha256(raw).hexdigest()
+        async with env.sf() as session:
+            existing, created = await jobs._jobs.create_or_get(
+                session,
+                workspace_id=env.ws["A"],
+                discipline="overwatch",
+                source_kind="manual",
+                external_id=None,
+                content_hash=sha,
+                filename="x.log",
+                raw_ref=f"logs/{env.ids['A']['tournament']}/{sha}",
+                document_ref=None,
+                uploader_user_id=None,
+                api_key_id=None,
+                hint_tournament_id=None,
+                hint_encounter_id=None,
+                hint_encounter_game_id=None,
+            )
+            await session.commit()
+        assert created
+        before = await counts(env)
+        with pytest.raises(BaseAPIException) as caught:
+            await submit(env, raw)
+        assert (caught.value.status_code, caught.value.detail) == (409, "stats_upload_scope_conflict")
+        stored = await row(env, existing.id)
+        assert stored.document_ref is None and stored.raw_ref.startswith("logs/")
+        assert {k: v for k, v in (await counts(env)).items() if k != "objects"} == {
+            k: v for k, v in before.items() if k != "objects"
+        }
+
+    run(ingest_database, scenario)
+
+
+def test_object_locks_are_held_before_any_object_is_written(ingest_database):
+    async def scenario(env):
+        doc = make_doc("locked")
+        document_ref, _ = jobs.envelope_for(env.ws["A"], MatchDoc.model_validate(doc), "canonical")
+        async with env.sf() as retention_session:
+            # The retention sweep holds the envelope's object lock while it decides whether to delete it.
+            await jobs._lock_object(retention_session, document_ref)
+            task = asyncio.create_task(submit(env, doc))
+            await asyncio.sleep(1.0)
+            assert not task.done() and env.s3.objects == {}  # nothing was PUT while the lock is held
+            await retention_session.commit()
+        job = await asyncio.wait_for(task, 30)
+        assert job.status == PENDING and document_ref in env.s3.objects
+
+    run(ingest_database, scenario)

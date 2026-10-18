@@ -140,12 +140,17 @@ def raw_ref_for(workspace_id: int, sha256: str) -> str:
     return f"stats/raw/{workspace_id}/{sha256}"
 
 
-async def store_document(s3: S3Client, *, workspace_id: int, doc: MatchDoc, producer: Producer) -> str:
-    """Write the two-field server envelope under its own hash; the envelope hash is addressing, not job identity."""
+def envelope_for(workspace_id: int, doc: MatchDoc, producer: Producer) -> tuple[str, bytes]:
+    """The envelope's content-addressed key and bytes; the key is known before anything is written."""
     if producer not in _PRODUCERS:
         raise ValueError(f"unknown producer {producer!r}")
     body = _canonical_json({"document": doc.model_dump(mode="json"), "producer": producer})
-    ref = f"stats/documents/{workspace_id}/{hashlib.sha256(body).hexdigest()}.json"
+    return f"stats/documents/{workspace_id}/{hashlib.sha256(body).hexdigest()}.json", body
+
+
+async def store_document(s3: S3Client, *, workspace_id: int, doc: MatchDoc, producer: Producer) -> str:
+    """Write the two-field server envelope under its own hash; the envelope hash is addressing, not job identity."""
+    ref, body = envelope_for(workspace_id, doc, producer)
     try:
         stored = await s3.put_object(ref, body)
     except Exception as exc:
@@ -335,10 +340,14 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
 
     uploader_id = await _uploader_id(session, user)
     raw_ref = raw_ref_for(workspace_id, sha256)
-    hint = doc.hint if failure is None else None
+    # Hints survive a vocabulary rejection when each was validated; any unresolved/disagreeing hint voids them all.
+    hint = doc.hint if failure is None or not any(i.code == "hint_unresolved" for i in failure.issues) else None
     try:
-        # Raw object lock first, then the document's: the retention sweep takes them in the same order.
+        # Both object locks are taken before either PUT and held through commit, raw first, then the document:
+        # the retention sweep takes them in the same order, so it cannot delete an object a new job will reference.
+        document_ref, _ = envelope_for(workspace_id, doc, "canonical")
         await _lock_object(session, raw_ref)
+        await _lock_object(session, document_ref)
         try:
             if not await s3.put_object(raw_ref, raw):
                 raise _unavailable("Raw document storage is unavailable")
@@ -346,8 +355,7 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
             raise
         except Exception as exc:
             raise _unavailable("Raw document storage is unavailable") from exc
-        document_ref = await store_document(s3, workspace_id=workspace_id, doc=doc, producer="canonical")
-        await _lock_object(session, document_ref)
+        await store_document(s3, workspace_id=workspace_id, doc=doc, producer="canonical")
         job, created = await _jobs.create_or_get(
             session,
             workspace_id=workspace_id,

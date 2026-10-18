@@ -25,6 +25,8 @@ __all__ = (
 #: Source kinds of the admin/Discord/bot raw-log channels. They share one decoder, so identical bytes through any of
 #: them are the same job; a canonical document's ``source.kind`` is provenance and never joins this set.
 UPLOAD_SOURCE_KINDS = frozenset({"upload", "discord", "manual"})
+#: Original bytes of a canonical document live under this prefix; raw uploads use ``logs/`` (or imported keys).
+CANONICAL_RAW_PREFIX = "stats/raw/"
 
 
 async def _project_vocabulary(session: AsyncSession, spec: DisciplineSpec, *, kind: str) -> None:
@@ -799,9 +801,15 @@ class IngestJobRepository:
             else:
                 # Upload kinds share one decoder, so the same bytes from another upload channel are the same
                 # job; any other kind colliding on a hash must never run a different decoder.
-                same_kind = row.source_kind == source_kind or {row.source_kind, source_kind} <= UPLOAD_SOURCE_KINDS
+                # Canonical documents (``stats/raw/`` objects) never share a job with a raw upload, and only two
+                # raw uploads get the channel equivalence: provenance decides the decoder.
+                canonical = raw_ref.startswith(CANONICAL_RAW_PREFIX)
+                same_kind = row.source_kind == source_kind or (
+                    not canonical and {row.source_kind, source_kind} <= UPLOAD_SOURCE_KINDS
+                )
                 if (
                     row.discipline != discipline
+                    or row.raw_ref.startswith(CANONICAL_RAW_PREFIX) != canonical
                     or not same_kind
                     or (source_kind in UPLOAD_SOURCE_KINDS and row.hint_tournament_id != hint_tournament_id)
                 ):
