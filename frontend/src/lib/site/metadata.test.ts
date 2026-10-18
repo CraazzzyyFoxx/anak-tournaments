@@ -92,7 +92,7 @@ describe("platform metadata", () => {
     requestLocale = "ru";
     const { resolveSiteMetadata } = await load({});
     const meta = await resolveSiteMetadata();
-    expect(meta.description).toBe(ru.home.meta.description.replace("{siteName}", "OWT"));
+    expect(meta.description).toBe(ru.common.platformDescription.replace("{siteName}", "OWT"));
     expect(meta.description).not.toMatch(/overwatch/i);
   });
 

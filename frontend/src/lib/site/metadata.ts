@@ -15,7 +15,7 @@ export interface SiteMetadata {
 async function platformDefaults(origin: string): Promise<SiteMetadata> {
   let description = `${SITE_NAME} — community tournaments, brackets and player statistics.`;
   try {
-    description = (await getTranslations("home.meta"))("description", { siteName: SITE_NAME });
+    description = (await getTranslations("common"))("platformDescription", { siteName: SITE_NAME });
   } catch {
     // No request scope for translations (build time): the English default stands.
   }

@@ -259,6 +259,7 @@
     "homeLink": "Go to the home page",
     "sourceOnGithub": "View the source on GitHub",
     "skipToContent": "Skip to content",
+    "platformDescription": "Schedules, brackets and matches from every community on {siteName}, and each player's full history in one profile.",
     "footer": {
       "disclaimer": "{siteName} is an independent tournament platform for gaming communities. Not affiliated with or endorsed by any game publisher.",
       "tenantDisclaimer": "{name} is a community on the {siteName} platform. Not affiliated with or endorsed by any game publisher.",

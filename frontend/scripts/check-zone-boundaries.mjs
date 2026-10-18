@@ -35,6 +35,9 @@ const CODE = /\.(ts|tsx)$/;
 const SPEC =
   /(?:from\s*|import\s*|import\s*\(\s*|require\s*\(\s*|(?:vi|jest)\.(?:mock|doMock)\(\s*|mock\.module\(\s*)(["'])([^"']+)\1/g;
 
+/** A whole `import type …` / `export type … from` statement. */
+const TYPE_ONLY = /^[ \t]*(?:import|export)\s+type\b[^;]*?\bfrom\s*(["'])[^"']+\1;?/gm;
+
 /** Route zones, by their first path segment under src/app. */
 const ROUTE_ZONES = {
   admin: "admin",
@@ -118,7 +121,10 @@ for (const file of ALL) {
     if (found.size > 0) mentions.set(from, found);
   }
 
-  for (const [, , spec] of source.matchAll(SPEC)) {
+  // `import type` / `export type … from` are erased at compile time: they put nothing in a
+  // zone's runtime graph, so they carry no namespaces either (the generated OpenAPI types
+  // mention every message-namespace word as a schema name).
+  for (const [, , spec] of source.replace(TYPE_ONLY, "").matchAll(SPEC)) {
     const to = resolveSpec(spec, file);
     if (to === null) continue;
     graph.push([from, to]);

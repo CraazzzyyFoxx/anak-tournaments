@@ -60,9 +60,9 @@ vi.mock("@/services/admin.service", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/admin/collectors/rank"
+  usePathname: () => "/admin/collectors/rank",
+  useSearchParams: () => new URLSearchParams()
 }));
-
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...rest}>
