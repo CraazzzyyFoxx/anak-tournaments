@@ -56,6 +56,8 @@ export interface ScrimRoom {
   token: string;
   label: string;
   workspace_id: number;
+  /** The room's owner discipline: scoped metadata reads use it, never a browsing choice. */
+  discipline: string;
   tournament_id: number;
   stage_id: number;
   /** What `PregameRoom` runs on; the room UI needs nothing else. */

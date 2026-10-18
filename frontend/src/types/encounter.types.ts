@@ -63,6 +63,9 @@ export interface Encounter {
   id: number;
   created_at: Date;
   updated_at: Date | null;
+  /** Owner context: the tournament's or mix's workspace and discipline. */
+  workspace_id: number;
+  discipline: string;
   name: string;
   /** How many seats the card has: 2 is a duel, more is a lobby whose rows live in `FfaLobby`. */
   slot_count: number;
@@ -196,6 +199,9 @@ export interface Match {
   id: number;
   created_at: Date;
   updated_at: Date | null;
+  /** The observation's own owner context, same as its encounter's. */
+  workspace_id: number;
+  discipline: string;
   home_team_id: number | null;
   away_team_id: number | null;
   score: Score;
