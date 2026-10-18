@@ -14,17 +14,9 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain.analytics import (
-    INFERENCE_KINDS,
-    PERFORMANCE_MODEL,
-    SHIFT_MODEL,
-    STANDINGS_MODEL,
-    PerformanceModel,
-    ShiftModel,
-    StandingsModel,
-)
+from shared.domain.analytics import PerformanceModel, ShiftModel, StandingsModel
 from src import models
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import tournament_module
 from src.core.config import settings
 from src.core.workspace import get_division_grid, get_tournament_workspace_id
 
@@ -110,29 +102,46 @@ async def run_performance_for_tournament(
     Returns the number of rows written. Idempotent: existing rows for
     ``(tournament_id, player_id, algorithm_id)`` are deleted before insert.
     """
-    algorithm_id = await _algorithm_id(session, PERFORMANCE_MODEL.algorithm_name)
+    owned = await tournament_module(session, tournament_id)
+    if owned is None:
+        logger.info("Tournament %d has no analytics module; no Performance v2 to compute", tournament_id)
+        return 0
+    discipline, exports = owned
+    declaration = exports.MODELS["performance"]
+    algorithm_id = await _algorithm_id(session, declaration.algorithm_name)
     if algorithm_id is None:
-        logger.warning("No %s algorithm row found; run training first", PERFORMANCE_MODEL.algorithm_name)
+        logger.warning("No %s algorithm row found; run training first", declaration.algorithm_name)
         return 0
 
-    artifacts = await registry_service.load_active_artifacts(session, model_kind=PERFORMANCE_MODEL.model_kind)
+    artifacts = await registry_service.load_active_artifacts(
+        session, discipline=discipline, algorithm_id=algorithm_id, model_kind=declaration.model_kind
+    )
     if not artifacts:
         logger.warning("No active Performance v2 artifacts; run training first")
         return 0
 
+    # Role artifacts are keyed by the discipline's own rated role (native id -> catalog code); an all-role artifact
+    # (null role id) carries no role to mask by and is not loaded here.
+    role_codes = {
+        row.id: code
+        for code, row in (await registry_service.rated_roles(session, discipline=discipline, active_only=False)).items()
+    }
     models_by_role: dict[str, PerformanceModel] = {}
     for art in artifacts:
-        if art.role is None:
+        code = role_codes.get(art.role_id) if art.role_id is not None else None
+        if code is None:
             continue
         try:
-            models_by_role[art.role.lower()] = load_artifact(art.storage_uri)
+            models_by_role[code] = load_artifact(art.storage_uri)
         except FileNotFoundError:
-            logger.warning("Missing artifact file for role=%s (uri=%s)", art.role, art.storage_uri)
+            logger.warning("Missing artifact file for role=%s (uri=%s)", code, art.storage_uri)
 
     if not models_by_role:
         return 0
 
-    feature_frame = await build_match_features_with_strength(session, tournament_id, workspace_id=workspace_id)
+    feature_frame = await build_match_features_with_strength(
+        session, tournament_id, discipline=discipline, workspace_id=workspace_id
+    )
     if feature_frame.empty:
         logger.info("No matches for tournament_id=%d; nothing to write", tournament_id)
         return 0
@@ -150,7 +159,6 @@ async def run_performance_for_tournament(
         y_q10.loc[mask] = sub["y_q10"]
         y_q90.loc[mask] = sub["y_q90"]
 
-    exports = analytics_exports(OVERWATCH)
     per_player = exports.aggregate_to_tournament(feature_frame, y_hat, y_q10, y_q90)
     if per_player.empty:
         return 0
@@ -216,16 +224,23 @@ async def run_shift_for_tournament(
     Writes under the ``"OpenSkill + ML"`` algorithm row, leaving v1 shifts
     untouched. Returns the number of player rows written.
     """
-    algorithm_id = await _algorithm_id(session, SHIFT_MODEL.algorithm_name)
+    owned = await tournament_module(session, tournament_id)
+    if owned is None:
+        logger.info("Tournament %d has no analytics module; no Shift v2 to compute", tournament_id)
+        return 0
+    discipline, exports = owned
+    declaration = exports.MODELS["shift"]
+    algorithm_id = await _algorithm_id(session, declaration.algorithm_name)
     if algorithm_id is None:
-        logger.warning("No %s algorithm row; run training first", SHIFT_MODEL.algorithm_name)
+        logger.warning("No %s algorithm row; run training first", declaration.algorithm_name)
         return 0
 
     artifact = await registry_service.load_active_artifact(
         session,
+        discipline=discipline,
         algorithm_id=algorithm_id,
-        model_kind=SHIFT_MODEL.model_kind,
-        role=None,
+        model_kind=declaration.model_kind,
+        role_id=None,
     )
     if artifact is None:
         logger.warning("No active Shift v2 artifact; run training first")
@@ -237,7 +252,9 @@ async def run_shift_for_tournament(
         logger.warning("Missing shift v2 artifact file at %s", artifact.storage_uri)
         return 0
 
-    feature_frame = await build_shift_feature_frame(session, [tournament_id], workspace_id=workspace_id)
+    feature_frame = await build_shift_feature_frame(
+        session, [tournament_id], discipline=discipline, workspace_id=workspace_id
+    )
     if feature_frame.empty:
         return 0
 
@@ -316,15 +333,22 @@ async def run_standings_for_tournament(
     """
     if prob_sharpening is None:
         prob_sharpening = settings.standings_prob_sharpening
-    algorithm_id = await _algorithm_id(session, STANDINGS_MODEL.algorithm_name)
+    owned = await tournament_module(session, tournament_id)
+    if owned is None:
+        logger.info("Tournament %d has no analytics module; no Standings v2 to compute", tournament_id)
+        return 0
+    discipline, exports = owned
+    declaration = exports.MODELS["standings"]
+    algorithm_id = await _algorithm_id(session, declaration.algorithm_name)
     if algorithm_id is None:
-        logger.warning("No %s algorithm row; run training first", STANDINGS_MODEL.algorithm_name)
+        logger.warning("No %s algorithm row; run training first", declaration.algorithm_name)
         return 0
     artifact = await registry_service.load_active_artifact(
         session,
+        discipline=discipline,
         algorithm_id=algorithm_id,
-        model_kind=STANDINGS_MODEL.model_kind,
-        role=None,
+        model_kind=declaration.model_kind,
+        role_id=None,
     )
     if artifact is None:
         logger.warning("No active Standings v2 artifact; run training first")
@@ -335,7 +359,9 @@ async def run_standings_for_tournament(
         logger.warning("Missing standings v2 artifact at %s", artifact.storage_uri)
         return 0
 
-    forecast_frame = await build_standings_forecast_frame(session, tournament_id, workspace_id=workspace_id)
+    forecast_frame = await build_standings_forecast_frame(
+        session, tournament_id, discipline=discipline, workspace_id=workspace_id
+    )
     if forecast_frame.empty:
         logger.info("Fewer than two rateable rosters for tournament_id=%d; nothing to simulate", tournament_id)
         return 0
@@ -343,9 +369,7 @@ async def run_standings_for_tournament(
     if matchups.empty:
         return 0
     teams = sorted({int(t) for t in matchups["home_team_id"].tolist() + matchups["away_team_id"].tolist()})
-    distribution = analytics_exports(OVERWATCH).simulate_standings(
-        matchups, teams, n_iter=n_iter, prob_sharpening=prob_sharpening
-    )
+    distribution = exports.simulate_standings(matchups, teams, n_iter=n_iter, prob_sharpening=prob_sharpening)
     if distribution.empty:
         return 0
 
@@ -385,11 +409,16 @@ async def run_for_tournament(
     workspace_id: int | None = None,
     model_kinds: typing.Sequence[str] | None = None,
 ) -> dict[str, int]:
-    """Dispatch every available v2 model for one tournament.
+    """Dispatch every available v2 model of the tournament's discipline.
 
-    Returns ``{kind: rows_written}``.
+    Returns ``{kind: rows_written}``. A tournament whose discipline declares no analytics module (or that does not
+    exist) gets an empty summary and nothing is read, written or cleared.
     """
-    kinds = set(model_kinds or INFERENCE_KINDS)
+    owned = await tournament_module(session, tournament_id)
+    if owned is None:
+        logger.info("Tournament %d has no analytics module; nothing to infer", tournament_id)
+        return {}
+    kinds = set(model_kinds or owned[1].INFERENCE_KINDS)
     # Scope to the tournament's own workspace when not given one. The CLI
     # (``ml.cli infer/backfill``) defaults to ``None``; without this it would
     # build feature cohorts and pick the division grid globally (all

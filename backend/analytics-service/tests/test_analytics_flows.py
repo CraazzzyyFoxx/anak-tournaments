@@ -109,6 +109,24 @@ def _shift(
 
 
 class AnalyticsFlowsTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        patcher = patch.object(analytics_flows, "tournament_discipline", AsyncMock(return_value="overwatch"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_stored_predictions_are_not_served_to_a_discipline_without_analytics(self) -> None:
+        reader = AsyncMock(return_value=SimpleNamespace(id=11))
+        with (
+            patch.object(analytics_flows, "tournament_discipline", AsyncMock(return_value="lol")),
+            patch.object(analytics_flows.analytics_read_service, "get_algorithm", reader),
+            patch.object(analytics_flows.analytics_read_service, "get_analytics", AsyncMock()) as rows,
+            self.assertRaises(analytics_flows.errors.ApiHTTPException) as raised,
+        ):
+            await analytics_flows.flows_service.get_analytics(SimpleNamespace(), tournament_id=7, algorithm_id=11)
+
+        self.assertEqual(404, raised.exception.status_code)
+        rows.assert_not_awaited()
+
     async def test_get_analytics_serializes_enriched_fields(self) -> None:
         session = SimpleNamespace()
         algorithm = SimpleNamespace(id=11)

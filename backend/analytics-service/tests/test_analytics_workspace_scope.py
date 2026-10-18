@@ -33,11 +33,13 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value={}),
             ) as get_tournament_version_ids,
         ):
-            frame = await analytics_flows.flows_service.get_data_frame(session, workspace_id=5)
+            frame = await analytics_flows.flows_service.get_data_frame(session, workspace_id=5, discipline="overwatch")
 
         self.assertTrue(frame.empty)
-        get_analytics.assert_awaited_once_with(session, workspace_id=5, workspace_ids=None)
-        get_tournament_version_ids.assert_awaited_once_with(session, workspace_id=5, workspace_ids=None)
+        get_analytics.assert_awaited_once_with(session, workspace_id=5, workspace_ids=None, discipline="overwatch")
+        get_tournament_version_ids.assert_awaited_once_with(
+            session, workspace_id=5, workspace_ids=None, discipline="overwatch"
+        )
 
     async def test_compute_openskill_shift_map_passes_workspace_scope_to_match_history(self) -> None:
         session = SimpleNamespace()
@@ -87,6 +89,7 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
                 tournament_id=7,
                 df=df,
                 workspace_id=5,
+                discipline="overwatch",
             )
 
         self.assertEqual({}, shift_map)
@@ -99,8 +102,9 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
             analytics_flows.OPENSKILL_LOOKBACK,
             workspace_id=5,
             workspace_ids=None,
+            discipline="overwatch",
         )
-        get_matches.assert_awaited_once_with(session, 3, 7, workspace_id=5, workspace_ids=None)
+        get_matches.assert_awaited_once_with(session, 3, 7, workspace_id=5, workspace_ids=None, discipline="overwatch")
 
 
 class LookbackWindowTests(IsolatedAsyncioTestCase):
@@ -119,7 +123,7 @@ class LookbackWindowTests(IsolatedAsyncioTestCase):
         # in the window is #28, far from the naive 73 - 10 = 63.
         session = self._session_returning([73, 70, 64, 61, 55, 50, 44, 40, 33, 28])
 
-        start = await service.lookback_start_tournament_id(session, 73, 10)
+        start = await service.lookback_start_tournament_id(session, 73, 10, discipline="overwatch")
 
         self.assertEqual(28, start)
         self.assertNotEqual(63, start)  # would be the buggy tid - look_back
@@ -128,6 +132,6 @@ class LookbackWindowTests(IsolatedAsyncioTestCase):
         service = importlib.import_module("src.services.analytics.service").analytics_service
         session = self._session_returning([])
 
-        start = await service.lookback_start_tournament_id(session, 73, 10)
+        start = await service.lookback_start_tournament_id(session, 73, 10, discipline="overwatch")
 
         self.assertEqual(73, start)

@@ -112,6 +112,18 @@ Concrete features, models and the canonical division scale belong to the discipl
 `DisciplineSpec.analytics` (`src/core/analytics_exports.py`) and keeps the feature cache, the
 OpenSkill replay, device selection, artifact storage and the registry/jobs/orchestration.
 
+**Discipline, role and algorithm scope.** The tournament that owns a request (the training cutoff, the tournament
+to infer or back-test) decides which module runs; no code path defaults to a game. Its discipline cuts the history,
+split, feature, rating-replay and cache-key scope (a feature-cache entry is keyed on discipline, feature version,
+namespace and the existing workspace/tournament parameters). A cutoff of another discipline, or outside the
+requested workspace allowlist, is rejected. An artifact belongs to the discipline whose module declares its algorithm
+name and kind (`AnalyticsExports.MODELS`); a role artifact also sits on a rated role of that discipline, so
+another algorithm sharing a kind and another game's same-code role (`support`) are never registered, activated or
+loaded. A discipline that declares no analytics module (LoL) offers no algorithm, returns an empty summary from
+automatic enrichment without a single write, and answers explicit train/infer/model requests with 422 before a job is
+admitted or quota is charged. The CLI takes an optional `--discipline` that must agree with the tournament; a
+`backtest` without `--cutoff` requires it, and `backfill` visits only existing, non-hidden, supported tournaments.
+
 The P4 regression oracle (`tests/fixtures/stats_feature_parity.json`) covers all six
 feature/profile families and the actual aligned main/coarse predictor inputs; it supplies no
 fitted artifact. The frozen pre-move evidence for quantile execution, standings/shift prediction

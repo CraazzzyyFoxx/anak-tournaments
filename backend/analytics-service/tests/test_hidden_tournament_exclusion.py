@@ -363,7 +363,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2, is_hidden=True, name="Scrims")
         self.db.tournament(3)
 
-        ids = await splits.tournament_ids_up_to(self.db.shim, 3)
+        ids = await splits.tournament_ids_up_to(self.db.shim, 3, discipline="overwatch")
 
         self.assertEqual([1, 3], ids)
 
@@ -372,7 +372,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2)
         self.db.tournament(3, is_hidden=True, name="Scrims")
 
-        ids = await splits.tournament_ids_up_to(self.db.shim, 3)
+        ids = await splits.tournament_ids_up_to(self.db.shim, 3, discipline="overwatch")
 
         # A trailing hidden container must not become the cutoff fold either.
         self.assertEqual([1, 2], ids)
@@ -382,7 +382,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2)
         self.db.tournament(3, is_hidden=True, name="Scrims")
 
-        latest = await backtest._latest_tournament_id(self.db.shim)
+        latest = await backtest._latest_tournament_id(self.db.shim, discipline="overwatch", workspace_id=None)
 
         self.assertEqual(2, latest)
 
@@ -393,7 +393,7 @@ class HiddenTournamentTimelineTests(_DatabaseTestCase):
         self.db.tournament(2)
         self.db.tournament(3, is_hidden=True, name="Scrims")
 
-        start = await analytics_service.lookback_start_tournament_id(self.db.shim, 3, 2)
+        start = await analytics_service.lookback_start_tournament_id(self.db.shim, 3, 2, discipline="overwatch")
 
         self.assertEqual(1, start)
 
@@ -413,7 +413,7 @@ class ScrimAggregateIsolationTests(_DatabaseTestCase):
         scrims = self.db.tournament(2, is_hidden=True, name="Scrims")
         scrim = self.db.scrim_room(scrims)
 
-        rows = await analytics_service.get_analytics(self.db.shim)
+        rows = await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
 
         self.assertEqual({1}, {row["tournament_id"] for row in rows})
         self.assertIn(real["player"], {row["player_id"] for row in rows})
@@ -436,13 +436,19 @@ class ScrimAggregateIsolationTests(_DatabaseTestCase):
         self.db.tournament(1)
         self.db.roster(1, user_id=100, label="real")
         counters = ("wins", "losses", "match_count", "performance_points", "team_count")
-        before = [{key: row[key] for key in counters} for row in await analytics_service.get_analytics(self.db.shim)]
+        before = [
+            {key: row[key] for key in counters}
+            for row in await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
+        ]
         self.assertTrue(before)
 
         scrims = self.db.tournament(2, is_hidden=True, name="Scrims")
         self.db.scrim_room(scrims)
 
-        after = [{key: row[key] for key in counters} for row in await analytics_service.get_analytics(self.db.shim)]
+        after = [
+            {key: row[key] for key in counters}
+            for row in await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
+        ]
 
         self.assertEqual(before, after)
 
@@ -458,7 +464,7 @@ class ScrimAggregateIsolationTests(_DatabaseTestCase):
         member = self.db.member(200)
         self.db.player(scrims, scrim["home"], member, name="scrim captain")
 
-        rows = await analytics_service.get_analytics(self.db.shim)
+        rows = await analytics_service.get_analytics(self.db.shim, discipline="overwatch")
 
         leaked = [r for r in rows if r["tournament_id"] == scrims]
         self.assertEqual(
@@ -502,14 +508,14 @@ class OpenSkillReplayIsolationTests(_DatabaseTestCase):
     async def test_encounter_range_read_skips_the_hidden_container(self) -> None:
         scrims = self._timeline_with_a_scrim_in_the_middle()
 
-        encounters = await analytics_service.get_matches(self.db.shim, 1, 3)
+        encounters = await analytics_service.get_matches(self.db.shim, 1, 3, discipline="overwatch")
 
         self.assertEqual([1, 3], sorted({int(e.tournament_id) for e in encounters}))
         self.assertNotIn(scrims, {int(e.tournament_id) for e in encounters})
 
     async def test_openskill_replay_survives_a_scrim_container_in_the_window(self) -> None:
         self._timeline_with_a_scrim_in_the_middle()
-        encounters = await analytics_service.get_matches(self.db.shim, 1, 3)
+        encounters = await analytics_service.get_matches(self.db.shim, 1, 3, discipline="overwatch")
         teams = await analytics_service.get_teams_with_players(self.db.shim, 3)
 
         # ``prepare_openskill_data`` ignores its ``df`` argument entirely.

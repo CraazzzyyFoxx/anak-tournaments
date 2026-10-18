@@ -2,7 +2,8 @@
 
 Wired by :mod:`src.services.ml.training.orchestrator` and
 :mod:`src.services.ml.inference.runner`. The cache, the extractor dispatch and the OpenSkill snapshot loading live
-here; the feature columns built from those frames belong to the discipline's analytics module.
+here; the feature columns built from those frames belong to the discipline's analytics module. Every frame is built by
+the module of the named ``discipline`` (the owning tournament's) and cached under it.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import typing
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import analytics_exports
 
 from .cache import get_or_build_dataframe, scope_cache_params
 from .opponent_strength import snapshot_pre_encounter_team_mu
@@ -27,6 +28,7 @@ async def build_match_features_with_strength(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -41,18 +43,20 @@ async def build_match_features_with_strength(
         return await _build_match_features_with_strength_uncached(
             session,
             tournament_id,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
             look_back=look_back,
         )
 
-    return await get_or_build_dataframe("match_features_with_strength", params, _build)
+    return await get_or_build_dataframe("match_features_with_strength", params, _build, discipline=discipline)
 
 
 async def _build_match_features_with_strength_uncached(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -61,7 +65,7 @@ async def _build_match_features_with_strength_uncached(
 
     The snapshot is :func:`snapshot_pre_encounter_team_mu`; the module joins it on ``(encounter_id, team_id)``.
     """
-    exports = analytics_exports(OVERWATCH)
+    exports = analytics_exports(discipline)
     matches = await exports.extract_match_features(
         session,
         [tournament_id],
@@ -74,6 +78,7 @@ async def _build_match_features_with_strength_uncached(
     snapshots = await snapshot_pre_encounter_team_mu(
         session,
         tournament_id,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
         look_back=look_back,
@@ -85,6 +90,7 @@ async def build_tournament_feature_frame(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -99,24 +105,26 @@ async def build_tournament_feature_frame(
         return await _build_tournament_feature_frame_uncached(
             session,
             tournament_id,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
             look_back=look_back,
         )
 
-    return await get_or_build_dataframe("tournament_feature_frame", params, _build)
+    return await get_or_build_dataframe("tournament_feature_frame", params, _build, discipline=discipline)
 
 
 async def _build_tournament_feature_frame_uncached(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
 ) -> pd.DataFrame:
     """Convenience wrapper used by the Performance v2 inference runner."""
-    exports = analytics_exports(OVERWATCH)
+    exports = analytics_exports(discipline)
     df = await exports.extract_tournament_features(
         session,
         [tournament_id],
@@ -129,6 +137,7 @@ async def _build_tournament_feature_frame_uncached(
     matches = await build_match_features_with_strength(
         session,
         tournament_id,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
         look_back=look_back,

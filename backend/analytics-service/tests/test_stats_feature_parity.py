@@ -201,7 +201,9 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
 
     # A cross-database feature-cache hit is not evidence from this SQL fixture.
     with patch.object(config.settings, "analytics_feature_cache_enabled", False):
-        enriched = await build_match_features_with_strength(session, ids["tournament"], workspace_id=ids["workspace"])
+        enriched = await build_match_features_with_strength(
+            session, ids["tournament"], discipline="overwatch", workspace_id=ids["workspace"]
+        )
     reversed_rows = enriched.loc[enriched["match_id"] == ids["match_reversed"]]
     assert not reversed_rows.empty, "reversed observation fixture is required"
     assert reversed_rows["home_team_id"].eq(ids["team_away"]).all()
@@ -337,7 +339,7 @@ async def _native_scores_roster_attribution_and_analytics_reads(stats_parity_dat
             assert player["rank"].eq(3500).all()
             assert set(frame["user_id"]) == {ids["player"], ids["player_away"], ids["player_removed"]}
             assert ids["player_event_only"] not in set(frame["user_id"])
-            scores = await _match_scores(session, ids["tournament"])
+            scores = await _match_scores(session, ids["tournament"], discipline="overwatch")
             assert list(zip(scores["home_score"], scores["away_score"], strict=True)) == [
                 (2, 1),
                 (3, 4),
@@ -348,7 +350,7 @@ async def _native_scores_roster_attribution_and_analytics_reads(stats_parity_dat
                 (1, 2),
             ]
             assert str(scores["home_score"].dtype) == str(scores["away_score"].dtype) == "int64"
-            rows = await analytics_service.get_analytics(session, workspace_id=ids["workspace"])
+            rows = await analytics_service.get_analytics(session, workspace_id=ids["workspace"], discipline="overwatch")
             row = next(row for row in rows if row["player_id"] == ids["roster_player"])
             assert row["user_id"] == ids["player"] and row["rank"] == 3500 and row["role"] == "damage"
             assert math.isclose(row["performance_points"], 50.00078333333333, rel_tol=0, abs_tol=1e-12)

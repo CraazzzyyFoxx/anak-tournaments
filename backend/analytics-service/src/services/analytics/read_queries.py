@@ -171,7 +171,10 @@ class AnalyticsReadService:
         )
         encounter_for_player: dict[int, int] = {}
         if unresolved_player_ids:
-            matches = match_context(discipline="overwatch")
+            discipline = await session.scalar(
+                sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id)
+            )
+            matches = match_context(discipline=discipline)
             query = (
                 sa.select(
                     models.Player.id.label("player_id"),

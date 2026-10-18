@@ -15,7 +15,7 @@ import typing
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import analytics_exports
 from src.core.config import settings
 from src.domain.ratings import compute_linear_metrics
 from src.services.analytics.flows import flows_service
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 async def _linear_history_frame(
     session: AsyncSession,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -41,10 +42,11 @@ async def _linear_history_frame(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         return compute_linear_metrics(df, shift_scale=settings.linear_shift_scale) if not df.empty else df
 
-    return await get_or_build_dataframe("shift_linear_history", params, _build)
+    return await get_or_build_dataframe("shift_linear_history", params, _build, discipline=discipline)
 
 
 async def _openskill_shift_frame(
@@ -52,6 +54,7 @@ async def _openskill_shift_frame(
     tournament_id: int,
     df_history: pd.DataFrame,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -67,19 +70,21 @@ async def _openskill_shift_frame(
             df_history,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         return pd.DataFrame(
             [{"player_id": int(player_id), "os_shift": float(shift)} for player_id, shift in shift_map.items()],
             columns=["player_id", "os_shift"],
         )
 
-    return await get_or_build_dataframe("shift_openskill_map", params, _build)
+    return await get_or_build_dataframe("shift_openskill_map", params, _build, discipline=discipline)
 
 
 async def build_shift_feature_frame(
     session: AsyncSession,
     tournament_ids: typing.Iterable[int],
     *,
+    discipline: str,
     history_through_tournament_id: int | None = None,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
@@ -97,7 +102,7 @@ async def build_shift_feature_frame(
     if not tournament_ids:
         return pd.DataFrame()
 
-    exports = analytics_exports(OVERWATCH)
+    exports = analytics_exports(discipline)
     rank_history = await exports.load_player_rank_history(
         session,
         tournament_ids,
@@ -113,6 +118,7 @@ async def build_shift_feature_frame(
         session,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     if df_history.empty:
         return pd.DataFrame()
@@ -124,6 +130,7 @@ async def build_shift_feature_frame(
             tid,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         if tournament_features.empty:
             continue
@@ -137,6 +144,7 @@ async def build_shift_feature_frame(
                 df_history,
                 workspace_id=workspace_id,
                 workspace_ids=workspace_ids,
+                discipline=discipline,
             )
             shift_map = {int(row.player_id): float(row.os_shift) for row in shift_frame.itertuples(index=False)}
         except Exception:

@@ -51,6 +51,20 @@ class TournamentRepository(BaseRepository[models.Tournament]):
             sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
         )
 
+    async def get_owner(self, session: AsyncSession, tournament_id: int) -> tuple[int | None, str] | None:
+        """``(workspace_id, discipline)`` of the tournament, or ``None`` when it does not exist.
+
+        The discipline is the tournament's own column: it is what chooses a game's module, never a caller's guess.
+        """
+        row = (
+            await session.execute(
+                sa.select(models.Tournament.workspace_id, models.Tournament.discipline).where(
+                    models.Tournament.id == tournament_id
+                )
+            )
+        ).one_or_none()
+        return None if row is None else (row.workspace_id, row.discipline)
+
     async def list_by_workspace(
         self,
         session: AsyncSession,

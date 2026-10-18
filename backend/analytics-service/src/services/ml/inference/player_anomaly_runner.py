@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import tournament_module
 from src.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -49,8 +49,16 @@ async def run_player_anomalies_for_tournament(
     *,
     workspace_id: int | None = None,
 ) -> int:
-    """Compute and persist the unified player anomaly set for a tournament."""
-    exports = analytics_exports(OVERWATCH)
+    """Compute and persist the unified player anomaly set for a tournament.
+
+    A tournament whose discipline declares no analytics module is left as it is: nothing is computed and no
+    existing anomaly row is cleared.
+    """
+    owned = await tournament_module(session, tournament_id)
+    if owned is None:
+        logger.info("Tournament %d has no analytics module; no player anomalies to compute", tournament_id)
+        return 0
+    exports = owned[1]
     profile = await exports.load_player_signal_profile(
         session,
         tournament_id,

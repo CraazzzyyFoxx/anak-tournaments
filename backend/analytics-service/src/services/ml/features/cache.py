@@ -44,12 +44,14 @@ async def get_or_build_dataframe(
     name: str,
     params: collections.abc.Mapping[str, typing.Any],
     build: BuildFrame,
+    *,
+    discipline: str,
 ) -> pd.DataFrame:
     """Return a cached DataFrame, building and persisting it on cache miss."""
     if not settings.analytics_feature_cache_enabled:
         return await build()
 
-    key = _cache_key(name, params)
+    key = _cache_key(name, params, discipline)
     cached = _memory_cache.get(key)
     if cached is not None and _is_fresh_ts(cached[0]):
         return cached[1].copy(deep=True)
@@ -75,10 +77,11 @@ async def get_or_build_dataframe(
     return stored.copy(deep=True)
 
 
-def _cache_key(name: str, params: collections.abc.Mapping[str, typing.Any]) -> str:
+def _cache_key(name: str, params: collections.abc.Mapping[str, typing.Any], discipline: str) -> str:
     payload = {
         "feature_version": FEATURE_VERSION,
         "namespace": settings.analytics_feature_cache_namespace,
+        "discipline": discipline,
         "name": name,
         "params": _jsonable(params),
     }

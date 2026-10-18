@@ -19,6 +19,7 @@ trusted — see ``shared.domain.workspace_tier``: self-service workspaces start
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
@@ -33,13 +34,14 @@ from shared.messaging.config import (
     ANALYTICS_TRAIN_QUEUE,
 )
 from shared.observability import publish_message
-from shared.repository import WorkspaceRepository
+from shared.repository import TournamentRepository, WorkspaceRepository
 from shared.schemas.events import (
     AnalyticsInferRequest,
     AnalyticsJobRequested,
     AnalyticsTrainRequest,
 )
 from src.core import config, db
+from src.core.analytics_exports import supports_analytics
 from src.core.jobs import JOB_KIND_COMPUTE, JOB_KIND_TRAIN_ML, create_analytics_job, job_runtime
 from src.schemas.ml import (
     AnalyticsJobCreate,
@@ -57,6 +59,7 @@ from . import _common as c
 _POINTS = "Points"
 
 _workspaces = WorkspaceRepository()
+_tournaments = TournamentRepository()
 
 
 async def _require_verified_workspace(session: Any, workspace_id: int | None) -> None:
@@ -68,6 +71,20 @@ async def _require_verified_workspace(session: Any, workspace_id: int | None) ->
     workspace = await _workspaces.get(session, workspace_id)
     if workspace is None or not is_verified_or_trusted(workspace):
         raise HTTPException(status_code=403, detail="workspace_not_verified")
+
+
+async def _require_analytics_owner(session: Any, tournament_id: int, *, scope: Sequence[int] | None = None) -> None:
+    """Explicit model/training requests: the owning tournament's discipline must declare analytics models and
+    ``scope`` (the workspaces the request names) must contain the tournament's workspace, else 422 -- raised before
+    any job is admitted or any quota is charged. An unknown tournament is left to the job itself."""
+    owner = await _tournaments.get_owner(session, tournament_id)
+    if owner is None:
+        return
+    workspace_id, code = owner
+    if not supports_analytics(code):
+        raise HTTPException(status_code=422, detail=f"discipline {code!r} declares no analytics models")
+    if scope is not None and workspace_id not in {int(w) for w in scope}:
+        raise HTTPException(status_code=422, detail="tournament does not belong to the requested workspace scope")
 
 
 async def _require_actor(
@@ -128,6 +145,16 @@ def register(broker: Any, logger: Any) -> None:
         await _require_actor(body, workspace_id, user)
         if body.kind == JOB_KIND_COMPUTE:
             await _require_verified_workspace(session, workspace_id)
+        if body.kind == JOB_KIND_TRAIN_ML or body.algorithms:
+            # A model or training was named. Without ``algorithms`` a compute job is automatic enrichment, which
+            # the worker turns into an empty summary for a discipline with no analytics module.
+            await _require_analytics_owner(
+                session,
+                body.tournament_id,
+                scope=body.training_workspace_ids
+                if body.kind == JOB_KIND_TRAIN_ML
+                else ([workspace_id] if workspace_id is not None else None),
+            )
         # Metered only for the callers that have their own quota operation slug;
         # create_job/points enqueue the same compute work but are not metered
         # subjects, so charging here unconditionally would bill a slug they do not
@@ -241,6 +268,13 @@ def register(broker: Any, logger: Any) -> None:
             c.require_permission(user, "analytics", "update")
             body = TrainRequestBody.model_validate(c.payload(data))
             await _require_verified_workspace(session, body.workspace_id)
+            await _require_analytics_owner(
+                session,
+                body.cutoff_tournament_id,
+                scope=body.workspace_ids
+                if body.workspace_ids is not None
+                else ([body.workspace_id] if body.workspace_id is not None else None),
+            )
             # The costliest operation on the platform: a full model retrain over
             # every workspace in scope. Charged rather than leased because this
             # handler only publishes to ANALYTICS_TRAIN_QUEUE and returns -- the
@@ -272,6 +306,11 @@ def register(broker: Any, logger: Any) -> None:
             c.require_permission(user, "analytics", "update")
             body = InferRequestBody.model_validate(c.payload(data))
             await _require_verified_workspace(session, body.workspace_id)
+            await _require_analytics_owner(
+                session,
+                body.tournament_id,
+                scope=[body.workspace_id] if body.workspace_id is not None else None,
+            )
             await quota.charge(user, "analytics.infer", workspace_id=body.workspace_id)
             event = AnalyticsInferRequest(
                 tournament_id=body.tournament_id,

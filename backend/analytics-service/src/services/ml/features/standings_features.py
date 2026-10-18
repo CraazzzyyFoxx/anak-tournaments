@@ -15,7 +15,7 @@ import typing
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import analytics_exports
 
 from .opponent_strength import snapshot_pre_tournament_team_mu
 
@@ -26,6 +26,7 @@ async def build_standings_forecast_frame(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -34,7 +35,7 @@ async def build_standings_forecast_frame(
     The module documents why the realised schedule is never simulated. Strength comes from registration ranks plus a
     strictly pre-tournament OpenSkill snapshot. Empty when fewer than two teams can be rated.
     """
-    exports = analytics_exports(OVERWATCH)
+    exports = analytics_exports(discipline)
     rank_stats = await exports.team_rank_stats(
         session,
         tournament_id,
@@ -49,6 +50,7 @@ async def build_standings_forecast_frame(
         tournament_id,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     synergy = await exports.team_synergy_features(
         session,
@@ -63,6 +65,7 @@ async def build_standings_training_frame(
     session: AsyncSession,
     tournament_ids: typing.Iterable[int],
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -71,7 +74,7 @@ async def build_standings_training_frame(
     if not tournament_ids:
         return pd.DataFrame()
 
-    exports = analytics_exports(OVERWATCH)
+    exports = analytics_exports(discipline)
     encounters = await exports.extract_encounter_features(
         session,
         tournament_ids,
@@ -93,6 +96,7 @@ async def build_standings_training_frame(
             tid,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         if snapshot.empty:
             continue

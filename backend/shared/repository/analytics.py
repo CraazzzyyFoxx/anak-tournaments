@@ -312,12 +312,29 @@ class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):
             )
         )
 
-    async def list_active(self, session: AsyncSession, *, model_kind: str) -> Sequence[models.MLModelArtifact]:
+    async def list_active(
+        self, session: AsyncSession, *, algorithm_id: int, model_kind: str, discipline: str
+    ) -> Sequence[models.MLModelArtifact]:
+        """Active artifacts of one algorithm and kind that ``discipline`` owns.
+
+        A role-less artifact carries no discipline column: its declared algorithm is its owner. A role artifact
+        must also sit on a role of ``discipline``'s rated dimension, so another game's same-code role never matches.
+        """
+        artifact, role, dimension = models.MLModelArtifact, models.CatalogRole, models.RoleDimension
         result = await session.scalars(
-            sa.select(models.MLModelArtifact).where(
-                models.MLModelArtifact.model_kind == model_kind,
-                models.MLModelArtifact.is_active.is_(True),
+            sa.select(artifact)
+            .outerjoin(role, role.id == artifact.role_id)
+            .outerjoin(dimension, dimension.id == role.dimension_id)
+            .where(
+                artifact.algorithm_id == algorithm_id,
+                artifact.model_kind == model_kind,
+                artifact.is_active.is_(True),
+                sa.or_(
+                    artifact.role_id.is_(None),
+                    sa.and_(dimension.discipline == discipline, dimension.rated.is_(True)),
+                ),
             )
+            .order_by(artifact.id)
         )
         return result.all()
 

@@ -30,6 +30,7 @@ from shared.repository import (
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
+from src.core.analytics_exports import supports_analytics, tournament_discipline
 from src.core.workspace import get_division_grid
 from src.domain.forecast import predict_player_division
 
@@ -250,6 +251,11 @@ class AnalyticsReadFlowsService:
         algorithms = await analytics_read_service.get_algorithms(session)
         ids_with_data: set[int] | None = None
         if tournament_id is not None:
+            # The tournament names its game: one that declares no analytics module offers no algorithm, never another
+            # game's (Linear, Points and the shift model all run on the module's canonical scale).
+            discipline_code = await tournament_discipline(session, tournament_id)
+            if discipline_code is not None and not supports_analytics(discipline_code):
+                algorithms = []
             ids_with_data = await analytics_read_service.get_algorithm_ids_with_shift_data(session, tournament_id)
         return pagination.Paginated(
             total=len(algorithms),
@@ -283,6 +289,13 @@ class AnalyticsReadFlowsService:
     ) -> schemas.TournamentAnalytics:
         algorithm = await analytics_read_service.get_algorithm(session, algorithm_id)
         if algorithm is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="Analytics algorithm not found.")],
+            )
+        discipline_code = await tournament_discipline(session, tournament_id)
+        if discipline_code is not None and not supports_analytics(discipline_code):
+            # Stored predictions of an algorithm are never served to a tournament of a game that has no module.
             raise errors.ApiHTTPException(
                 status_code=404,
                 detail=[errors.ApiExc(code="not_found", msg="Analytics algorithm not found.")],

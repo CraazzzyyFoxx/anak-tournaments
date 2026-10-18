@@ -162,7 +162,7 @@ class BacktestRealisedShiftTests(IsolatedAsyncioTestCase):
     async def test_query_labels_and_orders_by_workspace_member(self) -> None:
         session = _CapturingSession()
 
-        await backtest._realised_shift_map(session, 1, history_through_tournament_id=5)
+        await backtest._realised_shift_map(session, 1, history_through_tournament_id=5, discipline="overwatch")
 
         sql = _compiled(session.statements[0])
         self.assertIn("workspace_member.player_id AS user_id", sql)

@@ -7,7 +7,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import analytics_exports, supports_analytics, tournament_discipline
 from src.core.config import settings
 from src.core.workspace import get_tournament_workspace_id
 from src.domain.ratings import (
@@ -32,16 +32,20 @@ class AnalyticsFlowsService:
         session: AsyncSession,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> pd.DataFrame:
         data = await analytics_service.get_analytics(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         tournament_version_ids = await analytics_service.get_tournament_version_ids(
             session,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
 
         rows: list[dict[str, typing.Any]] = []
@@ -93,7 +97,7 @@ class AnalyticsFlowsService:
         # Normalize every division to the canonical OW grid so current/previous div
         # are comparable across workspaces and grid versions.
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
-        canonical_div_for = analytics_exports(OVERWATCH).canonical_div_for
+        canonical_div_for = analytics_exports(discipline).canonical_div_for
 
         df["div"] = [
             canonical_div_for(grids, version_id, cost)
@@ -135,12 +139,11 @@ class AnalyticsFlowsService:
         self,
         session: AsyncSession,
         tournament_id: int,
-        df: pd.DataFrame | None = None,
+        df: pd.DataFrame,
     ) -> None:
-        source_df = df if df is not None else await self.get_data_frame(session)
         players = await analytics_service.get_players_by_tournament_id(session, tournament_id)
         players_by_id = {player.player_id: player for player in players}
-        final_df = source_df[source_df["tournament_id"] == tournament_id]
+        final_df = df[df["tournament_id"] == tournament_id]
         final_df = final_df.replace({np.nan: None})
 
         for _, row in final_df.iterrows():
@@ -177,6 +180,8 @@ class AnalyticsFlowsService:
         df: pd.DataFrame,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> tuple[dict[int, float], bool]:
         start_tid = await analytics_service.lookback_start_tournament_id(
             session,
@@ -184,6 +189,7 @@ class AnalyticsFlowsService:
             OPENSKILL_LOOKBACK,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         matches = await analytics_service.get_matches(
             session,
@@ -191,10 +197,11 @@ class AnalyticsFlowsService:
             tournament_id,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         teams = await analytics_service.get_teams_with_players(session, tournament_id)
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
-        canonical_div_for = analytics_exports(OVERWATCH).canonical_div_for
+        canonical_div_for = analytics_exports(discipline).canonical_div_for
         pl = get_plackett_luce()
         rosters = await analytics_service.get_rosters(session, matches)
         _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches, rosters)
@@ -255,12 +262,17 @@ class AnalyticsFlowsService:
         algorithm_names: typing.Iterable[str] | None = None,
         workspace_id: int | None = None,
     ) -> list[str]:
+        discipline = await tournament_discipline(session, tournament_id)
+        if discipline is None or not supports_analytics(discipline):
+            # No analytics module owns this tournament's scale: compute nothing and clear nothing already stored.
+            logger.info("Tournament {} has no analytics module ({}); nothing to recalculate", tournament_id, discipline)
+            return []
         # Scope to the tournament's own workspace when not given one, so the
         # Points/Linear recalc uses the same cohort the RPC job (workspace-scoped)
         # would — see get_tournament_workspace_id.
         if workspace_id is None:
             workspace_id = await get_tournament_workspace_id(session, tournament_id)
-        df = await self.get_data_frame(session, workspace_id=workspace_id)
+        df = await self.get_data_frame(session, workspace_id=workspace_id, discipline=discipline)
         if df.empty:
             logger.warning("No analytics data found for tournament {}", tournament_id)
             return []

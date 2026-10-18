@@ -20,7 +20,7 @@ import pandas as pd
 from openskill.models import PlackettLuce, PlackettLuceRating
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import analytics_exports
 from src.domain.ratings import get_id_role, get_plackett_luce, prepare_openskill_data
 from src.services.analytics.flows import flows_service
 from src.services.analytics.service import analytics_service
@@ -34,6 +34,7 @@ async def snapshot_pre_encounter_team_mu(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -48,18 +49,20 @@ async def snapshot_pre_encounter_team_mu(
         return await _snapshot_pre_encounter_team_mu_uncached(
             session,
             tournament_id,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
             look_back=look_back,
         )
 
-    return await get_or_build_dataframe("opponent_strength_snapshot", params, _build)
+    return await get_or_build_dataframe("opponent_strength_snapshot", params, _build, discipline=discipline)
 
 
 async def _snapshot_pre_encounter_team_mu_uncached(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -87,6 +90,7 @@ async def _snapshot_pre_encounter_team_mu_uncached(
         session,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     if df.empty:
         return pd.DataFrame(columns=["encounter_id", "team_id", "avg_mu", "max_mu", "min_mu", "std_mu"])
@@ -97,12 +101,14 @@ async def _snapshot_pre_encounter_team_mu_uncached(
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     matches = await analytics_service.get_matches_for_tournaments(
         session,
         window_ids,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     teams = await analytics_service.get_teams_with_players(session, tournament_id)
 
@@ -183,6 +189,7 @@ async def snapshot_pre_tournament_team_mu(
     session: AsyncSession,
     tournament_id: int,
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
     look_back: int = 10,
@@ -208,7 +215,7 @@ async def snapshot_pre_tournament_team_mu(
     for tournaments whose rosters are still being assembled, where a TTL'd
     snapshot would forecast a field that no longer exists.
     """
-    exports = analytics_exports(OVERWATCH)
+    exports = analytics_exports(discipline)
     teams = await analytics_service.get_teams_with_players(session, tournament_id)
     if not teams:
         return exports.summarize_team_strength([], {}, rating_key=get_id_role)
@@ -219,6 +226,7 @@ async def snapshot_pre_tournament_team_mu(
         look_back,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
+        discipline=discipline,
     )
     history = [
         encounter
@@ -227,6 +235,7 @@ async def snapshot_pre_tournament_team_mu(
             window_ids,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
+            discipline=discipline,
         )
         if encounter.tournament_id != tournament_id
     ]

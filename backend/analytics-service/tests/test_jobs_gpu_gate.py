@@ -93,12 +93,24 @@ def _identity(*, workspace_ids=(), superuser=False, global_update=False) -> dict
     }
 
 
+class _FakeTournaments:
+    """Stand-in for ``shared.repository.TournamentRepository``: tournament 5 belongs to ``owner``."""
+
+    def __init__(self) -> None:
+        self.owner: tuple[int | None, str] = (None, "overwatch")
+
+    async def get_owner(self, session, tournament_id):
+        return self.owner if int(tournament_id) == 5 else None
+
+
 class AnalyticsGpuGateTests(TestCase):
     def setUp(self) -> None:
         self._original_sf = db.async_session_maker
         db.async_session_maker = lambda: _NoopSession()
         self.broker = _FakeBroker()
         self.created: list[dict] = []
+        self.tournaments = _FakeTournaments()
+        self.charge = AsyncMock()
 
         async def _fake_create(session, **kwargs):
             self.created.append(kwargs)
@@ -121,12 +133,13 @@ class AnalyticsGpuGateTests(TestCase):
 
         self._patches = [
             patch.object(jobs_control, "_workspaces", _FakeWorkspaces()),
+            patch.object(jobs_control, "_tournaments", self.tournaments),
             patch.object(jobs_control, "create_analytics_job", _fake_create),
             patch.object(config.settings, "rabbitmq_url", "amqp://test"),
             # The gate is a process-global configured at service startup, which
             # these tests never run; the slug/workspace pairing it is handed is
             # covered where quota itself is tested.
-            patch.object(jobs_control, "quota", SimpleNamespace(charge=AsyncMock())),
+            patch.object(jobs_control, "quota", SimpleNamespace(charge=self.charge)),
         ]
         for p in self._patches:
             p.start()
@@ -212,6 +225,7 @@ class AnalyticsGpuGateTests(TestCase):
                 self.assertEqual(self.broker.published, [])
 
     def test_deprecated_train_publishes_for_a_trusted_workspace(self) -> None:
+        self.tournaments.owner = (3, "overwatch")
         envelope = self._call(
             "rpc.analytics.train",
             {"identity": _identity(global_update=True), "payload": {"cutoff_tournament_id": 5, "workspace_id": 3}},
@@ -219,3 +233,63 @@ class AnalyticsGpuGateTests(TestCase):
 
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual(len(self.broker.published), 1)
+
+    def _assert_refused_before_admission(self, envelope: dict, message_part: str) -> None:
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual(envelope["error"]["code"], "unprocessable")
+        self.assertIn(message_part, envelope["error"]["message"])
+        self.assertEqual(self.created, [])
+        self.assertEqual(self.broker.published, [])
+        self.charge.assert_not_awaited()
+
+    def test_explicit_requests_for_a_discipline_without_analytics_are_422_before_admission_and_charging(self) -> None:
+        self.tournaments.owner = (2, "lol")
+        requests = (
+            (
+                "rpc.analytics.train",
+                {"identity": _identity(global_update=True), "payload": {"cutoff_tournament_id": 5}},
+            ),
+            ("rpc.analytics.infer", {"identity": _identity(global_update=True), "payload": {"tournament_id": 5}}),
+            (
+                "rpc.analytics.create_job",
+                {
+                    "identity": _identity(superuser=True, global_update=True),
+                    "payload": {"tournament_id": 5, "kind": "train_ml"},
+                },
+            ),
+            (
+                "rpc.analytics.create_job",
+                {
+                    "identity": _identity(workspace_ids=(2,)),
+                    "query": {"workspace_id": "2"},
+                    "payload": {"tournament_id": 5, "algorithms": ["OpenSkill + ML"]},
+                },
+            ),
+            (
+                "rpc.analytics.points",
+                {"identity": _identity(workspace_ids=(2,)), "query": {"workspace_id": "2", "tournament_id": "5"}},
+            ),
+        )
+        for subject, data in requests:
+            with self.subTest(subject=subject, payload=data.get("payload")):
+                self._assert_refused_before_admission(self._call(subject, data), "declares no analytics models")
+
+    def test_automatic_compute_for_a_discipline_without_analytics_is_admitted_and_left_to_the_worker(self) -> None:
+        self.tournaments.owner = (2, "lol")
+        envelope = self._create_job(2)
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual([c["algorithms"] for c in self.created], [None])
+
+    def test_a_tournament_outside_the_requested_workspace_scope_is_422(self) -> None:
+        self.tournaments.owner = (2, "overwatch")
+        for subject, payload in (
+            ("rpc.analytics.train", {"cutoff_tournament_id": 5, "workspace_ids": [9]}),
+            ("rpc.analytics.train", {"cutoff_tournament_id": 5, "workspace_id": 3}),
+            ("rpc.analytics.infer", {"tournament_id": 5, "workspace_id": 3}),
+        ):
+            with self.subTest(subject=subject, payload=payload):
+                self._assert_refused_before_admission(
+                    self._call(subject, {"identity": _identity(global_update=True), "payload": payload}),
+                    "requested workspace scope",
+                )

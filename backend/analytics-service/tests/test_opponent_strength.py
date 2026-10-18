@@ -71,7 +71,7 @@ class SnapshotSeatTests(IsolatedAsyncioTestCase):
             patch.object(opp, "prepare_openskill_data", return_value=(None, ratings, None)),
             patch.object(opp, "get_id_role", lambda p: f"{p.user_id}-{p.role}"),
         ):
-            df = await opp._snapshot_pre_encounter_team_mu_uncached(SimpleNamespace(), 4)
+            df = await opp._snapshot_pre_encounter_team_mu_uncached(SimpleNamespace(), 4, discipline="overwatch")
 
         # One row per (encounter_id, team_id), no fan-out -- the repeated duel is read once.
         self.assertEqual(0, int(df.duplicated(subset=["encounter_id", "team_id"]).sum()))
@@ -99,7 +99,7 @@ class SnapshotSeatTests(IsolatedAsyncioTestCase):
             patch.object(opp, "prepare_openskill_data", return_value=(None, ratings, None)),
             patch.object(opp, "get_id_role", lambda p: f"{p.user_id}-{p.role}"),
         ):
-            df = await opp._snapshot_pre_encounter_team_mu_uncached(SimpleNamespace(), 4)
+            df = await opp._snapshot_pre_encounter_team_mu_uncached(SimpleNamespace(), 4, discipline="overwatch")
 
         # The second snapshot is taken after the first win: team 10 is now rated above team 20.
         later = df[df["encounter_id"] == 2].set_index("team_id")["avg_mu"]

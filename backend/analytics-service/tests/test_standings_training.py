@@ -28,6 +28,7 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 os.environ["DEBUG"] = "false"
 
+from tests.ow_analytics import exports as ow_exports  # noqa: E402
 from tests.ow_analytics import module as ow_module  # noqa: E402
 
 standings_v2 = ow_module("models.standings_v2")
@@ -126,7 +127,10 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
 
     async def test_no_algorithm_row_stays_neutral(self) -> None:
         p = await match_quality_runner._standings_win_probability(
-            self._session(algorithm_id=None), pd.DataFrame({"encounter_id": [1]})
+            self._session(algorithm_id=None),
+            pd.DataFrame({"encounter_id": [1]}),
+            discipline="overwatch",
+            exports=ow_exports,
         )
         self.assertIsNone(p)
 
@@ -145,7 +149,9 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
             ),
             patch.object(match_quality_runner, "load_artifact", return_value=_Stub()),
         ):
-            p = await match_quality_runner._standings_win_probability(self._session(), encounters)
+            p = await match_quality_runner._standings_win_probability(
+                self._session(), encounters, discipline="overwatch", exports=ow_exports
+            )
 
         assert p is not None
         self.assertEqual(8, len(p))
@@ -161,6 +167,9 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
             patch.object(match_quality_runner, "load_artifact", side_effect=FileNotFoundError),
         ):
             p = await match_quality_runner._standings_win_probability(
-                self._session(), pd.DataFrame({"encounter_id": [1]})
+                self._session(),
+                pd.DataFrame({"encounter_id": [1]}),
+                discipline="overwatch",
+                exports=ow_exports,
             )
         self.assertIsNone(p)

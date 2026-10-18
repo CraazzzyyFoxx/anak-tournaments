@@ -31,6 +31,29 @@ KINDS = ["performance", "shift", "standings"]
 
 
 class RunForTournamentWorkspaceResolutionTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        module = AsyncMock(return_value=("overwatch", SimpleNamespace(INFERENCE_KINDS=("performance",))))
+        patcher = patch.object(runner, "tournament_module", module)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_a_discipline_without_analytics_gets_an_empty_summary_and_no_writes(self) -> None:
+        session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
+
+        with (
+            patch.object(runner, "tournament_module", AsyncMock(return_value=None)),
+            patch.object(runner, "run_performance_for_tournament", AsyncMock(return_value=0)) as perf,
+            patch.object(runner, "run_shift_for_tournament", AsyncMock(return_value=0)) as shift,
+            patch.object(runner, "run_standings_for_tournament", AsyncMock(return_value=0)) as standings,
+        ):
+            summary = await runner.run_for_tournament(session, 7, workspace_id=2, model_kinds=KINDS)
+
+        self.assertEqual({}, summary)
+        for sub in (perf, shift, standings):
+            sub.assert_not_awaited()
+        session.execute.assert_not_awaited()
+        session.commit.assert_not_awaited()
+
     async def test_resolves_workspace_from_tournament_when_none(self) -> None:
         session = SimpleNamespace()
 

@@ -407,19 +407,19 @@ async def _database_outputs(session: AsyncSession, ids: dict[str, int], models: 
     with patch.object(config.settings, "analytics_feature_cache_enabled", False):
         for case, tournament, workspace in CASES:
             tid, wid = ids[tournament], ids[workspace]
-            enriched = await _ow.build_match_features(session, tid, workspace_id=wid)
+            enriched = await _ow.build_match_features(session, tid, discipline="overwatch", workspace_id=wid)
             entry: dict[str, typing.Any] = {"enriched": _frame(enriched)}
             if not enriched.empty:
                 entry["quantile_execution"] = _quantile_execution(enriched)
                 entry["fitted_performance"] = _fitted_performance(models, enriched)
-            forecast = await _ow.build_forecast_frame(session, tid, workspace_id=wid)
+            forecast = await _ow.build_forecast_frame(session, tid, discipline="overwatch", workspace_id=wid)
             entry["forecast"] = _standings_outputs(models, forecast)
-            training = await _ow.build_training_frame(session, [tid], workspace_id=wid)
+            training = await _ow.build_training_frame(session, [tid], discipline="overwatch", workspace_id=wid)
             entry["training"] = _standings_outputs(models, training)
             if not training.empty:
                 encounters = training.copy()
                 encounters["p_home_wins"] = models["standings"].predict_proba(encounters)
-                scores = await _ow.match_scores(session, tid)
+                scores = await _ow.match_scores(session, tid, discipline="overwatch")
                 entry["match_quality"] = {
                     "scores": _frame(scores),
                     "default": _frame(_ow.compute_match_quality(encounters, scores)),
@@ -434,7 +434,7 @@ async def _database_outputs(session: AsyncSession, ids: dict[str, int], models: 
                         )
                     ),
                 }
-            shift = await _ow.build_shift_frame(session, [tid], workspace_id=wid)
+            shift = await _ow.build_shift_frame(session, [tid], discipline="overwatch", workspace_id=wid)
             entry["shift"] = _shift_outputs(models, shift) if not shift.empty else {"frame": _frame(shift)}
             out[case] = entry
     return out

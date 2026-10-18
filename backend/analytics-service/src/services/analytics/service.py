@@ -32,6 +32,8 @@ class AnalyticsService:
         session: AsyncSession,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> typing.Sequence[sa.RowMapping]:
         # A team's maps in a duel come from its confirmed games (see ``seat_maps``); a lobby (more than
         # two seats) scores points, not maps, so it only counts as played.
@@ -55,6 +57,7 @@ class AnalyticsService:
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
             .where(
                 models.Tournament.id >= 1,
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .group_by(models.WorkspaceMember.player_id, models.Player.role, models.Player.team_id)
@@ -71,6 +74,7 @@ class AnalyticsService:
             .where(
                 match_seat.active.is_(True),
                 models.Tournament.id >= 1,
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .group_by(match_seat.team_id)
@@ -82,7 +86,7 @@ class AnalyticsService:
                 sa.func.count(models.Team.id).label("team_count"),
             )
             .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
-            .where(*workspace_scope_filter(workspace_id, workspace_ids))
+            .where(models.Tournament.discipline == discipline, *workspace_scope_filter(workspace_id, workspace_ids))
             .group_by(models.Team.tournament_id)
         ).cte("team_counts")
 
@@ -98,7 +102,7 @@ class AnalyticsService:
                 models.Standing.overall_position.label("overall_position"),
             )
             .join(models.Tournament, models.Standing.tournament_id == models.Tournament.id)
-            .where(*workspace_scope_filter(workspace_id, workspace_ids))
+            .where(models.Tournament.discipline == discipline, *workspace_scope_filter(workspace_id, workspace_ids))
             .distinct(models.Standing.team_id, models.Standing.tournament_id)
             .order_by(
                 models.Standing.team_id,
@@ -107,7 +111,7 @@ class AnalyticsService:
             )
         ).cte("team_standings")
 
-        facts = player_facts(discipline="overwatch")
+        facts = player_facts(discipline=discipline)
         performance_points = (
             sa.select(
                 models.Player.id.label("player_id"),
@@ -187,6 +191,7 @@ class AnalyticsService:
             .where(
                 models.Tournament.id >= 1,
                 models.Player.is_substitution.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(models.WorkspaceMember.player_id, models.Player.role, models.Tournament.id)
@@ -202,6 +207,8 @@ class AnalyticsService:
         end_range: int,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> typing.Sequence[models.Encounter]:
         query = (
             sa.select(models.Encounter)
@@ -220,6 +227,7 @@ class AnalyticsService:
                 # for every tournament whose lookback window spans the hidden scrim
                 # container. Scope it out at the source.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(models.Encounter.tournament_id, models.Encounter.id)
@@ -234,6 +242,8 @@ class AnalyticsService:
         look_back: int,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> int:
         """Chronological start id for an OpenSkill lookback window.
 
@@ -253,6 +263,7 @@ class AnalyticsService:
                 # one of the ``look_back`` slots while contributing no encounters to
                 # the replay — the same window shrinkage this helper exists to fix.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(models.Tournament.id.desc())
@@ -268,6 +279,8 @@ class AnalyticsService:
         look_back: int,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> list[int]:
         """The ``look_back`` most recent tournament ids up to the end tournament, by START DATE.
 
@@ -293,6 +306,7 @@ class AnalyticsService:
                 # Same exclusion as ``lookback_start_tournament_id``: hidden
                 # containers occupy window slots while contributing no encounters.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(chrono.desc(), models.Tournament.id.desc())
@@ -307,6 +321,8 @@ class AnalyticsService:
         tournament_ids: typing.Sequence[int],
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> typing.Sequence[models.Encounter]:
         """Encounters of the given tournaments in true chronological replay order.
 
@@ -330,6 +346,7 @@ class AnalyticsService:
                 # See get_matches: scrim containers come back with empty rosters and
                 # crash the OpenSkill replay.
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .order_by(chrono, models.Encounter.tournament_id, models.Encounter.id)
@@ -360,11 +377,14 @@ class AnalyticsService:
         session: AsyncSession,
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
+        *,
+        discipline: str,
     ) -> dict[int, int | None]:
         """Maps tournament_id -> division_grid_version_id for all analytics-relevant tournaments."""
         result = await session.execute(
             sa.select(models.Tournament.id, models.Tournament.division_grid_version_id).where(
                 models.Tournament.id >= 1,
+                models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
         )

@@ -16,14 +16,12 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.domain.analytics import (
-    PERFORMANCE_MODEL,
-    SHIFT_MODEL,
-    STANDINGS_MODEL,
+    AnalyticsExports,
     PerformanceTrainingResult,
     ShiftTrainingResult,
     StandingsTrainingResult,
 )
-from src.core.analytics_exports import OVERWATCH, analytics_exports
+from src.core.analytics_exports import analytics_exports, tournament_discipline
 from src.core.config import settings
 
 from .. import FEATURE_VERSION
@@ -46,9 +44,20 @@ __all__ = (
 )
 
 
-ROLES = ("tank", "damage", "support")
 # Shift v2 supervises its blend weights on the realised division move.
 SHIFT_LABEL_COLUMNS = ("current_div", "next_tournament_div")
+
+
+async def _scope(session: AsyncSession, cutoff_tournament_id: int) -> tuple[str, AnalyticsExports]:
+    """The cutoff tournament's discipline and that discipline's analytics module.
+
+    The tournament owns the request: its discipline picks the module, an unknown cutoff is an error, and a discipline
+    that declares no module raises ``UnsupportedAnalytics`` before anything is read, written or charged.
+    """
+    discipline = await tournament_discipline(session, cutoff_tournament_id)
+    if discipline is None:
+        raise LookupError(f"cutoff tournament {cutoff_tournament_id} not found")
+    return discipline, analytics_exports(discipline)
 
 
 @dataclass
@@ -109,6 +118,7 @@ async def _build_training_frame(
     session: AsyncSession,
     tournament_ids: typing.Iterable[int],
     *,
+    discipline: str,
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -122,6 +132,7 @@ async def _build_training_frame(
         df = await build_match_features_with_strength(
             session,
             tid,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
         )
@@ -139,7 +150,7 @@ async def train_performance_v2_for_cutoff(
     workspace_id: int | None = None,
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> list[PerformanceTrainingOutcome]:
-    """Train Performance v2 for every role using all tournaments up to cutoff.
+    """Train Performance v2 for every rated role of the cutoff's discipline using all its tournaments up to cutoff.
 
     Side effects:
 
@@ -147,11 +158,19 @@ async def train_performance_v2_for_cutoff(
       and deactivates older versions of the same role,
     - writes the booster pickles to ``ANALYTICS_MODELS_DIR``.
     """
-    algorithm = await registry_service.ensure_algorithm(session, PERFORMANCE_MODEL.algorithm_name)
+    discipline, exports = await _scope(session, cutoff_tournament_id)
+    declaration = exports.MODELS["performance"]
+    # The rated roles the module declares, validated against the module's own feature selector before any frame is built:
+    # a catalog role the module cannot train is a declaration error, not a quietly skipped role.
+    roles = await registry_service.rated_roles(session, discipline=discipline)
+    for code in roles:
+        exports.features_for_role(code)
+    algorithm = await registry_service.ensure_algorithm(session, declaration.algorithm_name)
 
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -177,6 +196,7 @@ async def train_performance_v2_for_cutoff(
     train_df = await _build_training_frame(
         session,
         train_ids,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -184,6 +204,7 @@ async def train_performance_v2_for_cutoff(
         await _build_training_frame(
             session,
             val_ids,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
         )
@@ -195,28 +216,28 @@ async def train_performance_v2_for_cutoff(
         return []
 
     outcomes: list[PerformanceTrainingOutcome] = []
-    exports = analytics_exports(OVERWATCH)
-    for role in ROLES:
+    for code, role_row in roles.items():
         try:
             result: PerformanceTrainingResult = exports.train_performance_v2(
                 train_df,
-                role=role,
+                role=code,
                 val_df=val_df if not val_df.empty else None,
                 devices=lightgbm_devices(),
             )
         except ValueError as exc:
-            logger.warning("Skipping role=%s: %s", role, exc)
+            logger.warning("Skipping role=%s: %s", code, exc)
             continue
 
-        path = artifact_path(algorithm.id, PERFORMANCE_MODEL.model_version, f"performance_{role}.joblib")
+        path = artifact_path(algorithm.id, declaration.model_version, f"performance_{code}.joblib")
         storage_uri = save_artifact(result.model, path)
 
         artifact = await registry_service.register_artifact(
             session,
+            discipline=discipline,
             algorithm_id=algorithm.id,
-            model_kind=PERFORMANCE_MODEL.model_kind,
-            role=role,
-            version=PERFORMANCE_MODEL.model_version,
+            model_kind=declaration.model_kind,
+            role_id=role_row.id,
+            version=declaration.model_version,
             storage_uri=storage_uri,
             feature_version=FEATURE_VERSION,
             training_cutoff_tournament_id=cutoff_tournament_id,
@@ -226,7 +247,7 @@ async def train_performance_v2_for_cutoff(
         )
         outcomes.append(
             PerformanceTrainingOutcome(
-                role=role,
+                role=code,
                 algorithm_id=algorithm.id,
                 artifact_id=artifact.id,
                 metrics=result.metrics,
@@ -245,9 +266,11 @@ async def train_all_models(
 ) -> dict[str, typing.Any]:
     """Train every configured model kind for ``cutoff_tournament_id``.
 
-    ``model_kinds`` defaults to all kinds available at the current phase.
+    The cutoff's discipline chooses the module; one that declares none raises ``UnsupportedAnalytics`` before any
+    read or write. ``model_kinds`` defaults to all kinds available at the current phase.
     Returns a summary dict ``{kind: <outcomes>}`` for the CLI to render.
     """
+    await _scope(session, cutoff_tournament_id)
     # Train every available kind by default; the UI / CLI can still narrow via
     # ``model_kinds=[...]`` to skip the slower stages (shift residual,
     # Standings classifier).
@@ -291,10 +314,13 @@ async def train_standings_v2_for_cutoff(
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> StandingsTrainingOutcome | None:
     """Train Standings v2 win-probability classifier."""
-    algorithm = await registry_service.ensure_algorithm(session, STANDINGS_MODEL.algorithm_name)
+    discipline, exports = await _scope(session, cutoff_tournament_id)
+    declaration = exports.MODELS["standings"]
+    algorithm = await registry_service.ensure_algorithm(session, declaration.algorithm_name)
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -308,6 +334,7 @@ async def train_standings_v2_for_cutoff(
     train_df = await build_standings_training_frame(
         session,
         train_ids,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -315,6 +342,7 @@ async def train_standings_v2_for_cutoff(
         await build_standings_training_frame(
             session,
             val_ids,
+            discipline=discipline,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
         )
@@ -326,7 +354,7 @@ async def train_standings_v2_for_cutoff(
         return None
 
     try:
-        result: StandingsTrainingResult = analytics_exports(OVERWATCH).train_standings_v2(
+        result: StandingsTrainingResult = exports.train_standings_v2(
             train_df,
             val_df=val_df if not val_df.empty else None,
             devices=xgboost_devices(),
@@ -335,14 +363,15 @@ async def train_standings_v2_for_cutoff(
         logger.warning("Standings v2 training skipped: %s", exc)
         return None
 
-    path = artifact_path(algorithm.id, STANDINGS_MODEL.model_version, "standings.joblib")
+    path = artifact_path(algorithm.id, declaration.model_version, "standings.joblib")
     storage_uri = save_artifact(result.model, path)
     artifact = await registry_service.register_artifact(
         session,
+        discipline=discipline,
         algorithm_id=algorithm.id,
-        model_kind=STANDINGS_MODEL.model_kind,
-        role=None,
-        version=STANDINGS_MODEL.model_version,
+        model_kind=declaration.model_kind,
+        role_id=None,
+        version=declaration.model_version,
         storage_uri=storage_uri,
         feature_version=FEATURE_VERSION,
         training_cutoff_tournament_id=cutoff_tournament_id,
@@ -361,10 +390,13 @@ async def train_shift_v2_for_cutoff(
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> ShiftTrainingOutcome | None:
     """Train Shift v2 residual model using all tournaments up to cutoff."""
-    algorithm = await registry_service.ensure_algorithm(session, SHIFT_MODEL.algorithm_name)
+    discipline, exports = await _scope(session, cutoff_tournament_id)
+    declaration = exports.MODELS["shift"]
+    algorithm = await registry_service.ensure_algorithm(session, declaration.algorithm_name)
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
+        discipline=discipline,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
     )
@@ -384,6 +416,7 @@ async def train_shift_v2_for_cutoff(
     train_df = await build_shift_feature_frame(
         session,
         train_ids,
+        discipline=discipline,
         history_through_tournament_id=cutoff_tournament_id,
         workspace_id=workspace_id,
         workspace_ids=workspace_ids,
@@ -392,6 +425,7 @@ async def train_shift_v2_for_cutoff(
         await build_shift_feature_frame(
             session,
             val_ids,
+            discipline=discipline,
             history_through_tournament_id=cutoff_tournament_id,
             workspace_id=workspace_id,
             workspace_ids=workspace_ids,
@@ -405,7 +439,7 @@ async def train_shift_v2_for_cutoff(
         return None
 
     try:
-        result: ShiftTrainingResult = analytics_exports(OVERWATCH).train_shift_v2(
+        result: ShiftTrainingResult = exports.train_shift_v2(
             train_df,
             val_df=val_df if not val_df.empty else None,
             w_team=settings.shift_w_team,
@@ -423,14 +457,15 @@ async def train_shift_v2_for_cutoff(
         logger.warning("Shift v2 training skipped: %s", exc)
         return None
 
-    path = artifact_path(algorithm.id, SHIFT_MODEL.model_version, "shift.joblib")
+    path = artifact_path(algorithm.id, declaration.model_version, "shift.joblib")
     storage_uri = save_artifact(result.model, path)
     artifact = await registry_service.register_artifact(
         session,
+        discipline=discipline,
         algorithm_id=algorithm.id,
-        model_kind=SHIFT_MODEL.model_kind,
-        role=None,
-        version=SHIFT_MODEL.model_version,
+        model_kind=declaration.model_kind,
+        role_id=None,
+        version=declaration.model_version,
         storage_uri=storage_uri,
         feature_version=FEATURE_VERSION,
         training_cutoff_tournament_id=cutoff_tournament_id,

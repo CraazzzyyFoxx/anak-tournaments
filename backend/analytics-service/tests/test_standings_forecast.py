@@ -123,7 +123,7 @@ class ForecastFrameTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=_synergy(synergy)),
             ),
         ):
-            return await standings_features.build_standings_forecast_frame(SimpleNamespace(), 7)
+            return await standings_features.build_standings_forecast_frame(SimpleNamespace(), 7, discipline="overwatch")
 
     async def test_every_ordered_pair_is_emitted_once(self) -> None:
         frame = await self._build(
@@ -215,6 +215,7 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
             ),
             patch.object(runner, "load_artifact", lambda _uri: _StubModel()),
             patch.object(runner, "build_standings_forecast_frame", AsyncMock(return_value=forecast)),
+            patch.object(runner, "tournament_module", AsyncMock(return_value=("overwatch", ow_exports))),
         )
 
     @staticmethod
@@ -230,12 +231,13 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
     async def test_forecast_frame_drives_the_simulation(self) -> None:
         session, patches = self._patches(self._forecast())
 
-        with patches[0], patches[1], patches[2], patches[3] as forecast_call:
+        with patches[0], patches[1], patches[2], patches[3] as forecast_call, patches[4]:
             written = await runner.run_standings_for_tournament(session, 7, workspace_id=3, n_iter=50)
 
         forecast_call.assert_awaited_once()
         self.assertEqual(7, forecast_call.await_args.args[1])
         self.assertEqual(3, forecast_call.await_args.kwargs["workspace_id"])
+        self.assertEqual("overwatch", forecast_call.await_args.kwargs["discipline"])
         self.assertEqual(2, written)
         session.commit.assert_awaited_once()
 
@@ -253,7 +255,7 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
     async def test_unrateable_field_writes_nothing(self) -> None:
         session, patches = self._patches(pd.DataFrame())
 
-        with patches[0], patches[1], patches[2], patches[3]:
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
             written = await runner.run_standings_for_tournament(session, 7, workspace_id=3, n_iter=50)
 
         self.assertEqual(0, written)

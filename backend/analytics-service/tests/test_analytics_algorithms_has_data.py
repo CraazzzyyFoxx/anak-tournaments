@@ -36,6 +36,28 @@ def _params() -> SimpleNamespace:
 
 
 class AlgorithmHasDataTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        patcher = patch.object(analytics_flows, "tournament_discipline", AsyncMock(return_value="overwatch"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_a_discipline_without_analytics_is_offered_no_algorithm(self) -> None:
+        """A LoL tournament never advertises the Overwatch shift model (or the v1 algorithms on its scale)."""
+        algorithms = [_algorithm(1, "Linear"), _algorithm(2, "Points"), _algorithm(3, "OpenSkill + ML")]
+        with (
+            patch.object(analytics_flows, "tournament_discipline", AsyncMock(return_value="lol")),
+            patch.object(analytics_flows.analytics_read_service, "get_algorithms", AsyncMock(return_value=algorithms)),
+            patch.object(
+                analytics_flows.analytics_read_service,
+                "get_algorithm_ids_with_shift_data",
+                AsyncMock(return_value={3}),
+            ),
+        ):
+            result = await analytics_flows.flows_service.get_algorithms(SimpleNamespace(), _params(), tournament_id=7)
+
+        self.assertEqual([], result.results)
+        self.assertEqual(0, result.total)
+
     async def test_annotates_has_data_for_tournament(self) -> None:
         algorithms = [
             _algorithm(1, "Linear"),

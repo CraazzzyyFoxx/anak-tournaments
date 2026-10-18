@@ -14,7 +14,7 @@ import pytest
 
 from shared.disciplines import DISCIPLINES, discipline
 from shared.domain import analytics as contract
-from src.core.analytics_exports import OVERWATCH, UnsupportedAnalytics, analytics_exports
+from src.core.analytics_exports import UnsupportedAnalytics, analytics_exports
 from tests.ow_analytics import exports, module
 
 
@@ -45,7 +45,7 @@ def test_a_game_without_analytics_is_unsupported_never_overwatch() -> None:
         analytics_exports("lol")
     with pytest.raises(UnsupportedAnalytics):
         analytics_exports("a-code-nobody-wrote")
-    assert analytics_exports(OVERWATCH) is exports
+    assert analytics_exports("overwatch") is exports
 
 
 def _declared_members() -> dict[str, typing.Any]:
