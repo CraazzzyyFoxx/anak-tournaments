@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -92,10 +92,6 @@ export default function DivisionsSettingsPage() {
   const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
-  // A concrete-browsing surface: the resolved game scopes the whole page, shown in the URL.
-  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? undefined });
-  const browsedDiscipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
-  const preferredActiveVersionId = activeGridVersionId(workspace, browsedDiscipline);
   const portableInputRef = useRef<HTMLInputElement>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [activating, setActivating] = useState<DivisionGridVersion | null>(null);
@@ -113,20 +109,23 @@ export default function DivisionsSettingsPage() {
   });
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
-  // A `?grid=` pin is honoured only while it belongs to the browsed game: changing the game selector
-  // must never leave a foreign grid driving versions, ladder and activation under another game's name.
+  // An explicitly opened `?grid=` (grid-only URL, no `?discipline=`) is an OWNER: its own game sets the
+  // browsing game, outranking URL and preference, and nothing is written to the preference. With an
+  // explicit `?discipline=` a pin of another game is simply not honoured; it is dropped only when the
+  // user changes the game selector.
   const gridParam = Number(searchParams?.get("grid"));
+  const gridOnlyUrl = searchParams?.has("grid") === true && searchParams.has("discipline") === false;
+  const ownerGrid = gridOnlyUrl ? (grids.find((grid) => grid.id === gridParam) ?? null) : null;
+  const browsing = useBrowsingDiscipline({
+    allowsAll: false,
+    axis: workspaceId ?? undefined,
+    ownerDiscipline: ownerGrid?.discipline ?? null,
+    ownerPending: gridOnlyUrl && canRead && !gridsQuery.isSuccess && !gridsQuery.isError
+  });
+  const browsedDiscipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const preferredActiveVersionId = activeGridVersionId(workspace, browsedDiscipline);
   const scopedGrids = grids.filter((grid) => grid.discipline === browsedDiscipline);
   const pinnedGrid = scopedGrids.find((grid) => grid.id === gridParam) ?? null;
-  const stalePin =
-    searchParams?.has("grid") === true &&
-    pinnedGrid === null &&
-    browsedDiscipline !== null &&
-    gridsQuery.isSuccess;
-  // The pin of another game is dropped from the URL (replace, no history entry), not just ignored.
-  useEffect(() => {
-    if (stalePin) setParams({ grid: null });
-  }, [stalePin, setParams]);
   const selectedGrid =
     pinnedGrid ??
     scopedGrids.find((grid) =>
@@ -136,6 +135,8 @@ export default function DivisionsSettingsPage() {
     scopedGrids[0] ??
     null;
   const selectedDiscipline = browsedDiscipline;
+  // Changing the game is the one place a grid pin of the previous game is dropped.
+  const selectGame = (value: string) => browsing.select(value, { dropParams: ["grid"] });
   const activeVersionId = activeGridVersionId(workspace, selectedDiscipline);
 
   const metadataQuery = useDisciplineMetadata(workspaceId ?? "all", selectedDiscipline);
@@ -290,7 +291,8 @@ export default function DivisionsSettingsPage() {
       workspaceService.importDivisionGridPortable(input.scope.workspaceId, input.document),
     onSuccess: async (grid, input) => {
       await refresh({ workspaceId: input.scope.workspaceId, discipline: grid.discipline });
-      setParams({ grid: String(grid.id) });
+      // Open the imported grid as an owner of its game, whatever the browsing choice was.
+      setParams({ grid: String(grid.id), discipline: grid.discipline });
       notify.success(t("toast.jsonImported"));
     },
     onError: reportFailure(t("errors.jsonImport"), t)
@@ -449,7 +451,7 @@ export default function DivisionsSettingsPage() {
         resolved={resolvedDiscipline}
         disciplines={browsing.disciplines ?? []}
         allowsAll={false}
-        onSelect={browsing.select}
+        onSelect={selectGame}
       />
     );
   }
@@ -504,7 +506,7 @@ export default function DivisionsSettingsPage() {
           disciplines={browsing.disciplines}
           value={browsedDiscipline ?? undefined}
           allowsAll={false}
-          onSelect={browsing.select}
+          onSelect={selectGame}
           className="w-52 self-start"
         />
       ) : null}

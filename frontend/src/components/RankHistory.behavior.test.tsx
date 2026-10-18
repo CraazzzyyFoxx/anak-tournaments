@@ -4,7 +4,7 @@
 // collecting game by capability (never by name) and hands the drawing to that game's module slot.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DisciplineDescriptor } from "@/types/discipline.types";
@@ -75,19 +75,24 @@ const LOL: DisciplineDescriptor = {
   capabilities: { ...OVERWATCH.capabilities, native_rank_collection: false, native_ladder: false }
 };
 
-const containers: HTMLElement[] = [];
+const mounted: { root: Root; container: HTMLElement }[] = [];
 
 async function render(ui: ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  containers.push(container);
+  const root = createRoot(container);
+  mounted.push({ root, container });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
-    createRoot(container).render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+    root.render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
   });
-  await act(async () => {
-    await Promise.resolve();
-  });
+  for (let turn = 0; turn < 4; turn += 1) {
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 0);
+      await promise;
+    });
+  }
   return container;
 }
 
@@ -97,8 +102,12 @@ beforeEach(() => {
   getUserByName.mockReset().mockResolvedValue({ id: 42 });
 });
 
-afterEach(() => {
-  for (const container of containers.splice(0)) container.remove();
+afterEach(async () => {
+  // Unmount, not just detach: a lingering root would keep rendering into the next test's mocks.
+  for (const entry of mounted.splice(0)) {
+    await act(async () => entry.root.unmount());
+    entry.container.remove();
+  }
 });
 
 describe("RankHistory host", () => {

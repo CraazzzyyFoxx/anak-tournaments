@@ -38,6 +38,7 @@ const getDivisionGridVersionReadiness = vi.fn();
 const createDivisionGridVersion = vi.fn();
 const cloneDivisionGridVersion = vi.fn();
 const activateDivisionGridVersion = vi.fn();
+const importDivisionGridPortable = vi.fn();
 const fetchWorkspaces = vi.fn();
 
 let permitted = true;
@@ -82,7 +83,7 @@ vi.mock("@/services/workspace.service", () => ({
     cloneDivisionGridVersion: (...args: unknown[]) => cloneDivisionGridVersion(...args),
     activateDivisionGridVersion: (...args: unknown[]) => activateDivisionGridVersion(...args),
     exportDivisionGridPortable: vi.fn(),
-    importDivisionGridPortable: vi.fn()
+    importDivisionGridPortable: (...args: unknown[]) => importDivisionGridPortable(...args)
   }
 }));
 
@@ -115,22 +116,29 @@ const INSTALLED = [
   { code: "lol", name: "League of Legends", enabled: true }
 ];
 
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({
-  useBrowsingDiscipline: () => {
-    const requested = new URLSearchParams(window.location.search).get("discipline") ?? "overwatch";
-    const known = INSTALLED.find((entry) => entry.code === requested);
-    return {
+// The real resolver (owner > URL > preference) over the URL; the preference is Overwatch.
+const selectGame = vi.fn();
+vi.mock("@/hooks/useBrowsingDiscipline", async () => {
+  const { resolveDiscipline } = await vi.importActual<typeof import("@/lib/site/discipline-scope")>(
+    "@/lib/site/discipline-scope"
+  );
+  return {
+    useBrowsingDiscipline: (options: { ownerDiscipline?: string | null }) => ({
       axis: 1,
       disciplines: INSTALLED,
-      resolved: known
-        ? { kind: "concrete", code: known.code, source: "url" }
-        : { kind: "invalid", requested, reason: "unknown" },
+      resolved: resolveDiscipline({
+        ownerDiscipline: options.ownerDiscipline ?? null,
+        explicitDiscipline: new URLSearchParams(window.location.search).get("discipline"),
+        storedDiscipline: "overwatch",
+        disciplines: INSTALLED,
+        allowsAll: false
+      }),
       isError: false,
       refetch: vi.fn(),
-      select: vi.fn()
-    };
-  }
-}));
+      select: selectGame
+    })
+  };
+});
 
 function metadataFor(code: string): DisciplineMetadata {
   const native = code === "overwatch";
@@ -457,7 +465,7 @@ describe("Settings › Divisions", () => {
     const container = await mount();
     expect(container.querySelector("#divisions-in-force")?.textContent).not.toContain("LoL");
     await act(async () => {
-      replace("/admin/settings/divisions?discipline=lol&grid=8");
+      replace("/admin/settings/divisions?grid=8");
     });
     await settle();
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe("LoL organizer scale");
@@ -470,7 +478,7 @@ describe("Settings › Divisions", () => {
     await click(confirm);
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe("New LoL scale");
     await act(async () => {
-      replace("/admin/settings/divisions?discipline=overwatch&grid=7");
+      replace("/admin/settings/divisions?grid=7");
     });
     await settle();
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
@@ -539,7 +547,7 @@ describe("Settings › Divisions", () => {
           ? { overwatch: VERSIONS[2], lol }
           : { overwatch: VERSIONS[2] }
       };
-      window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol&grid=8");
+      window.history.replaceState(null, "", "/admin/settings/divisions?grid=8");
       const container = await mount();
       expect(container.querySelector("ol[aria-label]")).toBeNull();
       expect(container.textContent).not.toMatch(/Champion|Bronze|45 ranks|Overwatch rank/);
@@ -673,8 +681,8 @@ describe("Settings › Divisions · browsing game", () => {
 });
 
 describe("Settings › Divisions · game switch and captured scope", () => {
-  it("drops a grid pin of another game when the game changes: selector and grid move together", async () => {
-    // The pinned grid 7 is Overwatch; the URL browses LoL.
+  it("does not honour a pin of another game when the URL names the game explicitly", async () => {
+    // The pinned grid 7 is Overwatch; the URL explicitly browses LoL.
     window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol&grid=7");
     const container = await mount();
 
@@ -682,9 +690,60 @@ describe("Settings › Divisions · game switch and captured scope", () => {
       "Create a division grid for this game"
     );
     expect(container.textContent).not.toContain(VERSIONS[2].label);
-    expect(window.location.search).not.toContain("grid=");
-    expect(window.location.search).toContain("discipline=lol");
     expect(getDivisionGridVersions).not.toHaveBeenCalled();
+  });
+
+  it("opens a grid-only URL as the owner of its game, whatever the saved preference is", async () => {
+    getDivisionGrids.mockResolvedValue([
+      grid(7, "OW"),
+      { ...grid(8, "LoL"), discipline: "lol", versions: [] }
+    ]);
+    getDivisionGridVersions.mockResolvedValue([]);
+    window.history.replaceState(null, "", "/admin/settings/divisions?grid=8");
+    const container = await mount();
+
+    // Preference is Overwatch, the grid is LoL: the page is LoL, with no OW-only action and no URL rewrite.
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
+      "Create a division grid for this game"
+    );
+    expect(button("Load standard OW ladder")).toBeUndefined();
+    expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 8);
+    expect(window.location.search).toBe("?grid=8");
+  });
+
+  it("drops the grid pin only when the user changes the game selector", async () => {
+    getDivisionGrids.mockResolvedValue([grid(7, "OW")]);
+    window.history.replaceState(null, "", "/admin/settings/divisions?discipline=overwatch&grid=7");
+    selectGame.mockClear();
+    await mount();
+    expect(selectGame).not.toHaveBeenCalled();
+
+    const trigger = document.querySelector<HTMLElement>('button[role="combobox"]');
+    await click(trigger);
+    const option = Array.from(document.querySelectorAll('[role="option"]')).find(
+      (element) => element.textContent?.includes("League of Legends")
+    );
+    await click(option);
+
+    expect(selectGame).toHaveBeenCalledWith("lol", { dropParams: ["grid"] });
+  });
+
+  it("opens a portable import on the returned grid AND its game", async () => {
+    importDivisionGridPortable.mockResolvedValue({ ...grid(8, "LoL"), discipline: "lol" });
+    await mount();
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const file = new File(["{}"], "grid.json", { type: "application/json" });
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    await act(async () => {
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+
+    expect(importDivisionGridPortable).toHaveBeenCalledWith(1, {});
+    expect(window.location.search).toContain("grid=8");
+    expect(window.location.search).toContain("discipline=lol");
   });
 
   it("invalidates the scope captured at submit, even when the game changes before the request ends", async () => {

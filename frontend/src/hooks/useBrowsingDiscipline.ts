@@ -25,7 +25,7 @@ export interface BrowsingDisciplineState {
   isError: boolean;
   refetch: () => void;
   /** A user pick: saved as the preference and pushed as a history entry on the shareable URL. */
-  select: (value: string) => void;
+  select: (value: string, options?: { dropParams?: string[] }) => void;
 }
 
 const noSubscription = () => () => {};
@@ -43,12 +43,18 @@ const noSubscription = () => () => {};
 export function useBrowsingDiscipline({
   allowsAll,
   initial,
-  axis: axisOverride
+  axis: axisOverride,
+  ownerDiscipline = null,
+  ownerPending = false
 }: Readonly<{
   allowsAll: boolean;
   initial?: BrowsingDisciplineInit;
   /** A surface that is platform-wide whatever the viewing scope (e.g. the global catalog admin) names its axis. */
   axis?: WorkspaceAxis;
+  /** A surface opened on an owner entity (e.g. an explicit grid) whose game outranks URL and preference. */
+  ownerDiscipline?: string | null;
+  /** The owner is named in the URL but not loaded yet: the URL is not canonicalized meanwhile. */
+  ownerPending?: boolean;
 }>): BrowsingDisciplineState {
   const router = useRouter();
   const pathname = usePathname();
@@ -82,7 +88,7 @@ export function useBrowsingDiscipline({
 
   const resolved = disciplines
     ? resolveDiscipline({
-        ownerDiscipline: null,
+        ownerDiscipline,
         explicitDiscipline: explicit,
         storedDiscipline: stored,
         disciplines,
@@ -90,7 +96,7 @@ export function useBrowsingDiscipline({
       })
     : null;
 
-  const urlValue = resolved && explicit === null ? disciplineParamOf(resolved) : null;
+  const urlValue = resolved && explicit === null && !ownerPending ? disciplineParamOf(resolved) : null;
   useEffect(() => {
     if (urlValue === null) return;
     const next = new URLSearchParams(searchParams.toString());
@@ -106,11 +112,12 @@ export function useBrowsingDiscipline({
   }, [storedUsable, mounted, setBrowsingDiscipline]);
 
   const select = useCallback(
-    (value: string) => {
+    (value: string, options?: { dropParams?: string[] }) => {
       setBrowsingDiscipline(value);
       const next = new URLSearchParams(searchParams.toString());
       next.set(DISCIPLINE_PARAM, value);
       next.delete("page");
+      for (const param of options?.dropParams ?? []) next.delete(param);
       router.push(`${pathname}?${next.toString()}`);
     },
     [pathname, router, searchParams, setBrowsingDiscipline]
