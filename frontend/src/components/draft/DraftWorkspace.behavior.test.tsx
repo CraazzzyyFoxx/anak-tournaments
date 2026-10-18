@@ -83,6 +83,7 @@ function board(overrides: Partial<DraftBoard> = {}, session: Partial<DraftBoard[
       id: 1,
       tournament_id: 5,
       workspace_id: 2,
+      discipline: "overwatch",
       status: "live",
       blocked_reason: null,
       format: "snake",

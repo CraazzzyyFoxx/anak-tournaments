@@ -42,7 +42,7 @@ const pick = (id: number, patch: Partial<DraftPick>): DraftPick => ({
 
 const board = (patch: Partial<DraftBoard> & { shape: RosterShape }): DraftBoard => ({
   session: {
-    id: 1, tournament_id: 1, workspace_id: 1, status: "live", blocked_reason: null, format: "snake",
+    id: 1, tournament_id: 1, workspace_id: 1, discipline: "overwatch", status: "live", blocked_reason: null, format: "snake",
     rounds: 4, pick_time_seconds: 45, overtime_seconds: 10, roster_shape: patch.shape, current_pick_id: null,
     pool_source: "manual", source_balance_id: null, autopick_strategy: "best_fit", allow_admin_override: true,
     exported_at: null, export_status: null, settings_json: {}, version: 1, created_at: null

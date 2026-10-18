@@ -27,6 +27,8 @@ export interface DraftSession {
   id: number;
   tournament_id: number;
   workspace_id: number;
+  /** The owning tournament's discipline (owner context for catalog/ontology/identity reads). */
+  discipline: string;
   status: DraftStatus;
   blocked_reason: string | null;
   format: DraftFormat;

@@ -406,11 +406,17 @@ class DraftPickRead(BaseRead):
         )
 
 
+_DERIVED_SESSION_FIELDS = frozenset({"roster_shape", "discipline"})
+
+
 class DraftSessionRead(BaseRead):
     model_config = _ReadConfig
 
     tournament_id: int
     workspace_id: int
+    #: The owning tournament's discipline: the owner context a draft page scopes
+    #: its catalog/ontology/identity reads by (not stored on the session row).
+    discipline: str
     status: DraftStatus
     blocked_reason: str | None
     format: DraftFormat
@@ -432,18 +438,20 @@ class DraftSessionRead(BaseRead):
     created_at: datetime | None = None
 
     @classmethod
-    def from_session(cls, draft_session: Any, *, shape: RosterShape) -> DraftSessionRead:
-        """The row plus the roster shape the row does not store.
+    def from_session(cls, draft_session: Any, *, shape: RosterShape, discipline: str) -> DraftSessionRead:
+        """The row plus what the row does not store: the roster shape and the owner's discipline.
 
         Every other field maps straight off the ORM object, but the shape is
-        resolved from the tournament/workspace override chain, so it has to be
-        handed in. Building the payload off ``model_fields`` keeps that the ONLY
-        difference: add a column, and it is picked up here without an edit.
+        resolved from the tournament/workspace override chain and the discipline
+        belongs to the tournament, so both have to be handed in. Building the
+        payload off ``model_fields`` keeps those the ONLY differences: add a
+        column, and it is picked up here without an edit.
         """
         payload: dict[str, Any] = {
-            name: getattr(draft_session, name) for name in cls.model_fields if name != "roster_shape"
+            name: getattr(draft_session, name) for name in cls.model_fields if name not in _DERIVED_SESSION_FIELDS
         }
         payload["roster_shape"] = RosterShapeRead.from_shape(shape)
+        payload["discipline"] = discipline
         return cls.model_validate(payload)
 
 

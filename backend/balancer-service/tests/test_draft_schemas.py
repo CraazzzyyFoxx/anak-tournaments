@@ -94,8 +94,10 @@ def test_session_read_from_session_projects_the_resolved_shape() -> None:
             version=1,
         ),
         shape=shape,
+        discipline="lol",
     )
 
+    assert read.discipline == "lol"
     assert read.rounds == 5
     assert read.roster_shape.team_size == 6
     assert read.roster_shape.draft_rounds == 5

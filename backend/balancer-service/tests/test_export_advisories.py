@@ -90,7 +90,9 @@ class ExportAdvisoryWireTests(IsolatedAsyncioTestCase):
             version=1,
             export_status="success",
         )
-        read = schemas.DraftSessionRead.from_session(row, shape=RosterShape(entries=(("flex", 5),)))
+        read = schemas.DraftSessionRead.from_session(
+            row, shape=RosterShape(entries=(("flex", 5),)), discipline="overwatch"
+        )
         body = await self._call(
             draft,
             "rpc.balancer.draft.export",

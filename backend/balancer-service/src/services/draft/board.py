@@ -235,7 +235,8 @@ class DraftBoardService:
         levels are cached, so this is free on the hot board path.
         """
         shape = await self.feasibility.resolve_shape(session, draft_session)
-        return schemas.DraftSessionRead.from_session(draft_session, shape=shape)
+        owner = await loaders.tournament(session, draft_session)
+        return schemas.DraftSessionRead.from_session(draft_session, shape=shape, discipline=owner.discipline)
 
     async def build_board(self, session: AsyncSession, draft_session: DraftSession) -> schemas.DraftBoardSnapshot:
         # The cheap max-event-id read runs on every request and doubles as the
