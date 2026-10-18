@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -379,11 +379,24 @@ async def import_portable_rules(
     rules: list[PortableAchievementRule],
     source_workspace: models.Workspace | None = None,
 ) -> dict[str, Any]:
+    warnings: list[dict[str, str]] = []
+    if source_workspace is not None and source_workspace.id != target_workspace.id:
+        # A cutoff names a tournament of the source workspace; it cannot be translated, and rejecting it would make a
+        # library import of any rule that has one impossible. The organizer sets a new cutoff in the target.
+        for payload in rules:
+            if payload.min_tournament_id is not None:
+                warnings.append(
+                    {
+                        "slug": payload.slug,
+                        "message": f"min_tournament_id #{payload.min_tournament_id} belongs to another workspace "
+                        "and was not imported; set a cutoff in this workspace",
+                    }
+                )
+        rules = [replace(payload, min_tournament_id=None) for payload in rules]
     existing_rules = await _prevalidate(session, target_workspace=target_workspace, rules=rules)
 
     created = 0
     updated = 0
-    warnings: list[dict[str, str]] = []
 
     for payload in rules:
         next_image_url: str | None = None

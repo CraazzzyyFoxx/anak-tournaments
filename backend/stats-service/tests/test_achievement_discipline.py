@@ -534,6 +534,33 @@ class PortableTests(_DbCase):
         result = await self._import([self._payload("fresh", min_tournament_id=mine.id)])
         self.assertEqual(1, result["created"])
 
+    async def test_cross_workspace_import_drops_the_cutoff_with_a_warning(self) -> None:
+        source = await self.workspace("source")
+        theirs = await self.tournament(source, "overwatch", "their-cup")
+        await self.session.commit()
+        result = await portable.import_portable_rules(
+            self.session,
+            None,
+            target_workspace=self.ws,
+            rules=[self._payload("copied", min_tournament_id=theirs.id), self._payload("plain")],
+            source_workspace=source,
+        )
+        self.assertEqual(2, result["created"])
+        self.assertEqual(["copied"], [w["slug"] for w in result["warnings"] if "min_tournament_id" in w["message"]])
+        rules = {r.slug: r for r in await portable.load_rules_for_workspace(self.session, self.ws.id, discipline=None)}
+        self.assertEqual((None, None), (rules["copied"].min_tournament_id, rules["plain"].min_tournament_id))
+
+    async def test_same_workspace_import_with_a_source_still_validates_the_cutoff(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            await portable.import_portable_rules(
+                self.session,
+                None,
+                target_workspace=self.ws,
+                rules=[self._payload("invented", min_tournament_id=987654321)],
+                source_workspace=self.ws,
+            )
+        self.assertTrue(ctx.exception.args[0][0]["errors"][0].startswith("min_tournament_id:"))
+
 
 class SeedAndResetTests(_DbCase):
     async def _lol_sentinel(self):  # noqa: ANN202
