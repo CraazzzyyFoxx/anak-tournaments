@@ -62,6 +62,9 @@ from src.rpc import (
     impact as rpc_impact,
 )
 from src.rpc import (
+    ingest as rpc_ingest,
+)
+from src.rpc import (
     logs as rpc_logs,
 )
 from src.rpc import (
@@ -158,6 +161,7 @@ rpc_rank.register(broker, logger)
 rpc_achievements.register(broker, logger)
 rpc_misc.register(broker, logger)
 rpc_impact.register(broker, logger)
+rpc_ingest.register(broker, logger)
 rpc_subscription.register(broker, logger)
 
 # Disciplines whose jobs this worker runs: every installed one until Task 6 adds STATS_DISCIPLINES selection.
@@ -204,8 +208,8 @@ async def start_worker() -> None:
         _JOB_DISCIPLINES, session_factory=db.async_session_maker, redis=realtime_redis, logger=logger
     )
     # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
-    # worker killed mid-parse). Redis leader-locked across worker replicas.
-    logs_reaper.start_scheduler(redis=realtime_redis, broker=broker)
+    # worker killed mid-parse) through the outbox. Redis leader-locked across worker replicas.
+    logs_reaper.start_scheduler(redis=realtime_redis)
     # Drop failed match logs (S3 object + record) past their retention window.
     logs_retention.start_scheduler(redis=realtime_redis, s3=s3_client)
     subscription_scheduler.start_scheduler()
@@ -312,6 +316,13 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
         event = ProcessMatchLogEvent.model_validate(data)
         log = logger.bind(ingest_job_id=event.ingest_job_id)
         async with db.async_session_maker() as session:
+            if await session.scalar(
+                sa.select(models.IngestJob.document_ref).where(models.IngestJob.id == event.ingest_job_id)
+            ):
+                # A canonical document job: the P4 log parser must never claim it. It stays pending (the reaper
+                # keeps re-requesting it) until the canonical ingest consumer exists.
+                log.info("Canonical ingest job left pending for the ingest worker")
+                return
             status = await logs_flows.process_match_log(session, event.ingest_job_id, s3_client, is_raise=False)
             if status == models.IngestJobStatus.PROCESSING:
                 # Another delivery owns this claim. Acknowledge without

@@ -22,6 +22,10 @@ __all__ = (
     "stalled_conditions",
 )
 
+#: Source kinds of the admin/Discord/bot raw-log channels. They share one decoder, so identical bytes through any of
+#: them are the same job; a canonical document's ``source.kind`` is provenance and never joins this set.
+UPLOAD_SOURCE_KINDS = frozenset({"upload", "discord", "manual"})
+
 
 async def _project_vocabulary(session: AsyncSession, spec: DisciplineSpec, *, kind: str) -> None:
     # Runtime import avoids repository -> audit service -> repository initialization cycles.
@@ -742,22 +746,29 @@ class IngestJobRepository:
             )
         )
 
-    async def create_or_get_upload(
+    async def create_or_get(
         self,
         session: AsyncSession,
         *,
         workspace_id: int,
         discipline: str,
         source_kind: str,
+        external_id: str | None,
         content_hash: str,
-        filename: str,
+        filename: str | None,
         raw_ref: str,
+        document_ref: str | None,
         uploader_user_id: int | None,
+        api_key_id: int | None,
         hint_tournament_id: int | None,
         hint_encounter_id: int | None,
-        api_key_id: int | None = None,
-        hint_encounter_game_id: int | None = None,
+        hint_encounter_game_id: int | None,
     ) -> tuple[models.IngestJob, bool]:
+        """Reserve one pending job per idempotency key; ``False`` returns the existing row untouched.
+
+        The key is ``(workspace, source_kind, external_id)`` when an external id is present, otherwise
+        ``(workspace, content_hash)`` -- the two partial unique indexes. The caller owns the commit.
+        """
         from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 
         job, tournament, encounter, game = models.IngestJob, models.Tournament, models.Encounter, models.EncounterGame
@@ -767,36 +778,53 @@ class IngestJobRepository:
             or any(c not in "0123456789abcdef" for c in content_hash)
             or not raw_ref
             or len(raw_ref) > 512
-            or not filename
-            or len(filename) > 500
+            or (document_ref is not None and not 0 < len(document_ref) <= 512)
+            or (filename is not None and not 0 < len(filename) <= 500)
             or not source_kind
             or len(source_kind) > 32
+            or (external_id is not None and not 0 < len(external_id) <= 128)
         ):
             raise BaseAPIException(status_code=422, detail="stats_upload_invalid_provenance")
+        keyed = external_id is not None
+        key_filter = (
+            (job.workspace_id == workspace_id, job.source_kind == source_kind, job.external_id == external_id)
+            if keyed
+            else (job.workspace_id == workspace_id, job.content_hash == content_hash, job.external_id.is_(None))
+        )
+
+        def reuse_or_conflict(row: models.IngestJob) -> models.IngestJob:
+            if keyed:
+                if row.discipline != discipline or row.content_hash != content_hash:
+                    raise BaseAPIException(status_code=409, detail={"code": "idempotency_conflict"})
+            else:
+                # Upload kinds share one decoder, so the same bytes from another upload channel are the same
+                # job; any other kind colliding on a hash must never run a different decoder.
+                same_kind = row.source_kind == source_kind or {row.source_kind, source_kind} <= UPLOAD_SOURCE_KINDS
+                if (
+                    row.discipline != discipline
+                    or not same_kind
+                    or (source_kind in UPLOAD_SOURCE_KINDS and row.hint_tournament_id != hint_tournament_id)
+                ):
+                    raise BaseAPIException(status_code=409, detail="stats_upload_scope_conflict")
+            return row
+
         # Reuse locks only the existing job and never its parents: it writes no
         # foreign key. New inserts lock parents only after ruling out reuse.
         await session.execute(
             sa.text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
             {
-                "key": f"stats.upload:{workspace_id}:{content_hash}",
+                "key": f"stats.ingest:{workspace_id}:{source_kind}:{external_id}"
+                if keyed
+                else f"stats.upload:{workspace_id}:{content_hash}",
             },
         )
         existing = (
             await session.scalars(
-                sa.select(job)
-                .where(
-                    job.workspace_id == workspace_id,
-                    job.content_hash == content_hash,
-                    job.external_id.is_(None),
-                )
-                .with_for_update()
-                .execution_options(populate_existing=True)
+                sa.select(job).where(*key_filter).with_for_update().execution_options(populate_existing=True)
             )
         ).one_or_none()
-        if existing is not None and (
-            existing.discipline != discipline or existing.hint_tournament_id != hint_tournament_id
-        ):
-            raise BaseAPIException(status_code=409, detail="stats_upload_scope_conflict")
+        if existing is not None:
+            reuse_or_conflict(existing)
         query = sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id)
         if not await session.scalar(query.with_for_update(read=True) if existing is None else query):
             raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
@@ -856,11 +884,12 @@ class IngestJobRepository:
                 workspace_id=workspace_id,
                 discipline=discipline,
                 source_kind=source_kind,
-                external_id=None,
+                external_id=external_id,
                 content_hash=content_hash,
                 raw_status=models.RawSourceStatus.AVAILABLE,
                 filename=filename,
                 raw_ref=raw_ref,
+                document_ref=document_ref,
                 uploader_user_id=uploader_user_id,
                 hint_tournament_id=hint_tournament_id,
                 hint_encounter_id=hint_encounter_id,
@@ -869,26 +898,16 @@ class IngestJobRepository:
                 status=models.IngestJobStatus.PENDING,
             )
             .on_conflict_do_nothing(
-                index_elements=[job.workspace_id, job.content_hash],
-                index_where=job.external_id.is_(None),
+                index_elements=[job.workspace_id, job.source_kind, job.external_id]
+                if keyed
+                else [job.workspace_id, job.content_hash],
+                index_where=job.external_id.is_not(None) if keyed else job.external_id.is_(None),
             )
             .returning(job.id)
         )
         if inserted is None:
-            existing = (
-                await session.scalars(
-                    sa.select(job)
-                    .where(
-                        job.workspace_id == workspace_id,
-                        job.content_hash == content_hash,
-                        job.external_id.is_(None),
-                    )
-                    .with_for_update()
-                )
-            ).one()
-            if existing.discipline != discipline or existing.hint_tournament_id != hint_tournament_id:
-                raise BaseAPIException(status_code=409, detail="stats_upload_scope_conflict")
-            return existing, False
+            existing = (await session.scalars(sa.select(job).where(*key_filter).with_for_update())).one()
+            return reuse_or_conflict(existing), False
         await session.flush()
         after = await capture_stats_evidence(session, scopes=scopes)
         await stage_stats_evidence(
@@ -929,7 +948,10 @@ class IngestJobRepository:
         pending_after_seconds: int,
         processing_after_seconds: int,
         limit: int,
+        disciplines: Sequence[str] | None = None,
     ) -> Sequence[models.IngestJob]:
+        """Lock stalled jobs; ``disciplines`` limits the sweep to the ones this worker runs (``None``: every one)."""
+        selected = () if disciplines is None else (models.IngestJob.discipline.in_(disciplines),)
         return (
             await session.scalars(
                 sa.select(models.IngestJob)
@@ -938,7 +960,8 @@ class IngestJobRepository:
                         now=now,
                         pending_after_seconds=pending_after_seconds,
                         processing_after_seconds=processing_after_seconds,
-                    )
+                    ),
+                    *selected,
                 )
                 .order_by(models.IngestJob.created_at, models.IngestJob.id)
                 .limit(limit)
@@ -981,6 +1004,28 @@ class IngestJobRepository:
                 sa.select(
                     sa.exists().where(
                         job.raw_ref == raw_ref,
+                        sa.or_(
+                            job.id.not_in(exclude_ids), sa.exists().where(models.StatsMatch.ingest_job_id == job.id)
+                        ),
+                    )
+                )
+            )
+        )
+
+    async def document_ref_in_use(
+        self,
+        session: AsyncSession,
+        document_ref: str,
+        *,
+        exclude_ids: Sequence[int] = (),
+    ) -> bool:
+        """Whether another job (or a match bound to any job) still needs this immutable envelope."""
+        job = models.IngestJob
+        return bool(
+            await session.scalar(
+                sa.select(
+                    sa.exists().where(
+                        job.document_ref == document_ref,
                         sa.or_(
                             job.id.not_in(exclude_ids), sa.exists().where(models.StatsMatch.ingest_job_id == job.id)
                         ),

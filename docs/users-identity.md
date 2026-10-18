@@ -703,6 +703,13 @@ Match `source`/`code` fields are removed; replay codes remain a separate encount
 
 `gateway/internal/auth` resolves a JWT or an API key into an `AuthUser`. An API key is scoped to `(auth_user_id, workspace_id)`. Domain services receive an already rehydrated auth user with its RBAC cache.
 
+An API key may carry the `stats.ingest` scope (a normal catalog permission, `resource.action` like every other scope).
+It is grantable only while its owner holds `stats.ingest` in that workspace, and an owner deny or role change removes
+it from the key's effective permission on the next validation. `POST /api/v1/stats/matches` and
+`GET /api/v1/stats/ingest-jobs/{id}` require a real key, the literal scope **and** the effective permission, and always
+act in the key's own workspace: sessions, service tokens and a superuser bypass are not enough, and nothing in the
+request body selects a workspace or key.
+
 ---
 
 ## 10. Security model

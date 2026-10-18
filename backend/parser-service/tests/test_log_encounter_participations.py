@@ -100,17 +100,21 @@ class ParticipationCase(EncounterWriterCase):
         return game
 
     async def job(self, session):
-        job, _ = await IngestJobRepository().create_or_get_upload(
+        job, _ = await IngestJobRepository().create_or_get(
             session,
             workspace_id=self.ids["ws"],
             discipline="overwatch",
             source_kind="manual",
+            external_id=None,
             content_hash="a" * 64,
             filename="participant.log",
             raw_ref=f"test/{self.ids['ws']}",
+            document_ref=None,
             uploader_user_id=None,
+            api_key_id=None,
             hint_tournament_id=self.ids["t"],
             hint_encounter_id=None,
+            hint_encounter_game_id=None,
         )
         return job
 

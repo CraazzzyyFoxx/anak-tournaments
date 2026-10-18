@@ -302,6 +302,9 @@ def http_error(exc: HTTPException) -> tuple[str, dict[str, Any]]:
     retry_after = retry_after_seconds(exc)
     if retry_after is not None:
         details["retry_after"] = retry_after
+    # An exception may carry machine data of its own (e.g. the id of the record a refusal still persisted).
+    for key, value in (getattr(exc, "details", None) or {}).items():
+        details.setdefault(key, value)
     return message, details
 
 

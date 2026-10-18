@@ -27,31 +27,27 @@ class MatchLogReaperTests(IsolatedAsyncioTestCase):
         )
 
     async def test_second_replica_does_not_open_a_processing_session(self):
-        factory, publish = Mock(), AsyncMock()
+        factory = Mock()
         with (
             patch.object(reaper.settings, "log_reaper_enabled", True),
             patch.object(
                 reaper, "acquire_distributed_lock", AsyncMock(side_effect=reaper.DistributedLockUnavailable("busy"))
             ),
-            patch.object(reaper, "publish_message", publish),
         ):
-            result = await reaper.reclaim_stalled_logs(redis=object(), broker=object(), session_factory=factory)
+            result = await reaper.reclaim_stalled_logs(redis=object(), session_factory=factory)
         self.assertEqual(0, result.touched)
         factory.assert_not_called()
-        publish.assert_not_awaited()
 
-    async def test_empty_claim_releases_leadership_without_publishing(self):
-        release, publish = AsyncMock(), AsyncMock()
+    async def test_empty_claim_releases_leadership(self):
+        release = AsyncMock()
         with (
             patch.object(reaper.settings, "log_reaper_enabled", True),
             patch.object(reaper, "acquire_distributed_lock", AsyncMock(return_value="owned")),
             patch.object(reaper, "release_distributed_lock", release),
             patch.object(reaper, "_claim_stalled", AsyncMock(return_value=([], []))),
-            patch.object(reaper, "publish_message", publish),
         ):
             result = await reaper.reclaim_stalled_logs(
-                redis=object(), broker=object(), session_factory=session_factory(SimpleNamespace())
+                redis=object(), session_factory=session_factory(SimpleNamespace())
             )
         self.assertEqual(0, result.touched)
         release.assert_awaited_once()
-        publish.assert_not_awaited()

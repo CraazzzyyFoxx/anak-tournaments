@@ -30,6 +30,15 @@ DOCS: dict[str, dict] = {
         "summary": "Process tournament logs",
         "description": "Permission: workspace `log.update` in the tournament's workspace. Enqueues reprocessing of all stored match logs for a tournament and returns an ack message — the work itself runs asynchronously on the log queue — 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
     },
+    # ── canonical match ingest ───────────────────────────────────────────────
+    "rpc.stats.ingest.submit": {
+        "summary": "Submit a canonical match document",
+        "description": "Permission: a workspace API key whose `stats.ingest` scope is backed by the owner's effective `stats.ingest` permission; sessions, service tokens and owner privilege alone are refused (403 `api_key_required` / `scope_required`). The request body is the bare `owt.match/1` document (Content-Type `application/json`, up to 25 MiB); the workspace is always the key's own. Idempotent per `(source.kind, source.external_id)` when an external id is present, otherwise per the SHA-256 of the exact request bytes: the same bytes return the existing job, changed bytes or discipline under one external id answer 409 `idempotency_conflict`. Answers 202 with the job while it is `pending`/`processing`, and 200 with the actual job when it already finished (`done`, `awaiting_link`, `failed`; a failed duplicate is never retried implicitly). A structurally valid document whose codes do not resolve is persisted as a failed job with diagnostics and answers 422 with `ingest_job_id`; malformed JSON answers 400, a non-JSON content type 415, an oversized body 413.",
+    },
+    "rpc.stats.ingest.get": {
+        "summary": "Read a canonical ingest job",
+        "description": "Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).",
+    },
     # ── impact baselines ──────────────────────────────────────────────────────
     "rpc.parser.impact.recompute_baselines": {
         "summary": "Recompute impact baselines",

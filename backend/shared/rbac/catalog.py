@@ -81,6 +81,9 @@ PERMISSION_CATALOG: tuple[PermissionSpec, ...] = (
     _permission("subscription", "update", "Trigger a subscription re-check"),
     _permission("stream", "read", "Read stream live-status and polling health"),
     _permission("stream", "update", "Trigger a stream live-status re-poll"),
+    # Canonical match ingestion through a workspace API key. A key's scope still
+    # intersects its owner's real permission; there is no separate grant system.
+    _permission("stats", "ingest", "Submit canonical match observations"),
     # Workspace-scoped announcements. The platform-wide ones are deliberately
     # NOT reachable through these: a banner every visitor sees is gated on the
     # superuser flag, not on a grant an owner can hand out inside a tenant.

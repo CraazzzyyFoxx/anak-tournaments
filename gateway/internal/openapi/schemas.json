@@ -6692,6 +6692,26 @@
       },
       "summary": "User subscription collection status"
     },
+    "rpc.stats.ingest.get": {
+      "description": "Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).",
+      "response": {
+        "array": false,
+        "ref": "parser.IngestJobRead"
+      },
+      "summary": "Read a canonical ingest job"
+    },
+    "rpc.stats.ingest.submit": {
+      "description": "Permission: a workspace API key whose `stats.ingest` scope is backed by the owner's effective `stats.ingest` permission; sessions, service tokens and owner privilege alone are refused (403 `api_key_required` / `scope_required`). The request body is the bare `owt.match/1` document (Content-Type `application/json`, up to 25 MiB); the workspace is always the key's own. Idempotent per `(source.kind, source.external_id)` when an external id is present, otherwise per the SHA-256 of the exact request bytes: the same bytes return the existing job, changed bytes or discipline under one external id answer 409 `idempotency_conflict`. Answers 202 with the job while it is `pending`/`processing`, and 200 with the actual job when it already finished (`done`, `awaiting_link`, `failed`; a failed duplicate is never retried implicitly). A structurally valid document whose codes do not resolve is persisted as a failed job with diagnostics and answers 422 with `ingest_job_id`; malformed JSON answers 400, a non-JSON content type 415, an oversized body 413.",
+      "request": {
+        "array": false,
+        "ref": "parser.MatchDoc"
+      },
+      "response": {
+        "array": false,
+        "ref": "parser.IngestJobRead"
+      },
+      "summary": "Submit a canonical match document"
+    },
     "rpc.stream.health": {
       "description": "Permission: global `stream.read`. Outcome of the last Twitch live-status poll tick next to the config that produced it: status, when it ran, how many tournaments and channels it covered, how many channels were live, and Twitch's remaining rate-limit budget. Exists because the tick swallows every Helix failure by design so an outage cannot kill the scheduler \u2014 without this a poller rejected by Twitch is indistinguishable from a working one. A null status means no tick has been recorded yet, which is not the same as a recorded failure. The grant is global rather than workspace-scoped because there is one poller for the whole platform, so the numbers carry no workspace dimension and a workspace-scoped grant is not enough.",
       "response": {
@@ -32511,6 +32531,252 @@
       "title": "FetchLogRead",
       "type": "object"
     },
+    "parser.IngestBinding": {
+      "description": "The match this job is still the current evidence for; absent once superseded or while unbound.",
+      "properties": {
+        "encounter_game_id": {
+          "title": "Encounter Game Id",
+          "type": "integer"
+        },
+        "match_id": {
+          "title": "Match Id",
+          "type": "integer"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "encounter_game_id",
+        "match_id",
+        "revision"
+      ],
+      "title": "IngestBinding",
+      "type": "object"
+    },
+    "parser.IngestError": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "issues": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/parser.IngestIssueRead"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "IngestError",
+      "type": "object"
+    },
+    "parser.IngestIssueRead": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "title": "Path",
+          "type": "array"
+        },
+        "raw_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Name"
+        }
+      },
+      "required": [
+        "path",
+        "code",
+        "message"
+      ],
+      "title": "IngestIssueRead",
+      "type": "object"
+    },
+    "parser.IngestJobRead": {
+      "properties": {
+        "attempts": {
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/parser.IngestBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Hash"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/parser.IngestError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "external_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "External Id"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "source_kind": {
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Started At"
+        },
+        "status": {
+          "$ref": "#/components/schemas/parser.IngestJobStatus"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "discipline",
+        "source_kind",
+        "external_id",
+        "content_hash",
+        "status",
+        "attempts",
+        "created_at",
+        "updated_at",
+        "started_at",
+        "finished_at"
+      ],
+      "title": "IngestJobRead",
+      "type": "object"
+    },
+    "parser.IngestJobStatus": {
+      "enum": [
+        "pending",
+        "processing",
+        "awaiting_link",
+        "done",
+        "failed"
+      ],
+      "title": "IngestJobStatus",
+      "type": "string"
+    },
     "parser.LogHistoryResponse": {
       "properties": {
         "items": {
@@ -32861,6 +33127,485 @@
         "errors"
       ],
       "title": "LogUploadResponse",
+      "type": "object"
+    },
+    "parser.MatchDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "discipline": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Discipline",
+          "type": "string"
+        },
+        "duration_s": {
+          "minimum": 0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/components/schemas/parser.MatchEventDoc"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/components/schemas/parser.MatchFactDoc"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "hint": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/parser.MatchHint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "map": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Map",
+          "type": "string"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/components/schemas/parser.MatchParticipantDoc"
+          },
+          "title": "Participants",
+          "type": "array"
+        },
+        "played_at": {
+          "format": "date-time",
+          "title": "Played At",
+          "type": "string"
+        },
+        "protocol": {
+          "title": "Protocol",
+          "type": "string"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/components/schemas/parser.MatchSegmentDoc"
+          },
+          "title": "Segments",
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/components/schemas/parser.MatchSource"
+        },
+        "teams": {
+          "items": {
+            "$ref": "#/components/schemas/parser.MatchTeamDoc"
+          },
+          "minItems": 1,
+          "title": "Teams",
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "discipline",
+        "source",
+        "played_at",
+        "duration_s",
+        "map",
+        "teams",
+        "participants"
+      ],
+      "title": "MatchDoc",
+      "type": "object"
+    },
+    "parser.MatchEventDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor"
+        },
+        "actor_team": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor Team"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "entity": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity"
+        },
+        "related_entity": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Related Entity"
+        },
+        "segment": {
+          "default": 0,
+          "maximum": 32767,
+          "minimum": 0,
+          "title": "Segment",
+          "type": "integer"
+        },
+        "t": {
+          "minimum": 0,
+          "title": "T",
+          "type": "number"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "target_team": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Team"
+        },
+        "type": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "t",
+        "type"
+      ],
+      "title": "MatchEventDoc",
+      "type": "object"
+    },
+    "parser.MatchFactDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity"
+        },
+        "participant": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Participant"
+        },
+        "segment": {
+          "default": 0,
+          "maximum": 32767,
+          "minimum": 0,
+          "title": "Segment",
+          "type": "integer"
+        },
+        "stat": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Stat",
+          "type": "string"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "stat",
+        "value"
+      ],
+      "title": "MatchFactDoc",
+      "type": "object"
+    },
+    "parser.MatchHint": {
+      "additionalProperties": false,
+      "description": "Candidate constraints only: never authority, never a workspace selector.",
+      "properties": {
+        "encounter_game_id": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encounter Game Id"
+        },
+        "encounter_id": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encounter Id"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
+        }
+      },
+      "title": "MatchHint",
+      "type": "object"
+    },
+    "parser.MatchIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "id"
+      ],
+      "title": "MatchIdentity",
+      "type": "object"
+    },
+    "parser.MatchParticipantDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "$ref": "#/components/schemas/parser.MatchIdentity"
+        },
+        "key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/parser.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "team": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Team",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "team",
+        "identity"
+      ],
+      "title": "MatchParticipantDoc",
+      "type": "object"
+    },
+    "parser.MatchSegmentDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "attrs": {
+          "additionalProperties": true,
+          "title": "Attrs",
+          "type": "object"
+        },
+        "index": {
+          "maximum": 32767,
+          "minimum": 1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "index",
+        "kind"
+      ],
+      "title": "MatchSegmentDoc",
+      "type": "object"
+    },
+    "parser.MatchSource": {
+      "additionalProperties": false,
+      "properties": {
+        "external_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Id"
+        },
+        "kind": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "MatchSource",
+      "type": "object"
+    },
+    "parser.MatchTeamDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "MatchTeamDoc",
       "type": "object"
     },
     "parser.OverrideCreate": {
@@ -33405,6 +34150,41 @@
         "reenabled"
       ],
       "title": "ReenableDisabledResponse",
+      "type": "object"
+    },
+    "parser.RoleRef": {
+      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "properties": {
+        "dimension": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Dimension",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "role": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "role"
+      ],
+      "title": "RoleRef",
       "type": "object"
     },
     "parser.SettingRead": {
@@ -51954,6 +52734,11 @@
           "title": "Is League",
           "type": "boolean"
         },
+        "logs_official": {
+          "default": false,
+          "title": "Logs Official",
+          "type": "boolean"
+        },
         "loss_points": {
           "default": 0.0,
           "title": "Loss Points",
@@ -52570,6 +53355,11 @@
           "default": null,
           "title": "Logo Url"
         },
+        "logs_official": {
+          "default": false,
+          "title": "Logs Official",
+          "type": "boolean"
+        },
         "loss_points": {
           "default": 0.0,
           "title": "Loss Points",
@@ -53006,6 +53796,18 @@
           ],
           "default": null,
           "title": "Is League"
+        },
+        "logs_official": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logs Official"
         },
         "loss_points": {
           "anyOf": [

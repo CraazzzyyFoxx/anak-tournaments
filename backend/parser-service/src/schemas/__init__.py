@@ -3,6 +3,7 @@ from .base import *
 from .division_grid import *
 from .gamemode import *
 from .hero import *
+from .ingest import *
 from .logs_parser import *
 from .map import *
 from .stage import *

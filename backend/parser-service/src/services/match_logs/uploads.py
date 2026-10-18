@@ -76,17 +76,21 @@ class UploadService:
         try:
             if not await s3.put_object(raw_ref, content):
                 raise HTTPException(status_code=400, detail=f"Failed to upload file {filename}")
-            job, _created = await self._repo.create_or_get_upload(
+            job, _created = await self._repo.create_or_get(
                 session,
                 workspace_id=tournament.workspace_id,
                 discipline=tournament.discipline,
                 source_kind=source,
+                external_id=None,
                 content_hash=content_hash,
                 filename=filename,
                 raw_ref=raw_ref,
+                document_ref=None,
                 uploader_user_id=uploader_id,
+                api_key_id=None,
                 hint_tournament_id=tournament_id,
                 hint_encounter_id=attached_encounter_id,
+                hint_encounter_game_id=None,
             )
             if _created:
                 await emit_logs_updated(session, job.workspace_id, change="pending")

@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
+from shared.schemas.match_doc import MatchDoc
 from src import schemas
 
 OPERATIONS: dict[str, Op] = {
+    # ── canonical match ingest: the public request is the bare owt.match/1 document ─
+    "rpc.stats.ingest.submit": Op(request=MatchDoc, response=schemas.IngestJobRead),
+    "rpc.stats.ingest.get": Op(response=schemas.IngestJobRead),
     # ── match-log admin ────────────────────────────────────────────────────
     "rpc.parser.logs.queue_status": Op(response=schemas.QueueDepth, response_array=True),
     "rpc.parser.logs.history": Op(

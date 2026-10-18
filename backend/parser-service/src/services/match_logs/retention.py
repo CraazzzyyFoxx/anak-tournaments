@@ -38,6 +38,13 @@ _repo = IngestJobRepository()
 _alias_repo = CatalogAliasMissRepository()
 
 
+async def _try_lock(session: Any, ref: str) -> bool:
+    """Upload takes object-then-job locks; retention never waits in the inverse order."""
+    return bool(
+        await session.scalar(sa.text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"), {"key": f"stats.raw:{ref}"})
+    )
+
+
 async def purge_expired_failed_logs(
     *,
     redis: Any,
@@ -65,13 +72,21 @@ async def purge_expired_failed_logs(
                 for job in rows:
                     # Upload takes raw-key then job locks. Never wait here in
                     # the inverse order: a busy key is retried next tick.
-                    locked = await session.scalar(
-                        sa.text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"), {"key": f"stats.raw:{job.raw_ref}"}
-                    )
+                    locked = await _try_lock(session, job.raw_ref)
                     if not locked or await _repo.raw_ref_in_use(session, job.raw_ref, exclude_ids=[job.id]):
                         continue
+                    # The document envelope is separately addressed and may be shared; keep it while any other
+                    # job (or a match bound to one) still references it.
+                    document_ref = job.document_ref
+                    keep_document = True
+                    if document_ref is not None:
+                        if not await _try_lock(session, document_ref):
+                            continue
+                        keep_document = await _repo.document_ref_in_use(session, document_ref, exclude_ids=[job.id])
                     try:
                         deleted = await binary_match_logs.delete_log(s3, job)
+                        if deleted and document_ref is not None and not keep_document:
+                            deleted = await s3.delete_object(document_ref)
                     except Exception:
                         logger.exception("Raw delete failed for ingest job {}", job.id)
                         continue

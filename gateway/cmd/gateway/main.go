@@ -309,6 +309,10 @@ func run() error {
 	// can't handle.
 	parserBinary := parser.NewBinary(rpcClient, resolver.Resolve, logger)
 	mux.HandleFunc("POST /api/v1/admin/logs/upload", parserBinary.AdminLogsUpload)
+	// Canonical match ingestion (workspace API key): raw-body relay for the document POST so its bytes are hashed
+	// exactly as sent, plus the job read through the generic dispatcher.
+	parserEdge.Register(mux, parser.IngestRoutes)
+	mux.HandleFunc("POST /api/v1/stats/matches", parser.NewIngest(rpcClient, resolver.Resolve, logger).Submit)
 	// Achievement rule/library/override admin: ambiguous patterns under ServeMux
 	// (rules/export vs rules/{rule_id}) -> ordered subtree matcher. Mounted at the
 	// shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there

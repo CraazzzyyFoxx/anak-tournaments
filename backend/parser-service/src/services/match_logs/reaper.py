@@ -10,9 +10,10 @@ leaves the twin defect: ``processing`` with no live consumer.
 
 Neither state self-heals, because the queue message — not the row — was the only
 thing driving the work. This reaper inverts that: a leader-locked APScheduler
-tick scans for records whose last touch predates the queue TTL and republishes a
-``ProcessMatchLogEvent`` for each, so the row is what drives the work. Requeueing
-is safe — terminal native jobs are returned unchanged and active revisions
+tick scans for records whose last touch predates the queue TTL and stages a fresh
+ingest-request outbox event for each in the same transaction as the reset, so the
+row is what drives the work and there is no committed-but-unpublished gap.
+Requeueing is safe — terminal native jobs are returned unchanged and active revisions
 serialize on the encounter/game and job locks.
 
 ``attempts`` (bumped by the processing transition) bounds the loop: a log
@@ -27,17 +28,16 @@ never retries them. Operators link/retry those from the console.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
 
-from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
 from shared.models import IngestJobStatus
-from shared.observability import metrics, observe_scheduled_job, publish_message
+from shared.observability import metrics, observe_scheduled_job
 from shared.repository.stats import IngestJobRepository, stalled_conditions
-from shared.schemas.events import ProcessMatchLogEvent
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
     acquire_distributed_lock,
@@ -45,8 +45,8 @@ from shared.services.distributed_lock import (
 )
 from shared.services.scheduler import IntervalScheduler
 from src.core import db
-from src.core.broker import require_broker
 from src.core.config import settings
+from src.services.ingest.jobs import enqueue_ingest_request
 from src.services.match_logs.log_records import log_records_service
 
 __all__ = ("ReaperResult", "reclaim_stalled_logs", "stalled_conditions")
@@ -87,8 +87,9 @@ async def _claim_stalled(
     processing_after_seconds: int,
     max_attempts: int,
     limit: int,
+    disciplines: Sequence[str] | None = None,
 ) -> tuple[list[_Stalled], list[int]]:
-    """Reset stalled rows in one transaction; return what to publish and what died.
+    """Reset stalled rows and stage their ingest requests in one transaction; return what was requeued and what died.
 
     Rows are stamped with ``updated_at=now`` even when the status is already
     ``pending`` (a no-op status assignment would not flush, leaving the row
@@ -100,6 +101,7 @@ async def _claim_stalled(
         pending_after_seconds=pending_after_seconds,
         processing_after_seconds=processing_after_seconds,
         limit=limit,
+        disciplines=disciplines,
     )
 
     requeue: list[_Stalled] = []
@@ -117,6 +119,7 @@ async def _claim_stalled(
             continue
 
         await log_records_service.transition(session, record, IngestJobStatus.PENDING, now=now)
+        await enqueue_ingest_request(session, record.id)
         requeue.append(
             _Stalled(
                 record_id=record.id,
@@ -133,13 +136,13 @@ async def _claim_stalled(
 async def reclaim_stalled_logs(
     *,
     redis: Any,
-    broker: Any | None = None,
     session_factory: Any = db.async_session_maker,
     now: datetime | None = None,
+    disciplines: Sequence[str] | None = None,
 ) -> ReaperResult:
     """One recovery pass: requeue stalled records, retire the spent ones.
 
-    Leader-locked so replicas don't publish the same batch. Returns the pass
+    Leader-locked so replicas don't reset the same batch. Returns the pass
     outcome; never raises — a failed tick is logged and retried on the next one.
     """
     cfg = settings
@@ -167,37 +170,23 @@ async def reclaim_stalled_logs(
                     processing_after_seconds=cfg.log_reaper_processing_after_seconds,
                     max_attempts=cfg.log_reaper_max_attempts,
                     limit=cfg.log_reaper_batch_size,
+                    disciplines=disciplines,
                 )
 
             if not requeue and not exhausted:
                 return ReaperResult()
 
-            # Publish only after the reset committed: a message for a row we failed to
-            # persist would be processed against stale state.
-            published = 0
-            target = require_broker(broker)
-            for item in requeue:
-                event = ProcessMatchLogEvent(ingest_job_id=item.record_id)
-                try:
-                    await publish_message(target, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
-                except Exception:
-                    # The row stays pending and is picked up again once its window
-                    # reopens, so a broker blip costs a delay, not the work.
-                    logger.exception(
-                        f"Failed to requeue stalled match log record={item.record_id} filename={item.filename}"
-                    )
-                    continue
-                published += 1
-
-            metrics.count("parser.match_log.reclaimed", published, attributes={"outcome": "requeued"})
+            # The ingest requests were committed to the outbox with the reset itself, so delivery
+            # outlives a broker outage and there is no reset-without-request window.
+            metrics.count("parser.match_log.reclaimed", len(requeue), attributes={"outcome": "requeued"})
             metrics.count("parser.match_log.reclaimed", len(exhausted), attributes={"outcome": "exhausted"})
             logger.info(
                 "Match-log reaper: stalled={} requeued={} exhausted={}",
                 len(requeue) + len(exhausted),
-                published,
+                len(requeue),
                 len(exhausted),
             )
-            return ReaperResult(requeued=published, exhausted=len(exhausted))
+            return ReaperResult(requeued=len(requeue), exhausted=len(exhausted))
         except Exception:
             logger.exception("Match-log stall recovery tick failed")
             return ReaperResult()
@@ -205,13 +194,13 @@ async def reclaim_stalled_logs(
             await release_distributed_lock(redis, token)
 
 
-def start_scheduler(*, redis: Any, broker: Any | None = None) -> None:
+def start_scheduler(*, redis: Any, disciplines: Sequence[str] | None = None) -> None:
     if not settings.log_reaper_enabled:
         return
     _scheduler.start(
         reclaim_stalled_logs,
         seconds=settings.log_reaper_tick_seconds,
-        kwargs={"redis": redis, "broker": broker},
+        kwargs={"redis": redis, "disciplines": disciplines},
     )
 
 

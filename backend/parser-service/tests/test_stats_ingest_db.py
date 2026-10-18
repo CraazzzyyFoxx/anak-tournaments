@@ -23,13 +23,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from shared import models
 from shared.core import enums
 from shared.core.errors import BaseAPIException
+from shared.disciplines.overwatch.enums import log_stats_index_map
 from shared.repository.catalog import CatalogAliasMissRepository
 from shared.repository.stats import IngestJobRepository, StatsMatchRepository
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes
 from shared.testing.stats_parity import (
     seed_native_sentinel,
 )
-from src.core.enums import log_stats_index_map
 from src.services import catalog_aliases
 from src.services.match_logs import admin_reads, flows, reaper, retention, uploads
 from src.services.match_logs.log_records import compute_content_hash, log_records_service
@@ -1134,17 +1134,21 @@ def test_preparse_failures_finish_the_actual_claim(stats_parity_database, monkey
         async with environment(stats_parity_database, monkeypatch) as env:
             raw = b"\xff" if failure == "utf8" else b"0,meta,0,not a log\n" if failure == "empty_parser" else workshop()
             async with env.sf() as session:
-                job, created = await IngestJobRepository().create_or_get_upload(
+                job, created = await IngestJobRepository().create_or_get(
                     session,
                     workspace_id=env.workspace,
                     discipline="overwatch",
                     source_kind="manual",
+                    external_id=None,
                     content_hash=compute_content_hash(raw),
                     filename=f"{failure}.log",
                     raw_ref=f"test/{failure}",
+                    document_ref=None,
                     uploader_user_id=None,
+                    api_key_id=None,
                     hint_tournament_id=env.tournament,
                     hint_encounter_id=None,
+                    hint_encounter_game_id=None,
                 )
                 assert created
                 await session.commit()
@@ -1243,17 +1247,21 @@ def test_foreign_hint_and_wrong_map_game_never_authorize_a_binding(stats_parity_
         async with environment(stats_parity_database, monkeypatch) as env:
             async with env.sf() as session:
                 with pytest.raises(BaseAPIException):
-                    await IngestJobRepository().create_or_get_upload(
+                    await IngestJobRepository().create_or_get(
                         session,
                         workspace_id=env.workspace,
                         discipline="overwatch",
                         source_kind="manual",
+                        external_id=None,
                         content_hash=compute_content_hash(workshop()),
                         filename="x.log",
                         raw_ref="x",
+                        document_ref=None,
                         uploader_user_id=None,
+                        api_key_id=None,
                         hint_tournament_id=env.tournament,
                         hint_encounter_id=env.fixture_ids["encounter_other"],
+                        hint_encounter_game_id=None,
                     )
                 await session.rollback()
                 wrong_map_game = await _game(session, env, position=2, map_id=env.fixture_ids["map_other"])
@@ -1311,7 +1319,7 @@ def test_map_pool_rejection_preserves_last_revision_and_roster(stats_parity_data
     asyncio.run(run())
 
 
-def test_reaper_dispatch_failure_keeps_native_pending_job_for_next_tick(stats_parity_database, monkeypatch):
+def test_reaper_requeues_through_the_outbox_and_retains_the_last_claim_timestamp(stats_parity_database, monkeypatch):
     async def run():
         async with environment(stats_parity_database, monkeypatch) as env:
             job = await upload(env)
@@ -1319,16 +1327,26 @@ def test_reaper_dispatch_failure_keeps_native_pending_job_for_next_tick(stats_pa
             async with env.sf() as session:
                 row = await session.get(models.IngestJob, job.id)
                 await log_records_service.transition(session, row, STATUS.PROCESSING, now=old)
+                row.started_at = old
                 await session.commit()
             monkeypatch.setattr(reaper.settings, "log_reaper_enabled", True)
             monkeypatch.setattr(reaper, "acquire_distributed_lock", AsyncMock(return_value="owned"))
             release = AsyncMock()
             monkeypatch.setattr(reaper, "release_distributed_lock", release)
-            monkeypatch.setattr(reaper, "publish_message", AsyncMock(side_effect=RuntimeError("queue down")))
-            await reaper.reclaim_stalled_logs(redis=object(), broker=object(), session_factory=env.sf)
+            # No broker is involved at all: the request is committed with the reset, so an outage costs only latency.
+            await reaper.reclaim_stalled_logs(redis=object(), session_factory=env.sf)
             async with env.sf() as session:
                 row = await session.get(models.IngestJob, job.id)
-                assert row.status == STATUS.PENDING and row.attempts == 1 and row.started_at is None
+                assert row.status == STATUS.PENDING and row.attempts == 1 and row.started_at == old
+                requests = (
+                    await session.scalars(
+                        sa.select(models.EventOutbox).where(
+                            models.EventOutbox.event_type == "process_match_log",
+                            models.EventOutbox.payload_json["ingest_job_id"].as_integer() == job.id,
+                        )
+                    )
+                ).all()
+                assert [r.status for r in requests].count("pending") == 1
             release.assert_awaited_once()
             # A disabled worker performs no claim/dispatch at all.
             monkeypatch.setattr(reaper.settings, "log_reaper_enabled", False)

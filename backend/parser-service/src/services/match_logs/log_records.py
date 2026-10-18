@@ -1,7 +1,7 @@
 """Native ingest-job lifecycle. Callers own processing transactions and commits."""
 
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,22 @@ from src.services.match_logs.realtime import emit_logs_updated
 
 def compute_content_hash(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
+
+
+#: Plain-text failures and the structured ingest error JSON both fit here; the JSON encoder bounds itself below it.
+ERROR_MESSAGE_LIMIT = 16000
+
+
+async def claim_timestamp(session: AsyncSession, previous: datetime | None) -> datetime:
+    """The claim's ``started_at``, read back from the database clock and strictly after the previous claim.
+
+    ``clock_timestamp()`` alone can tie or step back across replicas with skewed clocks, and a late attempt
+    is fenced on ``(attempts, started_at)`` -- so every claim must yield a distinct value.
+    """
+    clock = sa.func.clock_timestamp()
+    if previous is not None:
+        clock = sa.func.greatest(clock, sa.literal(previous, sa.DateTime(timezone=True)) + timedelta(microseconds=1))
+    return await session.scalar(sa.select(clock))
 
 
 async def reparse_observation(session: AsyncSession, job: models.IngestJob) -> models.StatsMatch | None:
@@ -61,15 +77,15 @@ class LogRecordsService:
         moment = now or datetime.now(UTC)
         job.status = status
         job.updated_at = moment
-        job.error_message = error_message[:2000] if error_message else None
+        job.error_message = error_message[:ERROR_MESSAGE_LIMIT] if error_message else None
         if reset_attempts:
             job.attempts = 0
         if status == models.IngestJobStatus.PROCESSING:
             job.attempts += 1
-            job.started_at = moment
+            job.started_at = await claim_timestamp(session, job.started_at)
             job.finished_at = None
         elif status == models.IngestJobStatus.PENDING:
-            job.started_at = None
+            # started_at keeps meaning "the most recent attempt began", which the next claim replaces.
             job.finished_at = None
         else:
             job.finished_at = moment

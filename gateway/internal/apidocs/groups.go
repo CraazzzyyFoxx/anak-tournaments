@@ -65,6 +65,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: concat(balancer.PublicRoutes, balancer.DraftReadRoutes, balancer.JobRoutes, balancer.DraftRoutes, balancer.BinaryPublicDocRoutes)},
 		{Tag: "Ranks", Description: "OverFast rank history (public reads).",
 			Routes: openapi.PublicOnly(parser.Routes)},
+		{Tag: "Match Ingest", Description: "Submit one canonical owt.match/1 match document with a workspace API key (stats.ingest scope) and poll its ingest job.",
+			Routes: parser.IngestDocRoutes},
 		{Tag: "Auth", Description: "Authentication, sessions, profile, OAuth, API keys, player linking.",
 			Routes: identity.PublicDocRoutes},
 		{Tag: "Notifications", Description: "Personal notification inbox + the site-wide announcement banner.",
