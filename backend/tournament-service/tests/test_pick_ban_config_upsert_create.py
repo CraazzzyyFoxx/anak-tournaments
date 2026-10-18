@@ -120,7 +120,7 @@ class UpsertConfigCreatePathTest(IsolatedAsyncioTestCase):
             "mode": MapVetoMode.SLOTS,
             "first_pick_rule": FirstPickRule.HIGHER_SEED,
             "first_ban_rotation": FirstBanRotation.ALTERNATE,
-            "ruleset": pbr.PRESETS_BY_ID["map_slot_veto"].ruleset.to_json(),
+            "ruleset": pbr.GENERIC_PRESETS_BY_ID["map_slot_veto"].ruleset.to_json(),
             "item_ids": [1, 2, 3],
             "slots": [SlotSpec(candidates=[1, 2], reserve_item_id=3)],
         }

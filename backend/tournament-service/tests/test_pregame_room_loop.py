@@ -28,10 +28,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.core import enums
 from shared.core.errors import BaseAPIException
-from shared.disciplines import DISCIPLINES
+from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.models.encounter import Encounter, EncounterTeam, ScoringRule
 from shared.models.encounter.game import EncounterGame, EncounterGameTeam
-from shared.models.encounter.pick_ban import PickBanSession
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
 from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigItem
@@ -48,6 +48,16 @@ from src.services.encounter.pick_ban_session import pick_ban_session_service, re
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
 from src.services.encounter.veto_session import side_pick_pending
 from tests.test_pregame_participations import FIRST_HERO, HEROES, SIDED
+
+#: A second game with its own character classes: nothing about its pool is Overwatch's.
+MOBA = DisciplineSpec(
+    "moba", "Moba", (), kinds={"character": "Champion", "map": "Map"}, character_classes=("fighter", "mage")
+)
+CHAMPION_ID_BASE = 1_910_000_000
+CHAMPIONS = {
+    CHAMPION_ID_BASE + n: cls
+    for n, cls in enumerate(("fighter", "mage", "fighter", "mage", "fighter", "fighter"), start=1)
+}
 
 _TAG = itertools.count()
 
@@ -96,7 +106,12 @@ class LoopCase(IsolatedAsyncioTestCase):
         loop_factory = asyncio.SelectorEventLoop
 
     discipline = "overwatch"
+    #: The game the hero pool's catalog rows belong to; the pool is ``{item_id: class}``.
+    hero_discipline = "overwatch"
     rotation = enums.FirstBanRotation.FIXED
+
+    def pool_rows(self) -> dict[int, str]:
+        return {hero_id: role.name for hero_id, role in HEROES.items()}
 
     async def asyncSetUp(self) -> None:
         # The post-commit healer runs in its own session on a background task;
@@ -108,23 +123,25 @@ class LoopCase(IsolatedAsyncioTestCase):
         self.engine = create_test_async_engine()
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self.tag = f"loop-{os.getpid()}-{next(_TAG)}"
-        self.enterContext(patch.dict(DISCIPLINES, {SIDED.code: SIDED}))
+        self.enterContext(patch.dict(DISCIPLINES, {SIDED.code: SIDED, MOBA.code: MOBA}))
         async with self.Session() as s:
             await s.execute(
                 sa.text("INSERT INTO catalog.discipline (code, name) VALUES (:c, :n) ON CONFLICT DO NOTHING"),
                 {"c": self.discipline, "n": self.discipline},
             )
-            for hero_id, role in HEROES.items():
+            for hero_id, hero_class in self.pool_rows().items():
                 await s.execute(
                     sa.text(
                         "INSERT INTO catalog.entity (id, discipline, kind, slug, name, attrs)"
-                        " VALUES (:id, 'overwatch', 'character', :slug, :name, CAST(:attrs AS JSONB)) ON CONFLICT (id) DO NOTHING"
+                        " VALUES (:id, :discipline, 'character', :slug, :name, CAST(:attrs AS JSONB))"
+                        " ON CONFLICT (id) DO NOTHING"
                     ),
                     {
                         "id": hero_id,
+                        "discipline": self.hero_discipline,
                         "slug": f"h{hero_id}",
                         "name": f"H{hero_id}",
-                        "attrs": json.dumps({"class": role.name}),
+                        "attrs": json.dumps({"class": hero_class}),
                     },
                 )
             workspace = Workspace(slug=self.tag, name=self.tag)
@@ -190,7 +207,7 @@ class LoopCase(IsolatedAsyncioTestCase):
                 ruleset_json=ruleset or ban_ruleset(),
             )
             config.items = [
-                PickBanConfigItem(item_id=item_id, sort_order=index) for index, item_id in enumerate(HEROES)
+                PickBanConfigItem(item_id=item_id, sort_order=index) for index, item_id in enumerate(self.pool_rows())
             ]
             s.add(config)
             await s.commit()
@@ -542,6 +559,65 @@ class RoomControlTests(LoopCase):
                     actor_player_id=None,
                 )
             self.assertEqual(422, refused.exception.status_code)
+
+
+# ── item groups are read in the encounter's own game ────────────────────────
+
+
+class ScopedItemGroupTests(LoopCase):
+    """An ``item_group`` rule over ANOTHER game's classes, through the whole live path.
+
+    Constructor preview/save alone proves nothing about eligibility: the room hydrates groups on its own at session
+    creation, on every action reload and when the next round materializes. Each of those once read Overwatch's catalog,
+    so a champion pool had no group at all and every ``item_group`` filter excluded it."""
+
+    discipline = MOBA.code
+    hero_discipline = MOBA.code
+
+    def pool_rows(self) -> dict[int, str]:
+        return dict(CHAMPIONS)
+
+    @staticmethod
+    def fighter_only() -> dict:
+        document = ban_ruleset()
+        document["phases"][0]["pool_filter"] = {"type": "item_group", "params": {"groups": ["fighter"]}}
+        return document
+
+    async def round_items(self) -> dict[int, set[int]]:
+        """Candidate items of each round as entries, carried bans aside."""
+        async with self.Session() as s:
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(s, self.encounter_id, enums.PickBanKind.HERO)
+            rows = (
+                await s.execute(
+                    sa.select(PickBanEntry.round, PickBanEntry.item_id).where(
+                        PickBanEntry.session_id == pick_ban.id, PickBanEntry.carried_from_round.is_(None)
+                    )
+                )
+            ).all()
+        items: dict[int, set[int]] = {}
+        for round_number, item_id in rows:
+            items.setdefault(round_number, set()).add(item_id)
+        return items
+
+    async def test_the_class_filter_holds_at_creation_on_reload_and_in_the_next_round(self) -> None:
+        fighters = {item_id for item_id, cls in CHAMPIONS.items() if cls == "fighter"}
+        mage = next(item_id for item_id, cls in CHAMPIONS.items() if cls == "mage")
+
+        await self.start(self.fighter_only())
+        # Session creation (``_ensure_pick_ban_session``): only fighters became entries.
+        self.assertEqual(fighters, (await self.round_items())[1])
+
+        # Action reload (``pick_ban_action._load``): a fighter is bannable, a mage is not in the room.
+        (actor,) = (await self.state())["acting_team_ids"]
+        with self.assertRaises(BaseAPIException):
+            await self.act(actor, mage)
+        await self.play_round(tuple(sorted(fighters))[:2])
+
+        # Next-round materialization (``advance_to_next_round``).
+        await self.confirm_position(1, winner=self.slot1)
+        self.assertTrue(await self.reconcile())
+        self.assertEqual(2, (await self.state())["current_round"])
+        self.assertEqual(fighters, (await self.round_items())[2])
 
 
 # ── side actors bind after the pick ─────────────────────────────────────────

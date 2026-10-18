@@ -42,16 +42,16 @@ def ruleset(*steps, phase=None, **overrides):
     return payload
 
 
-def codes(document, *, kind="hero", mode="pool", severity="error", groups=None):
+def codes(document, *, kind="hero", mode="pool", severity="error", groups=None, discipline="overwatch"):
     return [
         issue.code
-        for issue in pbr.validate_ruleset(document, kind=kind, mode=mode, groups=groups)
+        for issue in pbr.validate_ruleset(document, kind=kind, mode=mode, groups=groups, discipline=discipline)
         if issue.severity == severity
     ]
 
 
 def test_a_valid_hero_ruleset_has_no_issues():
-    assert pbr.validate_ruleset(ruleset(step()), kind="hero", mode="pool") == []
+    assert pbr.validate_ruleset(ruleset(step()), kind="hero", mode="pool", discipline="overwatch") == []
 
 
 # ── shape ───────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ def test_non_object_is_rejected():
 
 
 def test_unknown_field_is_rejected_with_its_path():
-    issues = pbr.validate_ruleset(ruleset(step(nope=1)), kind="hero", mode="pool")
+    issues = pbr.validate_ruleset(ruleset(step(nope=1)), kind="hero", mode="pool", discipline="overwatch")
     assert [(issue.path, issue.code) for issue in issues] == [
         ("phases[0].steps[0].nope", "schema_invalid"),
     ]
@@ -232,6 +232,21 @@ def test_group_names_are_checked_against_the_kind():
     assert codes(ok) == []
 
 
+def test_hero_group_names_are_the_disciplines_declared_classes_never_another_games():
+    overwatch_class = ruleset(step(constraints=[{"type": "min_per_group", "params": {"min": 1, "group": "damage"}}]))
+    lol_class = ruleset(step(constraints=[{"type": "min_per_group", "params": {"min": 1, "group": "Mage"}}]))
+    assert codes(overwatch_class, discipline="overwatch") == []
+    assert codes(overwatch_class, discipline="lol") == ["unknown_group"]
+    assert codes(lol_class, discipline="lol") == []
+    assert codes(lol_class, discipline="overwatch") == ["unknown_group"]
+
+
+def test_an_explicit_hero_vocabulary_replaces_the_modules_classes():
+    document = ruleset(step(constraints=[{"type": "min_per_group", "params": {"min": 1, "group": "bruiser"}}]))
+    assert codes(document, discipline="lol") == ["unknown_group"]
+    assert codes(document, discipline="lol", groups=["Bruiser"]) == []
+
+
 def test_map_group_names_are_checked_against_the_supplied_vocabulary():
     document = ruleset(
         step(action="pick", eligible={"type": "item_group", "params": {"groups": ["koth"]}}),
@@ -308,7 +323,8 @@ def test_uncovered_maps_are_a_warning_not_an_error():
 
 
 def test_a_covered_series_has_no_coverage_warning():
-    assert codes(pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset.to_json(), severity="warning") == []
+    anti = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"]
+    assert codes(anti.ruleset.to_json(), severity="warning") == []
 
 
 def test_previous_round_actors_on_the_opening_map_warn():

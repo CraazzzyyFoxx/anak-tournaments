@@ -78,7 +78,7 @@ interface PregameHeaderProps {
 /** Accent per session state — carried by an icon, not a labelled pill. */
 const STATUS_COLOR: Record<PickBanSession["status"], string> = {
   active: "var(--aqt-teal)",
-  completed: "var(--aqt-support)",
+  completed: "var(--aqt-positive)",
   cancelled: "var(--aqt-amber)"
 };
 
@@ -302,7 +302,7 @@ function Scoreboard({
         {official != null ? (
           <span
             data-official-score
-            className="text-label uppercase tracking-label text-[color:var(--aqt-support)]"
+            className="text-label uppercase tracking-label text-[color:var(--aqt-positive)]"
           >
             {t("board.official", {
               first: official.one,
@@ -482,7 +482,7 @@ function PhaseRail({
                   active
                     ? "border-[color:var(--aqt-teal)] bg-[color:var(--aqt-teal)]/12 text-[color:var(--aqt-teal)]"
                     : entry.done
-                      ? "border-[color:var(--aqt-support)]/45 text-[color:var(--aqt-support)]"
+                      ? "border-[color:var(--aqt-positive)]/45 text-[color:var(--aqt-positive)]"
                       : "border-dashed border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]"
                 )}
               >

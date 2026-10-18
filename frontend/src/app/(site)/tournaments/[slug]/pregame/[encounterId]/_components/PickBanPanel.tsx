@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock, UserX } from "lucide-react";
 
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
 import pickBanService, {
   type PickBanActionInput,
@@ -97,6 +98,8 @@ export function PickBanPanel({
 }>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
+  // The room's own game: its role dictionary names the targets' roles, its declared classes order the pool filter.
+  const metadata = useDisciplineMetadata(encounter.workspace_id, encounter.discipline);
 
   const step = state.current_step;
   const viewerTeamId = state.viewer_team_id;
@@ -316,7 +319,8 @@ export function PickBanPanel({
               <div className="lg:sticky lg:top-[var(--aqt-sticky-top)]">
                 <PickBanTargetBoard
                   targets={targetRoster}
-                  discipline={encounter.tournament.discipline}
+                  discipline={encounter.discipline}
+                  ontology={metadata.data ?? null}
                   previousMatchId={
                     encounter.games?.length
                       ? (buildSeriesSlots(encounter).find(
@@ -390,6 +394,7 @@ export function PickBanPanel({
             }}
             seats={seats}
             header={header}
+            characterClasses={metadata.data?.discipline.character_classes}
           />
 
           {/* Under the grid, above the admin panel: the correction path a

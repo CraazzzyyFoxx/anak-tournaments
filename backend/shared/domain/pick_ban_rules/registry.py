@@ -18,10 +18,9 @@ from typing import Any, Literal
 ConditionContext = Literal["round", "item", "pool"]
 ParamKind = Literal["enum", "int", "bool", "item_list", "group_list", "group"]
 
-#: Groups of the hero catalog: a hero's class, lowercased. Compared
-#: case-insensitively everywhere, so ``Hero.type`` ("Tank") and the roster role
-#: spelling ("tank") both answer to the same group.
-HERO_GROUPS: tuple[str, ...] = ("tank", "damage", "support")
+#: Item groups are compared case-insensitively everywhere (see :func:`normalize_group`), so a catalog character's
+#: ``attrs.class`` ("Tank") and a ruleset's spelling ("tank") answer to the same group. The vocabulary itself is the
+#: discipline's: its module's ``character_classes`` for characters, its mode slugs for maps.
 
 MAX_TREE_DEPTH = 20
 MAX_TREE_NODES = 200
@@ -338,18 +337,23 @@ def evaluate(tree: Mapping[str, Any] | None, ctx: RoundCtx | ItemCtx) -> bool:
     return spec.evaluator(tree.get("params") or {}, ctx)
 
 
-def catalog(groups: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
+def catalog(*, discipline: str, groups: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
     """The constructor's catalog payload (§10): every leaf and constraint
-    contract, the selectable groups per kind, and the built-in presets."""
-    from .presets import PRESETS
+    contract, the selectable groups per kind, and the presets of ``discipline``
+    (its module's own plus the generic ones).
+
+    ``groups`` is the discipline's vocabulary per kind. Raises
+    :class:`~shared.domain.pick_ban_rules.presets.UnknownDiscipline` for a code
+    no installed module declares."""
+    from .presets import presets_for
 
     resolved = dict(groups or {})
     return {
         "leaves": [LEAVES[name].to_json() for name in sorted(LEAVES)],
         "constraints": [CONSTRAINTS[name].to_json() for name in sorted(CONSTRAINTS)],
         "groups": {
-            "hero": list(resolved.get("hero") or HERO_GROUPS),
+            "hero": list(resolved.get("hero") or ()),
             "map": list(resolved.get("map") or ()),
         },
-        "presets": [preset.to_json() for preset in PRESETS],
+        "presets": [preset.to_json() for preset in presets_for(discipline)],
     }

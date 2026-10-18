@@ -74,7 +74,7 @@ export function PregameReadiness({
 
       {viewerTeamId != null ? (
         viewerReady ? (
-          <p className="text-sm text-[color:var(--aqt-support)]">
+          <p className="text-sm text-[color:var(--aqt-positive)]">
             {t("ready.confirmed")} · {t("ready.waitingOpponent")}
           </p>
         ) : (
@@ -126,7 +126,7 @@ function ReadyRow({
       className={cn(
         "flex min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2.5",
         ready
-          ? "border-[color:var(--aqt-support)]/35 bg-[color:var(--aqt-support)]/[0.06]"
+          ? "border-[color:var(--aqt-positive)]/35 bg-[color:var(--aqt-positive)]/[0.06]"
           : "border-dashed border-[color:var(--aqt-border-2)]"
       )}
     >
@@ -145,7 +145,7 @@ function ReadyRow({
       <span
         className={cn(
           "inline-flex shrink-0 items-center gap-1.5 text-label uppercase tracking-label",
-          ready ? "text-[color:var(--aqt-support)]" : "text-[color:var(--aqt-fg-faint)]"
+          ready ? "text-[color:var(--aqt-positive)]" : "text-[color:var(--aqt-fg-faint)]"
         )}
       >
         <StateIcon className="h-3.5 w-3.5" aria-hidden />

@@ -24,11 +24,10 @@ from .compile import (
     select_phase,
     steps_from_v1_tokens,
 )
-from .presets import PRESETS, PRESETS_BY_ID, Preset
+from .presets import GENERIC_PRESETS, GENERIC_PRESETS_BY_ID, Preset, UnknownDiscipline, presets_for
 from .preview import preview_series
 from .registry import (
     CONSTRAINTS,
-    HERO_GROUPS,
     LEAVES,
     AppliedItem,
     ConstraintSpec,
@@ -98,7 +97,6 @@ from .validate import validate_ruleset
 
 __all__ = (
     "CONSTRAINTS",
-    "HERO_GROUPS",
     "LEAD_BANS",
     "UnassignedSide",
     "LEAVES",
@@ -112,8 +110,8 @@ __all__ = (
     "DECIDER_KIND",
     "TEAM_KIND",
     "VOIDED",
-    "PRESETS",
-    "PRESETS_BY_ID",
+    "GENERIC_PRESETS",
+    "GENERIC_PRESETS_BY_ID",
     "AppliedItem",
     "CarriedBan",
     "Condition",
@@ -130,6 +128,7 @@ __all__ = (
     "ParamSpec",
     "Phase",
     "Preset",
+    "UnknownDiscipline",
     "ResolvedStep",
     "RoundCtx",
     "Ruleset",
@@ -156,6 +155,7 @@ __all__ = (
     "normalize_group",
     "parse_ruleset",
     "phase_matches",
+    "presets_for",
     "preview_series",
     "project_entries",
     "random_fill",

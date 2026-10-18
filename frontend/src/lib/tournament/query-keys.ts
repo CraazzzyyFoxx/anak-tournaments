@@ -117,9 +117,9 @@ export const tournamentQueryKeys = {
     ["draft", "session", sessionId, "queue", teamId] as const,
   draftJournal: (sessionId: number) => ["draft", "session", sessionId, "journal"] as const,
   draftPlayerCard: (userId: number) => ["draft", "player-card", userId] as const,
-  /** The engine's leaf/constraint/preset registry. Tournament-independent, and
-   *  cached for the session: it only changes when the engine ships a new leaf. */
-  pickBanRulesCatalog: () => ["pick-ban-rules", "catalog"] as const,
+  /** One discipline's constructor catalog: the engine's leaf/constraint registry plus that game's item groups and
+   *  presets. The discipline is part of the key, so another game's presets never answer for this one. */
+  pickBanRulesCatalog: (discipline: KeyPart) => ["pick-ban-rules", "catalog", discipline] as const,
   /** The validator's verdict on one authored ruleset. The ruleset itself is
    *  part of the key: every edit is a different question, and the answer to the
    *  previous one must not stand in for it. */

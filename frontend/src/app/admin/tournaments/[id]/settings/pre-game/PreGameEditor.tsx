@@ -26,6 +26,8 @@ import { usePreGameDraft } from "./usePreGameDraft";
 
 export interface PreGameEditorProps {
   tournamentId: number;
+  /** The tournament's own game: scopes the rules catalog (presets, item groups). */
+  discipline: string;
   scope: PreGameScope;
   kind: PickBanKind;
   step: PreGameStep;
@@ -67,6 +69,7 @@ export interface PreGameEditorProps {
  */
 export function PreGameEditor({
   tournamentId,
+  discipline,
   scope,
   kind,
   step,
@@ -178,6 +181,7 @@ export function PreGameEditor({
           {step === "rules" ? (
             <RulesStep
               tournamentId={tournamentId}
+              discipline={discipline}
               draft={draft}
               kind={kind}
               series={series}

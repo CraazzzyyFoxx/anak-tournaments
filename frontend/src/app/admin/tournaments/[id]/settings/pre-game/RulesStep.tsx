@@ -29,6 +29,7 @@ import { notify } from "@/lib/notify";
 import {
   PICK_BAN_TIMEOUTS,
   parseRulesetJson,
+  presetDraftPatch,
   type PickBanDraft,
   type SeriesLength,
 } from "@/lib/tournament/pick-ban-config";
@@ -56,6 +57,7 @@ import { useRulesCatalog } from "./rules/useRulesCatalog";
  */
 export function RulesStep({
   tournamentId,
+  discipline,
   draft,
   kind,
   series,
@@ -68,6 +70,8 @@ export function RulesStep({
   patch,
 }: Readonly<{
   tournamentId: number;
+  /** The tournament's own game: its presets and item groups, never another's. */
+  discipline: string;
   draft: PickBanDraft;
   kind: PickBanKind;
   series: SeriesLength;
@@ -83,7 +87,7 @@ export function RulesStep({
 }>) {
   const t = useTranslations("pickBan.rules");
   const ids = useId();
-  const catalogQuery = useRulesCatalog();
+  const catalogQuery = useRulesCatalog(discipline);
   const [selected, setSelected] = useState<{ phaseId: string; stepId: string } | null>(null);
 
   const ruleset = draft.ruleset;
@@ -111,7 +115,7 @@ export function RulesStep({
             const preset = presets.find((candidate) => candidate.id === id);
             if (preset == null) return;
             setSelected(null);
-            setRuleset(preset.ruleset);
+            patch(presetDraftPatch(preset));
           }}
         >
           <SelectTrigger className="w-64" aria-label={t("presets")}>

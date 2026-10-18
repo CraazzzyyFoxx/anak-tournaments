@@ -61,8 +61,8 @@ from src.services.scrim import service as scrim  # noqa: E402
 #: The rulesets a copied tournament round carries: a slot-veto generator and a
 #: plain bracket. Both are what the v1 -> v2 migration produced for the configs
 #: this check was written against.
-SLOT_RULESET = pbr.PRESETS_BY_ID["map_slot_veto"].ruleset.to_json()
-FLAT_RULESET = pbr.PRESETS_BY_ID["map_bracket"].ruleset.to_json()
+SLOT_RULESET = pbr.GENERIC_PRESETS_BY_ID["map_slot_veto"].ruleset.to_json()
+FLAT_RULESET = pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset.to_json()
 
 
 @compiles(JSONB, "sqlite")

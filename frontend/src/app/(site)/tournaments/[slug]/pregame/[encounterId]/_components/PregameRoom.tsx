@@ -329,7 +329,8 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             heroState,
             loop.reportRound,
             room.heroesById,
-            heroName
+            heroName,
+            room.characterClasses
           )}
           heroUndo={
             <PickBanUndoControl
@@ -365,7 +366,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           encounter={encounter}
           viewerTeamId={viewerTeamId}
           reportable={seriesReport}
-          heroRounds={buildHeroRounds(heroState, series, room.heroesById, heroName)}
+          heroRounds={buildHeroRounds(heroState, series, room.heroesById, heroName, room.characterClasses)}
           header={header}
           returnTo={returnTo}
         />

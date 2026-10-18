@@ -28,7 +28,7 @@ def preview_series(
     ruleset: Any,
     *,
     kind: str,
-    discipline: str = "overwatch",
+    discipline: str,
     mode: str = "pool",
     best_of: int = 3,
     pool_groups: Mapping[str, int] | None = None,

@@ -820,8 +820,14 @@ export interface PickBanPreset {
   kind: PickBanKind;
   modes: MapVetoMode[];
   ruleset: PickBanRuleset;
+  /**
+   * The `first_ban_rotation` the module's preset needs, outside the ruleset document. `null`: the preset leaves
+   * the organizer's rotation alone.
+   */
+  first_ban_rotation: PickBanFirstBanRotation | null;
 }
 
+/** One discipline's constructor vocabulary: groups and presets are that game's, never another's. */
 export interface PickBanRulesCatalog {
   leaves: PickBanLeafSpec[];
   constraints: PickBanConstraintSpec[];

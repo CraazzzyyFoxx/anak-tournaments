@@ -115,7 +115,7 @@ export function PickBanDraftTray({
             className={cn(
               "whitespace-nowrap text-xs",
               opponentProgress?.locked
-                ? "text-[color:var(--aqt-support)]"
+                ? "text-[color:var(--aqt-positive)]"
                 : "text-[color:var(--aqt-fg-muted)]"
             )}
           >
@@ -178,7 +178,7 @@ export function PickBanDraftTray({
         </ul>
 
         {locked ? (
-          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-[color:var(--aqt-support)]">
+          <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-medium text-[color:var(--aqt-positive)]">
             <Lock className="h-3.5 w-3.5" aria-hidden />
             {t("draft.lockedWaiting", { team: opponentName })}
           </span>

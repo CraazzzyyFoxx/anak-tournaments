@@ -6,11 +6,11 @@ import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
-import type { AqtRoleKey } from "@/lib/roster/player-role";
 import {
+  classRank,
   lobbyCopyText,
-  type PickBanRoleGroup,
-  type PickBanRoleItem
+  type PickBanClassGroup,
+  type PickBanClassItem
 } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
@@ -25,8 +25,8 @@ export interface PregameHeroAction {
   name: string;
   /** Undefined until the hero catalog resolves — the thumb falls back to initials. */
   item: PickBanItemLike | undefined;
-  /** Only used to order a team's rows; null when the catalog knows no role. */
-  role: AqtRoleKey | null;
+  /** The character's class (`attrs.class`), only used to order a team's rows; null when the catalog knows none. */
+  group: string | null;
   action: "ban" | "protect";
   /** The participation (`EncounterTeam.id`) that committed it. */
   teamId: number;
@@ -39,7 +39,7 @@ export interface PregameHeroAction {
 }
 
 /** One hero off on a map, as the final bans list shows it. */
-export interface PregameBannedHero extends PickBanRoleItem {
+export interface PregameBannedHero extends PickBanClassItem {
   /** Undefined until the hero catalog resolves — the thumb falls back to initials. */
   item: PickBanItemLike | undefined;
 }
@@ -49,8 +49,8 @@ export interface PregameHeroBoard {
   /** Null for a flat (round-less) pool: one set of bans covered every map. */
   round: number | null;
   actions: PregameHeroAction[];
-  /** Every ban in force on this map, role-grouped — what the lobby disables. */
-  banned: PickBanRoleGroup<PregameBannedHero>[];
+  /** Every ban in force on this map, class-grouped — what the lobby disables. */
+  banned: PickBanClassGroup<PregameBannedHero>[];
 }
 
 /** One map's worth of hero actions, for replaying a finished series. */
@@ -60,9 +60,6 @@ export interface PregameHeroRound extends PregameHeroBoard {
   /** The map's catalog entry, for its still. Undefined until the catalog loads. */
   mapItem: PickBanItemLike | undefined;
 }
-
-/** Tank-damage-support, the order the game's own hero list uses. */
-const ROLE_RANK: Record<AqtRoleKey, number> = { tank: 0, damage: 1, support: 2 };
 
 /** The seat's accent, as a class because it colours the team name itself (slot 1 teal, others rose). */
 const seatAccent = (slot: number) =>
@@ -87,9 +84,12 @@ export function PregameHeroBans({
   board,
   teams,
   eyebrow,
-  hint
+  hint,
+  characterClasses = []
 }: Readonly<{
   board: PregameHeroBoard;
+  /** The discipline's declared `character_classes`: the order a team's rows follow. */
+  characterClasses?: readonly string[];
   /** The encounter's live seats: a column each, with the source team's logo when the read carried it. */
   teams: EncounterTeam[];
   /**
@@ -119,8 +119,12 @@ export function PregameHeroBans({
     return null;
   }
 
-  const roleLabel = (role: AqtRoleKey | null) =>
-    role == null ? t("heroBans.roleUnknown") : tCommon(`roles.${role}`);
+  const groupLabel = (group: string | null) => {
+    if (group == null) return t("heroBans.roleUnknown");
+    // A class code is catalog data; only a code that has a localized word gets one.
+    const key = `roles.${group}` as "roles.tank";
+    return tCommon.has(key) ? tCommon(key) : group;
+  };
   const bannedHeroes = board.banned.flatMap((group) => group.items);
 
   // Width is the caller's call: the result screen aligns this with its claim
@@ -143,6 +147,7 @@ export function PregameHeroBans({
             key={seat.id}
             seat={seat}
             actions={board.actions.filter((action) => action.teamId === seat.id)}
+            characterClasses={characterClasses}
           />
         ))}
       </div>
@@ -174,7 +179,7 @@ export function PregameHeroBans({
             variant="outline"
             className="self-start"
             onClick={() => {
-              void navigator.clipboard?.writeText(lobbyCopyText(board.banned, roleLabel));
+              void navigator.clipboard?.writeText(lobbyCopyText(board.banned, groupLabel));
               setCopied(true);
             }}
           >
@@ -198,17 +203,19 @@ export function PregameHeroBans({
  */
 function TeamBans({
   seat,
-  actions
+  actions,
+  characterClasses
 }: Readonly<{
   seat: EncounterTeam;
   actions: PregameHeroAction[];
+  characterClasses: readonly string[];
 }>) {
   const t = useTranslations("pickBan.room");
   const accent = seatAccent(seat.slot);
   const ordered = [...actions].sort(
     (left, right) =>
       (left.action === "ban" ? 0 : 1) - (right.action === "ban" ? 0 : 1) ||
-      (left.role ? ROLE_RANK[left.role] : 3) - (right.role ? ROLE_RANK[right.role] : 3) ||
+      classRank(left.group, characterClasses) - classRank(right.group, characterClasses) ||
       left.name.localeCompare(right.name)
   );
 

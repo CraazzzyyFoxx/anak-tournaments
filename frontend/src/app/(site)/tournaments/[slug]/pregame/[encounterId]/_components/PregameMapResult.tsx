@@ -226,7 +226,7 @@ export function PregameMapResult({
               {accepted != null ? (
                 <p
                   data-game-state="confirmed"
-                  className="flex items-start gap-2 text-sm text-[color:var(--aqt-support)]"
+                  className="flex items-start gap-2 text-sm text-[color:var(--aqt-positive)]"
                 >
                   <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                   {t("mapResult.accepted", { first: accepted.one, second: accepted.two })}
@@ -363,7 +363,7 @@ function ClaimTile({
           "inline-flex items-center gap-1 text-label uppercase tracking-label",
           state === "waiting"
             ? "text-[color:var(--aqt-fg-faint)]"
-            : "text-[color:var(--aqt-support)]"
+            : "text-[color:var(--aqt-positive)]"
         )}
       >
         <StateIcon className="h-3 w-3" />
@@ -389,7 +389,7 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
         className={cn(
           "grid h-8 w-8 place-items-center rounded-full border",
           tone === "good"
-            ? "border-[color:var(--aqt-support)]/45 bg-[color:var(--aqt-support)]/12 text-[color:var(--aqt-support)]"
+            ? "border-[color:var(--aqt-positive)]/45 bg-[color:var(--aqt-positive)]/12 text-[color:var(--aqt-positive)]"
             : tone === "bad"
               ? "border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-amber)]/12 text-[color:var(--aqt-amber)]"
               : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-faint)]"
@@ -401,7 +401,7 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
         className={cn(
           "max-w-[7.5rem] text-center text-label uppercase leading-tight tracking-label",
           tone === "good"
-            ? "text-[color:var(--aqt-support)]"
+            ? "text-[color:var(--aqt-positive)]"
             : tone === "bad"
               ? "text-[color:var(--aqt-amber)]"
               : "text-[color:var(--aqt-fg-faint)]"

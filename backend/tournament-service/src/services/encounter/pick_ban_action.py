@@ -254,7 +254,9 @@ class PickBanActionService:
         submissions = list(await self.submission_repo.list_by_session(session, pick_ban.id, populate_existing=refresh))
         teams = await self.sessions.teams_of(session, encounter.id)
         steps = resolved_steps(pick_ban, teams)
-        groups = await load_item_groups(session, PickBanKind(pick_ban.kind), [entry.item_id for entry in entries])
+        groups = await load_item_groups(
+            session, PickBanKind(pick_ban.kind), [entry.item_id for entry in entries], encounter.discipline
+        )
         rosters: dict[int, list[Player]] = {}
         if any(step.target is not None for step in steps):
             rosters = await self._load_rosters(session, teams)

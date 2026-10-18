@@ -40,7 +40,7 @@ HOME, AWAY = 1001, 1002
 #: `targets[actor]` are the players `actor` may name — the opponent's roster.
 TARGETS = {HOME: AWAY_PLAYERS, AWAY: HOME_PLAYERS}
 
-ANTI = pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset
+ANTI = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"].ruleset
 
 
 def submission(step_index, actor, items, *, state="revealed", attempt=1):

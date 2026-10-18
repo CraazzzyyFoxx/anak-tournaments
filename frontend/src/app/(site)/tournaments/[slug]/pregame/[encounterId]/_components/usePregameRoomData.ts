@@ -11,6 +11,7 @@ import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { notify } from "@/lib/notify";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { createTrailingCoalescer, type Coalescer } from "@/lib/realtime/coalesce";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
@@ -30,6 +31,8 @@ export interface PregameRoomData {
   mapsById: Record<number, PickBanItemLike | undefined>;
   heroesById: Record<number, PickBanItemLike | undefined>;
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
+  /** The room's game's declared `character_classes`: the order class groups are listed in. Empty until loaded. */
+  characterClasses: readonly string[];
   /** Every map in the catalog, for the no-veto "which map did you play" picker. */
   mapChoices: CatalogEntityRead[];
   /** The participation the viewer captains (`EncounterTeam.id`), or null for anyone else. */
@@ -117,6 +120,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
   const discipline = encounterQuery.data?.discipline ?? null;
   const mapsQuery = useCatalogEntities(discipline, "map");
   const heroesQuery = useCatalogEntities(discipline, "character");
+  const metadataQuery = useDisciplineMetadata(encounterQuery.data?.workspace_id ?? "all", discipline);
   // `build_unavailable_state` reports `viewer_team_id: null` regardless of
   // identity (there is no session yet to resolve a participation against), so the
   // readiness gate's "you're a captain" check needs its own read.
@@ -264,6 +268,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
     mapsById,
     heroesById,
     itemsByKind: { map: mapsById, hero: heroesById },
+    characterClasses: metadataQuery.data?.discipline.character_classes ?? [],
     mapChoices: mapsQuery.data ?? [],
     viewerTeamId: roleQuery.data?.encounter_team_id ?? null,
     readyPending: readyMutation.isPending,

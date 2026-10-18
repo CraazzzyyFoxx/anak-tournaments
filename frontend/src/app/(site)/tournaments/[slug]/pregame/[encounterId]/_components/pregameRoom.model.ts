@@ -1,11 +1,11 @@
-import { normalizeRole } from "@/lib/roster/player-role";
 import {
+  characterClassOf,
   acceptedScore,
   appliedItemsByTeam,
   bannedEntries,
   carriedBanEntries,
   gameAtPosition,
-  groupItemsByRole,
+  groupItemsByClass,
   highestPoolRound,
   pickedItemsInOrder
 } from "@/components/pick-ban/pick-ban-model";
@@ -219,7 +219,8 @@ export function heroBoardForRound(
   state: PickBanState,
   round: number | null,
   heroesById: ItemLookup,
-  heroName: (itemId: number) => string
+  heroName: (itemId: number) => string,
+  characterClasses: readonly string[] = []
 ): PregameHeroBoard {
   const describe = (
     itemId: number,
@@ -232,7 +233,7 @@ export function heroBoardForRound(
       itemId,
       name: item?.name ?? heroName(itemId),
       item,
-      role: normalizeRole(item?.type ?? item?.role),
+      group: characterClassOf(item),
       action,
       teamId,
       carriedFromRound
@@ -262,11 +263,11 @@ export function heroBoardForRound(
       itemId: entry.item_id,
       name: item?.name ?? heroName(entry.item_id),
       item,
-      role: normalizeRole(item?.type ?? item?.role)
+      group: characterClassOf(item)
     };
   });
 
-  return { round, actions, banned: groupItemsByRole(banned) };
+  return { round, actions, banned: groupItemsByClass(banned, characterClasses) };
 }
 
 /**
@@ -280,18 +281,19 @@ export function buildHeroRounds(
   state: PickBanState,
   series: PregameSeriesMap[],
   heroesById: ItemLookup,
-  heroName: (itemId: number) => string
+  heroName: (itemId: number) => string,
+  characterClasses: readonly string[] = []
 ): PregameHeroRound[] {
   return (
     state.pool.some((entry) => entry.round != null)
       ? series.map((map) => ({
-          ...heroBoardForRound(state, map.round, heroesById, heroName),
+          ...heroBoardForRound(state, map.round, heroesById, heroName, characterClasses),
           mapName: map.name,
           mapItem: map.item
         }))
       : [
           {
-            ...heroBoardForRound(state, null, heroesById, heroName),
+            ...heroBoardForRound(state, null, heroesById, heroName, characterClasses),
             mapName: null,
             mapItem: undefined
           }

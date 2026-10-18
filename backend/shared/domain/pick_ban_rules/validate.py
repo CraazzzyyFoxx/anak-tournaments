@@ -17,7 +17,6 @@ from shared.disciplines import discipline as discipline_spec
 
 from .registry import (
     CONSTRAINTS,
-    HERO_GROUPS,
     LEAVES,
     MAX_TREE_DEPTH,
     MAX_TREE_NODES,
@@ -49,16 +48,17 @@ def validate_ruleset(
     ruleset_json: Any,
     *,
     kind: str,
+    discipline: str,
     mode: str = "pool",
-    discipline: str = "overwatch",
     slot_count: int = 2,
     groups: Sequence[str] | None = None,
 ) -> list[Issue]:
     """Validate a ruleset document for ``kind``/``mode``/``discipline``.
 
-    ``groups`` is the item-group vocabulary of the kind (gamemode slugs for
-    maps); ``None`` means "do not check map group names" — the hero groups are
-    a closed set and always checked.
+    ``groups`` is the item-group vocabulary of the kind (class names for
+    characters, gamemode slugs for maps); ``None`` means "do not check map group
+    names", while a hero's groups are always checked -- against ``groups`` or,
+    absent that, the classes ``discipline``'s module declares.
 
     ``discipline`` and ``slot_count`` decide what the actor vocabulary can say
     (D25): ``slot:<n>`` must name a seat the card has, ``side:<code>`` a side
@@ -72,7 +72,7 @@ def validate_ruleset(
         return list(exc.issues)
 
     spec = discipline_spec(discipline)
-    known_groups = _known_groups(kind, groups)
+    known_groups = _known_groups(kind, groups, spec)
     issues: list[Issue] = []
     if not ruleset.phases:
         issues.append(_error("phases", "phases_empty", "a ruleset needs at least one phase"))
@@ -112,11 +112,11 @@ def validate_ruleset(
     return issues
 
 
-def _known_groups(kind: str, groups: Sequence[str] | None) -> set[str] | None:
-    if kind == "hero":
-        return set(HERO_GROUPS)
+def _known_groups(kind: str, groups: Sequence[str] | None, spec: DisciplineSpec) -> set[str] | None:
     if groups is None:
-        return None
+        if kind != "hero":
+            return None
+        groups = spec.character_classes
     return {normalized for group in groups if (normalized := normalize_group(group))}
 
 

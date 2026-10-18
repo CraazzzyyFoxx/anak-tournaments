@@ -37,7 +37,9 @@ from shared.core.enums import (
     MapVetoMode,
     PickBanKind,
 )
+from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.domain import pick_ban_rules as pbr
 from shared.models.catalog.entity import CatalogEntity
 from shared.models.tournament.pick_ban import (
@@ -46,6 +48,7 @@ from shared.models.tournament.pick_ban import (
     PickBanConfigSlot,
     PickBanConfigSlotItem,
 )
+from shared.models.tournament.tournament import Tournament
 from shared.repository import PickBanConfigRepository, StageRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD
 from shared.services.team_format import tournament_slot_shape
@@ -74,31 +77,58 @@ class SlotSpec:
 # ── item groups (the DB half of the engine's vocabulary) ─────────────────────
 
 
-async def group_vocabulary(session: AsyncSession, kind: PickBanKind) -> list[str]:
-    """Every ``item_group`` value a condition of this kind may name.
+def installed_discipline(discipline: str) -> DisciplineSpec:
+    """The module behind ``discipline``; 404 ``discipline_not_installed`` for a code nobody declares.
 
-    The engine is pure and cannot know them: hero classes are a closed set it
-    ships (:data:`pbr.HERO_GROUPS`), but a map's group is its gamemode slug,
-    which is catalog data an admin edits. Both the catalog op (what the
-    constructor offers) and the upsert validation (what it accepts) read the
-    vocabulary from here so the editor can never author a group the validator
-    then refuses.
+    Never the registry's side-less stand-in: a catalog, vocabulary or save for a game that is not installed must fail,
+    not quietly answer with an empty vocabulary."""
+    spec = DISCIPLINES.get(discipline)
+    if spec is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {discipline!r} is not installed")],
+        )
+    return spec
+
+
+async def tournament_discipline(session: AsyncSession, tournament_id: int) -> str:
+    """The tournament's discipline code: the owner scope every rule, group and pool of its configs is read in."""
+    code = await session.scalar(select(Tournament.discipline).where(Tournament.id == tournament_id))
+    if code is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return str(code)
+
+
+async def group_vocabulary(session: AsyncSession, kind: PickBanKind, discipline: str) -> list[str]:
+    """Every ``item_group`` value a condition of this kind may name in ``discipline``.
+
+    The engine is pure and cannot know them: a character's group is its class, which is the discipline module's
+    declared ``character_classes`` (never an assigned player role), but a map's group is its gamemode slug, which is
+    catalog data an admin edits -- and a game that declares no ``mode`` kind (League) has none. Both the catalog op
+    (what the constructor offers) and the upsert validation (what it accepts) read the vocabulary from here so the
+    editor can never author a group the validator then refuses.
     """
+    spec = installed_discipline(discipline)
     if kind == PickBanKind.HERO:
-        return list(pbr.HERO_GROUPS)
+        return [group for group in (pbr.normalize_group(name) for name in spec.character_classes) if group]
+    if "mode" not in spec.kinds:
+        return []
     slugs = await session.scalars(
         select(CatalogEntity.slug)
-        .where(CatalogEntity.kind == "mode", CatalogEntity.discipline == "overwatch")
+        .where(CatalogEntity.kind == "mode", CatalogEntity.discipline == discipline)
         .order_by(CatalogEntity.slug)
     )
     return [group for group in (pbr.normalize_group(slug) for slug in slugs) if group]
 
 
-async def pool_group_counts(session: AsyncSession, kind: PickBanKind, item_ids: Sequence[int]) -> dict[str, int]:
+async def pool_group_counts(
+    session: AsyncSession, kind: PickBanKind, item_ids: Sequence[int], discipline: str
+) -> dict[str, int]:
     """``{group: how many pool items are in it}`` -- the preview's budget.
 
     "How many supports are left on map 5?" is only answerable against a real
-    pool, so the preview takes the counts rather than the ids.
+    pool, so the preview takes the counts rather than the ids. Only items of
+    ``discipline`` count: an id of another game is not a member of this pool.
     """
     if not item_ids:
         return {}
@@ -106,7 +136,7 @@ async def pool_group_counts(session: AsyncSession, kind: PickBanKind, item_ids: 
         query = select(CatalogEntity.attrs["class"].astext).where(
             CatalogEntity.id.in_(item_ids),
             CatalogEntity.kind == "character",
-            CatalogEntity.discipline == "overwatch",
+            CatalogEntity.discipline == discipline,
         )
     else:
         mode = aliased(CatalogEntity, name="mode")
@@ -116,9 +146,9 @@ async def pool_group_counts(session: AsyncSession, kind: PickBanKind, item_ids: 
             .where(
                 CatalogEntity.id.in_(item_ids),
                 CatalogEntity.kind == "map",
-                CatalogEntity.discipline == "overwatch",
+                CatalogEntity.discipline == discipline,
                 mode.kind == "mode",
-                mode.discipline == "overwatch",
+                mode.discipline == discipline,
             )
         )
     counts: dict[str, int] = {}
@@ -215,7 +245,7 @@ def validate_config_payload(
     slots: Sequence[tuple[Sequence[int], int | None]],
     stage_id: int | None,
     round: int | None,
-    discipline: str = "overwatch",
+    discipline: str,
     groups: Sequence[str] | None = None,
 ) -> None:
     """Everything an upsert body must satisfy before it becomes a config row.

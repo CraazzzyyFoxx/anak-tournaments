@@ -115,7 +115,7 @@ export function PickBanStepTimeline({
           className={cn(
             "h-4 w-4 shrink-0",
             done
-              ? "text-[color:var(--aqt-support)]"
+              ? "text-[color:var(--aqt-positive)]"
               : current
                 ? "text-[color:var(--aqt-teal)]"
                 : "text-[color:var(--aqt-fg-faint)]"
@@ -125,7 +125,7 @@ export function PickBanStepTimeline({
           className={cn(
             "inline-flex items-center gap-1 font-medium",
             summary.action === "ban" ? "text-[color:var(--aqt-rose)]" : null,
-            summary.action === "pick" ? "text-[color:var(--aqt-support)]" : null,
+            summary.action === "pick" ? "text-[color:var(--aqt-positive)]" : null,
             summary.action === "protect" ? "text-[color:var(--aqt-amber)]" : null
           )}
         >

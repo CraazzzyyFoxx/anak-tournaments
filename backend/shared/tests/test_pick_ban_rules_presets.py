@@ -4,23 +4,31 @@ A preset that does not validate is a broken button in the constructor, and the
 preview numbers are what an organizer reads before committing to a format.
 """
 
+from functools import partial
+from unittest.mock import patch
+
 import pytest
 
+from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.domain import pick_ban_rules as pbr
 
-ANTI = pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset
+#: Overwatch's own hero presets, by id: they live in its module, not in core.
+OVERWATCH = {preset.id: preset for preset in pbr.presets_for("overwatch") if preset.kind == "hero"}
+ANTI = OVERWATCH["hero_anti_one_trick"].ruleset
 HERO_POOL = {"tank": 13, "damage": 20, "support": 15}
+preview_series = partial(pbr.preview_series, discipline="overwatch")
 
 
-def test_every_preset_validates_clean_for_its_kind_and_modes():
-    for preset in pbr.PRESETS:
-        for mode in preset.modes:
-            issues = pbr.validate_ruleset(preset.ruleset.to_json(), kind=preset.kind, mode=mode)
-            assert [issue.to_json() for issue in issues if issue.severity == "error"] == []
+def test_every_preset_validates_clean_for_its_kind_and_modes_in_its_discipline():
+    for code in DISCIPLINES:
+        for preset in pbr.presets_for(code):
+            for mode in preset.modes:
+                issues = pbr.validate_ruleset(preset.ruleset.to_json(), kind=preset.kind, mode=mode, discipline=code)
+                assert [issue.to_json() for issue in issues if issue.severity == "error"] == []
 
 
-def test_the_seven_presets_are_the_documented_ones():
-    assert [preset.id for preset in pbr.PRESETS] == [
+def test_the_overwatch_presets_are_the_documented_five_then_the_generic_two():
+    assert [preset.id for preset in pbr.presets_for("overwatch")] == [
         "hero_classic",
         "hero_protect_ban",
         "hero_blind_2",
@@ -43,7 +51,7 @@ def test_the_tournament_preset_is_the_anti_one_trick_rules():
 
 
 def test_hero_role_bans_caps_one_ban_per_role():
-    (phase,) = pbr.PRESETS_BY_ID["hero_role_bans"].ruleset.phases
+    (phase,) = OVERWATCH["hero_role_bans"].ruleset.phases
     (step,) = phase.steps
     assert step.count == 3
     assert [constraint.to_json() for constraint in step.constraints] == [
@@ -52,7 +60,7 @@ def test_hero_role_bans_caps_one_ban_per_role():
 
 
 def test_hero_protect_ban_runs_protects_before_bans():
-    (phase,) = pbr.PRESETS_BY_ID["hero_protect_ban"].ruleset.phases
+    (phase,) = OVERWATCH["hero_protect_ban"].ruleset.phases
     assert [(step.action, step.actors) for step in phase.steps] == [
         ("protect", "first"),
         ("protect", "second"),
@@ -67,9 +75,11 @@ def test_hero_protect_ban_runs_protects_before_bans():
 
 
 def test_catalog_exposes_typed_specs_and_presets():
-    payload = pbr.catalog({"hero": ["tank", "damage", "support"], "map": ["control", "hybrid"]})
+    payload = pbr.catalog(
+        discipline="overwatch", groups={"hero": ["tank", "damage", "support"], "map": ["control", "hybrid"]}
+    )
     assert payload["groups"] == {"hero": ["tank", "damage", "support"], "map": ["control", "hybrid"]}
-    assert [preset["id"] for preset in payload["presets"]] == [preset.id for preset in pbr.PRESETS]
+    assert [preset["id"] for preset in payload["presets"]] == [preset.id for preset in pbr.presets_for("overwatch")]
 
     leaves = {leaf["type"]: leaf for leaf in payload["leaves"]}
     assert set(leaves) == set(pbr.LEAVES)
@@ -97,15 +107,73 @@ def test_catalog_exposes_typed_specs_and_presets():
     assert (group_param["kind"], group_param["required"], group_param["nullable"]) == ("group", False, True)
 
 
-def test_catalog_falls_back_to_the_hero_class_vocabulary():
-    assert pbr.catalog()["groups"] == {"hero": list(pbr.HERO_GROUPS), "map": []}
+def test_catalog_groups_are_what_the_caller_resolved_never_a_built_in_class_list():
+    assert pbr.catalog(discipline="overwatch")["groups"] == {"hero": [], "map": []}
+
+
+def test_catalog_presets_are_the_disciplines_own_plus_the_generic_ones():
+    overwatch = [preset["id"] for preset in pbr.catalog(discipline="overwatch")["presets"]]
+    lol = [preset["id"] for preset in pbr.catalog(discipline="lol")["presets"]]
+    assert overwatch == [*OVERWATCH, "map_bracket", "map_slot_veto"]
+    assert not {preset_id for preset_id in lol if preset_id.startswith("hero_")}
+    assert {"map_bracket", "map_slot_veto"} <= set(lol)
+
+
+def test_catalog_refuses_a_discipline_nobody_installed_instead_of_substituting_one():
+    for code in ("", "starcraft", "OVERWATCH"):
+        with pytest.raises(pbr.UnknownDiscipline):
+            pbr.catalog(discipline=code)
+        with pytest.raises(pbr.UnknownDiscipline):
+            pbr.presets_for(code)
+
+
+def test_a_preset_serializes_its_rotation_and_none_means_leave_it_alone():
+    assert {preset["first_ban_rotation"] for preset in pbr.catalog(discipline="overwatch")["presets"]} == {None}
+    with_rotation = pbr.Preset("rotating", "hero", ("pool",), ANTI, first_ban_rotation="result_loser_first")
+    assert with_rotation.to_json()["first_ban_rotation"] == "result_loser_first"
+
+
+def test_a_preset_rotation_must_be_a_spelling_the_config_column_accepts():
+    with pytest.raises(ValueError):
+        pbr.Preset("bad", "hero", ("pool",), ANTI, first_ban_rotation="loser_first")
+
+
+@pytest.fixture
+def rotating_discipline():
+    """A stand-in module declaring one lazy side-selection-shaped preset that carries a rotation."""
+    calls: list[str] = []
+
+    def presets() -> tuple[pbr.Preset, ...]:
+        calls.append("called")
+        return (pbr.Preset("rotating_ban", "hero", ("pool",), ANTI, first_ban_rotation="result_loser_first"),)
+
+    spec = DisciplineSpec("rotating", "Rotating", (), character_classes=("bruiser",), pick_ban_presets=presets)
+    with patch.dict(DISCIPLINES, {spec.code: spec}):
+        assert calls == []  # registering a module never invokes the hook
+        yield spec, calls
+
+
+def test_a_modules_presets_are_invoked_lazily_and_reach_only_its_own_catalog(rotating_discipline):
+    spec, calls = rotating_discipline
+    payload = pbr.catalog(discipline=spec.code)
+    assert calls == ["called"]
+    by_id = {preset["id"]: preset for preset in payload["presets"]}
+    assert by_id["rotating_ban"]["first_ban_rotation"] == "result_loser_first"
+    assert "rotating_ban" not in {preset["id"] for preset in pbr.catalog(discipline="overwatch")["presets"]}
+
+
+def test_a_module_cannot_shadow_a_generic_preset_id():
+    clash = pbr.Preset("map_bracket", "map", ("pool",), pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset)
+    spec = DisciplineSpec("clashing", "Clashing", (), pick_ban_presets=lambda: (clash,))
+    with patch.dict(DISCIPLINES, {spec.code: spec}), pytest.raises(ValueError, match="more than once"):
+        pbr.presets_for(spec.code)
 
 
 # ── preview ─────────────────────────────────────────────────────────────────
 
 
 def test_preview_counts_the_anti_one_trick_ban_pressure():
-    preview = pbr.preview_series(ANTI, kind="hero", mode="pool", best_of=5, pool_groups=HERO_POOL)
+    preview = preview_series(ANTI, kind="hero", mode="pool", best_of=5, pool_groups=HERO_POOL)
     assert [row["map_index"] for row in preview["maps"]] == [1, 2, 3, 4, 5]
     assert [row["phase_id"] for row in preview["maps"]] == ["map1", "map2plus", "map2plus", "map2plus", "map2plus"]
     assert [row["max_new_bans"] for row in preview["maps"]] == [4, 10, 10, 10, 10]
@@ -114,13 +182,13 @@ def test_preview_counts_the_anti_one_trick_ban_pressure():
 
 
 def test_preview_reports_the_worst_case_per_role():
-    preview = pbr.preview_series(ANTI, kind="hero", mode="pool", best_of=2, pool_groups=HERO_POOL)
+    preview = preview_series(ANTI, kind="hero", mode="pool", best_of=2, pool_groups=HERO_POOL)
     assert preview["maps"][0]["worst_case_remaining"] == {"tank": 9, "damage": 16, "support": 11}
     assert preview["maps"][1]["worst_case_remaining"] == {"tank": 3, "damage": 10, "support": 5}
 
 
 def test_preview_warns_once_per_group_when_a_role_can_be_wiped_out():
-    preview = pbr.preview_series(ANTI, kind="hero", mode="pool", best_of=5, pool_groups={"tank": 6, "damage": 30})
+    preview = preview_series(ANTI, kind="hero", mode="pool", best_of=5, pool_groups={"tank": 6, "damage": 30})
     codes = [(issue["code"], issue["severity"]) for issue in preview["issues"]]
     assert codes == [("group_nearly_exhausted", "warning")]
     assert "tank" in preview["issues"][0]["message"]
@@ -128,7 +196,7 @@ def test_preview_warns_once_per_group_when_a_role_can_be_wiped_out():
 
 def test_a_max_per_group_cap_bounds_the_worst_case():
     ruleset = pbr.PRESETS_BY_ID["hero_role_bans"].ruleset
-    preview = pbr.preview_series(ruleset, kind="hero", mode="pool", best_of=1, pool_groups=HERO_POOL)
+    preview = preview_series(ruleset, kind="hero", mode="pool", best_of=1, pool_groups=HERO_POOL)
     # 3 blind bans per side, but at most one per role each: 2 per role, not 6.
     assert preview["maps"][0]["worst_case_remaining"] == {"tank": 11, "damage": 18, "support": 13}
 
@@ -141,7 +209,7 @@ TOURNAMENT_POOL = {"tank": 13, "damage": 19, "support": 12}
 def test_roster_slots_bound_a_per_player_ban_step():
     """Five bans per side, but one per opponent player and each matching that
     player's role: a role absorbs at most as many bans as the team fields."""
-    preview = pbr.preview_series(
+    preview = preview_series(
         ANTI, kind="hero", mode="pool", best_of=5, pool_groups=TOURNAMENT_POOL, roster_slots=ROSTER
     )
     assert preview["maps"][2]["worst_case_remaining"] == {"tank": 9, "damage": 11, "support": 4}
@@ -150,20 +218,20 @@ def test_roster_slots_bound_a_per_player_ban_step():
 
 
 def test_without_roster_slots_the_worst_case_stays_pessimistic():
-    preview = pbr.preview_series(ANTI, kind="hero", best_of=5, pool_groups=TOURNAMENT_POOL)
+    preview = preview_series(ANTI, kind="hero", best_of=5, pool_groups=TOURNAMENT_POOL)
     assert preview["maps"][2]["worst_case_remaining"] == {"tank": 0, "damage": 0, "support": 0}
     assert [issue["code"] for issue in preview["issues"]] == ["group_nearly_exhausted"] * 3
 
 
 def test_roster_slots_only_bound_a_role_matched_one_per_target_step():
     """Map 1 bans any hero from anyone: the roster says nothing about it."""
-    preview = pbr.preview_series(ANTI, kind="hero", best_of=1, pool_groups=TOURNAMENT_POOL, roster_slots=ROSTER)
+    preview = preview_series(ANTI, kind="hero", best_of=1, pool_groups=TOURNAMENT_POOL, roster_slots=ROSTER)
     # 2 blind bans per side, all four of which could be tanks.
     assert preview["maps"][0]["worst_case_remaining"]["tank"] == 9
 
 
 def test_flex_players_widen_every_roles_ceiling():
-    preview = pbr.preview_series(
+    preview = preview_series(
         ANTI,
         kind="hero",
         best_of=3,
@@ -176,20 +244,24 @@ def test_flex_players_widen_every_roles_ceiling():
 
 
 def test_roster_keys_are_case_insensitive_and_extra_roles_are_ignored():
-    lenient = pbr.preview_series(
+    lenient = preview_series(
         ANTI,
         kind="hero",
         best_of=5,
         pool_groups=TOURNAMENT_POOL,
         roster_slots={"Tank": 1, "DAMAGE": 2, "support": 2, "coach": 3, "bench": 0},
     )
-    strict = pbr.preview_series(ANTI, kind="hero", best_of=5, pool_groups=TOURNAMENT_POOL, roster_slots=ROSTER)
+    strict = preview_series(ANTI, kind="hero", best_of=5, pool_groups=TOURNAMENT_POOL, roster_slots=ROSTER)
     assert lenient["maps"] == strict["maps"]
 
 
 def test_preview_resolves_a_generated_map_series():
-    preview = pbr.preview_series(
-        pbr.PRESETS_BY_ID["map_bracket"].ruleset, kind="map", mode="pool", best_of=3, pool_groups={"control": 7}
+    preview = preview_series(
+        pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset,
+        kind="map",
+        mode="pool",
+        best_of=3,
+        pool_groups={"control": 7},
     )
     (row,) = preview["maps"]
     assert [step["action"] for step in row["steps"]] == ["ban", "ban", "pick", "pick", "decider"]
@@ -197,7 +269,7 @@ def test_preview_resolves_a_generated_map_series():
 
 
 def test_preview_refuses_to_guess_at_a_broken_ruleset():
-    preview = pbr.preview_series({"version": 2, "phases": []}, kind="hero", best_of=3)
+    preview = preview_series({"version": 2, "phases": []}, kind="hero", best_of=3)
     assert preview["maps"] == []
     assert [issue["code"] for issue in preview["issues"]] == ["phases_empty"]
 
@@ -215,12 +287,12 @@ def test_preview_reports_a_map_no_phase_covers():
             ],
         }
     )
-    preview = pbr.preview_series(ruleset, kind="hero", best_of=3, pool_groups=HERO_POOL)
+    preview = preview_series(ruleset, kind="hero", best_of=3, pool_groups=HERO_POOL)
     assert [row["phase_id"] for row in preview["maps"]] == ["only1", None, None]
     assert [row["steps"] for row in preview["maps"][1:]] == [[], []]
 
 
 @pytest.mark.parametrize("best_of", [1, 2, 3, 5])
 def test_preview_covers_every_supported_series_length(best_of):
-    preview = pbr.preview_series(ANTI, kind="hero", best_of=best_of, pool_groups=HERO_POOL)
+    preview = preview_series(ANTI, kind="hero", best_of=best_of, pool_groups=HERO_POOL)
     assert len(preview["maps"]) == best_of

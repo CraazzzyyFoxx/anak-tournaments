@@ -1289,7 +1289,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.pick_ban_rules_catalog": {
         "summary": "Get the pick-ban ruleset catalog",
-        "description": "Permission: public; no authentication required — the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take, which item groups are selectable per kind) plus the built-in presets, not anyone's tournament. The pick-ban constructor loads it before a config exists to attach it to.",
+        "description": "Permission: public; no authentication required — the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take) plus ONE discipline's vocabulary: its item groups per kind (character classes declared by its module, mode slugs for maps) and its presets (the module's own plus the generic map presets; a preset's `first_ban_rotation`, when set, is the rotation the preset needs). `discipline` is required: 422 when absent, 404 `discipline_not_installed` for a code no module declares, never another game's presets. The pick-ban constructor loads it before a config exists to attach it to.",
     },
     "rpc.tournament.reg_pub_form": {
         "summary": "Get public registration form",

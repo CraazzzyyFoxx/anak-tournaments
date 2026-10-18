@@ -234,9 +234,13 @@ class PickBanService {
     return response.json();
   }
 
-  /** Leaf/constraint specs, groups and presets the constructor builds forms from. */
-  async getRulesCatalog(): Promise<PickBanRulesCatalog> {
-    const response = await apiFetch(`/api/v1/pick-ban-rules/catalog`, { skipWorkspace: true });
+  /** Leaf/constraint specs plus the groups and presets of `discipline`, which the constructor builds forms from. */
+  async getRulesCatalog(discipline: string, signal?: AbortSignal): Promise<PickBanRulesCatalog> {
+    const response = await apiFetch(`/api/v1/pick-ban-rules/catalog`, {
+      query: { discipline },
+      skipWorkspace: true,
+      signal
+    });
     return response.json();
   }
 

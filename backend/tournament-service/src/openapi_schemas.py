@@ -475,6 +475,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin_pick_ban_config_upsert": Op(request=pick_ban_admin.PickBanConfigUpsert),
     "rpc.tournament.admin_pick_ban_rules_validate": Op(request=pick_ban_admin.PickBanRulesValidateInput),
     "rpc.tournament.admin_pick_ban_rules_preview": Op(request=pick_ban_admin.PickBanRulesPreviewInput),
+    # The constructor's catalog answers an ad-hoc dict; only its required game scope is mapped.
+    "rpc.tournament.pick_ban_rules_catalog": Op(
+        query_params=(QueryParam("discipline", required=True, description="Explicit discipline code."),)
+    ),
     "rpc.tournament.admin_pick_ban_act": Op(request=pick_ban_admin.PickBanAdminAct),
     "rpc.tournament.admin_pick_ban_submit": Op(request=pick_ban_admin.PickBanAdminSubmit),
     # The room's emergency controls: the three pick-ban ones answer the room

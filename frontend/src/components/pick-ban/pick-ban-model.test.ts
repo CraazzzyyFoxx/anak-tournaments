@@ -18,11 +18,12 @@ import {
   appliedItemsByTeam,
   bannedEntries,
   carriedBanEntries,
+  characterClassOf,
   duplicateItemIds,
   eligibleItemIds,
   expiredBanIds,
   gameAtPosition,
-  groupItemsByRole,
+  groupItemsByClass,
   isSessionActive,
   lastRevealedBlindStep,
   lobbyCopyText,
@@ -534,18 +535,32 @@ describe("expiredBanIds", () => {
   });
 });
 
-describe("groupItemsByRole / lobbyCopyText", () => {
-  const items = [
-    { itemId: 1, name: "Zarya", role: "tank" as const },
-    { itemId: 2, name: "Ana", role: "support" as const },
-    { itemId: 3, name: "Ashe", role: "damage" as const },
-    { itemId: 4, name: "Reinhardt", role: "tank" as const },
-    { itemId: 5, name: "Unknown", role: null }
-  ];
+describe("characterClassOf", () => {
+  it("reads the catalog row's class, lowercased, and nothing else", () => {
+    expect(characterClassOf({ attrs: { class: " Mage " } })).toBe("mage");
+    expect(characterClassOf({ attrs: { class: "" } })).toBeNull();
+    expect(characterClassOf({ attrs: { class: 3 } })).toBeNull();
+    expect(characterClassOf({ attrs: {} })).toBeNull();
+    expect(characterClassOf(undefined)).toBeNull();
+  });
+});
 
-  it("orders tank-damage-support with the unknown bucket last, names sorted", () => {
+describe("groupItemsByClass / lobbyCopyText", () => {
+  const items = [
+    { itemId: 1, name: "Zarya", group: "tank" },
+    { itemId: 2, name: "Ana", group: "support" },
+    { itemId: 3, name: "Ashe", group: "damage" },
+    { itemId: 4, name: "Reinhardt", group: "tank" },
+    { itemId: 5, name: "Unknown", group: null }
+  ];
+  const OVERWATCH_ORDER = ["tank", "damage", "support"];
+
+  it("orders by the module's declared classes with the unknown bucket last, names sorted", () => {
     expect(
-      groupItemsByRole(items).map((group) => [group.role, group.items.map((item) => item.name)])
+      groupItemsByClass(items, OVERWATCH_ORDER).map((group) => [
+        group.group,
+        group.items.map((item) => item.name)
+      ])
     ).toEqual([
       ["tank", ["Reinhardt", "Zarya"]],
       ["damage", ["Ashe"]],
@@ -554,10 +569,31 @@ describe("groupItemsByRole / lobbyCopyText", () => {
     ]);
   });
 
-  it("writes one line per role, which is how the lobby's hero list is grouped", () => {
-    expect(lobbyCopyText(groupItemsByRole(items.slice(0, 3)), (role) => role ?? "other")).toBe(
-      "tank: Zarya\ndamage: Ashe\nsupport: Ana"
-    );
+  it("follows another game's declaration, and sorts undeclared classes after the declared ones", () => {
+    const champions = [
+      { itemId: 1, name: "Ahri", group: "mage" },
+      { itemId: 2, name: "Garen", group: "fighter" },
+      { itemId: 3, name: "Jinx", group: "marksman" },
+      { itemId: 4, name: "Zed", group: "assassin" }
+    ];
+    expect(
+      groupItemsByClass(champions, ["Fighter", "Mage"]).map((group) => group.group)
+    ).toEqual(["fighter", "mage", "assassin", "marksman"]);
+  });
+
+  it("assumes no game's classes when none are declared yet", () => {
+    expect(groupItemsByClass(items).map((group) => group.group)).toEqual([
+      "damage",
+      "support",
+      "tank",
+      null
+    ]);
+  });
+
+  it("writes one line per class, which is how the lobby's character list is grouped", () => {
+    expect(
+      lobbyCopyText(groupItemsByClass(items.slice(0, 3), OVERWATCH_ORDER), (group) => group ?? "other")
+    ).toBe("tank: Zarya\ndamage: Ashe\nsupport: Ana");
   });
 });
 

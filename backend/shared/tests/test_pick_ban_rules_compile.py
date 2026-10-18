@@ -105,6 +105,7 @@ def test_step_ids_are_unique_and_id_shaped():
         },
         kind="hero",
         mode="pool",
+        discipline="overwatch",
     )
 
 
@@ -192,13 +193,13 @@ def test_converted_configs_validate_clean():
             no_repeat_scope="encounter",
             unique_attribute="role",
         )
-        assert pbr.validate_ruleset(ruleset.to_json(), kind=kind, mode=mode) == []
+        assert pbr.validate_ruleset(ruleset.to_json(), kind=kind, mode=mode, discipline="overwatch") == []
 
 
 # ── phase selection ─────────────────────────────────────────────────────────
 
 
-ANTI = pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset
+ANTI = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"].ruleset
 
 
 @pytest.mark.parametrize(("round_number", "phase_id"), [(1, "map1"), (2, "map2plus"), (5, "map2plus")])
@@ -292,7 +293,7 @@ def test_resolve_round_inherits_timer_and_fills_min():
 
 
 def test_resolve_round_bracket_generator_matches_the_v1_sequence():
-    ruleset = pbr.PRESETS_BY_ID["map_bracket"].ruleset
+    ruleset = pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset
     steps = pbr.resolve_round(
         ruleset, kind="map", round=None, start_index=0, participants=SEATS, opener=SLOT1, best_of=3, pool_size=7
     )
@@ -304,7 +305,7 @@ def test_resolve_round_bracket_generator_matches_the_v1_sequence():
 
 
 def test_resolve_round_slot_generator_uses_fixed_rotation_per_round():
-    ruleset = pbr.PRESETS_BY_ID["map_slot_veto"].ruleset
+    ruleset = pbr.GENERIC_PRESETS_BY_ID["map_slot_veto"].ruleset
     first = pbr.resolve_round(
         ruleset, kind="map", round=1, start_index=0, participants=SEATS, opener=SLOT1, best_of=3, candidate_count=3
     )

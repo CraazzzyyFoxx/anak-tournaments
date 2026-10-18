@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
 
@@ -249,13 +248,6 @@ def _pool_item_ids(mode: MapVetoMode, item_ids: list[int], slots: list[PickBanCo
     return list(dict.fromkeys(pooled))
 
 
-async def _discipline(session: Any, tournament_id: int) -> str:
-    """The tournament's discipline code -- what decides whether a ruleset may
-    name sides at all (D25)."""
-    code = await session.scalar(sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id))
-    return str(code or "overwatch")
-
-
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.admin_pick_ban_config_list")
     async def _admin_pick_ban_config_list(data: dict, msg: RabbitMessage) -> dict:
@@ -277,6 +269,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanConfigUpsert.model_validate(_payload(data))
+            discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
             pick_ban_config.validate_config_payload(
                 kind=body.kind,
                 mode=body.mode,
@@ -285,8 +278,8 @@ def register(broker: Any, logger: Any) -> None:
                 slots=[(slot.candidates, slot.reserve_item_id) for slot in body.slots],
                 stage_id=body.stage_id,
                 round=body.round,
-                discipline=await _discipline(session, tournament_id),
-                groups=await pick_ban_config.group_vocabulary(session, body.kind),
+                discipline=discipline,
+                groups=await pick_ban_config.group_vocabulary(session, body.kind, discipline),
             )
             config = await pick_ban_config.pick_ban_config_service.upsert_config(
                 session,
@@ -388,11 +381,13 @@ def register(broker: Any, logger: Any) -> None:
             # point is to hand the editor the issue list while it is still being
             # typed. Warnings ride along with the errors; only errors decide
             # ``valid``.
+            discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
             issues = pbr.validate_ruleset(
                 body.ruleset,
                 kind=body.kind.value,
                 mode=body.mode.value,
-                groups=await pick_ban_config.group_vocabulary(session, body.kind),
+                discipline=discipline,
+                groups=await pick_ban_config.group_vocabulary(session, body.kind, discipline),
             )
             return {
                 "valid": not any(issue.severity == "error" for issue in issues),
@@ -409,14 +404,15 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanRulesPreviewInput.model_validate(_payload(data))
+            discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
             return pbr.preview_series(
                 body.ruleset,
                 kind=body.kind.value,
                 mode=body.mode.value,
-                discipline=await _discipline(session, tournament_id),
+                discipline=discipline,
                 best_of=body.best_of,
                 pool_groups=await pick_ban_config.pool_group_counts(
-                    session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots)
+                    session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots), discipline
                 ),
                 # The tournament's own roster shape, not a workspace default:
                 # it bounds how many of a per-player ban step's bans can land

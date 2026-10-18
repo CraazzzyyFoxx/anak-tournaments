@@ -10,7 +10,6 @@
  * per-side lists have to be read off the submissions rather than the board
  * (design: docs/plans/2026-09-28-pick-ban-constructor.md).
  */
-import type { AqtRoleKey } from "@/lib/roster/player-role";
 import type {
   EncounterGame,
   PickBanEligible,
@@ -594,53 +593,76 @@ export function tileStatus(
 
 // ─── Lobby copy ─────────────────────────────────────────────────────────────
 
-/** One item as the lobby list names it: its role decides which line it lands on. */
-export interface PickBanRoleItem {
-  itemId: number;
-  name: string;
-  role: AqtRoleKey | null;
+/**
+ * A character's class, lowercased: the group vocabulary `item_group` conditions name and the grid filters by.
+ * It is catalog data of the item (`attrs.class`) -- never a player's assigned role -- and `null` when the catalog
+ * has not loaded or the row declares none.
+ */
+export function characterClassOf(item: { attrs?: Record<string, unknown> } | null | undefined): string | null {
+  const value = item?.attrs?.class;
+  return typeof value === "string" && value.trim() !== "" ? value.trim().toLowerCase() : null;
 }
 
-export interface PickBanRoleGroup<T extends PickBanRoleItem = PickBanRoleItem> {
-  /** Null is the "role unknown" bucket — rendered last, never dropped. */
-  role: AqtRoleKey | null;
+/**
+ * Rank of a class in the module's declared `character_classes` order: declared first, undeclared classes after,
+ * "unknown" last. Declarations are compared case-insensitively, like every item group.
+ */
+export function classRank(group: string | null, declared: readonly string[]): number {
+  if (group == null) return declared.length + 1;
+  const index = declared.findIndex((code) => code.trim().toLowerCase() === group);
+  return index === -1 ? declared.length : index;
+}
+
+/** One item as the lobby list names it: its class decides which line it lands on. */
+export interface PickBanClassItem {
+  itemId: number;
+  name: string;
+  /** `characterClassOf` of the catalog row; null is the "class unknown" bucket. */
+  group: string | null;
+}
+
+export interface PickBanClassGroup<T extends PickBanClassItem = PickBanClassItem> {
+  /** Null is the "class unknown" bucket -- rendered last, never dropped. */
+  group: string | null;
   items: T[];
 }
 
-/** Tank-damage-support, the order the game's own hero list uses. */
-const ROLE_ORDER: AqtRoleKey[] = ["tank", "damage", "support"];
-
 /**
- * Items grouped by role in the game's own order, names sorted inside each
- * group. Empty roles are dropped; the unknown-role bucket comes last so a
- * catalog that has not loaded yet never hides an item.
+ * Items grouped by class in the module's declared order, names sorted inside each group. A class the module does
+ * not declare sorts after the declared ones by name; the unknown bucket comes last so a catalog that has not
+ * loaded yet never hides an item.
  */
-export function groupItemsByRole<T extends PickBanRoleItem>(items: T[]): PickBanRoleGroup<T>[] {
-  const byRole = new Map<AqtRoleKey | null, T[]>();
+export function groupItemsByClass<T extends PickBanClassItem>(
+  items: T[],
+  declared: readonly string[] = []
+): PickBanClassGroup<T>[] {
+  const byGroup = new Map<string | null, T[]>();
   for (const item of items) {
-    const bucket = byRole.get(item.role) ?? [];
+    const bucket = byGroup.get(item.group) ?? [];
     bucket.push(item);
-    byRole.set(item.role, bucket);
+    byGroup.set(item.group, bucket);
   }
-  const order: (AqtRoleKey | null)[] = [...ROLE_ORDER, null];
-  return order
-    .filter((role) => (byRole.get(role)?.length ?? 0) > 0)
-    .map((role) => ({
-      role,
-      items: [...byRole.get(role)!].sort((left, right) => left.name.localeCompare(right.name))
+  return [...byGroup.entries()]
+    .sort(
+      ([left], [right]) =>
+        classRank(left, declared) - classRank(right, declared) || (left ?? "").localeCompare(right ?? "")
+    )
+    .map(([group, bucket]) => ({
+      group,
+      items: [...bucket].sort((left, right) => left.name.localeCompare(right.name))
     }));
 }
 
 /**
  * The text the "copy for the lobby" button puts on the clipboard: one line per
- * role, so a captain reads it off while ticking heroes off in the custom-game
- * hero list, which is itself grouped by role.
+ * class, so a captain reads it off while ticking characters off in the
+ * custom-game list, which is itself grouped by class.
  */
 export function lobbyCopyText(
-  groups: PickBanRoleGroup[],
-  roleLabel: (role: AqtRoleKey | null) => string
+  groups: PickBanClassGroup[],
+  groupLabel: (group: string | null) => string
 ): string {
   return groups
-    .map((group) => `${roleLabel(group.role)}: ${group.items.map((item) => item.name).join(", ")}`)
+    .map((group) => `${groupLabel(group.group)}: ${group.items.map((item) => item.name).join(", ")}`)
     .join("\n");
 }

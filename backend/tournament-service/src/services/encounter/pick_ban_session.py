@@ -251,9 +251,13 @@ def step_clock(pick_ban: PickBanSession) -> datetime:
     return paused if paused.tzinfo is not None else paused.replace(tzinfo=UTC)
 
 
-async def load_item_groups(session: AsyncSession, kind: PickBanKind, item_ids: list[int]) -> dict[int, str | None]:
+async def load_item_groups(
+    session: AsyncSession, kind: PickBanKind, item_ids: list[int], discipline: str
+) -> dict[int, str | None]:
     """``{item_id: group}`` for the ``item_group``/``target_role_match`` leaves:
-    a hero's class, a map's gamemode slug.
+    a character's class, a map's gamemode slug -- read in the encounter's own
+    ``discipline`` (immutable once the encounter exists), so an id of another
+    game is simply not in the pool and carries no group.
 
     Two flat selects rather than one join for the map kind: the projection a
     join would return is not what any repository exposes, and the second query
@@ -266,7 +270,7 @@ async def load_item_groups(session: AsyncSession, kind: PickBanKind, item_ids: l
             select(CatalogEntity.id, CatalogEntity.attrs["class"].astext).where(
                 CatalogEntity.id.in_(item_ids),
                 CatalogEntity.kind == "character",
-                CatalogEntity.discipline == "overwatch",
+                CatalogEntity.discipline == discipline,
             )
         )
         return {row[0]: row[1] for row in rows.all()}
@@ -275,7 +279,7 @@ async def load_item_groups(session: AsyncSession, kind: PickBanKind, item_ids: l
             select(CatalogEntity.id, CatalogEntity.parent_id).where(
                 CatalogEntity.id.in_(item_ids),
                 CatalogEntity.kind == "map",
-                CatalogEntity.discipline == "overwatch",
+                CatalogEntity.discipline == discipline,
             )
         )
     ).all()
@@ -286,7 +290,7 @@ async def load_item_groups(session: AsyncSession, kind: PickBanKind, item_ids: l
             select(CatalogEntity.id, CatalogEntity.slug).where(
                 CatalogEntity.id.in_(gamemode_ids),
                 CatalogEntity.kind == "mode",
-                CatalogEntity.discipline == "overwatch",
+                CatalogEntity.discipline == discipline,
             )
         )
         slugs = {row[0]: row[1] for row in rows.all()}
@@ -786,7 +790,7 @@ class PickBanSessionService:
         # (`item_in`/`item_group`) can exclude anything here -- but they can, and
         # a candidate the phase refuses must never become an entry.
         ruleset = parse_ruleset(config.ruleset_json)
-        groups = await load_item_groups(session, kind, round_one_item_ids)
+        groups = await load_item_groups(session, kind, round_one_item_ids, encounter.discipline)
         pool_ctx = pbr.RuntimeCtx(kind=kind.value, round=round_number, best_of=encounter.best_of, groups=groups)
         phase = pbr.select_phase(
             ruleset, pbr.RoundCtx(round=round_number or 1, best_of=max(encounter.best_of, 1), kind=kind.value)
@@ -1068,7 +1072,7 @@ class PickBanSessionService:
         carried = pbr.carried_bans(steps, submissions, next_round)
         carried_ids = {ban.item_id for ban in carried}
 
-        groups = await load_item_groups(session, PickBanKind(pick_ban.kind), candidate_item_ids)
+        groups = await load_item_groups(session, PickBanKind(pick_ban.kind), candidate_item_ids, encounter.discipline)
         pool_ctx = pbr.RuntimeCtx(
             kind=str(pick_ban.kind),
             round=next_round,

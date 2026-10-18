@@ -2,15 +2,13 @@
 
 import { Ban, Repeat2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { roleOf, subRoleOf } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
-import { formatSubroleSlug } from "@/lib/roster/roles";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { PickBanTarget } from "@/types/tournament.types";
 
@@ -41,6 +39,7 @@ export function PickBanTargetBoard({
   onSelect,
   teamName,
   discipline,
+  ontology = null,
   disabled = false
 }: Readonly<{
   targets: PickBanTarget[];
@@ -53,11 +52,12 @@ export function PickBanTargetBoard({
   /** The opponent's team name — whose roster this is. */
   teamName: string;
   discipline: string;
+  /** The owner's scoped role dictionary: names and artwork of the targets' roles. Absent: neutral unknown. */
+  ontology?: RoleOntology | null;
   /** True once the draft is locked: the rows stay readable, they stop moving. */
   disabled?: boolean;
 }>) {
   const t = useTranslations("pickBan.room");
-  const tRoot = useTranslations();
   const divisionGrid = useDivisionGrid(discipline);
 
   return (
@@ -78,13 +78,11 @@ export function PickBanTargetBoard({
                 ? (assigned?.name ?? t("hero.itemNumber", { id: assignedId }))
                 : null;
             const selected = selectedPlayerId === target.player_id;
-            const role = target.role != null ? normalizePlayerRole(roleOf(target.role)) : null;
-            const subRole = subRoleOf(target.role);
-            const roleText = subRole
-              ? formatSubroleSlug(subRole)
-              : role != null
-                ? tRoot(PLAYER_ROLE_LABEL_KEY[role])
-                : null;
+            // The target's own leaf role, named by the owner's dictionary; an unknown ref keeps its code.
+            const roleText =
+              target.role == null
+                ? null
+                : ((ontology ? findRole(ontology, target.role)?.name : null) ?? target.role.role);
             return (
               <li
                 key={target.player_id}
@@ -125,7 +123,7 @@ export function PickBanTargetBoard({
                     <span className="flex min-w-0 items-center gap-2.5 text-xs text-[color:var(--aqt-fg-muted)]">
                       {roleText != null ? (
                         <span className="flex min-w-0 items-center gap-1">
-                          <PlayerRoleIcon role={role} size={12} decorative />
+                          <PlayerRoleIcon role={target.role} ontology={ontology} size={12} decorative />
                           <span className="truncate">{roleText}</span>
                         </span>
                       ) : null}

@@ -47,6 +47,8 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
+from shared.core.errors import BaseAPIException  # noqa: E402
+from shared.disciplines import DISCIPLINES, DisciplineSpec  # noqa: E402
 from shared.domain import pick_ban_rules as pbr  # noqa: E402
 from shared.tests import eager_loading  # noqa: E402
 
@@ -115,6 +117,8 @@ FLAT_TOKENS = ["ban_first", "ban_second", "pick_first", "pick_second", "decider"
 FLAT_RULESET = _v1(mode="pool", sequence=FLAT_TOKENS)
 SLOT_RULESET = _v1(mode="slots", sequence=[], timer=45)
 HERO_RULESET = _v1(kind="hero", mode="pool", sequence=["ban_first", "ban_second"])
+#: Overwatch's own preset: presets live in their discipline module, not in core.
+ANTI_ONE_TRICK = {preset.id: preset for preset in pbr.presets_for("overwatch")}["hero_anti_one_trick"]
 #: Well-formed as a document, but says nothing: the engine's cheapest error.
 _EMPTY_RULESET = {"version": 2, "timer_seconds": 90, "on_timeout": "random_fill", "phases": []}
 
@@ -251,9 +255,11 @@ class _FakeSession:
         stage_tournament_id=TOURNAMENT_ID,
         roster_slots: dict | None = None,
         hero_types: list[str] | None = None,
+        discipline: str = "overwatch",
     ) -> None:
         self._roster_slots = roster_slots
         self._hero_types = hero_types or []
+        self._discipline = discipline
         self._existing = existing
         # One table described two ways: ``existing`` is the single row already
         # sitting at the scope the upsert targets, ``configs`` the tournament's
@@ -278,7 +284,7 @@ class _FakeSession:
         if entity is models.Stage:
             return self._stage_tournament_id
         if entity is models.Tournament:
-            return self._roster_slots
+            return self._discipline
         if entity is pick_ban_models.PickBanConfig:
             return self._existing
         raise AssertionError(f"the handler queried an unexpected entity: {entity!r}")
@@ -1091,18 +1097,61 @@ class RulesValidateOp(_SubjectCase):
         self.assertFalse(data["valid"])
         self.assertIn("unknown_group", [issue["code"] for issue in data["issues"]])
 
+    async def test_hero_groups_are_the_tournaments_own_disciplines_classes(self) -> None:
+        ruleset = deepcopy(HERO_RULESET)
+        ruleset["phases"][0]["pool_filter"] = {"type": "item_group", "params": {"groups": ["mage"]}}
+        body = {"kind": "hero", "mode": "pool", "ruleset": ruleset}
+
+        for discipline, valid in (("lol", True), ("overwatch", False)):
+            envelope, _ = await self.call(
+                VALIDATE,
+                {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+                session=_FakeSession(discipline=discipline),
+            )
+            self.assertTrue(envelope["ok"], envelope)
+            self.assertEqual(valid, envelope["data"]["valid"], discipline)
+            if not valid:
+                self.assertIn("unknown_group", [issue["code"] for issue in envelope["data"]["issues"]])
+
 
 class GroupVocabularyScope(IsolatedAsyncioTestCase):
-    async def test_map_groups_are_queried_only_from_the_overwatch_discipline(self) -> None:
-        from src.services.encounter.pick_ban_config import group_vocabulary
-
+    async def test_map_groups_are_queried_only_from_the_requested_discipline(self) -> None:
         session = AsyncMock()
         session.scalars.return_value = ["control"]
-        assert await group_vocabulary(session, enums.PickBanKind.MAP) == ["control"]
+        assert await pick_ban_config.group_vocabulary(session, enums.PickBanKind.MAP, "overwatch") == ["control"]
         query = session.scalars.await_args.args[0]
         sql = str(query.compile(compile_kwargs={"literal_binds": True}))
         assert "entity.kind = 'mode'" in sql
         assert "entity.discipline = 'overwatch'" in sql
+
+    async def test_hero_groups_are_the_modules_classes_without_touching_the_database(self) -> None:
+        session = AsyncMock()
+        assert await pick_ban_config.group_vocabulary(session, enums.PickBanKind.HERO, "overwatch") == [
+            "tank",
+            "damage",
+            "support",
+        ]
+        assert "mage" in await pick_ban_config.group_vocabulary(session, enums.PickBanKind.HERO, "lol")
+        session.scalars.assert_not_awaited()
+
+    async def test_a_discipline_without_a_mode_kind_has_no_map_groups_and_no_query(self) -> None:
+        session = AsyncMock()
+        assert await pick_ban_config.group_vocabulary(session, enums.PickBanKind.MAP, "lol") == []
+        session.scalars.assert_not_awaited()
+
+    async def test_an_uninstalled_discipline_is_a_404_not_an_empty_vocabulary(self) -> None:
+        for kind in (enums.PickBanKind.HERO, enums.PickBanKind.MAP):
+            with self.assertRaises(BaseAPIException) as raised:
+                await pick_ban_config.group_vocabulary(AsyncMock(), kind, "starcraft")
+            assert raised.exception.status_code == 404
+
+    async def test_pool_counts_only_count_items_of_the_requested_discipline(self) -> None:
+        session = AsyncMock()
+        session.scalars.return_value = ["Fighter", "fighter", "Mage"]
+        counts = await pick_ban_config.pool_group_counts(session, enums.PickBanKind.HERO, [1, 2, 3], "lol")
+        assert counts == {"fighter": 2, "mage": 1}
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "entity.discipline = 'lol'" in sql
 
 
 #: A hero pool big enough that every role survives a Bo5 of the anti-one-trick
@@ -1130,7 +1179,7 @@ class RulesPreviewOp(_SubjectCase):
         body = {
             "kind": "hero",
             "mode": "pool",
-            "ruleset": pbr.PRESETS_BY_ID["hero_anti_one_trick"].ruleset.to_json(),
+            "ruleset": ANTI_ONE_TRICK.ruleset.to_json(),
             "best_of": 5,
             "item_ids": [],
         }
@@ -1207,19 +1256,107 @@ class CatalogOp(IsolatedAsyncioTestCase):
     config exists to attach it to.
     """
 
-    async def test_the_catalog_carries_the_leaves_constraints_presets_and_both_group_vocabularies(self) -> None:
+    async def _catalog(self, query: dict | None = None, *, session: _FakeSession | None = None) -> dict:
         reads = importlib.import_module("src.rpc.reads")
         broker = CapturingBroker()
         reads.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
-        session = _FakeSession()
 
-        with patch.object(helpers.db, "async_session_maker", session):
-            envelope = await broker.handlers["rpc.tournament.pick_ban_rules_catalog"]({}, None)
+        with patch.object(helpers.db, "async_session_maker", session or _FakeSession()):
+            return await broker.handlers["rpc.tournament.pick_ban_rules_catalog"]({"query": query or {}}, None)
+
+    async def test_the_catalog_carries_the_leaves_constraints_presets_and_both_group_vocabularies(self) -> None:
+        envelope = await self._catalog({"discipline": ["overwatch"]})
 
         self.assertTrue(envelope["ok"], envelope)
         data = envelope["data"]
         self.assertEqual(sorted(pbr.LEAVES), sorted(leaf["type"] for leaf in data["leaves"]))
         self.assertEqual(sorted(pbr.CONSTRAINTS), sorted(c["type"] for c in data["constraints"]))
-        self.assertEqual([preset.id for preset in pbr.PRESETS], [preset["id"] for preset in data["presets"]])
-        self.assertEqual(list(pbr.HERO_GROUPS), data["groups"]["hero"])
+        self.assertEqual(
+            [preset.id for preset in pbr.presets_for("overwatch")], [preset["id"] for preset in data["presets"]]
+        )
+        self.assertEqual(["tank", "damage", "support"], data["groups"]["hero"])
         self.assertEqual(GAMEMODE_SLUGS, data["groups"]["map"])
+
+    async def test_another_disciplines_catalog_has_its_own_classes_presets_and_no_modes(self) -> None:
+        envelope = await self._catalog({"discipline": ["lol"]})
+
+        self.assertTrue(envelope["ok"], envelope)
+        data = envelope["data"]
+        self.assertEqual(["assassin", "fighter", "mage", "marksman", "support", "tank"], sorted(data["groups"]["hero"]))
+        # League declares no ``mode`` kind: no gamemode query, an empty map vocabulary -- never Overwatch's slugs.
+        self.assertEqual([], data["groups"]["map"])
+        self.assertEqual([preset.id for preset in pbr.presets_for("lol")], [preset["id"] for preset in data["presets"]])
+        self.assertFalse({preset["id"] for preset in data["presets"]} & {"hero_classic", "hero_anti_one_trick"})
+
+    async def test_the_discipline_is_required(self) -> None:
+        envelope = await self._catalog(None)
+
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+
+    async def test_an_uninstalled_discipline_is_not_found_never_overwatch(self) -> None:
+        for code in ("starcraft", "OVERWATCH", ""):
+            envelope = await self._catalog({"discipline": [code]})
+
+            self.assertFalse(envelope["ok"], envelope)
+            self.assertEqual("not_found", envelope["error"]["code"], envelope)
+            self.assertEqual("discipline_not_installed", envelope["error"]["details"]["fields"][0]["code"], envelope)
+
+
+# ── a preset's rotation reaches the saved config; the discipline reaches validation ──────────────────────────────
+
+
+class PresetRotationRoundTrip(_SubjectCase):
+    async def test_the_rotation_a_catalog_preset_declares_is_saved_and_read_back(self) -> None:
+        preset = pbr.Preset(
+            "rotating_ban",
+            "hero",
+            ("pool",),
+            pbr.parse_ruleset(HERO_RULESET),
+            first_ban_rotation=enums.FirstBanRotation.RESULT_LOSER_FIRST.value,
+        )
+        spec = DisciplineSpec(
+            "rotating", "Rotating", (), character_classes=("bruiser",), pick_ban_presets=lambda: (preset,)
+        )
+        with patch.dict(DISCIPLINES, {spec.code: spec}):
+            offered = {row["id"]: row for row in pbr.catalog(discipline=spec.code)["presets"]}["rotating_ban"]
+            body = {
+                "kind": "hero",
+                "mode": "pool",
+                "ruleset": offered["ruleset"],
+                "first_ban_rotation": offered["first_ban_rotation"],
+                "item_ids": [1, 2, 3],
+            }
+            envelope, session = await self.call(
+                UPSERT,
+                {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+                session=_FakeSession(discipline=spec.code),
+            )
+
+        self.assertTrue(envelope["ok"], envelope)
+        (config,) = [obj for obj in session.added if isinstance(obj, pick_ban_models.PickBanConfig)]
+        self.assertEqual(enums.FirstBanRotation.RESULT_LOSER_FIRST, config.first_ban_rotation)
+        self.assertEqual("result_loser_first", envelope["data"]["first_ban_rotation"])
+        # Read back: the stored config serializes the same rotation the draft form re-reads.
+        self.assertEqual("result_loser_first", pick_ban_config.serialize_pick_ban_config(config)["first_ban_rotation"])
+
+
+class UpsertValidatesInTheTournamentsDiscipline(_SubjectCase):
+    async def _upsert(self, discipline: str, group: str) -> dict:
+        ruleset = deepcopy(HERO_RULESET)
+        ruleset["phases"][0]["pool_filter"] = {"type": "item_group", "params": {"groups": [group]}}
+        body = {"kind": "hero", "mode": "pool", "ruleset": ruleset, "item_ids": [1, 2, 3]}
+        envelope, _ = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline=discipline),
+        )
+        return envelope
+
+    async def test_a_class_of_the_tournaments_game_saves_and_another_games_class_is_rejected(self) -> None:
+        self.assertTrue((await self._upsert("lol", "mage"))["ok"])
+        rejected = await self._upsert("lol", "damage")
+        self.assertFalse(rejected["ok"], rejected)
+        self.assertEqual("unprocessable", rejected["error"]["code"], rejected)
+        entry = rejected["error"]["details"]["fields"][0]
+        self.assertIn("unknown_group", [issue["code"] for issue in entry["issues"]])

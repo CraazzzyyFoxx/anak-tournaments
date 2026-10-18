@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from shared.disciplines.spec import CollectionHandler
     from shared.domain.achievements.context import EvalContext
     from shared.domain.analytics import AnalyticsExports
+    from shared.domain.pick_ban_rules.presets import Preset
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
     from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
@@ -147,6 +148,13 @@ async def _derive_match(session: AsyncSession, doc: MatchDoc, binding: BoundMatc
     return await derive_match(session, doc, binding)
 
 
+def _pick_ban_presets() -> tuple[Preset, ...]:
+    # Imported on call: the presets parse their rulesets through the pick-ban domain, which imports this registry.
+    from shared.disciplines.overwatch.pick_ban_presets import pick_ban_presets
+
+    return pick_ban_presets()
+
+
 PLAYER_ROLE = DimensionSpec(
     "player_role",
     "Role",
@@ -204,4 +212,5 @@ SPEC = DisciplineSpec(
     achievement_catalog=_achievement_catalog,
     achievement_eligible_keys=_achievement_eligible_keys,
     analytics=_analytics,
+    pick_ban_presets=_pick_ban_presets,
 )

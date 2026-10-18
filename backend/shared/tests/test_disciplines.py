@@ -238,7 +238,9 @@ def test_a_side_actor_resolves_to_the_participation_that_chose_that_side(sided_d
 def test_an_actor_naming_an_unseated_slot_is_refused():
     ruleset = _side_ruleset({**_PICK, "actors": "slot:3"})
     codes = {
-        issue.code for issue in pbr.validate_ruleset(ruleset, kind="map", slot_count=2) if issue.severity == "error"
+        issue.code
+        for issue in pbr.validate_ruleset(ruleset, kind="map", discipline="overwatch", slot_count=2)
+        if issue.severity == "error"
     }
     assert "actors_slot_unseated" in codes
 

@@ -24,7 +24,7 @@ from shared.services.division_grid.normalization import DivisionGridNormalizatio
 from shared.services.tournament.visibility import assert_tournament_viewable, ensure_tournament_viewable
 from src import schemas
 from src.core.workspace import get_division_grid
-from src.rpc._helpers import _bool, _path_int, _q, _q1, _read, _require_id
+from src.rpc._helpers import _bool, _path_int, _q, _q1, _read, _require_id, _require_q1
 from src.services import visibility_resolvers
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.encounter import flows as encounter_flows
@@ -334,15 +334,20 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             # No tournament, no workspace, no gate: the catalog is the ruleset
             # GRAMMAR (which leaves exist, which params they take, which groups
-            # are selectable) plus the built-in presets. It describes the engine,
-            # not anyone's tournament, and the constructor needs it before a
-            # config exists to attach it to. The only DB read is the map-group
-            # vocabulary, which is public catalog data.
+            # are selectable) plus the presets of ONE game. It describes the
+            # engine and that game's vocabulary, not anyone's tournament, and the
+            # constructor needs it before a config exists to attach it to. The
+            # game is explicit: absent is 422, a code nobody installed is 404
+            # ``discipline_not_installed`` (never another game's presets). The
+            # only DB read is the map-group vocabulary, which is public catalog
+            # data.
+            discipline = _require_q1(data, "discipline")
             return pbr.catalog(
+                discipline=discipline,
                 groups={
-                    "hero": await pick_ban_config.group_vocabulary(session, PickBanKind.HERO),
-                    "map": await pick_ban_config.group_vocabulary(session, PickBanKind.MAP),
-                }
+                    "hero": await pick_ban_config.group_vocabulary(session, PickBanKind.HERO, discipline),
+                    "map": await pick_ban_config.group_vocabulary(session, PickBanKind.MAP, discipline),
+                },
             )
 
         return await _read(logger, op)

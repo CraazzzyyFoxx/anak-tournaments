@@ -221,6 +221,7 @@ function PreGamePhase({
           scope == null ? null : (
             <PreGameEditor
               tournamentId={tournamentId}
+              discipline={discipline}
               scope={scope}
               kind={kind}
               step={step}

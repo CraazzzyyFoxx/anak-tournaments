@@ -7,16 +7,15 @@ import pickBanService from "@/services/pickBan.service";
 import type { PickBanRulesCatalog } from "@/types/tournament.types";
 
 /**
- * The engine's leaf/constraint specs, group vocabularies and presets (§10).
+ * The engine's leaf/constraint specs plus the item groups and presets of the tournament's own discipline (§10).
  *
- * One registry for the whole session: it only changes when the engine ships a
- * new leaf, so the constructor never refetches it per mount — the same deal the
- * achievement editor strikes with `condition-types`.
+ * The discipline is the owner's explicit scope: it is in the key and the request, a superseded read is aborted,
+ * and another game's catalog never stands in while this one loads. No session-wide cache — a game's map-group
+ * vocabulary is catalog data an admin edits, so it follows the normal staleness rules.
  */
-export function useRulesCatalog() {
+export function useRulesCatalog(discipline: string) {
   return useQuery<PickBanRulesCatalog>({
-    queryKey: tournamentQueryKeys.pickBanRulesCatalog(),
-    queryFn: () => pickBanService.getRulesCatalog(),
-    staleTime: Infinity,
+    queryKey: tournamentQueryKeys.pickBanRulesCatalog(discipline),
+    queryFn: ({ signal }) => pickBanService.getRulesCatalog(discipline, signal),
   });
 }

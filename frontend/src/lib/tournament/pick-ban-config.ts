@@ -30,6 +30,7 @@ import type {
   PickBanConfigUpsertInput,
   PickBanFirstBanRotation,
   PickBanKind,
+  PickBanPreset,
   PickBanRuleset,
   PickBanRulesetPhase,
   PickBanRulesetStep,
@@ -508,6 +509,20 @@ export function pickBanDraftFromConfig(config: PickBanConfig): PickBanDraft {
     })),
     roundSlots: [],
     inheritedFrom: null,
+  };
+}
+
+/**
+ * What choosing a catalog preset changes in a draft: its ruleset, and the rotation only when the module's preset
+ * declares one (the rotation lives outside the ruleset document). Everything else -- pool, mode, scope, and a
+ * rotation the preset does not mention -- stays the organizer's.
+ */
+export function presetDraftPatch(
+  preset: Pick<PickBanPreset, "ruleset" | "first_ban_rotation">
+): Partial<PickBanDraft> {
+  return {
+    ruleset: preset.ruleset,
+    ...(preset.first_ban_rotation == null ? {} : { firstBanRotation: preset.first_ban_rotation })
   };
 }
 

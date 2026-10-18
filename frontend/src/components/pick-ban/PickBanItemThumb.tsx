@@ -31,7 +31,7 @@ export function PickBanItemThumb({ kind, item, name, size = 28, muted }: Readonl
   if (kind === "hero") {
     return (
       <HeroImage
-        hero={{ name, image_path: item?.image_path ?? "", role: item?.role ?? "" }}
+        hero={{ name, image_path: item?.image_path ?? "", attrs: item?.attrs }}
         size={size}
         title={name}
         className={cn("shrink-0", muted ? "opacity-45 grayscale" : null)}

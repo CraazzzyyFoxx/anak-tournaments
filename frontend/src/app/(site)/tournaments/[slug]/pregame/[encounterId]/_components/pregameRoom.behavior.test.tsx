@@ -143,15 +143,14 @@ const HEROES = [101, 102, 103].map((id) => ({
   name: `Hero ${id}`,
   slug: `hero-${id}`,
   image_path: "",
-  type: "Damage",
-  role: "damage"
+  attrs: { class: "damage" }
 }));
 
 /** Three heroes with two distinct roles: enough to tell a role rule from an item one. */
 const HERO_CATALOG = [
-  { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
-  { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" },
-  { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+  { id: 201, name: "Tank A", attrs: { class: "tank" }, image_path: "" },
+  { id: 202, name: "Tank B", attrs: { class: "tank" }, image_path: "" },
+  { id: 203, name: "Support A", attrs: { class: "support" }, image_path: "" }
 ];
 
 // The two participations of the fixture encounter: slot 1 and slot 2.
@@ -737,8 +736,8 @@ describe("phase selection", () => {
     // be chosen and everything else is inert instead of a 400 after a click.
     getAllHeroes.mockResolvedValue({
       results: [
-        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
-        { id: 203, name: "Support A", type: "Support", role: "support", image_path: "" }
+        { id: 201, name: "Tank A", attrs: { class: "tank" }, image_path: "" },
+        { id: 203, name: "Support A", attrs: { class: "support" }, image_path: "" }
       ]
     });
     getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
@@ -1143,8 +1142,8 @@ describe("phase selection", () => {
   it("draws a protected hero as protected, never as banned", async () => {
     getAllHeroes.mockResolvedValue({
       results: [
-        { id: 201, name: "Tank A", type: "Tank", role: "tank", image_path: "" },
-        { id: 202, name: "Tank B", type: "Tank", role: "tank", image_path: "" }
+        { id: 201, name: "Tank A", attrs: { class: "tank" }, image_path: "" },
+        { id: 202, name: "Tank B", attrs: { class: "tank" }, image_path: "" }
       ]
     });
     mockStates(
@@ -2159,14 +2158,13 @@ describe("Hero Pool tile redesign", () => {
   it("filters icon-only hero tiles by role via the Filters chip group", async () => {
     getAllHeroes.mockResolvedValue({
       results: [
-        { id: 101, name: "Ana", slug: "ana", image_path: "", type: "Support", role: "support" },
+        { id: 101, name: "Ana", slug: "ana", image_path: "", attrs: { class: "support" } },
         {
           id: 102,
           name: "Reinhardt",
           slug: "reinhardt",
           image_path: "",
-          type: "Tank",
-          role: "tank"
+          attrs: { class: "tank" }
         }
       ]
     });
