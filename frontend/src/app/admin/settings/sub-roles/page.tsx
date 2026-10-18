@@ -92,6 +92,9 @@ function SubRoleCatalog({ workspaceId, discipline, ontology }: Readonly<{ worksp
           </div><p className="font-mono text-xs text-muted-foreground">{entry.slug}</p>
           {(["icon", "color"] as const).map(key => <div key={key} className="space-y-1 text-xs"><span>{roleT(key)} · {roleT(Object.hasOwn(entry.attrs, key) ? entry.attrs[key] === null ? "cleared" : "override" : "inherits")}</span>
             <InlineEditText value={typeof entry.attrs[key] === "string" ? entry.attrs[key] as string : ""} label={`${roleT(key)}: ${entry.label}`} canEdit={canEdit && !busy} onSave={value => update.mutateAsync({ id: entry.id, patch: { [key]: value.trim() || null } })} />
+            <Button type="button" size="sm" variant="outline" disabled={!canEdit || busy || entry.attrs[key] === null}
+              aria-label={roleT("clearPresentation", { field: roleT(key), role: entry.label })}
+              onClick={() => update.mutate({ id: entry.id, patch: { [key]: null } })}>{roleT("clearOverride")}</Button>
           </div>)}
         </li>)}</ul>}
         {canCreate && <div className="flex gap-2"><Input aria-label={t("nameLabel", { role: role.name })} value={draft} onChange={event => setDraftLabels(prev => ({ ...prev, [role.code]: event.target.value }))} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); add(); } }} placeholder={t("addPlaceholder", { role: role.name })} /><Button type="button" variant="outline" disabled={busy || !draft.trim()} onClick={add}><Plus className="mr-1 size-4" aria-hidden />{t("add")}</Button></div>}

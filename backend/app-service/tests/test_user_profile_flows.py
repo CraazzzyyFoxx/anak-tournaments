@@ -441,6 +441,8 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             tournament=SimpleNamespace(
                 id=3,
                 name="Tournament Example",
+                workspace_id=5,
+                discipline="overwatch",
                 is_league=False,
                 division_grid_version=None,
             ),
@@ -478,6 +480,8 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(1, len(tournaments))
         self.assertEqual([], tournaments[0].encounters)
+        self.assertEqual(5, tournaments[0].workspace_id)
+        self.assertEqual("overwatch", tournaments[0].discipline)
 
     async def test_tournament_dossier_lists_observations_once_across_history_seats(self) -> None:
         """Two qualifying seats must not duplicate a user's encounter observations."""

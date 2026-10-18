@@ -16,6 +16,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import {
   Select,
   SelectContent,
@@ -53,6 +54,7 @@ interface TeamRosterEditorProps {
   teamId: number;
   tournamentId: number;
   workspaceId: number | null;
+  discipline: string | null;
   players: Player[];
   /** Grid the tournament scores ranks against; falls back to the workspace grid. */
   divisionGrid: DivisionGridVersion | null;
@@ -304,6 +306,7 @@ export function TeamRosterEditor({
   teamId,
   tournamentId,
   workspaceId,
+  discipline,
   players,
   divisionGrid,
   canCreatePlayer,
@@ -311,22 +314,18 @@ export function TeamRosterEditor({
   canDeletePlayer
 }: Readonly<TeamRosterEditorProps>) {
   const t = useTranslations("adminPeople.roster");
+  const roleT = useTranslations("common.roleOntology");
   const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
   const [draft, setDraft] = useState<RosterDraft | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<Player | null>(null);
-  const owner = useQuery({
-    queryKey: adminQueryKeys.tournament(tournamentId),
-    queryFn: ({ signal }) => adminService.getTournament(tournamentId, signal),
-    enabled: tournamentId > 0
-  });
-  const discipline = owner.data?.discipline;
 
-  const { data: playerSubRoles } = useQuery({
+  const subRolesQuery = useQuery({
     queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
     queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
-    enabled: workspaceId != null && discipline !== undefined
+    enabled: workspaceId != null && Boolean(discipline)
   });
+  const playerSubRoles = subRolesQuery.data;
 
   const rows = useMemo(() => buildRosterRows(players), [players]);
 
@@ -491,6 +490,12 @@ export function TeamRosterEditor({
     </TableRow>
   ) : null;
 
+  if (!discipline || workspaceId === null) {
+    return <PageStateCard state="error" title={roleT("ownerScopeError")} />;
+  }
+  if (subRolesQuery.isError) {
+    return <PageStateCard state="error" title={roleT("roleLoadError")} onAction={() => void subRolesQuery.refetch()} />;
+  }
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">

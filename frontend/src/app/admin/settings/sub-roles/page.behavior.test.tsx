@@ -79,6 +79,16 @@ describe("native sub-role settings", () => {
     expect(container.textContent).not.toContain("Off Tank");
     expect(container.textContent).toContain("Jungle");
   });
+  it("can explicitly clear both inherited icons and stored colors without touching the name", async () => {
+    await mount();
+    const clearIcon = container.querySelector('[aria-label="Clear Icon URL for Main Tank"]')!;
+    const clearColor = container.querySelector('[aria-label="Clear Color (#RRGGBB) for Main Tank"]')!;
+    await click(clearIcon);
+    await click(clearColor);
+    expect(updatePlayerSubRole).toHaveBeenCalledWith(11, { icon: null });
+    expect(updatePlayerSubRole).toHaveBeenCalledWith(11, { color: null });
+    expect(updatePlayerSubRole.mock.calls.every(([, patch]) => !("label" in patch))).toBe(true);
+  });
   it("hides create and gates delete independently from restore", async () => {
     denied = ["player.create", "player.delete"]; await mount();
     expect([...container.querySelectorAll("button")].filter(node => node.textContent?.trim() === "Add")).toHaveLength(0);

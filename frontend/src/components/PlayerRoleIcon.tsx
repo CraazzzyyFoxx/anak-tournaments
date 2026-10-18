@@ -45,7 +45,7 @@ export default function PlayerRoleIcon({
         <>
           {/* The same cached image detects failed artwork; masks themselves have no error event. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={presentation.icon} alt="" aria-hidden style={{ display: "none" }} onError={() => setFailedIcon(presentation.icon)} />
+          <img src={presentation.icon} crossOrigin="anonymous" alt="" aria-hidden style={{ display: "none" }} onError={() => setFailedIcon(presentation.icon)} />
           <span aria-hidden style={{ width: size, height: size, backgroundColor: "currentColor", maskImage: `url("${presentation.icon}")`, WebkitMaskImage: `url("${presentation.icon}")`, maskSize: "contain", WebkitMaskSize: "contain", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat", maskPosition: "center", WebkitMaskPosition: "center" }} />
         </>
       ) : <span aria-hidden className="text-[0.55em] font-medium">{node ? node.name.slice(0, 2).toUpperCase() : "?"}</span>}

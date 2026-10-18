@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { TeamFormatEditor } from "@/components/roster-shape/TeamFormatEditor";
-import { teamFormatPayload, teamFormatErrors, type TeamFormatWrite } from "@/lib/roster/team-format";
+import { teamFormatPayload, teamFormatErrors, teamFormatsEqual, type TeamFormatWrite } from "@/lib/roster/team-format";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useScopedSettingsForm } from "@/components/admin/settings/useScopedSettingsForm";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -66,7 +66,7 @@ function RosterForm({
   const { form, patch, dirty, summary, saving, save, discard } = useScopedSettingsForm<TeamFormatWrite, TeamFormatWrite>({
     baseline,
     toPayload: form => teamFormatPayload(form),
-    countChanges: (payload, _form, base) => JSON.stringify(payload) === JSON.stringify(teamFormatPayload(base)) ? 0 : 1,
+    countChanges: (payload, _form, base) => teamFormatsEqual(payload, base) ? 0 : 1,
     submit: payload => {
       if (!metadata.data || teamFormatErrors(payload, metadata.data).length || disabled || tournament.roster_locked_by_draft) {
         return Promise.reject(new Error(formatT("invalidFormat")));

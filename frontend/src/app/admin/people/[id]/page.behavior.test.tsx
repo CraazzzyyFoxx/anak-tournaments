@@ -66,7 +66,6 @@ vi.mock("@/components/RankHistory", () => ({ default: () => <div>Rank history</d
 
 vi.mock("@/services/admin.service", () => ({
   default: {
-    getTournament: vi.fn().mockResolvedValue({ id: 1, discipline: "overwatch" }),
     getUsers: (...args: unknown[]) => getUsers(...args),
     getPlayerSubRoles: (...args: unknown[]) => getPlayerSubRoles(...args),
     updatePlayer: (...args: unknown[]) => updatePlayer(...args),
@@ -137,6 +136,8 @@ const PARTICIPATIONS = [
   {
     id: 7,
     name: "MoonRise Mix Vol.4",
+    workspace_id: 1,
+    discipline: "overwatch",
     is_league: false,
     team_id: 3,
     team: "nnniik",
@@ -408,6 +409,7 @@ describe("person hub", () => {
       "the name field"
     );
     expect(nameField.value).toBe("nnniik#2515");
+    expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, discipline: "overwatch" }, expect.any(AbortSignal));
     await type(nameField, "nnniik#9999");
     await click(button("Save"));
 

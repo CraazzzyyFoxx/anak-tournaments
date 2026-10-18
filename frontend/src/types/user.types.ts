@@ -183,6 +183,8 @@ export interface EncounterWithUserStats {
 export interface UserTournament {
   id: number;
   name: string;
+  workspace_id: number;
+  discipline: string;
   is_league: boolean;
   team_id: number;
   team: string;

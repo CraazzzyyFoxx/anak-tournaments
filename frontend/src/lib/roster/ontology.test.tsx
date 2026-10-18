@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { NextIntlClientProvider } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, quotaCount } from "./ontology";
-import { teamFormatPayload, teamFormatErrors } from "./team-format";
+import { teamFormatPayload, teamFormatErrors, teamFormatsEqual } from "./team-format";
 import type { RoleOntology } from "./ontology";
 
 const dimension = (code: string, rated = false, selection_mode: "single" | "multi" = "single") => ({ id: code.length, code, name: code, rated, selection_mode, active: true, sort_order: 0 });
@@ -59,6 +59,7 @@ describe("scoped role ontology", () => {
     const render = (ref: { dimension: string; role: string }) => renderToStaticMarkup(<NextIntlClientProvider locale="en" messages={{ common: { roleOntology: { unknown: "Unknown role: {role}", retired: "Retired role: {role}" }, roles: { flex: "Open slot" } } }}><PlayerRoleIcon role={ref} ontology={ontology} /></NextIntlClientProvider>);
     expect(render({ dimension: "position", role: "top" })).toContain("mask-image");
     expect(render({ dimension: "position", role: "top" })).toContain("#123456");
+    expect(render({ dimension: "position", role: "top" })).toContain('crossorigin="anonymous"');
     expect(render({ dimension: "position", role: "missing" })).toContain("Unknown role: missing");
     expect(render({ dimension: "position", role: "old" })).toContain("Retired role: old");
   });
@@ -70,6 +71,14 @@ describe("native format transport", () => {
     expect(teamFormatPayload(format)).toEqual({ ...format, rules: [{ ...format.rules[0], role: { dimension: "position", role: "support_child" } }] });
     expect(teamFormatPayload(format).rules[0]).not.toHaveProperty("recommended_min");
     expect(teamFormatErrors(format, ontology)).toEqual([]);
+  });
+  it("compares saved serializer defaults as clean without erasing explicit zeros or payload absence", () => {
+    const draft = { ...format, dimensions: [{ dimension: "position", mode: "enforced" as const }], rules: [{ role: { dimension: "position", role: "support_child" } }] };
+    const saved = { ...draft, dimensions: [{ ...draft.dimensions[0], player_min_assignments: null, player_max_assignments: null }], rules: [{ ...draft.rules[0], hard_min: null, hard_max: null, recommended_min: null, recommended_max: null, include_descendants: true }] };
+    expect(teamFormatsEqual(draft, saved)).toBe(true);
+    expect(teamFormatPayload(draft).rules[0]).not.toHaveProperty("hard_min");
+    expect(teamFormatsEqual({ ...draft, rules: [{ ...draft.rules[0], hard_min: 0 }] }, saved)).toBe(false);
+    expect(teamFormatsEqual({ ...draft, starter_max: 6 }, saved)).toBe(false);
   });
   it("rejects stale scope refs and invalid metadata rather than rewriting into exact slots", () => {
     expect(teamFormatErrors({ ...format, rules: [{ role: { dimension: "position", role: "foreign" } }] }, ontology)).toContain("role_unavailable");

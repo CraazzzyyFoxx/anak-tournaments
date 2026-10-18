@@ -52,6 +52,8 @@ interface ParticipationRow {
   is_substitution: boolean;
   tournament_id: number;
   tournament_name: string;
+  workspace_id: number;
+  discipline: string;
   team_id: number;
   team_name: string;
   division_grid_version: DivisionGridVersion | null;
@@ -71,6 +73,7 @@ export function PersonParticipationsTab({
 }: Readonly<{ personId: number; personName: string; workspaceId: number | null }>) {
   const t = useTranslations("adminPeople.participations");
   const formT = useTranslations("adminPeople.form");
+  const roleT = useTranslations("common.roleOntology");
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   const canCreate = canAccessPermission("player.create", workspaceId);
@@ -89,22 +92,23 @@ export function PersonParticipationsTab({
     queryFn: () => userService.getUserTournaments(personId, workspaceId)
   });
 
-  const selectedTournament = useQuery({
-    queryKey: adminQueryKeys.tournament(form.tournament_id),
-    queryFn: ({ signal }) => adminService.getTournament(form.tournament_id, signal),
-    enabled: form.tournament_id > 0
-  });
-  const discipline = selectedTournament.data?.discipline;
-  const subRolesQuery = useQuery({
-    queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId, discipline),
-    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
-    enabled: workspaceId != null && discipline !== undefined
-  });
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.list(),
     queryFn: () => tournamentService.getAll(null),
     enabled: canCreate
+  });
+
+  const selectedOwner = editing?.tournament_id === form.tournament_id
+    ? editing
+    : tournamentsQuery.data?.results.find(tournament => tournament.id === form.tournament_id);
+  const discipline = selectedOwner?.discipline;
+  const ownerWorkspaceId = selectedOwner?.workspace_id;
+  const ownerScopeMissing = form.tournament_id > 0 && (!discipline || ownerWorkspaceId == null);
+  const subRolesQuery = useQuery({
+    queryKey: adminQueryKeys.playerSubRolesPublic(ownerWorkspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: ownerWorkspaceId!, discipline: discipline! }, signal),
+    enabled: formMode !== null && ownerWorkspaceId != null && Boolean(discipline)
   });
 
   const teamsQuery = useQuery({
@@ -129,6 +133,8 @@ export function PersonParticipationsTab({
             is_substitution: player.is_substitution,
             tournament_id: entry.id,
             tournament_name: entry.name,
+            workspace_id: entry.workspace_id,
+            discipline: entry.discipline,
             team_id: entry.team_id,
             team_name: entry.team,
             division_grid_version: entry.division_grid_version
@@ -374,10 +380,14 @@ export function PersonParticipationsTab({
         }
         isSubmitting={saveMutation.isPending}
         submittingLabel={formMode === "edit" ? t("updating") : t("adding")}
-        errorMessage={saveError}
+        errorMessage={saveError ?? (formMode !== null && ownerScopeMissing ? roleT("ownerScopeError") : subRolesQuery.isError ? roleT("roleLoadError") : undefined)}
         isDirty={formMode != null && hasUnsavedChanges(form, formInitial)}
         onSubmit={(event) => {
           event.preventDefault();
+          if (ownerScopeMissing || subRolesQuery.isError) {
+            setSaveError(roleT(ownerScopeMissing ? "ownerScopeError" : "roleLoadError"));
+            return;
+          }
           const invalid = playerFormError(form, formMode ?? "edit");
           if (invalid) {
             setSaveError(formT(invalid));

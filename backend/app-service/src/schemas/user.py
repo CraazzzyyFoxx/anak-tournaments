@@ -241,6 +241,8 @@ class EncounterReadWithUserStats(BaseModel):
 class UserTournament(BaseModel):
     id: int
     name: str
+    workspace_id: int
+    discipline: str
     is_league: bool
     team_id: int
     team: str

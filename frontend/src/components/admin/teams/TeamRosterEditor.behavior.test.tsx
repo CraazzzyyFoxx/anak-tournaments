@@ -22,7 +22,6 @@ const deletePlayer = vi.fn();
 
 vi.mock("@/services/admin.service", () => ({
   default: {
-    getTournament: vi.fn().mockResolvedValue({ id: 1, discipline: "overwatch" }),
     getPlayerSubRoles: (...args: unknown[]) => getPlayerSubRoles(...args),
     updatePlayer: (...args: unknown[]) => updatePlayer(...args),
     createPlayer: (...args: unknown[]) => createPlayer(...args),
@@ -84,7 +83,7 @@ function tick() {
   return promise;
 }
 
-async function mount(props?: { canUpdatePlayer?: boolean }) {
+async function mount(props?: { canUpdatePlayer?: boolean; discipline?: string | null }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -99,6 +98,7 @@ async function mount(props?: { canUpdatePlayer?: boolean }) {
             teamId={3}
             tournamentId={7}
             workspaceId={1}
+            discipline={props?.discipline === undefined ? "overwatch" : props.discipline}
             players={[SUPPORT, TANK, DAMAGE, TANK_SUB]}
             divisionGrid={null}
             canCreatePlayer
@@ -160,6 +160,17 @@ describe("TeamRosterEditor", () => {
       }
     ]);
     updatePlayer.mockResolvedValue({});
+  });
+
+  it("reads child roles from its authorized owner prop without a tournament.read request", async () => {
+    await mount({ discipline: "lol" });
+    expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol" }, expect.any(AbortSignal));
+  });
+
+  it("shows an owner-scope error instead of silently disabling child-role access", async () => {
+    const scope = await mount({ discipline: null });
+    expect(scope.textContent).toContain("Owner workspace or discipline is missing");
+    expect(getPlayerSubRoles).not.toHaveBeenCalled();
   });
 
   it("orders the roster by role and nests a substitute under the slot it covers", async () => {

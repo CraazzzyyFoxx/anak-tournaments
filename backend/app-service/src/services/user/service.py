@@ -1339,7 +1339,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournaments:{id}:{workspace_id}",
+        key="backend:user_tournaments:{id}:{workspace_id}:owner_scope",
     )
     async def get_tournaments(
         self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
@@ -1433,6 +1433,8 @@ class UserService:
             tournament = schemas.UserTournament(
                 id=team.tournament.id,
                 name=team.tournament.name,
+                workspace_id=team.tournament.workspace_id,
+                discipline=team.tournament.discipline,
                 is_league=team.tournament.is_league,
                 team_id=team.id,
                 team=team.name,

@@ -296,6 +296,7 @@ export default function AdminTeamWorkspacePage() {
             teamId={team.id}
             tournamentId={team.tournament_id}
             workspaceId={workspaceId}
+            discipline={team.tournament?.discipline ?? null}
             players={team.players ?? []}
             divisionGrid={team.tournament?.division_grid_version ?? null}
             canCreatePlayer={canCreatePlayer}

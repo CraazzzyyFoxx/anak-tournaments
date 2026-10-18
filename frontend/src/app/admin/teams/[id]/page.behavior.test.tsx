@@ -86,6 +86,8 @@ function team(overrides: Partial<Team> = {}): Team {
     tournament: {
       id: 7,
       name: "MoonRise Mix Vol.4",
+      workspace_id: 1,
+      discipline: "overwatch",
       start_date: "2026-02-01",
       end_date: "2026-02-28"
     } as unknown as Team["tournament"],
