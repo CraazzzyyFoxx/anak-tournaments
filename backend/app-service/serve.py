@@ -42,6 +42,7 @@ from src.rpc import (
     binary,
     catalog_aliases,
     catalog_legacy,
+    disciplines,
     gamemodes,
     heroes,
     maps,
@@ -124,6 +125,7 @@ reads_generic.register(broker, logger)
 for _mod in (users, heroes, maps, gamemodes, achievements, statistics, workspaces):
     _mod.register(broker, logger)
 catalog_legacy.register(broker, logger)
+disciplines.register(broker, logger)
 
 # Phase 2 — workspace update/delete via the shared CRUD engine.
 admin_crud.register(broker, logger)

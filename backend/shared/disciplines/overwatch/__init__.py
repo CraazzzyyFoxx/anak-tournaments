@@ -152,7 +152,11 @@ PLAYER_ROLE = DimensionSpec(
     "Role",
     "single",
     True,
-    (RoleSpec("tank", "Tank"), RoleSpec("damage", "Damage"), RoleSpec("support", "Support")),
+    (
+        RoleSpec("tank", "Tank", {"icon": "/disciplines/overwatch/roles/tank.svg", "color": "#0ea5e9"}),
+        RoleSpec("damage", "Damage", {"icon": "/disciplines/overwatch/roles/damage.svg", "color": "#f97316"}),
+        RoleSpec("support", "Support", {"icon": "/disciplines/overwatch/roles/support.svg", "color": "#10b981"}),
+    ),
 )
 
 #: Today's built-in 5v5 (ex ``DEFAULT_ROSTER_SLOTS``): one tank, two damage, two support, hard.

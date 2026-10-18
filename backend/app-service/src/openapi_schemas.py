@@ -29,6 +29,7 @@ from shared.schemas.quota import (
 )
 from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
 from src import schemas
+from src.schemas.discipline import DisciplineDescriptor, DisciplineMetadata
 
 # Sort-field whitelists mirror the read handlers' Literal constraints (used to
 # build the generic query-param aliases below). Drift only affects the `sort`
@@ -69,6 +70,8 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.maps.lookup": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.gamemodes.lookup": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.catalog.legacy": Op(response=schemas.CatalogLegacyRead),
+    "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS,)),
+    "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS,)),
     # ── heroes (bespoke) ───────────────────────────────────────────────────
     "rpc.app.heroes.playtime": Op(
         response=Paginated[schemas.HeroPlaytime], query=schemas.HeroPlaytimeQueryPaginationParams

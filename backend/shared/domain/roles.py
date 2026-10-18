@@ -7,10 +7,72 @@ code <-> id translation run on it without IO. Trees are tens of nodes, so descen
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
+import logging
+import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
-__all__ = ("DimensionNode", "Ontology", "RoleNode", "UnknownRole")
+__all__ = (
+    "DimensionNode",
+    "Ontology",
+    "RoleNode",
+    "UnknownRole",
+    "public_role_attrs",
+    "validate_presentation",
+)
+
+logger = logging.getLogger(__name__)
+
+_ICON_MAX = 512
+_ICON_FORBIDDEN = re.compile(r"""[\s'"<>\\]""")
+_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def validate_presentation(attrs: Mapping[str, object], *, discipline: str) -> None:
+    """Refuse a role ``icon``/``color`` that is not an image reference or a plain hex color (§1.5).
+
+    Other keys are left alone: ``attrs`` never confers role membership. Raises ``ValueError``.
+    """
+    if "icon" in attrs and (icon := attrs["icon"]) is not None:
+        game = re.escape(discipline)
+        allowed = (
+            re.compile(r"^https://\S+$"),
+            re.compile(rf"^assets/{game}/[a-z0-9_/-]+\.(svg|png|webp)$"),
+            re.compile(rf"^/disciplines/{game}/[a-z0-9_/-]+\.(svg|png|webp)$"),
+        )
+        if (
+            not isinstance(icon, str)
+            or len(icon) > _ICON_MAX
+            or _ICON_FORBIDDEN.search(icon)
+            or ".." in icon
+            or not any(pattern.match(icon) for pattern in allowed)
+        ):
+            raise ValueError(
+                "icon must be an https URL, an assets/<discipline>/ key or a /disciplines/<discipline>/ path"
+            )
+    if (
+        "color" in attrs
+        and (color := attrs["color"]) is not None
+        and not (isinstance(color, str) and _COLOR.match(color))
+    ):
+        raise ValueError("color must be #RRGGBB")
+
+
+def public_role_attrs(attrs: Mapping[str, object], *, public_origin: str | None) -> dict[str, Any]:
+    """``attrs`` as the wire shows it: raw keys kept, a stored ``assets/`` object key resolved to its public URL.
+
+    Without a configured public origin the icon is ``None`` (one warning), never an error and never a storage probe.
+    """
+    out = dict(attrs)
+    icon = out.get("icon")
+    if isinstance(icon, str) and icon.startswith("assets/"):
+        if public_origin:
+            out["icon"] = f"{public_origin.rstrip('/')}/{icon}"
+        else:
+            logger.warning("S3 public URL is not configured; role icon %r is served as null", icon)
+            out["icon"] = None
+    return out
 
 
 class UnknownRole(ValueError):
@@ -24,6 +86,8 @@ class DimensionNode:
     name: str
     selection_mode: str
     rated: bool
+    active: bool = True
+    sort_order: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +102,8 @@ class RoleNode:
     active: bool = True
     selectable: bool = True
     sort_order: int = 0
+    #: Raw ``catalog.role.attrs`` (``icon``/``color`` presentation); never role membership.
+    attrs: Mapping[str, object] = field(default_factory=dict, hash=False, compare=False)
 
 
 class Ontology:

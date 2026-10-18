@@ -33,6 +33,10 @@ var ReadRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/gamemodes", Queue: "rpc.app.read.list", Entity: "gamemode", Action: "list", AllQuery: true, Auth: edge.AuthNone},
 	// --- catalog: an old hero/map/gamemode id -> its catalog entity (D84; removed with discipline02) ---
 	{Method: "GET", Pattern: "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}", Queue: "rpc.app.catalog.legacy", Path: []string{"legacy_kind", "legacy_id"}, Auth: edge.AuthNone},
+	// --- disciplines: installed descriptors and native metadata; AuthOptional so a hidden workspace's members may read
+	// its ontology, never cached (P7 §1.1) ---
+	{Method: "GET", Pattern: "/api/v1/disciplines", Queue: "rpc.app.disciplines.list", Query: []string{"workspace_id"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/disciplines/{discipline}/metadata", Queue: "rpc.app.disciplines.metadata", Path: []string{"discipline"}, Query: []string{"workspace_id"}, Auth: edge.AuthOptional},
 	// --- achievements (list only; get surface is the subtree) ---------------
 	{Method: "GET", Pattern: "/api/v1/achievements", Queue: "rpc.app.read.list", Entity: "achievement", Action: "list", AllQuery: true, Auth: edge.AuthNone},
 	// --- statistics ---------------------------------------------------------

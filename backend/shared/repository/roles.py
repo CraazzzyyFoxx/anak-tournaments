@@ -10,10 +10,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.disciplines import DisciplineSpec
-from shared.domain.roles import DimensionNode, Ontology, RoleNode, UnknownRole
+from shared.domain.roles import DimensionNode, Ontology, RoleNode, UnknownRole, validate_presentation
 from shared.repository.base import BaseRepository
 
 __all__ = ("CatalogRoleRepository",)
+
+
+def _dimension_node(row: models.RoleDimension) -> DimensionNode:
+    return DimensionNode(row.id, row.code, row.name, row.selection_mode, row.rated, row.active, row.sort_order)
+
+
+def _role_node(row: models.CatalogRole, dimension_code: str) -> RoleNode:
+    return RoleNode(
+        row.id,
+        row.dimension_id,
+        dimension_code,
+        row.code,
+        row.name,
+        row.parent_role_id,
+        row.workspace_id,
+        row.active,
+        row.selectable,
+        row.sort_order,
+        dict(row.attrs),
+    )
 
 
 def _owned_by(workspace_id: int | None) -> sa.ColumnElement[bool]:
@@ -29,10 +49,16 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
         super().__init__(models.CatalogRole)
 
     async def ontology(self, session: AsyncSession, *, discipline: str, workspace_id: int | None) -> Ontology:
+        """The *selection* ontology: active dimensions only, with every role they hold for this owner.
+
+        History (a retired role still referenced) reads :meth:`dictionary` instead.
+        """
         dimension, role = models.RoleDimension, models.CatalogRole
         dimensions = (
             await session.scalars(
-                sa.select(dimension).where(dimension.discipline == discipline, dimension.active.is_(True))
+                sa.select(dimension)
+                .where(dimension.discipline == discipline, dimension.active.is_(True))
+                .order_by(dimension.sort_order, dimension.code)
             )
         ).all()
         codes = {row.id: row.code for row in dimensions}
@@ -41,23 +67,36 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
         ).all()
         return Ontology(
             discipline,
-            [DimensionNode(row.id, row.code, row.name, row.selection_mode, row.rated) for row in dimensions],
-            [
-                RoleNode(
-                    row.id,
-                    row.dimension_id,
-                    codes[row.dimension_id],
-                    row.code,
-                    row.name,
-                    row.parent_role_id,
-                    row.workspace_id,
-                    row.active,
-                    row.selectable,
-                    row.sort_order,
-                )
-                for row in roles
-            ],
+            [_dimension_node(row) for row in dimensions],
+            [_role_node(row, codes[row.dimension_id]) for row in roles],
         )
+
+    async def dictionary(
+        self, session: AsyncSession, *, discipline: str, workspace_id: int | None
+    ) -> tuple[list[models.RoleDimension], list[RoleNode]]:
+        """The *history* dictionary: every dimension (inactive too) and every role of them for this owner.
+
+        Both lists are in display order (``sort_order, code``); selection controls filter on ``active``/``selectable``.
+        """
+        dimension, role = models.RoleDimension, models.CatalogRole
+        dimensions = list(
+            (
+                await session.scalars(
+                    sa.select(dimension)
+                    .where(dimension.discipline == discipline)
+                    .order_by(dimension.sort_order, dimension.code)
+                )
+            ).all()
+        )
+        codes = {row.id: row.code for row in dimensions}
+        roles = (
+            await session.scalars(
+                sa.select(role)
+                .where(role.dimension_id.in_(list(codes)), _owned_by(workspace_id))
+                .order_by(role.sort_order, role.code)
+            )
+        ).all()
+        return dimensions, [_role_node(row, codes[row.dimension_id]) for row in roles]
 
     async def resolve(
         self, session: AsyncSession, *, discipline: str, workspace_id: int | None, dimension: str | None, code: str
@@ -129,6 +168,9 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
         stopped declaring is deactivated, never deleted: assignments may still point at it.
         """
         spec.rated_dimension  # noqa: B018 -- LookupError before any write (D32: exactly one rated dimension)
+        for dimension in spec.dimensions:
+            for declared_role in dimension.roles:
+                validate_presentation(declared_role.attrs, discipline=spec.code)
         await session.execute(
             pg_insert(models.Discipline)
             .values(code=spec.code, name=spec.name)
@@ -160,6 +202,7 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
                 )
             ).scalar_one()
             for role_order, declared_role in enumerate(dimension.roles):
+                attrs = dict(declared_role.attrs)
                 await session.execute(
                     pg_insert(role)
                     .values(
@@ -167,6 +210,7 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
                         code=declared_role.code,
                         name=declared_role.name,
                         sort_order=role_order,
+                        attrs=attrs,
                     )
                     .on_conflict_do_update(
                         index_elements=[role.dimension_id, role.code],
@@ -175,6 +219,7 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
                             "name": declared_role.name,
                             "sort_order": role_order,
                             "active": True,
+                            "attrs": attrs,
                             "updated_at": sa.func.now(),
                         },
                     )

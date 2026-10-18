@@ -64,6 +64,14 @@ DOCS: dict[str, dict] = {
         "summary": "Resolve an old catalog id",
         "description": "Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.",
     },
+    "rpc.app.disciplines.list": {
+        "summary": "List installed disciplines",
+        "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
+    },
+    "rpc.app.disciplines.metadata": {
+        "summary": "Get a discipline's native metadata",
+        "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the descriptor, the role dictionary (inactive rows included for history; global roles plus the requested workspace's sub-roles), stat and event vocabularies, team-format presets and the native ladder. 404 `discipline_not_installed` for an unknown code; a disabled discipline is still readable.",
+    },
     # ── heroes (bespoke) ─────────────────────────────────────────────────────────
     "rpc.app.heroes.playtime": {
         "summary": "Hero playtime stats",

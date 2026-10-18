@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from shared.disciplines.ingest import Decoder, DeriveMatch
     from shared.domain.achievements.context import EvalContext
     from shared.domain.analytics import AnalyticsExports
+    from shared.domain.pick_ban_rules.presets import Preset
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
     from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
@@ -119,10 +120,14 @@ class EventTypeSpec:
 
 @dataclass(frozen=True, slots=True)
 class RoleSpec:
-    """A role the module declares (D31): projected into ``catalog.role`` with ``workspace_id IS NULL``."""
+    """A role the module declares (D31): projected into ``catalog.role`` with ``workspace_id IS NULL``.
+
+    ``attrs`` carries presentation (``icon``, ``color``) into ``catalog.role.attrs``; it never confers membership.
+    """
 
     code: str
     name: str
+    attrs: Mapping[str, str | None] = field(default_factory=dict, hash=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,6 +242,9 @@ class DisciplineSpec:
     #: The analytics module (D83): ``None`` for a game with no features or models (LoL), which is unsupported by
     #: analytics - never served another game's module.
     analytics: AnalyticsModule | None = field(default=None, compare=False)
+    #: ``pick_ban_presets()``: the module's built-in pick/ban rulesets, imported only when called; ``None`` for a game
+    #: that offers none.
+    pick_ban_presets: Callable[[], tuple[Preset, ...]] | None = field(default=None, compare=False)
 
     @property
     def rated_dimension(self) -> DimensionSpec:

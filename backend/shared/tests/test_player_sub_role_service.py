@@ -35,6 +35,9 @@ def _create(workspace_id: int, role: str, label: str, slug: str | None = None) -
         description=None,
         sort_order=0,
         is_active=True,
+        icon=None,
+        color=None,
+        model_fields_set=set(),
     )
 
 
@@ -143,6 +146,7 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
                 "description": None,
                 "sort_order": 0,
                 "is_active": False,
+                "attrs": {},
             }
 
     async def test_the_catalog_groups_active_selectable_sub_roles_under_every_top_level_role(self) -> None:
@@ -252,6 +256,7 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
             description=None,
             sort_order=0,
             active=True,
+            attrs={"color": "#112233"},
             parent=SimpleNamespace(code="tank"),
             dimension=SimpleNamespace(discipline="overwatch", code="player_role"),
         )
@@ -275,5 +280,6 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
                 "description": None,
                 "sort_order": 0,
                 "is_active": True,
+                "attrs": {"color": "#112233"},
             }
         ]

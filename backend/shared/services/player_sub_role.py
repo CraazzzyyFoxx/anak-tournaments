@@ -5,6 +5,7 @@ Write path is the admin CRUD; the registration catalog is the same rows grouped 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.player_sub_roles import build_subrole_catalog, normalize_role, workspace_sub_role_code
-from shared.domain.roles import UnknownRole
+from shared.domain.roles import UnknownRole, validate_presentation
 from shared.repository import CatalogRoleRepository
 
 __all__ = ("PlayerSubRoleService", "SubroleCatalog", "player_sub_role_service")
@@ -30,6 +31,9 @@ class _CreateData(Protocol):
     description: str | None
     sort_order: int
     is_active: bool
+    icon: str | None
+    color: str | None
+    model_fields_set: set[str]
 
 
 class _UpdateData(Protocol):
@@ -46,6 +50,21 @@ def _code_or_raise(parent: str, slug: str | None, label: str | None) -> str:
             detail="Sub-role code must be at most 64 characters after normalization.",
         )
     return normalized
+
+
+_PRESENTATION_KEYS = ("icon", "color")
+
+
+def _presentation(values: Mapping[str, Any], *, discipline: str) -> dict[str, Any]:
+    """The icon/color keys the caller sent (explicit ``None`` included), checked; omitted keys stay untouched."""
+    attrs = {key: values[key] for key in _PRESENTATION_KEYS if key in values}
+    try:
+        validate_presentation(attrs, discipline=discipline)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"invalid_role_presentation: {exc}"
+        ) from None
+    return attrs
 
 
 class PlayerSubRoleService:
@@ -118,6 +137,10 @@ class PlayerSubRoleService:
         parent = await self._parent(session, discipline=data.discipline, code=data.role)
         code = _code_or_raise(parent.code, data.slug, data.label)
         await self._assert_code_free(session, parent=parent, workspace_id=data.workspace_id, code=code)
+        presentation = _presentation(
+            {key: getattr(data, key) for key in data.model_fields_set if key in _PRESENTATION_KEYS},
+            discipline=data.discipline,
+        )
         sub_role = await self.roles.create(
             session,
             models.CatalogRole(
@@ -129,6 +152,7 @@ class PlayerSubRoleService:
                 description=data.description,
                 sort_order=data.sort_order,
                 active=data.is_active,
+                attrs=presentation,
             ),
         )
         await session.commit()
@@ -138,6 +162,7 @@ class PlayerSubRoleService:
     async def update_sub_role(self, session: AsyncSession, sub_role_id: int, data: _UpdateData) -> models.CatalogRole:
         sub_role = await self.get_sub_role(session, sub_role_id)
         update_data = data.model_dump(exclude_unset=True)
+        presentation = _presentation(update_data, discipline=sub_role.dimension.discipline)
         if "role" in update_data and normalize_role(update_data["role"]) != sub_role.parent.code:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -155,6 +180,8 @@ class PlayerSubRoleService:
         for field, column in (("description", "description"), ("sort_order", "sort_order"), ("is_active", "active")):
             if field in update_data:
                 setattr(sub_role, column, update_data[field])
+        if presentation:
+            sub_role.attrs = {**sub_role.attrs, **presentation}  # reassigned: JSONB does not track in-place changes
         await session.commit()
         await session.refresh(sub_role)
         return sub_role

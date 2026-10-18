@@ -26,7 +26,7 @@ from shared.rpc.crud import CrudDispatcher, EntityConfig
 from shared.rpc.identity import rehydrate_user
 from shared.rpc.player_sub_role import player_sub_role_entity
 from src import schemas
-from src.core import auth, db
+from src.core import auth, config, db
 from src.core.workspace import get_division_grid
 from src.services.admin.encounter import encounter_service as enc_service
 from src.services.admin.stage import stage_service
@@ -373,7 +373,7 @@ REGISTRY: dict[str, EntityConfig] = {
         not_found_detail="Standing not found",
         actions=frozenset({"update", "delete"}),
     ),
-    "player_sub_role": player_sub_role_entity(),
+    "player_sub_role": player_sub_role_entity(config.settings.s3_public_url),
     "tournament_link": EntityConfig(
         entity="tournament_link",
         model=None,
