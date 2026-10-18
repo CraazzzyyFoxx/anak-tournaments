@@ -15,6 +15,10 @@ Deploy stats, app, gateway and frontend together: there is no old-wire compatibi
   a missing version and `hero_id` are explicit validation errors (a named message in the admin UI, no request sent for a
   v1 file); there is no alias, silent discard or auto-converter. A batch is validated whole before the first rule or image
   write; a missing, foreign or wrong-kind `entity_id` rejects the batch with the slug and the problem in the message.
+  `min_tournament_id` names a tournament of the target workspace and the rule's game: a file import (no source workspace
+  or the same workspace) rejects an unknown one; a library import from another workspace cannot translate it, so it drops
+  the cutoff and reports a per-rule warning in the import result. Set the cutoff in the target workspace afterwards:
+  until then the copied rule evaluates from the first tournament.
 * **Discipline on every achievement API.** Create, seed/reset, condition metadata (`condition-types`), validate, evaluate,
   calculate, export, library list/import/workspaces and the overrides list name the discipline (body or `?discipline=`);
   a request without it is a 422. An existing rule's discipline is immutable (the update wire has no `discipline`), a slug
@@ -60,6 +64,9 @@ artifact (active and historical) must be converted in a maintenance window with
    `discipline06/<id>/<old-sha256>.joblib`, reopened with the ordinary loader, state and every prediction bit-identical to
    the receipt) → review `receipt.json` → `apply` (one transaction, rows locked in id order, **only** `storage_uri`
    updated, current old URI required).
+   `apply` also blocks, naming the ids, when a performance/shift/standings registry row outside the receipt still
+   points at a non-converted URI (an incomplete inventory), and a missing or unloadable artifact makes the runners log and
+   fall back to their neutral result.
 4. **Exact allowlist.** The unpickler resolves only an audited exact `(module, name)` set plus the artifact's own legacy
    classes; dotted names and any other global are rejected before `REDUCE`, and nested pickles (object-dtype ndarray
    payloads included) get the same exact-global checks. An unlisted library global blocks the release until reviewed
@@ -80,8 +87,8 @@ artifact (active and historical) must be converted in a maintenance window with
   condition-less rule and leaves its sentinel award untouched. Recipe: the P5 release note, section 15.
 * **Analytics runtime smoke** (`analytics-service/tests/test_discipline_runtime_smoke.py`): export under the archived
   pre-move source → stage → apply → registry/`run_for_tournament` as a non-owner role without legacy schema USAGE →
-  frozen receipts reproduced bit-for-bit, written tables equal an independently assembled registry (Monte Carlo
-  standings agree statistically) → LoL untouched → rollback.
+  frozen receipts reproduced bit-for-bit, written tables equal an independently assembled registry (the standings
+  distribution included, compared exactly under a seeded test RNG) → LoL untouched → rollback.
 * **Browser pass** (Next dev against the local stack, organizer who is not a superuser): game selection sends
   `discipline`; LoL shows the zero-condition state with a disabled *Add condition*; organizer entity picker lists only the
   game's characters; create/update payloads carry `discipline`/`entity_id` and never `hero_id` (update has no

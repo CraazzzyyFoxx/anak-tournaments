@@ -149,8 +149,8 @@ release until an explicit conversion case is implemented and reviewed.
 archived pre-move source, stage, `apply`, then the runtime's own registry selection and `run_for_tournament`
 (performance, shift, standings, anomalies, match quality and its standings loader) as a non-owner role with no USAGE on
 the retained legacy schemas. Every frozen D96 receipt is reproduced bit-for-bit by the registry-loaded models, every
-table written equals the one written from an independently assembled registry (the unseeded Monte Carlo
-`standings_distribution` agrees only statistically), LoL resolves to no artifact, no module (`UnsupportedAnalytics`) and
+table written equals the one written from an independently assembled registry (the Monte Carlo
+`standings_distribution` included, compared exactly under a seeded test RNG), LoL resolves to no artifact, no module (`UnsupportedAnalytics`) and
 no read or write, and `rollback` restores the original URI set. This is fixture proof only; production artifacts are
 never described as converted until P9 has run the procedure on its real inventory.
 
