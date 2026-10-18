@@ -387,13 +387,13 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
     [
         (1, 10, "id", "desc", [], "", []),
         (1, 25, "id", "desc", [], "", []),
-        (1, 10, "id", "desc", ["discord", "twitch", "battle_tag"], "", []),
+        (1, 10, "id", "desc", ["social_accounts"], "", []),
         (
             1,
             10,
             "similarity:name",
             "asc",
-            ["discord", "twitch", "battle_tag"],
+            ["social_accounts"],
             "craaz",
             ["name"],
         ),
@@ -787,17 +787,13 @@ def test_get_user_hero_compare_ascending_stat_better_worse(rpc: RpcHarness) -> N
     ("name", "entities"),
     [
         ("CraazzzyyFox-2130", []),
-        ("CraazzzyyFox-2130", ["battle_tag"]),
-        ("CraazzzyyFox-2130", ["battle_tag", "discord", "twitch"]),
+        ("CraazzzyyFox-2130", ["social_accounts"]),
         ("Zuuuuuuuuuuz-2690", []),
-        ("Zuuuuuuuuuuz-2690", ["battle_tag"]),
-        ("Zuuuuuuuuuuz-2690", ["battle_tag", "discord", "twitch"]),
+        ("Zuuuuuuuuuuz-2690", ["social_accounts"]),
         ("Anak-2894", []),
-        ("Anak-2894", ["battle_tag"]),
-        ("Anak-2894", ["battle_tag", "discord", "twitch"]),
+        ("Anak-2894", ["social_accounts"]),
         ("marmeladka-21557", []),
-        ("marmeladka-21557", ["battle_tag"]),
-        ("marmeladka-21557", ["battle_tag", "discord", "twitch"]),
+        ("marmeladka-21557", ["social_accounts"]),
     ],
 )
 def test_get_user_by_name(rpc: RpcHarness, name: str, entities: list[str]) -> None:
@@ -808,9 +804,8 @@ def test_get_user_by_name(rpc: RpcHarness, name: str, entities: list[str]) -> No
     assert env["ok"] is True
     content = env["data"]
     assert content["name"] == name.replace("-", "#")
-    if "battle_tag" in entities:
+    if "social_accounts" in entities:
         assert any(s["provider"] == "battlenet" for s in content["social_accounts"])
-    if "twitch" in entities:
         assert any(s["provider"] == "twitch" for s in content["social_accounts"])
 
 
