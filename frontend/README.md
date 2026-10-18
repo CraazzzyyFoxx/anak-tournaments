@@ -241,7 +241,7 @@ the screen.
 The site name and main icon/logo are configurable via environment variables.
 
 - Copy `frontend/.env.example` to `frontend/.env` (or `frontend/.env.local`)
-- Set `NEXT_PUBLIC_SITE_NAME` (e.g. "Overwatch Tournaments") — the deployment's name in page
+- Set `NEXT_PUBLIC_SITE_NAME` (e.g. "OWT"; unset or empty means "OWT") — the deployment's name in page
   metadata and the sign-in dialog. The header and footer wordmark is the fixed `BRAND_NAME` ("OWT")
   in `src/config/site.ts`.
 - Set `NEXT_PUBLIC_SITE_ICON` (e.g. "/logo.webp")

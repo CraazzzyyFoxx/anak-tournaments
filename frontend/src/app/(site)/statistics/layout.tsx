@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import React from "react";
-import { getTranslations } from "next-intl/server";
-import { SITE_NAME } from "@/config/site";
-import { buildSectionMetadata } from "@/lib/site/metadata";
+import { buildSiteRouteMetadata } from "@/lib/site/route-metadata";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations();
-  const title = `${t("statistics.navTitle")} | ${SITE_NAME}`;
-  const description = t("statistics.metaDescription", { siteName: SITE_NAME });
-  return buildSectionMetadata(title, description);
+export function generateMetadata(): Promise<Metadata> {
+  return buildSiteRouteMetadata({
+    titleKey: "statistics.navTitle",
+    descriptionKey: "statistics.metaDescription"
+  });
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

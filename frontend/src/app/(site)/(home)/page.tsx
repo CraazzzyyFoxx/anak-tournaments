@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { SectionStack } from "@/components/site/open-layout";
+import { resolveSiteMetadata } from "@/lib/site/metadata";
 import workspaceService from "@/services/workspace.service";
 
 import { CommunityPage } from "../workspace/_components/CommunityPage";
@@ -17,8 +18,11 @@ import { PlatformLeaders, PlatformLeadersSkeleton } from "./_components/Platform
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("home.meta");
-  return { title: t("title"), description: t("description") };
+  // A tenant host's landing is its community page: the root layout already
+  // carries that tenant's own title and description.
+  if ((await headers()).get("x-owt-host-mode") === "tenant") return {};
+  const [t, { name }] = await Promise.all([getTranslations("home.meta"), resolveSiteMetadata()]);
+  return { title: t("title", { siteName: name }) };
 }
 
 /**

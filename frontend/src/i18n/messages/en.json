@@ -247,8 +247,8 @@
     "sourceOnGithub": "View the source on GitHub",
     "skipToContent": "Skip to content",
     "footer": {
-      "disclaimer": "{siteName} is an independent tournament platform for Overwatch communities. Not affiliated with or endorsed by Blizzard Entertainment, Inc.",
-      "tenantDisclaimer": "{name} is a community on the {siteName} platform. Not affiliated with or endorsed by Blizzard Entertainment, Inc.",
+      "disclaimer": "{siteName} is an independent tournament platform for gaming communities. Not affiliated with or endorsed by any game publisher.",
+      "tenantDisclaimer": "{name} is a community on the {siteName} platform. Not affiliated with or endorsed by any game publisher.",
       "getWorkspace": "Start a community",
       "sectionsHeading": "Sections",
       "resourcesHeading": "Resources",
@@ -3109,12 +3109,12 @@
   },
   "home": {
     "meta": {
-      "title": "OWT — Overwatch community tournaments",
-      "description": "Schedules, brackets and matches from every Overwatch community on OWT, and each player's full history in one profile."
+      "title": "{siteName} — community tournaments",
+      "description": "Schedules, brackets and matches from every community on {siteName}, and each player's full history in one profile."
     },
     "hero": {
-      "eyebrow": "OWT · Overwatch community tournaments",
-      "title": "Overwatch community tournaments and player <accent>statistics</accent>",
+      "eyebrow": "OWT · Community tournaments",
+      "title": "Community tournaments and player <accent>statistics</accent>",
       "lede": "Schedules, brackets and matches from every community - and a player's whole history in one profile.",
       "searchPlaceholder": "Player or BattleTag",
       "browseTournaments": "Browse tournaments",
@@ -4854,7 +4854,7 @@
     "profile": {
       "meta": {
         "title": "{name} — Player Profile | {siteName}",
-        "description": "{name}'s Overwatch tournament profile on {siteName}: match history, heroes, maps, teammates, achievements and career stats.",
+        "description": "{name}'s tournament profile on {siteName}: match history, characters, maps, teammates, achievements and career stats.",
         "notFoundTitle": "User Not Found | {siteName}",
         "notFoundDescription": "The requested user profile could not be found on {siteName}."
       },
@@ -5608,8 +5608,8 @@
         "desc": "Two players side by side"
       },
       "heroesLeaderboard": {
-        "title": "Heroes leaderboard",
-        "desc": "The best on every hero"
+        "title": "Characters leaderboard",
+        "desc": "The best on every character"
       },
       "achievements": {
         "title": "Achievements",
@@ -6541,7 +6541,7 @@
         },
         "service": {
           "title": "About the service",
-          "body": "{siteName} is a fan-run platform for organizing and tracking Overwatch tournaments: brackets, match reporting, drafts, and player statistics. It is not affiliated with, endorsed by, or sponsored by Blizzard Entertainment, Inc."
+          "body": "{siteName} is a fan-run platform for organizing and tracking esports tournaments: brackets, match reporting, drafts, and player statistics. It is not affiliated with, endorsed by, or sponsored by any game publisher or developer."
         },
         "eligibility": {
           "title": "Eligibility",
@@ -7123,7 +7123,7 @@
   },
   "scrims": {
     "meta": {
-      "description": "Open a scrim room on {siteName} — map veto, hero bans and per-map results without a tournament.",
+      "description": "Open a scrim room on {siteName} — map veto, bans and per-map results without a tournament.",
       "room": {
         "title": "Scrim room",
         "description": "A private scrim room on {siteName}, shared by link."

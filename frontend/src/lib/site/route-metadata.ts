@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { SITE_NAME } from "@/config/site";
 import { resolveSiteMetadata } from "@/lib/site/metadata";
 
 /**
@@ -35,9 +34,11 @@ export async function buildSiteRouteMetadata({
     getLocale()
   ]);
 
-  const title = `${t(titleKey as never)} | ${SITE_NAME}`;
+  // The resolved name, not the build-time SITE_NAME: on a tenant host it is
+  // the community's own title.
+  const title = `${t(titleKey as never)} | ${name}`;
   const description = t(descriptionKey as never, {
-    siteName: SITE_NAME,
+    siteName: name,
     ...descriptionValues
   } as never);
 
