@@ -207,9 +207,17 @@ The official decision is a separate transaction in the match layer.
   `accepted`, `logs_disabled`, `owner_policy_refused`, `result_locked`, `stale_basis`,
   `result_incomplete`, `applied_roster_only`. Missing events (a missing game or encounter) and
   duplicates are not journaled.
-* Only with `logs_official` on, for an undecided, uncancelled game of a live, undecided encounter whose
+* **Roster (owner policy, independent of `logs_official`).** For a tournament owner, a live encounter and the exact
+  bound team set, valid extra participants are seated as encounter substitutes under the roster's own rank/role rules
+  whatever `logs_official` says and whatever the game's result state is (the P4 parser always seated them). Mix and
+  scrim owners never take roster additions. When extras are seated but the result is refused, the outcome is
+  `applied_roster_only` and the receipt `reason` is the result refusal (`logs_official_off`, `game_confirmed`,
+  `placements_missing`, …).
+* **Result.** Only with `logs_official` on, for an undecided, uncancelled game of a live, undecided encounter whose
   result version still equals the evidence basis, the placements become an `admin_log` result (placement-only:
-  `win` is the sole first place; no scores are invented).
+  `win` is the sole first place; no scores are invented). A Push/Clash log writes `0:0` whoever won, so the
+  Overwatch decoder emits **no placements** for those modes: the evidence is journaled `result_incomplete`
+  (`placements_missing`) and the organizer enters the result.
 * **Precedence.** An organizer's own result (admin entry, captain agreement, an import, a confirmed
   game) is never overwritten: later evidence is journaled `result_locked`. The first accepted evidence
   stands; a reparse or a later revision never replaces it (a correction uses the existing explicit
@@ -338,6 +346,11 @@ re-requested through the outbox, at most `LOG_REAPER_MAX_ATTEMPTS` times. Claims
 | Storage | `logs/{tournament}/{content_hash}` | **Unchanged and preserved** for historical and raw uploads; canonical documents add `stats/raw/{workspace}/{sha256}` and `stats/documents/{workspace}/{sha256}.json` |
 | Schema | `stats01a` head | `ingest01`: `catalog.alias_miss.kind` + `stat\|event\|role`, `tournament.logs_official`, `workspace_member.observed_only`, quota slug rename (the `ingest_job.document_ref` / `api_key_id` columns are P4's `stats01`) |
 
+"No aliases" means no compatibility shim for a renamed contract. These identifiers **deliberately keep the old
+namespace** because they are stored data or keys, not service names: the `parser.ach.*` quota operations (achievement
+RPCs), the `parser.rank_collection` / `parser.rank_mapping` / `parser.subscription_collection` settings keys, and the
+`backend:parser:impact_baselines` cache key. Renaming them is a data migration, not part of this cutover.
+
 Contract rulings that changed a wire, protocol or storage contract (each also documented where used above):
 
 1. Scope literal `stats.ingest`; no alias; real key + literal scope + effective owner permission + exact workspace.
@@ -351,7 +364,7 @@ Contract rulings that changed a wire, protocol or storage contract (each also do
 8. The retired `process_match_log` queue is not consumed by anything: see section 13.
 9. `ProcessIngestJobEvent` replaces the job event (same payload fields, new type string).
 10. `MatchIngestedEvent` wire: event id `match.ingested:{match_id}:{revision}`, placements, basis result version, extra participants with a `RoleRef`.
-11. Placement rule: canonical placements only (`GameResultIn(score=None, placement=…)`); a complete placement set derives `win` from the sole first place; the Overwatch decoder derives placements from observed team scores (higher → 1, equal → both 1, absent → none).
+11. Placement rule: canonical placements only (`GameResultIn(score=None, placement=…)`); a complete placement set derives `win` from the sole first place; the Overwatch decoder derives placements from observed team scores (higher → 1, equal → both 1) **except** in Push/Clash (`OBJECTIVELESS_GAMEMODES`), whose `0:0` end is a log artifact: no placements, journaled `result_incomplete`.
 12. Virtual (observation-only) identities are not globally visible (`ensure_global_visibility=False`).
 13. `alias_miss.kind` widens to `stat|event|role` for diagnostics only; `catalog.entity.kind` and `CATALOG_KINDS` stay three.
 
@@ -367,8 +380,8 @@ Contract rulings that changed a wire, protocol or storage contract (each also do
     game id, evidence id, revision, event id, `basis_game_result_version` (the result version the evidence was computed
     against), the accepted game-result version after the decision and the `outcome`; a short refusal code goes in the journal entry's `reason`. Duplicate and
     out-of-order delivery is decided from the **full scoped journal** (a direct query by encounter, action, `data.game_id`
-    and `data.evidence_id`, not the UI's history window): a delivered revision or event id is a duplicate, a revision at or
-    below the highest delivered one is `stale_revision`, and the high-water mark never claims to know a later, unseen stats
+    and `data.evidence_id`, not the UI's history window): a delivered revision or event id is a duplicate, a revision
+    below the highest delivered one is `stale_revision` (an equal revision is a `duplicate`), and the high-water mark never claims to know a later, unseen stats
     revision. A stale basis is refused even at a higher revision; a failed transaction leaves neither receipt nor result.
 
 ## 13. P9 maintenance release: old queues, drain, rollback
@@ -405,6 +418,12 @@ conflicts). Required before any production switch: authentic bytes and provenanc
 exact ownership/order decisions for the held matches and duplicate-reference resolution. Do not invent hashes,
 truncate history or replace confirmed results. Historical jobs keep `raw_status` `missing`/`conflict`/`unverified`;
 reparse and download refuse them rather than guess.
+
+**P9 gate: real Workshop-log decoder parity.** The decoder was verified against the synthetic Task 0 fixture only
+(the repository holds no authentic Workshop bytes, and committing real logs would publish players' BattleTags). Before
+production, run one real dev raw log through the P4 parser at the last P4 commit and through `decode` + `derive_match`,
+and compare the facts, events and score; record only the log SHA and pass/fail. Real-log quirks (post-end events,
+Push/Clash `0:0`, odd stat rows) are otherwise first seen in production.
 
 ## 15. Local verification recipe
 
@@ -451,8 +470,8 @@ an unbound document parked as `awaiting_link` with zero observations and then ex
 three-team document in a shuffled order; eight concurrent identical posts; atomic replacement by a new document;
 `409 idempotency_conflict` for changed content under an existing external id; forged hints; unknown stat and role
 diagnostics; two registered disciplines served by separate workers with a wrong-queue delivery refused to the DLQ;
-`logs_official` off, on and the administrator's result winning; a reparse that cannot override an accepted result; a real
-Workshop upload compared bit-for-bit with the Task 0 reference; a tournament replay through the `.replay` queue; a worker
+`logs_official` off, on and the administrator's result winning; a reparse that cannot override an accepted result; a
+Workshop-format upload (the synthetic Task 0 fixture, not a real log) compared bit-for-bit with the Task 0 reference; a tournament replay through the `.replay` queue; a worker
 frozen mid-job (the RPC process keeps answering) whose reclaimed attempt cannot commit when it wakes; and a hard-killed
 worker whose claim is reclaimed after a restart. **It is local evidence only: not a timed production migration, not a
 remote rehearsal and not permission to drop an old schema.** Windows note: the process tree of a venv launcher is

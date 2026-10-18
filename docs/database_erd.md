@@ -61,7 +61,7 @@ Alembic head: **`discipline01c`** (120 revisions in `backend/migrations/versions
 | `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
 | `casual` | Legacy mix history (matches, teams, players). Read by nothing since V2 and mapped by no model; dropped by the gated `mixround02` | — (no service) |
 | `overwatch` | Legacy catalog, read and written by no service and mapped by no model; retained until the gated `discipline02` | — (no service) |
-| `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin/ontology projection), parser-service (entity sync/misses); migration seeds the initial projection |
+| `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin/ontology projection), stats-service (entity sync/misses); migration seeds the initial projection |
 | `roster` | Workspace team-format templates, tournament-owned copies and frozen mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | stats-service |
 | `stats` | Native parsed matches, observed participants/facts/events, ingestion jobs, baselines and Discord channels | stats-service / analytics-service / app-service / discord-service |
@@ -417,7 +417,7 @@ on `(workspace_id, player_id)`. It carries no denormalized role: the role is der
 so there is exactly one place where a permission answer comes from.
 
 `settings` is the exception in this schema: a global key/value table (`key` UNIQUE, e.g. the
-parser's rank-collection switch), not tenant-scoped.
+stats-service's rank-collection switch), not tenant-scoped.
 
 <!-- ERD:auto tenancy -->
 ```mermaid

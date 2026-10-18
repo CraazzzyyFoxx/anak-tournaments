@@ -7,8 +7,8 @@ Two steps with different side effects:
 * :func:`resolve_identities` runs once a binding is established. It creates virtual players for the unknown identities
   and observation anchors (``workspace_member`` rows) for every participant. It grants no login, role, rank or roster
   place and never revives a removed member: a log is not a membership decision. An anchor for a player who has an
-  auth account is created soft-removed (``insert_observation_members``), because ``removed_at IS NULL`` is what the
-  token memberships and hidden-workspace visibility read as membership.
+  auth account is created ``observed_only`` (``insert_observation_members``): membership/visibility reads and the
+  link-time role autofill skip such an anchor, and ``removed_at`` stays NULL because nothing was removed.
 
 A canonical identity is matched exactly (its provider-normalized handle). A decoded Workshop log only has bare in-game
 names, so the module's P4 rule applies: the name before ``#`` also matches (never across providers).
