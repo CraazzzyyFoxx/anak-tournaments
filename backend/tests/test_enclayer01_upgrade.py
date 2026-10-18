@@ -43,6 +43,7 @@ TEMPLATE_DB = "enclayer01_legacy_tpl"
 MIGRATED_DB = "enclayer01_migrated"
 REJECTED_DB = "enclayer01_rejected"
 LIVE_DB = "enclayer01_live_named"
+RECOMPUTE_DB = "enclayer01_recompute"
 ENCLAYER02_DB = "enclayer02_gate"
 
 
@@ -564,7 +565,7 @@ def legacy_template():
         preflight = _run_checks(conn, _preflight_queries())
     yield {"ids": ids, "before": before, "preflight": preflight}
     with _connect("postgres") as admin:
-        for name in (MIGRATED_DB, REJECTED_DB, LIVE_DB, ENCLAYER02_DB, TEMPLATE_DB):
+        for name in (MIGRATED_DB, REJECTED_DB, LIVE_DB, RECOMPUTE_DB, ENCLAYER02_DB, TEMPLATE_DB):
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
@@ -1580,7 +1581,7 @@ def _run_recompute(dry_run: bool) -> int:
     from sqlalchemy.pool import NullPool
 
     async def go() -> int:
-        engine = create_async_engine(_url(MIGRATED_DB), poolclass=NullPool)
+        engine = create_async_engine(_url(RECOMPUTE_DB), poolclass=NullPool)
         try:
             return await recompute_script.recompute(dry_run, engine)
         finally:
@@ -1590,19 +1591,25 @@ def _run_recompute(dry_run: bool) -> int:
     return asyncio.run(go(), loop_factory=loop_factory)
 
 
-def test_the_lobby_recompute_fills_standings_dry_then_for_real_then_does_nothing(migrated) -> None:
-    conn, ids = migrated["conn"], migrated["ids"]
-    # This legacy match belongs to the fixture's first game; make that binding
-    # explicit before the current-head statistics preflight.
-    conn.execute(
-        "UPDATE encounter.game SET map_id = (SELECT map_id FROM matches.match WHERE id = %s) WHERE id = %s",
-        (ids["match"], ids["games"][0]),
-    )
-    conn.execute("UPDATE matches.match SET map_index = 1 WHERE id = %s", (ids["match"],))
-    conn.commit()
-    # The script is a post-upgrade one-shot and the ORM it uses always reflects the head, so bring the database there first.
-    done = _alembic(MIGRATED_DB, "head")
+def test_the_lobby_recompute_fills_standings_dry_then_for_real_then_does_nothing(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    # Its own database: the script reflects the head, and taking the shared ``migrated`` database there would hand
+    # the enclayer01b-era reconcile SQL (and every later case on it) a schema it was never written for.
+    _recreate(RECOMPUTE_DB, TEMPLATE_DB)
+    done = _alembic(RECOMPUTE_DB, "enclayer01b")
     assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(RECOMPUTE_DB) as conn:
+        # This legacy match belongs to the fixture's first game; make that binding
+        # explicit before the current-head statistics preflight.
+        conn.execute(
+            "UPDATE encounter.game SET map_id = (SELECT map_id FROM matches.match WHERE id = %s) WHERE id = %s",
+            (ids["match"], ids["games"][0]),
+        )
+        conn.execute("UPDATE matches.match SET map_index = 1 WHERE id = %s", (ids["match"],))
+    # The script is a post-upgrade one-shot and the ORM it uses always reflects the head, so bring the database there first.
+    done = _alembic(RECOMPUTE_DB, "head")
+    assert done.returncode == 0, done.stderr[-3000:]
+    conn = _connect(RECOMPUTE_DB)
     standings = "SELECT t.slot, t.score, t.placement FROM encounter.team t WHERE t.encounter_id = %s ORDER BY t.slot"
     assert _rows(conn, standings, (ids["e_lobby"],)) == [(1, 0.0, None), (2, 0.0, None), (3, 0.0, None)]
 
@@ -1617,6 +1624,7 @@ def test_the_lobby_recompute_fills_standings_dry_then_for_real_then_does_nothing
     assert _rows(conn, standings, (ids["e_played"],)) == [(1, 2.0, 1), (2, 1.0, 2)]
 
     assert _run_recompute(False) == 0
+    conn.close()
 
 
 def test_the_reconcile_report_is_clean_on_a_faithful_migration(migrated) -> None:

@@ -508,6 +508,8 @@ def test_removed_preparation_member_is_excluded_from_real_token_memberships(data
             == ids["auth_user_no_member"]
         )
         run(prep.apply_item(conn, ObjectStore(raw_objects(ids)), "members", member_item(conn, ids, create=True)))
+        # The live ORM selects ``observed_only`` (ingest01); this clone is P3-shaped, so give it that one column.
+        conn.execute(sa.text("ALTER TABLE workspace_member ADD COLUMN observed_only BOOLEAN NOT NULL DEFAULT false"))
 
     async def memberships():
         engine = create_async_engine(database.url.set(drivername="postgresql+asyncpg"))
