@@ -154,36 +154,6 @@ class SubscriptionEnforcementStage(StrEnum):
     check_in = "check_in"
 
 
-class LogEventType(StrEnum):
-    MatchStart = "match_start"
-    MatchEnd = "match_end"
-    PlayerJoined = "player_joined"
-    RoundStart = "round_start"
-    RoundEnd = "round_end"
-    SetupComplete = "setup_complete"
-    PointProgress = "point_progress"
-    ObjectiveUpdated = "objective_updated"
-    ObjectiveCaptured = "objective_captured"
-    PayloadProgress = "payload_progress"
-    PlayerStat = "player_stat"
-    Meta = "meta"
-    HeroSpawn = "hero_spawn"
-    Kill = "kill"
-    OffensiveAssist = "offensive_assist"
-    DefensiveAssist = "defensive_assist"
-    UltimateCharged = "ultimate_charged"
-    UltimateStart = "ultimate_start"
-    UltimateEnd = "ultimate_end"
-    MercyRez = "mercy_rez"
-    HeroSwap = "hero_swap"
-    EchoDuplicateStart = "echo_duplicate_start"
-    EchoDuplicateEnd = "echo_duplicate_end"
-    GraviticFlux = "gravitic_flux"
-    Earthshatter = "earthshatter"
-    ServerLoad = "server_load"
-    ChainHook = "chain_hook"
-
-
 class LogStatsName(StrEnum):
     Eliminations = "eliminations"
     FinalBlows = "final_blows"
@@ -549,16 +519,6 @@ class MatchEvent(StrEnum):
     EchoDuplicateEnd = "echo_duplicate_end"
 
 
-class AbilityEvent(StrEnum):
-    PrimaryFire = "Primary Fire"
-    SecondaryFire = "Secondary Fire"
-    Ability1 = "Ability 1"
-    Ability2 = "Ability 2"
-    Ultimate = "Ultimate"
-    Melee = "Melee"
-    Crouch = "Crouch"
-
-
 class RouteTag(StrEnum):
     """Canonical FastAPI route-classification tags.
 
@@ -598,7 +558,6 @@ __all__ = [
     "SubscriptionCheckState",
     "SubscriptionCollectionSource",
     "SubscriptionEnforcementStage",
-    "LogEventType",
     "LogStatsName",
     "StatDirection",
     "LOG_STATS_DEFAULT_DIRECTION",
@@ -631,6 +590,5 @@ __all__ = [
     "PickBanKind",
     "EncounterStatus",
     "MatchEvent",
-    "AbilityEvent",
     "RouteTag",
 ]

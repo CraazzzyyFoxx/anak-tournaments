@@ -13,16 +13,16 @@ import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import enums
 from shared.core.impact import FORMULA_VERSION, IMPACT_WEIGHTS
+from shared.disciplines.overwatch import impact
+from shared.disciplines.overwatch.baseline_rows import build_baseline_rows
 from shared.repository.baselines import StatBaselineRepository
 from shared.repository.roles import CatalogRoleRepository
 from shared.repository.stats import StatDefRepository
 from shared.repository.stats_queries import player_facts
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
-from src import models
-from src.core import enums
-from src.domain.baselines import build_baseline_rows
-from src.domain.match_logs import impact
 
 __all__ = ("BaselineService", "baseline_service", "get_active", "invalidate_cache", "recompute")
 

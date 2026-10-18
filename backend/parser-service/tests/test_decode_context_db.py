@@ -1,0 +1,101 @@
+"""``load_decode_context`` against a real catalog: what a raw decoder may resolve, and in which precedence."""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from shared import models
+from shared.schemas.match_doc import MatchSource
+from shared.services.decode_context import load_decode_context
+
+
+def test_names_aliases_modes_and_activity_resolve_with_the_p4_precedence(stats_parity_database):
+    url, _ = stats_parity_database
+
+    async def run() -> None:
+        engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                entity = models.CatalogEntity
+                # An alias registered BEFORE its namesake's own row must not shadow the canonical name.
+                rival = entity(
+                    discipline="overwatch",
+                    kind="character",
+                    slug="ctx-rival",
+                    name="Rival",
+                    aliases=["Ctx Ana"],
+                    attrs={"class": "damage"},
+                )
+                ana = entity(
+                    discipline="overwatch",
+                    kind="character",
+                    slug="ctx-ana",
+                    name="Ctx Ana",
+                    aliases=["Ана ctx"],
+                    attrs={"class": "support"},
+                )
+                retired = entity(
+                    discipline="overwatch",
+                    kind="character",
+                    slug="ctx-old",
+                    name="Retired",
+                    attrs={"class": "tank"},
+                    active=False,
+                )
+                control = entity(
+                    discipline="overwatch", kind="mode", slug="ctx-control", name="CtxControl", aliases=["КонтрольCtx"]
+                )
+                escort = entity(discipline="overwatch", kind="mode", slug="ctx-escort", name="CtxEscort")
+                session.add_all([rival, ana, retired, control, escort])
+                await session.flush()
+                session.add_all(
+                    [
+                        entity(
+                            discipline="overwatch",
+                            kind="map",
+                            slug="ctx-a",
+                            name="Twin",
+                            parent_id=control.id,
+                            aliases=["Близнец"],
+                        ),
+                        entity(
+                            discipline="overwatch",
+                            kind="map",
+                            slug="ctx-b",
+                            name="Twin Two",
+                            parent_id=escort.id,
+                            aliases=["Близнец"],
+                        ),
+                    ]
+                )
+                await session.flush()
+
+                ctx = await load_decode_context(
+                    session,
+                    discipline="overwatch",
+                    source=MatchSource(kind="upload"),
+                    hint=None,
+                    received_at=datetime(2026, 10, 18, tzinfo=UTC),
+                )
+
+                assert ctx.characters["Ctx Ana"] == "ctx-ana"
+                assert ctx.characters["Rival"] == "ctx-rival"
+                assert ctx.characters["Ана ctx"] == "ctx-ana"
+                assert "Retired" not in ctx.characters and "ctx-old" not in ctx.attrs
+                assert ctx.attrs["ctx-ana"] == {"class": "support"}
+                # Catalog id order is what the formulas sum in.
+                order = list(ctx.attrs)
+                assert order.index("ctx-rival") < order.index("ctx-ana")
+                assert ctx.maps[("CtxControl", "Twin")] == "ctx-a"
+                assert ctx.maps[("КонтрольCtx", "Близнец")] == "ctx-a"
+                assert ctx.maps[("CtxEscort", "Близнец")] == "ctx-b"  # one alias, two modes: the mode picks the map
+                assert ("CtxEscort", "Twin") not in ctx.maps
+                await session.rollback()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())

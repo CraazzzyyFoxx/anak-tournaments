@@ -21,8 +21,10 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.catalog_sync import CatalogImageMirror
+    from shared.disciplines.ingest import BoundMatch, DecodeContext
     from shared.disciplines.spec import CollectionHandler
     from shared.models.identity.auth_user import AuthUser
+    from shared.schemas.match_doc import MatchDoc
 
 __all__ = ("SPEC",)
 
@@ -83,6 +85,30 @@ def _collection_handler(name: str) -> CollectionHandler:
     return handle
 
 
+async def _recompute_baselines(session: AsyncSession, user: AuthUser | None, data: dict[str, Any]) -> object:
+    from shared.core.impact import FORMULA_VERSION
+    from shared.disciplines.overwatch.baselines import recompute
+
+    return {"rows": await recompute(session, discipline="overwatch"), "formula_version": FORMULA_VERSION}
+
+
+#: A Workshop CSV reaches the parser as a browser/API upload, a Discord attachment or an administrator's manual upload.
+_WORKSHOP_SOURCES = ("upload", "discord", "manual")
+
+
+def _decode(raw: bytes, ctx: DecodeContext) -> MatchDoc:
+    # Imported on call: the decoder needs pandas, which every service loading the registry must not pay for.
+    from shared.disciplines.overwatch.ingest import decode
+
+    return decode(raw, ctx)
+
+
+async def _derive_match(session: AsyncSession, doc: MatchDoc, binding: BoundMatch) -> MatchDoc:
+    from shared.disciplines.overwatch.ingest import derive_match
+
+    return await derive_match(session, doc, binding)
+
+
 PLAYER_ROLE = DimensionSpec(
     "player_role",
     "Role",
@@ -125,5 +151,10 @@ SPEC = DisciplineSpec(
     register_jobs=_register_jobs,
     start_jobs=_start_jobs,
     stop_jobs=_stop_jobs,
-    collection_handlers={name: _collection_handler(name) for name in _COLLECTION_HANDLERS},
+    collection_handlers={
+        **{name: _collection_handler(name) for name in _COLLECTION_HANDLERS},
+        "impact.recompute_baselines": _recompute_baselines,
+    },
+    ingestors=dict.fromkeys(_WORKSHOP_SOURCES, _decode),
+    derive_match=_derive_match,
 )

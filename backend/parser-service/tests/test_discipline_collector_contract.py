@@ -175,5 +175,7 @@ class OverwatchJobsTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.closed, ["closed"])
 
     def test_collection_handlers_cover_the_module_handlers(self) -> None:
-        self.assertEqual(set(DISCIPLINES["overwatch"].collection_handlers), set(handlers.HANDLERS))
+        self.assertEqual(
+            set(DISCIPLINES["overwatch"].collection_handlers), {*handlers.HANDLERS, "impact.recompute_baselines"}
+        )
         self.assertEqual(DISCIPLINES["lol"].collection_handlers, {})

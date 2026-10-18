@@ -1,21 +1,11 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-PARSER_SERVICE_ROOT = REPO_BACKEND_ROOT / "parser-service"
-
-for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
-
-from shared.core.impact import IMPACT_WEIGHTS  # noqa: E402
-from src.domain.baselines import build_baseline_rows  # noqa: E402
+from shared.core.impact import IMPACT_WEIGHTS
+from shared.disciplines.overwatch.baseline_rows import build_baseline_rows
 
 
 def _stats_frame(n=90):

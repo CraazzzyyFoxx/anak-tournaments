@@ -1,22 +1,13 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
-REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-PARSER_SERVICE_ROOT = REPO_BACKEND_ROOT / "parser-service"
-
-for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
-
-from shared.core import enums  # noqa: E402
-from shared.core.impact import IMPACT_WEIGHTS  # noqa: E402
-from src import models  # noqa: E402
-from src.domain.match_logs import impact  # noqa: E402
+from shared import models
+from shared.core import enums
+from shared.core.impact import IMPACT_WEIGHTS
+from shared.disciplines.overwatch import impact
+from shared.disciplines.overwatch.enums import AbilityEvent
 
 TANK = enums.HeroClass.tank
 DAMAGE = enums.HeroClass.damage
@@ -108,7 +99,7 @@ class TestBuildEventCounts:
 
     def test_ultimate_and_support_kills(self):
         feed = [
-            _kill(time=1.0, killer=10, victim=20, victim_hero=2, ability=enums.AbilityEvent.Ultimate),
+            _kill(time=1.0, killer=10, victim=20, victim_hero=2, ability=AbilityEvent.Ultimate),
             _kill(time=2.0, killer=10, victim=20, victim_hero=3),  # tank victim
         ]
         df = impact.build_event_counts(feed, HERO_TYPES, member_user_ids=MEMBER_USERS)

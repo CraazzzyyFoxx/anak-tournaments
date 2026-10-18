@@ -7,6 +7,7 @@ behaviour behind that code. Core imports names from here and never from ``shared
 
 from __future__ import annotations
 
+from shared.disciplines.ingest import INGESTORS, assemble_ingestors
 from shared.disciplines.lol import SPEC as _LOL
 from shared.disciplines.overwatch import SPEC as _OVERWATCH
 from shared.disciplines.spec import (
@@ -26,6 +27,7 @@ from shared.disciplines.spec import (
 )
 
 __all__ = (
+    "INGESTORS",
     "CATALOG_KINDS",
     "DISCIPLINES",
     "DimensionSpec",
@@ -46,7 +48,18 @@ __all__ = (
     "rated_role_codes",
 )
 
-DISCIPLINES: dict[str, DisciplineSpec] = {spec.code: spec for spec in (_OVERWATCH, _LOL)}
+
+def _assemble(specs: tuple[DisciplineSpec, ...]) -> dict[str, DisciplineSpec]:
+    registry: dict[str, DisciplineSpec] = {}
+    for spec in specs:
+        if spec.code in registry:
+            raise ValueError(f"duplicate discipline {spec.code!r}")
+        registry[spec.code] = spec
+    return registry
+
+
+DISCIPLINES: dict[str, DisciplineSpec] = _assemble((_OVERWATCH, _LOL))
+INGESTORS.update(assemble_ingestors(DISCIPLINES.values()))
 
 
 def discipline(code: str) -> DisciplineSpec:

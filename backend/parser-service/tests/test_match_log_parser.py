@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest import IsolatedAsyncioTestCase
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
@@ -17,45 +17,8 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 
 os.environ["DEBUG"] = "true"
 
-enums = importlib.import_module("src.core.enums")
-flows = importlib.import_module("src.services.match_logs.flows")
 models = importlib.import_module("src.models")
 from shared.repository.stats import _bulk_insert
-
-
-class MatchLogParserTests(TestCase):
-    def test_wide_player_stat_row_is_not_truncated_or_shifted(self) -> None:
-        job = SimpleNamespace(filename="match.log", discipline="overwatch")
-        stat_payload = [
-            "1",
-            "Blue Team",
-            "Player One",
-            "Ana",
-            *[str(index) for index in range(33)],
-        ]
-        line = ",".join(["2026-04-19T12:00:00Z", "player_stat", "12.5", *stat_payload])
-
-        processor = flows.MatchLogProcessor(job, [line])
-
-        rows = processor._get_rows(enums.LogEventType.PlayerStat)
-        self.assertEqual(1, len(rows))
-        self.assertEqual(stat_payload, rows.iloc[0]["data"])
-
-    def test_quoted_commas_and_type_index_survive_batched_csv_parse(self) -> None:
-        job = SimpleNamespace(filename="match.log", discipline="overwatch")
-        lines = [
-            "2026-04-19T12:00:00Z,meta,0,ignored",
-            '2026-04-19T12:00:00Z,match_start,0.0,Ilios,"Control","Team, A","Team, B"',
-            "2026-04-19T12:00:00Z,not_a_real_event,1.0,x",
-            "2026-04-19T12:00:00Z,kill,12.5,Team A,Ana,Ana,Team B,Mercy,Mercy,0,100,False,False",
-        ]
-        processor = flows.MatchLogProcessor(job, lines)
-
-        starts = processor._get_rows(enums.LogEventType.MatchStart)
-        self.assertEqual(1, len(starts))
-        self.assertEqual(["Ilios", "Control", "Team, A", "Team, B"], starts.iloc[0]["data"])
-        self.assertEqual(1, len(processor._get_rows(enums.LogEventType.Kill)))
-        self.assertTrue(processor._get_rows(enums.LogEventType.PlayerStat).empty)
 
 
 class BulkInsertTests(IsolatedAsyncioTestCase):

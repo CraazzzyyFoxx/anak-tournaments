@@ -43,7 +43,7 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
   evaluation runs and the manual grant/revoke overlay.
 - **MVP impact scoring** — derived stats (`PerformancePoints`, `Performance`, `ImpactPoints`,
   `ImpactRank`, `OverperformanceScore`), the versioned baselines they are scored against, and the
-  idempotent historical backfill.
+  idempotent historical backfill. The Workshop decoder and these formulas are the Overwatch module's (`shared/disciplines/overwatch/`: `ingest`, `impact`, `baselines`, `backfill`); the parser reaches them through `shared.disciplines`.
 - **Subscription entitlement collection** — periodic and on-demand re-checks of Discord/Twitch
   subscription entitlements used as a registration admission condition.
 - **Global settings and the per-tournament Discord channel binding.**
@@ -289,7 +289,7 @@ to a matching discipline and kind and closes the miss in one request.
 `backend/env/parser.env`, layered on `backend/env/common.env` (see
 [`parser.env.example`](../env/parser.env.example)). Settings that actually change behaviour:
 
-- **Ingestion caps** — `MAX_MATCH_LOG_BYTES` (25 MiB), `MAX_MATCH_LOG_LINES` (500k).
+- **Ingestion caps** — `MAX_MATCH_LOG_BYTES` (25 MiB); `MAX_MATCH_LOG_LINES` (500k) is read by the Overwatch decoder (`shared/disciplines/overwatch/ingest.py`).
 - **Stall reaper** — `LOG_REAPER_ENABLED`, `LOG_REAPER_TICK_SECONDS`,
   `LOG_REAPER_PENDING_AFTER_SECONDS`, `LOG_REAPER_PROCESSING_AFTER_SECONDS`,
   `LOG_REAPER_MAX_ATTEMPTS`, `LOG_REAPER_BATCH_SIZE`.

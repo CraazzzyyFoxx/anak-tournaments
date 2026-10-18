@@ -14,7 +14,6 @@ class AppConfig(BaseServiceSettings):
     # size limit). Enforced before base64-decode and before building the parsing
     # DataFrame.
     max_match_log_bytes: int = 25 * 1024 * 1024
-    max_match_log_lines: int = 500_000
 
     # Match-log stall recovery (src/services/match_logs/reaper.py). The
     # process_match_log queue TTLs messages after 5 minutes, so a record whose

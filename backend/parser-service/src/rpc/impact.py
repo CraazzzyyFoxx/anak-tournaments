@@ -6,9 +6,8 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared.core.impact import FORMULA_VERSION
+from shared.disciplines import DISCIPLINES
 from src.core import db
-from src.services.baselines import service as baselines_service
 
 from . import _common as c
 
@@ -20,7 +19,6 @@ def register(broker: Any, logger: Any) -> None:
     async def _recompute(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
-            rows = await baselines_service.recompute(session, discipline="overwatch")
-            return {"rows": rows, "formula_version": FORMULA_VERSION}
+            return await DISCIPLINES["overwatch"].collection_handlers["impact.recompute_baselines"](session, None, data)
 
         return await c.envelope(logger, "impact.recompute_baselines", op, session_factory=_SF)

@@ -20,7 +20,6 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
 shared_models = importlib.import_module("shared.models")
-repository = importlib.import_module("shared.repository")
 
 
 class CatalogAliasSchemaTests(TestCase):
@@ -52,23 +51,3 @@ class CatalogAliasSchemaTests(TestCase):
         self.assertFalse(columns["occurrences"].nullable)
         self.assertTrue(columns["resolved_at"].nullable)
         self.assertTrue(columns["last_ingest_job_id"].nullable)
-
-
-class MapAliasLookupTests(TestCase):
-    def test_map_lookup_matches_name_or_alias_for_both_map_and_gamemode(self) -> None:
-        query = repository.CatalogEntityRepository.build_map_name_or_alias_query(
-            discipline="overwatch", name="Илиос", mode_name="Контроль"
-        )
-        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
-
-        self.assertIn("catalog.entity.name = 'Илиос'", sql)
-        self.assertIn("mode.name = 'Контроль'", sql)
-        # One containment test per side: map.aliases and gamemode.aliases.
-        self.assertEqual(2, sql.count("@>"), f"expected two JSONB containment predicates in:\n{sql}")
-
-    def test_the_query_joins_the_gamemode_so_both_predicates_bind(self) -> None:
-        query = repository.CatalogEntityRepository.build_map_name_or_alias_query(
-            discipline="overwatch", name="Ilios", mode_name="Control"
-        )
-        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
-        self.assertIn("JOIN catalog.entity AS mode", sql)

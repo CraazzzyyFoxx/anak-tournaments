@@ -25,7 +25,7 @@ def config(*, items=(), slots=(), stage_id=None, round=None):
 
 class MatchLogMapPoolTests(IsolatedAsyncioTestCase):
     async def validate(self, configs):
-        processor = flows.MatchLogProcessor(SimpleNamespace(filename="new.log", discipline="overwatch"), [])
+        processor = flows.MatchLogProcessor(SimpleNamespace(filename="new.log", discipline="overwatch"), None)
         with patch.object(flows.encounter_service, "bracket_positions", AsyncMock(return_value={7: (4, 2)})):
             await processor._validate_map_pool(
                 AsyncMock(), SimpleNamespace(id=7), SimpleNamespace(id=3, name="Ilios"), configs

@@ -23,6 +23,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from shared.core.impact import FORMULA_VERSION
+from shared.disciplines.overwatch import baselines as baseline_module
+from shared.disciplines.overwatch import impact
+from shared.disciplines.overwatch.backfill import BackfillService
+from shared.disciplines.overwatch.baseline_rows import build_baseline_rows
+from shared.disciplines.overwatch.impact_backfill import _merge_events, _rank_by_impact, rebuild_frames
 from shared.models import AuditLog
 from shared.repository.baselines import StatBaselineRepository
 from shared.repository.stats import StatDefRepository
@@ -30,11 +35,6 @@ from shared.repository.stats_queries import player_facts, team_scores
 from shared.services.stats_evidence import owner_scopes
 from src import models
 from src.core import enums
-from src.domain.baselines import build_baseline_rows
-from src.domain.match_logs import impact
-from src.domain.match_logs.impact_backfill import _merge_events, _rank_by_impact, rebuild_frames
-from src.services.baselines import service as baseline_module
-from src.services.match_logs.backfill import BackfillService
 from src.services.match_logs.objectiveless import resolve_encounter_maps
 
 GOLDEN = Path(__file__).parent / "fixtures" / "stats_derived_parity.json"

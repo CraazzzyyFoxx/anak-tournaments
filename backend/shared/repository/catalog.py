@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
 import typing
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
@@ -16,17 +15,6 @@ from shared.core import enums
 from shared.repository.base import BaseRepository
 from shared.repository.stats_queries import player_facts
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
-
-
-def _jsonb_array(value: str) -> sa.Cast[typing.Any]:
-    """`'["value"]'::jsonb` as an explicit cast of a string literal.
-
-    JSONB has no literal renderer, so binding a Python list directly makes the
-    statement impossible to compile with `literal_binds` — i.e. impossible to
-    assert on without a live connection. Casting a serialised string keeps the
-    emitted SQL identical and the query inspectable.
-    """
-    return sa.cast(sa.literal(json.dumps([value])), JSONB)
 
 
 class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
@@ -89,36 +77,6 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
             .where(legacy.legacy_kind == legacy_kind, legacy.legacy_id == legacy_id)
         )
         return (await session.execute(query)).scalars().first()
-
-    @staticmethod
-    def build_map_name_or_alias_query(
-        *, discipline: str, name: str, mode_name: str
-    ) -> sa.Select[tuple[models.CatalogEntity]]:
-        """A map by name-or-alias inside a mode by name-or-alias, as a match log names both. Synchronous so the
-        predicates can be asserted without a database; ``aliases @> '["…"]'`` on each side.
-
-        ponytail: no GIN index on aliases — ~45 maps and ~10 modes, one query per log. Add
-        ``USING gin (aliases jsonb_path_ops)`` when maps reach the hundreds.
-        """
-        game_map = models.CatalogEntity
-        mode = aliased(models.CatalogEntity, name="mode")
-        return (
-            sa.select(game_map)
-            .join(mode, mode.id == game_map.parent_id)
-            .where(
-                game_map.discipline == discipline,
-                game_map.kind == "map",
-                mode.kind == "mode",
-                sa.or_(game_map.name == name, game_map.aliases.contains(_jsonb_array(name))),
-                sa.or_(mode.name == mode_name, mode.aliases.contains(_jsonb_array(mode_name))),
-            )
-        )
-
-    async def get_map_by_name_or_alias(
-        self, session: AsyncSession, *, discipline: str, name: str, mode_name: str
-    ) -> models.CatalogEntity | None:
-        query = self.build_map_name_or_alias_query(discipline=discipline, name=name, mode_name=mode_name)
-        return (await session.execute(query)).scalar_one_or_none()
 
     async def playtime(
         self,

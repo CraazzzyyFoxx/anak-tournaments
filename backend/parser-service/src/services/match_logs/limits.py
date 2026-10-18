@@ -2,8 +2,6 @@
 
 import csv
 
-from src.core import enums
-
 MATCH_NOT_FINISHED_MESSAGE = "Match is not finished yet: the log has no match_end event"
 
 
@@ -17,10 +15,9 @@ def match_log_oversize_message(nbytes: int, max_bytes: int, *, filename: str | N
 def match_log_finished(content: bytes) -> bool:
     """Whether a Workshop log carries its ``match_end`` row.
 
-    The processor fails an unfinished log anyway (``MatchLogProcessor.validate``);
-    checking at upload turns a log that is still being written into an
-    immediate per-file error instead of a stored object and a doomed parse job.
-    The browser auto-uploader relies on that answer to keep waiting.
+    The Workshop decoder fails an unfinished log anyway; checking at upload turns a log that is still being
+    written into an immediate per-file error instead of a stored object and a doomed parse job. The browser
+    auto-uploader relies on that answer to keep waiting.
     """
     lines = content.decode("utf-8", errors="replace").splitlines()
-    return any(len(row) > 2 and row[1].strip() == enums.LogEventType.MatchEnd for row in csv.reader(lines))
+    return any(len(row) > 2 and row[1].strip() == "match_end" for row in csv.reader(lines))

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.catalog_sync import CatalogImageMirror
+    from shared.disciplines.ingest import Decoder, DeriveMatch
     from shared.models.identity.auth_user import AuthUser
 
 #: Pull the module's catalog source into ``catalog.entity`` (commits itself).
@@ -191,6 +192,11 @@ class DisciplineSpec:
     stop_jobs: StopJobs | None = field(default=None, compare=False)
     #: RPC suffix (``rank.collect``) -> handler for the collection operations the module serves.
     collection_handlers: dict[str, CollectionHandler] = field(default_factory=dict, compare=False, hash=False)
+    #: Raw producers the module decodes (D95): source kind -> ``decode(raw, ctx)``. ``shared.disciplines.INGESTORS`` keys
+    #: them by ``(code, kind)``; a kind not listed here is unsupported, never routed to another producer.
+    ingestors: dict[str, Decoder] = field(default_factory=dict, compare=False, hash=False)
+    #: Facts that need the bound match (baselines, registration ranks); ``None`` when nothing derives after binding.
+    derive_match: DeriveMatch | None = field(default=None, compare=False)
 
     @property
     def rated_dimension(self) -> DimensionSpec:

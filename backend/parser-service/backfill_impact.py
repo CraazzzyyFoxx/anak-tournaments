@@ -13,9 +13,9 @@ preserves raw/character facts and audits each per-match commit. Safe to rerun.
 import argparse
 import asyncio
 
+from shared.disciplines.overwatch.backfill import backfill_all
 from src.core import db
 from src.core.caching import configure_cache
-from src.services.match_logs.backfill import backfill_all
 
 
 def _parse_args() -> argparse.Namespace:

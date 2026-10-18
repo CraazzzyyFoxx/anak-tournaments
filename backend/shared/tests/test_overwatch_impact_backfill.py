@@ -1,19 +1,9 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pandas as pd
 
-REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-PARSER_SERVICE_ROOT = REPO_BACKEND_ROOT / "parser-service"
-
-for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
-
-from shared.core import enums  # noqa: E402
-from src.domain.match_logs import impact_backfill  # noqa: E402
+from shared.core import enums
+from shared.disciplines.overwatch import impact_backfill
 
 
 def _stat_rows():

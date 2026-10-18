@@ -4,7 +4,7 @@ Everything here is deterministic and DB-free — turning a match's OLD stat rows
 back into the two MVP pivots the live pipeline builds from a raw log, merging
 in kill-feed-derived event stats, and ranking by impact. IO (reading rosters/
 kill-feed/baselines, writing the 7 derived stats back) lives in
-``src.services.match_logs.backfill.BackfillService``, which also documents the
+``shared.disciplines.overwatch.backfill.BackfillService``, which also documents the
 idempotency contract these functions protect.
 """
 
@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from shared.core import enums
 from shared.core import impact as impact_consts
-from src.core import enums
 
 __all__ = (
     "NEW_STAT_MEMBERS",

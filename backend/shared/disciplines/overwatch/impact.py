@@ -11,19 +11,21 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from shared import models
+from shared.core import enums
 from shared.core.impact import (
     EVENT_STATS,
     IMPACT_WEIGHTS,
     MIN_SECONDS,
     WINSOR_LIMIT,
 )
-from src import models
-from src.core import enums
+from shared.disciplines.overwatch.enums import AbilityEvent
 
 __all__ = (
     "FIGHT_GAP_SECONDS",
     "BaselineSet",
     "ImpactContext",
+    "KillRow",
     "PlayerRef",
     "add_impact_scores",
     "assign_fights",
@@ -39,7 +41,19 @@ _EVENT_COLS = list(EVENT_STATS)
 FIGHT_GAP_SECONDS = 15.0
 
 
-def assign_fights(kill_feed: Sequence[models.StatsEvent]) -> None:
+@dataclass(slots=True)
+class KillRow:
+    """A kill as the formulas read it: a decoded kill and a ``stats.event`` row have exactly this shape."""
+
+    t: float
+    segment: int
+    actor_member_id: int | None
+    target_member_id: int | None
+    related_entity_id: int | None
+    data: dict | None = None
+
+
+def assign_fights(kill_feed: Sequence[KillRow | models.StatsEvent]) -> None:
     """Assign 1-indexed fight ids through tracked, complete JSON assignments.
 
     A new fight begins on a **new round** OR after a gap longer than
@@ -54,7 +68,7 @@ def assign_fights(kill_feed: Sequence[models.StatsEvent]) -> None:
     so re-running the backfill produces identical fight ids (idempotent).
     """
     fight = 0
-    prev: models.StatsEvent | None = None
+    prev: KillRow | models.StatsEvent | None = None
     for kill in sorted(kill_feed, key=lambda k: k.t):
         if prev is None:
             fight = 1
@@ -112,7 +126,7 @@ class ImpactContext:
 
 
 def build_event_counts(
-    kill_feed: Sequence[models.StatsEvent],
+    kill_feed: Sequence[KillRow | models.StatsEvent],
     hero_types: Mapping[int, enums.HeroClass],
     *,
     member_user_ids: Mapping[int, int],
@@ -138,7 +152,7 @@ def build_event_counts(
                 member_user_ids[k.target_member_id] if k.target_member_id is not None else None for k in kill_feed
             ],
             "victim_hero_id": [k.related_entity_id for k in kill_feed],
-            "is_ult": [(k.data or {}).get("ability") == enums.AbilityEvent.Ultimate.value for k in kill_feed],
+            "is_ult": [(k.data or {}).get("ability") == AbilityEvent.Ultimate.value for k in kill_feed],
         }
     ).sort_values("time")
 

@@ -4,7 +4,7 @@
 baseline component dicts. No ``AsyncSession``, ``await``, or ``asyncio`` —
 see ``backend/ARCHITECTURE.md``'s "domain/ boundary". Loading the frame from
 the DB and atomically replacing a formula version's rows is IO and lives in
-``src.services.baselines.service.BaselineService``.
+``shared.disciplines.overwatch.baselines.BaselineService``.
 """
 
 from __future__ import annotations
