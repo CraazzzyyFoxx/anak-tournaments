@@ -6579,7 +6579,7 @@ export interface paths {
         };
         /**
          * List player sub-roles
-         * @description Permission: workspace `player.read`. Lists a workspace's player sub-roles, optionally filtered by role and including inactive ones.
+         * @description Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.
          *
          *     RPC subject: `rpc.tournament.admin.list`
          */
@@ -13974,6 +13974,8 @@ export interface components {
             closeness: number;
             /** Count Teams */
             count_teams: number;
+            /** Discipline */
+            discipline: string;
             /**
              * Division
              * @default null
@@ -14009,6 +14011,8 @@ export interface components {
             team_id: number;
             /** Won */
             won: number;
+            /** Workspace Id */
+            workspace_id: number;
         };
         /**
          * UserTournamentPlayer
@@ -52690,9 +52694,9 @@ export interface operations {
     };
     get__api_v1_admin_player_sub_roles: {
         parameters: {
-            query?: {
+            query: {
                 workspace_id?: number;
-                discipline?: string;
+                discipline: string;
                 role?: string;
                 include_inactive?: boolean;
             };

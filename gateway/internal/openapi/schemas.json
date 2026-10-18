@@ -7077,7 +7077,7 @@
       "summary": "Get tournament (admin)"
     },
     "rpc.tournament.admin.list#player_sub_role": {
-      "description": "Permission: workspace `player.read`. Lists a workspace's player sub-roles, optionally filtered by role and including inactive ones.",
+      "description": "Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.",
       "query_params": [
         {
           "name": "workspace_id",
@@ -7088,9 +7088,9 @@
         },
         {
           "name": "discipline",
-          "required": false,
+          "required": true,
           "schema": {
-            "description": "Discipline code; defaults to overwatch.",
+            "description": "Explicit discipline code.",
             "type": "string"
           }
         },
@@ -21772,6 +21772,10 @@
           "title": "Count Teams",
           "type": "integer"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "division": {
           "anyOf": [
             {
@@ -21870,11 +21874,17 @@
         "won": {
           "title": "Won",
           "type": "integer"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
         }
       },
       "required": [
         "id",
         "name",
+        "workspace_id",
+        "discipline",
         "is_league",
         "team_id",
         "team",
