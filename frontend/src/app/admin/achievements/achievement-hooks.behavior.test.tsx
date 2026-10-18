@@ -2,7 +2,7 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AchievementRule } from "@/types/admin.types";
 
@@ -63,8 +63,8 @@ const RULE: AchievementRule = {
 interface ActionsUnderTest {
   importResult: unknown;
   importError: string | null;
-  seedMutation: { mutate: () => void };
-  hardResetMutation: { mutate: () => void };
+  seed: () => void;
+  hardReset: () => void;
   importRulesFromFile: (file: File) => Promise<void>;
   exportRules: () => Promise<void>;
   evaluate: (tournamentId: number | undefined, ruleIds: Set<number>) => void;
@@ -90,6 +90,11 @@ function mount(use: () => void) {
 }
 
 const invalidatedKeys = () => invalidate.mock.calls.map((call) => (call[0] as { queryKey: unknown[] }).queryKey);
+
+afterEach(async () => {
+  // A root left mounted would keep re-rendering its probe into the shared `form`/`actions` variables.
+  await act(async () => root.unmount());
+});
 
 beforeEach(() => {
   for (const fn of Object.values(service)) fn.mockReset();
@@ -199,8 +204,8 @@ describe("the achievement actions are scoped to a discipline", () => {
     service.evaluateAchievements.mockResolvedValue({ id: "run" });
     await mount(useActions("lol"));
 
-    await act(async () => actions.seedMutation.mutate());
-    await act(async () => actions.hardResetMutation.mutate());
+    await act(async () => actions.seed());
+    await act(async () => actions.hardReset());
     await act(async () => actions.evaluate(3, new Set([5])));
 
     expect(service.seedAchievementRules).toHaveBeenCalledWith(7, "lol");
@@ -208,6 +213,38 @@ describe("the achievement actions are scoped to a discipline", () => {
     expect(service.evaluateAchievements).toHaveBeenCalledWith(7, "lol", { tournament_id: 3, rule_ids: [5] });
     expect(invalidatedKeys()).toContainEqual(["admin", "overrides", 7, "all", "lol"]);
     expect(invalidatedKeys()).not.toContainEqual(["admin", "achievements", 7, "overwatch"]);
+  });
+
+  it("finishes a seed against the game it started in when another game is selected meanwhile", async () => {
+    const pending = Promise.withResolvers<{ seeded: number; removed: number }>();
+    service.seedAchievementRules.mockReturnValue(pending.promise);
+    await mount(useActions("overwatch"));
+    await act(async () => actions.seed());
+    await mount(useActions("lol")); // the page switched games while the seed is still running
+    await act(async () => {
+      pending.resolve({ seeded: 1, removed: 0 });
+      await pending.promise;
+    });
+
+    expect(service.seedAchievementRules).toHaveBeenCalledWith(7, "overwatch");
+    expect(invalidatedKeys()).toContainEqual(["admin", "achievements", 7, "overwatch"]);
+    expect(invalidatedKeys()).not.toContainEqual(["admin", "achievements", 7, "lol"]);
+  });
+
+  it("clears the started game's overrides after a reset, not the selected game's", async () => {
+    const pending = Promise.withResolvers<unknown>();
+    service.hardResetAchievementRules.mockReturnValue(pending.promise);
+    await mount(useActions("overwatch"));
+    await act(async () => actions.hardReset());
+    await mount(useActions("lol"));
+    await act(async () => {
+      pending.resolve({ seeded: 0, removed: 0, cleared_results: 0, run: { id: "r" } });
+      await pending.promise;
+      await new Promise<void>((done) => setTimeout(done, 20)); // let the mutation observer deliver onSuccess
+    });
+
+    expect(invalidatedKeys()).toContainEqual(["admin", "overrides", 7, "all", "overwatch"]);
+    expect(invalidatedKeys()).not.toContainEqual(["admin", "overrides", 7, "all", "lol"]);
   });
 
   it("exports the selected game's rules", async () => {

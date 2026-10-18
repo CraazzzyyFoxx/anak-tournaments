@@ -194,16 +194,22 @@ class AchievementQueries:
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         workspace_id: int | None = None,
+        discipline: str | None = None,
     ) -> tuple[typing.Sequence[tuple[AchievementRule, float]], int]:
         """Paginated list of achievement rules with rarity.
 
         Without a workspace (the cross-workspace view) rules are deduplicated by
         (discipline, slug): one representative per key, carrying the pooled rarity.
+        ``discipline`` narrows either view to one game.
         """
         merge_slugs = not workspace_id
         filters = [AchievementRule.enabled.is_(True)]
         if workspace_id:
             filters.append(AchievementRule.workspace_id == workspace_id)
+        if discipline is not None:
+            # Pooling stays per (discipline, slug): the representatives and the rarity are grouped by both, so
+            # narrowing to one game drops the other games' groups whole and never re-pools what is left.
+            filters.append(AchievementRule.discipline == discipline)
 
         count_query = sa.select(sa.func.count(AchievementRule.id)).where(*filters)
         if merge_slugs:

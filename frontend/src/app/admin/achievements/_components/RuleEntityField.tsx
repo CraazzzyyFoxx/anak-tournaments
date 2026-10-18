@@ -13,14 +13,15 @@ import {
 } from "@/components/ui/select";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import adminService from "@/services/admin.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const NONE = "none";
 
 /**
  * The character a rule shows, chosen from that rule's *own* game's catalog. The
  * catalog is keyed by `discipline`, so an Overwatch list can never be offered
- * to a League rule. When the catalog cannot be read (it is a superuser read) the
- * current link is kept and shown by id rather than silently cleared.
+ * to a League rule. The read is the workspace-scoped one open to anyone who may edit
+ * the workspace's achievements. When it still cannot be read the current link is kept and shown by id rather than silently cleared.
  */
 export function RuleEntityField({
   discipline,
@@ -32,10 +33,11 @@ export function RuleEntityField({
   onChange: (entityId: number | null) => void;
 }>) {
   const t = useTranslations("adminAchievements");
+  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { data, isError, isPending } = useQuery({
-    queryKey: achievementQueryKeys.entities(discipline),
-    queryFn: () => adminService.getCatalogCharacters(discipline),
-    enabled: discipline !== "",
+    queryKey: achievementQueryKeys.entities(workspaceId, discipline),
+    queryFn: () => adminService.getCatalogCharacters(workspaceId!, discipline),
+    enabled: discipline !== "" && workspaceId !== null,
     staleTime: 5 * 60_000,
   });
 

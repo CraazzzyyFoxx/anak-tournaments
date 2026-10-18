@@ -973,6 +973,146 @@
       },
       "summary": "Resolve an old catalog id"
     },
+    "rpc.app.catalog.workspace_characters": {
+      "description": "Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a discipline without characters.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "enum": [
+              "id",
+              "name",
+              "slug",
+              "parent_id",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "search",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Search"
+          }
+        },
+        {
+          "name": "parent_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Id"
+          }
+        },
+        {
+          "name": "attrs",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attrs"
+          }
+        },
+        {
+          "name": "active",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Active"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CatalogEntityRead_"
+      },
+      "summary": "List a discipline's characters for a workspace"
+    },
     "rpc.app.catalog_aliases.attach": {
       "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes that entity's discipline/kind miss in one transaction; 404 if the entity is missing. Stat/event/role misses are never attachable (dismiss only).",
       "request": {
@@ -1597,6 +1737,22 @@
           "schema": {
             "$ref": "#/components/schemas/app.SortOrder",
             "default": "asc"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         }
       ],
@@ -12565,6 +12721,67 @@
       "title": "AchievementEarned",
       "type": "object"
     },
+    "app.AchievementListQueryParams": {
+      "description": "The public achievement list: ``discipline`` narrows it to one game (absent: every game's rules).",
+      "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "sort": {
+          "default": "id",
+          "enum": [
+            "id",
+            "name",
+            "slug",
+            "rarity",
+            "similarity:name",
+            "similarity:slug"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "title": "AchievementListQueryParams",
+      "type": "object"
+    },
     "app.AchievementMatchLink": {
       "description": "Narrow match reference for achievement payloads.",
       "properties": {
@@ -16942,54 +17159,6 @@
         }
       },
       "title": "PaginationSortQueryParams[Literal['id', 'name', 'closeness', 'round', 'played_at']]",
-      "type": "object"
-    },
-    "app.PaginationSortQueryParams_Literal__id____name____slug____rarity____similarity___similarity__": {
-      "properties": {
-        "entities": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entities",
-          "type": "array"
-        },
-        "only_count": {
-          "default": false,
-          "title": "Only Count",
-          "type": "boolean"
-        },
-        "order": {
-          "$ref": "#/components/schemas/app.SortOrder",
-          "default": "asc"
-        },
-        "page": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "default": 10,
-          "maximum": 100,
-          "minimum": -1,
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "sort": {
-          "default": "id",
-          "enum": [
-            "id",
-            "name",
-            "slug",
-            "rarity",
-            "similarity:name",
-            "similarity:slug"
-          ],
-          "title": "Sort",
-          "type": "string"
-        }
-      },
-      "title": "PaginationSortQueryParams[Literal['id', 'name', 'slug', 'rarity', 'similarity:name', 'similarity:slug']]",
       "type": "object"
     },
     "app.PaginationSortQueryParams_Literal__id____name____value___": {

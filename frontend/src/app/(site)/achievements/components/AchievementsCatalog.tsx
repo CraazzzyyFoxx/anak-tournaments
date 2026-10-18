@@ -92,6 +92,15 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       ? t("common.scope.all")
       : workspaces.find((w) => w.id === workspaceId)?.name;
 
+  // The games the current scope can hold: the workspaces' enabled disciplines, in first-seen order.
+  const games = useMemo(() => {
+    const scoped = scope === "all" ? workspaces : workspaces.filter((w) => w.id === workspaceId);
+    return Array.from(new Set(scoped.flatMap((w) => w.disciplines_enabled)));
+  }, [scope, workspaces, workspaceId]);
+  // A game in the URL that the scope does not have is no filter at all.
+  const gameParam = searchParams.get("game");
+  const gameFilter = gameParam !== null && games.includes(gameParam) ? gameParam : null;
+
   const rarityParam = searchParams.get("rarity");
   const rarityFilter: Rarity | null = isRarity(rarityParam) ? rarityParam : null;
   const categoryFilter = (searchParams.get("category") as AchievementCategory | null) ?? null;
@@ -100,9 +109,9 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const sort: SortBy = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "rarity";
 
   const { data, isLoading, isError, refetch } = useQuery({
-    // Not filtered by game: every rule carries its own `discipline`, so one list serves all.
-    queryKey: achievementQueryKeys.all(scopeId, null),
-    queryFn: () => achievementsService.getAll(1, -1, scopeId)
+    // The game is part of the read and of its key: the reader pools and divides per game server-side.
+    queryKey: achievementQueryKeys.all(scopeId, gameFilter),
+    queryFn: () => achievementsService.getAll(1, -1, scopeId, gameFilter)
   });
 
   const results = useMemo(() => data?.results ?? [], [data?.results]);
@@ -187,6 +196,9 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const filtersActive = rarityFilter !== null || categoryFilter !== null || search.trim() !== "";
 
   const clearFilters = () => setParams({ rarity: null, category: null, q: null });
+  // Keys are built from a game code the statically typed `t` cannot know; an unknown game reads as its code.
+  const looseT = t as unknown as { (key: string): string; has(key: string): boolean };
+  const gameLabel = (game: string) => (looseT.has(`achievements.game.${game}`) ? looseT(`achievements.game.${game}`) : game);
 
   if (isLoading) return <PageSkeleton />;
 
@@ -240,6 +252,27 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
                 onClick={() => setParams({ category: categoryFilter === cat ? null : cat })}
               >
                 {t(`achievements.category.${cat}`)}
+              </FilterChip>
+            ))}
+          </div>
+        ) : null}
+
+        {games.length > 1 ? (
+          <div
+            role="group"
+            aria-label={t("achievements.gameFilter")}
+            className="flex shrink-0 items-center gap-2"
+          >
+            <FilterChip active={gameFilter === null} onClick={() => setParams({ game: null })}>
+              {t("achievements.game.all")}
+            </FilterChip>
+            {games.map((game) => (
+              <FilterChip
+                key={game}
+                active={gameFilter === game}
+                onClick={() => setParams({ game: gameFilter === game ? null : game })}
+              >
+                {gameLabel(game)}
               </FilterChip>
             ))}
           </div>

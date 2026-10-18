@@ -10,7 +10,7 @@ describe("achievement query keys", () => {
     ["libraryRules", (d: string) => keys.libraryRules(7, 9, d)],
     ["libraryWorkspaces", (d: string) => keys.libraryWorkspaces(7, d)],
     ["overridesAll", (d: string) => keys.overridesAll(7, d)],
-    ["entities", (d: string) => keys.entities(d)],
+    ["entities", (d: string) => keys.entities(7, d)],
   ])("%s never shares an entry between two games", (_name, key) => {
     expect(key("overwatch")).not.toEqual(key("lol"));
     expect(key("lol")).toContain("lol");

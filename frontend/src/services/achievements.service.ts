@@ -4,8 +4,16 @@ import { Achievement, AchievementEarned } from "@/types/achievement.types";
 import { scopeQuery, type StatsScope } from "@/lib/site/stats-scope";
 
 export default class achievementsService {
-  /** `workspaceId` may be `"all"` — every workspace (platform apex only). */
-  static async getAll(page: number, perPage: number, workspaceId?: number | "all" | null): Promise<PaginatedResponse<Achievement>> {
+  /**
+   * `workspaceId` may be `"all"` — every workspace (platform apex only).
+   * `discipline` narrows the list to one game; omitted, every game's rules are listed.
+   */
+  static async getAll(
+    page: number,
+    perPage: number,
+    workspaceId?: number | "all" | null,
+    discipline?: string | null
+  ): Promise<PaginatedResponse<Achievement>> {
     return apiFetch(`/api/v1/achievements`, {
       query: {
         per_page: perPage,
@@ -14,6 +22,7 @@ export default class achievementsService {
         order: "asc",
         entities: ["count"],
         ...(workspaceId ? { workspace_id: workspaceId } : {}),
+        ...(discipline ? { discipline } : {}),
       }
     }).then((res) => res.json());
   }

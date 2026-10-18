@@ -982,10 +982,13 @@ class AdminService {
     await apiFetch(`${OVERWATCH_CATALOG}/character/${id}`, { method: "DELETE" });
   }
 
-  /** Every character of one discipline's catalog (a rule links one of them), in any state. */
-  async getCatalogCharacters(discipline: string): Promise<CatalogEntityRead[]> {
+  /**
+   * Every character of one discipline's catalog, for a workspace's achievement editor. A read open to the
+   * workspace's achievement editors (the platform catalog list is superuser-only).
+   */
+  async getCatalogCharacters(workspaceId: number, discipline: string): Promise<CatalogEntityRead[]> {
     const page: PaginatedResponse<CatalogEntityRead> = await (
-      await apiFetch(`/api/v1/admin/catalog/${discipline}/character`, {
+      await apiFetch(`/api/v1/admin/ws/${workspaceId}/catalog/${discipline}/character`, {
         query: { per_page: -1, sort: "name", order: "asc" }
       })
     ).json();

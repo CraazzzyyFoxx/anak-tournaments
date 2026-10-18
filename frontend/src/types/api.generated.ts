@@ -8972,6 +8972,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ws/{workspace_id}/catalog/{discipline}/character": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a discipline's characters for a workspace
+         * @description Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a discipline without characters.
+         *
+         *     RPC subject: `rpc.app.catalog.workspace_characters`
+         */
+        get: operations["get__api_v1_admin_ws__workspace_id__catalog__discipline__character"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/ws/{workspace_id}/registration-form-templates": {
         parameters: {
             query?: never;
@@ -28380,6 +28402,7 @@ export interface operations {
                 only_count?: boolean;
                 sort?: PathsApiV1AchievementsGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
@@ -63080,6 +63103,96 @@ export interface operations {
             };
         };
     };
+    get__api_v1_admin_ws__workspace_id__catalog__discipline__character: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                sort?: PathsApiV1AdminWsWorkspace_idCatalogDisciplineCharacterGetParametersQuerySort;
+                order?: components["schemas"]["app.SortOrder"];
+                search?: string | null;
+                parent_id?: number | null;
+                attrs?: string | null;
+                active?: boolean | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_CatalogEntityRead_"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_admin_ws__workspace_id__registration_form_templates: {
         parameters: {
             query?: never;
@@ -74171,6 +74284,14 @@ export enum PathsApiV1AdminWsWorkspace_idAchievementsRulesGetParametersQuerySort
     grain = "grain",
     rule_version = "rule_version",
     created_at = "created_at"
+}
+export enum PathsApiV1AdminWsWorkspace_idCatalogDisciplineCharacterGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    slug = "slug",
+    parent_id = "parent_id",
+    created_at = "created_at",
+    updated_at = "updated_at"
 }
 export enum PathsApiV1AuthRbacOauthConnectionsGetParametersQuerySort {
     id = "id",

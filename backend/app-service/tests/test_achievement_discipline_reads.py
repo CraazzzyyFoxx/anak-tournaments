@@ -167,9 +167,11 @@ class _DbCase(IsolatedAsyncioTestCase):
             ],
         )
 
-    async def _catalogue(self, workspace_id: int | None = None) -> pagination.Paginated[AchievementRead]:
+    async def _catalogue(
+        self, workspace_id: int | None = None, discipline: str | None = None
+    ) -> pagination.Paginated[AchievementRead]:
         params = pagination.PaginationSortParams(per_page=100, sort="id", order="desc", entities=["entity", "count"])
-        return await achievements.get_all(self.session, params, workspace_id=workspace_id)
+        return await achievements.get_all(self.session, params, workspace_id=workspace_id, discipline=discipline)
 
     async def mine(self, workspace_id: int | None = None) -> dict[str, AchievementRead]:
         """This test's rules in a catalogue read, by discipline (one per (discipline, slug))."""
@@ -270,6 +272,39 @@ class PooledCatalogueTests(_TwoGames):
         self.assertTrue(all(r.entity is None and r.count is None for r in mine))
         self.assertNotIn("hero_id", AchievementRead.model_fields)
         self.assertNotIn("hero", AchievementRead.model_fields)
+
+
+class DisciplineFilterTests(_TwoGames):
+    async def test_the_filter_lists_one_game_with_its_own_pooling(self) -> None:
+        for game, rule, count, players in (
+            (OW, self.ow1, 2, self.baseline[OW] + 3),
+            (LOL, self.lol1, 3, self.baseline[LOL] + 5),
+        ):
+            with self.subTest(game=game):
+                page = await self._catalogue(discipline=game)
+                mine = [r for r in page.results if r.slug == self.slug]
+                self.assertEqual([(rule.id, game)], [(r.id, r.discipline) for r in mine])
+                self.assertEqual({game}, {r.discipline for r in page.results})
+                self.assertEqual(count, mine[0].count)
+                self.assertAlmostEqual(count / players, mine[0].rarity)
+                # the total counts only this game's representatives
+                self.assertEqual(len(page.results), page.total)
+
+    async def test_the_filter_narrows_a_workspace_view_and_an_unknown_game_is_empty(self) -> None:
+        page = await self._catalogue(self.wo1.id, discipline=LOL)
+        self.assertEqual(([], 0), (page.results, page.total))
+        own = await self._catalogue(self.wo1.id, discipline=OW)
+        self.assertEqual([self.ow1.id], [r.id for r in own.results if r.slug == self.slug])
+        nothing = await self._catalogue(discipline="chess")
+        self.assertEqual(([], 0), (nothing.results, nothing.total))
+
+    async def test_the_public_list_params_accept_a_discipline(self) -> None:
+        from shared.rpc.query import build_query_model
+        from src.schemas import AchievementListQueryParams
+
+        qp = build_query_model(AchievementListQueryParams, {"discipline": ["lol"], "sort": ["rarity"]})
+        self.assertEqual(("lol", "rarity"), (qp.discipline, qp.sort))
+        self.assertIsNone(build_query_model(AchievementListQueryParams, {}).discipline)
 
 
 class RuleDetailTests(_TwoGames):

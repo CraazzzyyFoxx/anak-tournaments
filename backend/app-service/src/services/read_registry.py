@@ -35,7 +35,6 @@ from src.services.map.service import maps as map_service
 _HERO_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
 _MAP_SORT = typing.Literal["id", "parent_id", "name", "similarity:name"]
 _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
-_ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 
 _gamemode_repo = CatalogEntityRepository("mode", discipline="overwatch")
 
@@ -126,9 +125,11 @@ async def _achievement_get(session: AsyncSession, obj_id: int, data: dict[str, A
 
 
 async def _achievement_list(session: AsyncSession, data: dict[str, Any]) -> Any:
-    qp = build_query_model(pagination.PaginationSortQueryParams[_ACH_SORT], data.get("query"))
+    qp = build_query_model(schemas.AchievementListQueryParams, data.get("query"))
     params = pagination.PaginationSortParams.from_query_params(qp)
-    result = await achievement_service.get_all(session, params, workspace_id=c.q_workspace_id(data))
+    result = await achievement_service.get_all(
+        session, params, workspace_id=c.q_workspace_id(data), discipline=qp.discipline
+    )
     return result.model_dump(mode="json")
 
 

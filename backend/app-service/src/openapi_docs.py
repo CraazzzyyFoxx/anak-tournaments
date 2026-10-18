@@ -396,6 +396,10 @@ DOCS: dict[str, dict] = {
         "summary": "Admin list catalog entities",
         "description": "Permission: superuser only. Returns a paginated list of one discipline's catalog entities of one kind (character, map, mode); filters search, parent_id, attrs (JSON containment), active; 404 for a kind the discipline does not declare.",
     },
+    "rpc.app.catalog.workspace_characters": {
+        "summary": "List a discipline's characters for a workspace",
+        "description": "Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a discipline without characters.",
+    },
     "rpc.app.catalog.admin_create": {
         "summary": "Create catalog entity",
         "description": "Permission: superuser only. Creates a catalog entity; slug defaults to the slugified name and must fit 64 characters (422 otherwise); a character's attrs.class must be one of the discipline's classes; a map of a discipline with modes needs its mode as parent_id.",

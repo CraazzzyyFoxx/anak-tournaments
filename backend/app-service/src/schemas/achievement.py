@@ -1,8 +1,11 @@
+import typing
+
 from pydantic import BaseModel
 
 from .base import BaseRead, Score
 
 __all__ = (
+    "AchievementListQueryParams",
     "AchievementRead",
     "UserAchievementRead",
     "AchievementEarned",
@@ -11,8 +14,17 @@ __all__ = (
     "AchievementMatchTeamRef",
 )
 
+from src.core import pagination
 from src.schemas import UserRead
 from src.schemas.admin.catalog import CatalogEntityRead
+
+ACHIEVEMENT_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
+
+
+class AchievementListQueryParams(pagination.PaginationSortQueryParams[ACHIEVEMENT_SORT]):
+    """The public achievement list: ``discipline`` narrows it to one game (absent: every game's rules)."""
+
+    discipline: str | None = None
 
 
 class AchievementRead(BaseRead):

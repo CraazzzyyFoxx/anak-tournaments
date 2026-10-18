@@ -96,8 +96,8 @@ describe("achievement admin calls name the game", () => {
 
   it("reads one game's character catalog for the entity picker", async () => {
     reply = { results: [{ id: 1, name: "Ahri" }] };
-    const characters = await adminService.getCatalogCharacters("lol");
-    expect(calls[0].path).toBe("/api/v1/admin/catalog/lol/character");
+    const characters = await adminService.getCatalogCharacters(7, "lol");
+    expect(calls[0].path).toBe("/api/v1/admin/ws/7/catalog/lol/character");
     expect(characters).toEqual([{ id: 1, name: "Ahri" }]);
   });
 });

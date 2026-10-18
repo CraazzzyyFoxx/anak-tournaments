@@ -36,7 +36,6 @@ from src import schemas
 _HERO_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
 _MAP_SORT = typing.Literal["id", "parent_id", "name", "similarity:name"]
 _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
-_ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 _USER_SORT = typing.Literal["id", "name", "similarity:name"]
 _STAT_SORT = typing.Literal["id", "name", "value"]
 _ENC_SORT = typing.Literal["id", "name", "closeness", "round", "played_at"]
@@ -63,7 +62,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.app.read.get#achievement": Op(response=schemas.AchievementRead),
     "rpc.app.read.list#achievement": Op(
-        response=Paginated[schemas.AchievementRead], query=PaginationSortQueryParams[_ACH_SORT]
+        response=Paginated[schemas.AchievementRead], query=schemas.AchievementListQueryParams
     ),
     # ── lookups ────────────────────────────────────────────────────────────
     "rpc.app.heroes.lookup": Op(response=schemas.LookupItem, response_array=True),
@@ -204,6 +203,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.quota.workspace_usage": Op(response=QuotaUsageRead, query_params=(_WS,)),
     # ── game catalog admin (catalog.entity) ─────────────────────────────────
     "rpc.app.catalog.admin_list": Op(
+        response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
+    ),
+    "rpc.app.catalog.workspace_characters": Op(
         response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
     ),
     "rpc.app.catalog.admin_create": Op(request=schemas.CatalogEntityCreate, response=schemas.CatalogEntityRead),

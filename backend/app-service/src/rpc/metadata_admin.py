@@ -1,7 +1,8 @@
 """Admin CRUD for the game catalog (``catalog.entity``): one surface for every discipline and kind (D85).
 
-Superuser-only — the catalog is global game content. Pure transport: gate, decode, one service call. The discipline and
-kind arrive as path parameters (``/api/v1/admin/catalog/{discipline}/{kind}``).
+Superuser-only for every mutation and for the platform-wide list — the catalog is global game content. The one read
+open to workspace organizers is ``rpc.app.catalog.workspace_characters``. Pure transport: gate, decode, one service
+call. The discipline and kind arrive as path parameters (``/api/v1/admin/catalog/{discipline}/{kind}``).
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dump
 from shared.rpc.query import build_query_model
 from shared.services.audit import record_admin_audit
@@ -43,6 +45,34 @@ def register(broker: Any, logger: Any) -> None:
             return paginated_dump(await catalog_service.list(session, discipline, kind, params))
 
         return await c.envelope(logger, "catalog.admin_list", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.catalog.workspace_characters")
+    async def _workspace_characters(data: dict, msg: RabbitMessage) -> dict:
+        """Read-only: one discipline's characters for a workspace's achievement editor.
+
+        Authorized by the workspace's achievement permission (create or update), not by superuser: an organizer who may
+        link a rule to a character must be able to pick one. Only this read is opened; every catalog mutation above
+        stays superuser-only.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            workspace_id = int(data.get("workspace_id") or 0)
+            if not (
+                user.has_workspace_permission(workspace_id, "achievement", "create")
+                or user.has_workspace_permission(workspace_id, "achievement", "update")
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Permission denied for workspace {workspace_id}: achievement.update required",
+                )
+            discipline, _ = _path(data)
+            qp = build_query_model(schemas.CatalogEntityListQueryParams, data.get("query"))
+            params = schemas.CatalogEntityListParams.from_query_params(qp)
+            return paginated_dump(await catalog_service.list(session, discipline, "character", params))
+
+        return await c.envelope(logger, "catalog.workspace_characters", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.catalog.admin_create")
     async def _create(data: dict, msg: RabbitMessage) -> dict:

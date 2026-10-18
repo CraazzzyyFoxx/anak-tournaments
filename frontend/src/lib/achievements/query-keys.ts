@@ -22,8 +22,9 @@ export const achievementQueryKeys = {
     ["admin", "achievement-condition-types", workspaceId, discipline] as const,
   libraryRules: (workspaceId: KeyPart, sourceWorkspaceId: KeyPart, discipline: KeyPart) =>
     ["admin", "achievement-library-rules", workspaceId, sourceWorkspaceId, discipline] as const,
-  /** The character catalog a rule of this game links into. */
-  entities: (discipline: KeyPart) => ["admin", "achievement-entities", discipline] as const,
+  /** The character catalog a rule of this game links into, as the workspace's editors read it. */
+  entities: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "achievement-entities", workspaceId, discipline] as const,
   libraryWorkspaces: (workspaceId: KeyPart, discipline: KeyPart) =>
     ["admin", "achievement-library-workspaces", workspaceId, discipline] as const,
   ruleUsersPage: (workspaceId: KeyPart, ruleId: KeyPart, tournamentId: KeyPart, sort: KeyPart, order: KeyPart) =>

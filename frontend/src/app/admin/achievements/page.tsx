@@ -71,6 +71,22 @@ export default function AchievementsPage() {
   // Evaluating and overriding name a tournament: only the selected game's can be one.
   const tournamentOptions = (tournaments?.results ?? []).filter((tournament) => tournament.discipline === discipline);
 
+  // Everything the page holds for one game — picked rules, the tournament, an override draft, open pickers — is
+  // that game's: when the game (or the workspace) changes, it is dropped rather than carried into the next one.
+  const scopeKey = `${workspaceId}:${discipline}`;
+  const [heldScopeKey, setHeldScopeKey] = useState(scopeKey);
+  if (heldScopeKey !== scopeKey) {
+    setHeldScopeKey(scopeKey);
+    setDeletingRule(null);
+    setHardResetOpen(false);
+    setEvaluateDialogOpen(false);
+    setEvalTournamentId(undefined);
+    setEvalSelectedRuleIds(new Set());
+    setOverrideDialogOpen(false);
+    setOverrideDraft(emptyOverrideDraft);
+    setOverrideFormError(null);
+  }
+
   const form = useAchievementRuleForm(workspaceId, discipline);
 
   const actions = useAchievementRuleActions({
@@ -91,6 +107,11 @@ export default function AchievementsPage() {
   // Validated on submit rather than by disabling the button, so the reader can
   // read what is missing instead of guessing why nothing happens.
   const handleOverrideSubmit = () => {
+    // The draft can outlive the game it was filled in for; the backend would take the rule's own game, so the
+    // page has to hold the line: only a rule and tournament of the selected game's catalogue go out.
+    const ruleInGame = allRules?.some((rule) => rule.id === overrideDraft.ruleId) ?? false;
+    const tournamentInGame =
+      overrideDraft.tournamentId == null || tournamentOptions.some((item) => item.id === overrideDraft.tournamentId);
     const missingLabels = [
       !overrideDraft.userId ? t("list.missingUser") : null,
       !overrideDraft.ruleId ? t("list.missingAchievement") : null,
@@ -100,8 +121,12 @@ export default function AchievementsPage() {
       setOverrideFormError(t("list.pickBeforeOverride", { items: missingLabels.join(", ") }));
       return;
     }
+    if (!ruleInGame || !tournamentInGame) {
+      setOverrideFormError(t("list.outsideGame"));
+      return;
+    }
     setOverrideFormError(null);
-    actions.overrideMutation.mutate({
+    actions.createOverride({
       achievement_rule_id: overrideDraft.ruleId!,
       user_id: overrideDraft.userId!,
       tournament_id: overrideDraft.tournamentId ?? null,
@@ -194,7 +219,7 @@ export default function AchievementsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => actions.seedMutation.mutate()}
+                onClick={() => actions.seed()}
                 disabled={actions.seedMutation.isPending}
               >
                 <Sprout className={`mr-2 h-4 w-4 ${actions.seedMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
@@ -255,7 +280,7 @@ export default function AchievementsPage() {
             setEvalTournamentId(undefined);
             setEvaluateDialogOpen(true);
           },
-          onToggle: (rule) => actions.toggleMutation.mutate({ id: rule.id, enabled: !rule.enabled }),
+          onToggle: (rule) => actions.toggle(rule.id, !rule.enabled),
           onDelete: setDeletingRule,
         }}
       />
@@ -264,7 +289,7 @@ export default function AchievementsPage() {
         <AchievementOverridesCard
           overrides={overrides}
           rules={allRules}
-          onDelete={(id) => actions.deleteOverrideMutation.mutate(id)}
+          onDelete={(id) => actions.removeOverride(id)}
           isDeleting={actions.deleteOverrideMutation.isPending}
         />
       )}
@@ -315,7 +340,7 @@ export default function AchievementsPage() {
         <ConfirmDialog
           open={!!deletingRule}
           onOpenChange={(open) => !open && setDeletingRule(null)}
-          onConfirm={() => actions.deleteMutation.mutate(deletingRule.id)}
+          onConfirm={() => actions.remove(deletingRule.id)}
           pending={actions.deleteMutation.isPending}
           intent={{
             title: t("list.deleteAchievement"),
@@ -336,7 +361,7 @@ export default function AchievementsPage() {
           onOpenChange={setHardResetOpen}
           onConfirm={() => {
             setHardResetOpen(false);
-            actions.hardResetMutation.mutate();
+            actions.hardReset();
           }}
           pending={actions.hardResetMutation.isPending}
           intent={{

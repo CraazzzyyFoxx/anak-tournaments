@@ -25,10 +25,11 @@ _SUBJECTS = (
     "rpc.app.catalog.admin_create",
     "rpc.app.catalog.admin_update",
     "rpc.app.catalog.admin_delete",
+    "rpc.app.catalog.workspace_characters",
 )
 
 
-def test_exactly_the_four_catalog_subjects_are_registered() -> None:
+def test_exactly_the_catalog_subjects_are_registered() -> None:
     broker = _CaptureBroker()
     metadata_admin_rpc.register(broker, logging.getLogger("catalog-admin-tests"))
     assert set(broker.handlers) == set(_SUBJECTS)
@@ -345,3 +346,54 @@ def test_catalog_rpc_rejects_non_superuser_and_bad_patch_with_422(monkeypatch: p
             {**path, "identity": {"user_id": 1, "is_active": True, "is_superuser": True}, "payload": {field: None}},
         )
         assert reply["error"]["code"] == "unprocessable", reply
+
+
+def _organizer(workspace_id: int, *permissions: str) -> dict:
+    return {
+        "user_id": 5,
+        "is_active": True,
+        "workspaces": [
+            {
+                "workspace_id": workspace_id,
+                "rbac_roles": [],
+                "rbac_permissions": [dict(zip(("resource", "action"), p.split("."), strict=True)) for p in permissions],
+            },
+        ],
+    }
+
+
+def test_workspace_organizers_read_characters_but_cannot_mutate_the_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.conftest import RpcHarness
+    from tests.test_admin_list_envelope_extras import _NoSession
+
+    seen: list[tuple[str, str]] = []
+
+    async def _list(_session: object, discipline: str, kind: str, params: object) -> dict:
+        seen.append((discipline, kind))
+        return {"results": [], "total": 0, "page": 1, "per_page": 50}
+
+    monkeypatch.setattr(metadata_admin_rpc, "_SF", _NoSession)
+    monkeypatch.setattr(metadata_admin_rpc.catalog_service, "list", _list)
+    harness = RpcHarness().register(metadata_admin_rpc)
+    read = {"workspace_id": 7, "discipline": "lol"}
+
+    for permission in ("achievement.create", "achievement.update"):
+        allowed = harness.call_sync(
+            "rpc.app.catalog.workspace_characters", {**read, "identity": _organizer(7, permission)}
+        )
+        assert allowed["ok"], (permission, allowed)
+    assert seen == [("lol", "character")] * 2  # always characters, whatever the caller asked for
+
+    for identity in (_organizer(8, "achievement.update"), _organizer(7, "achievement.read"), _organizer(7)):
+        refused = harness.call_sync("rpc.app.catalog.workspace_characters", {**read, "identity": identity})
+        assert refused["error"]["code"] == "forbidden", refused
+    inactive = {**_organizer(7, "achievement.update"), "is_active": False}
+    assert (
+        harness.call_sync("rpc.app.catalog.workspace_characters", {**read, "identity": inactive})["error"]["code"]
+        == "forbidden"
+    )
+
+    organizer = _organizer(7, "achievement.create", "achievement.update")
+    for subject in ("rpc.app.catalog.admin_list", "rpc.app.catalog.admin_create", "rpc.app.catalog.admin_delete"):
+        denied = harness.call_sync(subject, {"discipline": "lol", "kind": "character", "id": 1, "identity": organizer})
+        assert denied["error"]["code"] == "forbidden", subject

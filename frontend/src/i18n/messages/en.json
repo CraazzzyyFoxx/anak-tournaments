@@ -2462,6 +2462,12 @@
     },
     "rarityFilter": "Filter by rarity",
     "categoryFilter": "Filter by category",
+    "gameFilter": "Filter by game",
+    "game": {
+      "all": "All games",
+      "overwatch": "Overwatch",
+      "lol": "League of Legends"
+    },
     "sortHolders": "Sort: Most owned",
     "holders": "{count, plural, one {# player has it} other {# players have it}}",
     "notEarned": {
@@ -10215,6 +10221,7 @@
       "missingAchievement": "an achievement",
       "missingReason": "a reason",
       "invalidJson": "“{name}” is not valid JSON. Import a file produced by Export JSON on this page, unedited.",
+      "outsideGame": "The selected achievement or tournament belongs to another game. Pick again for the game shown above.",
       "importNotPortable": "“{name}” is not an achievement export. Import a file produced by Export JSON on this page.",
       "importUnsupportedVersion": "“{name}” uses export format {version}, which is no longer supported. Only format 2 can be imported: export the rules again from a current version. Nothing was imported.",
       "importLegacyHero": "“{name}” still uses the retired hero_id (rule “{slug}”). Only files with discipline and entity_id can be imported. Nothing was imported.",

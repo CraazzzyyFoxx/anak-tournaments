@@ -15,6 +15,17 @@ import type {
 
 import { portableFileProblem } from "../achievement-import";
 
+/**
+ * The workspace and game an action was started for. It travels in the mutation's
+ * variables because TanStack hands a pending mutation the *latest* render's
+ * callbacks: a callback that read the current game would invalidate whichever
+ * game is selected when the request finishes, not the one it changed.
+ */
+interface RuleScope {
+  workspaceId: number;
+  discipline: string;
+}
+
 export interface DryRunResult {
   slug: string;
   count: number;
@@ -67,10 +78,19 @@ export function useAchievementRuleActions({
   const [importError, setImportError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<DryRunResult | null>(null);
 
-  const invalidateRules = () => {
-    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+  /** The scope of what the user is looking at right now; call it when the action starts, never later. */
+  const currentScope = (): RuleScope => ({ workspaceId: workspaceId!, discipline: discipline! });
+
+  const invalidateRules = (scope: RuleScope) => {
+    queryClient.invalidateQueries({
+      queryKey: achievementQueryKeys.adminList(scope.workspaceId, scope.discipline),
+    });
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
   };
+  const invalidateOverrides = (scope: RuleScope) =>
+    queryClient.invalidateQueries({
+      queryKey: achievementQueryKeys.overridesAll(scope.workspaceId, scope.discipline),
+    });
 
   const clearFilePicker = () => {
     if (jsonInputRef.current) {
@@ -79,23 +99,24 @@ export function useAchievementRuleActions({
   };
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteAchievementRule(workspaceId!, id),
-    onSuccess: () => {
-      invalidateRules();
+    mutationFn: ({ scope, id }: { scope: RuleScope; id: number }) =>
+      adminService.deleteAchievementRule(scope.workspaceId, id),
+    onSuccess: (_data, { scope }) => {
+      invalidateRules(scope);
       onDeleted();
     },
   });
 
   const seedMutation = useMutation({
-    mutationFn: () => adminService.seedAchievementRules(workspaceId!, discipline!),
-    onSuccess: invalidateRules,
+    mutationFn: (scope: RuleScope) => adminService.seedAchievementRules(scope.workspaceId, scope.discipline),
+    onSuccess: (_data, scope) => invalidateRules(scope),
   });
 
   const hardResetMutation = useMutation({
-    mutationFn: () => adminService.hardResetAchievementRules(workspaceId!, discipline!),
-    onSuccess: (data) => {
-      invalidateRules();
-      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.overridesAll(workspaceId, discipline) });
+    mutationFn: (scope: RuleScope) => adminService.hardResetAchievementRules(scope.workspaceId, scope.discipline),
+    onSuccess: (data, scope) => {
+      invalidateRules(scope);
+      invalidateOverrides(scope);
       setEvaluationResult(data.run);
     },
   });
@@ -120,8 +141,8 @@ export function useAchievementRuleActions({
   });
 
   const evaluateMutation = useMutation({
-    mutationFn: (params: { tournament_id?: number; rule_ids?: number[] }) =>
-      adminService.evaluateAchievements(workspaceId!, discipline!, params),
+    mutationFn: ({ scope, params }: { scope: RuleScope; params: { tournament_id?: number; rule_ids?: number[] } }) =>
+      adminService.evaluateAchievements(scope.workspaceId, scope.discipline, params),
     onSuccess: (data) => {
       setEvaluationResult(data);
       onEvaluated();
@@ -135,20 +156,27 @@ export function useAchievementRuleActions({
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
-      adminService.updateAchievementRule(workspaceId!, id, { enabled }),
-    onSuccess: invalidateRules,
+    mutationFn: ({ scope, id, enabled }: { scope: RuleScope; id: number; enabled: boolean }) =>
+      adminService.updateAchievementRule(scope.workspaceId, id, { enabled }),
+    onSuccess: (_data, { scope }) => invalidateRules(scope),
   });
 
   const overrideMutation = useMutation({
-    mutationFn: (draft: AchievementOverrideCreateInput) =>
-      adminService.createAchievementOverride(workspaceId!, draft),
-    onSuccess: onOverrideSaved,
+    mutationFn: ({ scope, draft }: { scope: RuleScope; draft: AchievementOverrideCreateInput }) =>
+      adminService.createAchievementOverride(scope.workspaceId, draft),
+    onSuccess: (_data, { scope }) => {
+      invalidateOverrides(scope);
+      onOverrideSaved();
+    },
   });
 
   const deleteOverrideMutation = useMutation({
-    mutationFn: (id: number) => adminService.deleteAchievementOverride(workspaceId!, id),
-    onSuccess: onOverrideRemoved,
+    mutationFn: ({ scope, id }: { scope: RuleScope; id: number }) =>
+      adminService.deleteAchievementOverride(scope.workspaceId, id),
+    onSuccess: (_data, { scope }) => {
+      invalidateOverrides(scope);
+      onOverrideRemoved();
+    },
   });
 
   /** Streams the selected game's rules to the browser as the v2 JSON the importer reads back. */
@@ -200,8 +228,8 @@ export function useAchievementRuleActions({
 
   const evaluate = (tournamentId: number | undefined, ruleIds: Set<number>) =>
     evaluateMutation.mutate({
-      tournament_id: tournamentId,
-      rule_ids: ruleIds.size > 0 ? Array.from(ruleIds) : undefined,
+      scope: currentScope(),
+      params: { tournament_id: tournamentId, rule_ids: ruleIds.size > 0 ? Array.from(ruleIds) : undefined },
     });
 
   return {
@@ -224,6 +252,14 @@ export function useAchievementRuleActions({
     toggleMutation,
     overrideMutation,
     deleteOverrideMutation,
+    /** Each starts for the game selected now and finishes against that game, whatever is selected then. */
+    seed: () => seedMutation.mutate(currentScope()),
+    hardReset: () => hardResetMutation.mutate(currentScope()),
+    toggle: (id: number, enabled: boolean) => toggleMutation.mutate({ scope: currentScope(), id, enabled }),
+    remove: (id: number) => deleteMutation.mutate({ scope: currentScope(), id }),
+    createOverride: (draft: AchievementOverrideCreateInput) =>
+      overrideMutation.mutate({ scope: currentScope(), draft }),
+    removeOverride: (id: number) => deleteOverrideMutation.mutate({ scope: currentScope(), id }),
     exportRules,
     importRulesFromFile,
     evaluate,

@@ -92,8 +92,9 @@ class AchievementService:
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         workspace_id: int | None = None,
+        discipline: str | None = None,
     ) -> pagination.Paginated[schemas.AchievementRead]:
-        rules, total = await self.queries.get_all(session, params, workspace_id=workspace_id)
+        rules, total = await self.queries.get_all(session, params, workspace_id=workspace_id, discipline=discipline)
         return pagination.Paginated(
             total=total,
             per_page=params.per_page,

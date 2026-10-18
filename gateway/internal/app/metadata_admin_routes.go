@@ -11,6 +11,9 @@ var MetadataAdminRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.admin_create", Path: []string{"discipline", "kind"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.admin_update", IDParam: "id", Path: []string{"discipline", "kind"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.admin_delete", IDParam: "id", Path: []string{"discipline", "kind"}, Auth: edge.AuthRequired, Success: 204},
+	// Read-only character list of one discipline for a workspace's achievement editor: gated on the workspace's
+	// achievement.create/update in the worker, so organizers (not only superusers) can pick a rule's character.
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/catalog/{discipline}/character", Queue: "rpc.app.catalog.workspace_characters", Path: []string{"workspace_id", "discipline"}, AllQuery: true, Auth: edge.AuthRequired},
 	// alias-miss queue: catalog names a match log used that no alias resolved.
 	// `attach` is a bespoke write rather than a PATCH on the entity's `aliases`
 	// so the browser never read-modify-writes the array (two admins would race)
