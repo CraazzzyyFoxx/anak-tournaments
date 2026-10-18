@@ -635,13 +635,14 @@ def test_a_lol_row_with_only_a_battletag_is_not_identified_by_it(db_session, mon
 def test_the_suggested_lol_mapping_keeps_riot_ids_that_differ_only_by_a_space_apart(db_session, monkeypatch) -> None:
     """No saved mapping: the sync uses the suggested one. ``Foo Bar#123`` and ``FooBar#123`` are two
     people, so the automatically inferred keys must keep the internal space (Riot normalization),
-    not collapse into one dictionary slot; a re-sync updates both, creating nothing."""
+    not collapse into one dictionary slot; a shared optional BattleTag column must not become the
+    key either (the generic alias loop would suggest it). A re-sync updates both, creating nothing."""
 
     async def _run() -> None:
         seeded = await _seed_feed(db_session, discipline="lol", schema=_LOL_SCHEMA, mapping=None)
 
         async def _fetch(*_args, **_kwargs):
-            return [["Riot ID"], ["Foo Bar#123"], ["FooBar#123"]]
+            return [_LOL_HEADERS, ["Foo Bar#123", "Shared#1111"], ["FooBar#123", "Shared#1111"]]
 
         monkeypatch.setattr(reg_admin, "fetch_google_sheet_rows", _fetch)
 

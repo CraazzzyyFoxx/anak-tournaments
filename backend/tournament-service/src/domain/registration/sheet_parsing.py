@@ -281,9 +281,11 @@ def suggest_mapping_from_headers(
         targets[spec.key] = {"mode": "columns", "columns": columns, "parser": spec.default_parser}
 
     # The game-handle column also seeds the display name. For BattleNet it seeds the dedup
-    # key too (legacy behavior); any other provider's key is inferred from its normalized
-    # primary handle at parse time, because ``battle_tag`` parsing would strip the internal
-    # spaces a Riot name may carry (``Foo Bar#123`` != ``FooBar#123``).
+    # key too (legacy behavior). Any other provider's key is inferred from its normalized
+    # primary handle at parse time, so no ``source_record_key`` may be SUGGESTED for it at
+    # all (not from the alias loop either): ``battle_tag`` parsing would strip the internal
+    # spaces a Riot name may carry, and a shared BattleTag column would collapse distinct
+    # Riot registrations onto one key. Explicitly saved mappings are not touched.
     game_config = targets.get(identity_key(provider))
     if game_config and game_config.get("mode") == "columns" and game_config.get("columns"):
         column = game_config["columns"][0]
@@ -291,6 +293,10 @@ def suggest_mapping_from_headers(
             targets["source_record_key"] = {"mode": "columns", "columns": [column], "parser": "battle_tag"}
         if targets.get("display_name", {}).get("mode") != "columns":
             targets["display_name"] = {"mode": "columns", "columns": [column], "parser": "string"}
+    if provider != SocialProvider.BATTLENET:
+        key_spec = next((spec for spec in specs if spec.key == "source_record_key"), None)
+        if key_spec is not None:
+            targets["source_record_key"] = default_mapping_target(key_spec.default_parser, key_spec.default_mode)
 
     return {"targets": targets}
 
