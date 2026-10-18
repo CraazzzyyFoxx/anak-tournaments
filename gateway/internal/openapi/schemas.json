@@ -1248,6 +1248,42 @@
       },
       "summary": "List catalog alias misses"
     },
+    "rpc.app.disciplines.list": {
+      "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "description": "Workspace id (positive integer) or the literal \"all\" for the global view",
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "app.DisciplineDescriptor"
+      },
+      "summary": "List installed disciplines"
+    },
+    "rpc.app.disciplines.metadata": {
+      "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the descriptor, the role dictionary (inactive rows included for history; global roles plus the requested workspace's sub-roles), stat and event vocabularies, team-format presets and the native ladder. 404 `discipline_not_installed` for an unknown code; a disabled discipline is still readable.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "description": "Workspace id (positive integer) or the literal \"all\" for the global view",
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.DisciplineMetadata"
+      },
+      "summary": "Get a discipline's native metadata"
+    },
     "rpc.app.gamemodes.lookup": {
       "description": "Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).",
       "response": {
@@ -14696,6 +14732,174 @@
       "title": "DashboardStats",
       "type": "object"
     },
+    "app.DisciplineCapabilities": {
+      "description": "Declaration presence only: a hook is never invoked to answer.",
+      "properties": {
+        "achievement_conditions": {
+          "title": "Achievement Conditions",
+          "type": "boolean"
+        },
+        "analytics": {
+          "title": "Analytics",
+          "type": "boolean"
+        },
+        "catalog_sync": {
+          "title": "Catalog Sync",
+          "type": "boolean"
+        },
+        "native_ladder": {
+          "title": "Native Ladder",
+          "type": "boolean"
+        },
+        "native_rank_collection": {
+          "title": "Native Rank Collection",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "catalog_sync",
+        "native_rank_collection",
+        "native_ladder",
+        "achievement_conditions",
+        "analytics"
+      ],
+      "title": "DisciplineCapabilities",
+      "type": "object"
+    },
+    "app.DisciplineDescriptor": {
+      "properties": {
+        "capabilities": {
+          "$ref": "#/components/schemas/app.DisciplineCapabilities"
+        },
+        "character_classes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Character Classes",
+          "type": "array"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "identity_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Identity Provider"
+        },
+        "kinds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "enum": [
+              "character",
+              "map",
+              "mode"
+            ]
+          },
+          "title": "Kinds",
+          "type": "object"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "enabled",
+        "kinds",
+        "character_classes",
+        "identity_provider",
+        "capabilities"
+      ],
+      "title": "DisciplineDescriptor",
+      "type": "object"
+    },
+    "app.DisciplineMetadata": {
+      "properties": {
+        "dimensions": {
+          "items": {
+            "$ref": "#/components/schemas/app.RoleDimensionRead"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "discipline": {
+          "$ref": "#/components/schemas/app.DisciplineDescriptor"
+        },
+        "event_types": {
+          "items": {
+            "$ref": "#/components/schemas/app.EventTypeRead"
+          },
+          "title": "Event Types",
+          "type": "array"
+        },
+        "native_ladder": {
+          "items": {
+            "$ref": "#/components/schemas/app.NativeTierRead"
+          },
+          "title": "Native Ladder",
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "$ref": "#/components/schemas/app.OntologyRole"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "stat_defs": {
+          "items": {
+            "$ref": "#/components/schemas/app.StatDefinition"
+          },
+          "title": "Stat Defs",
+          "type": "array"
+        },
+        "team_format_presets": {
+          "items": {
+            "$ref": "#/components/schemas/app.TeamFormatRead"
+          },
+          "title": "Team Format Presets",
+          "type": "array"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workspace Id"
+        }
+      },
+      "required": [
+        "discipline",
+        "workspace_id",
+        "dimensions",
+        "roles",
+        "stat_defs",
+        "event_types",
+        "team_format_presets",
+        "native_ladder"
+      ],
+      "title": "DisciplineMetadata",
+      "type": "object"
+    },
     "app.DivisionGridTierRead": {
       "properties": {
         "icon_url": {
@@ -14944,6 +15148,34 @@
         "status"
       ],
       "title": "EncounterReadWithUserStats",
+      "type": "object"
+    },
+    "app.EventTypeRead": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "active"
+      ],
+      "title": "EventTypeRead",
       "type": "object"
     },
     "app.FormatDimensionWire": {
@@ -15931,6 +16163,62 @@
       "title": "MatchReadWithUserStats",
       "type": "object"
     },
+    "app.NativeTierRead": {
+      "description": "Mirrors ``shared.disciplines.spec.NativeTier``.",
+      "properties": {
+        "icon_url": {
+          "title": "Icon Url",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "native_division": {
+          "title": "Native Division",
+          "type": "string"
+        },
+        "native_tier": {
+          "title": "Native Tier",
+          "type": "integer"
+        },
+        "number": {
+          "title": "Number",
+          "type": "integer"
+        },
+        "rank_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rank Max"
+        },
+        "rank_min": {
+          "title": "Rank Min",
+          "type": "integer"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "slug",
+        "name",
+        "rank_min",
+        "rank_max",
+        "icon_url",
+        "native_division",
+        "native_tier"
+      ],
+      "title": "NativeTierRead",
+      "type": "object"
+    },
     "app.NotificationAdminItem": {
       "description": "One produced row as an operator sees it.\n\nSeparate from ``NotificationItem`` because it answers a different question:\nthe inbox model is \"what am I being told\", this one is \"what did my\nworkspace send, to whom, and is it still live\". Hence ``recipient`` \u2014 which\nthe inbox has no business carrying, since there it is always the caller \u2014\nand no ``is_read``, which is a fact about a viewer this screen does not have.",
       "properties": {
@@ -16554,6 +16842,79 @@
         }
       },
       "title": "NotificationWorkspaceConfigUpdate",
+      "type": "object"
+    },
+    "app.OntologyRole": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "attrs": {
+          "additionalProperties": true,
+          "title": "Attrs",
+          "type": "object"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Id"
+        },
+        "selectable": {
+          "title": "Selectable",
+          "type": "boolean"
+        },
+        "sort_order": {
+          "title": "Sort Order",
+          "type": "integer"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workspace Id"
+        }
+      },
+      "required": [
+        "id",
+        "dimension",
+        "code",
+        "name",
+        "parent_id",
+        "workspace_id",
+        "active",
+        "selectable",
+        "sort_order",
+        "attrs"
+      ],
+      "title": "OntologyRole",
       "type": "object"
     },
     "app.Paginated_AchievementEarned_": {
@@ -17955,6 +18316,53 @@
       "title": "RawSourceStatus",
       "type": "string"
     },
+    "app.RoleDimensionRead": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rated": {
+          "title": "Rated",
+          "type": "boolean"
+        },
+        "selection_mode": {
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "title": "Selection Mode",
+          "type": "string"
+        },
+        "sort_order": {
+          "title": "Sort Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "selection_mode",
+        "rated",
+        "active",
+        "sort_order"
+      ],
+      "title": "RoleDimensionRead",
+      "type": "object"
+    },
     "app.RoleRef": {
       "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
       "properties": {
@@ -18231,6 +18639,74 @@
       ],
       "title": "SortOrder",
       "type": "string"
+    },
+    "app.StatDefinition": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "aggregation": {
+          "enum": [
+            "sum",
+            "max",
+            "min",
+            "avg",
+            "last"
+          ],
+          "title": "Aggregation",
+          "type": "string"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Group"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sort_order": {
+          "title": "Sort Order",
+          "type": "integer"
+        },
+        "value_format": {
+          "enum": [
+            "integer",
+            "decimal",
+            "percent",
+            "duration"
+          ],
+          "title": "Value Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "code",
+        "name",
+        "value_format",
+        "aggregation",
+        "group",
+        "active",
+        "sort_order"
+      ],
+      "title": "StatDefinition",
+      "type": "object"
     },
     "app.StreamVisibilityUpdate": {
       "description": "Self-service veto on surfacing the owner's live stream on tournament pages.\n\nSeparate from ``SocialVisibilityUpdate``: that one governs whether a handle is\nshown on the public profile at all, this one only whether the live broadcast is\nsurfaced. Collapsing them is the bug this endpoint exists to fix.",
@@ -46817,6 +47293,18 @@
     },
     "tournament.PlayerSubRoleCreate": {
       "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
         "description": {
           "anyOf": [
             {
@@ -46830,9 +47318,20 @@
           "title": "Description"
         },
         "discipline": {
-          "default": "overwatch",
           "title": "Discipline",
           "type": "string"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Icon"
         },
         "is_active": {
           "default": true,
@@ -46871,6 +47370,7 @@
       },
       "required": [
         "workspace_id",
+        "discipline",
         "role",
         "label"
       ],
@@ -46879,6 +47379,11 @@
     },
     "tournament.PlayerSubRoleRead": {
       "properties": {
+        "attrs": {
+          "additionalProperties": true,
+          "title": "Attrs",
+          "type": "object"
+        },
         "description": {
           "anyOf": [
             {
@@ -46937,13 +47442,26 @@
         "label",
         "description",
         "sort_order",
-        "is_active"
+        "is_active",
+        "attrs"
       ],
       "title": "PlayerSubRoleRead",
       "type": "object"
     },
     "tournament.PlayerSubRoleUpdate": {
       "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
         "description": {
           "anyOf": [
             {
@@ -46955,6 +47473,18 @@
           ],
           "default": null,
           "title": "Description"
+        },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Icon"
         },
         "is_active": {
           "anyOf": [

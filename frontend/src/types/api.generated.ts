@@ -1922,6 +1922,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/disciplines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List installed disciplines
+         * @description Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.
+         *
+         *     RPC subject: `rpc.app.disciplines.list`
+         */
+        get: operations["get__api_v1_disciplines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/disciplines/{discipline}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a discipline's native metadata
+         * @description Permission: public; an optional identity lets a hidden workspace's members read it. Returns the descriptor, the role dictionary (inactive rows included for history; global roles plus the requested workspace's sub-roles), stat and event vocabularies, team-format presets and the native ladder. 404 `discipline_not_installed` for an unknown code; a disabled discipline is still readable.
+         *
+         *     RPC subject: `rpc.app.disciplines.metadata`
+         */
+        get: operations["get__api_v1_disciplines__discipline__metadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters": {
         parameters: {
             query?: never;
@@ -12406,6 +12450,58 @@ export interface components {
             /** Tournaments Total */
             tournaments_total: number;
         };
+        /**
+         * DisciplineCapabilities
+         * @description Declaration presence only: a hook is never invoked to answer.
+         */
+        "app.DisciplineCapabilities": {
+            /** Achievement Conditions */
+            achievement_conditions: boolean;
+            /** Analytics */
+            analytics: boolean;
+            /** Catalog Sync */
+            catalog_sync: boolean;
+            /** Native Ladder */
+            native_ladder: boolean;
+            /** Native Rank Collection */
+            native_rank_collection: boolean;
+        };
+        /** DisciplineDescriptor */
+        "app.DisciplineDescriptor": {
+            capabilities: components["schemas"]["app.DisciplineCapabilities"];
+            /** Character Classes */
+            character_classes: string[];
+            /** Code */
+            code: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Identity Provider */
+            identity_provider: string | null;
+            /** Kinds */
+            kinds: {
+                [key: string]: string;
+            };
+            /** Name */
+            name: string;
+        };
+        /** DisciplineMetadata */
+        "app.DisciplineMetadata": {
+            /** Dimensions */
+            dimensions: components["schemas"]["app.RoleDimensionRead"][];
+            discipline: components["schemas"]["app.DisciplineDescriptor"];
+            /** Event Types */
+            event_types: components["schemas"]["app.EventTypeRead"][];
+            /** Native Ladder */
+            native_ladder: components["schemas"]["app.NativeTierRead"][];
+            /** Roles */
+            roles: components["schemas"]["app.OntologyRole"][];
+            /** Stat Defs */
+            stat_defs: components["schemas"]["app.StatDefinition"][];
+            /** Team Format Presets */
+            team_format_presets: components["schemas"]["app.TeamFormatRead"][];
+            /** Workspace Id */
+            workspace_id: number | null;
+        };
         /** DivisionGridTierRead */
         "app.DivisionGridTierRead": {
             /** Icon Url */
@@ -12501,6 +12597,66 @@ export interface components {
              * @default null
              */
             user_team_id: number | null;
+        };
+        /** EventTypeRead */
+        "app.EventTypeRead": {
+            /** Active */
+            active: boolean;
+            /** Code */
+            code: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /** FormatDimensionWire */
+        "app.FormatDimensionWire": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: AppFormatDimensionWireMode;
+            /**
+             * Player Max Assignments
+             * @default null
+             */
+            player_max_assignments: number | null;
+            /**
+             * Player Min Assignments
+             * @default null
+             */
+            player_min_assignments: number | null;
+        };
+        /** FormatRuleWire */
+        "app.FormatRuleWire": {
+            /**
+             * Hard Max
+             * @default null
+             */
+            hard_max: number | null;
+            /**
+             * Hard Min
+             * @default null
+             */
+            hard_min: number | null;
+            /**
+             * Include Descendants
+             * @default true
+             */
+            include_descendants: boolean;
+            /**
+             * Recommended Max
+             * @default null
+             */
+            recommended_max: number | null;
+            /**
+             * Recommended Min
+             * @default null
+             */
+            recommended_min: number | null;
+            role: components["schemas"]["app.RoleRef"];
         };
         /** GamemodeRead */
         "app.GamemodeRead": {
@@ -12775,6 +12931,28 @@ export interface components {
             time: number | null;
         };
         /**
+         * NativeTierRead
+         * @description Mirrors ``shared.disciplines.spec.NativeTier``.
+         */
+        "app.NativeTierRead": {
+            /** Icon Url */
+            icon_url: string;
+            /** Name */
+            name: string;
+            /** Native Division */
+            native_division: string;
+            /** Native Tier */
+            native_tier: number;
+            /** Number */
+            number: number;
+            /** Rank Max */
+            rank_max: number | null;
+            /** Rank Min */
+            rank_min: number;
+            /** Slug */
+            slug: string;
+        };
+        /**
          * NotificationDelete
          * @description ``ids=None`` deletes the whole visible inbox; ``only_read`` narrows it.
          *
@@ -12953,6 +13131,31 @@ export interface components {
             /** Workspace Id */
             workspace_id: number;
         };
+        /** OntologyRole */
+        "app.OntologyRole": {
+            /** Active */
+            active: boolean;
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
+            /** Code */
+            code: string;
+            /** Dimension */
+            dimension: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Parent Id */
+            parent_id: number | null;
+            /** Selectable */
+            selectable: boolean;
+            /** Sort Order */
+            sort_order: number;
+            /** Workspace Id */
+            workspace_id: number | null;
+        };
         /** Paginated[AchievementEarned] */
         "app.Paginated_AchievementEarned_": {
             /** Page */
@@ -13099,6 +13302,26 @@ export interface components {
          * @enum {string}
          */
         "app.RawSourceStatus": AppRawSourceStatus;
+        /** RoleDimensionRead */
+        "app.RoleDimensionRead": {
+            /** Active */
+            active: boolean;
+            /** Code */
+            code: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Rated */
+            rated: boolean;
+            /**
+             * Selection Mode
+             * @enum {string}
+             */
+            selection_mode: AppRoleDimensionReadSelection_mode;
+            /** Sort Order */
+            sort_order: number;
+        };
         /**
          * RoleRef
          * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
@@ -13113,6 +13336,34 @@ export interface components {
             parent: string | null;
             /** Role */
             role: string;
+        };
+        /**
+         * RosterShapeRead
+         * @description A team format's slots (D33). The frontend never recomputes them.
+         */
+        "app.RosterShapeRead": {
+            /**
+             * Dimension
+             * @default null
+             */
+            dimension: string | null;
+            /** Draft Rounds */
+            draft_rounds: number;
+            /** Flex Slots */
+            flex_slots: number;
+            /** Has Role Slots */
+            has_role_slots: boolean;
+            /** Slots */
+            slots: {
+                [key: string]: number;
+            };
+            /**
+             * Source
+             * @default null
+             */
+            source: AppRosterShapeReadSourceAnyOf0 | null;
+            /** Team Size */
+            team_size: number;
         };
         /** Score */
         "app.Score": {
@@ -13162,6 +13413,67 @@ export interface components {
          * @enum {string}
          */
         "app.SortOrder": AppSortOrder;
+        /** StatDefinition */
+        "app.StatDefinition": {
+            /** Active */
+            active: boolean;
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: AppStatDefinitionAggregation;
+            /** Code */
+            code: string;
+            /** Group */
+            group: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Sort Order */
+            sort_order: number;
+            /**
+             * Value Format
+             * @enum {string}
+             */
+            value_format: AppStatDefinitionValue_format;
+        };
+        /** TeamFormatRead */
+        "app.TeamFormatRead": {
+            /** Dimensions */
+            dimensions?: components["schemas"]["app.FormatDimensionWire"][];
+            /** Discipline */
+            discipline: string;
+            /** Name */
+            name: string;
+            /**
+             * Preset Code
+             * @default null
+             */
+            preset_code: string | null;
+            roster_shape: components["schemas"]["app.RosterShapeRead"];
+            /** Rules */
+            rules?: components["schemas"]["app.FormatRuleWire"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: AppTeamFormatReadSource;
+            /** Starter Max */
+            starter_max: number;
+            /** Starter Min */
+            starter_min: number;
+            /**
+             * Substitute Max
+             * @default 0
+             */
+            substitute_max: number;
+            /**
+             * Substitute Min
+             * @default 0
+             */
+            substitute_min: number;
+        };
         /**
          * TournamentStatus
          * @enum {string}
@@ -26497,15 +26809,22 @@ export interface components {
         /** PlayerSubRoleCreate */
         "tournament.PlayerSubRoleCreate": {
             /**
+             * Color
+             * @default null
+             */
+            color: string | null;
+            /**
              * Description
              * @default null
              */
             description: string | null;
-            /**
-             * Discipline
-             * @default overwatch
-             */
+            /** Discipline */
             discipline: string;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
             /**
              * Is Active
              * @default true
@@ -26530,6 +26849,10 @@ export interface components {
         };
         /** PlayerSubRoleRead */
         "tournament.PlayerSubRoleRead": {
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
             /** Description */
             description: string | null;
             /** Dimension */
@@ -26554,10 +26877,20 @@ export interface components {
         /** PlayerSubRoleUpdate */
         "tournament.PlayerSubRoleUpdate": {
             /**
+             * Color
+             * @default null
+             */
+            color: string | null;
+            /**
              * Description
              * @default null
              */
             description: string | null;
+            /**
+             * Icon
+             * @default null
+             */
+            icon: string | null;
             /**
              * Is Active
              * @default null
@@ -35494,6 +35827,128 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app.CatalogLegacyRead"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_disciplines: {
+        parameters: {
+            query?: {
+                workspace_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.DisciplineDescriptor"][];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_disciplines__discipline__metadata: {
+        parameters: {
+            query?: {
+                workspace_id?: string;
+            };
+            header?: never;
+            path: {
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.DisciplineMetadata"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -74333,6 +74788,12 @@ export enum AnalyticsPlayerAnalyticsPredicted_direction {
     demote = "demote",
     flat = "flat"
 }
+export enum AppFormatDimensionWireMode {
+    off = "off",
+    informational = "informational",
+    preference = "preference",
+    enforced = "enforced"
+}
 export enum AppLogStatsName {
     eliminations = "eliminations",
     final_blows = "final_blows",
@@ -74389,9 +74850,38 @@ export enum AppRawSourceStatus {
     conflict = "conflict",
     unverified = "unverified"
 }
+export enum AppRoleDimensionReadSelection_mode {
+    single = "single",
+    multi = "multi"
+}
+export enum AppRosterShapeReadSourceAnyOf0 {
+    tournament = "tournament",
+    custom_game = "custom_game",
+    workspace = "workspace",
+    preset = "preset"
+}
 export enum AppSortOrder {
     asc = "asc",
     desc = "desc"
+}
+export enum AppStatDefinitionAggregation {
+    sum = "sum",
+    max = "max",
+    min = "min",
+    avg = "avg",
+    last = "last"
+}
+export enum AppStatDefinitionValue_format {
+    integer = "integer",
+    decimal = "decimal",
+    percent = "percent",
+    duration = "duration"
+}
+export enum AppTeamFormatReadSource {
+    tournament = "tournament",
+    custom_game = "custom_game",
+    workspace = "workspace",
+    preset = "preset"
 }
 export enum AppTournamentStatus {
     announcement = "announcement",
