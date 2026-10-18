@@ -632,7 +632,7 @@ class AdminEncounterService:
         for side in ("home", "away"):
             field = f"{side}_score"
             if field in changes and changes[field] != getattr(read, field):
-                scores[getattr(read, f"{side}_participant_id")] = changes[field]
+                scores[getattr(read, f"{side}_participation").id] = changes[field]
         if scores:
             before = await capture_stats_evidence(session, scopes=scopes)
             await self.match_repo.set_team_scores(
