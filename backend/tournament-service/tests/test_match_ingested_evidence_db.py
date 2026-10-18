@@ -18,33 +18,46 @@ from unittest.mock import AsyncMock, patch
 import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy import event as sa_event
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError
 
 from shared.core import enums
+from shared.models import MemberRank
 from shared.models.encounter import EncounterGame
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.models.encounter.team import EncounterTeamMember, EncounterTeamMemberRole
 from shared.models.platform.outbox import EventOutbox
 from shared.models.tenancy.workspace import WorkspaceMember
+from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.computation import TournamentComputationJob
+from shared.models.tournament.stage import Stage
+from shared.models.tournament.team import Player
 from shared.models.tournament.tournament import Tournament
 from shared.schemas.events import MatchIngestedEvent, MatchIngestExtraParticipant, MatchIngestPlacement
 from shared.schemas.role import RoleRef
 from shared.services.encounter import participants
 from shared.services.encounter.result import apply_result
+from shared.services.member_rank import member_rank_service
 from shared.tests.encounter_writer_case import EncounterWriterCase
 from src import schemas
 from src.services.admin.tournament import tournament_service
 from src.services.encounter import log_evidence, log_evidence_events
 from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.games import GameResultIn, encounter_game_service
-from src.services.encounter.log_evidence import apply_match_evidence
+from src.services.encounter.log_evidence import ForeignEvidenceError, apply_match_evidence
 from src.services.encounter.room_journal import room_history_service
 
 _TAG = itertools.count()
 EVIDENCE = 7001
 _SERVICE_DIR = Path(log_evidence.__file__).parent
+
+
+class _DriverError(Exception):
+    """What the asyncpg adapter surfaces: an exception carrying its SQLSTATE."""
+
+    def __init__(self, sqlstate: str) -> None:
+        super().__init__(sqlstate)
+        self.sqlstate = sqlstate
 
 
 class EvidenceCase(EncounterWriterCase):
@@ -131,7 +144,11 @@ class EvidenceCase(EncounterWriterCase):
         }
         return MatchIngestedEvent(**{**fields, **overrides})
 
-    def extra(self, member_key: str, team_index: int = 0, *, role: RoleRef | None = None, handle: str | None = None):
+    def extra(
+        self, member_key: str, team_index: int = 0, *, role: RoleRef | None | str = "tank", handle: str | None = None
+    ):
+        if role == "tank":
+            role = RoleRef(dimension="player_role", role="tank")
         return MatchIngestExtraParticipant(
             encounter_team_id=self.teams[team_index],
             workspace_member_id=self.ids[member_key],
@@ -438,6 +455,18 @@ class OrderingTests(EvidenceCase):
 class RosterTests(EvidenceCase):
     ROLE = RoleRef(dimension="player_role", role="tank")
 
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        async with self.Session() as s:  # the workspace canon rank the existing rank rules resolve from
+            await member_rank_service.set_ranks(
+                s,
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                workspace_member_id=self.ids["m2"],
+                ranks={"tank": 2500},
+            )
+            await s.commit()
+
     async def test_a_tournament_extra_is_seated_once_as_a_substitute_with_the_observed_role(self) -> None:
         outcome = await self.deliver(self.event(extras=(self.extra("m2", role=self.ROLE, handle="Ghost#1"),)))
 
@@ -448,7 +477,7 @@ class RosterTests(EvidenceCase):
         self.assertTrue(member.is_substitute)
         self.assertEqual(self.teams[0], member.encounter_team_id)
         self.assertEqual("Ghost#1", member.display_name_snapshot)
-        self.assertIsNone(member.rank, "the observed role never becomes a rank")
+        self.assertEqual(2500, member.rank, "the rank comes from the workspace canon, not from the observation")
         async with self.Session() as s:
             roles = (
                 await s.scalars(
@@ -519,15 +548,79 @@ class RosterTests(EvidenceCase):
         )
         self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(stray,))))
 
-    async def test_a_roster_survives_a_refused_result(self) -> None:
-        """Valid extras are judged on their own rules: seated, journaled as roster-only."""
-        outcome = await self.deliver(self.event(placements=(1, None), extras=(self.extra("m2"),)))
+    async def test_a_roster_survives_a_refused_result_and_tells_the_readers(self) -> None:
+        """Valid extras are judged on their own rules: seated, journaled as roster-only, signalled."""
+        with (
+            patch.object(log_evidence, "emit", AsyncMock()) as emit,
+            patch.object(log_evidence, "emit_pick_ban_update", AsyncMock()) as room,
+            patch.object(log_evidence, "enqueue_tournament_recalculation", AsyncMock()) as recalculation,
+        ):
+            outcome = await self.deliver(self.event(placements=(1, None), extras=(self.extra("m2"),)))
 
         self.assertEqual("applied_roster_only", outcome)
         await self.assert_untouched()
         self.assertEqual(3, len(await self.roster()))
         (receipt,) = await self.receipts()
         self.assertEqual("placements_missing", receipt.reason)
+        emit.assert_awaited_once()
+        room.assert_awaited_once()
+        recalculation.assert_not_awaited()  # nothing in the standings moved
+
+    async def test_a_refusal_that_seats_nobody_signals_nothing(self) -> None:
+        with (
+            patch.object(log_evidence, "emit", AsyncMock()) as emit,
+            patch.object(log_evidence, "emit_pick_ban_update", AsyncMock()) as room,
+        ):
+            self.assertEqual("result_incomplete", await self.deliver(self.event(placements=(1, None))))
+        emit.assert_not_awaited()
+        room.assert_not_awaited()
+
+    async def test_an_extra_without_any_role_is_refused(self) -> None:
+        self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(self.extra("m2", role=None),))))
+        (receipt,) = await self.receipts()
+        self.assertEqual("extra_role_unknown", receipt.reason)
+        self.assertEqual(2, len(await self.roster()))
+
+    async def test_an_extra_no_rank_rule_can_rank_is_refused(self) -> None:
+        async with self.Session() as s:
+            await s.execute(sa.delete(MemberRank).where(MemberRank.workspace_member_id == self.ids["m2"]))
+            await s.commit()
+        self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(self.extra("m2"),))))
+        (receipt,) = await self.receipts()
+        self.assertEqual("extra_rank_unknown", receipt.reason)
+        self.assertEqual(2, len(await self.roster()))
+
+    async def test_the_tournament_roster_row_is_the_rank_authority(self) -> None:
+        async with self.Session() as s:
+            s.add(
+                Player(
+                    tournament_id=self.ids["t"],
+                    team_id=self.ids["team0"],
+                    workspace_member_id=self.ids["m2"],
+                    name="m2",
+                    rank=1234,
+                )
+            )
+            await s.commit()
+        self.assertEqual("accepted", await self.deliver(self.event(extras=(self.extra("m2"),))))
+        (member,) = [row for row in await self.roster() if row.workspace_member_id == self.ids["m2"]]
+        self.assertEqual(1234, member.rank)
+
+    async def test_a_member_rostered_on_another_team_is_refused(self) -> None:
+        async with self.Session() as s:
+            s.add(
+                Player(
+                    tournament_id=self.ids["t"],
+                    team_id=self.ids["team2"],
+                    workspace_member_id=self.ids["m2"],
+                    name="m2",
+                    rank=1234,
+                )
+            )
+            await s.commit()
+        self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(self.extra("m2"),))))
+        (receipt,) = await self.receipts()
+        self.assertEqual("extra_member_other_team", receipt.reason)
 
 
 class MixOwnerTests(EvidenceCase):
@@ -586,11 +679,15 @@ class ResultInputTests(EvidenceCase):
         self.assertEqual("stale_basis", await self.deliver(evidence))
         await self.assert_untouched()
 
-    async def test_a_foreign_workspace_event_is_refused_by_owner(self) -> None:
+    async def test_a_foreign_workspace_event_is_malformed_and_leaves_no_receipt(self) -> None:
         other = await self._seed()
-        evidence = self.event(workspace_id=other["ws"])
-        self.assertEqual("owner_policy_refused", await self.deliver(evidence))
+        with self.assertRaises(ForeignEvidenceError):
+            await self.deliver(self.event(workspace_id=other["ws"]))
+        with self.assertRaises(ForeignEvidenceError):
+            await self.deliver(self.event(discipline="lol"))
         await self.assert_untouched()
+        self.assertEqual([], await self.receipts(), "no receipt, so no watermark for a corrected delivery to hit")
+        self.assertEqual("accepted", await self.deliver(self.event()))
 
     async def test_a_deleted_game_or_encounter_is_ignored_without_a_receipt(self) -> None:
         self.assertEqual("ignored", await self.deliver(self.event(game_id=self.game_id + 10_000_000)))
@@ -637,7 +734,7 @@ class ConsumerTests(EvidenceCase):
         self.assertEqual([], await self.receipts())
 
     async def test_a_transient_database_failure_requeues_and_the_redelivery_applies_once(self) -> None:
-        failure = OperationalError("SELECT 1", {}, Exception("connection lost"))
+        failure = DBAPIError("SELECT 1", {}, _DriverError("40P01"))
         data = self.event().model_dump()
         with patch.object(log_evidence_events.db, "async_session_maker", self.Session):
             with patch.object(log_evidence_events, "apply_match_evidence", AsyncMock(side_effect=failure)):
@@ -648,6 +745,50 @@ class ConsumerTests(EvidenceCase):
             self.assertEqual("accepted", await log_evidence_events.process_match_ingested(data))
         self.assertEqual(1, (await self.game()).result_version)
         self.assertEqual(1, len(await self.receipts()))
+
+    async def test_a_permanent_database_defect_is_rejected_not_requeued(self) -> None:
+        failure = DBAPIError("SELECT 1", {}, _DriverError("42703"))
+        with patch.object(log_evidence_events.db, "async_session_maker", self.Session):
+            with patch.object(log_evidence_events, "apply_match_evidence", AsyncMock(side_effect=failure)):
+                with self.assertRaises(DBAPIError):
+                    await log_evidence_events.process_match_ingested(self.event().model_dump())
+
+    def test_the_asyncpg_error_shapes_are_classified(self) -> None:
+        # the adapter wraps the asyncpg exception: the SQLSTATE sits on ``orig`` or on its ``__cause__``
+        wrapped = Exception("adapter")
+        wrapped.__cause__ = _DriverError("40001")
+        for orig in (_DriverError("40001"), _DriverError("40P01"), _DriverError("08003"), wrapped):
+            self.assertTrue(log_evidence_events.is_transient(DBAPIError("s", {}, orig)), orig)
+        self.assertTrue(log_evidence_events.is_transient(DBAPIError("s", {}, Exception(), connection_invalidated=True)))
+        for orig in (_DriverError("23505"), _DriverError("42P01"), Exception("no state")):
+            self.assertFalse(log_evidence_events.is_transient(DBAPIError("s", {}, orig)), orig)
+
+    async def test_an_accepted_completing_result_is_pushed_to_challonge_after_the_commit(self) -> None:
+        with (
+            patch.object(log_evidence_events.db, "async_session_maker", self.Session),
+            patch.object(log_evidence_events, "push_confirmed_to_challonge", AsyncMock()) as push,
+        ):
+            self.assertEqual("accepted", await log_evidence_events.process_match_ingested(self.event().model_dump()))
+            push.assert_awaited_once()
+            self.assertEqual(self.ids["e"], push.await_args.args[1])
+            self.assertEqual("duplicate", await log_evidence_events.process_match_ingested(self.event().model_dump()))
+            push.assert_awaited_once()
+
+    async def test_a_push_failure_never_undoes_the_committed_decision(self) -> None:
+        with (
+            patch.object(log_evidence_events.db, "async_session_maker", self.Session),
+            patch.object(log_evidence_events, "push_confirmed_to_challonge", AsyncMock(side_effect=RuntimeError)),
+        ):
+            self.assertEqual("accepted", await log_evidence_events.process_match_ingested(self.event().model_dump()))
+        self.assertEqual(1, (await self.game()).result_version)
+
+    async def test_no_push_when_nothing_became_official(self) -> None:
+        with (
+            patch.object(log_evidence_events.db, "async_session_maker", self.Session),
+            patch.object(log_evidence_events, "push_confirmed_to_challonge", AsyncMock()) as push,
+        ):
+            await log_evidence_events.process_match_ingested(self.event(placements=(1, None)).model_dump())
+        push.assert_not_awaited()
 
     async def test_the_consumer_modules_import_no_stats_package(self) -> None:
         for module in ("log_evidence.py", "log_evidence_events.py"):
@@ -696,3 +837,75 @@ class TournamentFlagTests(EvidenceCase):
             )
         async with self.Session() as s:
             self.assertFalse((await s.get_one(Tournament, self.ids["t"], populate_existing=True)).logs_official)
+
+
+class BracketStateTests(EvidenceCase):
+    """The live-encounter gate and settlement refusals, with the encounter inside a real stage."""
+
+    async def _in_stage(self, *, published: bool) -> None:
+        async with self.Session() as s:
+            stage = Stage(
+                tournament_id=self.ids["t"],
+                scoring_rule_id=self.ids["rule"],
+                name="Playoff",
+                stage_type=enums.StageType.SINGLE_ELIMINATION,
+                order=1,
+                is_published=published,
+            )
+            s.add(stage)
+            await s.flush()
+            s.add(BracketEncounter(encounter_id=self.ids["e"], tournament_id=self.ids["t"], stage_id=stage.id, round=1))
+            await s.commit()
+
+    async def test_a_preview_bracket_takes_no_result_and_no_roster_change(self) -> None:
+        await self._in_stage(published=False)
+
+        outcome = await self.deliver(self.event(extras=(self.extra("m2"),)))
+
+        self.assertEqual("owner_policy_refused", outcome)
+        await self.assert_untouched()
+        self.assertEqual(2, len(await self.roster()))
+        (receipt,) = await self.receipts()
+        self.assertEqual("encounter_preview", receipt.reason)
+
+    async def test_a_published_bracket_accepts_the_same_evidence(self) -> None:
+        await self._in_stage(published=True)
+        self.assertEqual("accepted", await self.deliver(self.event()))
+
+    async def test_a_level_finish_in_an_elimination_bracket_is_journaled_not_dead_lettered(self) -> None:
+        await self._in_stage(published=True)
+        before = await self._outbox_count()
+
+        outcome = await self.deliver(self.event(placements=(1, 1)))
+
+        self.assertEqual("result_incomplete", outcome)
+        await self.assert_untouched()
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.ids["e"], populate_existing=True)
+        self.assertNotEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
+        self.assertEqual(before, await self._outbox_count(), "the tentative cascade left no outbox row")
+        (receipt,) = await self.receipts()
+        self.assertEqual("bracket_tie", receipt.reason)
+        self.assertEqual(0, receipt.data["accepted_game_result_version"])
+
+    async def test_a_level_finish_keeps_valid_roster_additions(self) -> None:
+        await self._in_stage(published=True)
+        async with self.Session() as s:
+            await member_rank_service.set_ranks(
+                s,
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                workspace_member_id=self.ids["m2"],
+                ranks={"tank": 2500},
+            )
+            await s.commit()
+
+        outcome = await self.deliver(self.event(placements=(1, 1), extras=(self.extra("m2"),)))
+
+        self.assertEqual("applied_roster_only", outcome)
+        await self.assert_untouched()
+        self.assertEqual(3, len(await self.roster()))
+
+    async def _outbox_count(self) -> int:
+        async with self.Session() as s:
+            return await s.scalar(sa.select(sa.func.count()).select_from(EventOutbox))

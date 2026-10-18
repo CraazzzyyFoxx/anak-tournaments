@@ -21,14 +21,19 @@ Outcomes (``apply_match_evidence`` returns exactly one; the first seven are jour
 
 ``accepted``              the game is CONFIRMED with source ``admin_log`` (one ``result_version`` step)
 ``logs_disabled``         the tournament does not accept logs as official; a later toggle never replays history
-``owner_policy_refused``  wrong/foreign owner, mix, scrim, or an extra participant the roster rules refuse
+``owner_policy_refused``  mix, scrim, an unpublished (preview) bracket, or an extra participant whose rank/role
+                          the roster rules cannot establish or that contradicts the roster
 ``result_locked``         the game is cancelled/confirmed, or the encounter already has a decided result
 ``stale_basis``           the game changed since the document was bound (result version or team set)
-``result_incomplete``     placements/mandatory organizer inputs do not decide the game; stats stays done
+``result_incomplete``     placements/mandatory organizer inputs do not decide the game, or settlement refuses the
+                          result (``bracket_tie``: rolled back in a savepoint); stats stays done
 ``applied_roster_only``   valid extras were seated but the result could not be accepted (see above)
 ``duplicate``             this revision of this evidence was already delivered (nothing written)
 ``stale_revision``        a higher revision of this evidence was already delivered (nothing written)
 ``ignored``               the encounter or game is gone (nothing written, nothing resurrected)
+
+An event naming another workspace/discipline than its encounter raises :class:`ForeignEvidenceError` (malformed:
+dead-letter queue, no receipt, no watermark).
 
 The delivered-revision high-water is a statement about what THIS consumer has seen, not about unseen stats
 revisions. First accepted evidence stands: a later revision meets a CONFIRMED game and is refused as locked;
@@ -53,14 +58,21 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException
 from shared.disciplines import discipline as discipline_spec
 from shared.domain.roles import UnknownRole
+from shared.models import CatalogRole
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
 from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.models.encounter.team import EncounterTeam, EncounterTeamMember
 from shared.models.tenancy.workspace import WorkspaceMember
+from shared.models.tournament.player_role import rated_role_code
+from shared.models.tournament.team import Player
 from shared.repository import CatalogRoleRepository, TournamentRepository
 from shared.schemas.events import MatchIngestedEvent, MatchIngestExtraParticipant
+from shared.services.bracket.usability import is_encounter_live
+from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.encounter.participants import MemberSnapshot, active_teams, add_substitute
+from shared.services.member_rank import TOURNAMENT_ORDER, member_rank_service
+from shared.services.realtime import Resource, Scope, emit
 from shared.services.scrim_scope import is_scrim_container
 from src.services.encounter.games import (
     EncounterGameService,
@@ -80,6 +92,7 @@ __all__ = (
     "IGNORED",
     "LOGS_DISABLED",
     "OWNER_POLICY_REFUSED",
+    "ForeignEvidenceError",
     "RECEIPT_ACTION",
     "RECEIPT_SOURCE",
     "RESULT_INCOMPLETE",
@@ -102,6 +115,11 @@ APPLIED_ROSTER_ONLY = "applied_roster_only"
 DUPLICATE = "duplicate"
 STALE_REVISION = "stale_revision"
 IGNORED = "ignored"
+
+
+class ForeignEvidenceError(ValueError):
+    """The event names another workspace/discipline than the encounter it points at: malformed, never journaled."""
+
 
 _tournaments = TournamentRepository()
 _roles = CatalogRoleRepository()
@@ -134,6 +152,13 @@ async def apply_match_evidence(
     )
     if encounter is None:
         return IGNORED
+    # A foreign event is malformed, not a policy decision: it must reach the dead-letter queue before it can write
+    # a receipt or be compared with this encounter's delivered-revision watermark.
+    if event.workspace_id != encounter.workspace_id or event.discipline != encounter.discipline:
+        raise ForeignEvidenceError(
+            f"match.ingested {event.event_id} names workspace {event.workspace_id}/{event.discipline}, "
+            f"encounter {encounter.id} belongs to {encounter.workspace_id}/{encounter.discipline}"
+        )
     game = await games.game_repo.get_for_update(session, event.encounter_game_id)
     if game is None or game.encounter_id != encounter.id:
         return IGNORED
@@ -173,7 +198,10 @@ async def _decide(
     event: MatchIngestedEvent,
 ) -> tuple[str, str | None]:
     """``(outcome, reason)`` of one undelivered revision; stages the roster and result it decided to apply."""
-    refusal = await _owner_refusal(session, encounter, event) or _game_refusal(encounter, game, event)
+    refusal = await _owner_refusal(session, encounter) or _game_refusal(encounter, game, event)
+    if refusal is None and not await is_encounter_live(session, encounter):
+        # An unpublished preview bracket takes no result and no roster change, whoever proposes it.
+        refusal = _Refusal(OWNER_POLICY_REFUSED, "encounter_preview")
     if refusal is not None:
         return refusal.outcome, refusal.reason
     seats = await active_teams(session, encounter.id)
@@ -185,27 +213,65 @@ async def _decide(
         return refusal.outcome, refusal.reason
 
     lines, refusal = await _result_lines(session, games, encounter, game, event, seats)
-    for participation, extra in plan:
-        await _seat_extra(session, participation, extra)
+    for participation, snapshot in plan:
+        await add_substitute(session, participation, snapshot)
+    if refusal is None:
+        refusal = await _record(session, games, encounter, game, event, lines)
     if refusal is not None:
-        # A refused result does not undo valid roster additions: they are judged on their own rules.
+        if plan:
+            # A refused result does not undo valid roster additions (judged on their own rules): tell the readers.
+            await _announce_roster(session, encounter)
         return (APPLIED_ROSTER_ONLY if plan else refusal.outcome), refusal.reason
 
-    await games.record_result(
-        session,
-        encounter,
-        game,
-        results=lines,
-        source=EncounterGameResultSource.ADMIN_LOG,
-        actor_user_id=None,
-        reason=f"Accepted ingest evidence {event.evidence_id} revision {event.revision}",
-    )
     # ``record_result`` emits no room invalidations; stage what a correction stages (``game_correction.py``) so the
     # bracket, standings and open rooms refresh on commit.
     await enqueue_tournament_recalculation(session, encounter.tournament_id)
     await emit_pick_ban_update(session, encounter.id)
     await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
     return ACCEPTED, None
+
+
+async def _record(
+    session: AsyncSession,
+    games: EncounterGameService,
+    encounter: Encounter,
+    game: EncounterGame,
+    event: MatchIngestedEvent,
+    lines: list[GameResultIn],
+) -> _Refusal | None:
+    """Write the result and its settlement in a savepoint; a domain refusal undoes only that attempt.
+
+    Settlement can still refuse a result that passed validation (an elimination encounter that would end level
+    raises ``bracket_tie``). The no-draw rule stays the settlement's; here the tentative result, version bump and
+    cascade are rolled back and the refusal is journaled instead of dead-lettering valid evidence.
+    """
+    try:
+        async with session.begin_nested():
+            await games.record_result(
+                session,
+                encounter,
+                game,
+                results=lines,
+                source=EncounterGameResultSource.ADMIN_LOG,
+                actor_user_id=None,
+                reason=f"Accepted ingest evidence {event.evidence_id} revision {event.revision}",
+            )
+    except BaseAPIException as exc:
+        await session.refresh(game)
+        await session.refresh(encounter)
+        return _Refusal(RESULT_INCOMPLETE, _code(exc))
+    return None
+
+
+async def _announce_roster(session: AsyncSession, encounter: Encounter) -> None:
+    """Invalidate the cached encounter reads and wake open rooms after a roster-only change (no standings work)."""
+    await emit(
+        session,
+        scope=Scope.tournament(encounter.tournament_id),
+        invalidates=[Resource.TOURNAMENT_ENCOUNTERS],
+        entity_ids={"encounter_ids": [encounter.id]},
+    )
+    await emit_pick_ban_update(session, encounter.id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,9 +303,7 @@ async def _delivered(session: AsyncSession, encounter_id: int, game_id: int, evi
     )
 
 
-async def _owner_refusal(session: AsyncSession, encounter: Encounter, event: MatchIngestedEvent) -> _Refusal | None:
-    if event.workspace_id != encounter.workspace_id or event.discipline != encounter.discipline:
-        return _Refusal(OWNER_POLICY_REFUSED, "owner_mismatch")
+async def _owner_refusal(session: AsyncSession, encounter: Encounter) -> _Refusal | None:
     if encounter.tournament_id is None:
         return _Refusal(OWNER_POLICY_REFUSED, "owner_not_tournament")
     if await is_scrim_container(session, encounter.tournament_id):
@@ -281,16 +345,16 @@ def _team_set_refusal(seats: list[EncounterTeam], event: MatchIngestedEvent) -> 
 
 async def _plan_extras(
     session: AsyncSession, encounter: Encounter, event: MatchIngestedEvent, seats: list[EncounterTeam]
-) -> tuple[list[tuple[EncounterTeam, MatchIngestExtraParticipant]], _Refusal | None]:
-    """Which extras need seating, or the refusal that stops the whole evidence. Writes nothing.
+) -> tuple[list[tuple[EncounterTeam, MemberSnapshot]], _Refusal | None]:
+    """Which substitutes need seating, or the refusal that stops the whole evidence. Writes nothing.
 
     Idempotent for a member already on the same team; a member already seated on ANOTHER live team of this
-    encounter is a contradiction, never a swap. Nothing is guessed: no replaced player, no rank, no role the
-    observation did not state and the workspace does not own.
+    encounter, or rostered on another tournament team, is a contradiction, never a swap. Nothing is guessed: no
+    replaced player, and rank and role come from the roster's own authority (:func:`_snapshot`) or the evidence
+    is refused.
     """
     seat_by_id = {seat.id: seat for seat in seats}
-    rated = discipline_spec(encounter.discipline).rated_dimension.code
-    plan: list[tuple[EncounterTeam, MatchIngestExtraParticipant]] = []
+    plan: list[tuple[EncounterTeam, MemberSnapshot]] = []
     claimed: dict[int, int] = {}
     for extra in event.extra_participants:
         participation = seat_by_id.get(extra.encounter_team_id)
@@ -317,37 +381,78 @@ async def _plan_extras(
             continue
         if seated_on is not None:
             return [], _Refusal(OWNER_POLICY_REFUSED, "extra_member_contradiction")
-        role = extra.observed_role
-        if role is not None:
-            if role.dimension != rated:
-                return [], _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
-            try:
-                await _roles.resolve(
-                    session,
-                    discipline=encounter.discipline,
-                    workspace_id=encounter.workspace_id,
-                    dimension=role.dimension,
-                    code=role.role,
-                )
-            except UnknownRole:
-                return [], _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
-        plan.append((participation, extra))
+        snapshot = await _snapshot(session, encounter, participation, member, extra)
+        if isinstance(snapshot, _Refusal):
+            return [], snapshot
+        plan.append((participation, snapshot))
     return plan, None
 
 
-async def _seat_extra(session: AsyncSession, participation: EncounterTeam, extra: MatchIngestExtraParticipant) -> None:
-    role = extra.observed_role
-    await add_substitute(
-        session,
-        participation,
-        MemberSnapshot(
-            workspace_member_id=extra.workspace_member_id,
-            display_name=extra.handle_snapshot,
-            # ponytail: no rank guess -- the roster's rank rules own it; the organizer sets it if the format needs one
-            rank=None,
-            is_substitute=True,
-            roles=((role.dimension, role.role),) if role is not None else (),
-        ),
+async def _snapshot(
+    session: AsyncSession,
+    encounter: Encounter,
+    participation: EncounterTeam,
+    member: WorkspaceMember,
+    extra: MatchIngestExtraParticipant,
+) -> MemberSnapshot | _Refusal:
+    """The substitute as the roster rules would remember them, or why that cannot be established.
+
+    The tournament's own roster row (``tournament.player``) is authoritative for rank and rated role; a member
+    rostered on another team of this tournament is a contradiction. Without one, the rank is the existing
+    member-rank resolution (workspace canon, then the native ladder) on the role the observation names, which
+    must be the discipline's rated dimension and resolve in this workspace.
+    """
+    rated = discipline_spec(encounter.discipline).rated_dimension.code
+    rostered = (
+        await session.execute(
+            sa.select(Player.team_id, Player.rank, rated_role_code(Player.id, top=False)).where(
+                Player.tournament_id == encounter.tournament_id, Player.workspace_member_id == member.id
+            )
+        )
+    ).all()
+    if any(team_id != participation.team_id for team_id, _, _ in rostered):
+        return _Refusal(OWNER_POLICY_REFUSED, "extra_member_other_team")
+    own_rank, own_role = (rostered[0][1], rostered[0][2]) if rostered else (None, None)
+
+    observed = extra.observed_role
+    if observed is not None and observed.dimension != rated:
+        return _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
+    code = own_role or (observed.role if observed is not None else None)
+    if code is None:
+        return _Refusal(OWNER_POLICY_REFUSED, "extra_role_unknown")
+    try:
+        leaf = await _roles.resolve(
+            session, discipline=encounter.discipline, workspace_id=encounter.workspace_id, dimension=rated, code=code
+        )
+    except UnknownRole:
+        return _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
+
+    rank = own_rank
+    if rank is None:
+        top = leaf.code
+        if leaf.parent_role_id is not None:
+            top = await session.scalar(sa.select(CatalogRole.code).where(CatalogRole.id == leaf.parent_role_id))
+        grid = await get_effective_division_grid(
+            session, encounter.workspace_id, encounter.tournament_id, discipline=encounter.discipline
+        )
+        resolved = await member_rank_service.resolve(
+            session,
+            workspace_id=encounter.workspace_id,
+            discipline=encounter.discipline,
+            members={member.id: member.player_id},
+            roles=[top],
+            order=TOURNAMENT_ORDER,
+            grid=grid,
+        )
+        rank = resolved[(member.id, top)].value
+    if rank is None:
+        return _Refusal(OWNER_POLICY_REFUSED, "extra_rank_unknown")
+    return MemberSnapshot(
+        workspace_member_id=member.id,
+        display_name=extra.handle_snapshot,
+        rank=rank,
+        is_substitute=True,
+        roles=((rated, leaf.code),),
     )
 
 

@@ -346,8 +346,16 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
 
 
 def assert_tournament_golden(actual: dict) -> None:
+    def without_post_capture_fields(value):
+        """``TournamentRead.logs_official`` (P5) postdates the frozen P4 capture; it is not a reader output."""
+        if isinstance(value, dict):
+            return {key: without_post_capture_fields(item) for key, item in value.items() if key != "logs_official"}
+        if isinstance(value, list):
+            return [without_post_capture_fields(item) for item in value]
+        return value
+
     def comparable(payload):
-        payload = deepcopy(payload)
+        payload = without_post_capture_fields(deepcopy(payload))
         # The removed roster/user-batch API's empty-input shape has no facts.
         payload.pop("empty_user_batch", None)
         page = payload["match_pages"]["duration_desc"]
