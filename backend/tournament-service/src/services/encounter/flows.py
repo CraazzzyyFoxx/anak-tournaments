@@ -369,6 +369,8 @@ class EncounterFlowsService:
             encounter_id=match.encounter.id,
             map_id=match.match.map_entity_id,
             map_index=match.game.position if match.game is not None else None,
+            workspace_id=match.match.workspace_id,
+            discipline=match.match.discipline,
             home_team_id=match.home_team.id if match.home_team is not None else None,
             away_team_id=match.away_team.id if match.away_team is not None else None,
             score=schemas.Score(home=match.home_score, away=match.away_score),

@@ -141,6 +141,10 @@ class EncounterGameRead(BaseRead):
 
 
 class EncounterRead(BaseRead):
+    #: Owner context (the tournament's or mix's workspace and discipline): lets a
+    #: reader scope metadata and catalog reads without a second owner fetch.
+    workspace_id: int
+    discipline: str
     name: str
     slot_count: int = 2
     scoring_preset: Literal["wins", "points"] = "wins"
@@ -178,6 +182,9 @@ class EncounterRead(BaseRead):
 
 
 class MatchRead(BaseRead):
+    #: The observation's own owner context (``stats.match``), same as its encounter's.
+    workspace_id: int
+    discipline: str
     home_team_id: int | None = None
     away_team_id: int | None = None
     score: Score

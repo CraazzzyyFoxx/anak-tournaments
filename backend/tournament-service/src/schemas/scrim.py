@@ -44,6 +44,8 @@ class ScrimRoomRead(BaseModel):
     token: str
     label: str
     workspace_id: int
+    #: The room's encounter's discipline: owner context for scoped metadata reads.
+    discipline: str
     #: The hidden per-workspace container, not a real tournament. Exposed because
     #: the client needs it for nothing except debugging — the room is addressed by
     #: ``token`` and the pre-game UI by ``encounter_id``.

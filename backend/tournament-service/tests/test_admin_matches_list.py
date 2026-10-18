@@ -45,6 +45,8 @@ def _read(*, job=None, **kw):
         **{
             "match": svc.models.StatsMatch(
                 id=100,
+                workspace_id=7,
+                discipline="overwatch",
                 encounter_id=10,
                 map_entity_id=8,
                 duration_s=612.5,
@@ -107,6 +109,7 @@ class PublicHistorySerialization(IsolatedAsyncioTestCase):
         row = await encounters.to_pydantic_match(None, context, [])
 
         self.assertEqual((100, 10, 8, 612.5), (row.id, row.encounter_id, row.map_id, row.time))
+        self.assertEqual((7, "overwatch"), (row.workspace_id, row.discipline))
         self.assertEqual((2, 1), (row.score.home, row.score.away))
         self.assertIsNone(row.map_index)
         self.assertIsNone(row.raw_status)

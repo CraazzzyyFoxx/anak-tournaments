@@ -589,6 +589,7 @@ class ScrimService:
             "token": room.token,
             "label": room.label,
             "workspace_id": room.workspace_id,
+            "discipline": encounter.discipline,
             "tournament_id": room.tournament_id,
             "stage_id": room.stage_id,
             "encounter_id": room.encounter_id,

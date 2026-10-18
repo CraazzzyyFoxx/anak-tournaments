@@ -347,9 +347,13 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
 
 def assert_tournament_golden(actual: dict) -> None:
     def without_post_capture_fields(value):
-        """``TournamentRead.logs_official`` (P5) postdates the frozen P4 capture; it is not a reader output."""
+        """Fields added after the frozen P4 capture are not reader output: ``TournamentRead.logs_official`` (P5) and
+        the owner context (``workspace_id``/``discipline``) P7 added to ``EncounterRead`` and ``MatchRead``. The
+        golden's nested ``tournament`` objects already carried theirs and keep them."""
         if isinstance(value, dict):
-            return {key: without_post_capture_fields(item) for key, item in value.items() if key != "logs_official"}
+            owner = value.keys() >= {"scoring_preset", "tournament_id"} or value.keys() >= {"encounter_id", "map_id"}
+            dropped = {"logs_official", *(("workspace_id", "discipline") if owner else ())}
+            return {key: without_post_capture_fields(item) for key, item in value.items() if key not in dropped}
         if isinstance(value, list):
             return [without_post_capture_fields(item) for item in value]
         return value
@@ -485,6 +489,34 @@ def test_native_ow_readers_reject_foreign_discipline(stats_parity_database):
                         match_id=foreign.id,
                     )
                 )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
+
+
+def test_encounter_and_match_reads_carry_their_owner_context(stats_parity_database):
+    async def exercise():
+        url, ids = stats_parity_database
+        engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                detail = await encounters.get_encounter(session, ids["encounter"], ["tournament", "matches"])
+                owner = (detail.tournament.workspace_id, detail.tournament.discipline)
+                assert owner[0] == ids["workspace"]
+                assert (detail.workspace_id, detail.discipline) == owner
+                page = await encounters.get_all_matches(
+                    session,
+                    schemas.MatchSearchParams(tournament_id=ids["tournament"]),
+                    workspace_id=ids["workspace"],
+                )
+                direct = await encounters.get_match(session, ids["match"], ["encounter"], workspace_id=ids["workspace"])
+                with_stats = await _uncached(
+                    encounters.get_match_with_stats, session, ids["match"], [], workspace_id=ids["workspace"]
+                )
+                assert direct.encounter is not None
+                for read in (*detail.matches, *page.results, direct, with_stats, direct.encounter):
+                    assert (read.workspace_id, read.discipline) == owner
         finally:
             await engine.dispose()
 

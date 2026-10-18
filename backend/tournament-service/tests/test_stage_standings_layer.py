@@ -558,7 +558,8 @@ class ScrimClaimTests(StageLayerCase):
         async with self.Session() as s:
             payload = await scrim_service.claim_side(s, claimant, token)
 
-        schemas.ScrimRoomRead.model_validate(payload)
+        room_read = schemas.ScrimRoomRead.model_validate(payload)
+        self.assertEqual(("overwatch", self.workspace_id), (room_read.discipline, room_read.workspace_id))
         self.assertEqual(2, payload["viewer_slot"])
         self.assertEqual([1, 2], [team["slot"] for team in payload["teams"]])
         self.assertTrue(payload["teams"][1]["captain_claimed"])
