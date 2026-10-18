@@ -1,0 +1,30 @@
+{
+ "capture_command": "cd backend/parser-service && export POSTGRES_DB=anak_test POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55432 POSTGRES_USER=postgres POSTGRES_PASSWORD=postgres && P5_CAPTURE_OW_REFERENCE=1 uv run pytest tests/test_ow_decoder_reference_capture.py -k capture -s",
+ "counts": {
+  "events": 17,
+  "facts": 1685,
+  "players": 7
+ },
+ "expected": {
+  "file": "expected.json",
+  "sha256": "cf1be267cdc50dc8ad3056af0b9a70eee0d77519231ca999dc17c6cf2a531895"
+ },
+ "parser_path": "src.services.match_logs.flows.process_match_log -> MatchLogProcessor.start",
+ "raw": {
+  "bytes": 4315,
+  "file": "workshop.csv",
+  "sha256": "28373a918287feaf4ef0bb614809481385efae19acd996111381f78501614318"
+ },
+ "second_catalog_hero": {
+  "attrs": {
+   "class": "damage"
+  },
+  "name": "Ingest Reaper",
+  "slug": "ingest-reaper"
+ },
+ "source_head": "d3010dd989e781eb0fd9ecd515c32fd654099df6",
+ "uncommitted_paths_at_capture": [
+  " M backend/shared/models/catalog/alias_miss.py",
+  " M backend/shared/repository/catalog.py"
+ ]
+}

@@ -1,0 +1,3 @@
+workshop.csv -text
+expected.json -text
+manifest.json -text
