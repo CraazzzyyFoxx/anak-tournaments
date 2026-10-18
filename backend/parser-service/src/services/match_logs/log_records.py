@@ -1,6 +1,7 @@
 """Native ingest-job lifecycle. Callers own processing transactions and commits."""
 
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
@@ -56,6 +57,12 @@ async def reparse_observation(session: AsyncSession, job: models.IngestJob) -> m
     elif job.source_kind == "historical_reference":
         raise BaseAPIException(status_code=409, detail="stats_reparse_unbound_observation")
     return observation
+
+
+@dataclass(frozen=True, slots=True)
+class TournamentRequeue:
+    queue: list[int]
+    replay: dict[int, int]
 
 
 class LogRecordsService:
@@ -226,12 +233,20 @@ class LogRecordsService:
         await session.commit()
         return job
 
-    async def requeue_tournament(self, session: AsyncSession, tournament_id: int) -> list[int]:
+    async def requeue_tournament(self, session: AsyncSession, tournament_id: int) -> TournamentRequeue:
+        """Sort the tournament's jobs into queue retries and revision-checked replays; nothing done is re-pended.
+
+        ``queue``: pending/failed/awaiting-link jobs reset to pending (ordinary retry, queue + claim fencing).
+        ``replay``: done jobs that are still the current provenance of their game, with the revision seen *here*; the
+        caller replays each through the explicit reparse branch and reports stale/busy individually. A done job that
+        was superseded (or has no observation to replace) is left alone, as is anything processing.
+        """
         tournament = await TournamentRepository().get(session, tournament_id)
         if tournament is None:
             raise BaseAPIException(status_code=404, detail="Tournament not found")
         workspace_id, discipline_code = tournament.workspace_id, tournament.discipline
-        ids = []
+        queue: list[int] = []
+        replay: dict[int, int] = {}
         cursor = 0
         while True:
             jobs = list(
@@ -255,13 +270,17 @@ class LogRecordsService:
                 if job.status == models.IngestJobStatus.PROCESSING:
                     continue
                 try:
-                    await reparse_observation(session, job)
+                    linked = await reparse_observation(session, job)
                 except BaseAPIException:
                     continue
+                if job.status == models.IngestJobStatus.DONE:
+                    if linked is not None and linked.ingest_job_id == job.id:
+                        replay[job.id] = linked.revision
+                    continue
                 await self.transition(session, job, models.IngestJobStatus.PENDING, reset_attempts=True)
-                ids.append(job.id)
+                queue.append(job.id)
             await session.commit()
-        return ids
+        return TournamentRequeue(queue=queue, replay=replay)
 
 
 log_records_service = LogRecordsService()

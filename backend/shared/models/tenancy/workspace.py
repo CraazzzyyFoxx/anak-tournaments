@@ -171,6 +171,10 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     # anchored on this row and must not lose it, so ``remove_member`` strips the
     # roles and the access and stamps this instead of deleting. NULL = active.
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Anchor created by a stats observation (ingest), never admitted: it carries observations and roster history only.
+    # Every membership/visibility read and the link-time role autofill skip it; a real admission
+    # (``get_or_create_workspace_member``) clears it. Independent of ``removed_at`` and of account linkage.
+    observed_only: Mapped[bool] = mapped_column(Boolean(), server_default="false", nullable=False, default=False)
 
     workspace: Mapped[Workspace] = relationship(back_populates="members")
     player: Mapped[User] = relationship()

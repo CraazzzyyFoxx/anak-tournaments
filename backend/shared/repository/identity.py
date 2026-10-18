@@ -1046,6 +1046,7 @@ class UserRoleRepository:
             JOIN auth.roles r ON r.workspace_id = wm.workspace_id AND r.name = 'player'
             WHERE wm.workspace_id = :workspace_id
               AND wm.removed_at IS NULL
+              AND wm.observed_only IS FALSE
               AND NOT EXISTS (
                 SELECT 1 FROM auth.user_roles ur
                 JOIN auth.roles r2 ON r2.id = ur.role_id

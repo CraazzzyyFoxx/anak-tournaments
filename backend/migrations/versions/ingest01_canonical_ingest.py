@@ -7,6 +7,9 @@ Sections, in order (a later task appends its own section to ``upgrade``):
    stays three-valued. The existing CHECK is found by relation and the column it constrains, never by its name.
 2. ``tournament.tournament.logs_official BOOLEAN NOT NULL DEFAULT false`` (match-layer owner policy for accepting
    ingest evidence). Every existing tournament stays off; a constant default is a metadata-only add on PG 11+.
+3. ``public.workspace_member.observed_only BOOLEAN NOT NULL DEFAULT false``: an anchor made by a stats observation is
+   not a membership (hidden from token memberships, visibility and link-time role autofill) until a real admission.
+   Every existing row is an admitted anchor (false).
 
 Forward-fix only, consistent with P4's release.
 
@@ -54,9 +57,15 @@ def _add_logs_official() -> None:
     )
 
 
+def _add_observed_only() -> None:
+    op.execute(sa.text("SET LOCAL lock_timeout = '3s'"))
+    op.add_column("workspace_member", sa.Column("observed_only", sa.Boolean(), server_default="false", nullable=False))
+
+
 def upgrade() -> None:
     _widen_alias_miss_kind()
     _add_logs_official()
+    _add_observed_only()
 
 
 def downgrade() -> None:

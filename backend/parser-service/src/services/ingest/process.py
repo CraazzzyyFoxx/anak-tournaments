@@ -38,13 +38,15 @@ from shared.repository.stats import IngestJobRepository, StatsMatchRepository
 from shared.schemas.match_doc import IngestIssue, MatchDoc, MatchHint, MatchSource
 from shared.services.decode_context import load_decode_context
 from src.core.config import settings
-from src.schemas.ingest import BindIngestRequest, IngestJobRead
+from src.schemas.ingest import BindIngestRequest, GameObservationRead, IngestJobRead
 from src.services.ingest.binding import (
     BindingMismatch,
     GameSeats,
+    MapNotInPool,
     bound_match,
     bound_participants,
     check_forced_teams,
+    check_map_pool,
     find_binding,
     load_game_seats,
     match_teams,
@@ -70,8 +72,9 @@ from src.services.ingest.writer import ClaimSuperseded, StaleTarget, lock_owners
 from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.limits import match_log_oversize_message
 from src.services.match_logs.log_records import compute_content_hash, log_records_service, reparse_observation
+from src.services.match_logs.objectiveless import load_producers
 
-__all__ = ("bind_ingest_job", "process_ingest_job", "reparse_ingest_job")
+__all__ = ("bind_ingest_job", "game_observation", "process_ingest_job", "reparse_authorized_job", "reparse_ingest_job")
 
 _jobs = IngestJobRepository()
 _matches = StatsMatchRepository()
@@ -136,7 +139,7 @@ def classify(exc: BaseException) -> Failure:
         return Failure(exc.code, str(exc), exc.issues)
     if isinstance(exc, DecodeError):
         return Failure(exc.code, str(exc), (), exc.misses())
-    if isinstance(exc, (IdentityConflict, BindingMismatch, StaleTarget)):
+    if isinstance(exc, (IdentityConflict, BindingMismatch, StaleTarget, MapNotInPool)):
         return Failure(exc.code, str(exc))
     if isinstance(exc, BaseAPIException):
         code, message = _api_code(exc)
@@ -151,6 +154,7 @@ _ADMIN_STATUS = {
     "binding_mismatch": 409,
     "identity_conflict": 409,
     "binding_stale": 409,
+    "map_not_in_pool": 400,
     "binding_target_not_found": 404,
     "unknown_code": 422,
     "document_invalid": 422,
@@ -289,6 +293,7 @@ async def _publish(
     binding: BoundMatch,
     known: Mapping[str, int],
     document_ref: str | None,
+    producers: Mapping[int, str],
     admin: _Admin | None = None,
 ) -> None:
     """Take the final locks, re-verify everything under them, materialize identities, derive and replace atomically.
@@ -318,6 +323,7 @@ async def _publish(
     if not games or games[0].encounter_id != binding.encounter_id or games[0].map_id != validated.map_id:
         raise StaleTarget("the target game changed before it was locked")
     game: GameSeats = games[0]
+    await check_map_pool(session, encounter_id=binding.encounter_id, map_id=validated.map_id)
     if admin is not None:
         check_forced_teams(validated.doc, known, game, admin.teams)
         teams = dict(admin.teams)
@@ -344,6 +350,7 @@ async def _publish(
         doc=final,
         binding=binding,
         document_ref=document_ref,
+        producers={**producers, job.id: producer},
     )
 
 
@@ -382,6 +389,7 @@ async def _run(session: AsyncSession, claim: Claim, s3: S3Client) -> None:
     )
     if binding is None:
         raise _NeedsLink(_AWAITING_MESSAGE, prepared)
+    producers = await load_producers(session, s3, binding.encounter_id)
     try:
         await _publish(
             session,
@@ -392,6 +400,7 @@ async def _run(session: AsyncSession, claim: Claim, s3: S3Client) -> None:
             binding=binding,
             known=known,
             document_ref=prepared.document_ref,
+            producers=producers,
         )
     except StaleTarget as exc:
         # The roster or the game moved between the search and the locks: the evidence no longer proves a binding.
@@ -520,6 +529,7 @@ async def _run_admin(
             raise BindingMismatch("the target game is played on another map than the document's")
         check_forced_teams(validated.doc, known, game, admin.teams)
         binding = bound_match(job.workspace_id, job.discipline, game, admin.teams)
+        producers = await load_producers(session, s3, game.encounter_id)
         await _publish(
             session,
             job=job,
@@ -529,6 +539,7 @@ async def _run_admin(
             binding=binding,
             known=known,
             document_ref=prepared.document_ref,
+            producers=producers,
             admin=admin,
         )
         await session.commit()
@@ -585,6 +596,20 @@ async def reparse_ingest_job(
     its stored document and never runs raw decoding or derivation.
     """
     job = await _load_job(session, job_id, user)
+    return await _reparse(session, job, expected_revision, s3)
+
+
+async def reparse_authorized_job(
+    session: AsyncSession, *, job_id: int, expected_revision: int, s3: S3Client
+) -> IngestJobRead:
+    """The same reparse for a caller that already carries its own authorization (the tournament-wide operation)."""
+    job = await _jobs.get(session, job_id, populate_existing=True)
+    if job is None:
+        raise IngestRejected(404, "ingest_job_not_found", "Ingest job not found")
+    return await _reparse(session, job, expected_revision, s3)
+
+
+async def _reparse(session: AsyncSession, job: models.IngestJob, expected_revision: int, s3: S3Client) -> IngestJobRead:
     if job.status != Status.DONE:
         _check_admin(_Admin("reparse", expected_revision, {}), job, None)
     try:
@@ -618,4 +643,47 @@ async def reparse_ingest_job(
         game=games[0],
         admin=_Admin("reparse", expected_revision, teams),
         s3=s3,
+    )
+
+
+async def game_observation(session: AsyncSession, *, encounter_game_id: int, user: AuthUser) -> GameObservationRead:
+    """The game's current observation (workspace ``log.read``); unoccupied games answer revision 0."""
+    workspace_id = await session.scalar(
+        sa.select(models.Encounter.workspace_id)
+        .join(models.EncounterGame, models.EncounterGame.encounter_id == models.Encounter.id)
+        .where(models.EncounterGame.id == encounter_game_id)
+    )
+    if workspace_id is None:
+        raise IngestRejected(404, "binding_target_not_found", "Binding target not found")
+    if not user.has_workspace_permission(workspace_id, "log", "read"):
+        raise IngestRejected(403, "forbidden", f"Permission denied for workspace {workspace_id}: log.read required")
+    row = (
+        await session.execute(
+            sa.select(
+                models.StatsMatch.id,
+                models.StatsMatch.revision,
+                models.StatsMatch.ingest_job_id,
+                models.IngestJob.source_kind,
+                models.IngestJob.external_id,
+            )
+            .outerjoin(models.IngestJob, models.IngestJob.id == models.StatsMatch.ingest_job_id)
+            .where(
+                models.StatsMatch.encounter_game_id == encounter_game_id,
+                models.StatsMatch.workspace_id == workspace_id,
+            )
+        )
+    ).first()
+    if row is None:
+        return GameObservationRead(encounter_game_id=encounter_game_id)
+    historical = (
+        row.ingest_job_id is None
+        or row.source_kind == "historical_reference"
+        or (row.external_id or "").startswith("legacy:")
+    )
+    return GameObservationRead(
+        encounter_game_id=encounter_game_id,
+        match_id=row.id,
+        revision=row.revision,
+        ingest_job_id=row.ingest_job_id,
+        is_historical=historical,
     )

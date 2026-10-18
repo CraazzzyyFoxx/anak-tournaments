@@ -563,7 +563,9 @@ async def _scores(session: AsyncSession, ids: dict[str, int]) -> dict:
                 )
             await session.flush()
             before = await _score_state(session, ids["encounter"])
-            changed = await resolve_encounter_maps(session, ids["encounter"])
+            # P4's fixtures are raw Workshop observations: every job behind them is decoded input.
+            producers = dict.fromkeys(await session.scalars(sa.select(models.IngestJob.id)), "decoded")
+            changed = await resolve_encounter_maps(session, ids["encounter"], producers=producers)
             await session.flush()
             session.expire_all()
             after = await _score_state(session, ids["encounter"])
@@ -574,7 +576,7 @@ async def _scores(session: AsyncSession, ids: dict[str, int]) -> dict:
                     "stats.score_edit",
                     unchanged=("raw_facts", "event_body", "event_fight", "players"),
                 )
-            repeated = await resolve_encounter_maps(session, ids["encounter"])
+            repeated = await resolve_encounter_maps(session, ids["encounter"], producers=producers)
             await session.flush()
             session.expire_all()
             after_repeat = await _score_state(session, ids["encounter"])

@@ -61,8 +61,9 @@ async def lookup_identities(
 ) -> dict[str, int]:
     """Participant key -> global player id for every identity that already exists; unknown ones are absent.
 
-    Several players behind one identity are narrowed to the workspace's own (anchored) players; if that still leaves
-    more than one, the document fails with :class:`IdentityConflict` instead of picking a row.
+    A canonical identity owned by several global players is an :class:`IdentityConflict`. A decoded bare Workshop name
+    (P4's prefix rule) that several players answer to is narrowed to the workspace's own (anchored) players; if that
+    still leaves more than one it is also a conflict. Nobody is merged and no row is picked.
     """
     wanted = _wanted(doc)
     if not wanted:
@@ -96,6 +97,10 @@ async def lookup_identities(
                 resolved[key] = resolved_user
         else:
             ambiguous[identity] = users
+    if ambiguous and producer == "canonical":
+        # A canonical identity names one global player; several owners is a data conflict that workspace membership
+        # cannot settle (nobody is merged or picked).
+        raise IdentityConflict(f"{provider}:{name}" for provider, name in ambiguous)
     if ambiguous:
         candidates = {user for users in ambiguous.values() for user in users}
         anchored = set(

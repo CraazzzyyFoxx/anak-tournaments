@@ -6704,6 +6704,14 @@
       },
       "summary": "Bind an unlinked ingest job to a game"
     },
+    "rpc.stats.ingest.game_observation": {
+      "description": "Permission: workspace `log.read` in the game's workspace (404 `binding_target_not_found` for an unknown game). Returns the target game's authoritative current observation `{encounter_game_id, match_id, revision, ingest_job_id, is_historical}`; an unoccupied game answers `match_id`/`ingest_job_id` null and `revision` 0. `is_historical` marks an observation without a job or from a historical import, which no bind or reparse can replace. `revision` is what a bind's `expected_revision` must equal.",
+      "response": {
+        "array": false,
+        "ref": "parser.GameObservationRead"
+      },
+      "summary": "Read a game's current observation"
+    },
     "rpc.stats.ingest.get": {
       "description": "Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).",
       "response": {
@@ -32584,6 +32592,54 @@
         "created_at"
       ],
       "title": "FetchLogRead",
+      "type": "object"
+    },
+    "parser.GameObservationRead": {
+      "description": "The authoritative current observation of one game: what a bind's ``expected_revision`` must equal.\n\nUnoccupied: ``match_id``/``ingest_job_id`` null and ``revision`` 0. ``is_historical`` marks an observation that\nhas no job or came from a historical import: it can never be replaced by a bind or reparse.",
+      "properties": {
+        "encounter_game_id": {
+          "title": "Encounter Game Id",
+          "type": "integer"
+        },
+        "ingest_job_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ingest Job Id"
+        },
+        "is_historical": {
+          "default": false,
+          "title": "Is Historical",
+          "type": "boolean"
+        },
+        "match_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match Id"
+        },
+        "revision": {
+          "default": 0,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "encounter_game_id"
+      ],
+      "title": "GameObservationRead",
       "type": "object"
     },
     "parser.IngestBinding": {

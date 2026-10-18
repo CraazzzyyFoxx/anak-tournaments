@@ -71,7 +71,8 @@ class LogRecordRead(BaseModel):
     observation_revision: int | None = None
     # ``True`` while this job is the current provenance of its game's observation.
     is_current_provenance: bool = False
-    # Document teams in canonical order, for an ``awaiting_link`` job only (the bind team map is keyed by these).
+    # Document teams in canonical order for an ``awaiting_link`` or ``failed`` job with a stored document (the bind
+    # team map is keyed by these).
     teams: list[IngestTeamKey] = []
 
     model_config = {"from_attributes": True}

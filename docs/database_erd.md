@@ -481,6 +481,7 @@ erDiagram
         bigint player_id FK
         varchar(255) display_name "nullable"
         timestamptz removed_at "nullable"
+        boolean observed_only
     }
 
     AUTH_USER |o--o{ PUBLIC_SETTINGS : "updated_by"

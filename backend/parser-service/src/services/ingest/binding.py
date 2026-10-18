@@ -28,6 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums
 from shared.disciplines.ingest import BoundMatch, BoundParticipant
+from shared.domain.pick_ban_config import pool_allows
+from shared.repository.pick_ban import CONFIG_POOL_LOAD, PickBanConfigRepository
 from shared.repository.roles import CatalogRoleRepository
 from shared.schemas.match_doc import MatchDoc, MatchHint
 from src.services.ingest.validation import ValidatedDocument
@@ -35,6 +37,8 @@ from src.services.ingest.validation import ValidatedDocument
 __all__ = (
     "BindingMismatch",
     "InvalidTeamMap",
+    "MapNotInPool",
+    "check_map_pool",
     "GameSeats",
     "bound_match",
     "check_forced_teams",
@@ -51,6 +55,12 @@ class BindingMismatch(ValueError):
     """A hint or an operator's team map names a game the document's own participants contradict."""
 
     code = "binding_mismatch"
+
+
+class MapNotInPool(ValueError):
+    """The game's map is outside the pool its tournament/stage/round allows (P4's ``map_not_in_pool``)."""
+
+    code = "map_not_in_pool"
 
 
 class InvalidTeamMap(BindingMismatch):
@@ -258,6 +268,15 @@ async def find_binding(
         if verdicts and all(verdict == "contradicted" for _, verdict, _ in verdicts):
             raise BindingMismatch("the attached game or encounter does not agree with the log's map and players")
         return None
+    if fitting:
+        permitted = [
+            (game, teams)
+            for game, teams in fitting
+            if await map_pool_allows(session, encounter_id=game.encounter_id, map_id=doc.map_id)
+        ]
+        if not permitted:
+            raise MapNotInPool("the map is outside the configured map pool of every matching encounter")
+        fitting = permitted
     if len(fitting) != 1:
         return None
     game, teams = fitting[0]
@@ -274,9 +293,24 @@ async def bound_participants(
 ) -> dict[str, BoundParticipant]:
     """Every participant as the discipline's derivation needs it: member, global player, seat, roster rank and role.
 
-    Rank and role come from the roster snapshot of the seat the participant plays for; a participant the roster lacks
-    (substitute, virtual player) carries no rank and no role.
+    A player on the tournament roster of the seat's source team keeps P4's inputs: the current tournament-player
+    registration rank and rated role (the baselines bucket on that boundary, D96). Only a participant the tournament
+    roster does not have (substitute, virtual player) falls back to the encounter roster snapshot, and without any row
+    carries rank 0 and no role.
     """
+    tournament_roster: dict[tuple[int, int], tuple[int, str | None]] = {}
+    if game.seats:
+        player, seat_row = models.Player, models.EncounterTeam
+        for seat_id, member_id, rank, role in await session.execute(
+            sa.select(seat_row.id, player.workspace_member_id, player.rank, player.role)
+            .join(player, sa.and_(player.team_id == seat_row.team_id, player.tournament_id == seat_row.tournament_id))
+            .where(
+                seat_row.id.in_(game.seats),
+                player.is_substitution.is_(False),
+                player.workspace_member_id.in_([anchor.id for anchor in members.values()]),
+            )
+        ):
+            tournament_roster[(seat_id, member_id)] = (rank, role)
     member = models.EncounterTeamMember
     roster: dict[tuple[int, int], tuple[int, int | None]] = {}
     role_of: dict[int, int] = {}
@@ -314,6 +348,9 @@ async def bound_participants(
             node = ontology.by_id(role_of[row_id])
             if node.dimension == rated:
                 role_code = ontology.root(node).code
+        registered = tournament_roster.get((seat, anchor.id))
+        if registered is not None:
+            rank, role_code = registered[0], registered[1] or role_code
         out[person.key] = BoundParticipant(
             member_id=anchor.id,
             user_id=anchor.player_id,
@@ -322,3 +359,28 @@ async def bound_participants(
             role=role_code,
         )
     return out
+
+
+async def map_pool_allows(session: AsyncSession, *, encounter_id: int, map_id: int) -> bool:
+    """Whether the effective tournament/stage/round map pool of the encounter admits ``map_id`` (no pool admits all)."""
+    tournament_id = await session.scalar(
+        sa.select(models.Encounter.tournament_id).where(models.Encounter.id == encounter_id)
+    )
+    if tournament_id is None:
+        return True  # mixes and scrims carry no tournament pool
+    stage_id, round_ = (
+        await session.execute(
+            sa.select(models.BracketEncounter.stage_id, models.BracketEncounter.round).where(
+                models.BracketEncounter.encounter_id == encounter_id
+            )
+        )
+    ).first() or (None, None)
+    pools = await PickBanConfigRepository().list_by_tournament(
+        session, tournament_id, kind=enums.PickBanKind.MAP, options=CONFIG_POOL_LOAD
+    )
+    return pool_allows(pools, stage_id=stage_id, round=round_, item_id=map_id)
+
+
+async def check_map_pool(session: AsyncSession, *, encounter_id: int, map_id: int) -> None:
+    if not await map_pool_allows(session, encounter_id=encounter_id, map_id=map_id):
+        raise MapNotInPool(f"map {map_id} is outside the configured map pool for encounter {encounter_id}")

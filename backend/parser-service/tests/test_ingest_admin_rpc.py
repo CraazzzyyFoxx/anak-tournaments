@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 
+import sqlalchemy as sa
 from loguru import logger
 
+from shared import models
 from src.rpc import ingest as rpc_ingest
 from src.rpc import logs as rpc_logs
 from tests._ingest_support import open_environment
@@ -130,5 +132,60 @@ def test_history_bind_and_reparse_flow_through_the_rpc_surface(ingest_database, 
             "rpc.parser.logs.retry", identity=ROOT, id=str(job_id), payload={"reparse": True, "expected_revision": 3}
         )
         assert superseded["ok"] is False and code_of(superseded) == "stale_binding"
+
+    run(ingest_database, monkeypatch, scenario)
+
+
+def test_game_observation_read_is_authoritative_scoped_and_flags_historical(ingest_database, monkeypatch):
+    async def scenario(env, call):
+        case = await new_case(env, "gobs")
+
+        async def read(identity=ROOT, game=case.game_id):
+            return await call("rpc.stats.ingest.game_observation", identity=identity, id=str(game))
+
+        empty = await read()
+        assert empty["ok"] and empty["data"] == {
+            "encounter_game_id": case.game_id,
+            "match_id": None,
+            "revision": 0,
+            "ingest_job_id": None,
+            "is_historical": False,
+        }
+        job_id = await submit(env, case)
+        assert await process_job(env, job_id)
+        done = (await read())["data"]
+        assert done["revision"] == 1 and done["ingest_job_id"] == job_id and done["match_id"]
+        assert done["is_historical"] is False
+        newer = await submit(env, case, with_stat_values(case, "gobs-2", 3))
+        assert await process_job(env, newer)
+        assert (await read())["data"]["revision"] == 2 and (await read())["data"]["ingest_job_id"] == newer
+
+        async with env.sf() as session:
+            await session.execute(
+                sa.update(models.IngestJob)
+                .where(models.IngestJob.id == newer)
+                .values(external_id=f"legacy:log_processing.record:{newer}")
+            )
+            await session.commit()
+        assert (await read())["data"]["is_historical"] is True
+
+        denied = await read(NOBODY)
+        assert denied["ok"] is False
+        missing = await read(game=999_999_999)
+        assert missing["ok"] is False and code_of(missing) == "binding_target_not_found"
+
+    run(ingest_database, monkeypatch, scenario)
+
+
+def test_failed_jobs_with_a_stored_document_expose_their_teams_for_bind(ingest_database, monkeypatch):
+    async def scenario(env, call):
+        case = await new_case(env, "failteams")
+        doc = build_document(case, external_id="failteams-1")
+        doc["map"] = "no-such-map"
+        job_id = await submit(env, case, doc)
+        assert await process_job(env, job_id)
+        item = await history_item(call, case, job_id)
+        assert item["status"] == "failed" and item["error"]["code"] == "unknown_code"
+        assert [(team["key"], team["source_position"]) for team in item["teams"]] == [("t1", 1), ("t2", 2)]
 
     run(ingest_database, monkeypatch, scenario)

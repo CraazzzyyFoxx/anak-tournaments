@@ -15,8 +15,9 @@ import pytest
 import sqlalchemy as sa
 
 from shared import models
+from shared.core import enums
 from shared.core.errors import BaseAPIException
-from shared.repository.workspace import WorkspaceMemberRepository
+from shared.repository.workspace import WorkspaceMemberRepository, get_or_create_workspace_member
 from shared.rpc.identity import rehydrate_user
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes
 from shared.services.tournament.visibility import can_view_workspace_tournaments
@@ -363,10 +364,24 @@ def test_logged_foreign_auth_player_gains_neither_visibility_nor_grants_and_remo
                 .where(models.StatsMatchPlayer.workspace_member_id == anchor.id)
             )
         assert after == before, "an observation must change neither the protected read nor the auth grants"
-        assert anchor.removed_at is not None, "the anchor must not be an active membership"
         assert observed == 1
         if already_removed:
+            assert anchor.observed_only is False, "an existing row is never rewritten"
             assert anchor.removed_at.year == 2026 and anchor.removed_at.month == 1, "never revived or restamped"
+            return
+        assert anchor.observed_only is True and anchor.removed_at is None, "an observation anchor, not a fake removal"
+        async with db(env) as session:
+            # the link-time role autofill reads these workspaces: the observed workspace is not among them
+            assert case.workspace_id not in await WorkspaceMemberRepository().workspace_ids_for_player(session, user_id)
+            assert other.workspace_id in await WorkspaceMemberRepository().workspace_ids_for_player(session, user_id)
+        # a real admission turns the anchor into a membership and is visible on the same real reads
+        async with db(env) as session:
+            member = await get_or_create_workspace_member(session, workspace_id=case.workspace_id, player_id=user_id)
+            assert member.id == anchor.id and member.observed_only is False
+            await session.commit()
+        async with db(env) as session:
+            admitted = await _visible(session, auth_id, case.workspace_id)
+        assert admitted[0] is True and case.workspace_id in admitted[1]
 
     run(ingest_database, scenario)
 
@@ -659,7 +674,7 @@ def test_failed_documents_are_failed_jobs_with_structured_errors_not_exceptions(
     run(ingest_database, scenario)
 
 
-def test_ambiguous_identity_is_narrowed_by_workspace_anchors_else_it_is_a_conflict(ingest_database):
+def test_a_canonical_identity_owned_by_two_players_is_a_conflict_whatever_the_workspace_anchors(ingest_database):
     async def scenario(env):
         case = await new_case(env, "ident")
         handle = case.handles[0][0]
@@ -677,21 +692,12 @@ def test_ambiguous_identity_is_narrowed_by_workspace_anchors_else_it_is_a_confli
                 )
             )
             await session.commit()
-            twin_id = twin.id
-        # Two players share the handle, only one is a member of this workspace: the member is meant.
-        job = await submit(env, case, external_id="ident-1")
-        assert await process_job(env, job) == Status.DONE
-        assert (await snapshot(env, case))["players"], "the anchored player was chosen"
-
-        async with db(env) as session:
-            session.add(models.WorkspaceMember(workspace_id=case.workspace_id, player_id=twin_id))
-            await session.commit()
-        doc = build_document(case, external_id="ident-2")
         async with db(env) as session:
             before = await side_effects(session, case.workspace_id)
-        again = await submit(env, case, doc)
-        assert await process_job(env, again) == Status.FAILED
-        error = jobs.decode_error((await job_row(env, again)).error_message)
+        # Only one of the two owners is anchored in this workspace; that must not make the identity definite.
+        job = await submit(env, case, external_id="ident-1")
+        assert await process_job(env, job) == Status.FAILED
+        error = jobs.decode_error((await job_row(env, job)).error_message)
         assert error.code == "identity_conflict" and handle.lower() in error.message
         async with db(env) as session:
             after = await side_effects(session, case.workspace_id)
@@ -700,5 +706,133 @@ def test_ambiguous_identity_is_narrowed_by_workspace_anchors_else_it_is_a_confli
             before["users"],
             before["accounts"],
         )
+
+    run(ingest_database, scenario)
+
+
+def test_a_decoded_bare_name_matching_several_players_narrows_to_the_workspaces_own(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "bare")
+        full = case.handles[0][0]
+        bare = full.split("#")[0]
+        async with db(env) as session:
+            stranger_user = models.User(name="bare-twin")
+            session.add(stranger_user)
+            await session.flush()
+            session.add(
+                models.SocialAccount(
+                    user_id=stranger_user.id,
+                    provider=case.provider,
+                    username=f"{bare}#9999",
+                    username_normalized=f"{bare}#9999".lower(),
+                    is_primary=True,
+                )
+            )
+            await session.commit()
+        from shared.schemas.match_doc import MatchDoc
+        from src.services.ingest.identity import lookup_identities
+
+        doc = build_document(case, external_id="bare-1")
+        doc["participants"] = [
+            {**doc["participants"][0], "identity": {"provider": case.provider, "id": bare}},
+        ]
+        doc["teams"] = doc["teams"][:1]
+        doc["facts"], doc["events"] = [], []
+        async with db(env) as session:
+            found = await lookup_identities(
+                session, workspace_id=case.workspace_id, doc=MatchDoc.model_validate(doc), producer="decoded"
+            )
+        assert found == {doc["participants"][0]["key"]: case.player_ids[0][0]}
+
+    run(ingest_database, scenario)
+
+
+def test_derivation_uses_the_tournament_registration_rank_not_the_roster_snapshot(ingest_database):
+    async def scenario(env):
+        from shared.schemas.match_doc import MatchDoc
+        from src.services.ingest.binding import bound_match, bound_participants, load_game_seats
+
+        case = await new_case(env, "rank")
+        async with db(env) as session:
+            team = models.Team(tournament_id=case.tournament_id, name="Reg", balancer_name="Reg")
+            session.add(team)
+            await session.flush()
+            await session.execute(
+                sa.update(models.EncounterTeam)
+                .where(models.EncounterTeam.id == case.team_ids[0])
+                .values(team_id=team.id)
+            )
+            session.add(
+                models.Player(
+                    tournament_id=case.tournament_id,
+                    workspace_member_id=case.member_ids[0][0],
+                    team_id=team.id,
+                    name="registered",
+                    rank=1700,
+                )
+            )
+            await session.commit()
+        async with db(env) as session:
+            doc = MatchDoc.model_validate(case.document)
+            (game,) = await load_game_seats(
+                session, workspace_id=case.workspace_id, discipline=case.discipline, game_ids=[case.game_id]
+            )
+            binding = bound_match(
+                case.workspace_id, case.discipline, game, {f"t{i + 1}": s for i, s in enumerate(case.team_ids)}
+            )
+            members = {
+                person.key: await session.get(
+                    models.WorkspaceMember, case.member_ids[int(person.key[1]) - 1][int(person.key[2]) - 1]
+                )
+                for person in doc.participants
+            }
+            bound = await bound_participants(session, doc=doc, binding=binding, game=game, members=members)
+        assert bound["p11"].rank == 1700, "the current registration rank, as P4 fed the baselines"
+        assert bound["p12"].rank == 800, "no tournament-player row: the roster snapshot (P4's substitute input)"
+        assert bound["p21"].rank == 800
+
+    run(ingest_database, scenario)
+
+
+def test_a_map_outside_the_configured_pool_is_refused_before_any_replacement(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "pool")
+        assert await process_job(env, await submit(env, case, external_id="pool-1")) == Status.DONE
+        old = await snapshot(env, case)
+        parked = await submit(env, case, _unknown_doc(case, "pool-parked"))
+        assert await process_job(env, parked) == Status.AWAITING_LINK
+        async with db(env) as session:
+            other = models.CatalogEntity(
+                discipline=case.discipline, kind="map", slug="pool-other", name="Pool other", attrs={}
+            )
+            session.add(other)
+            await session.flush()
+            config = models.PickBanConfig(
+                tournament_id=case.tournament_id, kind=enums.PickBanKind.MAP, ruleset_json={"phases": []}
+            )
+            session.add(config)
+            await session.flush()
+            session.add(models.PickBanConfigItem(pick_ban_config_id=config.id, item_id=other.id))
+            await session.commit()
+
+        refused = await submit(env, case, external_id="pool-2")
+        assert await process_job(env, refused) == Status.FAILED
+        assert jobs.decode_error((await job_row(env, refused)).error_message).code == "map_not_in_pool"
+        assert await snapshot(env, case) == old
+
+        async with db(env) as session:
+            with pytest.raises(IngestRejected) as admin_refused:
+                await process.bind_ingest_job(
+                    session,
+                    job_id=parked,
+                    request=BindIngestRequest(
+                        encounter_game_id=case.game_id, teams=team_map(case), expected_revision=1
+                    ),
+                    user=admin(case),
+                    s3=env.s3,
+                )
+        assert admin_refused.value.code == "map_not_in_pool" and admin_refused.value.status_code == 400
+        assert (await job_row(env, parked)).status == Status.AWAITING_LINK
+        assert await snapshot(env, case) == old
 
     run(ingest_database, scenario)

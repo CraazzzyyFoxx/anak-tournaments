@@ -245,6 +245,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
                 models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
                 models.User.auth_user_id == auth_user_id,
             )
         )
@@ -280,7 +281,11 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             sa.select(models.WorkspaceMember.workspace_id, models.Workspace.slug)
             .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .where(models.User.auth_user_id == auth_user_id, models.WorkspaceMember.removed_at.is_(None))
+            .where(
+                models.User.auth_user_id == auth_user_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
+            )
         )
         return [(workspace_id, slug) for workspace_id, slug in result.all()]
 
@@ -298,6 +303,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
                 models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
                 models.User.auth_user_id == auth_user_id,
             )
             .limit(1)
@@ -333,6 +339,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
                 models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
                 models.User.auth_user_id.isnot(None),
             )
             .order_by(models.WorkspaceMember.id.asc())
@@ -347,7 +354,9 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         """
         result = await session.scalars(
             sa.select(models.WorkspaceMember.workspace_id).where(
-                models.WorkspaceMember.player_id == player_id, models.WorkspaceMember.removed_at.is_(None)
+                models.WorkspaceMember.player_id == player_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
             )
         )
         return result.all()
@@ -447,7 +456,11 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         base = (
             base.join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .join(models.AuthUser, models.AuthUser.id == models.User.auth_user_id)
-            .where(models.WorkspaceMember.workspace_id == workspace_id, models.WorkspaceMember.removed_at.is_(None))
+            .where(
+                models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
+                models.WorkspaceMember.observed_only.is_(False),
+            )
         )
         if search and search.strip():
             like = f"%{search.strip()}%"
@@ -526,17 +539,20 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
 
         await insert_missing_workspace_members(session, [(workspace_id, player_id) for player_id in player_ids])
 
-        # Re-adding a removed member reuses the row, exactly as ``get_or_create_workspace_member`` does,
-        # baseline-role autofill included.
+        # Re-adding a removed member (or admitting an observation-only anchor) reuses the row, exactly as
+        # ``get_or_create_workspace_member`` does, baseline-role autofill included.
         revived = (
             await session.scalars(
                 sa.update(models.WorkspaceMember)
                 .where(
                     models.WorkspaceMember.workspace_id == workspace_id,
                     models.WorkspaceMember.player_id.in_(list(player_ids)),
-                    models.WorkspaceMember.removed_at.is_not(None),
+                    sa.or_(
+                        models.WorkspaceMember.removed_at.is_not(None),
+                        models.WorkspaceMember.observed_only.is_(True),
+                    ),
                 )
-                .values(removed_at=None)
+                .values(removed_at=None, observed_only=False)
                 .returning(models.WorkspaceMember.player_id)
             )
         ).all()
@@ -562,8 +578,13 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
 async def insert_missing_workspace_members(
     session: AsyncSession,
     pairs: Sequence[tuple[int, int]],
+    *,
+    observed_only: bool = False,
 ) -> dict[tuple[int, int], int]:
-    """Create absent (workspace, player) anchors; never revive, grant roles or commit."""
+    """Create absent (workspace, player) anchors; never revive, grant roles or commit.
+
+    ``observed_only`` marks anchors made by a stats observation: not a membership until a real admission.
+    """
     from shared.services.stats_evidence import (
         OWNER_BATCH,
         capture_stats_evidence,
@@ -601,7 +622,12 @@ async def insert_missing_workspace_members(
                 pg_insert(models.WorkspaceMember)
                 .values(
                     [
-                        {"id": member_id, "workspace_id": workspace_id, "player_id": player_id}
+                        {
+                            "id": member_id,
+                            "workspace_id": workspace_id,
+                            "player_id": player_id,
+                            "observed_only": observed_only,
+                        }
                         for member_id, (workspace_id, player_id) in zip(ids, batch, strict=True)
                     ]
                 )
@@ -629,29 +655,12 @@ async def insert_missing_workspace_members(
 async def insert_observation_members(session: AsyncSession, pairs: Sequence[tuple[int, int]]) -> None:
     """Anchor observations to (workspace, player) pairs without conferring any membership.
 
-    New anchors are created by :func:`insert_missing_workspace_members` (no revival, no role, no commit). A player
-    with an auth account is read as a *member* wherever a ``workspace_member`` row has ``removed_at IS NULL`` (token
-    memberships, hidden-workspace visibility), so such an anchor is born soft-removed: it anchors the observation and
-    leaves the player's access exactly as it was. Joining the workspace stays an explicit decision that revives it.
-    A player without an auth account has nobody to grant anything to and keeps an ordinary active anchor.
+    New anchors are ``observed_only``: membership/visibility reads and the link-time role autofill skip them, no role or
+    rank is granted and ``removed_at`` stays NULL (nothing was removed). Existing rows are untouched: an admitted member
+    stays admitted, a genuinely removed one stays removed. A real admission (``get_or_create_workspace_member``) clears
+    the flag.
     """
-    created = await insert_missing_workspace_members(session, pairs)
-    if not created:
-        return
-    linked = set(
-        await session.scalars(
-            sa.select(models.User.id).where(
-                models.User.id.in_({player_id for _, player_id in created}), models.User.auth_user_id.is_not(None)
-            )
-        )
-    )
-    retire = [member_id for (_, player_id), member_id in created.items() if player_id in linked]
-    if retire:
-        await session.execute(
-            sa.update(models.WorkspaceMember)
-            .where(models.WorkspaceMember.id.in_(retire))
-            .values(removed_at=sa.func.now())
-        )
+    await insert_missing_workspace_members(session, pairs, observed_only=True)
 
 
 async def get_or_create_workspace_member(
@@ -682,10 +691,12 @@ async def get_or_create_workspace_member(
                 f"get_or_create_workspace_member: no row after ON CONFLICT DO NOTHING "
                 f"(workspace_id={workspace_id}, player_id={player_id})"
             )
-        if member.removed_at is None:
+        if member.removed_at is None and not member.observed_only:
             return member
-        # Re-adding a removed member reuses the row (its roster history hangs on it).
+        # Re-adding a removed member reuses the row (its roster history hangs on it); admitting an observation-only
+        # anchor makes it a real member. Both are real admissions.
         member.removed_at = None
+        member.observed_only = False
         await session.flush()
     # Autofill the baseline ``member`` RBAC role for a brand-new (or re-added) anchor of an
     # auth-linked player: the members screen treats every auth-linked row as

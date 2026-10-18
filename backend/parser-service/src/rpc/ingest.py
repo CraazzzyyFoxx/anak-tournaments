@@ -20,7 +20,7 @@ from src.core import clients as _clients
 from src.core import db
 from src.schemas.ingest import BindIngestRequest
 from src.services.ingest import jobs
-from src.services.ingest.process import bind_ingest_job
+from src.services.ingest.process import bind_ingest_job, game_observation
 
 from . import _common as c
 
@@ -92,3 +92,13 @@ def register(broker: Any, logger: Any) -> None:
             return await bind_ingest_job(session, job_id=job_id, request=request, user=user, s3=_clients.s3_client)
 
         return await c.envelope(logger, "ingest.bind", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.stats.ingest.game_observation")
+    async def _game_observation(data: dict, msg: RabbitMessage) -> dict:
+        # GET /admin/logs/games/{id}/observation -- workspace ``log.read`` of the game's workspace.
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            return await game_observation(session, encounter_game_id=c.require_id(data), user=user)
+
+        return await c.envelope(logger, "ingest.game_observation", op, session_factory=_SF)

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared.clients.s3 import S3Client
 from shared.domain.objectiveless_maps import (
     OBJECTIVELESS_GAMEMODES,
     AcceptedGame,
@@ -19,11 +22,43 @@ from shared.services.stats_evidence import capture_stats_evidence, owner_scopes,
 from src import models
 from src.core import enums
 
-__all__ = ("resolve_encounter_maps",)
+__all__ = ("load_producers", "resolve_encounter_maps")
 
 
-async def resolve_encounter_maps(session: AsyncSession, encounter_id: int) -> bool:
+async def load_producers(session: AsyncSession, s3: S3Client, encounter_id: int) -> dict[int, str]:
+    """Job id -> ``canonical|decoded`` for every job behind the encounter's observations.
+
+    Read before any final lock (it fetches envelopes from S3). A job without an envelope is undecoded raw input,
+    which is what the Workshop path always was, so it reads as ``decoded``.
+    """
+    from src.services.ingest.jobs import load_document
+
+    rows = (
+        await session.execute(
+            sa.select(models.IngestJob.id, models.IngestJob.document_ref)
+            .join(models.StatsMatch, models.StatsMatch.ingest_job_id == models.IngestJob.id)
+            .where(models.StatsMatch.encounter_id == encounter_id)
+        )
+    ).all()
+    producers: dict[int, str] = {}
+    for job_id, document_ref in rows:
+        if document_ref is None:
+            producers[job_id] = "decoded"
+            continue
+        try:
+            _, producers[job_id] = await load_document(s3, document_ref)
+        except (LookupError, ValueError):
+            producers[job_id] = "canonical"  # unreadable provenance is never rewritten
+    return producers
+
+
+async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, producers: Mapping[int, str]) -> bool:
     """Flush score-only changes and evidence; the caller owns the existing commit.
+
+    Push/Clash normalization repairs *raw Workshop* observations only. A match is a candidate when it has no job
+    (historical) or its job's producer is ``decoded`` in ``producers`` (see :func:`load_producers`); canonical
+    observations keep exactly the facts their producer supplied, and a job unknown to ``producers`` (written after it
+    was read) is left alone.
 
     Ingest calls this after staging its reparse, with the same encounter lock
     already held. Standalone calls take that lock before any match locks too.
@@ -68,6 +103,9 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int) -> bo
             .with_for_update(of=match)
         )
     ).all()
+    rows = [
+        (row, slug) for row, slug in rows if row.ingest_job_id is None or producers.get(row.ingest_job_id) == "decoded"
+    ]
     if not any(slug in OBJECTIVELESS_GAMEMODES for _, slug in rows):
         return False
 

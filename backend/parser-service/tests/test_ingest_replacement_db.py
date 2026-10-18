@@ -382,3 +382,129 @@ def test_extra_participants_are_the_members_the_bound_roster_lacks(ingest_databa
         assert "observed_role_id" not in extra
 
     run(ingest_database, scenario)
+
+
+def test_two_reparses_prepared_at_one_revision_second_gets_stale_revision(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "tworeparse")
+        job_id = await submit(env, case)
+        assert await process_job(env, job_id) == Status.DONE
+        barrier = asyncio.Barrier(2)
+        real_lock = process.lock_owners
+
+        async def gated_lock(*args, **kwargs):
+            await barrier.wait()  # both reparses were prepared against revision 1 and reach the final locks together
+            return await real_lock(*args, **kwargs)
+
+        async def reparse():
+            async with db(env) as session:
+                return await process.reparse_ingest_job(
+                    session, job_id=job_id, expected_revision=1, user=admin(case), s3=env.s3
+                )
+
+        with patch.object(process, "lock_owners", gated_lock):
+            outcomes = await asyncio.gather(reparse(), reparse(), return_exceptions=True)
+        won = [o for o in outcomes if not isinstance(o, BaseException)]
+        lost = [o for o in outcomes if isinstance(o, BaseException)]
+        assert len(won) == 1 and won[0].binding.revision == 2
+        assert len(lost) == 1 and isinstance(lost[0], IngestRejected) and lost[0].code == "stale_revision", lost
+        snap = await snapshot(env, case)
+        assert snap["revision"] == 2
+        async with db(env) as session:
+            assert await count_revision_events(session, snap["match_id"], 2) == 1
+
+    run(ingest_database, scenario)
+
+
+async def _make_push(env, case):
+    async with db(env) as session:
+        push = await session.scalar(
+            sa.select(models.CatalogEntity).where(
+                models.CatalogEntity.discipline == "overwatch",
+                models.CatalogEntity.kind == "mode",
+                models.CatalogEntity.slug == "push",
+            )
+        )
+        if push is None:
+            push = models.CatalogEntity(discipline="overwatch", kind="mode", slug="push", name="Push", attrs={})
+            session.add(push)
+            await session.flush()
+        (await session.get(models.CatalogEntity, case.map_id)).parent_id = push.id
+        await session.commit()
+
+
+async def _team_scores(env, case):
+    async with db(env) as session:
+        return sorted(
+            await session.scalars(
+                sa.select(models.StatsFact.value)
+                .join(models.StatDef, models.StatDef.id == models.StatsFact.stat_id)
+                .join(models.StatsMatch, models.StatsMatch.id == models.StatsFact.match_id)
+                .where(
+                    models.StatsMatch.encounter_game_id == case.game_id,
+                    models.StatDef.code == "score",
+                    models.StatsFact.workspace_member_id.is_(None),
+                )
+            )
+        )
+
+
+def test_canonical_observations_keep_their_scores_and_only_decoded_ones_are_normalized(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "push")
+        await _make_push(env, case)
+        job_id = await submit(env, case)
+        assert await process_job(env, job_id) == Status.DONE
+        assert await _team_scores(env, case) == [1.0, 2.0], (
+            "a canonical producer's Push scores are exactly as submitted"
+        )
+
+        from src.services.match_logs.objectiveless import load_producers, resolve_encounter_maps
+
+        async with db(env) as session:
+            producers = await load_producers(session, env.s3, case.encounter_id)
+            assert producers == {job_id: "canonical"}
+            assert await resolve_encounter_maps(session, case.encounter_id, producers=producers) is False
+            await session.commit()
+        assert await _team_scores(env, case) == [1.0, 2.0]
+        # The same observation read as raw Workshop input is what the normalization is for: it does rewrite it.
+        async with db(env) as session:
+            assert await resolve_encounter_maps(session, case.encounter_id, producers={job_id: "decoded"}) is True
+            await session.commit()
+        assert await _team_scores(env, case) != [1.0, 2.0]
+
+    run(ingest_database, scenario)
+
+
+def test_tournament_wide_processing_never_repends_done_jobs_and_replays_current_ones_by_revision(ingest_database):
+    async def scenario(env):
+        from src.services.match_logs.log_records import log_records_service
+
+        case = await new_case(env, "bulk")
+        hint = {"tournament_id": case.tournament_id}
+        first = await submit(env, case, with_stat_values(case, "bulk-1", 0), hint=hint)
+        assert await process_job(env, first) == Status.DONE
+        second = await submit(env, case, with_stat_values(case, "bulk-2", 10), hint=hint)
+        assert await process_job(env, second) == Status.DONE
+        pending = await submit(env, case, with_stat_values(case, "bulk-3", 20), hint=hint)
+        before = await snapshot(env, case)
+
+        async with db(env) as session:
+            requeued = await log_records_service.requeue_tournament(session, case.tournament_id)
+        # the superseded job is neither re-pended nor replayed; the current one carries the revision seen now
+        assert requeued.queue == [pending], requeued
+        assert requeued.replay == {second: 2}
+        assert (await job_row(env, first)).status == Status.DONE
+        assert (await job_row(env, second)).status == Status.DONE
+        assert await snapshot(env, case) == before
+
+        # someone else replaces the game before the replay runs: the captured revision is stale and refuses
+        third = await submit(env, case, with_stat_values(case, "bulk-4", 30), hint=hint)
+        assert await process_job(env, third) == Status.DONE
+        async with db(env) as session:
+            with pytest.raises(IngestRejected) as stale:
+                await process.reparse_authorized_job(session, job_id=second, expected_revision=2, s3=env.s3)
+        assert stale.value.code == "stale_binding"
+        assert (await snapshot(env, case))["revision"] == 3
+
+    run(ingest_database, scenario)

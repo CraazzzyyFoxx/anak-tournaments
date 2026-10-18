@@ -80,14 +80,14 @@ from src.services.achievement.engine.consumer import (
     handle_achievement_evaluate,
     handle_achievement_evaluate_deferred,
 )
-from src.services.ingest.jobs import decode_error
-from src.services.ingest.process import process_ingest_job
+from src.services.ingest.jobs import IngestRejected, decode_error
+from src.services.ingest.process import process_ingest_job, reparse_authorized_job
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import retention as logs_retention
 from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.log_records import log_records_service
-from src.services.match_logs.objectiveless import resolve_encounter_maps
+from src.services.match_logs.objectiveless import load_producers, resolve_encounter_maps
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.subscription_collection import scheduler as subscription_scheduler
 
@@ -352,15 +352,35 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
         logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")
         try:
             async with db.async_session_maker() as session:
-                job_ids = await log_records_service.requeue_tournament(session, event.tournament_id)
-            for job_id in job_ids:
+                requeued = await log_records_service.requeue_tournament(session, event.tournament_id)
+            for job_id in requeued.queue:
                 await publish_message(
                     broker,
                     ProcessIngestJobEvent(ingest_job_id=job_id).model_dump(),
                     PROCESS_MATCH_LOG_QUEUE,
                     logger=logger.bind(ingest_job_id=job_id),
                 )
-            logger.info("Queued {} logs for tournament {}", len(job_ids), event.tournament_id)
+            # Done jobs are never re-pended: each replays through the explicit reparse branch with the revision seen
+            # at selection, so a log superseded or re-replaced in the meantime reports stale instead of winning.
+            replayed, refused = 0, 0
+            for job_id, revision in requeued.replay.items():
+                try:
+                    async with db.async_session_maker() as session:
+                        await reparse_authorized_job(session, job_id=job_id, expected_revision=revision, s3=s3_client)
+                    replayed += 1
+                except IngestRejected as exc:
+                    refused += 1
+                    logger.bind(ingest_job_id=job_id).warning("Reparse of log {} refused: {}", job_id, exc.code)
+                except Exception:
+                    refused += 1
+                    logger.bind(ingest_job_id=job_id).exception("Reparse of log {} failed", job_id)
+            logger.info(
+                "Tournament {} logs: {} queued, {} reparsed, {} refused",
+                event.tournament_id,
+                len(requeued.queue),
+                replayed,
+                refused,
+            )
         except Exception:
             logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
             raise
@@ -405,7 +425,8 @@ async def process_tournament_encounter_completed(data: dict, msg: RabbitMessage)
                 raise RuntimeError(f"Tournament {event.tournament_id} not found")
             # Before the achievement run below: it reads per-map winners, and a
             # completed series is what decides a Push/Clash map by exclusion.
-            if await resolve_encounter_maps(session, event.encounter_id):
+            producers = await load_producers(session, s3_client, event.encounter_id)
+            if await resolve_encounter_maps(session, event.encounter_id, producers=producers):
                 await logs_flows.enqueue_match_scores_changed(session, event.tournament_id, event.encounter_id)
             await enqueue_outbox_event(
                 session,

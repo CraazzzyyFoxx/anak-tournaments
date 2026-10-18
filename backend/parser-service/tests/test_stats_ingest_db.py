@@ -588,7 +588,8 @@ def test_historical_retry_and_worker_preserve_observations(stats_parity_database
                     await log_records_service.retry(session, job.id, workspace_id=env.workspace)
             assert await snapshot(env, match.id) == before
             async with env.sf() as session:
-                assert job.id not in await log_records_service.requeue_tournament(session, env.tournament)
+                requeued = await log_records_service.requeue_tournament(session, env.tournament)
+                assert job.id not in requeued.queue and requeued.replay == {}
                 assert (await session.get(models.IngestJob, job.id)).status == STATUS.DONE
                 # An already queued delivery must enforce the same guard as retry.
                 current = await session.get(models.IngestJob, job.id)
@@ -1150,7 +1151,7 @@ def test_history_and_bulk_requeue_use_native_scope_and_exact_raw_refs(stats_pari
                     env.encounter,
                     env.game,
                 )
-                ids = await log_records_service.requeue_tournament(session, env.tournament)
+                ids = (await log_records_service.requeue_tournament(session, env.tournament)).queue
                 assert set(ids) == {job.id, imported.id}
                 assert imported.raw_ref == "historic/preserved/path.log"
                 assert imported.status == STATUS.PENDING and imported.attempts == 0 and imported.error_message is None

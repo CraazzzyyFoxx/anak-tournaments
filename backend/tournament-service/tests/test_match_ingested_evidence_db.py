@@ -538,6 +538,28 @@ class RosterTests(EvidenceCase):
         async with self.Session() as s:
             self.assertIsNotNone((await s.get_one(WorkspaceMember, self.ids["m2"], populate_existing=True)).removed_at)
 
+    async def test_an_observation_only_anchor_is_seated_and_stays_observation_only(self) -> None:
+        async with self.Session() as s:
+            member = await s.get_one(WorkspaceMember, self.ids["m2"])
+            member.observed_only = True
+            await s.commit()
+
+        self.assertEqual("accepted", await self.deliver(self.event(extras=(self.extra("m2"),))))
+        self.assertEqual(3, len(await self.roster()))
+        async with self.Session() as s:
+            anchor = await s.get_one(WorkspaceMember, self.ids["m2"], populate_existing=True)
+        self.assertTrue(anchor.observed_only and anchor.removed_at is None, "seating a substitute admits nobody")
+
+    async def test_a_removed_observation_only_anchor_is_still_refused(self) -> None:
+        async with self.Session() as s:
+            member = await s.get_one(WorkspaceMember, self.ids["m2"])
+            member.observed_only = True
+            member.removed_at = sa.func.now()
+            await s.commit()
+
+        self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(self.extra("m2"),))))
+        self.assertEqual(2, len(await self.roster()))
+
     async def test_an_observed_role_the_workspace_does_not_own_refuses_everything(self) -> None:
         bad = RoleRef(dimension="player_role", role="no_such_role")
         self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(self.extra("m2", role=bad),))))

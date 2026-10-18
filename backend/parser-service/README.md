@@ -130,12 +130,16 @@ take `upload_match_log`, `process_tournament_logs` and `achievement_evaluate` do
    event). A hint only narrows candidates: a hinted game the participants contradict (or that
    plays another map) fails with `binding_mismatch`, never a binding.
 6. **Write atomically.** Final lock order is encounter, game, job, existing `stats.match`; the
-   claim token, roster evidence and map are checked again under them. Only then are virtual
+   claim token, roster evidence, map and the tournament/stage/round map pool (`map_not_in_pool`)
+   are checked again under them. Only then are virtual
    players (`auth_user_id` NULL, no visibility row) and observation anchors created
-   (`insert_observation_members`: no revival, roles or ranks; an anchor of a player with an auth
-   account is born soft-removed so the log grants no access), the discipline's `derive_match`
-   runs (decoded input only; a canonical document persists exactly what it supplied) and
-   `writer.write_observations` replaces children via `replace_observations` and increments the
+   (`insert_observation_members`: `workspace_member.observed_only = true`, `removed_at` stays NULL;
+   token memberships, hidden-workspace visibility and link-time role autofill skip such anchors, a
+   real admission through `get_or_create_workspace_member` clears the flag, a genuinely removed
+   member is never touched), the discipline's `derive_match`
+   runs (decoded input only, fed P4's tournament-player registration rank; a canonical document
+   persists exactly what it supplied, and Push/Clash score normalization only touches decoded
+   observations) and `writer.write_observations` replaces children via `replace_observations` and increments the
    revision once. Match team rows keep the document's array order as `source_position`. The
    `match.ingested` outbox event (`match.ingested:{match_id}:{revision}`: placements and the
    participants the bound roster lacks, observed roles as dimension/role codes), the tournament
@@ -160,6 +164,12 @@ take `upload_match_log`, `process_tournament_logs` and `achievement_evaluate` do
    replays it directly with its original team mapping (document keys joined to the match's
    `source_position`): a canonical job reloads its document, a decoded one decodes its raw bytes
    anew. A job no longer the game's current provenance answers `stale_binding`.
+   Tournament-wide processing never re-pends a `done` job: current ones replay through this branch
+   with the revision seen at selection (stale/busy outcomes are logged per job); only
+   pending/failed/awaiting jobs use the queue. `GET /api/v1/admin/logs/games/{encounter_game_id}/observation`
+   (`rpc.stats.ingest.game_observation`, workspace `log.read`) answers the target game's current observation
+   (`match_id`, `revision`, `ingest_job_id`, `is_historical`) or `null`: the authoritative `expected_revision`
+   for a bind.
 
 **Correlation.** Discord sets `correlation_id` to the upload event's `event_id`, registers its
 future **before** publishing, and carries the same value through processing and result events

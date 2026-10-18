@@ -451,7 +451,8 @@ class StatsMatchRepository:
             )
         )
         if for_update:
-            query = query.with_for_update(of=match)
+            # The locked row is re-read, never an instance loaded before another transaction committed a revision.
+            query = query.with_for_update(of=match).execution_options(populate_existing=True)
         return (await session.scalars(query)).one_or_none()
 
     async def add(self, session: AsyncSession, match: models.StatsMatch) -> models.StatsMatch:

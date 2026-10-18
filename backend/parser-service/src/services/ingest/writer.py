@@ -11,6 +11,7 @@ observation, never a union.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -206,11 +207,14 @@ async def write_observations(
     doc: ValidatedDocument,
     binding: BoundMatch,
     document_ref: str | None = None,
+    producers: Mapping[int, str],
 ) -> models.StatsMatch:
     """Replace the game's observations with ``doc`` and finish ``job``, all in the caller's transaction.
 
     ``binding.participants`` carries the materialized member of every document participant. ``document_ref``, when
-    the job just gained its decoded envelope, is stored by the same ``done`` transition.
+    the job just gained its decoded envelope, is stored by the same ``done`` transition. ``producers`` (job id ->
+    ``canonical|decoded``, read before the locks, including this job) decides which observations the raw Push/Clash
+    score normalization may touch.
     """
     locked = await lock_owners(
         session,
@@ -293,7 +297,7 @@ async def write_observations(
         entity_id=match.id,
     )
 
-    await resolve_encounter_maps(session, encounter.id)
+    await resolve_encounter_maps(session, encounter.id, producers=producers)
     if encounter.tournament_id is not None:
         await _enqueue_match_log_tournament_events(session, encounter)
         await enqueue_outbox_event(

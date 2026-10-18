@@ -11,6 +11,7 @@ from shared.models import IngestJobStatus
 
 __all__ = (
     "BindIngestRequest",
+    "GameObservationRead",
     "IngestBinding",
     "IngestError",
     "IngestIssueRead",
@@ -35,6 +36,20 @@ class BindIngestRequest(BaseModel):
         Field(min_length=1),
     ]
     expected_revision: Annotated[int, Field(strict=True, ge=0)] | None = None
+
+
+class GameObservationRead(BaseModel):
+    """The authoritative current observation of one game: what a bind's ``expected_revision`` must equal.
+
+    Unoccupied: ``match_id``/``ingest_job_id`` null and ``revision`` 0. ``is_historical`` marks an observation that
+    has no job or came from a historical import: it can never be replaced by a bind or reparse.
+    """
+
+    encounter_game_id: int
+    match_id: int | None = None
+    revision: int = 0
+    ingest_job_id: int | None = None
+    is_historical: bool = False
 
 
 class IngestTeamKey(BaseModel):

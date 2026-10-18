@@ -161,7 +161,7 @@ def _record_to_dict(
 
 
 async def document_teams(s3, records: Sequence[models.IngestJob]) -> dict[int, list[dict]]:
-    """Job id -> its document's teams in canonical order, for the ``awaiting_link`` records among ``records``.
+    """Job id -> its document's teams in canonical order, for the records among ``records`` a bind accepts (``awaiting_link`` and ``failed``) that kept a stored document.
 
     The operator's bind team map is keyed by these. Best effort: a record whose stored document cannot be read
     keeps an empty list (the page itself must not fail on one object).
@@ -184,7 +184,11 @@ async def document_teams(s3, records: Sequence[models.IngestJob]) -> dict[int, l
             for position, team in enumerate(doc.teams, start=1)
         ]
 
-    parked = [r for r in records if r.status == models.IngestJobStatus.AWAITING_LINK and r.document_ref]
+    parked = [
+        r
+        for r in records
+        if r.status in (models.IngestJobStatus.AWAITING_LINK, models.IngestJobStatus.FAILED) and r.document_ref
+    ]
     return dict(await asyncio.gather(*(one(record) for record in parked)))
 
 

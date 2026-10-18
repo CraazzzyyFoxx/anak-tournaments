@@ -15,6 +15,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
+from src.services.match_logs.log_records import TournamentRequeue
 from tests._fakes import session_factory
 
 serve = importlib.import_module("serve")
@@ -27,7 +28,9 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
         with (
             patch.object(serve.db, "async_session_maker", session_factory(session)),
             patch.object(
-                serve.log_records_service, "requeue_tournament", AsyncMock(return_value=[501, 502])
+                serve.log_records_service,
+                "requeue_tournament",
+                AsyncMock(return_value=TournamentRequeue(queue=[501, 502], replay={})),
             ) as requeue,
             patch.object(serve, "publish_message", publish),
             patch.object(serve, "process_ingest_job", AsyncMock()) as parse,
@@ -64,7 +67,11 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
         publish = AsyncMock()
         with (
             patch.object(serve.db, "async_session_maker", session_factory(SimpleNamespace())),
-            patch.object(serve.log_records_service, "requeue_tournament", AsyncMock(return_value=[])),
+            patch.object(
+                serve.log_records_service,
+                "requeue_tournament",
+                AsyncMock(return_value=TournamentRequeue(queue=[], replay={})),
+            ),
             patch.object(serve, "publish_message", publish),
         ):
             await serve.process_tournament_log(
