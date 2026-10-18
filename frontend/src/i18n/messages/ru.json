@@ -165,6 +165,19 @@
     "scope": {
       "all": "Все воркспейсы"
     },
+    "discipline": {
+      "select": "Игра",
+      "all": "Все игры",
+      "invalidTitle": "Неизвестный выбор игры",
+      "invalid": {
+        "unknown": "«{requested}» — не установленная игра.",
+        "disabled": "«{requested}» не включена для этого воркспейса.",
+        "all-not-supported": "Эта страница показывает одну игру за раз; вариант «Все игры» здесь недоступен."
+      },
+      "invalidAction": "Выберите одну из доступных игр ниже.",
+      "emptyTitle": "Нет доступных игр",
+      "empty": "Для этой области пока не включена ни одна игра."
+    },
     "divisionWithId": "Дивизион {id}",
     "anyDivision": "Любой дивизион",
     "searchDivision": "Поиск дивизиона…",
@@ -2462,12 +2475,6 @@
     },
     "rarityFilter": "Фильтр по редкости",
     "categoryFilter": "Фильтр по категории",
-    "gameFilter": "Фильтр по игре",
-    "game": {
-      "all": "Все игры",
-      "overwatch": "Overwatch",
-      "lol": "League of Legends"
-    },
     "sortHolders": "Сортировка: по числу игроков",
     "holders": "{count, plural, one {# игрок получил} few {# игрока получили} many {# игроков получили} other {# игрока получили}}",
     "notEarned": {
@@ -10118,8 +10125,6 @@
   "adminAchievements": {
     "listActionsFor": "Действия для {slug}",
     "discipline": {
-      "select": "Игра",
-      "none": "В этом воркспейсе не включено ни одной игры, поэтому управлять достижениями нечем.",
       "names": {
         "overwatch": "Overwatch",
         "lol": "League of Legends"

@@ -37,6 +37,14 @@ const getFacets = vi.fn();
 const getOverview = vi.fn();
 const getOverallStatistics = vi.fn();
 
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    list: async () => [
+      { code: "overwatch", name: "Overwatch", enabled: true },
+      { code: "lol", name: "League of Legends", enabled: true }
+    ]
+  }
+}));
 vi.mock("@/services/tournament.service", () => ({
   default: {
     listTournaments: (...args: unknown[]) => listTournaments(...args),
@@ -50,9 +58,15 @@ vi.mock("@/services/statistics.service", () => ({
   default: { getOverallStatistics: (...args: unknown[]) => getOverallStatistics(...args) }
 }));
 vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (
-    selector: (state: { currentWorkspaceId: number; workspaces: { id: number; name: string }[] }) => unknown
-  ) => selector({ currentWorkspaceId: 1, workspaces: [{ id: 1, name: "OWT" }] })
+  useWorkspaceStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      currentWorkspaceId: 1,
+      workspaces: [{ id: 1, name: "OWT" }],
+      statsScope: "workspace",
+      hostLockedWorkspaceId: null,
+      browsingDiscipline: null,
+      setBrowsingDiscipline: () => {}
+    })
 }));
 
 /**
@@ -322,7 +336,7 @@ describe("tournaments list", () => {
 
     await click(radio(en.tournamentsList.view.list));
 
-    expect(urlsWritten()).toContain("/tournaments?view=list");
+    expect(urlsWritten()).toContain("/tournaments?discipline=all&view=list");
     expect(container.querySelector("table.tn")).toBeTruthy();
     // The list view ships BOTH layouts and lets the viewport pick: the table is
     // desktop-only (two of its six columns fit on a phone), the grid is the
@@ -356,7 +370,7 @@ describe("tournaments list", () => {
 
     await click(chip(en.common.statusBadge.live));
 
-    expect(urlsWritten()).toContain("/tournaments?status=live");
+    expect(urlsWritten()).toContain("/tournaments?discipline=all&status=live");
     // 2, not 26: the pages fetched under the previous filter belong to a
     // different list and must not carry over.
     expect(cards(container)).toHaveLength(2);
@@ -392,7 +406,7 @@ describe("tournaments list", () => {
     expect(listTournaments.mock.calls.length).toBe(before + 1);
     expect(getFacets.mock.calls.length).toBe(facetsBefore + 1);
     expect(listCalls().at(-1)).toMatchObject({ query: "spring", page: 1 });
-    expect(urlsWritten()).toContain("/tournaments?q=spring");
+    expect(urlsWritten()).toContain("/tournaments?discipline=all&q=spring");
   });
 
   it("counts the chips from the facets, not from the rows it has loaded", async () => {
@@ -436,9 +450,35 @@ describe("tournaments list", () => {
     const container = await mount("", "all");
 
     expect(listCalls()).toEqual([expect.objectContaining({ workspaceId: "all" })]);
-    expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "all" }));
+    expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "all" }), expect.anything());
     expect(getOverview).toHaveBeenCalledWith("", {}, "all");
     expect(getOverallStatistics).toHaveBeenCalledWith({ workspaceId: "all" });
     expect(container.textContent).toContain(en.common.scope.all);
+  });
+
+  it("lists and counts one game's tournaments when a game is chosen, with no all-games totals", async () => {
+    const container = await mount("?discipline=lol");
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: "lol" })]);
+    expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ discipline: "lol" }), expect.anything());
+    // The platform totals have no per-game reader: a game's page states none rather than another scope's.
+    expect(getOverallStatistics).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain(en.common.playersLabel);
+  });
+
+  it("reads every game on the all-games directory", async () => {
+    await mount("?discipline=all");
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
+    expect(getOverallStatistics).toHaveBeenCalled();
+  });
+
+  it("shows an unknown game as an error and requests no list", async () => {
+    const container = await mount("?discipline=starcraft");
+
+    expect(listTournaments).not.toHaveBeenCalled();
+    expect(getFacets).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("starcraft");
+    expect(urlsWritten()).toEqual([]);
   });
 });

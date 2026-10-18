@@ -9,8 +9,9 @@ import { StatusDot } from "@/components/ui/status-dot";
 interface TournamentsHeroProps {
   workspaceName?: string | null;
   liveEvents: number;
-  totalPlayers: number;
-  totalTeams: number;
+  /** `null` hides the tile: a single game's view has no per-game platform total to state. */
+  totalPlayers: number | null;
+  totalTeams: number | null;
 }
 
 /**
@@ -59,11 +60,15 @@ const TournamentsHero = ({
           ) : null}
           {/* Numbers go through the locale formatter: the raw value used to render
               `1164` beside an ICU-formatted `1,453` in the very next tile. */}
-          <HeroStat label={t("common.playersLabel")} value={format.number(totalPlayers)} />
-          <HeroStat
-            label={t("tournamentsList.hero.teamsBalancedLabel")}
-            value={format.number(totalTeams)}
-          />
+          {totalPlayers !== null ? (
+            <HeroStat label={t("common.playersLabel")} value={format.number(totalPlayers)} />
+          ) : null}
+          {totalTeams !== null ? (
+            <HeroStat
+              label={t("tournamentsList.hero.teamsBalancedLabel")}
+              value={format.number(totalTeams)}
+            />
+          ) : null}
         </div>
       }
     />

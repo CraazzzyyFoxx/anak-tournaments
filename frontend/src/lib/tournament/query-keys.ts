@@ -140,10 +140,17 @@ export const tournamentQueryKeys = {
   ) => ["pick-ban-rules", "preview", tournamentId, kind, mode, bestOf, ruleset, pool] as const,
   /** The public tournament list, and the bare prefix every admin write drops. */
   list: () => ["tournaments"] as const,
-  listPage: (workspaceId: KeyPart, status: KeyPart, type: KeyPart, query: KeyPart, sort: KeyPart) =>
-    ["tournaments", "list", workspaceId, status, type, query, sort] as const,
-  facets: (workspaceId: KeyPart, status: KeyPart, type: KeyPart, query: KeyPart) =>
-    ["tournaments", "facets", workspaceId, status, type, query] as const,
+  /** `discipline` is a concrete code, or `"all"` for the all-games directory view. */
+  listPage: (
+    workspaceId: KeyPart,
+    discipline: KeyPart,
+    status: KeyPart,
+    type: KeyPart,
+    query: KeyPart,
+    sort: KeyPart
+  ) => ["tournaments", "list", workspaceId, discipline, status, type, query, sort] as const,
+  facets: (workspaceId: KeyPart, discipline: KeyPart, status: KeyPart, type: KeyPart, query: KeyPart) =>
+    ["tournaments", "facets", workspaceId, discipline, status, type, query] as const,
   /** The workspace's own slice, or the platform-wide one under `"global"`. */
   byWorkspace: (workspaceScope: KeyPart) => ["tournaments", workspaceScope] as const,
   allActive: () => ["tournaments", "all-active"] as const,

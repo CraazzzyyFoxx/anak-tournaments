@@ -165,6 +165,19 @@
     "scope": {
       "all": "All workspaces"
     },
+    "discipline": {
+      "select": "Game",
+      "all": "All games",
+      "invalidTitle": "Unknown game selection",
+      "invalid": {
+        "unknown": "\"{requested}\" is not an installed game.",
+        "disabled": "\"{requested}\" is not enabled for this workspace.",
+        "all-not-supported": "This page shows one game at a time; \"All games\" is not available here."
+      },
+      "invalidAction": "Choose one of the available games below.",
+      "emptyTitle": "No games available",
+      "empty": "No game is enabled for this scope yet."
+    },
     "divisionWithId": "Division {id}",
     "anyDivision": "Any division",
     "searchDivision": "Search division...",
@@ -2462,12 +2475,6 @@
     },
     "rarityFilter": "Filter by rarity",
     "categoryFilter": "Filter by category",
-    "gameFilter": "Filter by game",
-    "game": {
-      "all": "All games",
-      "overwatch": "Overwatch",
-      "lol": "League of Legends"
-    },
     "sortHolders": "Sort: Most owned",
     "holders": "{count, plural, one {# player has it} other {# players have it}}",
     "notEarned": {
@@ -10118,8 +10125,6 @@
   "adminAchievements": {
     "listActionsFor": "Actions for {slug}",
     "discipline": {
-      "select": "Game",
-      "none": "This workspace has no game enabled, so there are no achievements to manage.",
       "names": {
         "overwatch": "Overwatch",
         "lol": "League of Legends"

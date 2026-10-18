@@ -4,6 +4,11 @@ import type { AuthProfile } from "@/stores/auth-profile.store";
 import { Workspace } from "@/types/workspace.types";
 import workspaceService from "@/services/workspace.service";
 import { STATS_SCOPE_COOKIE, type StatsScope } from "@/lib/site/stats-scope";
+import {
+  DISCIPLINE_COOKIE,
+  reconcileStoredDiscipline,
+  type BrowsingDiscipline
+} from "@/lib/site/discipline-scope";
 import { resolveHost } from "@/lib/site/host";
 
 // Canonical workspace cookie name. LEGACY_WORKSPACE_COOKIE is read as a
@@ -46,12 +51,37 @@ function statsScopeFromCookie(): StatsScope {
     : "all";
 }
 
+function browsingDisciplineFromCookie(): BrowsingDiscipline {
+  return typeof document === "undefined" ? null : (Cookies.get(DISCIPLINE_COOKIE) ?? null);
+}
+
+/**
+ * The saved browsing game after a workspace/scope change: a concrete choice the
+ * viewed workspace does not run is dropped (cookie too). All-communities scope and a
+ * not-yet-loaded workspace list keep it — the resolver validates it against the installed set.
+ */
+function reconcileBrowsing(
+  state: Pick<WorkspaceState, "browsingDiscipline" | "statsScope" | "workspaces" | "currentWorkspaceId">
+): BrowsingDiscipline {
+  if (state.statsScope !== "workspace") return state.browsingDiscipline;
+  const enabled = state.workspaces.find((w) => w.id === state.currentWorkspaceId)?.disciplines_enabled;
+  if (!enabled) return state.browsingDiscipline;
+  const next = reconcileStoredDiscipline(state.browsingDiscipline, enabled);
+  if (next !== state.browsingDiscipline) Cookies.remove(DISCIPLINE_COOKIE);
+  return next;
+}
+
 type WorkspaceState = {
   workspaces: Workspace[];
   currentWorkspaceId: number | null;
   statsScope: StatsScope;
   /** Runtime-only owner of the opened object; never changes the viewing preference. */
   entityWorkspaceId: number | null;
+  /**
+   * The visitor's saved browsing game: a concrete installed code, `all` (directories
+   * only) or nothing. Never host-locked and never written by an opened owner.
+   */
+  browsingDiscipline: BrowsingDiscipline;
   /**
    * On a tenant (white-label) host the workspace is fixed by the request host,
    * not the cookie/store. When set, the store scope is locked to this id so
@@ -66,6 +96,7 @@ type WorkspaceState = {
   setCurrentWorkspace: (id: number) => void;
   setStatsScope: (scope: StatsScope) => void;
   setEntityWorkspace: (id: number | null) => void;
+  setBrowsingDiscipline: (discipline: BrowsingDiscipline) => void;
   setHostLock: (id: number | null) => void;
   getCurrentWorkspace: () => Workspace | undefined;
 };
@@ -107,6 +138,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   currentWorkspaceId: workspaceIdFromCookie(),
   statsScope: statsScopeFromCookie(),
   entityWorkspaceId: null,
+  browsingDiscipline: browsingDisciplineFromCookie(),
   hostLockedWorkspaceId: null,
   isLoading: false,
 
@@ -135,6 +167,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       set({
         workspaces,
         currentWorkspaceId: nextId,
+        browsingDiscipline: reconcileBrowsing({ ...get(), workspaces, currentWorkspaceId: nextId }),
         isLoading: false
       });
     } catch {
@@ -150,7 +183,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       sameSite: "lax",
       expires: WORKSPACE_COOKIE_TTL_DAYS
     });
-    set({ currentWorkspaceId: id });
+    set({ currentWorkspaceId: id, browsingDiscipline: reconcileBrowsing({ ...get(), currentWorkspaceId: id }) });
   },
 
   setStatsScope: (statsScope) => {
@@ -159,7 +192,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       sameSite: "lax",
       expires: WORKSPACE_COOKIE_TTL_DAYS
     });
-    set({ statsScope });
+    set({ statsScope, browsingDiscipline: reconcileBrowsing({ ...get(), statsScope }) });
+  },
+
+  setBrowsingDiscipline: (browsingDiscipline) => {
+    if (browsingDiscipline === null) {
+      Cookies.remove(DISCIPLINE_COOKIE);
+    } else {
+      Cookies.set(DISCIPLINE_COOKIE, browsingDiscipline, { sameSite: "lax", expires: WORKSPACE_COOKIE_TTL_DAYS });
+    }
+    set({ browsingDiscipline });
   },
 
   setEntityWorkspace: (entityWorkspaceId) => set({ entityWorkspaceId }),
@@ -173,9 +215,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       // written, so the "no cookie on a locked host" invariant holds
       // regardless of effect order (SSR scopes by the host header anyway).
       Cookies.remove(WORKSPACE_COOKIE);
-      set({ hostLockedWorkspaceId: id, currentWorkspaceId: id, statsScope: "workspace" });
+      const patch = { hostLockedWorkspaceId: id, currentWorkspaceId: id, statsScope: "workspace" as const };
+      set({ ...patch, browsingDiscipline: reconcileBrowsing({ ...get(), ...patch }) });
     } else {
-      set({ hostLockedWorkspaceId: null, statsScope: statsScopeFromCookie() });
+      const patch = { hostLockedWorkspaceId: null, statsScope: statsScopeFromCookie() };
+      set({ ...patch, browsingDiscipline: reconcileBrowsing({ ...get(), ...patch }) });
     }
   },
 

@@ -31,7 +31,8 @@ import { AchievementsTable } from "./_components/AchievementsTable";
 import { DryRunResultDialog } from "./_components/DryRunResultDialog";
 import { EvaluateAchievementsDialog } from "./_components/EvaluateAchievementsDialog";
 import { ImportErrorPanel, ImportResultPanel } from "./_components/ImportOutcomePanels";
-import { DisciplineSelect } from "./_components/DisciplineSelect";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useAchievementCatalog } from "./_hooks/useAchievementCatalog";
 import { useAchievementRuleActions } from "./_hooks/useAchievementRuleActions";
 import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
@@ -44,7 +45,14 @@ export default function AchievementsPage() {
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const { discipline, disciplines, select } = useAchievementDiscipline();
+  const {
+    discipline,
+    resolved,
+    disciplines,
+    select,
+    isError,
+    refetch: refetchDisciplines
+  } = useAchievementDiscipline();
 
   const [deletingRule, setDeletingRule] = useState<AchievementRule | null>(null);
   const [hardResetOpen, setHardResetOpen] = useState(false);
@@ -142,9 +150,13 @@ export default function AchievementsPage() {
           title={t("common.achievements")}
           description={t("list.headerDescription")}
         />
-        <EmptyNote>
-          {workspaceId ? t("discipline.none") : t("list.selectWorkspace")}
-        </EmptyNote>
+        {!workspaceId ? (
+          <EmptyNote>{t("list.selectWorkspace")}</EmptyNote>
+        ) : resolved?.kind === "invalid" || resolved?.kind === "empty" ? (
+          <DisciplineUnavailable resolved={resolved} disciplines={disciplines ?? []} allowsAll={false} onSelect={select} />
+        ) : isError ? (
+          <PageStateCard state="error" onAction={refetchDisciplines} />
+        ) : null}
       </div>
     );
   }
@@ -156,12 +168,15 @@ export default function AchievementsPage() {
         description={t("list.headerDescription")}
         actions={
           <div className="flex gap-2">
-            <DisciplineSelect
-              value={discipline}
-              disciplines={disciplines}
-              onChange={select}
-              disabled={form.open}
-            />
+            {disciplines ? (
+              <DisciplineSelector
+                disciplines={disciplines}
+                value={discipline}
+                allowsAll={false}
+                onSelect={select}
+                disabled={form.open}
+              />
+            ) : null}
             <input
               ref={jsonInputRef}
               type="file"

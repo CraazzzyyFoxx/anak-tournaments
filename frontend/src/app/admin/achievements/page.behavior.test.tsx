@@ -2,7 +2,9 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { navigation } from "@/test/url-navigation";
 
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Workspace } from "@/types/workspace.types";
@@ -19,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   createAchievementOverride: vi.fn(),
   seedAchievementRules: vi.fn(),
   rulesOf: { overwatch: [{ id: 11 }], lol: [{ id: 21 }] } as Record<string, { id: number }[]>,
+  disciplines: [] as { code: string; name: string; enabled: boolean }[],
 }));
 
 vi.mock("next-intl", async (importOriginal) => {
@@ -30,7 +33,8 @@ vi.mock("next-intl", async (importOriginal) => {
       actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never }),
   };
 });
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }) }));
+vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
+vi.mock("@/services/discipline.service", () => ({ default: { list: async () => mocks.disciplines } }));
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: () => true }) }));
 vi.mock("@/services/admin.service", () => ({
   default: {
@@ -60,14 +64,21 @@ vi.mock("./_components/AchievementsTable", () => ({ AchievementsTable: () => nul
 vi.mock("./_components/DryRunResultDialog", () => ({ DryRunResultDialog: () => null }));
 vi.mock("./_components/EvaluateAchievementsDialog", () => ({ EvaluateAchievementsDialog: () => null }));
 vi.mock("./_components/ImportOutcomePanels", () => ({ ImportErrorPanel: () => null, ImportResultPanel: () => null }));
-vi.mock("./_components/DisciplineSelect", () => ({
-  DisciplineSelect: ({ disciplines, onChange }: { disciplines: string[]; onChange: (game: string) => void }) => (
+vi.mock("@/components/workspace/DisciplineSelector", () => ({
+  DisciplineSelector: ({
+    disciplines,
+    onSelect,
+  }: {
+    disciplines: { code: string }[];
+    onSelect: (game: string) => void;
+  }) => (
     <div>
       {disciplines.map((game) => (
-        <button key={game} data-pick={game} onClick={() => onChange(game)} />
+        <button key={game.code} data-pick={game.code} onClick={() => onSelect(game.code)} />
       ))}
     </div>
   ),
+  DisciplineUnavailable: ({ resolved }: { resolved: { kind: string } }) => <p data-unavailable={resolved.kind} />,
 }));
 // The dialog is replaced by a probe that can fill the draft with any rule id, as a stale draft would hold.
 vi.mock("./_components/AchievementOverrideDialog", () => ({
@@ -124,17 +135,30 @@ async function mount() {
       </QueryClientProvider>
     );
   });
+  await act(() => new Promise<void>((done) => setTimeout(done, 0)));
 }
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+});
 
 beforeEach(() => {
   mocks.createAchievementOverride.mockReset().mockResolvedValue({});
   mocks.seedAchievementRules.mockReset().mockResolvedValue({ seeded: 0, removed: 0 });
+  mocks.disciplines = [
+    { code: "overwatch", name: "Overwatch", enabled: true },
+    { code: "lol", name: "League of Legends", enabled: true },
+  ];
+  navigation.reset("/admin/achievements");
   document.body.innerHTML = "";
+  document.cookie = "owt-discipline=; Max-Age=0; path=/";
   container = document.body.appendChild(document.createElement("div"));
   root = createRoot(container);
   useWorkspaceStore.setState({
-    workspaces: [workspace(7, ["overwatch", "lol"])],
+    workspaces: [workspace(7, ["overwatch", "lol"]), workspace(8, ["lol"])],
     currentWorkspaceId: 7,
+    statsScope: "workspace",
+    browsingDiscipline: null,
     hostLockedWorkspaceId: null,
     entityWorkspaceId: null,
   });
@@ -173,14 +197,33 @@ describe("the achievements page keeps each game's drafts to that game", () => {
     );
   });
 
-  it("follows the workspace when its games are hydrated after the id is already known", async () => {
-    useWorkspaceStore.setState({ workspaces: [] });
+  it("shows the actionable unavailable state, and no page, when the workspace has no game enabled", async () => {
+    mocks.disciplines = [{ code: "overwatch", name: "Overwatch", enabled: false }];
     await mount();
-    expect(container.textContent).toContain("no game enabled");
 
-    await act(async () => useWorkspaceStore.setState({ workspaces: [workspace(7, ["lol"])] }));
+    expect(container.querySelector("[data-unavailable=empty]")).not.toBeNull();
+    expect(probe()).toBeNull();
+  });
 
-    expect(container.textContent).not.toContain("no game enabled");
+  it("shows the error, not another game, for an explicit game the workspace does not run", async () => {
+    navigation.reset("/admin/achievements?discipline=starcraft");
+    await mount();
+
+    expect(container.querySelector("[data-unavailable=invalid]")).not.toBeNull();
+    expect(probe()).toBeNull();
+    expect(navigation.current()).toBe("/admin/achievements?discipline=starcraft");
+  });
+
+  it("follows the page's workspace when its games arrive after the id is already known", async () => {
+    mocks.disciplines = [];
+    await mount();
+    expect(container.querySelector("[data-unavailable=empty]")).not.toBeNull();
+
+    mocks.disciplines = [{ code: "lol", name: "League of Legends", enabled: true }];
+    await act(async () => useWorkspaceStore.getState().setCurrentWorkspace(8));
+    await act(() => new Promise<void>((done) => setTimeout(done, 0)));
+
+    expect(container.querySelector("[data-unavailable]")).toBeNull();
     expect(probe()).not.toBeNull();
   });
 });

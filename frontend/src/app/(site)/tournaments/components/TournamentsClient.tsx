@@ -17,6 +17,9 @@ import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 
 import TournamentsHero from "./TournamentsHero";
 import FeaturedLive from "./FeaturedLive";
@@ -68,7 +71,10 @@ const TournamentsPageSkeleton = () => (
   </div>
 );
 
-const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const TournamentsClient = ({
+  scope,
+  initial
+}: Readonly<{ scope: StatsScope; initial?: BrowsingDisciplineInit }>) => {
   const t = useTranslations();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
@@ -78,6 +84,14 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     scope === "all"
       ? t("common.scope.all")
       : workspaces.find((w) => w.id === currentWorkspaceId)?.name;
+
+  // The directory's game: all games by default, one game when chosen. Only the list and its
+  // facets know games server-side; they wait for the resolution and never read a guessed one.
+  const browsing = useBrowsingDiscipline({ allowsAll: true, initial });
+  const resolved = browsing.resolved;
+  const disciplineFilter = resolved?.kind === "concrete" ? resolved.code : null;
+  const disciplineKey = disciplineFilter ?? "all";
+  const ready = resolved?.kind === "all" || resolved?.kind === "concrete";
 
   // Filters live in the URL, so a filtered view survives a reload and can be
   // shared. Scroll depth deliberately does NOT: it belongs to the query cache,
@@ -130,7 +144,8 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     workspaceId,
     status: statusFilter === "all" ? undefined : statusFilter,
     isLeague: typeFilter === "all" ? undefined : typeFilter === "league",
-    query: query || undefined
+    query: query || undefined,
+    discipline: disciplineFilter
   };
 
   const {
@@ -145,14 +160,18 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   } = useInfiniteQuery({
     // Every filter is in the key: a narrowed filter is a different list, so the
     // pages already accumulated for the old one must not carry over.
-    queryKey: tournamentQueryKeys.listPage(workspaceId, statusFilter, typeFilter, query, sortBy),
-    queryFn: ({ pageParam }) =>
-      tournamentService.listTournaments({
-        ...filterQuery,
-        ...SORT_QUERY[sortBy],
-        page: pageParam,
-        perPage: PER_PAGE
-      }),
+    queryKey: tournamentQueryKeys.listPage(workspaceId, disciplineKey, statusFilter, typeFilter, query, sortBy),
+    queryFn: ({ pageParam, signal }) =>
+      tournamentService.listTournaments(
+        {
+          ...filterQuery,
+          ...SORT_QUERY[sortBy],
+          page: pageParam,
+          perPage: PER_PAGE
+        },
+        { signal }
+      ),
+    enabled: ready,
     initialPageParam: 1,
     getNextPageParam: (lastPage, pages) => {
       // An empty page also ends the run: without that guard a `total` that
@@ -165,8 +184,9 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   });
 
   const { data: facets } = useQuery({
-    queryKey: tournamentQueryKeys.facets(workspaceId, statusFilter, typeFilter, query),
-    queryFn: () => tournamentService.getFacets(filterQuery)
+    queryKey: tournamentQueryKeys.facets(workspaceId, disciplineKey, statusFilter, typeFilter, query),
+    queryFn: ({ signal }) => tournamentService.getFacets(filterQuery, { signal }),
+    enabled: ready
   });
 
   const { data: overview } = useQuery({
@@ -176,10 +196,12 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     staleTime: 15_000
   });
 
+  // Platform-wide totals have no per-game reader: they are shown for all games only.
   const { data: overall } = useQuery({
     queryKey: tournamentQueryKeys.overallStatistics(workspaceId),
     queryFn: () =>
-      statisticsService.getOverallStatistics(workspaceId != null ? { workspaceId } : undefined)
+      statisticsService.getOverallStatistics(workspaceId != null ? { workspaceId } : undefined),
+    enabled: resolved?.kind === "all"
   });
 
   const results = useMemo(
@@ -187,10 +209,41 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     [listPages]
   );
 
+  // The overview is platform-wide; its live encounters name their tournament, so a game's view keeps its own.
   const liveGroups = useMemo(
-    () => groupLiveByTournament(overview?.featured.live ?? []),
-    [overview]
+    () =>
+      groupLiveByTournament(
+        (overview?.featured.live ?? []).filter(
+          (encounter) => disciplineFilter === null || encounter.tournament?.discipline === disciplineFilter
+        )
+      ),
+    [overview, disciplineFilter]
   );
+
+  if (resolved === null) {
+    return browsing.isError ? (
+      <div className="aqt-tn">
+        <PageStateCard state="error" onAction={browsing.refetch} />
+      </div>
+    ) : (
+      <div className="aqt-tn">
+        <TournamentsPageSkeleton />
+      </div>
+    );
+  }
+
+  if (resolved.kind === "invalid" || resolved.kind === "empty") {
+    return (
+      <div className="aqt-tn">
+        <DisciplineUnavailable
+          resolved={resolved}
+          disciplines={browsing.disciplines ?? []}
+          allowsAll
+          onSelect={browsing.select}
+        />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -211,8 +264,8 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       <TournamentsHero
         workspaceName={workspaceName}
         liveEvents={facets?.live ?? 0}
-        totalPlayers={overall?.players ?? 0}
-        totalTeams={overall?.teams ?? 0}
+        totalPlayers={disciplineFilter === null ? (overall?.players ?? 0) : null}
+        totalTeams={disciplineFilter === null ? (overall?.teams ?? 0) : null}
       />
 
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -224,6 +277,15 @@ const TournamentsClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
         <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
           {t("tournamentsList.heading.count", { count: matchedTotal })}
         </span>
+        {browsing.disciplines ? (
+          <DisciplineSelector
+            className="ml-auto w-52"
+            disciplines={browsing.disciplines}
+            value={resolved.kind === "all" ? "all" : disciplineFilter ?? undefined}
+            allowsAll
+            onSelect={browsing.select}
+          />
+        ) : null}
       </div>
 
       <FeaturedLive groups={liveGroups} />

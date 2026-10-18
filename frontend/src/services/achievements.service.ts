@@ -12,9 +12,11 @@ export default class achievementsService {
     page: number,
     perPage: number,
     workspaceId?: number | "all" | null,
-    discipline?: string | null
+    discipline?: string | null,
+    opts: { signal?: AbortSignal } = {}
   ): Promise<PaginatedResponse<Achievement>> {
     return apiFetch(`/api/v1/achievements`, {
+      signal: opts.signal,
       query: {
         per_page: perPage,
         page: page,

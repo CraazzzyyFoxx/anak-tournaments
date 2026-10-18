@@ -155,3 +155,99 @@ describe("workspace store cookie hydration", () => {
     expect(store.getState().currentWorkspaceId).toBeNull();
   });
 });
+
+describe("browsing discipline preference", () => {
+  const withWorkspaces = (disciplines: string[][]) =>
+    disciplines.map((enabled, index) => ({ ...createWorkspace(index + 1), disciplines_enabled: enabled }));
+
+  afterEach(() => {
+    document.cookie = "owt-discipline=; Max-Age=0; path=/";
+    document.cookie = "owt-workspace-id=; Max-Age=0; path=/";
+    document.cookie = "owt-stats-scope=; Max-Age=0; path=/";
+    useWorkspaceStore.setState({
+      workspaces: [],
+      currentWorkspaceId: null,
+      statsScope: "all",
+      browsingDiscipline: null,
+      entityWorkspaceId: null,
+      hostLockedWorkspaceId: null
+    });
+  });
+
+  it("writes and clears its own cookie without touching the workspace cookies", () => {
+    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
+    expect(document.cookie).toContain("owt-discipline=lol");
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+
+    useWorkspaceStore.getState().setBrowsingDiscipline(null);
+    expect(document.cookie).not.toContain("owt-discipline");
+  });
+
+  it("drops a saved game the newly viewed workspace does not run, and keeps one it does", () => {
+    useWorkspaceStore.setState({
+      workspaces: withWorkspaces([["overwatch", "lol"], ["overwatch"]]),
+      currentWorkspaceId: 1,
+      statsScope: "workspace"
+    });
+    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
+
+    useWorkspaceStore.getState().setCurrentWorkspace(2);
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+    expect(document.cookie).not.toContain("owt-discipline");
+
+    useWorkspaceStore.getState().setBrowsingDiscipline("overwatch");
+    useWorkspaceStore.getState().setCurrentWorkspace(1);
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("overwatch");
+  });
+
+  it("keeps a saved game across workspaces while the viewing scope is all communities", () => {
+    useWorkspaceStore.setState({
+      workspaces: withWorkspaces([["overwatch", "lol"], ["overwatch"]]),
+      currentWorkspaceId: 1,
+      statsScope: "all"
+    });
+    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
+
+    useWorkspaceStore.getState().setCurrentWorkspace(2);
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+
+    // Narrowing the scope to a workspace without that game is when it stops being valid.
+    useWorkspaceStore.getState().setStatsScope("workspace");
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+  });
+
+  it("keeps saved all, and is untouched by an opened owner", () => {
+    useWorkspaceStore.setState({
+      workspaces: withWorkspaces([["overwatch"]]),
+      currentWorkspaceId: 1,
+      statsScope: "workspace"
+    });
+    useWorkspaceStore.getState().setBrowsingDiscipline("all");
+    useWorkspaceStore.getState().setEntityWorkspace(1);
+    useWorkspaceStore.getState().setCurrentWorkspace(1);
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("all");
+  });
+
+  it("is not host-locked: a tenant host keeps its own saved game, validated against the tenant workspace", () => {
+    useWorkspaceStore.setState({ workspaces: withWorkspaces([["overwatch"]]) });
+    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
+
+    useWorkspaceStore.getState().setHostLock(1);
+    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+  });
+});
+
+describe("browsing discipline hydration", () => {
+  afterEach(() => {
+    document.cookie = "owt-discipline=; Max-Age=0; path=/";
+  });
+
+  it("hydrates the saved game from its cookie at module load, null without one", async () => {
+    vi.resetModules();
+    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+
+    document.cookie = "owt-discipline=lol; path=/";
+    vi.resetModules();
+    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+  });
+});

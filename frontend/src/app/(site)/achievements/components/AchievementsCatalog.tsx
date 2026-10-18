@@ -23,7 +23,9 @@ import { RarityStrip } from "@/components/achievements/RarityStrip";
 import type { Achievement, AchievementCategory } from "@/types/achievement.types";
 import { classifyRarity, rarityVarClass, RARITY_ORDER, type Rarity } from "@/lib/achievements/rarity";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
-import type { StatsScope } from "@/lib/site/stats-scope";
+import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 
 import AchievementsHero from "./AchievementsHero";
 import AchievementTile from "./AchievementTile";
@@ -79,27 +81,16 @@ const TileSection = ({
   </section>
 );
 
-const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplineInit }>) => {
   const t = useTranslations();
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
-
-  const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const browsing = useBrowsingDiscipline({ allowsAll: false, initial });
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   // One value carries the workspace dimension of the read and its cache key.
-  const scopeId = scope === "all" ? "all" : workspaceId;
-  const workspaceName =
-    scope === "all"
-      ? t("common.scope.all")
-      : workspaces.find((w) => w.id === workspaceId)?.name;
-
-  // The games the current scope can hold: the workspaces' enabled disciplines, in first-seen order.
-  const games = useMemo(() => {
-    const scoped = scope === "all" ? workspaces : workspaces.filter((w) => w.id === workspaceId);
-    return Array.from(new Set(scoped.flatMap((w) => w.disciplines_enabled)));
-  }, [scope, workspaces, workspaceId]);
-  // A game in the URL that the scope does not have is no filter at all.
-  const gameParam = searchParams.get("game");
-  const gameFilter = gameParam !== null && games.includes(gameParam) ? gameParam : null;
+  const { axis } = browsing;
+  const workspaceName = axis === "all" ? t("common.scope.all") : workspaces.find((w) => w.id === axis)?.name;
+  // Achievements are a concrete-game surface: no `all` is ever resolved here.
+  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
 
   const rarityParam = searchParams.get("rarity");
   const rarityFilter: Rarity | null = isRarity(rarityParam) ? rarityParam : null;
@@ -109,9 +100,10 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const sort: SortBy = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "rarity";
 
   const { data, isLoading, isError, refetch } = useQuery({
-    // The game is part of the read and of its key: the reader pools and divides per game server-side.
-    queryKey: achievementQueryKeys.all(scopeId, gameFilter),
-    queryFn: () => achievementsService.getAll(1, -1, scopeId, gameFilter)
+    // One concrete game per read: the reader pools and divides per game server-side, so the key carries it.
+    queryKey: achievementQueryKeys.all(axis, discipline),
+    queryFn: ({ signal }) => achievementsService.getAll(1, -1, axis, discipline, { signal }),
+    enabled: discipline !== null
   });
 
   const results = useMemo(() => data?.results ?? [], [data?.results]);
@@ -196,9 +188,28 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const filtersActive = rarityFilter !== null || categoryFilter !== null || search.trim() !== "";
 
   const clearFilters = () => setParams({ rarity: null, category: null, q: null });
-  // Keys are built from a game code the statically typed `t` cannot know; an unknown game reads as its code.
-  const looseT = t as unknown as { (key: string): string; has(key: string): boolean };
-  const gameLabel = (game: string) => (looseT.has(`achievements.game.${game}`) ? looseT(`achievements.game.${game}`) : game);
+  const resolved = browsing.resolved;
+  if (resolved === null) {
+    return browsing.isError ? (
+      <div className="aqt-player">
+        <PageStateCard state="error" description={t("common.loadError")} onAction={browsing.refetch} />
+      </div>
+    ) : (
+      <PageSkeleton />
+    );
+  }
+  if (resolved.kind === "invalid" || resolved.kind === "empty") {
+    return (
+      <div className="aqt-player">
+        <DisciplineUnavailable
+          resolved={resolved}
+          disciplines={browsing.disciplines ?? []}
+          allowsAll={false}
+          onSelect={browsing.select}
+        />
+      </div>
+    );
+  }
 
   if (isLoading) return <PageSkeleton />;
 
@@ -257,25 +268,13 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           </div>
         ) : null}
 
-        {games.length > 1 ? (
-          <div
-            role="group"
-            aria-label={t("achievements.gameFilter")}
-            className="flex shrink-0 items-center gap-2"
-          >
-            <FilterChip active={gameFilter === null} onClick={() => setParams({ game: null })}>
-              {t("achievements.game.all")}
-            </FilterChip>
-            {games.map((game) => (
-              <FilterChip
-                key={game}
-                active={gameFilter === game}
-                onClick={() => setParams({ game: gameFilter === game ? null : game })}
-              >
-                {gameLabel(game)}
-              </FilterChip>
-            ))}
-          </div>
+        {browsing.disciplines ? (
+          <DisciplineSelector
+            disciplines={browsing.disciplines}
+            value={discipline ?? undefined}
+            allowsAll={false}
+            onSelect={browsing.select}
+          />
         ) : null}
 
         <SearchField
@@ -340,9 +339,9 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   );
 };
 
-const AchievementsCatalogPage = ({ scope }: Readonly<{ scope: StatsScope }>) => (
+const AchievementsCatalogPage = ({ initial }: Readonly<{ initial?: BrowsingDisciplineInit }>) => (
   <Suspense fallback={<PageSkeleton />}>
-    <AchievementsCatalog scope={scope} />
+    <AchievementsCatalog initial={initial} />
   </Suspense>
 );
 

@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { DraftBoard, DraftStateFrame } from "@/components/draft/DraftBoard";
 import { tournamentHref } from "@/lib/tournament/url";
 import { useTournamentQuery } from "@/hooks/useTournamentClientData";
+import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { Button } from "@/components/ui/button";
 
 import styles from "@/components/draft/DraftRoom.module.css";
@@ -20,6 +21,8 @@ export default function PublicDraftRoomPage() {
   // (not by slug), and the backend resolves a numeric ref like any other.
   const tournamentQuery = useTournamentQuery(params.id);
   const tournament = tournamentQuery.data;
+  // The room belongs to its tournament's workspace, not to whichever one the visitor last browsed.
+  useEntityWorkspace(tournament?.workspace_id);
 
   if (tournament && tournament.team_formation !== "draft") {
     redirect(tournamentHref(tournament));
