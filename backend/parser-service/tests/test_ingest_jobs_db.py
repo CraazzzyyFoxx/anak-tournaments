@@ -525,20 +525,18 @@ def test_failed_job_keeps_validated_hints_and_stays_in_scope(ingest_database):
     run(ingest_database, scenario)
 
 
-def test_canonical_submission_never_reuses_a_raw_upload_job_with_the_same_bytes(ingest_database):
-    async def scenario(env):
-        raw = body(make_doc(None, source={"kind": "manual"}))
-        sha = hashlib.sha256(raw).hexdigest()
+def test_canonical_and_raw_jobs_never_share_a_hash_whatever_their_object_keys_look_like(ingest_database):
+    async def raw_job(env, sha, *, kind, raw_ref):
         async with env.sf() as session:
-            existing, created = await jobs._jobs.create_or_get(
+            job, created = await jobs._jobs.create_or_get(
                 session,
                 workspace_id=env.ws["A"],
                 discipline="overwatch",
-                source_kind="manual",
+                source_kind=kind,
                 external_id=None,
                 content_hash=sha,
                 filename="x.log",
-                raw_ref=f"logs/{env.ids['A']['tournament']}/{sha}",
+                raw_ref=raw_ref,
                 document_ref=None,
                 uploader_user_id=None,
                 api_key_id=None,
@@ -547,16 +545,44 @@ def test_canonical_submission_never_reuses_a_raw_upload_job_with_the_same_bytes(
                 hint_encounter_game_id=None,
             )
             await session.commit()
-        assert created
-        before = await counts(env)
-        with pytest.raises(BaseAPIException) as caught:
-            await submit(env, raw)
-        assert (caught.value.status_code, caught.value.detail) == (409, "stats_upload_scope_conflict")
-        stored = await row(env, existing.id)
-        assert stored.document_ref is None and stored.raw_ref.startswith("logs/")
-        assert {k: v for k, v in (await counts(env)).items() if k != "objects"} == {
-            k: v for k, v in before.items() if k != "objects"
-        }
+        return job.id, created
+
+    async def scenario(env):
+        # Existing raw jobs: an imported-style key layout, and a raw job whose key even looks canonical.
+        for external, raw_ref_of in (
+            ("imported", lambda sha: f"legacy/{sha[:8]}/odd-layout.bin"),
+            ("lookalike", lambda sha: f"stats/raw/{env.ws['A']}/{sha}"),
+        ):
+            raw = body(make_doc(None, source={"kind": "manual"}, map=f"m-{external}"))
+            sha = hashlib.sha256(raw).hexdigest()
+            existing, created = await raw_job(env, sha, kind="manual", raw_ref=raw_ref_of(sha))
+            assert created
+            before = await counts(env)
+            with pytest.raises(BaseAPIException) as caught:
+                await submit(env, raw)
+            assert (caught.value.status_code, caught.value.detail) == (409, "stats_upload_scope_conflict")
+            stored = await row(env, existing)
+            assert stored.document_ref is None and stored.raw_ref == raw_ref_of(sha)
+            assert {k: v for k, v in (await counts(env)).items() if k != "objects"} == {
+                k: v for k, v in before.items() if k != "objects"
+            }
+
+        # Existing canonical job: a raw upload of the same bytes (any key layout) is refused untouched.
+        canonical_raw = body(make_doc(None, source={"kind": "manual"}))
+        canonical_sha = hashlib.sha256(canonical_raw).hexdigest()
+        canonical = await submit(env, canonical_raw)
+        for kind, ref in (("manual", f"logs/{canonical_sha}"), ("upload", "elsewhere/object")):
+            with pytest.raises(BaseAPIException) as caught:
+                await raw_job(env, canonical_sha, kind=kind, raw_ref=ref)
+            assert caught.value.status_code == 409
+        assert (await row(env, canonical.id)).document_ref is not None
+        assert (await submit(env, canonical_raw)).id == canonical.id  # canonical to canonical is the same job
+
+        # Two raw upload channels with unusual key layouts remain one job.
+        sha = hashlib.sha256(b"raw log bytes").hexdigest()
+        first, _ = await raw_job(env, sha, kind="upload", raw_ref="a/b/c")
+        second, created = await raw_job(env, sha, kind="discord", raw_ref="d/e/f")
+        assert second == first and not created
 
     run(ingest_database, scenario)
 
