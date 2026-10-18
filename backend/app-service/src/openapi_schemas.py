@@ -88,7 +88,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.users.search": Op(
         response=schemas.UserSearch,
         response_array=True,
-        query_params=(QueryParam("query"), QueryParam("fields", array=True)),
+        query_params=(QueryParam("query"),),
     ),
     "rpc.app.users.overview": Op(response=schemas.UserOverviewResponse, query=schemas.UserOverviewQueryParams),
     "rpc.app.users.overview_stats": Op(response=schemas.UserOverviewStats, query=schemas.UserOverviewStatsQueryParams),

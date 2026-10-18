@@ -95,7 +95,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.search": {
         "summary": "Search users",
-        "description": "Permission: public; no authentication required. Returns players matching a free-text query across the requested identity fields.",
+        "description": "Permission: public; no authentication required. Returns players whose public game handle (any game's identity provider) matches a free-text query.",
     },
     "rpc.app.users.overview": {
         "summary": "Users overview",
