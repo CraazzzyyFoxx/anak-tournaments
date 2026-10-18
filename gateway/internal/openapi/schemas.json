@@ -974,7 +974,7 @@
       "summary": "Resolve an old catalog id"
     },
     "rpc.app.catalog_aliases.attach": {
-      "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing.",
+      "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes that entity's discipline/kind miss in one transaction; 404 if the entity is missing. Stat/event/role misses are never attachable (dismiss only).",
       "request": {
         "array": false,
         "ref": "app.CatalogAliasAttach"
@@ -986,7 +986,7 @@
       "summary": "Dismiss a catalog alias miss"
     },
     "rpc.app.catalog_aliases.misses_list": {
-      "description": "Permission: superuser only. Returns a paginated queue of catalog names (any discipline and kind) from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
+      "description": "Permission: superuser only. Returns a paginated queue of names (any discipline) a match log or canonical document used that did not resolve, ordered by occurrences then recency. kind is one of character|map|mode (catalog entity names) or stat|event|role (undeclared codes; a role's raw_name is dimension:role); open misses only unless include_resolved=true.",
       "query_params": [
         {
           "name": "page",
@@ -1077,7 +1077,10 @@
                 "enum": [
                   "character",
                   "map",
-                  "mode"
+                  "mode",
+                  "stat",
+                  "event",
+                  "role"
                 ],
                 "type": "string"
               },
@@ -13621,7 +13624,10 @@
               "enum": [
                 "character",
                 "map",
-                "mode"
+                "mode",
+                "stat",
+                "event",
+                "role"
               ],
               "type": "string"
             },
@@ -13686,6 +13692,14 @@
           "type": "integer"
         },
         "kind": {
+          "enum": [
+            "character",
+            "map",
+            "mode",
+            "stat",
+            "event",
+            "role"
+          ],
           "title": "Kind",
           "type": "string"
         },

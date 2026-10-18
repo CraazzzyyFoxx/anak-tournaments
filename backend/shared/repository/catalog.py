@@ -207,6 +207,11 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         return result.all()  # type: ignore[return-value]
 
 
+def _require_miss_kind(kind: str) -> None:
+    if kind not in models.ALIAS_MISS_KINDS:
+        raise ValueError(f"alias_miss kind must be one of {models.ALIAS_MISS_KINDS}, got {kind!r}")
+
+
 class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
     """``catalog.alias_miss`` — the unresolved-name worklist.
 
@@ -240,6 +245,7 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
         ids: typing.Mapping[str, int] | None = None,
     ):
         """The upsert statement, so SQL can be asserted without a database."""
+        _require_miss_kind(kind)
         names = sorted({name.strip()[:name_max_length] for name in raw_names if name and name.strip()})
         statement = pg_insert(self.model).values(
             [
@@ -274,6 +280,7 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
         name_max_length: int = 128,
     ) -> None:
         """Upsert bounded breadcrumb owners with their before/after evidence."""
+        _require_miss_kind(kind)
         from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 
         names = sorted({name.strip()[:name_max_length] for name in raw_names if name and name.strip()})

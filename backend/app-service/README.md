@@ -57,7 +57,7 @@ list with request/response schemas is published at `/api/docs`, generated from
 | Binary assets | `rpc.app.{workspaces.icon_*,assets.*,matches.log}` | Workspace icon and platform-asset upload/delete to S3, match-log download; base64 in the envelope | `binary` |
 | User & identity admin | `rpc.app.users.{admin_*,merge_*,social_*,avatar_*,me_*}` | Player CRUD, destructive profile merge, social-account management and visibility, avatar, and the `account.social` self-service subset | `users_admin` |
 | Catalog admin | `rpc.app.catalog.admin_*` | Superuser CRUD on `/api/v1/admin/catalog/{discipline}/{kind}[/{id}]`; one handler per verb, discipline and kind from the path | `metadata_admin` |
-| Catalog aliases | `rpc.app.catalog_aliases.*` | `catalog.alias_miss` worklist scoped by discipline and kind: list, attach `{entity_id, alias}`, dismiss | `catalog_aliases` |
+| Catalog aliases | `rpc.app.catalog_aliases.*` | `catalog.alias_miss` worklist scoped by discipline and kind (`character\|map\|mode` entity names; `stat\|event\|role` codes are dismiss-only): list, attach `{entity_id, alias}`, dismiss | `catalog_aliases` |
 | Legacy catalog ids | `rpc.app.catalog.legacy` | Public `/api/v1/catalog/legacy/{hero\|map\|gamemode}/{id}` → `{entity_id, discipline, kind, slug}` for old-link redirects until `discipline02` | `catalog_legacy` |
 | Audit | `rpc.app.audit_list` | Read-only platform audit feed and per-entity trail, gated on `audit.read` | `audit` |
 

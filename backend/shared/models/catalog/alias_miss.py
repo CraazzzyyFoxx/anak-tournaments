@@ -17,13 +17,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.core import db
 
-__all__ = ("CatalogAliasMiss",)
+__all__ = ("ALIAS_MISS_KINDS", "CatalogAliasMiss")
+
+#: Diagnostic domain: the three entity kinds plus the stat/event/role vocabularies a canonical document can miss.
+#: ``catalog.entity.kind`` stays three-valued; the extra kinds are read/dismiss-only in the admin queue.
+ALIAS_MISS_KINDS: tuple[str, ...] = ("character", "map", "mode", "stat", "event", "role")
 
 
 class CatalogAliasMiss(db.TimeStampIntegerMixin):
     __tablename__ = "alias_miss"
     __table_args__ = (
-        CheckConstraint("kind IN ('character', 'map', 'mode')", name="ck_alias_miss_kind"),
+        CheckConstraint(
+            "kind IN (" + ", ".join(f"'{kind}'" for kind in ALIAS_MISS_KINDS) + ")", name="ck_alias_miss_kind"
+        ),
         UniqueConstraint("discipline", "kind", "raw_name", name="uq_alias_miss"),
         Index("ix_alias_miss_ingest_job", "last_ingest_job_id"),
         {"schema": "catalog"},

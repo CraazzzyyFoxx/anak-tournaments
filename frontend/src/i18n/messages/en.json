@@ -11040,6 +11040,7 @@
         "role": "Role",
         "aliases": "Aliases",
         "type": "Type",
+        "discipline": "Game",
         "rawName": "Raw name",
         "timesSeen": "Times seen",
         "lastSeen": "Last seen",
@@ -11121,8 +11122,15 @@
         "competitive": "Competitive",
         "casual": "Casual",
         "heroEntity": "Hero",
-        "mapEntity": "Map",
-        "gamemodeEntity": "Gamemode",
+        "kinds": {
+          "character": "Character",
+          "map": "Map",
+          "mode": "Mode",
+          "stat": "Stat",
+          "event": "Event",
+          "role": "Role"
+        },
+        "dismissOnly": "Declared by the game module — dismiss only",
         "resolved": "Resolved",
         "pickEntity": "Pick a {entity}…",
         "search": "Search…",
@@ -11132,8 +11140,8 @@
         "hidden": "“{name}” hidden",
         "attachError": "Could not attach the alias",
         "hideError": "Could not hide the miss",
-        "noResolved": "No unresolved names recorded. Every log name so far resolved to a catalog entity.",
-        "nothing": "Nothing in the queue. Every log name so far resolved to a catalog entity.",
+        "noResolved": "No unresolved names recorded. Everything received so far resolved.",
+        "nothing": "Nothing in the queue. Everything received so far resolved.",
         "mobileSummary": "{entity} · seen {count}× · last {date}"
       },
       "heroRoles": {

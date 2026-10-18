@@ -1303,22 +1303,23 @@ export interface MapUpdateInput {
 
 // ─── Catalog aliases ─────────────────────────────────────────────────────────
 
-/** Catalog entity an alias (or an unresolved log name) belongs to. */
-export type CatalogEntityType = "hero" | "map" | "gamemode";
+/** `character|map|mode` are catalog entities an alias can name; `stat|event|role` are undeclared module codes. */
+export type CatalogAliasMissKind = CatalogKind | "stat" | "event" | "role";
 
 /**
- * A name the log parser could not resolve. Upserted per `(entity_type,
- * raw_name)`, so `occurrences` counts how often the gap actually bites.
+ * One unresolved name as the API sends it. Upserted per `(discipline, kind, raw_name)`, so `occurrences` counts how
+ * often the gap actually bites. A `role` miss carries `dimension:role` as its `raw_name`.
  */
 export interface CatalogAliasMissRead {
   id: number;
-  entity_type: CatalogEntityType;
+  discipline: string;
+  kind: CatalogAliasMissKind;
   raw_name: string;
   occurrences: number;
   first_seen_at: string;
   last_seen_at: string;
-  last_log_record_id: number | null;
-  /** Owning tournament of `last_log_record_id`; null once the record is gone. */
+  last_ingest_job_id: number | null;
+  /** Hinted tournament of `last_ingest_job_id`; null when the job carried no hint or is gone. */
   last_log_tournament_id: number | null;
   resolved_at: string | null;
 }
@@ -1326,12 +1327,12 @@ export interface CatalogAliasMissRead {
 export interface CatalogAliasMissQuery {
   page?: number;
   per_page?: number;
-  entity_type?: CatalogEntityType;
+  discipline?: string;
+  kind?: CatalogAliasMissKind;
   include_resolved?: boolean;
 }
 
 export interface CatalogAliasAttachInput {
-  entity_type: CatalogEntityType;
   entity_id: number;
   alias: string;
 }
@@ -1370,20 +1371,6 @@ export interface CatalogEntityWrite {
   attrs?: Record<string, unknown>;
   aliases?: string[];
   active?: boolean;
-}
-
-/** A miss as the API sends it; the unresolved page keeps its `entity_type` view model. */
-export interface CatalogAliasMissWire {
-  id: number;
-  discipline: string;
-  kind: CatalogKind;
-  raw_name: string;
-  occurrences: number;
-  first_seen_at: string;
-  last_seen_at: string;
-  last_ingest_job_id: number | null;
-  last_log_tournament_id: number | null;
-  resolved_at: string | null;
 }
 
 // ─── Achievement ─────────────────────────────────────────────────────────────

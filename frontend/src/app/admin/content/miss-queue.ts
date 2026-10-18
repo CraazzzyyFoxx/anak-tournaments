@@ -15,8 +15,9 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 export const MISS_QUEUE_KEY = adminQueryKeys.catalogAliasMisses();
 
 /**
- * How many log names are still waiting for a decision — the number on the
- * "Unresolved names" tab. One row is requested; only `total` is read.
+ * How many unresolved names (any discipline, any of the six kinds) are still
+ * waiting for a decision — the number on the "Unresolved names" tab. One row is
+ * requested; only `total` is read.
  */
 export function useOpenMissCount(): number {
   const { data } = useQuery({

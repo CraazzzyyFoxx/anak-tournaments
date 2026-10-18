@@ -1420,7 +1420,7 @@ CREATE TABLE catalog.alias_miss (
 	last_ingest_job_id BIGINT,
 	resolved_at TIMESTAMP WITH TIME ZONE,
 	PRIMARY KEY (id),
-	CONSTRAINT ck_alias_miss_kind CHECK (kind IN ('character', 'map', 'mode')),
+	CONSTRAINT ck_alias_miss_kind CHECK (kind IN ('character', 'map', 'mode', 'stat', 'event', 'role')),
 	CONSTRAINT uq_alias_miss UNIQUE (discipline, kind, raw_name),
 	CONSTRAINT fk_alias_miss_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
 	CONSTRAINT fk_alias_miss_ingest_job FOREIGN KEY(last_ingest_job_id) REFERENCES stats.ingest_job (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED

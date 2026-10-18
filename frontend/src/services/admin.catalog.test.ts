@@ -58,19 +58,28 @@ describe("adminService on the generic catalog", () => {
     expect(created).toMatchObject({ gamemode_id: 7, in_competitive: false, gamemode: { id: 7, name: "Push" } });
   });
 
-  it("reads the alias queue by kind and keeps the page's entity vocabulary", async () => {
+  it("returns the queue exactly as the API sends it, whatever the discipline or kind", async () => {
     reply = {
-      results: [{ id: 3, discipline: "overwatch", kind: "mode", raw_name: "Захват", occurrences: 2, first_seen_at: "x", last_seen_at: "y", last_ingest_job_id: 11, last_log_tournament_id: 5, resolved_at: null }],
-      total: 1, page: 1, per_page: 50
+      results: [
+        { id: 3, discipline: "overwatch", kind: "mode", raw_name: "Захват", occurrences: 2, first_seen_at: "x", last_seen_at: "y", last_ingest_job_id: 11, last_log_tournament_id: 5, resolved_at: null },
+        { id: 4, discipline: "lol", kind: "role", raw_name: "position:ghost", occurrences: 1, first_seen_at: "x", last_seen_at: "y", last_ingest_job_id: null, last_log_tournament_id: null, resolved_at: null }
+      ],
+      total: 2, page: 1, per_page: 50
     };
-    const page = await adminService.getCatalogAliasMisses({ entity_type: "gamemode" });
-    expect(calls[0].options?.query).toEqual({ discipline: "overwatch", kind: "mode" });
-    expect(page.results[0]).toMatchObject({ entity_type: "gamemode", last_log_record_id: 11, last_log_tournament_id: 5 });
+    const page = await adminService.getCatalogAliasMisses();
+    expect(calls[0].options?.query).toEqual({});
+    expect(page).toBe(reply);
+  });
+
+  it.each(["character", "map", "mode", "stat", "event", "role"] as const)("filters the queue by %s and discipline without converting", async (kind) => {
+    reply = { results: [], total: 0, page: 1, per_page: 50 };
+    await adminService.getCatalogAliasMisses({ kind, discipline: "lol", page: 2, per_page: 25, include_resolved: true });
+    expect(calls[0].options?.query).toEqual({ discipline: "lol", kind, page: 2, per_page: 25, include_resolved: true });
   });
 
   it("attaches an alias by entity id only", async () => {
     reply = {};
-    await adminService.attachCatalogAlias({ entity_type: "hero", entity_id: 901, alias: "Ана" });
+    await adminService.attachCatalogAlias({ entity_id: 901, alias: "Ана" });
     expect(calls[0]).toEqual({
       path: "/api/v1/admin/catalog-aliases/attach",
       options: { method: "POST", body: { entity_id: 901, alias: "Ана" } }

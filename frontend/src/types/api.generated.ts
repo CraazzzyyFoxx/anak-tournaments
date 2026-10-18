@@ -5549,7 +5549,7 @@ export interface paths {
         put?: never;
         /**
          * Attach a catalog alias
-         * @description Permission: superuser only. Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing.
+         * @description Permission: superuser only. Adds the raw name to the target entity's aliases and closes that entity's discipline/kind miss in one transaction; 404 if the entity is missing. Stat/event/role misses are never attachable (dismiss only).
          *
          *     RPC subject: `rpc.app.catalog_aliases.attach`
          */
@@ -5569,7 +5569,7 @@ export interface paths {
         };
         /**
          * List catalog alias misses
-         * @description Permission: superuser only. Returns a paginated queue of catalog names (any discipline and kind) from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.
+         * @description Permission: superuser only. Returns a paginated queue of names (any discipline) a match log or canonical document used that did not resolve, ordered by occurrences then recency. kind is one of character|map|mode (catalog entity names) or stat|event|role (undeclared codes; a role's raw_name is dimension:role); open misses only unless include_resolved=true.
          *
          *     RPC subject: `rpc.app.catalog_aliases.misses_list`
          */
@@ -19915,8 +19915,11 @@ export interface components {
             first_seen_at: string;
             /** Id */
             id: number;
-            /** Kind */
-            kind: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: AppCatalogAliasMissReadKind;
             /**
              * Last Ingest Job Id
              * @default null
@@ -73210,7 +73213,10 @@ export enum PathsApiV1AdminCatalogAliasesMissesGetParametersQuerySort {
 export enum PathsApiV1AdminCatalogAliasesMissesGetParametersQueryKindAnyOf0 {
     character = "character",
     map = "map",
-    mode = "mode"
+    mode = "mode",
+    stat = "stat",
+    event = "event",
+    role = "role"
 }
 export enum PathsApiV1AdminCatalogDisciplineKindGetParametersQuerySort {
     id = "id",
@@ -73693,6 +73699,14 @@ export enum AppAuthMergePolicyConflict_choices {
 export enum AppAuthMergePolicyOther_account_action {
     keep = "keep",
     delete = "delete"
+}
+export enum AppCatalogAliasMissReadKind {
+    character = "character",
+    map = "map",
+    mode = "mode",
+    stat = "stat",
+    event = "event",
+    role = "role"
 }
 export enum AppUserMergeFieldPolicyAvatar_url {
     source = "source",

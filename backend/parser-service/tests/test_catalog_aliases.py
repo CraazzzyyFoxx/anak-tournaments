@@ -29,13 +29,17 @@ class CatalogAliasSchemaTests(TestCase):
         self.assertFalse(column.nullable, "CatalogEntity.aliases must be NOT NULL")
         self.assertEqual("JSONB", type(column.type).__name__)
 
-    def test_alias_miss_kind_is_the_core_vocabulary(self) -> None:
+    def test_alias_miss_kind_is_the_six_diagnostic_kinds_while_entities_stay_three(self) -> None:
         constraint = next(
             c
             for c in shared_models.CatalogAliasMiss.__table__.constraints
             if getattr(c, "name", None) == "ck_alias_miss_kind"
         )
-        self.assertEqual("kind IN ('character', 'map', 'mode')", str(constraint.sqltext))
+        self.assertEqual("kind IN ('character', 'map', 'mode', 'stat', 'event', 'role')", str(constraint.sqltext))
+        entity = next(
+            c for c in shared_models.CatalogEntity.__table__.constraints if getattr(c, "name", None) == "ck_entity_kind"
+        )
+        self.assertEqual("kind IN ('character', 'map', 'mode')", str(entity.sqltext))
 
     def test_alias_miss_is_unique_per_entity_and_raw_name(self) -> None:
         table = shared_models.CatalogAliasMiss.__table__

@@ -66,11 +66,8 @@ import {
   CatalogAliasAttachInput,
   CatalogAliasMissQuery,
   CatalogAliasMissRead,
-  CatalogAliasMissWire,
   CatalogEntityRead,
   CatalogEntityWrite,
-  CatalogEntityType,
-  CatalogKind,
   AchievementCreateInput,
   AchievementUpdateInput,
   AchievementRegistryEntry,
@@ -204,8 +201,6 @@ function buildAdminListQuery(params: {
  * These adapters translate their fields onto the generic catalog API.
  */
 const OVERWATCH_CATALOG = "/api/v1/admin/catalog/overwatch";
-const KIND_OF_ENTITY: Record<CatalogEntityType, CatalogKind> = { hero: "character", map: "map", gamemode: "mode" };
-const ENTITY_OF_KIND: Record<CatalogKind, CatalogEntityType> = { character: "hero", map: "map", mode: "gamemode" };
 
 function stamps(entity: CatalogEntityRead): { created_at: Date; updated_at: Date | null } {
   return { created_at: new Date(entity.created_at), updated_at: entity.updated_at ? new Date(entity.updated_at) : null };
@@ -1075,28 +1070,20 @@ class AdminService {
   // ─── Catalog aliases (superuser) ───────────────────────────────────────────
 
   /**
-   * Names the log parser could not resolve, worst offenders first. Open misses
+   * Unresolved names of every discipline and kind, worst offenders first. Open misses
    * only unless `include_resolved` asks for the dismissed ones too.
    */
   async getCatalogAliasMisses(params: CatalogAliasMissQuery = {}): Promise<PaginatedResponse<CatalogAliasMissRead>> {
     const response = await apiFetch("/api/v1/admin/catalog-aliases/misses", {
       query: {
-        discipline: "overwatch",
+        ...(params.discipline && { discipline: params.discipline }),
         ...(params.page != null && { page: params.page }),
         ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.entity_type && { kind: KIND_OF_ENTITY[params.entity_type] }),
+        ...(params.kind && { kind: params.kind }),
         ...(params.include_resolved && { include_resolved: params.include_resolved })
       }
     });
-    const page: PaginatedResponse<CatalogAliasMissWire> = await response.json();
-    return {
-      ...page,
-      results: page.results.map(({ kind, discipline: _discipline, last_ingest_job_id, ...miss }) => ({
-        ...miss,
-        entity_type: ENTITY_OF_KIND[kind],
-        last_log_record_id: last_ingest_job_id
-      }))
-    };
+    return response.json();
   }
 
   /**

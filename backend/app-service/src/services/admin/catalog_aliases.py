@@ -4,7 +4,9 @@ the entity it meant, or dismiss it.
 The parser resolves hero/map/gamemode names from the canonical ``name`` plus the
 ``aliases`` JSONB list; a name that resolves to neither is upserted into
 ``catalog.alias_miss`` with an occurrence counter. This module is the
-other end of that pipe.
+other end of that pipe. Canonical documents add three diagnostic-only kinds
+(``stat``/``event``/``role``): they are listed and dismissed here, never
+attached, because attach is addressed to a catalog entity.
 
 ``attach`` is a dedicated operation rather than a ``PATCH aliases=[…]`` from the
 browser for two reasons: appending client-side is a read-modify-write two admins

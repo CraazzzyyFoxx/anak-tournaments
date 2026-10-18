@@ -1,8 +1,11 @@
 """Schemas for the catalog alias-miss queue (superuser admin surface).
 
-A miss is a hero/map/gamemode name a match log used that neither the canonical
-`name` nor any `aliases` entry resolved. The queue is what the admin works
-through: pick the entity the raw name meant and attach it, or dismiss it.
+A miss is a name a match log or canonical document used that did not resolve:
+a hero/map/gamemode no `name`/`aliases` entry matched (``character|map|mode``),
+or a stat/event/role code the module does not declare (``stat|event|role``;
+a role's ``raw_name`` is ``dimension:role``). The admin picks the entity a
+hero/map/gamemode name meant and attaches it; every other kind is read and
+dismiss only, never an alias or an auto-created definition.
 
 `CatalogAliasAttach` is a dedicated write instead of `PATCH aliases=[...]` from
 the browser: appending an alias client-side is a read-modify-write that two
@@ -16,6 +19,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from shared.models.catalog.alias_miss import ALIAS_MISS_KINDS
 from src.core import pagination
 from src.schemas import BaseRead
 
@@ -27,6 +31,8 @@ __all__ = (
     "ALIAS_MAX_LENGTH",
 )
 
+AliasMissKind = typing.Literal[*ALIAS_MISS_KINDS]
+
 # Mirrors `CatalogAliasMiss.raw_name` (String(128)) — a longer name could not be
 # stored, and could therefore never have produced a miss row to attach to.
 ALIAS_MAX_LENGTH = 128
@@ -36,7 +42,7 @@ class CatalogAliasMissRead(BaseRead):
     """One unresolved catalog name, with how often logs have hit it."""
 
     discipline: str
-    kind: str
+    kind: AliasMissKind
     raw_name: str
     occurrences: int
     first_seen_at: datetime
@@ -55,7 +61,7 @@ class CatalogAliasMissListQueryParams(
     # much the missing alias hurts (occurrences, then recency).
     sort: typing.Literal["id", "occurrences", "first_seen_at", "last_seen_at"] = "occurrences"
     discipline: str | None = None
-    kind: typing.Literal["character", "map", "mode"] | None = None
+    kind: AliasMissKind | None = None
     include_resolved: bool = False
 
 
@@ -63,7 +69,7 @@ class CatalogAliasMissListQueryParams(
 class CatalogAliasMissListParams(pagination.PaginationSortParams):
     per_page: int = 50
     discipline: str | None = None
-    kind: typing.Literal["character", "map", "mode"] | None = None
+    kind: AliasMissKind | None = None
     include_resolved: bool = False
 
 

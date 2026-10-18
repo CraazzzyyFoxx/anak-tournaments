@@ -21,23 +21,35 @@ import SearchableImageSelect, {
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import type { CatalogAliasMissRead, CatalogEntityType } from "@/types/admin.types";
+import type { CatalogAliasMissKind, CatalogAliasMissRead, CatalogKind } from "@/types/admin.types";
 import { Spinner } from "@/components/ui/spinner";
 
 import { MISS_QUEUE_KEY } from "../miss-queue";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
-const ENTITY_TYPES: CatalogEntityType[] = ["hero", "map", "gamemode"];
+const MISS_KINDS: CatalogAliasMissKind[] = ["character", "map", "mode", "stat", "event", "role"];
 
 /**
- * Query-key root of the admin list each entity type feeds. Attaching an alias
+ * Query-key root of the admin list each entity kind feeds. Attaching an alias
  * changes that list, so its cache has to go along with the miss queue's.
  */
-const ENTITY_LIST_KEYS: Record<CatalogEntityType, string> = {
-  hero: "heroes",
+const ENTITY_LIST_KEYS: Record<CatalogKind, string> = {
+  character: "heroes",
   map: "maps",
-  gamemode: "gamemodes",
+  mode: "gamemodes",
 };
+
+/**
+ * Only an entity miss of the discipline whose catalogue the content pickers load can be attached. Stat, event and
+ * role misses name codes a game module declares: dismiss is their only action, never an alias or a new definition.
+ * ponytail: the pickers are Overwatch's until P7 makes the content pages discipline-driven.
+ */
+const ATTACH_DISCIPLINE = "overwatch";
+
+function attachableKind(miss: CatalogAliasMissRead): CatalogKind | null {
+  const entityKind = miss.kind === "character" || miss.kind === "map" || miss.kind === "mode" ? miss.kind : null;
+  return entityKind !== null && miss.discipline === ATTACH_DISCIPLINE ? entityKind : null;
+}
 
 /** One page holds every catalog entity we have — ~45 maps, ~50 heroes, 7 modes. */
 const ENTITY_PAGE_SIZE = 200;
@@ -74,9 +86,9 @@ export default function UnresolvedNamesAdminPage() {
         key: "type",
         label: t("filters.type"),
         kind: "single",
-        options: ENTITY_TYPES.map((entityType) => ({
-          value: entityType,
-          label: t(`catalog.${entityType}Entity`),
+        options: MISS_KINDS.map((kind) => ({
+          value: kind,
+          label: t(`catalog.kinds.${kind}`),
         })),
       },
       { key: "resolved", label: t("filters.includeResolved"), kind: "toggle" },
@@ -84,7 +96,7 @@ export default function UnresolvedNamesAdminPage() {
     [t]
   );
   const filters = useFilters(filterDefs);
-  const entityTypeFilter = String(filters.values.type ?? "") as CatalogEntityType | "";
+  const kindFilter = String(filters.values.type ?? "") as CatalogAliasMissKind | "";
   const includeResolved = filters.values.resolved === true;
 
   const [heroesQuery, mapsQuery, gamemodesQuery] = useQueries({
@@ -104,8 +116,8 @@ export default function UnresolvedNamesAdminPage() {
     ],
   });
 
-  const entityOptions: Record<CatalogEntityType, SearchableImageOption[]> = {
-    hero: (heroesQuery.data?.results ?? []).map((hero) => ({
+  const entityOptions: Record<CatalogKind, SearchableImageOption[]> = {
+    character: (heroesQuery.data?.results ?? []).map((hero) => ({
       value: String(hero.id),
       label: hero.name,
     })),
@@ -115,16 +127,16 @@ export default function UnresolvedNamesAdminPage() {
       value: String(map.id),
       label: map.gamemode ? `${map.name} — ${map.gamemode.name}` : map.name,
     })),
-    gamemode: (gamemodesQuery.data?.results ?? []).map((gamemode) => ({
+    mode: (gamemodesQuery.data?.results ?? []).map((gamemode) => ({
       value: String(gamemode.id),
       label: gamemode.name,
     })),
   };
 
-  const entityLoading: Record<CatalogEntityType, boolean> = {
-    hero: heroesQuery.isLoading,
+  const entityLoading: Record<CatalogKind, boolean> = {
+    character: heroesQuery.isLoading,
     map: mapsQuery.isLoading,
-    gamemode: gamemodesQuery.isLoading,
+    mode: gamemodesQuery.isLoading,
   };
 
   // Also refreshes the tab badge: it hangs off the same key root.
@@ -143,16 +155,18 @@ export default function UnresolvedNamesAdminPage() {
   const attachMutation = useMutation({
     mutationFn: ({ miss, entityId }: { miss: CatalogAliasMissRead; entityId: number }) =>
       adminService.attachCatalogAlias({
-        entity_type: miss.entity_type,
         entity_id: entityId,
         alias: miss.raw_name,
       }),
     onSuccess: (_result, { miss }) => {
-      notify.success(t("catalog.attached", { name: miss.raw_name, entity: t(`catalog.${miss.entity_type}Entity`).toLowerCase() }));
+      const kind = attachableKind(miss);
+      notify.success(t("catalog.attached", { name: miss.raw_name, entity: t(`catalog.kinds.${miss.kind}`).toLowerCase() }));
       invalidateQueue();
-      // The alias now lives on the entity, so its admin list is stale too.
-      queryClient.invalidateQueries({ queryKey: adminQueryKeys.contentEntity(ENTITY_LIST_KEYS[miss.entity_type]) });
-      queryClient.invalidateQueries({ queryKey: [ENTITY_LIST_KEYS[miss.entity_type]] });
+      if (kind !== null) {
+        // The alias now lives on the entity, so its admin list is stale too.
+        queryClient.invalidateQueries({ queryKey: adminQueryKeys.contentEntity(ENTITY_LIST_KEYS[kind]) });
+        queryClient.invalidateQueries({ queryKey: [ENTITY_LIST_KEYS[kind]] });
+      }
       forgetTarget(miss.id);
     },
     onError: (error) => notify.apiError(error, { title: t("catalog.attachError") }),
@@ -184,6 +198,10 @@ export default function UnresolvedNamesAdminPage() {
     if (miss.resolved_at) {
       return <StatusIcon icon={CheckCircle} label={t("catalog.resolved")} variant="success" />;
     }
+    const kind = attachableKind(miss);
+    if (kind === null) {
+      return <span className="text-xs text-muted-foreground">{t("catalog.dismissOnly")}</span>;
+    }
 
     return (
       <SearchableImageSelect
@@ -199,11 +217,11 @@ export default function UnresolvedNamesAdminPage() {
             return updated;
           });
         }}
-        options={entityOptions[miss.entity_type]}
-        placeholder={t("catalog.pickEntity", { entity: t(`catalog.${miss.entity_type}Entity`).toLowerCase() })}
+        options={entityOptions[kind]}
+        placeholder={t("catalog.pickEntity", { entity: t(`catalog.kinds.${kind}`).toLowerCase() })}
         searchPlaceholder={t("catalog.search")}
-        isLoading={entityLoading[miss.entity_type]}
-        disabled={entityLoading[miss.entity_type] || isBusy(miss.id)}
+        isLoading={entityLoading[kind]}
+        disabled={entityLoading[kind] || isBusy(miss.id)}
         triggerClassName="h-9"
       />
     );
@@ -211,11 +229,18 @@ export default function UnresolvedNamesAdminPage() {
 
   const columns: ColumnDef<CatalogAliasMissRead>[] = [
     {
-      id: "entity_type",
+      id: "discipline",
+      header: t("columns.discipline"),
+      size: 96,
+      enableSorting: false,
+      cell: ({ row }) => <code className="text-xs">{row.original.discipline}</code>,
+    },
+    {
+      id: "kind",
       header: t("columns.type"),
       size: 96,
       enableSorting: false,
-      cell: ({ row }) => <Badge variant="outline">{t(`catalog.${row.original.entity_type}Entity`)}</Badge>,
+      cell: ({ row }) => <Badge variant="outline">{t(`catalog.kinds.${row.original.kind}`)}</Badge>,
     },
     {
       id: "raw_name",
@@ -253,22 +278,21 @@ export default function UnresolvedNamesAdminPage() {
       size: 88,
       enableSorting: false,
       cell: ({ row }) => {
-        const { last_log_record_id: recordId, last_log_tournament_id: tournamentId } = row.original;
-        if (recordId == null) {
+        const { last_ingest_job_id: jobId, last_log_tournament_id: tournamentId } = row.original;
+        if (jobId == null) {
           return <span className="text-muted-foreground">—</span>;
         }
-        // No tournament means the record itself is gone (FK is ON DELETE SET
-        // NULL on the id, and the join finds nothing) — show the id, not a
-        // link into a tournament we cannot name.
+        // No tournament means the job carried no tournament hint (or is gone) —
+        // show the id, not a link into a tournament we cannot name.
         if (tournamentId == null) {
-          return <code className="text-xs tabular-nums">#{recordId}</code>;
+          return <code className="text-xs tabular-nums">#{jobId}</code>;
         }
         return (
           <Link
             href={`/admin/tournaments/${tournamentId}/matches/logs`}
             className="text-xs tabular-nums text-primary underline-offset-2 hover:underline"
           >
-            #{recordId}
+            #{jobId}
           </Link>
         );
       },
@@ -291,27 +315,30 @@ export default function UnresolvedNamesAdminPage() {
 
         const entityId = targets.get(miss.id);
         const busy = isBusy(miss.id);
+        const kind = attachableKind(miss);
 
         return (
           <div className="flex items-center gap-1.5">
-            <Button
-              type="button"
-              size="sm"
-              disabled={entityId === undefined || busy}
-              title={
-                entityId === undefined
-                  ? t("catalog.pickFirst", { entity: t(`catalog.${miss.entity_type}Entity`).toLowerCase() })
-                  : undefined
-              }
-              onClick={() => attachMutation.mutate({ miss, entityId: entityId! })}
-            >
-              {busy && attachMutation.isPending ? (
-                <Spinner />
-              ) : (
-                <Check aria-hidden className="h-4 w-4" />
-              )}
-              {t("actions.attach")}
-            </Button>
+            {kind !== null && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={entityId === undefined || busy}
+                title={
+                  entityId === undefined
+                    ? t("catalog.pickFirst", { entity: t(`catalog.kinds.${kind}`).toLowerCase() })
+                    : undefined
+                }
+                onClick={() => attachMutation.mutate({ miss, entityId: entityId! })}
+              >
+                {busy && attachMutation.isPending ? (
+                  <Spinner />
+                ) : (
+                  <Check aria-hidden className="h-4 w-4" />
+                )}
+                {t("actions.attach")}
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -333,7 +360,7 @@ export default function UnresolvedNamesAdminPage() {
       filterKey={filters.filterKey}
       queryKey={(page, search, pageSize) => [
         ...MISS_QUEUE_KEY,
-        entityTypeFilter,
+        kindFilter,
         includeResolved,
         page,
         search,
@@ -343,7 +370,7 @@ export default function UnresolvedNamesAdminPage() {
         const response = await adminService.getCatalogAliasMisses({
           page,
           per_page: pageSize,
-          entity_type: entityTypeFilter || undefined,
+          kind: kindFilter || undefined,
           include_resolved: includeResolved,
         });
         if (!search) {
@@ -373,7 +400,7 @@ export default function UnresolvedNamesAdminPage() {
           </code>
           <p className="truncate text-xs text-muted-foreground">
             {t("catalog.mobileSummary", {
-              entity: t(`catalog.${row.original.entity_type}Entity`),
+              entity: `${row.original.discipline} · ${t(`catalog.kinds.${row.original.kind}`)}`,
               count: row.original.occurrences,
               date: formatSeenAt(format, row.original.last_seen_at),
             })}

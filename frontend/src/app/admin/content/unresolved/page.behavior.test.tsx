@@ -83,15 +83,22 @@ vi.mock("next/navigation", () => ({
 
 const MISS: CatalogAliasMissRead = {
   id: 3,
-  entity_type: "map",
+  discipline: "overwatch",
+  kind: "map",
   raw_name: "Ilios2",
   occurrences: 47,
   first_seen_at: "2026-08-01T10:00:00Z",
   last_seen_at: "2026-08-30T18:20:00Z",
-  last_log_record_id: 991,
+  last_ingest_job_id: 991,
   last_log_tournament_id: 7,
   resolved_at: null
 };
+
+const NONENTITY: CatalogAliasMissRead[] = [
+  { ...MISS, id: 4, kind: "stat", raw_name: "no_such_stat" },
+  { ...MISS, id: 5, kind: "event", raw_name: "no_such_event" },
+  { ...MISS, id: 6, kind: "role", raw_name: "player_role:ghost", last_ingest_job_id: null }
+];
 
 const mounted: { root: Root; container: HTMLElement }[] = [];
 
@@ -169,10 +176,9 @@ function button(label: string) {
   );
 }
 
-/** `entity_type` of the most recent queue request. */
-function lastEntityType(): unknown {
-  return (getCatalogAliasMisses.mock.calls.at(-1)?.[0] as { entity_type?: unknown } | undefined)
-    ?.entity_type;
+/** `kind` of the most recent queue request. */
+function lastKind(): unknown {
+  return (getCatalogAliasMisses.mock.calls.at(-1)?.[0] as { kind?: unknown } | undefined)?.kind;
 }
 
 beforeEach(() => {
@@ -222,21 +228,21 @@ describe("admin Game content › Unresolved names", () => {
   });
 
   it("reads ?type= on mount", async () => {
-    await mount("?type=hero");
+    await mount("?type=character");
 
-    expect(lastEntityType()).toBe("hero");
+    expect(lastKind()).toBe("character");
   });
 
   it("writes ?type= when the chip is picked, and refetches", async () => {
     const container = await mount();
-    expect(lastEntityType()).toBeUndefined();
+    expect(lastKind()).toBeUndefined();
 
     await click(container.querySelector('[aria-label="Add filter"]'));
     await click(commandItem("Type"));
-    await click(commandItem("Map"));
+    await click(commandItem("Stat"));
 
-    expect(window.location.search).toContain("type=map");
-    expect(lastEntityType()).toBe("map");
+    expect(window.location.search).toContain("type=stat");
+    expect(lastKind()).toBe("stat");
   });
 
   it("attaches the raw name to the entity picked in the row", async () => {
@@ -249,11 +255,59 @@ describe("admin Game content › Unresolved names", () => {
     await click(commandItem("Ilios"));
     await click(button("Attach"));
 
-    expect(attachCatalogAlias).toHaveBeenCalledWith({
-      entity_type: "map",
-      entity_id: 12,
-      alias: "Ilios2"
+    expect(attachCatalogAlias).toHaveBeenCalledWith({ entity_id: 12, alias: "Ilios2" });
+  });
+
+  it("does not pin the queue to a discipline", async () => {
+    await mount();
+
+    expect(getCatalogAliasMisses.mock.calls.at(-1)?.[0]).not.toHaveProperty("discipline");
+  });
+
+  it("shows stat, event and role misses by domain and code with dismiss as the only action", async () => {
+    getCatalogAliasMisses.mockResolvedValue({ results: NONENTITY, total: 3, page: 1, per_page: 25 });
+    const container = await mount();
+
+    for (const text of ["no_such_stat", "no_such_event", "player_role:ghost", "overwatch", "Stat", "Event", "Role"]) {
+      expect(container.textContent).toContain(text);
+    }
+    expect(container.querySelector('[aria-label^="Pick a"]')).toBeNull();
+    expect(button("Attach")).toBeUndefined();
+    expect(Array.from(document.querySelectorAll("button")).filter((b) => b.textContent?.trim() === "Dismiss")).toHaveLength(3);
+    expect(container.textContent).toContain("dismiss only");
+    expect(getHeroes).toHaveBeenCalled();
+  });
+
+  it("dismisses a nonentity miss without creating an alias", async () => {
+    getCatalogAliasMisses.mockResolvedValue({ results: [NONENTITY[2]], total: 1, page: 1, per_page: 25 });
+    await mount();
+
+    await click(button("Dismiss"));
+
+    expect(dismissCatalogAliasMiss).toHaveBeenCalledWith(6);
+    expect(attachCatalogAlias).not.toHaveBeenCalled();
+  });
+
+  it("offers no attach target for an entity miss of a discipline whose catalogue the page does not load", async () => {
+    getCatalogAliasMisses.mockResolvedValue({
+      results: [{ ...MISS, id: 9, discipline: "lol", kind: "character", raw_name: "Ahri2" }],
+      total: 1,
+      page: 1,
+      per_page: 25
     });
+    const container = await mount();
+
+    expect(container.textContent).toContain("lol");
+    expect(container.querySelector('[aria-label^="Pick a"]')).toBeNull();
+    expect(button("Attach")).toBeUndefined();
+    expect(button("Dismiss")).toBeDefined();
+  });
+
+  it("links the last ingest job to its hinted tournament", async () => {
+    const container = await mount();
+
+    const link = container.querySelector('a[href="/admin/tournaments/7/matches/logs"]');
+    expect(link?.textContent).toBe("#991");
   });
 
   it("renders rows as cards below md, keeping the target picker", async () => {
@@ -264,5 +318,17 @@ describe("admin Game content › Unresolved names", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0].textContent).toContain("Ilios2");
     expect(cards[0].querySelector('[aria-label="Pick a map…"]')).not.toBeNull();
+  });
+
+  it("renders nonentity rows as dismiss-only cards below md", async () => {
+    setViewportWidth(375);
+    getCatalogAliasMisses.mockResolvedValue({ results: [NONENTITY[0]], total: 1, page: 1, per_page: 25 });
+    const container = await mount();
+
+    const cards = container.querySelectorAll("ul[aria-label='Rows'] > li");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain("no_such_stat");
+    expect(cards[0].textContent).toContain("overwatch · Stat");
+    expect(cards[0].querySelector('[aria-label^="Pick a"]')).toBeNull();
   });
 });

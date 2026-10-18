@@ -411,11 +411,11 @@ DOCS: dict[str, dict] = {
     # ── metadata admin: catalog alias-miss queue ──────────────────────────────────────────
     "rpc.app.catalog_aliases.misses_list": {
         "summary": "List catalog alias misses",
-        "description": "Permission: superuser only. Returns a paginated queue of catalog names (any discipline and kind) from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
+        "description": "Permission: superuser only. Returns a paginated queue of names (any discipline) a match log or canonical document used that did not resolve, ordered by occurrences then recency. kind is one of character|map|mode (catalog entity names) or stat|event|role (undeclared codes; a role's raw_name is dimension:role); open misses only unless include_resolved=true.",
     },
     "rpc.app.catalog_aliases.attach": {
         "summary": "Attach a catalog alias",
-        "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing.",
+        "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes that entity's discipline/kind miss in one transaction; 404 if the entity is missing. Stat/event/role misses are never attachable (dismiss only).",
     },
     "rpc.app.catalog_aliases.dismiss": {
         "summary": "Dismiss a catalog alias miss",
