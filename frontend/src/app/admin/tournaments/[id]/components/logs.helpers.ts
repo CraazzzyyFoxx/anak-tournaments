@@ -45,18 +45,3 @@ export function retryRequestFor(record: LogProcessingRecord) {
     ? { reparse: true, expected_revision: record.observation_revision! }
     : undefined;
 }
-
-/**
- * Revision of the observation a game currently has, from the encounter's log history: the newest
- * current-provenance job for that game. 0 = no observation is known. An observation without a job
- * (historical) is not listed, so the server's `stale_revision` is what refuses replacing it.
- */
-export function gameObservationRevision(items: readonly LogProcessingRecord[], gameId: number): number {
-  let revision = 0;
-  for (const item of items) {
-    if (item.is_current_provenance && item.attached_encounter_game_id === gameId) {
-      revision = Math.max(revision, item.observation_revision ?? 0);
-    }
-  }
-  return revision;
-}

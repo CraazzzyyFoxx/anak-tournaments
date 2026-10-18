@@ -1695,6 +1695,15 @@ export type LogOperationErrorCode =
   | "reparse_required"
   | "job_not_done";
 
+/** Unoccupied: `match_id`/`ingest_job_id` null and `revision` 0. Historical observations are never replaceable. */
+export interface GameObservationRead {
+  encounter_game_id: number;
+  match_id: number | null;
+  revision: number;
+  ingest_job_id: number | null;
+  is_historical: boolean;
+}
+
 /** `IngestJobRead` as the bind endpoint commits it. */
 export interface LogBindResponse {
   id: number;

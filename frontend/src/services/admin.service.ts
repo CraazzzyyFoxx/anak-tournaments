@@ -91,6 +91,7 @@ import {
   UserMergeExecuteRequest,
   UserMergeExecuteResponse,
   DiscordChannelRead,
+  GameObservationRead,
   DiscordChannelInput,
   LogBindRequest,
   LogBindResponse,
@@ -1543,6 +1544,12 @@ class AdminService {
       method: "POST",
       body: request
     });
+    return response.json();
+  }
+
+  /** The authoritative current observation of one game: its `revision` is the bind's `expected_revision`. */
+  async getGameObservation(encounterGameId: number): Promise<GameObservationRead> {
+    const response = await apiFetch(`/api/v1/admin/logs/games/${encounterGameId}/observation`);
     return response.json();
   }
 

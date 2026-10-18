@@ -474,13 +474,13 @@ export function TournamentLogsTab({
             if (isRetryable(record)) retryMutation.mutate([record]);
           }
         },
-        // An awaiting job that kept its document teams is bound with an explicit team map; any other
+        // An awaiting or failed job that kept its document teams is bound with an explicit team map; any other
         // unfinished one is only re-filed through a hint. A processed log already filed its match.
-        // The workspace-wide console holds no encounter list.
+        // The workspace-wide console holds no encounter list: its dialog picks a tournament first.
         {
-          label: record.status === "awaiting_link" && record.teams.length > 0 ? tx("bindToGame") : t("attachTo"),
+          label: record.teams.length > 0 && record.status !== "pending" ? tx("bindToGame") : t("attachTo"),
           icon: Link2,
-          hidden: record.status === "done" || record.status === "processing" || encounters.length === 0 || getRetryRefusal(record) != null,
+          hidden: record.status === "done" || record.status === "processing" || (tournamentId != null && encounters.length === 0) || getRetryRefusal(record) != null,
           onSelect: () => {
             if (getRetryRefusal(record) == null) setAttachTarget(record);
           }
@@ -650,6 +650,7 @@ export function TournamentLogsTab({
           encounters={encounters.filter((encounter) =>
             attachTarget.tournament_id == null || encounter.tournament_id === attachTarget.tournament_id
           )}
+          pickTournament={tournamentId == null}
           historyKey={historyKey}
           workspaceId={workspaceId}
           isPending={attachMutation.isPending || bindMutation.isPending}

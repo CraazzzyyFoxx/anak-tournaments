@@ -23,8 +23,11 @@ import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import type { LogBindRequest, LogProcessingRecord } from "@/types/admin.types";
+import tournamentService from "@/services/tournament.service";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
 import type { Encounter } from "@/types/encounter.types";
-import { gameObservationRevision, getLogFileName } from "./logs.helpers";
+import { getLogFileName } from "./logs.helpers";
 
 /** Two encounters of one pair share a name, so the stage and round tell them apart. */
 function encounterOptionLabel(encounter: Encounter, formatRound: BracketRoundLabelFormatter) {
@@ -39,6 +42,7 @@ function encounterOptionLabel(encounter: Encounter, formatRound: BracketRoundLab
 export function AttachLogDialog({
   record,
   encounters,
+  pickTournament,
   historyKey,
   workspaceId,
   isPending,
@@ -48,6 +52,8 @@ export function AttachLogDialog({
 }: Readonly<{
   record: LogProcessingRecord;
   encounters: Encounter[];
+  /** The workspace-wide console passes no encounters: the dialog then lets the operator pick a tournament first. */
+  pickTournament: boolean;
   /** Realtime stales this key, so the occupancy read below follows the console. */
   historyKey: readonly unknown[];
   workspaceId: number | null;
@@ -59,7 +65,8 @@ export function AttachLogDialog({
   const t = useTranslations("adminTournament.logs");
   const tx = useTranslations("adminTournament.logsExtra");
   const formatRound = useBracketRoundLabel();
-  const bindMode = record.status === "awaiting_link" && record.teams.length > 0;
+  // An awaiting or failed job whose stored document teams are known is bound with an explicit team map.
+  const bindMode = (record.status === "awaiting_link" || record.status === "failed") && record.teams.length > 0;
   const [value, setValue] = useState(
     record.attached_encounter_id != null ? String(record.attached_encounter_id) : undefined
   );
@@ -67,7 +74,24 @@ export function AttachLogDialog({
     record.attached_encounter_game_id != null ? String(record.attached_encounter_game_id) : undefined
   );
   // document team key -> encounter.team id, as the operator picked it. Reset with the game.
-  const [teamMap, setTeamMap] = useState<Record<string, string>>({});
+  // A Map: document keys are arbitrary strings, including `constructor` and `__proto__`.
+  const [teamMap, setTeamMap] = useState<ReadonlyMap<string, string>>(new Map());
+  // The workspace console has no encounter list: the operator walks tournament -> encounter -> game.
+  const [tournamentValue, setTournamentValue] = useState(
+    record.tournament_id != null ? String(record.tournament_id) : undefined
+  );
+  const tournamentId = tournamentValue === undefined ? undefined : Number(tournamentValue);
+  const tournamentsQuery = useQuery({
+    queryKey: tournamentQueryKeys.byWorkspace(workspaceId ?? "global"),
+    queryFn: () => tournamentService.getAll(null, workspaceId),
+    enabled: pickTournament
+  });
+  const encountersQuery = useQuery({
+    queryKey: adminQueryKeys.logLinkEncounters(workspaceId, tournamentId),
+    queryFn: () => encounterService.getAll(1, "", tournamentId!, -1, "id", "asc", workspaceId),
+    enabled: pickTournament && tournamentId !== undefined
+  });
+  const encounterOptions = pickTournament ? (encountersQuery.data?.results ?? []) : encounters;
   const encounterId = value === undefined ? undefined : Number(value);
   const gamesQuery = useQuery({
     queryKey: encounterQueryKeys.detail(encounterId),
@@ -77,26 +101,38 @@ export function AttachLogDialog({
   const games = gamesQuery.data?.games.filter((game) => game.state !== "cancelled") ?? [];
   const selectedGame = games.find((game) => String(game.id) === gameId);
 
-  // ponytail: one page of 200 (the history cap) is read; an encounter has a handful of logs.
-  const occupancyQuery = useQuery({
-    queryKey: [...historyKey, "occupancy", encounterId],
-    queryFn: () => adminService.getLogHistory(undefined, { encounterId, workspaceId, limit: 200 }),
-    enabled: bindMode && encounterId !== undefined
+  // The authoritative read of the target game, never inferred from the paginated history: its revision is the
+  // bind precondition and a historical observation is not replaceable at all.
+  const observationQuery = useQuery({
+    queryKey: [...historyKey, "game-observation", selectedGame?.id],
+    queryFn: () => adminService.getGameObservation(selectedGame!.id),
+    enabled: bindMode && selectedGame != null,
+    gcTime: 0
   });
-  const revision =
-    selectedGame && occupancyQuery.data
-      ? gameObservationRevision(occupancyQuery.data.items, selectedGame.id)
-      : null;
+  const observation = observationQuery.data;
+  const revision = observation?.revision ?? null;
 
   const teamNames = new Map((gamesQuery.data?.teams ?? []).map((team) => [team.id, team.name]));
   const seats = selectedGame?.teams.map((seat) => seat.encounter_team_id) ?? [];
-  const picked = record.teams.map((team) => teamMap[team.key]).filter(Boolean);
-  const mapComplete = seats.length === record.teams.length && picked.length === record.teams.length;
+  // Every document key needs its own explicit pick from this game's seats; never read inherited properties.
+  const picked = record.teams.map((team) => teamMap.get(team.key));
+  const seatIds = new Set(seats.map(String));
+  const mapComplete =
+    seats.length === record.teams.length &&
+    picked.every((seat) => seat != null && seatIds.has(seat)) &&
+    new Set(picked).size === picked.length;
   const mapSeatMismatch = bindMode && selectedGame != null && seats.length !== record.teams.length;
-  const loadFailed = gamesQuery.isError || (bindMode && occupancyQuery.isError);
-  const loading = gamesQuery.isFetching || (bindMode && occupancyQuery.isFetching);
+  const loadFailed =
+    gamesQuery.isError ||
+    (bindMode && selectedGame != null && observationQuery.isError) ||
+    (pickTournament && (tournamentsQuery.isError || encountersQuery.isError));
+  const loading = gamesQuery.isFetching || (bindMode && selectedGame != null && observationQuery.isFetching);
   const canSubmit =
-    selectedGame != null && !loading && !loadFailed && !isPending && (!bindMode || (mapComplete && revision != null));
+    selectedGame != null &&
+    !loading &&
+    !loadFailed &&
+    !isPending &&
+    (!bindMode || (mapComplete && revision != null && !observation?.is_historical));
 
   return (
     <Dialog
@@ -115,16 +151,36 @@ export function AttachLogDialog({
               : t("attachDescriptionWithFile", { filename: getLogFileName(record.filename) })}
           </DialogDescription>
         </DialogHeader>
+        {pickTournament ? (
+          <SearchableImageSelect
+            value={tournamentValue}
+            onValueChange={(next) => {
+              setTournamentValue(next);
+              setValue(undefined);
+              setGameId(undefined);
+              setTeamMap(new Map());
+            }}
+            disabled={isPending}
+            ariaLabel={tx("pickTournament")}
+            options={(tournamentsQuery.data?.results ?? []).map((tournament) => ({
+              value: String(tournament.id),
+              label: tournament.name
+            }))}
+            placeholder={tx("pickTournament")}
+            searchPlaceholder={tx("searchTournament")}
+            triggerClassName="h-9"
+          />
+        ) : null}
         <SearchableImageSelect
           value={value}
           onValueChange={(next) => {
             setValue(next);
             setGameId(undefined);
-            setTeamMap({});
+            setTeamMap(new Map());
           }}
-          disabled={isPending}
+          disabled={isPending || (pickTournament && tournamentId === undefined)}
           ariaLabel={t("pickEncounter")}
-          options={encounters.map((encounter) => ({
+          options={encounterOptions.map((encounter) => ({
             value: String(encounter.id),
             label: encounterOptionLabel(encounter, formatRound)
           }))}
@@ -136,7 +192,7 @@ export function AttachLogDialog({
           value={selectedGame ? String(selectedGame.id) : undefined}
           onValueChange={(next) => {
             setGameId(next);
-            setTeamMap({});
+            setTeamMap(new Map());
           }}
           options={games.map((game) => ({
             value: String(game.id),
@@ -161,8 +217,12 @@ export function AttachLogDialog({
               variant="outline"
               size="sm"
               onClick={() => {
-                void gamesQuery.refetch();
-                if (bindMode) void occupancyQuery.refetch();
+                if (pickTournament) {
+                  void tournamentsQuery.refetch();
+                  if (tournamentId !== undefined) void encountersQuery.refetch();
+                }
+                if (encounterId !== undefined) void gamesQuery.refetch();
+                if (bindMode && selectedGame) void observationQuery.refetch();
               }}
             >
               {t("reloadGames")}
@@ -186,13 +246,18 @@ export function AttachLogDialog({
                     {team.participants.length > 0 ? ` · ${team.participants.join(", ")}` : ""}
                   </p>
                   <SearchableImageSelect
-                    value={teamMap[team.key]}
+                    value={teamMap.get(team.key)}
                     onValueChange={(next) =>
-                      setTeamMap((current) => ({ ...current, [team.key]: next ?? "" }))
+                      setTeamMap((current) => {
+                        const map = new Map(current);
+                        if (next) map.set(team.key, next);
+                        else map.delete(team.key);
+                        return map;
+                      })
                     }
                     // A seat already given to another log team is not offered twice.
                     options={seats
-                      .filter((seat) => String(seat) === teamMap[team.key] || !picked.includes(String(seat)))
+                      .filter((seat) => String(seat) === teamMap.get(team.key) || !picked.includes(String(seat)))
                       .map((seat) => ({
                         value: String(seat),
                         label: teamNames.get(seat) ?? `#${seat}`
@@ -205,7 +270,9 @@ export function AttachLogDialog({
                 </div>
               ))
             )}
-            {revision ? (
+            {observation?.is_historical ? (
+              <p role="alert" className="text-sm text-danger">{tx("historicalObservation")}</p>
+            ) : revision ? (
               <p role="status" className="text-xs text-muted-foreground">
                 {tx("willReplace", { revision })}
               </p>
@@ -220,7 +287,7 @@ export function AttachLogDialog({
               if (!bindMode) return onAttach(encounterId, selectedGame.id);
               onBind({
                 encounter_game_id: selectedGame.id,
-                teams: Object.fromEntries(record.teams.map((team) => [team.key, Number(teamMap[team.key])])),
+                teams: Object.fromEntries(record.teams.map((team) => [team.key, Number(teamMap.get(team.key))])),
                 expected_revision: revision ?? 0
               });
             }}

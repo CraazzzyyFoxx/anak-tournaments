@@ -122,4 +122,7 @@ export const adminQueryKeys = {
   /** The parser console, mounted workspace-wide rather than per tournament. */
   workspaceLogHistory: (workspaceId: KeyPart) =>
     ["admin", "workspace", workspaceId, "log-history"] as const,
+  /** A tournament's encounters, as the log bind dialog's picker lists them. */
+  logLinkEncounters: (workspaceId: KeyPart, tournamentId: KeyPart) =>
+    ["admin", "log-link", "encounters", workspaceId, tournamentId] as const,
 };

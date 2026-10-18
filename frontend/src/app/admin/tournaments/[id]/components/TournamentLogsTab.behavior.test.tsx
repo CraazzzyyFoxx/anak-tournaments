@@ -26,9 +26,18 @@ const getLogHistory = vi.fn();
 const retryLogRecord = vi.fn();
 const getEncounter = vi.fn();
 const bindLogRecord = vi.fn();
+const getGameObservation = vi.fn();
+const getTournaments = vi.fn();
+const getEncounters = vi.fn();
 
 vi.mock("@/services/encounter.service", () => ({
-  default: { getEncounter: (...args: unknown[]) => getEncounter(...args) }
+  default: {
+    getEncounter: (...args: unknown[]) => getEncounter(...args),
+    getAll: (...args: unknown[]) => getEncounters(...args)
+  }
+}));
+vi.mock("@/services/tournament.service", () => ({
+  default: { getAll: (...args: unknown[]) => getTournaments(...args) }
 }));
 
 vi.mock("@/services/admin.service", () => ({
@@ -37,6 +46,7 @@ vi.mock("@/services/admin.service", () => ({
     getLogHistory: (...args: unknown[]) => getLogHistory(...args),
     retryLogRecord: (...args: unknown[]) => retryLogRecord(...args),
     bindLogRecord: (...args: unknown[]) => bindLogRecord(...args),
+    getGameObservation: (...args: unknown[]) => getGameObservation(...args),
     processAllTournamentLogs: vi.fn()
   }
 }));
@@ -228,6 +238,8 @@ beforeEach(() => {
   getLogHistory.mockReset().mockResolvedValue(FIRST_PAGE);
   replace.mockClear();
   retryLogRecord.mockReset().mockResolvedValue(record(1, { status: "pending" }));
+  getTournaments.mockReset();
+  getEncounters.mockReset();
   getEncounter.mockReset().mockResolvedValue({
     ...PLAYOFF,
     games: [game(801, 1), game(907, 2), game(999, 3, "cancelled")]
@@ -236,6 +248,13 @@ beforeEach(() => {
   vi.mocked(notify.apiError).mockClear();
   vi.mocked(notify.error).mockClear();
   bindLogRecord.mockReset();
+  getGameObservation.mockReset().mockResolvedValue({
+    encounter_game_id: 801,
+    match_id: null,
+    revision: 0,
+    ingest_job_id: null,
+    is_historical: false
+  });
   window.history.replaceState(null, "", "/admin/tournaments/78/matches/logs");
 });
 
@@ -249,6 +268,12 @@ afterEach(async () => {
   document.body.innerHTML = "";
   vi.useRealTimers();
 });
+
+const SEATED = {
+  ...PLAYOFF,
+  teams: [{ id: 11, name: "Home" }, { id: 22, name: "Away" }],
+  games: [{ ...game(801, 1), teams: [{ encounter_team_id: 11 }, { encounter_team_id: 22 }] }]
+};
 
 describe("TournamentLogsTab", () => {
   it("labels each status option with the scope-wide count, not the loaded rows", async () => {
@@ -619,6 +644,80 @@ describe("TournamentLogsTab", () => {
     expect(scope.textContent).not.toContain("Processed");
   });
 
+  it("explains a historical observation as non-replaceable and offers no bind", async () => {
+    getEncounter.mockResolvedValue(SEATED);
+    getGameObservation.mockResolvedValue({
+      encounter_game_id: 801,
+      match_id: 9,
+      revision: 2,
+      ingest_job_id: null,
+      is_historical: true
+    });
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(17, {
+          status: "awaiting_link",
+          teams: [
+            { key: "alpha", source_position: 1, participants: [] },
+            { key: "beta", source_position: 2, participants: [] }
+          ]
+        })
+      ],
+      total: 1
+    });
+    const scope = await mount(78, [PLAYOFF]);
+    await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
+    await click(menuItem("Bind to game…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 1 · Ilios · #801"));
+    await click(document.querySelector('button[aria-label="Game team for log team alpha"]'));
+    await click(commandItem("Home"));
+    await click(document.querySelector('button[aria-label="Game team for log team beta"]'));
+    await click(commandItem("Away"));
+    expect(document.body.textContent).toContain("cannot be replaced by a log");
+    expect(button(document, "Bind and publish")?.disabled).toBe(true);
+    expect(bindLogRecord).not.toHaveBeenCalled();
+  });
+
+  it("binds a failed job that kept its document teams through the team-map flow", async () => {
+    getEncounter.mockResolvedValue(SEATED);
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(18, {
+          status: "failed",
+          error: { code: "binding_mismatch", message: "mismatch", issues: [] },
+          error_message: "mismatch",
+          teams: [
+            { key: "alpha", source_position: 1, participants: [] },
+            { key: "beta", source_position: 2, participants: [] }
+          ]
+        })
+      ],
+      total: 1
+    });
+    bindLogRecord.mockResolvedValue({ id: 18, status: "done", error: null, binding: null });
+    const scope = await mount(78, [PLAYOFF]);
+    await click(scope.querySelector('button[aria-label="Actions for round_18.txt"]'));
+    await click(menuItem("Bind to game…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 1 · Ilios · #801"));
+    await click(document.querySelector('button[aria-label="Game team for log team alpha"]'));
+    await click(commandItem("Home"));
+    await click(document.querySelector('button[aria-label="Game team for log team beta"]'));
+    await click(commandItem("Away"));
+    await click(button(document, "Bind and publish"));
+    expect(bindLogRecord).toHaveBeenCalledWith(18, {
+      encounter_game_id: 801,
+      teams: { alpha: 11, beta: 22 },
+      expected_revision: 0
+    });
+    expect(retryLogRecord).not.toHaveBeenCalled();
+  });
+
   it.each([
     [4, "This game already has statistics (revision 4)"],
     [0, null]
@@ -628,11 +727,13 @@ describe("TournamentLogsTab", () => {
       teams: [{ id: 11, name: "Home" }, { id: 22, name: "Away" }],
       games: [{ ...game(801, 1), teams: [{ encounter_team_id: 11 }, { encounter_team_id: 22 }] }]
     });
-    const occupant = record(30, {
-      is_current_provenance: true,
-      observation_revision: revision,
-      attached_encounter_id: 6662,
-      attached_encounter_game_id: 801
+    // The occupant is deliberately absent from the history page: the revision comes from the game read.
+    getGameObservation.mockResolvedValue({
+      encounter_game_id: 801,
+      match_id: revision > 0 ? 5 : null,
+      revision,
+      ingest_job_id: revision > 0 ? 30 : null,
+      is_historical: false
     });
     getLogHistory.mockResolvedValue({
       items: [
@@ -642,10 +743,9 @@ describe("TournamentLogsTab", () => {
             { key: "alpha", source_position: 1, participants: ["Ana#1"] },
             { key: "beta", source_position: 2, participants: ["Bea#2"] }
           ]
-        }),
-        ...(revision > 0 ? [occupant] : [])
+        })
       ],
-      total: 2
+      total: 1
     });
     bindLogRecord.mockResolvedValue({ id: 17, status: "done", error: null, binding: null });
     const scope = await mount(78, [PLAYOFF]);
@@ -720,5 +820,89 @@ describe("TournamentLogsTab", () => {
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
     await settle();
     expect(getLogHistory.mock.calls.length).toBeGreaterThan(reads);
+  });
+
+  it("never reads inherited properties as picked seats: keys `constructor` and `__proto__` need explicit, distinct seats", async () => {
+    getEncounter.mockResolvedValue(SEATED);
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(17, {
+          status: "awaiting_link",
+          teams: [
+            { key: "constructor", source_position: 1, participants: [] },
+            { key: "__proto__", source_position: 2, participants: [] }
+          ]
+        })
+      ],
+      total: 1
+    });
+    bindLogRecord.mockResolvedValue({ id: 17, status: "done", error: null, binding: null });
+    const scope = await mount(78, [PLAYOFF]);
+    await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
+    await click(menuItem("Bind to game…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 1 · Ilios · #801"));
+    expect(button(document, "Bind and publish")?.disabled).toBe(true);
+
+    await click(document.querySelector('button[aria-label="Game team for log team constructor"]'));
+    await click(commandItem("Away"));
+    // The untouched `__proto__` picker must not count as a selection.
+    expect(button(document, "Bind and publish")?.disabled).toBe(true);
+
+    await click(document.querySelector('button[aria-label="Game team for log team __proto__"]'));
+    await click(commandItem("Home"));
+    await click(button(document, "Bind and publish"));
+
+    const [, request] = bindLogRecord.mock.calls[0]!;
+    const teams = request.teams as Record<string, number>;
+    expect(Object.getOwnPropertyNames(teams).sort()).toEqual(["__proto__", "constructor"]);
+    expect(Object.getOwnPropertyDescriptor(teams, "constructor")?.value).toBe(22);
+    expect(Object.getOwnPropertyDescriptor(teams, "__proto__")?.value).toBe(11);
+  });
+
+  it("lets the workspace console bind a hintless job by picking tournament, encounter and game", async () => {
+    getTournaments.mockResolvedValue({ results: [{ id: 78, name: "OWT 78" }] });
+    getEncounters.mockResolvedValue({ results: [PLAYOFF] });
+    getEncounter.mockResolvedValue(SEATED);
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(17, {
+          status: "awaiting_link",
+          tournament_id: null,
+          tournament_name: null,
+          teams: [
+            { key: "alpha", source_position: 1, participants: [] },
+            { key: "beta", source_position: 2, participants: [] }
+          ]
+        })
+      ],
+      total: 1
+    });
+    bindLogRecord.mockResolvedValue({ id: 17, status: "done", error: null, binding: null });
+    // No encounter list is passed here, exactly as /admin/matches does.
+    const scope = await mount(null, []);
+    await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
+    await click(menuItem("Bind to game…"));
+    expect(document.querySelector('button[aria-label="Pick an encounter"]')?.hasAttribute("disabled")).toBe(true);
+    await click(document.querySelector('button[aria-label="Pick a tournament"]'));
+    await click(commandItem("OWT 78"));
+    expect(getEncounters).toHaveBeenCalledWith(1, "", 78, -1, "id", "asc", 1);
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 1 · Ilios · #801"));
+    await click(document.querySelector('button[aria-label="Game team for log team alpha"]'));
+    await click(commandItem("Home"));
+    await click(document.querySelector('button[aria-label="Game team for log team beta"]'));
+    await click(commandItem("Away"));
+    await click(button(document, "Bind and publish"));
+
+    expect(bindLogRecord).toHaveBeenCalledWith(17, {
+      encounter_game_id: 801,
+      teams: { alpha: 11, beta: 22 },
+      expected_revision: 0
+    });
   });
 });
