@@ -14,32 +14,24 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.analytics import (
+    INFERENCE_KINDS,
+    PERFORMANCE_MODEL,
+    SHIFT_MODEL,
+    STANDINGS_MODEL,
+    PerformanceModel,
+    ShiftModel,
+    StandingsModel,
+)
 from src import models
+from src.core.analytics_exports import OVERWATCH, analytics_exports
 from src.core.config import settings
 from src.core.workspace import get_division_grid, get_tournament_workspace_id
-from src.services.analytics.canonical_division import canonical_division_number
 
 from ..features.aggregations import build_match_features_with_strength
-from ..features.local_performance import attach_local_performance
 from ..features.shift_features import build_shift_feature_frame
 from ..features.standings_features import build_standings_forecast_frame
 from ..models.base import load_artifact
-from ..models.performance_v2 import (
-    PerformanceModelV2,
-    aggregate_to_tournament,
-    impact_score_within_role,
-    stabilize_small_cohort_impact,
-)
-from ..models.shift_v2 import ShiftModelV2
-from ..models.standings_v2 import WinProbabilityModel, simulate_standings
-from ..training.orchestrator import (
-    PERFORMANCE_ALGORITHM_NAME,
-    PERFORMANCE_MODEL_KIND,
-    SHIFT_ALGORITHM_NAME,
-    SHIFT_MODEL_KIND,
-    STANDINGS_ALGORITHM_NAME,
-    STANDINGS_MODEL_KIND,
-)
 from ..training.registry import registry_service
 from .player_anomaly_runner import run_player_anomalies_for_tournament
 
@@ -61,7 +53,7 @@ async def _algorithm_id(session: AsyncSession, name: str) -> int | None:
 def _shap_by_player(
     per_player: pd.DataFrame,
     feature_frame: pd.DataFrame,
-    models_by_role: dict[str, PerformanceModelV2],
+    models_by_role: dict[str, PerformanceModel],
 ) -> dict[int, tuple[float, list[dict[str, typing.Any]]]]:
     """SHAP contributions per player. Lazy-imports shap."""
     if per_player.empty:
@@ -118,17 +110,17 @@ async def run_performance_for_tournament(
     Returns the number of rows written. Idempotent: existing rows for
     ``(tournament_id, player_id, algorithm_id)`` are deleted before insert.
     """
-    algorithm_id = await _algorithm_id(session, PERFORMANCE_ALGORITHM_NAME)
+    algorithm_id = await _algorithm_id(session, PERFORMANCE_MODEL.algorithm_name)
     if algorithm_id is None:
-        logger.warning("No %s algorithm row found; run training first", PERFORMANCE_ALGORITHM_NAME)
+        logger.warning("No %s algorithm row found; run training first", PERFORMANCE_MODEL.algorithm_name)
         return 0
 
-    artifacts = await registry_service.load_active_artifacts(session, model_kind=PERFORMANCE_MODEL_KIND)
+    artifacts = await registry_service.load_active_artifacts(session, model_kind=PERFORMANCE_MODEL.model_kind)
     if not artifacts:
         logger.warning("No active Performance v2 artifacts; run training first")
         return 0
 
-    models_by_role: dict[str, PerformanceModelV2] = {}
+    models_by_role: dict[str, PerformanceModel] = {}
     for art in artifacts:
         if art.role is None:
             continue
@@ -158,21 +150,22 @@ async def run_performance_for_tournament(
         y_q10.loc[mask] = sub["y_q10"]
         y_q90.loc[mask] = sub["y_q90"]
 
-    per_player = aggregate_to_tournament(feature_frame, y_hat, y_q10, y_q90)
+    exports = analytics_exports(OVERWATCH)
+    per_player = exports.aggregate_to_tournament(feature_frame, y_hat, y_q10, y_q90)
     if per_player.empty:
         return 0
-    per_player["impact_score"] = impact_score_within_role(per_player)
+    per_player["impact_score"] = exports.impact_score_within_role(per_player)
     # Canonical OW division per player so the local-performance cohort bands are
     # comparable across workspaces.
     source_grid = await get_division_grid(session, workspace_id, tournament_id=tournament_id)
     player_ranks = feature_frame.groupby("player_id", dropna=False)["rank"].first().to_dict()
     per_player["division"] = per_player["player_id"].map(
-        lambda player_id: canonical_division_number(source_grid, int(player_ranks.get(player_id, 0) or 0))
+        lambda player_id: exports.canonical_division_number(source_grid, int(player_ranks.get(player_id, 0) or 0))
     )
-    per_player = attach_local_performance(per_player)
+    per_player = exports.attach_local_performance(per_player)
     # Small (tournament, role) cohorts get a smooth normal-CDF impact score
     # instead of a coarse, unstable empirical percentile.
-    per_player = stabilize_small_cohort_impact(per_player)
+    per_player = exports.stabilize_small_cohort_impact(per_player)
 
     shap_by_player = _shap_by_player(per_player, feature_frame, models_by_role) if include_shap else {}
 
@@ -223,15 +216,15 @@ async def run_shift_for_tournament(
     Writes under the ``"OpenSkill + ML"`` algorithm row, leaving v1 shifts
     untouched. Returns the number of player rows written.
     """
-    algorithm_id = await _algorithm_id(session, SHIFT_ALGORITHM_NAME)
+    algorithm_id = await _algorithm_id(session, SHIFT_MODEL.algorithm_name)
     if algorithm_id is None:
-        logger.warning("No %s algorithm row; run training first", SHIFT_ALGORITHM_NAME)
+        logger.warning("No %s algorithm row; run training first", SHIFT_MODEL.algorithm_name)
         return 0
 
     artifact = await registry_service.load_active_artifact(
         session,
         algorithm_id=algorithm_id,
-        model_kind=SHIFT_MODEL_KIND,
+        model_kind=SHIFT_MODEL.model_kind,
         role=None,
     )
     if artifact is None:
@@ -239,7 +232,7 @@ async def run_shift_for_tournament(
         return 0
 
     try:
-        model: ShiftModelV2 = load_artifact(artifact.storage_uri)
+        model: ShiftModel = load_artifact(artifact.storage_uri)
     except FileNotFoundError:
         logger.warning("Missing shift v2 artifact file at %s", artifact.storage_uri)
         return 0
@@ -323,21 +316,21 @@ async def run_standings_for_tournament(
     """
     if prob_sharpening is None:
         prob_sharpening = settings.standings_prob_sharpening
-    algorithm_id = await _algorithm_id(session, STANDINGS_ALGORITHM_NAME)
+    algorithm_id = await _algorithm_id(session, STANDINGS_MODEL.algorithm_name)
     if algorithm_id is None:
-        logger.warning("No %s algorithm row; run training first", STANDINGS_ALGORITHM_NAME)
+        logger.warning("No %s algorithm row; run training first", STANDINGS_MODEL.algorithm_name)
         return 0
     artifact = await registry_service.load_active_artifact(
         session,
         algorithm_id=algorithm_id,
-        model_kind=STANDINGS_MODEL_KIND,
+        model_kind=STANDINGS_MODEL.model_kind,
         role=None,
     )
     if artifact is None:
         logger.warning("No active Standings v2 artifact; run training first")
         return 0
     try:
-        model: WinProbabilityModel = load_artifact(artifact.storage_uri)
+        model: StandingsModel = load_artifact(artifact.storage_uri)
     except FileNotFoundError:
         logger.warning("Missing standings v2 artifact at %s", artifact.storage_uri)
         return 0
@@ -350,7 +343,9 @@ async def run_standings_for_tournament(
     if matchups.empty:
         return 0
     teams = sorted({int(t) for t in matchups["home_team_id"].tolist() + matchups["away_team_id"].tolist()})
-    distribution = simulate_standings(matchups, teams, n_iter=n_iter, prob_sharpening=prob_sharpening)
+    distribution = analytics_exports(OVERWATCH).simulate_standings(
+        matchups, teams, n_iter=n_iter, prob_sharpening=prob_sharpening
+    )
     if distribution.empty:
         return 0
 
@@ -394,7 +389,7 @@ async def run_for_tournament(
 
     Returns ``{kind: rows_written}``.
     """
-    kinds = set(model_kinds or ("performance", "player_anomalies", "shift", "standings", "match_quality"))
+    kinds = set(model_kinds or INFERENCE_KINDS)
     # Scope to the tournament's own workspace when not given one. The CLI
     # (``ml.cli infer/backfill``) defaults to ``None``; without this it would
     # build feature cohorts and pick the division grid globally (all

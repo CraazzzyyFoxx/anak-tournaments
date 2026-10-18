@@ -7,7 +7,6 @@ overridable component weights.
 
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from pathlib import Path
@@ -22,7 +21,9 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 os.environ["DEBUG"] = "false"
 
-mq = importlib.import_module("src.services.ml.models.match_quality")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+mq = ow_module("models.match_quality")
 
 
 class DeriveSigmaPoolTests(TestCase):

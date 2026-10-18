@@ -6,10 +6,10 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.enums import LogStatsName
 from shared.repository.stats_queries import player_facts
-from src import models
-from src.core.workspace import workspace_filter
+from shared.services.workspace_scope import workspace_filter
 
 from .mvp_dominance import compute_mvp_dominance
 

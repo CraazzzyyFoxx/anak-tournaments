@@ -7,6 +7,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
+from src.core.analytics_exports import OVERWATCH, analytics_exports
 from src.core.config import settings
 from src.core.workspace import get_tournament_workspace_id
 from src.domain.ratings import (
@@ -21,7 +22,7 @@ from src.domain.ratings import (
     prepare_openskill_data,
 )
 
-from .canonical_division import canonical_div_for, load_source_grids
+from .canonical_division import load_source_grids
 from .service import analytics_service
 
 
@@ -92,6 +93,7 @@ class AnalyticsFlowsService:
         # Normalize every division to the canonical OW grid so current/previous div
         # are comparable across workspaces and grid versions.
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
+        canonical_div_for = analytics_exports(OVERWATCH).canonical_div_for
 
         df["div"] = [
             canonical_div_for(grids, version_id, cost)
@@ -192,6 +194,7 @@ class AnalyticsFlowsService:
         )
         teams = await analytics_service.get_teams_with_players(session, tournament_id)
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
+        canonical_div_for = analytics_exports(OVERWATCH).canonical_div_for
         pl = get_plackett_luce()
         rosters = await analytics_service.get_rosters(session, matches)
         _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches, rosters)

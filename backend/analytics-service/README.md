@@ -107,9 +107,18 @@ resolution). Match features and match-quality scores retain observed `source_pos
 home/away orientation, not encounter slot order. Roster roles/ranks remain the trained
 input boundary; observed snapshots do not replace registration context.
 
-The P4 regression oracle covers all six feature/profile families and the actual aligned
-main/coarse predictor inputs. No trained application artifact is supplied by the fixture;
-the boundary probes stop before prediction and neither fit models nor claim prediction parity.
+Concrete features, models and the canonical division scale belong to the discipline module
+(`shared/disciplines/overwatch/analytics/`); this service reaches them only through
+`DisciplineSpec.analytics` (`src/core/analytics_exports.py`) and keeps the feature cache, the
+OpenSkill replay, device selection, artifact storage and the registry/jobs/orchestration.
+
+The P4 regression oracle (`tests/fixtures/stats_feature_parity.json`) covers all six
+feature/profile families and the actual aligned main/coarse predictor inputs; it supplies no
+fitted artifact. The frozen pre-move evidence for quantile execution, standings/shift prediction
+frames and the predictions of small fitted fixture estimators is
+`tests/fixtures/ml_prediction_parity.json` with the estimator state and provenance in
+`tests/fixtures/ml_pre_move/`; it was captured once under the pre-move code and is never
+regenerated.
 
 Migrations are central — there is one Alembic project at `backend/migrations/` and this
 service ships none. Entity diagrams and column-level detail:

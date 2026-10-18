@@ -26,6 +26,7 @@ import joblib
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+import sqlalchemy as sa
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
@@ -34,59 +35,46 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from shared.division_grid import DEFAULT_GRID
+from shared.domain.analytics import align_features
 from src.core import config
-from src.services.analytics.canonical_division import canonical_division_number
 from src.services.ml.features.aggregations import build_match_features_with_strength
-from src.services.ml.features.local_performance import attach_local_performance
-from src.services.ml.features.role_kpis import COARSE_FEATURES, ROLE_KPIS, features_for_role
 from src.services.ml.features.shift_features import build_shift_feature_frame
 from src.services.ml.features.standings_features import (
     build_standings_forecast_frame,
     build_standings_training_frame,
 )
 from src.services.ml.inference.match_quality_runner import _match_scores
-from src.services.ml.models.anomalies import detect_sandbags, detect_smurfs, detect_throws, detect_trolls
-from src.services.ml.models.base import align_features
-from src.services.ml.models.match_quality import compute_match_quality
-from src.services.ml.models.performance_v2 import (
-    PerformanceModelV2,
-    _ConstantClassifier,
-    aggregate_to_tournament,
-    build_target,
-    impact_score_within_role,
-    stabilize_small_cohort_impact,
-)
-from src.services.ml.models.shift_v2 import SHIFT_BLEND_COLUMNS, ShiftModelV2, train_shift_v2
-from src.services.ml.models.standings_v2 import (
-    STANDINGS_FEATURE_ORDER,
-    WinProbabilityModel,
-    _feature_matrix,
-    simulate_standings,
-)
+from tests.ow_analytics import exports
+from tests.ow_analytics import module as ow_module
 from tests.test_stats_feature_parity import _frame, native_analytics_reader  # noqa: F401
 
-# The only place that names where the concrete Overwatch analytics code lives.
+ROLE_KPIS = ow_module("features.role_kpis").ROLE_KPIS
+STANDINGS_FEATURE_ORDER = ow_module("models.standings_v2").STANDINGS_FEATURE_ORDER
+SHIFT_BLEND_COLUMNS = ow_module("models.shift_v2").SHIFT_BLEND_COLUMNS
+COARSE_FEATURES = exports.COARSE_FEATURES
+
+# The concrete Overwatch code, reached through the registry; the three builders are the service's own.
 _ow = SimpleNamespace(
-    PerformanceModelV2=PerformanceModelV2,
-    ConstantClassifier=_ConstantClassifier,
-    WinProbabilityModel=WinProbabilityModel,
-    ShiftModelV2=ShiftModelV2,
+    PerformanceModelV2=exports.PerformanceModelV2,
+    ConstantClassifier=exports._ConstantClassifier,
+    WinProbabilityModel=exports.WinProbabilityModel,
+    ShiftModelV2=exports.ShiftModelV2,
     align_features=align_features,
-    build_target=build_target,
-    aggregate_to_tournament=aggregate_to_tournament,
-    impact_score_within_role=impact_score_within_role,
-    stabilize_small_cohort_impact=stabilize_small_cohort_impact,
-    attach_local_performance=attach_local_performance,
-    features_for_role=features_for_role,
-    feature_matrix=_feature_matrix,
-    simulate_standings=simulate_standings,
-    train_shift_v2=train_shift_v2,
-    compute_match_quality=compute_match_quality,
-    detect_smurfs=detect_smurfs,
-    detect_trolls=detect_trolls,
-    detect_sandbags=detect_sandbags,
-    detect_throws=detect_throws,
-    canonical_division_number=canonical_division_number,
+    build_target=ow_module("models.performance_v2").build_target,
+    aggregate_to_tournament=exports.aggregate_to_tournament,
+    impact_score_within_role=exports.impact_score_within_role,
+    stabilize_small_cohort_impact=exports.stabilize_small_cohort_impact,
+    attach_local_performance=exports.attach_local_performance,
+    features_for_role=exports.features_for_role,
+    feature_matrix=ow_module("models.standings_v2")._feature_matrix,
+    simulate_standings=exports.simulate_standings,
+    train_shift_v2=exports.train_shift_v2,
+    compute_match_quality=exports.compute_match_quality,
+    detect_smurfs=exports.detect_smurfs,
+    detect_trolls=exports.detect_trolls,
+    detect_sandbags=exports.detect_sandbags,
+    detect_throws=exports.detect_throws,
+    canonical_division_number=exports.canonical_division_number,
     build_match_features=build_match_features_with_strength,
     build_shift_frame=build_shift_feature_frame,
     build_forecast_frame=build_standings_forecast_frame,
@@ -486,8 +474,6 @@ def test_ml_prediction_parity(native_analytics_reader) -> None:  # noqa: F811
 
 
 async def _ml_prediction_parity(native_analytics_reader) -> None:  # noqa: F811
-    import sqlalchemy as sa
-
     url, ids, role = native_analytics_reader
     models = load_fixture_models()
     engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
@@ -516,3 +502,30 @@ def test_fixture_set_is_complete_and_old_shift_state_lacks_later_fields() -> Non
     }
     state = _fixture_state("shift_old_missing")
     assert "indiv_scale_top" not in state and "clamp_top_grid_ref" not in state
+
+
+def test_foreign_discipline_rows_do_not_change_overwatch_outputs(stats_parity_database) -> None:
+    """A same-workspace LoL tournament with a same-code ``damage`` descendant role must leave every Overwatch frame,
+    quantile input and prediction exactly as frozen."""
+    from shared.testing.stats_parity import seed_native_sentinel
+
+    url, ids = stats_parity_database
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            seed_native_sentinel(conn, ids)
+    finally:
+        engine.dispose()
+    models = load_fixture_models()
+
+    async def run() -> dict:
+        async_engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with AsyncSession(async_engine) as session:
+                with _fit_forbidden():
+                    return _to_json(await _database_outputs(session, ids, models))
+        finally:
+            await async_engine.dispose()
+
+    expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    _assert_equal(asyncio.run(run()), expected["database"], ("database",), tolerant=True)

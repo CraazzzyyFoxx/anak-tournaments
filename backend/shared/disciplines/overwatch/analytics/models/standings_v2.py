@@ -39,8 +39,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ..device import MLTrainDevice, xgboost_devices, xgboost_params
-from .base import MLModel, align_features
+from shared.domain.analytics import MLModel, MLTrainDevice, align_features
 
 __all__ = (
     "STANDINGS_FEATURE_ORDER",
@@ -94,6 +93,13 @@ STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "home_std_mu",
     "away_std_mu",
 )
+
+
+def _xgboost_params(device: MLTrainDevice) -> dict[str, typing.Any]:
+    """XGBoost constructor params for a device candidate."""
+    if device == "cpu":
+        return {"tree_method": "hist", "device": "cpu"}
+    return {"tree_method": "hist", "device": "cuda"}
 
 
 def _calibration_folds(n_rows: int) -> int:
@@ -183,7 +189,7 @@ def _train_standings_v2_with_device(
         subsample=0.8,
         colsample_bytree=0.8,
         verbosity=0,
-        **xgboost_params(device),
+        **_xgboost_params(device),
     )
     cv = _calibration_folds(len(y))
     calibrated = CalibratedClassifierCV(estimator=base_xgb, method="isotonic", cv=cv)
@@ -241,10 +247,11 @@ def train_standings_v2(
     df: pd.DataFrame,
     *,
     val_df: pd.DataFrame | None = None,
+    devices: typing.Sequence[MLTrainDevice],
 ) -> StandingsTrainingResult:
-    """Train Standings v2 with optional XGBoost CUDA fallback."""
+    """Train Standings v2, trying ``devices`` in order (a CUDA candidate falls back to the next)."""
     last_exc: Exception | None = None
-    for device in xgboost_devices():
+    for device in devices:
         try:
             result = _train_standings_v2_with_device(df, val_df=val_df, device=device)
             logger.info("Standings v2 trained device=%s", device)

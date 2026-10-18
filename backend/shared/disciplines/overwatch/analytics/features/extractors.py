@@ -31,10 +31,10 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.enums import LogStatsName
 from shared.repository.stats_queries import player_facts, team_scores
-from src import models
-from src.core.workspace import workspace_scope_filter
+from shared.services.workspace_scope import workspace_scope_filter
 
 __all__ = (
     "STAT_COLUMNS",
@@ -364,7 +364,7 @@ async def extract_encounter_features(
       ``home_won`` (1/0/0.5 for draw).
 
     Note: opponent **OpenSkill mu** features are populated by
-    :mod:`src.services.ml.features.opponent_strength` (it needs the
+    :mod:`analytics-service.src.services.ml.features.opponent_strength` (it needs the
     historical replay machinery from the v1 flows). This extractor only
     materialises the rank-based features that come straight from the DB.
     """

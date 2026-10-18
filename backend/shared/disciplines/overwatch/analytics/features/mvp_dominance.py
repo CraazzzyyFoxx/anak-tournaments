@@ -25,9 +25,9 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.enums import LogStatsName
 from shared.repository.stats_queries import player_facts
-from src import models
 
 __all__ = ("compute_mvp_dominance", "dominance_from_perf_ranks")
 

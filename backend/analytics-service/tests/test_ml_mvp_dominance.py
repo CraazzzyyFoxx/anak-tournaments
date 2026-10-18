@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from pathlib import Path
@@ -14,7 +13,9 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 os.environ["DEBUG"] = "false"
 
-mvp = importlib.import_module("src.services.ml.features.mvp_dominance")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+mvp = ow_module("features.mvp_dominance")
 
 
 class DominanceFromPerfRanksTests(TestCase):

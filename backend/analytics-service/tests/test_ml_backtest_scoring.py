@@ -22,6 +22,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
 from tests.factories import identity_assign as _identity_assign  # noqa: E402
+from tests.ow_analytics import exports as ow_exports  # noqa: E402
 
 os.environ["DEBUG"] = "false"
 
@@ -113,7 +114,7 @@ class RealisedShiftMapTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(backtest, "load_source_grids", AsyncMock(return_value={})),
-            patch.object(backtest, "assign_canonical_division", _identity_assign),
+            patch.object(ow_exports, "assign_canonical_division", _identity_assign),
         ):
             fold_10 = await backtest._realised_shift_map(session, 10, history_through_tournament_id=30)
         self.assertEqual({1: 1.0}, fold_10)  # 7 - 6
@@ -127,7 +128,7 @@ class RealisedShiftMapTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(backtest, "load_source_grids", AsyncMock(return_value={})),
-            patch.object(backtest, "assign_canonical_division", _identity_assign),
+            patch.object(ow_exports, "assign_canonical_division", _identity_assign),
         ):
             fold_30 = await backtest._realised_shift_map(session, 30, history_through_tournament_id=30)
         self.assertEqual({}, fold_30)

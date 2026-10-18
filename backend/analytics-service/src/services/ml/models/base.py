@@ -1,14 +1,8 @@
-"""Common Protocol and serialisation helpers for v2 models.
+"""Artifact serialisation helpers for v2 models.
 
-Every concrete model class is a thin wrapper around a scikit-learn / LightGBM /
-XGBoost booster + the feature column order it was trained with. The wrapper
-takes care of:
-
-- aligning incoming feature DataFrames to ``feature_order`` (extra columns
-  dropped, missing columns added as NaN),
-- delegating prediction to the underlying booster,
-- saving / loading via :mod:`joblib` (preferred over :mod:`pickle` for numpy
-  array compactness).
+The concrete model classes, the ``MLModel`` protocol and ``align_features`` belong to the discipline's analytics module
+(``shared.domain.analytics`` for the neutral contract). This module only stores and loads the whole object via
+:mod:`joblib` (preferred over :mod:`pickle` for numpy array compactness).
 
 Models are persisted as ``<algorithm_id>/<version>/<file>.joblib`` under the
 ``ANALYTICS_MODELS_DIR`` config setting.
@@ -22,47 +16,14 @@ import typing
 from pathlib import Path
 
 import joblib
-import pandas as pd
 
 from src.core import config
 
 __all__ = (
-    "MLModel",
-    "align_features",
     "artifact_path",
     "save_artifact",
     "load_artifact",
 )
-
-
-@typing.runtime_checkable
-class MLModel(typing.Protocol):
-    """Common surface every v2 model exposes.
-
-    ``feature_order`` is the list of column names the underlying booster was
-    fitted on; consumers should always pass DataFrames through
-    :func:`align_features` before calling :meth:`predict`.
-    """
-
-    feature_order: list[str]
-
-    def predict(self, df: pd.DataFrame) -> pd.Series: ...
-
-
-def align_features(df: pd.DataFrame, feature_order: typing.Sequence[str]) -> pd.DataFrame:
-    """Reorder/fill ``df`` to match ``feature_order`` exactly.
-
-    Missing columns are inserted as ``NaN`` (LightGBM and XGBoost handle this
-    natively); extra columns are silently dropped. Index is preserved so the
-    caller can re-align predictions to original rows.
-    """
-    out = pd.DataFrame(index=df.index)
-    for col in feature_order:
-        if col in df.columns:
-            out[col] = df[col]
-        else:
-            out[col] = float("nan")
-    return out
 
 
 def artifact_path(algorithm_id: int, version: str, filename: str, *, root: str | None = None) -> Path:

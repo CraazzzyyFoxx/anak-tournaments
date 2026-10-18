@@ -12,18 +12,13 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.analytics import MATCH_QUALITY_MODEL, STANDINGS_MODEL, StandingsModel
 from shared.repository.stats_queries import match_context, team_scores
 from src import models
+from src.core.analytics_exports import OVERWATCH, analytics_exports
 
 from ..features.standings_features import build_standings_training_frame
 from ..models.base import load_artifact
-from ..models.match_quality import compute_match_quality
-from ..models.standings_v2 import WinProbabilityModel
-from ..training.orchestrator import (
-    MATCH_QUALITY_ALGORITHM_NAME,
-    STANDINGS_ALGORITHM_NAME,
-    STANDINGS_MODEL_KIND,
-)
 from ..training.registry import registry_service
 
 logger = logging.getLogger(__name__)
@@ -79,20 +74,20 @@ async def _standings_win_probability(
     no usable artifact exists rather than failing the whole quality pass.
     """
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == STANDINGS_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == STANDINGS_MODEL.algorithm_name)
     )
     if algorithm_id is None:
         return None
     artifact = await registry_service.load_active_artifact(
         session,
         algorithm_id=algorithm_id,
-        model_kind=STANDINGS_MODEL_KIND,
+        model_kind=STANDINGS_MODEL.model_kind,
         role=None,
     )
     if artifact is None:
         return None
     try:
-        model: WinProbabilityModel = load_artifact(artifact.storage_uri)
+        model: StandingsModel = load_artifact(artifact.storage_uri)
     except FileNotFoundError:
         logger.warning("Missing standings v2 artifact at %s; predictability stays neutral", artifact.storage_uri)
         return None
@@ -106,7 +101,7 @@ async def run_match_quality_for_tournament(
     workspace_id: int | None = None,
 ) -> int:
     """Compute Match Quality rows for one tournament."""
-    algorithm = await registry_service.ensure_algorithm(session, MATCH_QUALITY_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, MATCH_QUALITY_MODEL.algorithm_name)
 
     encounters = await _standings_p_home(
         session,
@@ -125,7 +120,7 @@ async def run_match_quality_for_tournament(
     p_home = await _standings_win_probability(session, encounters)
     encounters["p_home_wins"] = p_home if p_home is not None else None
 
-    quality = compute_match_quality(
+    quality = analytics_exports(OVERWATCH).compute_match_quality(
         encounters,
         await _match_scores(session, tournament_id),
     )

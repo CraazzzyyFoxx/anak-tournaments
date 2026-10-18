@@ -29,7 +29,10 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 os.environ["DEBUG"] = "false"
 
 standings_features = importlib.import_module("src.services.ml.features.standings_features")
-standings_v2 = importlib.import_module("src.services.ml.models.standings_v2")
+from tests.ow_analytics import exports as ow_exports  # noqa: E402
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+standings_v2 = ow_module("models.standings_v2")
 runner = importlib.import_module("src.services.ml.inference.runner")
 
 
@@ -108,14 +111,14 @@ class ScheduleLeakageTests(TestCase):
 class ForecastFrameTests(IsolatedAsyncioTestCase):
     async def _build(self, ranks, mus, synergy=None):
         with (
-            patch.object(standings_features, "_team_rank_stats", AsyncMock(return_value=_rank_stats(ranks))),
+            patch.object(ow_exports, "team_rank_stats", AsyncMock(return_value=_rank_stats(ranks))),
             patch.object(
                 standings_features,
                 "snapshot_pre_tournament_team_mu",
                 AsyncMock(return_value=_mu(mus)),
             ),
             patch.object(
-                standings_features,
+                ow_exports,
                 "team_synergy_features",
                 AsyncMock(return_value=_synergy(synergy)),
             ),

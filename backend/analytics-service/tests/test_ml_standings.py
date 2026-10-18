@@ -23,7 +23,9 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 os.environ["DEBUG"] = "false"
 
-standings_v2 = importlib.import_module("src.services.ml.models.standings_v2")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+standings_v2 = ow_module("models.standings_v2")
 runner = importlib.import_module("src.services.ml.inference.runner")
 
 

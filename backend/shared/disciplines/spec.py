@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from shared.catalog_sync import CatalogImageMirror
     from shared.disciplines.ingest import Decoder, DeriveMatch
     from shared.domain.achievements.context import EvalContext
+    from shared.domain.analytics import AnalyticsExports
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
     from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
@@ -60,10 +61,15 @@ AchievementCatalog = Callable[[int, Sequence["CatalogEntity"]], list["Achievemen
 #: ``context.workspace_id`` for this discipline - the universe ``NOT`` complements against.
 AchievementEligibleKeys = Callable[["AsyncSession", "EvalContext", "AchievementGrain"], Awaitable[set[tuple[int, ...]]]]
 
+#: ``analytics()``: the module's analytics package itself (features, models, canonical scale), imported only when called -
+#: it loads pandas and the estimators. The value satisfies ``shared.domain.analytics.AnalyticsExports`` structurally.
+AnalyticsModule = Callable[[], "AnalyticsExports"]
+
 __all__ = (
     "AchievementCatalog",
     "AchievementConditions",
     "AchievementEligibleKeys",
+    "AnalyticsModule",
     "CATALOG_KINDS",
     "CatalogSync",
     "CollectionHandler",
@@ -228,6 +234,9 @@ class DisciplineSpec:
     achievement_conditions: AchievementConditions | None = field(default=None, compare=False)
     achievement_catalog: AchievementCatalog | None = field(default=None, compare=False)
     achievement_eligible_keys: AchievementEligibleKeys | None = field(default=None, compare=False)
+    #: The analytics module (D83): ``None`` for a game with no features or models (LoL), which is unsupported by
+    #: analytics - never served another game's module.
+    analytics: AnalyticsModule | None = field(default=None, compare=False)
 
     @property
     def rated_dimension(self) -> DimensionSpec:

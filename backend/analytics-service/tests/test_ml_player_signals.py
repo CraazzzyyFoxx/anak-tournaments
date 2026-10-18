@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -12,9 +11,11 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
 
-local_performance = importlib.import_module("src.services.ml.features.local_performance")
-extractors = importlib.import_module("src.services.ml.features.extractors")
-anomalies = importlib.import_module("src.services.ml.models.anomalies")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+local_performance = ow_module("features.local_performance")
+extractors = ow_module("features.extractors")
+anomalies = ow_module("models.anomalies")
 
 
 class LocalPerformanceTests(TestCase):

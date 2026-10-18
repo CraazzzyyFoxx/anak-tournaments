@@ -40,9 +40,9 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from ..device import MLTrainDevice, lightgbm_devices, lightgbm_params
+from shared.domain.analytics import MLModel, MLTrainDevice, align_features
+
 from ..features.role_kpis import COARSE_FEATURES, features_for_role
-from .base import MLModel, align_features
 
 __all__ = (
     "PerformanceModelV2",
@@ -222,6 +222,17 @@ class PerformanceTrainingResult:
     feature_importance: dict[str, float]
 
 
+def _lightgbm_params(device: MLTrainDevice) -> dict[str, typing.Any]:
+    """LightGBM constructor params for a device candidate."""
+    if device == "cpu":
+        return {"device_type": "cpu"}
+    return {
+        "device_type": device,
+        # LightGBM recommends smaller max_bin for GPU speed.
+        "max_bin": 63,
+    }
+
+
 def _booster_params(
     *,
     objective: str,
@@ -236,7 +247,7 @@ def _booster_params(
         "feature_fraction": 0.8,
         "n_estimators": 400,
         "verbose": -1,
-        **lightgbm_params(device),
+        **_lightgbm_params(device),
     }
     if alpha is not None:
         params["alpha"] = alpha
@@ -352,10 +363,11 @@ def train_performance_v2(
     *,
     role: str,
     val_df: pd.DataFrame | None = None,
+    devices: typing.Sequence[MLTrainDevice],
 ) -> PerformanceTrainingResult:
-    """Train Performance v2 for one role with optional GPU fallback."""
+    """Train Performance v2 for one role, trying ``devices`` in order (GPU candidates fall back to the next)."""
     last_exc: Exception | None = None
-    for device in lightgbm_devices():
+    for device in devices:
         try:
             result = _train_performance_v2_with_device(
                 df,

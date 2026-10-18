@@ -1,6 +1,6 @@
 """Tests for canonical OW division normalization (cross-workspace single scale).
 
-See src/services/analytics/canonical_division.py: every analytics division is
+See shared/disciplines/overwatch/analytics/canonical.py: every analytics division is
 mapped to the in-code standard grid (DEFAULT_GRID, 45-tier OW). Per source tier:
 OW-rank binding when present, else proportional rescale of the division number.
 """
@@ -21,7 +21,10 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 
 division_grid = importlib.import_module("shared.division_grid")
-canonical = importlib.import_module("src.services.analytics.canonical_division")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+canonical = ow_module("canonical")
+grid_loading = importlib.import_module("src.services.analytics.canonical_division")
 
 DEFAULT_GRID = division_grid.DEFAULT_GRID
 
@@ -131,25 +134,25 @@ class LoadSourceGridsTests(IsolatedAsyncioTestCase):
         session = object()
 
         with patch.object(
-            canonical,
+            grid_loading,
             "load_division_grid_snapshots",
             AsyncMock(return_value={200: snapshot_a, 300: snapshot_b}),
         ) as load_snapshots:
             # 200 repeated -- the dedup must not turn into two lookups for it.
-            grids = await canonical.load_source_grids(session=session, version_ids=[200, 200, 300])
+            grids = await grid_loading.load_source_grids(session=session, version_ids=[200, 200, 300])
 
         load_snapshots.assert_awaited_once_with(session, {200, 300})
         self.assertEqual({200: grid_a, 300: grid_b}, grids)
 
     async def test_missing_versions_are_omitted_not_defaulted(self) -> None:
         """Falling back to DEFAULT_GRID is ``canonical_div_for``'s job, not this one's."""
-        with patch.object(canonical, "load_division_grid_snapshots", AsyncMock(return_value={})):
-            grids = await canonical.load_source_grids(session=object(), version_ids=[404])
+        with patch.object(grid_loading, "load_division_grid_snapshots", AsyncMock(return_value={})):
+            grids = await grid_loading.load_source_grids(session=object(), version_ids=[404])
 
         self.assertEqual({}, grids)
 
     async def test_float_version_ids_from_a_dataframe_column_are_coerced(self) -> None:
-        with patch.object(canonical, "load_division_grid_snapshots", AsyncMock(return_value={})) as load_snapshots:
-            await canonical.load_source_grids(session=object(), version_ids=[200.0, 300.0])
+        with patch.object(grid_loading, "load_division_grid_snapshots", AsyncMock(return_value={})) as load_snapshots:
+            await grid_loading.load_source_grids(session=object(), version_ids=[200.0, 300.0])
 
         self.assertEqual({200, 300}, load_snapshots.await_args.args[1])

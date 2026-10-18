@@ -15,27 +15,29 @@ from dataclasses import dataclass
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.analytics import (
+    PERFORMANCE_MODEL,
+    SHIFT_MODEL,
+    STANDINGS_MODEL,
+    PerformanceTrainingResult,
+    ShiftTrainingResult,
+    StandingsTrainingResult,
+)
+from src.core.analytics_exports import OVERWATCH, analytics_exports
 from src.core.config import settings
 
 from .. import FEATURE_VERSION
+from ..device import lightgbm_devices, xgboost_devices
 from ..features.aggregations import build_match_features_with_strength
 from ..features.shift_features import build_shift_feature_frame
 from ..features.standings_features import build_standings_training_frame
 from ..models.base import artifact_path, save_artifact
-from ..models.performance_v2 import (
-    PerformanceTrainingResult,
-    train_performance_v2,
-)
-from ..models.shift_v2 import ShiftTrainingResult, train_shift_v2
-from ..models.standings_v2 import StandingsTrainingResult, train_standings_v2
 from .registry import registry_service
 from .splits import TimeSeriesSplit, tournament_ids_up_to
 
 logger = logging.getLogger(__name__)
 
 __all__ = (
-    "PERFORMANCE_ALGORITHM_NAME",
-    "SHIFT_ALGORITHM_NAME",
     "PerformanceTrainingOutcome",
     "ShiftTrainingOutcome",
     "train_performance_v2_for_cutoff",
@@ -43,22 +45,6 @@ __all__ = (
     "train_all_models",
 )
 
-
-PERFORMANCE_ALGORITHM_NAME = "Performance ML v2"
-PERFORMANCE_MODEL_KIND = "performance"
-PERFORMANCE_MODEL_VERSION = "2.0.0"
-
-SHIFT_ALGORITHM_NAME = "OpenSkill + ML"
-SHIFT_MODEL_KIND = "shift"
-SHIFT_MODEL_VERSION = "2.0.0"
-
-STANDINGS_ALGORITHM_NAME = "Standings MC v2"
-STANDINGS_MODEL_KIND = "standings"
-STANDINGS_MODEL_VERSION = "2.2.0"
-
-MATCH_QUALITY_ALGORITHM_NAME = "Match Quality v1"
-MATCH_QUALITY_MODEL_KIND = "match_quality"
-MATCH_QUALITY_MODEL_VERSION = "1.0.0"
 
 ROLES = ("tank", "damage", "support")
 # Shift v2 supervises its blend weights on the realised division move.
@@ -161,7 +147,7 @@ async def train_performance_v2_for_cutoff(
       and deactivates older versions of the same role,
     - writes the booster pickles to ``ANALYTICS_MODELS_DIR``.
     """
-    algorithm = await registry_service.ensure_algorithm(session, PERFORMANCE_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, PERFORMANCE_MODEL.algorithm_name)
 
     all_ids = await tournament_ids_up_to(
         session,
@@ -209,24 +195,28 @@ async def train_performance_v2_for_cutoff(
         return []
 
     outcomes: list[PerformanceTrainingOutcome] = []
+    exports = analytics_exports(OVERWATCH)
     for role in ROLES:
         try:
-            result: PerformanceTrainingResult = train_performance_v2(
-                train_df, role=role, val_df=val_df if not val_df.empty else None
+            result: PerformanceTrainingResult = exports.train_performance_v2(
+                train_df,
+                role=role,
+                val_df=val_df if not val_df.empty else None,
+                devices=lightgbm_devices(),
             )
         except ValueError as exc:
             logger.warning("Skipping role=%s: %s", role, exc)
             continue
 
-        path = artifact_path(algorithm.id, PERFORMANCE_MODEL_VERSION, f"performance_{role}.joblib")
+        path = artifact_path(algorithm.id, PERFORMANCE_MODEL.model_version, f"performance_{role}.joblib")
         storage_uri = save_artifact(result.model, path)
 
         artifact = await registry_service.register_artifact(
             session,
             algorithm_id=algorithm.id,
-            model_kind=PERFORMANCE_MODEL_KIND,
+            model_kind=PERFORMANCE_MODEL.model_kind,
             role=role,
-            version=PERFORMANCE_MODEL_VERSION,
+            version=PERFORMANCE_MODEL.model_version,
             storage_uri=storage_uri,
             feature_version=FEATURE_VERSION,
             training_cutoff_tournament_id=cutoff_tournament_id,
@@ -301,7 +291,7 @@ async def train_standings_v2_for_cutoff(
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> StandingsTrainingOutcome | None:
     """Train Standings v2 win-probability classifier."""
-    algorithm = await registry_service.ensure_algorithm(session, STANDINGS_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, STANDINGS_MODEL.algorithm_name)
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
@@ -336,19 +326,23 @@ async def train_standings_v2_for_cutoff(
         return None
 
     try:
-        result: StandingsTrainingResult = train_standings_v2(train_df, val_df=val_df if not val_df.empty else None)
+        result: StandingsTrainingResult = analytics_exports(OVERWATCH).train_standings_v2(
+            train_df,
+            val_df=val_df if not val_df.empty else None,
+            devices=xgboost_devices(),
+        )
     except ValueError as exc:
         logger.warning("Standings v2 training skipped: %s", exc)
         return None
 
-    path = artifact_path(algorithm.id, STANDINGS_MODEL_VERSION, "standings.joblib")
+    path = artifact_path(algorithm.id, STANDINGS_MODEL.model_version, "standings.joblib")
     storage_uri = save_artifact(result.model, path)
     artifact = await registry_service.register_artifact(
         session,
         algorithm_id=algorithm.id,
-        model_kind=STANDINGS_MODEL_KIND,
+        model_kind=STANDINGS_MODEL.model_kind,
         role=None,
-        version=STANDINGS_MODEL_VERSION,
+        version=STANDINGS_MODEL.model_version,
         storage_uri=storage_uri,
         feature_version=FEATURE_VERSION,
         training_cutoff_tournament_id=cutoff_tournament_id,
@@ -367,7 +361,7 @@ async def train_shift_v2_for_cutoff(
     workspace_ids: typing.Sequence[int] | None = None,
 ) -> ShiftTrainingOutcome | None:
     """Train Shift v2 residual model using all tournaments up to cutoff."""
-    algorithm = await registry_service.ensure_algorithm(session, SHIFT_ALGORITHM_NAME)
+    algorithm = await registry_service.ensure_algorithm(session, SHIFT_MODEL.algorithm_name)
     all_ids = await tournament_ids_up_to(
         session,
         cutoff_tournament_id,
@@ -411,7 +405,7 @@ async def train_shift_v2_for_cutoff(
         return None
 
     try:
-        result: ShiftTrainingResult = train_shift_v2(
+        result: ShiftTrainingResult = analytics_exports(OVERWATCH).train_shift_v2(
             train_df,
             val_df=val_df if not val_df.empty else None,
             w_team=settings.shift_w_team,
@@ -429,14 +423,14 @@ async def train_shift_v2_for_cutoff(
         logger.warning("Shift v2 training skipped: %s", exc)
         return None
 
-    path = artifact_path(algorithm.id, SHIFT_MODEL_VERSION, "shift.joblib")
+    path = artifact_path(algorithm.id, SHIFT_MODEL.model_version, "shift.joblib")
     storage_uri = save_artifact(result.model, path)
     artifact = await registry_service.register_artifact(
         session,
         algorithm_id=algorithm.id,
-        model_kind=SHIFT_MODEL_KIND,
+        model_kind=SHIFT_MODEL.model_kind,
         role=None,
-        version=SHIFT_MODEL_VERSION,
+        version=SHIFT_MODEL.model_version,
         storage_uri=storage_uri,
         feature_version=FEATURE_VERSION,
         training_cutoff_tournament_id=cutoff_tournament_id,

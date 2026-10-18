@@ -1,8 +1,7 @@
-"""Canonical division normalization for analytics.
+"""Source-grid snapshot loading for canonical division normalization.
 
-Pure mapping lives in ``src.domain.canonical``. This module owns the
-session-taking snapshot loader and re-exports the pure helpers so existing
-``services.analytics.canonical_division`` imports keep working.
+The canonical numerical mapping itself belongs to the discipline's analytics module (reached through
+``src.core.analytics_exports``); this module owns only the session-taking snapshot loader.
 """
 
 from __future__ import annotations
@@ -13,14 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid
 from shared.services.division_grid.access import load_division_grid_snapshots
-from src.domain.canonical import assign_canonical_division, canonical_div_for, canonical_division_number
 
-__all__ = (
-    "canonical_division_number",
-    "load_source_grids",
-    "canonical_div_for",
-    "assign_canonical_division",
-)
+__all__ = ("load_source_grids",)
 
 
 async def load_source_grids(
@@ -30,7 +23,7 @@ async def load_source_grids(
     """Load runtime grids keyed by version id (cached via grid snapshots).
 
     Missing versions are omitted; callers fall back to ``DEFAULT_GRID`` for
-    those (and for ``None`` version ids) via :func:`canonical_div_for`.
+    those (and for ``None`` version ids) via the module's ``canonical_div_for``.
 
     Batched: one Redis round trip (plus at most one DB query for whatever
     misses it) for the WHOLE set instead of one round trip per version id --

@@ -51,8 +51,7 @@ import numpy as np
 import pandas as pd
 
 from shared.division_grid import DEFAULT_GRID
-
-from .base import MLModel
+from shared.domain.analytics import MLModel
 
 __all__ = (
     "ShiftModelV2",

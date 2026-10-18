@@ -29,7 +29,7 @@ LATEST=73   # max tournament id
 # 0) ship the code and rebuild the image (exec runs what is in the image!)
 $COMPOSE build analytics analytics-worker && $COMPOSE up -d analytics analytics-worker
 $COMPOSE exec analytics-worker python -c \
- "import src.services.ml.models.shift_v2 as m; print('OK' if hasattr(m,'INDIV_MOD_SCALE_TOP') else 'OLD IMAGE')"
+ "import shared.disciplines.overwatch.analytics.models.shift_v2 as m; print('OK' if hasattr(m,'INDIV_MOD_SCALE_TOP') else 'OLD IMAGE')"
 
 # 1a) (required for individual skill and the smurf flag) materialize Performance v2 over history
 $COMPOSE exec analytics-worker python -m src.services.ml.cli backfill --from 1 --to $LATEST --models performance

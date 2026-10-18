@@ -32,8 +32,10 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 analytics_service = importlib.import_module("src.services.analytics.service").analytics_service
 analytics_read_service = importlib.import_module("src.services.analytics.read_queries").analytics_read_service
-player_profile = importlib.import_module("src.services.ml.features.player_profile")
-shift_features = importlib.import_module("src.services.ml.features.shift_features")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+player_profile = ow_module("features.player_profile")
+shift_features = ow_module("features.shift_features")
 backtest = importlib.import_module("src.services.ml.training.backtest")
 
 
@@ -135,7 +137,7 @@ class PlayerProfileHistoryTests(IsolatedAsyncioTestCase):
 
 
 class ShiftFeaturesRankHistoryTests(IsolatedAsyncioTestCase):
-    """``_player_rank_history`` groups/orders its pandas frame by
+    """``load_player_rank_history`` groups/orders its pandas frame by
     ``(user_id, role)`` downstream -- the SQL-level label and ORDER BY must
     both use the substitute column so the DataFrame column name and sort
     order are unchanged."""
@@ -143,7 +145,7 @@ class ShiftFeaturesRankHistoryTests(IsolatedAsyncioTestCase):
     async def test_query_labels_and_orders_by_workspace_member(self) -> None:
         session = _CapturingSession()
 
-        await shift_features._player_rank_history(session, [1, 2])
+        await shift_features.load_player_rank_history(session, [1, 2])
 
         sql = _compiled(session.statements[0])
         self.assertIn("workspace_member.player_id AS user_id", sql)

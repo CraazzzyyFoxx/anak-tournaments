@@ -20,21 +20,16 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.analytics import SHIFT_MODEL, STANDINGS_MODEL
 from shared.repository import MLModelArtifactRepository
 from src import models
+from src.core.analytics_exports import OVERWATCH, analytics_exports
 from src.core.workspace import workspace_scope_filter
-from src.services.analytics.canonical_division import (
-    assign_canonical_division,
-    load_source_grids,
-)
+from src.services.analytics.canonical_division import load_source_grids
 
 from ..inference.runner import run_for_tournament
 from .calibration import compute_calibration_report
-from .orchestrator import (
-    SHIFT_ALGORITHM_NAME,
-    STANDINGS_ALGORITHM_NAME,
-    train_all_models,
-)
+from .orchestrator import train_all_models
 from .registry import registry_service
 from .splits import tournament_ids_up_to
 
@@ -54,7 +49,7 @@ async def _v1_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, 
 
 async def _v2_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, float]:
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == SHIFT_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == SHIFT_MODEL.algorithm_name)
     )
     if algorithm_id is None:
         return {}
@@ -69,7 +64,7 @@ async def _v2_shift_map(session: AsyncSession, tournament_id: int) -> dict[int, 
 async def _v2_shift_confidence_map(session: AsyncSession, tournament_id: int) -> dict[int, float]:
     """Return ``{player_id: confidence}`` for v2 shift rows of one tournament."""
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == SHIFT_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == SHIFT_MODEL.algorithm_name)
     )
     if algorithm_id is None:
         return {}
@@ -95,7 +90,7 @@ async def _realised_shift_map(
     convention as the shift signal (positive = moved up to a lower division
     number) and the label Shift v2 fits its blend weights against. The division
     is resolved on the canonical OW grid (per the tournament's source grid
-    version) to match :func:`shift_features._player_rank_history`, so the label
+    version) to match the module's ``load_player_rank_history``, so the label
     scale lines up with what the model was trained to predict.
 
     ``history_through_tournament_id`` must cover each player's *next* tournament;
@@ -133,7 +128,7 @@ async def _realised_shift_map(
     df = df.sort_values(["user_id", "role", "tournament_id"]).reset_index(drop=True)
 
     grids = await load_source_grids(session, df["version_id"].dropna().unique())
-    assign_canonical_division(df, grids, rank_col="rank")
+    analytics_exports(OVERWATCH).assign_canonical_division(df, grids, rank_col="rank")
     df["next_tournament_div"] = df.groupby(["user_id", "role"], sort=False)["div"].shift(-1)
 
     fold = df[df["tournament_id"] == int(tournament_id)]
@@ -210,7 +205,7 @@ async def _actual_standings(session: AsyncSession, tournament_id: int) -> dict[i
 
 async def _predicted_standings(session: AsyncSession, tournament_id: int) -> dict[int, float]:
     algorithm_id = await session.scalar(
-        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == STANDINGS_ALGORITHM_NAME)
+        sa.select(models.AnalyticsAlgorithm.id).where(models.AnalyticsAlgorithm.name == STANDINGS_MODEL.algorithm_name)
     )
     if algorithm_id is None:
         return {}

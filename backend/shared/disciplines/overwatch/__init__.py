@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from shared.disciplines.ingest import BoundMatch, DecodeContext
     from shared.disciplines.spec import CollectionHandler
     from shared.domain.achievements.context import EvalContext
+    from shared.domain.analytics import AnalyticsExports
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
     from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
@@ -114,6 +115,14 @@ async def _achievement_eligible_keys(
     return await eligible_keys(session, context, grain)
 
 
+def _analytics() -> AnalyticsExports:
+    # Imported on call: the package loads pandas, scikit-learn, LightGBM and XGBoost, which a service that never runs
+    # analytics must not pay for. The module itself is the exports object.
+    from shared.disciplines.overwatch import analytics
+
+    return analytics
+
+
 async def _recompute_baselines(session: AsyncSession, user: AuthUser | None, data: dict[str, Any]) -> object:
     from shared.core.impact import FORMULA_VERSION
     from shared.disciplines.overwatch.baselines import recompute
@@ -190,4 +199,5 @@ SPEC = DisciplineSpec(
     achievement_conditions=_achievement_conditions,
     achievement_catalog=_achievement_catalog,
     achievement_eligible_keys=_achievement_eligible_keys,
+    analytics=_analytics,
 )

@@ -20,6 +20,7 @@ import pandas as pd
 from openskill.models import PlackettLuce, PlackettLuceRating
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.analytics_exports import OVERWATCH, analytics_exports
 from src.domain.ratings import get_id_role, get_plackett_luce, prepare_openskill_data
 from src.services.analytics.flows import flows_service
 from src.services.analytics.service import analytics_service
@@ -207,10 +208,10 @@ async def snapshot_pre_tournament_team_mu(
     for tournaments whose rosters are still being assembled, where a TTL'd
     snapshot would forecast a field that no longer exists.
     """
-    columns = ["team_id", "avg_mu", "max_mu", "min_mu", "std_mu", "tank_mu", "damage_mu", "support_mu"]
+    exports = analytics_exports(OVERWATCH)
     teams = await analytics_service.get_teams_with_players(session, tournament_id)
     if not teams:
-        return pd.DataFrame(columns=columns)
+        return exports.summarize_team_strength([], {}, rating_key=get_id_role)
 
     window_ids = await analytics_service.lookback_tournament_ids(
         session,
@@ -235,32 +236,4 @@ async def snapshot_pre_tournament_team_mu(
     # only the replay encounters plus the rosters to seed unrated players.
     rosters = await analytics_service.get_rosters(session, history)
     _, players_rating, _ = prepare_openskill_data(pd.DataFrame(), pl, teams, history, rosters)
-
-    rows: list[dict[str, typing.Any]] = []
-    for team in teams:
-        mus: list[float] = []
-        role_mus: dict[str, list[float]] = {"tank": [], "damage": [], "support": []}
-        for player in team.players:
-            rating = players_rating.get(get_id_role(player))
-            if rating is None:
-                continue
-            value = float(rating.mu)
-            mus.append(value)
-            if player.role in role_mus:
-                role_mus[player.role].append(value)
-        if not mus:
-            continue
-        rows.append(
-            {
-                "team_id": int(team.id),
-                "avg_mu": float(sum(mus) / len(mus)),
-                "max_mu": float(max(mus)),
-                "min_mu": float(min(mus)),
-                "std_mu": float(pd.Series(mus).std(ddof=0)) if len(mus) > 1 else 0.0,
-                **{
-                    f"{role}_mu": (float(sum(values) / len(values)) if values else float("nan"))
-                    for role, values in role_mus.items()
-                },
-            }
-        )
-    return pd.DataFrame(rows, columns=columns)
+    return exports.summarize_team_strength(teams, players_rating, rating_key=get_id_role)

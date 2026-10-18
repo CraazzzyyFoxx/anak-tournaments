@@ -31,18 +31,20 @@ from src.core import config
 from src.services.analytics.read_queries import analytics_read_service
 from src.services.analytics.service import analytics_service
 from src.services.ml.features.aggregations import build_match_features_with_strength
-from src.services.ml.features.extractors import (
-    RATE_COLUMNS,
-    extract_encounter_features,
-    extract_match_features,
-    extract_round_residuals,
-    extract_tournament_features,
-)
-from src.services.ml.features.mvp_dominance import compute_mvp_dominance
-from src.services.ml.features.player_profile import load_player_signal_profile
-from src.services.ml.features.role_kpis import COARSE_FEATURES, features_for_role
 from src.services.ml.inference.match_quality_runner import _match_scores
-from src.services.ml.models.performance_v2 import PerformanceModelV2
+from tests.ow_analytics import exports as ow
+from tests.ow_analytics import module as ow_module
+
+RATE_COLUMNS = ow_module("features.extractors").RATE_COLUMNS
+COARSE_FEATURES = ow.COARSE_FEATURES
+PerformanceModelV2 = ow.PerformanceModelV2
+compute_mvp_dominance = ow.compute_mvp_dominance
+extract_encounter_features = ow.extract_encounter_features
+extract_match_features = ow.extract_match_features
+extract_round_residuals = ow.extract_round_residuals
+extract_tournament_features = ow.extract_tournament_features
+features_for_role = ow.features_for_role
+load_player_signal_profile = ow.load_player_signal_profile
 
 GOLDEN = Path(__file__).parent / "fixtures" / "stats_feature_parity.json"
 

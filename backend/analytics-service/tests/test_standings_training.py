@@ -28,7 +28,9 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 os.environ["DEBUG"] = "false"
 
-standings_v2 = importlib.import_module("src.services.ml.models.standings_v2")
+from tests.ow_analytics import module as ow_module  # noqa: E402
+
+standings_v2 = ow_module("models.standings_v2")
 match_quality_runner = importlib.import_module("src.services.ml.inference.match_quality_runner")
 
 
@@ -92,6 +94,7 @@ class TrainStandingsV2Tests(TestCase):
         result = standings_v2.train_standings_v2(
             _synthetic_frame(800, seed=1),
             val_df=_synthetic_frame(200, seed=2),
+            devices=("cpu",),
         )
 
         self.assertEqual(list(standings_v2.STANDINGS_FEATURE_ORDER), result.model.feature_order)
@@ -106,7 +109,7 @@ class TrainStandingsV2Tests(TestCase):
         self.assertTrue(np.all((proba >= 0.0) & (proba <= 1.0)))
 
     def test_learns_the_mu_gap_direction(self) -> None:
-        result = standings_v2.train_standings_v2(_synthetic_frame(1200, seed=4, nan_mu_share=0.0))
+        result = standings_v2.train_standings_v2(_synthetic_frame(1200, seed=4, nan_mu_share=0.0), devices=("cpu",))
 
         probe = _synthetic_frame(400, seed=5, nan_mu_share=0.0)
         proba = result.model.predict_proba(probe)
