@@ -508,3 +508,110 @@ def test_tournament_wide_processing_never_repends_done_jobs_and_replays_current_
         assert (await snapshot(env, case))["revision"] == 3
 
     run(ingest_database, scenario)
+
+
+def test_canonical_maps_are_read_only_inputs_of_a_mixed_producer_series(ingest_database):
+    async def scenario(env):
+        from shared.core import enums
+        from src.services.match_logs.objectiveless import resolve_encounter_maps
+        from tests.ingest_seed import add_game
+
+        case = await new_case(env, "mixed")
+        async with db(env) as session:
+            modes = {}
+            for slug in ("control", "push"):
+                mode = await session.scalar(
+                    sa.select(models.CatalogEntity).where(
+                        models.CatalogEntity.discipline == "overwatch",
+                        models.CatalogEntity.kind == "mode",
+                        models.CatalogEntity.slug == slug,
+                    )
+                )
+                if mode is None:
+                    mode = models.CatalogEntity(
+                        discipline="overwatch", kind="mode", slug=slug, name=slug.title(), attrs={}
+                    )
+                    session.add(mode)
+                    await session.flush()
+                modes[slug] = mode.id
+            (await session.get(models.CatalogEntity, case.map_id)).parent_id = modes["control"]
+            push_map = models.CatalogEntity(
+                discipline="overwatch",
+                kind="map",
+                slug="mixed-push",
+                name="Mixed push",
+                attrs={},
+                parent_id=modes["push"],
+            )
+            session.add(push_map)
+            await session.flush()
+            push_game = await add_game(session, case, map_id=push_map.id)
+            # tournament teams behind both seats, so the resolver can orient the logs
+            for index, seat in enumerate(case.team_ids):
+                team = models.Team(tournament_id=case.tournament_id, name=f"S{index}", balancer_name=f"S{index}")
+                session.add(team)
+                await session.flush()
+                await session.execute(
+                    sa.update(models.EncounterTeam).where(models.EncounterTeam.id == seat).values(team_id=team.id)
+                )
+            await session.commit()
+            push_slug = push_map.slug
+
+        control_job = await submit(
+            env, case, with_stat_values(case, "mixed-control", 0), hint={"encounter_game_id": case.game_id}
+        )
+        push_doc = with_stat_values(case, "mixed-push", 0)
+        push_doc["map"] = push_slug
+        push_job = await submit(env, case, push_doc, hint={"encounter_game_id": push_game})
+        assert await process_job(env, control_job) == Status.DONE
+        assert await process_job(env, push_job) == Status.DONE
+
+        async with db(env) as session:
+            # team 1 won both games 2-0: both confirmed, the series completed
+            for game_id in (case.game_id, push_game):
+                await session.execute(
+                    sa.update(models.EncounterGame)
+                    .where(models.EncounterGame.id == game_id)
+                    .values(
+                        state=enums.EncounterGameState.CONFIRMED,
+                        result_source=enums.EncounterGameResultSource.ADMIN,
+                        confirmed_at=sa.func.now(),
+                    )
+                )
+            await session.execute(
+                sa.update(models.EncounterTeam).where(models.EncounterTeam.id == case.team_ids[0]).values(score=2.0)
+            )
+            await session.execute(
+                sa.update(models.Encounter)
+                .where(models.Encounter.id == case.encounter_id)
+                .values(status=enums.EncounterStatus.COMPLETED, result_status="confirmed", result_source="games")
+            )
+            await session.commit()
+
+        async def scores(game_id):
+            async with db(env) as session:
+                return sorted(
+                    await session.scalars(
+                        sa.select(models.StatsFact.value)
+                        .join(models.StatDef, models.StatDef.id == models.StatsFact.stat_id)
+                        .join(models.StatsMatch, models.StatsMatch.id == models.StatsFact.match_id)
+                        .where(
+                            models.StatsMatch.encounter_game_id == game_id,
+                            models.StatDef.code == "score",
+                            models.StatsFact.workspace_member_id.is_(None),
+                        )
+                    )
+                )
+
+        assert await scores(case.game_id) == [1.0, 2.0] and await scores(push_game) == [1.0, 2.0]
+        async with db(env) as session:
+            changed = await resolve_encounter_maps(
+                session, case.encounter_id, producers={control_job: "canonical", push_job: "decoded"}
+            )
+            await session.commit()
+        assert changed is True
+        # the canonical Control result is untouched and, as an observed map, lets exclusion decide the decoded Push
+        assert await scores(case.game_id) == [1.0, 2.0]
+        assert await scores(push_game) == [0.0, 1.0]
+
+    run(ingest_database, scenario)

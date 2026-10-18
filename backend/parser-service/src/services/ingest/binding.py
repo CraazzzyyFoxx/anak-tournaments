@@ -293,7 +293,7 @@ async def bound_participants(
 ) -> dict[str, BoundParticipant]:
     """Every participant as the discipline's derivation needs it: member, global player, seat, roster rank and role.
 
-    A player on the tournament roster of the seat's source team keeps P4's inputs: the current tournament-player
+    A player (substitutes registered on the team included) on the tournament roster of the seat's source team keeps P4's inputs: the current tournament-player
     registration rank and rated role (the baselines bucket on that boundary, D96). Only a participant the tournament
     roster does not have (substitute, virtual player) falls back to the encounter roster snapshot, and without any row
     carries rank 0 and no role.
@@ -306,11 +306,12 @@ async def bound_participants(
             .join(player, sa.and_(player.team_id == seat_row.team_id, player.tournament_id == seat_row.tournament_id))
             .where(
                 seat_row.id.in_(game.seats),
-                player.is_substitution.is_(False),
                 player.workspace_member_id.in_([anchor.id for anchor in members.values()]),
             )
+            # P4 matched every roster Player of the team, registered substitutes included; the regular row wins.
+            .order_by(player.is_substitution, player.id)
         ):
-            tournament_roster[(seat_id, member_id)] = (rank, role)
+            tournament_roster.setdefault((seat_id, member_id), (rank, role))
     member = models.EncounterTeamMember
     roster: dict[tuple[int, int], tuple[int, int | None]] = {}
     role_of: dict[int, int] = {}

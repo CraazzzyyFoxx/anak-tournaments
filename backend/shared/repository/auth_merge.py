@@ -210,8 +210,15 @@ async def resolve_merge_memberships(
         members.update(result.all())
     revive_ids = [members[workspace_id] for workspace_id in revive_workspace_ids & members.keys()]
     if revive_ids:
+        # An admitted source member (or a moved role) makes the surviving anchor a real, active membership: it
+        # revives a removed one and admits an observation-only one.
         await session.execute(
-            sa.update(table).where(table.c.id.in_(revive_ids), table.c.removed_at.is_not(None)).values(removed_at=None)
+            sa.update(table)
+            .where(
+                table.c.id.in_(revive_ids),
+                sa.or_(table.c.removed_at.is_not(None), table.c.observed_only.is_(True)),
+            )
+            .values(removed_at=None, observed_only=False)
         )
     return members
 

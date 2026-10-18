@@ -55,10 +55,10 @@ async def load_producers(session: AsyncSession, s3: S3Client, encounter_id: int)
 async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, producers: Mapping[int, str]) -> bool:
     """Flush score-only changes and evidence; the caller owns the existing commit.
 
-    Push/Clash normalization repairs *raw Workshop* observations only. A match is a candidate when it has no job
-    (historical) or its job's producer is ``decoded`` in ``producers`` (see :func:`load_producers`); canonical
-    observations keep exactly the facts their producer supplied, and a job unknown to ``producers`` (written after it
-    was read) is left alone.
+    Push/Clash normalization repairs *raw Workshop* observations only. A match is writable when it has no job
+    (historical) or its job's producer is ``decoded`` in ``producers`` (see :func:`load_producers`). Canonical
+    observations (and a job unknown to ``producers``, written after it was read) are read-only inputs: their scores
+    count as observed maps of the series but keep exactly the facts their producer supplied.
 
     Ingest calls this after staging its reparse, with the same encounter lock
     already held. Standalone calls take that lock before any match locks too.
@@ -103,10 +103,9 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, pr
             .with_for_update(of=match)
         )
     ).all()
-    rows = [
-        (row, slug) for row, slug in rows if row.ingest_job_id is None or producers.get(row.ingest_job_id) == "decoded"
-    ]
-    if not any(slug in OBJECTIVELESS_GAMEMODES for _, slug in rows):
+    # Every observation is an input; only decoded (raw Workshop) ones may be rewritten.
+    writable = {row.id for row, _ in rows if row.ingest_job_id is None or producers.get(row.ingest_job_id) == "decoded"}
+    if not any(slug in OBJECTIVELESS_GAMEMODES and row.id in writable for row, slug in rows):
         return False
 
     scores_relation = team_scores(discipline="overwatch", stat_code="score")
@@ -164,7 +163,9 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, pr
                 home_team_id=sides[0].tournament_team_id,
                 home_score=sides[0].value,
                 away_score=sides[1].value,
-                objectiveless=slug in OBJECTIVELESS_GAMEMODES,
+                # A canonical Push/Clash map is an observed score like any other map: it constrains the series but is
+                # never deduced or rewritten.
+                objectiveless=slug in OBJECTIVELESS_GAMEMODES and row.id in writable,
             )
         )
     resolved = {}
@@ -188,7 +189,7 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, pr
     changed = False
     repository = StatsMatchRepository()
     for row, _ in rows:
-        score = resolved.get(row.id)
+        score = resolved.get(row.id) if row.id in writable else None
         if score is None:
             continue
         sides = by_match[row.id]

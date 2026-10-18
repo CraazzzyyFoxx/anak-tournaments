@@ -262,9 +262,12 @@ def _build_plan(
     source_members = {row["id"]: row for row in state.memberships if row["player_id"] == source.id}
     target_members = {row["workspace_id"]: row for row in state.memberships if row["player_id"] == target.id}
     plan.workspace_ids.update(row["workspace_id"] for row in source_members.values())
-    # A removed source member carries no access to hand over; only active ones (and moved roles) revive a removed target.
+    # A removed source member carries no access to hand over, and an observation-only anchor was never admitted
+    # (it is not a membership at all); only active admitted ones (and moved roles) revive a removed target.
     plan.revive_workspace_ids.update(
-        row["workspace_id"] for row in source_members.values() if row.get("removed_at") is None
+        row["workspace_id"]
+        for row in source_members.values()
+        if row.get("removed_at") is None and not row.get("observed_only")
     )
     role_workspace_ids = {
         roles[row["role_id"]]["workspace_id"]

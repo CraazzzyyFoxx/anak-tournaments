@@ -771,6 +771,25 @@ def test_derivation_uses_the_tournament_registration_rank_not_the_roster_snapsho
                     rank=1700,
                 )
             )
+            # a registered substitute of the second team: P4's lookup matched it like any roster player
+            substitutes = models.Team(tournament_id=case.tournament_id, name="Reg2", balancer_name="Reg2")
+            session.add(substitutes)
+            await session.flush()
+            await session.execute(
+                sa.update(models.EncounterTeam)
+                .where(models.EncounterTeam.id == case.team_ids[1])
+                .values(team_id=substitutes.id)
+            )
+            session.add(
+                models.Player(
+                    tournament_id=case.tournament_id,
+                    workspace_member_id=case.member_ids[1][0],
+                    team_id=substitutes.id,
+                    name="registered-sub",
+                    rank=1500,
+                    is_substitution=True,
+                )
+            )
             await session.commit()
         async with db(env) as session:
             doc = MatchDoc.model_validate(case.document)
@@ -789,7 +808,8 @@ def test_derivation_uses_the_tournament_registration_rank_not_the_roster_snapsho
             bound = await bound_participants(session, doc=doc, binding=binding, game=game, members=members)
         assert bound["p11"].rank == 1700, "the current registration rank, as P4 fed the baselines"
         assert bound["p12"].rank == 800, "no tournament-player row: the roster snapshot (P4's substitute input)"
-        assert bound["p21"].rank == 800
+        assert bound["p21"].rank == 1500, "a registered substitute keeps its registration rank too"
+        assert bound["p22"].rank == 800
 
     run(ingest_database, scenario)
 

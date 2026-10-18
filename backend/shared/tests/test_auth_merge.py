@@ -883,6 +883,47 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             sa.select(models.WorkspaceMember.removed_at).where(models.WorkspaceMember.id == target_member.id)
         )
 
+    async def test_an_observation_only_source_anchor_never_revives_a_removed_target(self):
+        removed = datetime.now(UTC)
+        self.session.add_all(
+            [
+                models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id, observed_only=True),
+                models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id, removed_at=removed),
+            ]
+        )
+        await self.session.flush()
+        await self.apply(await self.preview())
+        row = (
+            await self.session.execute(
+                sa.select(models.WorkspaceMember.removed_at, models.WorkspaceMember.observed_only).where(
+                    models.WorkspaceMember.workspace_id == self.workspace.id,
+                    models.WorkspaceMember.player_id == self.target.id,
+                )
+            )
+        ).one()
+        self.assertIsNotNone(row.removed_at, "a never-admitted observation anchor hands over no access")
+        self.assertFalse(row.observed_only)
+
+    async def test_an_admitted_source_member_admits_an_observation_only_target_anchor(self):
+        self.session.add_all(
+            [
+                models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id),
+                models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id, observed_only=True),
+            ]
+        )
+        await self.session.flush()
+        await self.apply(await self.preview())
+        row = (
+            await self.session.execute(
+                sa.select(models.WorkspaceMember.removed_at, models.WorkspaceMember.observed_only).where(
+                    models.WorkspaceMember.workspace_id == self.workspace.id,
+                    models.WorkspaceMember.player_id == self.target.id,
+                )
+            )
+        ).one()
+        self.assertIsNone(row.removed_at)
+        self.assertFalse(row.observed_only, "the source's real membership must survive the merge")
+
     async def test_merge_revives_a_removed_target_anchor_when_the_source_was_an_active_member(self):
         self.assertIsNone(await self._merged_target_removed_at(source_removed=False))
 

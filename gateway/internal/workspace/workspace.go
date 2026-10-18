@@ -21,13 +21,15 @@ const (
 	// workspace_member.auth_user_id. The gateway only ever holds an auth user id
 	// (from the JWT), so it must bridge through players."user".auth_user_id —
 	// mirroring WorkspaceMemberRepository.get_member in
-	// backend/shared/repository/workspace.py. "user" is a reserved word, hence
+	// backend/shared/repository/workspace.py. An observed_only anchor (made by a stats
+	// observation, never admitted) is not a membership. "user" is a reserved word, hence
 	// the quoting.
 	isMemberSQL = `SELECT EXISTS(
 		SELECT 1
 		FROM workspace_member wm
 		JOIN players."user" u ON u.id = wm.player_id
 		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2 AND wm.removed_at IS NULL
+		  AND wm.observed_only IS FALSE
 	)`
 	// Organizer staff of a workspace, as opposed to anyone on its roster. Mirror
 	// of AuthUser.has_admin_panel_access(workspace_id) on the REST side: a role
