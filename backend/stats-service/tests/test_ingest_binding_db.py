@@ -210,6 +210,29 @@ def test_same_role_code_in_another_discipline_resolves_to_that_disciplines_role(
     run(ingest_database, scenario)
 
 
+def test_a_discipline_without_a_raw_decoder_never_fetches_envelopes_for_the_workshop_repair(
+    ingest_database, monkeypatch
+):
+    async def scenario(env):
+        from src.services.match_logs.objectiveless import load_producers
+
+        case = await new_case(env, "lolprod", discipline="lol")
+        job_id = await submit(env, case)
+        assert await process_job(env, job_id) == Status.DONE
+        fetched = []
+
+        async def spy(s3, ref):
+            fetched.append(ref)
+            raise AssertionError("an envelope was fetched")
+
+        monkeypatch.setattr(jobs, "load_document", spy)
+        async with db(env) as session:
+            assert await load_producers(session, env.s3, case.encounter_id) == {}
+        assert fetched == []
+
+    run(ingest_database, scenario)
+
+
 # -- identities ------------------------------------------------------------------------------------------------
 
 
@@ -609,6 +632,49 @@ def test_admin_bind_refuses_unauthorized_busy_done_and_stale_revisions_and_keeps
         with pytest.raises(IngestRejected) as done:
             await bind(expected_revision=2)
         assert done.value.code == "reparse_required"
+
+    run(ingest_database, scenario)
+
+
+def test_admin_bind_keeps_the_provenance_refusals_of_the_queue_and_reparse_paths(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "prov")
+        occupied = await submit(env, case, external_id="prov-occupied")
+        assert await process_job(env, occupied) == Status.DONE
+        unverified = await submit(env, case, _unknown_doc(case, "prov-unverified"))
+        assert await process_job(env, unverified) == Status.AWAITING_LINK
+        async with db(env) as session:
+            await session.execute(
+                sa.update(models.IngestJob)
+                .where(models.IngestJob.id == unverified)
+                .values(status=Status.FAILED, raw_status=models.RawSourceStatus.UNVERIFIED)
+            )
+            await session.execute(  # a failed job that already owns an observation
+                sa.update(models.IngestJob).where(models.IngestJob.id == occupied).values(status=Status.FAILED)
+            )
+            await session.commit()
+        before = await snapshot(env, case)
+
+        async def bind(job_id):
+            async with db(env) as session:
+                return await process.bind_ingest_job(
+                    session,
+                    job_id=job_id,
+                    request=BindIngestRequest(
+                        encounter_game_id=case.game_id, teams=team_map(case), expected_revision=1
+                    ),
+                    user=admin(case),
+                    s3=env.s3,
+                )
+
+        with pytest.raises(IngestRejected) as refused:
+            await bind(unverified)
+        assert (refused.value.status_code, refused.value.code) == (409, "stats_raw_unavailable")
+        with pytest.raises(IngestRejected) as owned:
+            await bind(occupied)
+        assert (owned.value.status_code, owned.value.code) == (409, "already_bound")
+        assert await snapshot(env, case) == before, "a refused bind replaces nothing"
+        assert (await job_row(env, unverified)).status == Status.FAILED
 
     run(ingest_database, scenario)
 

@@ -561,6 +561,12 @@ async def bind_ingest_job(
     job = await _load_job(session, job_id, user)
     if job.status != Status.AWAITING_LINK and job.status != Status.FAILED:
         _check_admin(_Admin("bind", None, {}), job, None)
+    try:
+        linked = await reparse_observation(session, job)
+    except BaseAPIException as exc:
+        raise IngestRejected(409, _api_code(exc)[0], _api_code(exc)[1]) from exc
+    if linked is not None:
+        raise IngestRejected(409, "already_bound", "The job already owns an observation: reparse it instead")
     games = await load_game_seats(
         session, workspace_id=job.workspace_id, discipline=job.discipline, game_ids=[request.encounter_game_id]
     )

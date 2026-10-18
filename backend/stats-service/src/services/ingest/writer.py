@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import enums
+from shared.disciplines import DISCIPLINES
 from shared.disciplines.ingest import BoundMatch
 from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE, MATCH_INGESTED_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
@@ -297,7 +298,8 @@ async def write_observations(
         entity_id=match.id,
     )
 
-    await resolve_encounter_maps(session, encounter.id, producers=producers)
+    if DISCIPLINES[binding.discipline].derive_match is not None:  # Workshop-log repair: raw-log disciplines only
+        await resolve_encounter_maps(session, encounter.id, producers=producers)
     if encounter.tournament_id is not None:
         await _enqueue_match_log_tournament_events(session, encounter)
         await enqueue_outbox_event(

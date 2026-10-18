@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from shared.clients.s3 import S3Client
+from shared.disciplines import DISCIPLINES
 from shared.domain.objectiveless_maps import (
     OBJECTIVELESS_GAMEMODES,
     AcceptedGame,
@@ -29,19 +30,22 @@ async def load_producers(session: AsyncSession, s3: S3Client, encounter_id: int)
     """Job id -> ``canonical|decoded`` for every job behind the encounter's observations.
 
     Read before any final lock (it fetches envelopes from S3). A job without an envelope is undecoded raw input,
-    which is what the Workshop path always was, so it reads as ``decoded``.
+    which is what the Workshop path always was, so it reads as ``decoded``. Only a discipline that derives matches
+    from raw logs has anything to rewrite, so the others' envelopes are never fetched.
     """
     from src.services.ingest.jobs import load_document
 
     rows = (
         await session.execute(
-            sa.select(models.IngestJob.id, models.IngestJob.document_ref)
+            sa.select(models.IngestJob.id, models.IngestJob.document_ref, models.IngestJob.discipline)
             .join(models.StatsMatch, models.StatsMatch.ingest_job_id == models.IngestJob.id)
             .where(models.StatsMatch.encounter_id == encounter_id)
         )
     ).all()
     producers: dict[int, str] = {}
-    for job_id, document_ref in rows:
+    for job_id, document_ref, discipline in rows:
+        if DISCIPLINES[discipline].derive_match is None:
+            continue
         if document_ref is None:
             producers[job_id] = "decoded"
             continue
