@@ -687,6 +687,9 @@ describe("TournamentLogsTab", () => {
       items: [
         record(18, {
           status: "failed",
+          // A hint (encounter set, no game) is not an observation: it must not block an explicit bind.
+          attached_encounter_id: 6662,
+          attached_encounter_game_id: null,
           error: { code: "binding_mismatch", message: "mismatch", issues: [] },
           error_message: "mismatch",
           teams: [
@@ -701,8 +704,9 @@ describe("TournamentLogsTab", () => {
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_18.txt"]'));
     await click(menuItem("Bind to game…"));
-    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
-    await click(commandItem("Home vs Away"));
+    // The ordinary retry stays refused for a hint-only binding; the explicit bind is not.
+    expect(scope.textContent).toContain("Game binding is unconfirmed");
+    // The hinted encounter is preselected, so only the game is picked.
     await click(document.querySelector('button[aria-label="Pick a game"]'));
     await click(commandItem("Game 1 · Ilios · #801"));
     await click(document.querySelector('button[aria-label="Game team for log team alpha"]'));
@@ -716,6 +720,25 @@ describe("TournamentLogsTab", () => {
       expected_revision: 0
     });
     expect(retryLogRecord).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a historical reference", { source: "historical_reference" }],
+    ["an unavailable raw source", { raw_status: "missing", raw_available: false }]
+  ] as const)("offers no explicit bind for a failed job with %s even when it has document teams", async (_name, overrides) => {
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(19, {
+          status: "failed",
+          teams: [{ key: "alpha", source_position: 1, participants: [] }],
+          ...overrides
+        })
+      ],
+      total: 1
+    });
+    const scope = await mount(78, [PLAYOFF]);
+    expect(scope.querySelector('button[aria-label="Actions for round_19.txt"]')).toBeNull();
+    expect(bindLogRecord).not.toHaveBeenCalled();
   });
 
   it.each([

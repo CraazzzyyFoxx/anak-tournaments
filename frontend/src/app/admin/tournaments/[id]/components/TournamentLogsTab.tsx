@@ -99,6 +99,19 @@ function getRetryRefusal(record: LogProcessingRecord): "retryRawUnavailable" | "
   return null;
 }
 
+/**
+ * Explicit bind: an awaiting or failed job whose stored document teams are known, with a verified raw source and
+ * not a historical reference. Independent of the ordinary-retry refusals (`retryUnbound` reflects hints only).
+ */
+function canBindExplicitly(record: LogProcessingRecord) {
+  return (
+    (record.status === "awaiting_link" || record.status === "failed") &&
+    record.teams.length > 0 &&
+    record.raw_available &&
+    record.source !== "historical_reference"
+  );
+}
+
 /** Done rows reparse (current evidence only); unfinished ones retry; nothing is offered while a source is refused. */
 function isRetryable(record: LogProcessingRecord) {
   return getRetryKind(record) != null && getRetryRefusal(record) == null;
@@ -474,13 +487,22 @@ export function TournamentLogsTab({
             if (isRetryable(record)) retryMutation.mutate([record]);
           }
         },
-        // An awaiting or failed job that kept its document teams is bound with an explicit team map; any other
+        // An awaiting or failed job that kept its document teams is bound with an explicit team map; that is not
+        // gated by the ordinary-retry refusal (a hint without a game is not an observation). Any other
         // unfinished one is only re-filed through a hint. A processed log already filed its match.
         // The workspace-wide console holds no encounter list: its dialog picks a tournament first.
         {
-          label: record.teams.length > 0 && record.status !== "pending" ? tx("bindToGame") : t("attachTo"),
+          label: tx("bindToGame"),
           icon: Link2,
-          hidden: record.status === "done" || record.status === "processing" || (tournamentId != null && encounters.length === 0) || getRetryRefusal(record) != null,
+          hidden: !canBindExplicitly(record) || (tournamentId != null && encounters.length === 0),
+          onSelect: () => {
+            if (canBindExplicitly(record)) setAttachTarget(record);
+          }
+        },
+        {
+          label: t("attachTo"),
+          icon: Link2,
+          hidden: record.status === "done" || record.status === "processing" || canBindExplicitly(record) || (tournamentId != null && encounters.length === 0) || getRetryRefusal(record) != null,
           onSelect: () => {
             if (getRetryRefusal(record) == null) setAttachTarget(record);
           }
