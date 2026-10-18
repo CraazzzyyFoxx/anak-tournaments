@@ -8981,7 +8981,7 @@ export interface paths {
         };
         /**
          * List a discipline's characters for a workspace
-         * @description Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a discipline without characters.
+         * @description Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a missing workspace, 422 for a discipline the workspace does not have enabled.
          *
          *     RPC subject: `rpc.app.catalog.workspace_characters`
          */

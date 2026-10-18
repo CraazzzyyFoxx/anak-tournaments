@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sys
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
@@ -372,8 +373,12 @@ def test_workspace_organizers_read_characters_but_cannot_mutate_the_catalog(monk
         seen.append((discipline, kind))
         return {"results": [], "total": 0, "page": 1, "per_page": 50}
 
+    async def _workspace(_self: object, _session: object, _workspace_id: int) -> object:
+        return SimpleNamespace(disciplines_enabled=["lol"])
+
     monkeypatch.setattr(metadata_admin_rpc, "_SF", _NoSession)
     monkeypatch.setattr(metadata_admin_rpc.catalog_service, "list", _list)
+    monkeypatch.setattr(metadata_admin_rpc.WorkspaceRepository, "get", _workspace)
     harness = RpcHarness().register(metadata_admin_rpc)
     read = {"workspace_id": 7, "discipline": "lol"}
 

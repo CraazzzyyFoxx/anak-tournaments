@@ -13,8 +13,10 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dump
+from shared.repository import WorkspaceRepository
 from shared.rpc.query import build_query_model
 from shared.services.audit import record_admin_audit
+from shared.services.ontology import assert_discipline_enabled
 from src import schemas
 from src.core import db
 from src.services.admin.catalog import catalog as catalog_service
@@ -68,6 +70,12 @@ def register(broker: Any, logger: Any) -> None:
                     detail=f"Permission denied for workspace {workspace_id}: achievement.update required",
                 )
             discipline, _ = _path(data)
+            # Only after the permission check (a caller sees nothing of a workspace it may not edit): the workspace
+            # must exist and run the game, so a read can never expose a catalogue the workspace does not use.
+            workspace = await WorkspaceRepository().get(session, workspace_id)
+            if workspace is None:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            assert_discipline_enabled(workspace, discipline)
             qp = build_query_model(schemas.CatalogEntityListQueryParams, data.get("query"))
             params = schemas.CatalogEntityListParams.from_query_params(qp)
             return paginated_dump(await catalog_service.list(session, discipline, "character", params))
