@@ -41494,6 +41494,18 @@
           ],
           "title": "Created From Version Id"
         },
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "grid_id": {
           "title": "Grid Id",
           "type": "integer"

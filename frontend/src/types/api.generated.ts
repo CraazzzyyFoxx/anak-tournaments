@@ -17076,6 +17076,11 @@ export interface components {
         "tournament.DivisionGridVersionRead": {
             /** Created From Version Id */
             created_from_version_id: number | null;
+            /**
+             * Discipline
+             * @default null
+             */
+            discipline: string | null;
             /** Grid Id */
             grid_id: number;
             /** Id */
