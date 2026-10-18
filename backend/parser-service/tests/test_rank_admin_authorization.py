@@ -298,3 +298,19 @@ class RpcDispatchTests(IsolatedAsyncioTestCase):
             )
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual(envelope["data"]["user_id"], 5)
+
+    async def test_a_public_read_ignores_a_malformed_identity(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from shared.disciplines.overwatch.collector import queries
+
+        with patch.object(queries, "get_current_ranks", AsyncMock(return_value=[])):
+            envelope = await self.broker.handlers["rpc.parser.rank.user_current"](
+                {"id": 5, "identity": {"roles": []}, "query": {"platform": ["pc"]}}, msg=None
+            )
+        self.assertTrue(envelope["ok"], envelope)
+
+    async def test_an_admin_subject_rejects_a_malformed_identity(self) -> None:
+        envelope = await self.broker.handlers["rpc.parser.rank.stats"]({"identity": {"roles": []}}, msg=None)
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual(envelope["error"]["code"], "unauthorized")

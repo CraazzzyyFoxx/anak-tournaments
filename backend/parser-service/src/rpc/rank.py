@@ -34,12 +34,16 @@ _SUBJECTS = {
     "rpc.parser.rank.reenable_disabled": "rank.reenable_disabled",
 }
 
+# Public (AuthNone) reads never look at the caller; everything else needs a valid identity.
+_PUBLIC = frozenset({"rank.user_history", "rank.battle_tag_history", "rank.user_current"})
+
 
 def register(broker: Any, logger: Any) -> None:
     def bind(subject: str, name: str, handler: CollectionHandler) -> None:
         async def _handle(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
-                return await handler(session, c.optional_actor(data), data)
+                user = None if name in _PUBLIC else c.actor(data)
+                return await handler(session, user, data)
 
             return await c.envelope(logger, name, op, session_factory=_SF)
 
