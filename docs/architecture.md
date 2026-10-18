@@ -272,6 +272,14 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   Complete cutover receipts and narrow transaction-bound audit chains distinguish unchanged,
   review-required and unexplained data. Membership creation is absent→present only; identity
   changes require the original merge mapping. See the [cutover/operator notes](../backend/README.md#p4-statistics-cutover-stats01).
+- **Canonical ingest (P5).** One strict `owt.match/1` document (`shared/schemas/match_doc.py`) is the only input of
+  `stats-service`: producers post it with a workspace API key holding `stats.ingest` (`POST /api/v1/stats/matches`,
+  raw bytes relayed by the gateway), the Overwatch Workshop decoder is a module that emits the same document, and
+  `stats-worker` binds it to a game, replaces observations atomically and publishes `match.ingested`. The
+  tournament process alone decides whether that evidence becomes an official result (`logs_official`, owner
+  policy, receipts on the encounter journal). `stats-svc` (RPC) and `stats-worker` (one ingest queue per selected
+  discipline) are separate processes of one image. See the
+  [P5 release guide](./releases/2026-10-15-multi-game-p5-ingest.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only

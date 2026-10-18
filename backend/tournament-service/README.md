@@ -94,6 +94,7 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `division_grid_import_jobs` | `tournament.compute` | Marketplace grid import job |
 | `tournament_changed_tournament_service` | `tournament.changed` | Cache invalidation + realtime fan-out (5 min message TTL) |
 | `tournament_standings_invalidated` | `tournament.events` | Enqueues a standings recomputation |
+| `match.ingested.tournament` | `match.ingested` | Ingest evidence from `stats-service`: the match layer decides (`logs_official`, owner policy) and journals one `match_ingested` receipt (10 min TTL, own DLQ) |
 
 The three compute queues run on a dedicated AMQP channel with `prefetch_count=4`, so a burst of
 recomputes cannot occupy the RPC channel's QoS slots. Each has a dead-letter queue, declared on

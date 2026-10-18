@@ -118,6 +118,14 @@ check, with no key-specific branch in any worker. A key can never outrank its ow
 reaches a second workspace, and a key with no scopes can do nothing. See
 [`../backend/ARCHITECTURE.md`](../backend/ARCHITECTURE.md) § "Two credentials, one branch".
 
+### Canonical ingest relay
+
+`POST /api/v1/stats/matches` is served by `internal/stats/ingest.go`, not the generic dispatcher: the dispatcher decodes
+the body into a map and re-marshals it, which would change the bytes the backend hashes for idempotency. The relay
+resolves the key itself, requires `application/json`, caps the body at 25 MiB (`413 match_document_too_large`) and
+forwards the original bytes base64-encoded next to the identity. `GET /api/v1/stats/ingest-jobs/{id}` is an ordinary
+route.
+
 ### Session-only surfaces
 
 `/api/v1/auth` operations that act on the caller's own account or session — logout, session list

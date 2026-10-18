@@ -73,6 +73,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`multi-game-p1-catalog-release.md`](./multi-game-p1-catalog-release.md) | Shipping the multi-game P1 catalog: wire breaks, preflight/reconcile, cache and queue drain, hero-stats view population, dev/staging resets |
 | [`multi-game-p2-roles-release.md`](./multi-game-p2-roles-release.md) | Shipping the P2 role ontology and team formats: RoleRef wire breaks, preflight classes 2–8, reconciliation, dev/staging resets |
 | [`multi-game-p3-ranks-release.md`](./multi-game-p3-ranks-release.md) | Shipping P3 ranks and identity: native modules, role-ID storage, independent grid defaults, Riot/provider wire contracts, retained migration evidence and phase verification limits |
+| [`releases/2026-10-15-multi-game-p5-ingest.md`](./releases/2026-10-15-multi-game-p5-ingest.md) | Shipping P5 canonical ingest: the `owt.match/1` protocol and API keys, idempotency and status/error contracts, observed vs official results, `stats-svc`/`stats-worker` and `STATS_DISCIPLINES`, the cutover matrix, P9 queue drain and rollback, P4 data blockers, the local live-smoke recipe |
 
 ## Designs, plans and reviews
 
