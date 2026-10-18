@@ -52,6 +52,8 @@ class DecodeContext:
     ambiguous_maps: frozenset[tuple[str, str]] = frozenset()
     #: Character code -> catalog ``attrs``, in catalog id order (the order the formulas have always summed in).
     attrs: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    #: Mode names/aliases whose log writes a 0:0 end whoever won (Push/Clash): the log carries no result for them.
+    objectiveless_modes: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

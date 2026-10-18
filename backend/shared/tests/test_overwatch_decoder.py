@@ -223,6 +223,17 @@ def test_placements_follow_the_observed_scores(home, away, placements):
     assert ingest.placements(home, away) == placements
 
 
+def test_an_objectiveless_mode_claims_no_result_from_its_0_0_end():
+    ctx = dataclasses.replace(
+        CTX, maps={**CTX.maps, ("Push", "Colosseo"): "colosseo"}, objectiveless_modes=frozenset({"Push"})
+    )
+    doc = ingest.decode(log(start=("Colosseo", "Push", "Home", "Away"), end=("x", 0, 0)), ctx)
+    assert [team.placement for team in doc.teams] == [None, None]
+    assert facts(doc, stat_code="score") == {("home", None): 0.0, ("away", None): 0.0}
+    # Equal scores in any other mode are still a shared first place.
+    assert [t.placement for t in ingest.decode(log(end=("x", 0, 0)), CTX).teams] == [1, 1]
+
+
 def test_played_at_is_the_first_timestamp_or_the_producers_receipt_time():
     assert ingest.decode(log(), CTX).played_at == datetime(2026, 10, 18, 12, tzinfo=UTC)
     naive = log().decode().replace(STAMP, "2026-10-18T12:00:00").encode()

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.disciplines.ingest import DecodeContext
+from shared.domain.objectiveless_maps import OBJECTIVELESS_GAMEMODES
 from shared.schemas.match_doc import MatchHint, MatchSource
 
 __all__ = ("load_decode_context",)
@@ -37,6 +38,9 @@ async def load_decode_context(
         )
     ).all()
     modes = {row.id: (row.name, *row.aliases) for row in rows if row.kind == "mode"}
+    objectiveless = frozenset(
+        name for row in rows if row.kind == "mode" and row.slug in OBJECTIVELESS_GAMEMODES for name in modes[row.id]
+    )
     characters: dict[str, str] = {}
     candidates: dict[tuple[str, str], set[str]] = {}
     attrs: dict[str, dict] = {}
@@ -58,5 +62,6 @@ async def load_decode_context(
         characters=characters,
         maps={pair: next(iter(slugs)) for pair, slugs in candidates.items() if len(slugs) == 1},
         ambiguous_maps=frozenset(pair for pair, slugs in candidates.items() if len(slugs) > 1),
+        objectiveless_modes=objectiveless,
         attrs=attrs,
     )

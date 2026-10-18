@@ -485,7 +485,8 @@ def decode(raw: bytes, ctx: DecodeContext) -> MatchDoc:
         )
 
     segments = sorted({row["segment"] for row in (*facts, *events) if row["segment"] > 0})
-    home_place, away_place = placements(home_score, away_score)
+    # Workshop writes 0:0 for Push/Clash whoever won: an artifact, not a tie, so no result is claimed.
+    home_place, away_place = (None, None) if gamemode in ctx.objectiveless_modes else placements(home_score, away_score)
     document = {
         "protocol": "owt.match/1",
         "discipline": ctx.discipline,

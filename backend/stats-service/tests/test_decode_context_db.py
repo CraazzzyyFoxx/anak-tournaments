@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -50,7 +51,13 @@ def test_names_aliases_modes_and_activity_resolve_with_the_p4_precedence(stats_p
                     discipline="overwatch", kind="mode", slug="ctx-control", name="CtxControl", aliases=["КонтрольCtx"]
                 )
                 escort = entity(discipline="overwatch", kind="mode", slug="ctx-escort", name="CtxEscort")
-                session.add_all([rival, ana, retired, control, escort])
+                push = entity(discipline="overwatch", kind="mode", slug="push", name="CtxPush", aliases=["ПушCtx"])
+                existing_push = await session.scalar(
+                    sa.select(entity).where(
+                        entity.discipline == "overwatch", entity.kind == "mode", entity.slug == "push"
+                    )
+                )
+                session.add_all([rival, ana, retired, control, escort, *([push] if existing_push is None else [])])
                 await session.flush()
                 session.add_all(
                     [
@@ -104,6 +111,10 @@ def test_names_aliases_modes_and_activity_resolve_with_the_p4_precedence(stats_p
                 assert ("CtxEscort", "Близнец") in ctx.ambiguous_maps and ("CtxEscort", "Близнец") not in ctx.maps
                 assert ctx.maps[("CtxEscort", "Twin Two")] == "ctx-b"
                 assert ("CtxControl", "Близнец") not in ctx.ambiguous_maps
+                # Push/Clash modes (by name or alias) are the ones whose log carries no result.
+                push = existing_push or push
+                assert {push.name, *push.aliases} <= ctx.objectiveless_modes
+                assert "CtxControl" not in ctx.objectiveless_modes and "CtxEscort" not in ctx.objectiveless_modes
                 await session.rollback()
         finally:
             await engine.dispose()
