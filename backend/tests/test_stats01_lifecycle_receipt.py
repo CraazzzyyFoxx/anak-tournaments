@@ -749,10 +749,18 @@ def test_job_creation_requires_explicit_absent_owner_and_identity_is_not_mutable
     assert _check(native, receipt)["exit_code"] == 2
 
 
+def _at_current_schema(native):
+    """Cases that run the live ORM (member creation) need the columns later revisions added (ingest01's
+    ``workspace_member.observed_only``); the fixture itself stays frozen at stats01 for every other case."""
+    result = upgrade_database(native[2], "head")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_member_creation_reuse_races_and_rollback_keep_complete_receipt(native, tmp_path):
     from shared import models
     from shared.repository.workspace import WorkspaceMemberRepository, get_or_create_workspace_member
 
+    _at_current_schema(native)
     receipt = _capture(native, tmp_path / "receipt")
     ids, url = native[1], native[2]
 
@@ -1520,6 +1528,7 @@ def test_mutating_merge_cannot_use_zero_impact_exemption(native, tmp_path, owner
 
 @pytest.mark.parametrize("tamper", ["missing_delete", "merge_link"])
 def test_zero_member_uploader_merge_keeps_separate_api_key_delete_evidence(native, tmp_path, tamper):
+    _at_current_schema(native)
     engine, ids, _ = native
     with engine.begin() as conn:
         conn.execute(
