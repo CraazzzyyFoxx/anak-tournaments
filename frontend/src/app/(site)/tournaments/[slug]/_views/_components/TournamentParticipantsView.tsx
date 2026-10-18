@@ -766,6 +766,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
         />
       ) : filtered.length > 0 ? (
         <VirtualParticipantsList
+          discipline={tournament.discipline}
           allColumns={allColumns}
           expandedIds={expandedIds}
           onToggleExpanded={toggleExpanded}

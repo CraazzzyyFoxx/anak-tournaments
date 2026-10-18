@@ -61,8 +61,9 @@ export default function DivisionDraftEditorPage() {
     enabled: canRead
   });
   const grid = gridsQuery.data?.find((candidate) => candidate.id === version?.grid_id);
-  // The loaded grid's own game — never the browsing choice: this page is an owner page.
+  // The version's own game, served by the version read — never the browsing choice or the current default.
   const discipline =
+    version?.discipline ??
     grid?.discipline ??
     Object.entries(workspace?.effective_division_grid_versions ?? {}).find(
       ([, effective]) => effective.grid_id === version?.grid_id

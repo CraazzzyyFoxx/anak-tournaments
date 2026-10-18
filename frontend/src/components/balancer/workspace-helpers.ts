@@ -619,7 +619,9 @@ export async function fetchPlayerRankHistoryPreview(
   targetGridVersion: DivisionGridVersion | null = null,
   grid: DivisionGrid = OW_REFERENCE_GRID,
   workspaceId?: number | null,
-  currentWorkspaceId?: number | null
+  currentWorkspaceId?: number | null,
+  /** The game the preview is for: tournaments of any other game are never read as this game's ranks. */
+  discipline?: string | null
 ): Promise<PlayerRankHistoryPreview | null> {
   try {
     const lookupName = battleTag.replace("#", "-");
@@ -664,19 +666,22 @@ export async function fetchPlayerRankHistoryPreview(
     if (missingRoles.length > 0) {
       const tournaments = await userService.getUserTournaments(user.id, workspaceId);
       if (tournaments?.length) {
-        const sorted = [...tournaments].sort((a, b) => b.id - a.id);
+        const sorted = [...tournaments]
+          .filter((tournament) => !discipline || tournament.discipline === discipline)
+          .sort((a, b) => b.id - a.id);
 
         const sourceVersionsById = new Map<number, DivisionGridVersion>();
         for (const tournament of sorted) {
           const v = tournament.division_grid_version;
-          if (v) sourceVersionsById.set(v.id, v);
+          if (v) sourceVersionsById.set(v.id, { ...v, discipline: tournament.discipline });
         }
 
         let normalizer: DivisionGridNormalizer | null = null;
         if (targetGridVersion) {
-          normalizer = await DivisionGridNormalizer.build(targetGridVersion, [
-            ...sourceVersionsById.values()
-          ]);
+          normalizer = await DivisionGridNormalizer.build(
+            { ...targetGridVersion, discipline: discipline ?? targetGridVersion.discipline },
+            [...sourceVersionsById.values()]
+          );
         }
 
         for (const tournament of sorted) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -113,18 +113,29 @@ export default function DivisionsSettingsPage() {
   });
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
+  // A `?grid=` pin is honoured only while it belongs to the browsed game: changing the game selector
+  // must never leave a foreign grid driving versions, ladder and activation under another game's name.
   const gridParam = Number(searchParams?.get("grid"));
   const scopedGrids = grids.filter((grid) => grid.discipline === browsedDiscipline);
+  const pinnedGrid = scopedGrids.find((grid) => grid.id === gridParam) ?? null;
+  const stalePin =
+    searchParams?.has("grid") === true &&
+    pinnedGrid === null &&
+    browsedDiscipline !== null &&
+    gridsQuery.isSuccess;
+  // The pin of another game is dropped from the URL (replace, no history entry), not just ignored.
+  useEffect(() => {
+    if (stalePin) setParams({ grid: null });
+  }, [stalePin, setParams]);
   const selectedGrid =
-    grids.find((grid) => grid.id === gridParam) ??
+    pinnedGrid ??
     scopedGrids.find((grid) =>
       grid.versions.some((version) => version.id === preferredActiveVersionId)
     ) ??
     scopedGrids.find((grid) => grid.archived_at === null) ??
     scopedGrids[0] ??
     null;
-  // An explicitly opened grid uses its own game, not the browsing choice.
-  const selectedDiscipline = selectedGrid?.discipline ?? browsedDiscipline;
+  const selectedDiscipline = browsedDiscipline;
   const activeVersionId = activeGridVersionId(workspace, selectedDiscipline);
 
   const metadataQuery = useDisciplineMetadata(workspaceId ?? "all", selectedDiscipline);
@@ -210,15 +221,18 @@ export default function DivisionsSettingsPage() {
     [activeVersion, ladder]
   );
 
-  // Only the affected game's keys, plus the workspace's per-discipline default map.
-  const refresh = async (discipline = selectedDiscipline) => {
+  // Scope captured at submit: a game or workspace switch while a request is in flight must not
+  // redirect its invalidation (§2.6).
+  const submitScope = { workspaceId: workspaceId ?? 0, discipline: selectedDiscipline ?? "" };
+  type SubmitScope = typeof submitScope;
+  const refresh = async (scope: SubmitScope) => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(scope.workspaceId) }),
       queryClient.invalidateQueries({
-        queryKey: divisionGridQueryKeys.versionsByDiscipline(workspaceId, discipline)
+        queryKey: divisionGridQueryKeys.versionsByDiscipline(scope.workspaceId, scope.discipline)
       }),
       queryClient.invalidateQueries({
-        queryKey: divisionGridQueryKeys.readinessByDiscipline(workspaceId, discipline)
+        queryKey: divisionGridQueryKeys.readinessByDiscipline(scope.workspaceId, scope.discipline)
       }),
       fetchWorkspaces()
     ]);
@@ -227,9 +241,10 @@ export default function DivisionsSettingsPage() {
   const editorHref = (versionId: number) => `/admin/settings/divisions/v/${versionId}`;
 
   const cloneMutation = useMutation({
-    mutationFn: () => workspaceService.cloneDivisionGridVersion(latestVersion!.id),
-    onSuccess: async (version) => {
-      await refresh();
+    mutationFn: (input: { scope: SubmitScope; versionId: number }) =>
+      workspaceService.cloneDivisionGridVersion(input.versionId),
+    onSuccess: async (version, input) => {
+      await refresh(input.scope);
       notify.success(t("toast.draftCreated", { version: version.version }));
       router.push(editorHref(version.id));
     },
@@ -237,17 +252,17 @@ export default function DivisionsSettingsPage() {
   });
 
   const standardMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedGrid || !standardLadderTiers) {
+    mutationFn: (input: { scope: SubmitScope; gridId: number | undefined; tiers: typeof standardLadderTiers }) => {
+      if (input.gridId === undefined || !input.tiers) {
         throw new Error(t("errors.noStandardLadder"));
       }
-      return workspaceService.createDivisionGridVersion(workspaceId!, selectedGrid.id, {
+      return workspaceService.createDivisionGridVersion(input.scope.workspaceId, input.gridId, {
         label: t("standardLadder"),
-        tiers: standardLadderTiers
+        tiers: input.tiers
       });
     },
-    onSuccess: async (version) => {
-      await refresh();
+    onSuccess: async (version, input) => {
+      await refresh(input.scope);
       notify.success(t("toast.standardLoaded", { version: version.version }));
       router.push(editorHref(version.id));
     },
@@ -255,26 +270,26 @@ export default function DivisionsSettingsPage() {
   });
 
   const activateMutation = useMutation({
-    mutationFn: async (version: DivisionGridVersion) => {
+    mutationFn: async (input: { scope: SubmitScope; version: DivisionGridVersion; ownVersionIds: number[] }) => {
       // Defaults are per game: a version that is not one of the open grid's own is never activated here.
-      if (!versions.some((entry) => entry.id === version.id)) {
+      if (!input.ownVersionIds.includes(input.version.id)) {
         throw new Error(t("errors.activateWrongGame"));
       }
-      return workspaceService.activateDivisionGridVersion(workspaceId!, version.id);
+      return workspaceService.activateDivisionGridVersion(input.scope.workspaceId, input.version.id);
     },
-    onSuccess: async (version) => {
+    onSuccess: async (version, input) => {
       setActivating(null);
-      await refresh();
+      await refresh(input.scope);
       notify.success(t("toast.activated", { version: version.version }));
     },
     onError: reportFailure(t("errors.activate"), t)
   });
 
   const portableImportMutation = useMutation({
-    mutationFn: (document: DivisionGridPortableImportDocument) =>
-      workspaceService.importDivisionGridPortable(workspaceId!, document),
-    onSuccess: async (grid) => {
-      await refresh(grid.discipline);
+    mutationFn: (input: { scope: { workspaceId: number }; document: DivisionGridPortableImportDocument }) =>
+      workspaceService.importDivisionGridPortable(input.scope.workspaceId, input.document),
+    onSuccess: async (grid, input) => {
+      await refresh({ workspaceId: input.scope.workspaceId, discipline: grid.discipline });
       setParams({ grid: String(grid.id) });
       notify.success(t("toast.jsonImported"));
     },
@@ -303,7 +318,7 @@ export default function DivisionsSettingsPage() {
   const importPortable = async (file: File) => {
     try {
       portableImportMutation.mutate(
-        JSON.parse(await file.text()) as DivisionGridPortableImportDocument
+{ scope: { workspaceId: submitScope.workspaceId }, document: JSON.parse(await file.text()) as DivisionGridPortableImportDocument }
       );
     } catch (error) {
       notify.error(t("errors.invalidJson"), {
@@ -468,13 +483,13 @@ export default function DivisionsSettingsPage() {
       {t("activateVersion", { version: readyCandidate.version })}
     </Button>
   ) : canCreate && latestVersion ? (
-    <Button size="sm" onClick={() => cloneMutation.mutate()} disabled={cloneMutation.isPending}>
+    <Button size="sm" onClick={() => cloneMutation.mutate({ scope: submitScope, versionId: latestVersion.id })} disabled={cloneMutation.isPending}>
       {t("newDraft", { version: latestVersion.version })}
     </Button>
   ) : canCreate && selectedGrid && ladder ? (
     <Button
       size="sm"
-      onClick={() => standardMutation.mutate()}
+      onClick={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
       disabled={standardMutation.isPending}
     >
       <Wand2 aria-hidden className="size-3.5" />
@@ -581,7 +596,7 @@ export default function DivisionsSettingsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => cloneMutation.mutate()}
+                    onClick={() => cloneMutation.mutate({ scope: submitScope, versionId: latestVersion.id })}
                     disabled={cloneMutation.isPending}
                   >
                     + {t("newDraft", { version: latestVersion.version })}
@@ -591,7 +606,7 @@ export default function DivisionsSettingsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => standardMutation.mutate()}
+                    onClick={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
                     disabled={standardMutation.isPending || selectedGrid === null}
                   >
                     <Wand2 aria-hidden className="size-3.5" />
@@ -602,7 +617,7 @@ export default function DivisionsSettingsPage() {
             ) : null}
           </div>
 
-          {grids.length > 1 ? (
+          {scopedGrids.length > 1 ? (
             <div className="flex items-center gap-2">
               <label className={EYEBROW_CLASS} htmlFor="division-grid-select">
                 {t("grid")}
@@ -615,7 +630,7 @@ export default function DivisionsSettingsPage() {
                   <SelectValue placeholder={t("chooseGrid")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {grids.map((grid) => (
+                  {scopedGrids.map((grid) => (
                     <SelectItem key={grid.id} value={String(grid.id)}>
                       {grid.name}
                       {grid.archived_at ? " (archived)" : ""}
@@ -743,7 +758,13 @@ export default function DivisionsSettingsPage() {
         }}
         pending={activateMutation.isPending}
         onConfirm={() => {
-          if (activating) activateMutation.mutate(activating);
+          if (activating) {
+            activateMutation.mutate({
+              scope: submitScope,
+              version: activating,
+              ownVersionIds: versions.map((entry) => entry.id)
+            });
+          }
         }}
       />
     </div>

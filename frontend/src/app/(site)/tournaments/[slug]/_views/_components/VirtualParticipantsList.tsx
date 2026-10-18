@@ -128,6 +128,8 @@ interface VirtualParticipantsListProps {
   visibleColumns: ColumnDefinition[];
   expandedIds: ReadonlySet<number>;
   onToggleExpanded: (registrationId: number) => void;
+  /** The tournament's game: rank history is resolved for it. */
+  discipline: string;
 }
 
 const VirtualParticipantsList = memo(function VirtualParticipantsList({
@@ -136,6 +138,7 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
   visibleColumns,
   expandedIds,
   onToggleExpanded,
+  discipline,
 }: VirtualParticipantsListProps) {
   const t = useTranslations();
   const findMode = useFindInPageMode();
@@ -319,9 +322,9 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
                           {t("tournamentDetail.rankHistory")}
                         </div>
                         {registration.user_id != null ? (
-                          <RankHistory userId={registration.user_id} />
+                          <RankHistory userId={registration.user_id} discipline={discipline} />
                         ) : (
-                          <RankHistory battleTag={registration.primary_handle} />
+                          <RankHistory battleTag={registration.primary_handle} discipline={discipline} />
                         )}
                       </div>
                       <div className={styles.participantHiddenFields}>

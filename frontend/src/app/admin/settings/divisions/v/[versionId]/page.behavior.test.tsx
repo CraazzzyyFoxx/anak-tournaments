@@ -349,6 +349,19 @@ describe("Divisions › draft editor", () => {
     expect(getDivisionGridVersion).not.toHaveBeenCalled();
   });
 
+  it("takes the version's game from the version read, not from the current grids or defaults", async () => {
+    // A system grid version: it is neither one of this workspace's grids nor its current effective grid.
+    getDivisionGrids.mockResolvedValue([]);
+    getDivisionGridVersion.mockImplementation(async (id: number) => ({
+      ...version(id, 4, "draft"),
+      discipline: "overwatch"
+    }));
+    const container = await mount();
+
+    expect(container.textContent).not.toContain("could not be loaded");
+    expect(container.textContent).toContain("v4");
+  });
+
   it("opens a draft the caller may not update as read-only", async () => {
     canUpdate = false;
     const container = await mount();

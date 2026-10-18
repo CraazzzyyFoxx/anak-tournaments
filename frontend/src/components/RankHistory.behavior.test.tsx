@@ -10,7 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 const getUserByName = vi.fn();
-let collector: { descriptor: DisciplineDescriptor | null; isLoading: boolean; isError: boolean };
+let collector: {
+  descriptor: DisciplineDescriptor | null;
+  supported: boolean;
+  isLoading: boolean;
+  isError: boolean;
+};
 let requestedDiscipline: string | undefined;
 
 vi.mock("@/hooks/useCurrentWorkspace", () => ({ useCurrentWorkspaceId: () => 1 }));
@@ -63,6 +68,13 @@ const OVERWATCH: DisciplineDescriptor = {
   }
 };
 
+const LOL: DisciplineDescriptor = {
+  ...OVERWATCH,
+  code: "lol",
+  name: "League of Legends",
+  capabilities: { ...OVERWATCH.capabilities, native_rank_collection: false, native_ladder: false }
+};
+
 const containers: HTMLElement[] = [];
 
 async function render(ui: ReactNode) {
@@ -80,7 +92,7 @@ async function render(ui: ReactNode) {
 }
 
 beforeEach(() => {
-  collector = { descriptor: OVERWATCH, isLoading: false, isError: false };
+  collector = { descriptor: OVERWATCH, supported: true, isLoading: false, isError: false };
   requestedDiscipline = undefined;
   getUserByName.mockReset().mockResolvedValue({ id: 42 });
 });
@@ -108,12 +120,21 @@ describe("RankHistory host", () => {
     expect(container.querySelector('[data-testid="widget"]')?.getAttribute("data-user")).toBe("42");
   });
 
-  it("says there is no rank history to show when no single game collects ranks", async () => {
-    collector = { descriptor: null, isLoading: false, isError: false };
+  it("asks the hook for the OWNING game, and shows the unsupported state for a game that collects no ranks", async () => {
+    collector = { descriptor: LOL, supported: false, isLoading: false, isError: false };
+    const container = await render(<RankHistory userId={7} discipline="lol" />);
+
+    expect(requestedDiscipline).toBe("lol");
+    expect(container.querySelector('[data-testid="widget"]')).toBeNull();
+    expect(container.textContent).toContain("Rank history is not available for this game");
+  });
+
+  it("shows the unsupported state when no game resolves at all", async () => {
+    collector = { descriptor: null, supported: false, isLoading: false, isError: false };
     const container = await render(<RankHistory userId={7} />);
 
     expect(container.querySelector('[data-testid="widget"]')).toBeNull();
-    expect(container.textContent).toContain("Rank history needs a game");
+    expect(container.textContent).toContain("Rank history is not available for this game");
   });
 
   it("keeps the no-linked-profile state ahead of any game", async () => {

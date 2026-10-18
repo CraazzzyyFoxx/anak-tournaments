@@ -95,6 +95,7 @@ async function mount(
   await act(async () => {
     createRoot(container).render(
       <PickupPlayerSheet
+        discipline="overwatch"
         row={value}
         mixStats={mixStats}
         lobbyCount={lobbyCount}

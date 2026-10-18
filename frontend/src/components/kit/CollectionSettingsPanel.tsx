@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import {
   useScopedSettingsForm,
   type ScopedSettingsForm
-} from "@/components/admin/settings/useScopedSettingsForm";
+} from "@/components/kit/useScopedSettingsForm";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";

@@ -206,7 +206,8 @@ export function usePlayerEditForm({
         workspaceGridVersion,
         workspaceGrid,
         getHistoryWorkspaceIdParam(workspaceValue),
-        workspaceId
+        workspaceId,
+        discipline
       );
       setHistoryPreview(preview);
     } catch (error) {

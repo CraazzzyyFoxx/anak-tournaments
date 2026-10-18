@@ -457,7 +457,7 @@ describe("Settings › Divisions", () => {
     const container = await mount();
     expect(container.querySelector("#divisions-in-force")?.textContent).not.toContain("LoL");
     await act(async () => {
-      replace("/admin/settings/divisions?grid=8");
+      replace("/admin/settings/divisions?discipline=lol&grid=8");
     });
     await settle();
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe("LoL organizer scale");
@@ -470,7 +470,7 @@ describe("Settings › Divisions", () => {
     await click(confirm);
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe("New LoL scale");
     await act(async () => {
-      replace("/admin/settings/divisions?grid=7");
+      replace("/admin/settings/divisions?discipline=overwatch&grid=7");
     });
     await settle();
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
@@ -539,7 +539,7 @@ describe("Settings › Divisions", () => {
           ? { overwatch: VERSIONS[2], lol }
           : { overwatch: VERSIONS[2] }
       };
-      window.history.replaceState(null, "", "/admin/settings/divisions?grid=8");
+      window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol&grid=8");
       const container = await mount();
       expect(container.querySelector("ol[aria-label]")).toBeNull();
       expect(container.textContent).not.toMatch(/Champion|Bronze|45 ranks|Overwatch rank/);
@@ -669,5 +669,49 @@ describe("Settings › Divisions · browsing game", () => {
       TEST_LADDER_TIERS.map((rank) => rank.rank_min)
     );
     expect(body.tiers.every((entry) => entry.native_rank_min === entry.rank_min)).toBe(true);
+  });
+});
+
+describe("Settings › Divisions · game switch and captured scope", () => {
+  it("drops a grid pin of another game when the game changes: selector and grid move together", async () => {
+    // The pinned grid 7 is Overwatch; the URL browses LoL.
+    window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol&grid=7");
+    const container = await mount();
+
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
+      "Create a division grid for this game"
+    );
+    expect(container.textContent).not.toContain(VERSIONS[2].label);
+    expect(window.location.search).not.toContain("grid=");
+    expect(window.location.search).toContain("discipline=lol");
+    expect(getDivisionGridVersions).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the scope captured at submit, even when the game changes before the request ends", async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    const pending = Promise.withResolvers<DivisionGridVersion>();
+    activateDivisionGridVersion.mockReturnValue(pending.promise);
+    await mount();
+
+    await click(button("Activate v2"));
+    const confirm = Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(
+      (element) => element.textContent?.trim() === "Activate v2"
+    );
+    await click(confirm);
+    expect(activateDivisionGridVersion).toHaveBeenCalledWith(1, 21);
+
+    // The organizer moves on to LoL while the Overwatch activation is in flight.
+    await act(async () => {
+      replace("/admin/settings/divisions?discipline=lol");
+    });
+    invalidate.mockClear();
+    await act(async () => pending.resolve(VERSIONS[1]));
+    await settle();
+
+    const keys = invalidate.mock.calls.map(([filters]) => (filters as { queryKey: unknown[] }).queryKey);
+    expect(keys).toContainEqual(["division-grid-versions", 1, "overwatch"]);
+    expect(keys).toContainEqual(["division-grid-readiness", 1, "overwatch"]);
+    expect(keys).not.toContainEqual(["division-grid-versions", 1, "lol"]);
+    invalidate.mockRestore();
   });
 });

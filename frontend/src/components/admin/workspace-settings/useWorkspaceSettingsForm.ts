@@ -9,7 +9,7 @@ import type { Workspace } from "@/types/workspace.types";
 import {
   useScopedSettingsForm,
   type ScopedSettingsForm
-} from "@/components/admin/settings/useScopedSettingsForm";
+} from "@/components/kit/useScopedSettingsForm";
 import {
   formFromWorkspace,
   sectionPayload,

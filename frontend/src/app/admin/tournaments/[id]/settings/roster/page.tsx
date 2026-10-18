@@ -9,7 +9,7 @@ import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { TeamFormatEditor } from "@/components/roster-shape/TeamFormatEditor";
 import { teamFormatPayload, teamFormatErrors, teamFormatsEqual, type TeamFormatWrite } from "@/lib/roster/team-format";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { useScopedSettingsForm } from "@/components/admin/settings/useScopedSettingsForm";
+import { useScopedSettingsForm } from "@/components/kit/useScopedSettingsForm";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import adminService from "@/services/admin.service";

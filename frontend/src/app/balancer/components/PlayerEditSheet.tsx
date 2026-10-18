@@ -278,9 +278,9 @@ export function PlayerEditModal({
             </Label>
             <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
               {player.user_id != null ? (
-                <RankHistory userId={player.user_id} />
+                <RankHistory userId={player.user_id} discipline={discipline} />
               ) : (
-                <RankHistory battleTag={primaryBattleTag} />
+                <RankHistory battleTag={primaryBattleTag} discipline={discipline} />
               )}
             </div>
           </div>

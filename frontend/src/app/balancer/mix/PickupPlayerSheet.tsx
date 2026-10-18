@@ -50,6 +50,8 @@ type PickupPlayerSheetProps = {
   onOpenChange: (open: boolean) => void;
   onSave: (patch: CustomGamePlayerPatch, rankChange: PickupRankChange | null) => void;
   onRemove: () => void;
+  /** The mix's game: rank history is resolved for it. */
+  discipline: string;
   /** This player's all-time mix record, or `null` where the page does not read one. */
   mixStats?: MixMemberStats | null;
   /** How many lobbies the mix runs. The pin only exists, and is only sent, past 1. */
@@ -126,6 +128,7 @@ export function PickupPlayerSheet({
   onOpenChange,
   onSave,
   onRemove,
+  discipline,
   mixStats = null,
   lobbyCount = 1,
 }: Readonly<PickupPlayerSheetProps>) {
@@ -364,7 +367,7 @@ export function PickupPlayerSheet({
                 Live rank (OverFast)
               </Label>
               <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                <RankHistory battleTag={row.identity?.handle} />
+                <RankHistory battleTag={row.identity?.handle} discipline={discipline} />
               </div>
             </section>
             ) : null}

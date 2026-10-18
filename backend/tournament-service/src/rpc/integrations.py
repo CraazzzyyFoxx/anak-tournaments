@@ -94,6 +94,15 @@ async def require_workspace_permission(
     return await _get_workspace_or_404(session, workspace_id)
 
 
+def _version_read(version: Any, discipline: str | None = None) -> schemas.DivisionGridVersionRead:
+    """The version read, carrying its game when the grid is at hand (never a lazy load)."""
+    read = schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True)
+    if discipline is None and "grid" in vars(version):
+        discipline = version.grid.discipline
+    read.discipline = discipline
+    return read
+
+
 def _require_version_read_access(user: models.AuthUser, version: Any) -> None:
     require_grid_version_read_access(user, version.grid.workspace_id)
 
@@ -942,10 +951,7 @@ def register(broker: Any, logger: Any) -> None:
             grid = await division_grid_service.get_grid_by_id(session, grid_id)
             await require_workspace_permission(grid.workspace_id, session=session, user=user, action="read")
             versions = await division_grid_service.get_versions(session, grid.workspace_id, grid_id)
-            return [
-                _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
-                for version in versions
-            ]
+            return [_dump(_version_read(version, grid.discipline)) for version in versions]
 
         return await _run(logger, op)
 
@@ -975,7 +981,7 @@ def register(broker: Any, logger: Any) -> None:
                 },
             )
             await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -986,7 +992,7 @@ def register(broker: Any, logger: Any) -> None:
             version_id = _require_id(data)
             version = await division_grid_service.get_version(session, version_id)
             _require_version_read_access(user, version)
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1018,7 +1024,7 @@ def register(broker: Any, logger: Any) -> None:
                 },
             )
             await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1068,7 +1074,7 @@ def register(broker: Any, logger: Any) -> None:
                 after={"status": version.status, "published_at": version.published_at},
             )
             await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1118,7 +1124,7 @@ def register(broker: Any, logger: Any) -> None:
                 after={"grid_id": version.grid_id, "status": version.status},
             )
             await session.commit()
-            return _dump(schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True))
+            return _dump(_version_read(version))
 
         return await _run(logger, op)
 
@@ -1180,7 +1186,7 @@ def register(broker: Any, logger: Any) -> None:
                 after={"source_version_id": version_id, "grid_id": cloned.grid_id, "label": cloned.label},
             )
             await session.commit()  # route commits explicitly (service does not).
-            return _dump(schemas.DivisionGridVersionRead.model_validate(cloned, from_attributes=True))
+            return _dump(_version_read(cloned))
 
         return await _run(logger, op)
 

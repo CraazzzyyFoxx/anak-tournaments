@@ -11,7 +11,7 @@ import type { Tournament } from "@/types/tournament.types";
 import {
   useScopedSettingsForm,
   type ScopedSettingsForm
-} from "@/components/admin/settings/useScopedSettingsForm";
+} from "@/components/kit/useScopedSettingsForm";
 import {
   getPhaseSchedulePayload,
   getTournamentForm,

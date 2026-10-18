@@ -412,6 +412,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
 
       <PickupPlayerSheet
         row={openRow}
+        discipline={game?.discipline ?? ""}
         lobbyCount={game?.lobby_count ?? 1}
         mixStats={
           statsQuery.data?.members.find(

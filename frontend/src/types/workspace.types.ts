@@ -18,6 +18,8 @@ export interface DivisionGrid {
 export interface DivisionGridVersion {
   id: number;
   grid_id: number;
+  /** The owning grid's game; served by the grid-version endpoints, absent on embedded reads. */
+  discipline?: string | null;
   version: number;
   label: string;
   status: "draft" | "published" | "archived" | string;

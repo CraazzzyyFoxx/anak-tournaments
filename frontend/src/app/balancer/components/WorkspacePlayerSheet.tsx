@@ -34,6 +34,8 @@ const SCOPE_HINT =
 type WorkspacePlayerSheetProps = {
   /** `null` closes the sheet — the caller holds the row being edited. */
   member: RosterMember | null;
+  /** The roster's game: rank history is resolved for it. */
+  discipline: string;
   canEdit: boolean;
   saving: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,6 +60,7 @@ type WorkspacePlayerSheetProps = {
  */
 export function WorkspacePlayerSheet({
   member,
+  discipline,
   canEdit,
   saving,
   onOpenChange,
@@ -134,7 +137,7 @@ export function WorkspacePlayerSheet({
                   Live rank (OverFast)
                 </Label>
                 <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                  <RankHistory battleTag={member.identity?.handle} />
+                  <RankHistory battleTag={member.identity?.handle} discipline={discipline} />
                 </div>
               </section>
             ) : null}

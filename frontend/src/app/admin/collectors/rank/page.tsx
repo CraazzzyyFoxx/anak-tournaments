@@ -4,8 +4,7 @@ import { useTranslations } from "next-intl";
 
 import { RankHealthDashboard } from "@/components/admin/collectors/rank-health";
 import { RankTaskHistory } from "@/components/admin/collectors/rank-history";
-import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
-import { useNativeRankCollector } from "@/hooks/useNativeRankCollector";
+import { RankMappingTab } from "./RankMappingTab";
 import { RankSettingsPanel } from "@/components/admin/collectors/rank-settings";
 import { useCollectorTab } from "@/components/admin/collectors/useCollectorTab";
 import { LinkTabs } from "@/components/kit/LinkTabs";
@@ -35,8 +34,6 @@ export default function RankCollectorPage() {
   const t = useTranslations("collectors");
   const { canAccessPermission, isSuperuser } = usePermissions();
   const canRead = canAccessPermission("rank.read");
-  // The collector is a game module's: its mapping panel is that module's slot, found by capability.
-  const collector = useNativeRankCollector("all");
 
   const { activeKey, items } = useCollectorTab("rank", [
     { key: "status", label: t("views.status") },
@@ -63,22 +60,7 @@ export default function RankCollectorPage() {
       {activeKey === "settings" ? (
         <RankSettingsPanel />
       ) : activeKey === "mapping" ? (
-        collector.descriptor ? (
-          <DisciplineWidget
-            discipline={collector.descriptor.code}
-            slot="rankMapping"
-            capabilities={collector.descriptor.capabilities}
-            requires="native_rank_collection"
-            props={{}}
-            fallback={null}
-          />
-        ) : (
-          <PageStateCard
-            state="empty"
-            title={t("mapping.noCollectorTitle")}
-            description={t("mapping.noCollector")}
-          />
-        )
+        <RankMappingTab />
       ) : (
         <>
           <RankHealthDashboard />

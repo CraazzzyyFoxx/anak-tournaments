@@ -44,6 +44,8 @@ class DivisionGridNormalizationError extends Error {
 export class DivisionGridNormalizer {
   private readonly targetVersion: DivisionGridVersion;
   private readonly sourceVersionsById: ReadonlyMap<number, DivisionGridVersion>;
+  /** Source versions of another game than the target: ranks never cross games, so they are never translated. */
+  private readonly foreignVersionIds: ReadonlySet<number>;
   /**
    * source tier id → target division number (primary mapping rule).
    * Built from DivisionGridMapping.rules where is_primary = true (or the only rule).
@@ -53,8 +55,10 @@ export class DivisionGridNormalizer {
   private constructor(
     targetVersion: DivisionGridVersion,
     sourceVersionsById: Map<number, DivisionGridVersion>,
-    primaryTargetNumberBySourceTierId: Map<number, number>
+    primaryTargetNumberBySourceTierId: Map<number, number>,
+    foreignVersionIds: Set<number>
   ) {
+    this.foreignVersionIds = foreignVersionIds;
     this.targetVersion = targetVersion;
     this.sourceVersionsById = sourceVersionsById;
     this.primaryTargetNumberBySourceTierId = primaryTargetNumberBySourceTierId;
@@ -69,6 +73,11 @@ export class DivisionGridNormalizer {
    * division number.  Throws DivisionGridNormalizationError on any lookup miss.
    */
   normalize(sourceVersionId: number, rank: number): number {
+    if (this.foreignVersionIds.has(sourceVersionId)) {
+      throw new DivisionGridNormalizationError(
+        `Source version ${sourceVersionId} belongs to another game than target version ${this.targetVersion.id}`
+      );
+    }
     // Same grid — resolve directly in the target
     if (sourceVersionId === this.targetVersion.id) {
       const tier = resolveTier(this.targetVersion, rank);
@@ -111,12 +120,20 @@ export class DivisionGridNormalizer {
    * a mapping is missing or the source version was not loaded.
    */
   safeNormalize(sourceVersionId: number, rank: number): number {
+    // A rank of another game has no meaning in this grid: there is no fallback to fabricate, so callers
+    // must drop such versions first (see `accepts`).
+    if (this.foreignVersionIds.has(sourceVersionId)) return this.normalize(sourceVersionId, rank);
     try {
       return this.normalize(sourceVersionId, rank);
     } catch {
       const fallback = this.sourceVersionsById.get(sourceVersionId) ?? this.targetVersion;
       return resolveTier(fallback, rank)?.number ?? this.targetVersion.tiers[0]?.number ?? 1;
     }
+  }
+
+  /** Whether this source version is of the target's game (or its game is not known on either side). */
+  accepts(sourceVersionId: number): boolean {
+    return !this.foreignVersionIds.has(sourceVersionId);
   }
 
   // -------------------------------------------------------------------------
@@ -135,7 +152,13 @@ export class DivisionGridNormalizer {
     sourceVersions: DivisionGridVersion[]
   ): Promise<DivisionGridNormalizer> {
     const sourceVersionsById = new Map<number, DivisionGridVersion>();
+    const foreignVersionIds = new Set<number>();
     for (const v of sourceVersions) {
+      // Compared only when both games are known (`discipline` is served by the grid-version reads).
+      if (v.discipline && targetVersion.discipline && v.discipline !== targetVersion.discipline) {
+        foreignVersionIds.add(v.id);
+        continue;
+      }
       sourceVersionsById.set(v.id, v);
     }
     // Include the target so same-grid lookups always have a source entry.
@@ -192,7 +215,8 @@ export class DivisionGridNormalizer {
     return new DivisionGridNormalizer(
       targetVersion,
       sourceVersionsById,
-      primaryTargetNumberBySourceTierId
+      primaryTargetNumberBySourceTierId,
+      foreignVersionIds
     );
   }
 }

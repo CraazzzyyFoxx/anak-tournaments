@@ -584,6 +584,7 @@ export function WorkspacePlayersSidebar({
 
       <WorkspacePlayerSheet
         member={editingMember}
+        discipline={discipline}
         canEdit={canEdit}
         // Scoped to the member being written: the sheet is the only surface that
         // edits, so a save anywhere else has no control to disable.

@@ -55,6 +55,9 @@ class DivisionGridTierRead(BaseRead):
 
 class DivisionGridVersionRead(BaseRead):
     grid_id: int
+    # The owning grid's game. Filled by the grid-version endpoints; None where a payload is built without
+    # the grid at hand (shared caches, embedded reads), which are keyed by their own discipline.
+    discipline: str | None = None
     version: int
     label: str
     status: str

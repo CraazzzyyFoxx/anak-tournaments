@@ -24,11 +24,11 @@ type RankHistoryTarget =
 
 type RankHistoryProps = RankHistoryTarget & {
   /**
-   * The game whose collected ranks to show. Rank history exists only for disciplines that collect native
-   * ranks; when omitted, the one installed discipline that does is used, and with none (or several) the
-   * card says it cannot tell — it never assumes a game.
+   * The owning game (tournament, mix, draft, registration…). Without one the concrete browsing game is
+   * used. Either way the game is resolved first and only then checked for rank collection: a game that
+   * does not collect ranks gets the unsupported state, never another game's history.
    */
-  discipline?: string;
+  discipline?: string | null;
   /** When set, the chart is wrapped in a titled card; otherwise it renders bare. */
   title?: string;
   className?: string;
@@ -89,7 +89,7 @@ export default function RankHistory({
         body={t("rankHistory.errorBody")}
       />
     );
-  } else if (!descriptor) {
+  } else if (!descriptor || !collector.supported) {
     content = (
       <ChartEmptyState
         className={contentClassName}
