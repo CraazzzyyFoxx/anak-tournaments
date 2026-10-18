@@ -1922,6 +1922,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/{discipline}/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a discipline's catalog
+         * @description Permission: public; no authentication required. Returns a paginated list of one discipline's characters, maps or modes (`kind`); `search`, `parent_id`, `attrs` (JSON object) and `active` filter it, active rows only unless `active=false` is passed. 404 `discipline_not_installed` for an unknown discipline, 404 `catalog_kind_not_declared` for a kind the game does not declare (League has no `mode`).
+         *
+         *     RPC subject: `rpc.app.catalog.list`
+         */
+        get: operations["get__api_v1_catalog__discipline___kind_"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalog/{discipline}/{kind}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a catalog entity
+         * @description Permission: public; no authentication required. Returns one entity with its parent expanded; inactive rows are readable. 404 `not_found` when the id is not a row of that discipline and kind (never an entity relabelled from another game).
+         *
+         *     RPC subject: `rpc.app.catalog.get`
+         */
+        get: operations["get__api_v1_catalog__discipline___kind___id_"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/disciplines": {
         parameters: {
             query?: never;
@@ -2468,116 +2512,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/gamemodes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List gamemodes
-         * @description Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of gamemodes via the shared CRUD read engine.
-         *
-         *     RPC subject: `rpc.app.read.list`
-         */
-        get: operations["get__api_v1_gamemodes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gamemodes/lookup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Gamemode lookup
-         * @description Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).
-         *
-         *     RPC subject: `rpc.app.gamemodes.lookup`
-         */
-        get: operations["get__api_v1_gamemodes_lookup"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/gamemodes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get gamemode
-         * @description Permission: public; no authentication required. Returns a single gamemode by id with optional entity expansion via the shared CRUD read engine, 404 if not found.
-         *
-         *     RPC subject: `rpc.app.read.get`
-         */
-        get: operations["get__api_v1_gamemodes__id_"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/heroes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List heroes
-         * @description Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of heroes via the shared CRUD read engine.
-         *
-         *     RPC subject: `rpc.app.read.list`
-         */
-        get: operations["get__api_v1_heroes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/heroes/lookup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Hero lookup
-         * @description Permission: public; no authentication required. Returns all heroes as id/name lookup items ordered by name (no pagination).
-         *
-         *     RPC subject: `rpc.app.heroes.lookup`
-         */
-        get: operations["get__api_v1_heroes_lookup"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/heroes/statistics/playtime": {
         parameters: {
             query?: never;
@@ -2614,94 +2548,6 @@ export interface paths {
          *     RPC subject: `rpc.app.heroes.leaderboard`
          */
         get: operations["get__api_v1_heroes__hero_id__leaderboard"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/heroes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get hero
-         * @description Permission: public; no authentication required. Returns a single hero by id via the shared CRUD read engine, 404 if not found.
-         *
-         *     RPC subject: `rpc.app.read.get`
-         */
-        get: operations["get__api_v1_heroes__id_"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/maps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List maps
-         * @description Permission: public; no authentication required. Returns a paginated, sortable, name-searchable list of maps via the shared CRUD read engine.
-         *
-         *     RPC subject: `rpc.app.read.list`
-         */
-        get: operations["get__api_v1_maps"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/maps/lookup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Map lookup
-         * @description Permission: public; no authentication required. Returns all maps as id/name lookup items ordered by name (no pagination).
-         *
-         *     RPC subject: `rpc.app.maps.lookup`
-         */
-        get: operations["get__api_v1_maps_lookup"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/maps/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get map
-         * @description Permission: public; no authentication required. Returns a single map by id with optional entity expansion via the shared CRUD read engine, 404 if not found.
-         *
-         *     RPC subject: `rpc.app.read.get`
-         */
-        get: operations["get__api_v1_maps__id_"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4189,7 +4035,7 @@ export interface paths {
         };
         /**
          * Search users
-         * @description Permission: public; no authentication required. Returns players matching a free-text query across the requested identity fields.
+         * @description Permission: public; no authentication required. Returns players whose public game handle (any game's identity provider) matches a free-text query.
          *
          *     RPC subject: `rpc.app.users.search`
          */
@@ -10019,9 +9865,7 @@ export interface paths {
         };
         /**
          * Get custom game statistics
-         * @description Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix this workspace has run, best record first. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.
-         *
-         *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
+         * @description Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix of one discipline this workspace has run, best record first; `identity` is the member's handle for that discipline's identity provider. The optional `discipline` query parameter defaults to the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.
          *
          *     RPC subject: `rpc.balancer.custom.stats`
          */
@@ -10671,7 +10515,7 @@ export interface paths {
         };
         /**
          * List workspace players
-         * @description Permission: workspace membership (any role); no resource grant is checked. Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Another organiser's book is readable through `author_user_id`. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
+         * @description Permission: workspace membership (any role); no resource grant is checked. Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Another organiser's book is readable through `author_user_id`. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on and whose identity provider names each row's `identity`; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another). Observation-only anchors are not roster members and never listed.
          *
          *     RPC subject: `rpc.balancer.players.list`
          */
@@ -10679,7 +10523,7 @@ export interface paths {
         put?: never;
         /**
          * Upsert workspace player
-         * @description Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row; 422 when battle_tag is missing or blank. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
+         * @description Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Admits (or reuses) the workspace member a game identity denotes and returns it shaped exactly like a roster row. The body is `{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as the old `battle_tag`) are 422.
          *
          *     RPC subject: `rpc.balancer.players.upsert`
          */
@@ -12337,16 +12181,10 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** CatalogEntityParentRead */
-        "app.CatalogEntityParentRead": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-        };
-        /** CatalogEntityRead */
+        /**
+         * CatalogEntityRead
+         * @description One ``catalog.entity`` row of any discipline and kind; the public, admin and embedded catalog wire.
+         */
         "app.CatalogEntityRead": {
             /** Active */
             active: boolean;
@@ -12367,12 +12205,15 @@ export interface components {
             id: number;
             /** Image Path */
             image_path: string | null;
-            /** Kind */
-            kind: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: AppCatalogEntityReadKind;
             /** Name */
             name: string;
             /** @default null */
-            parent: components["schemas"]["app.CatalogEntityParentRead"] | null;
+            parent: components["schemas"]["app.CatalogEntityRead"] | null;
             /** Parent Id */
             parent_id: number | null;
             /** Slug */
@@ -12840,13 +12681,6 @@ export interface components {
          * @enum {string}
          */
         "app.LogStatsName": AppLogStatsName;
-        /** LookupItem */
-        "app.LookupItem": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
         /** MapRead */
         "app.MapRead": {
             /**
@@ -13178,6 +13012,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Paginated[CatalogEntityRead] */
+        "app.Paginated_CatalogEntityRead_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.CatalogEntityRead"][];
+            /** Total */
+            total: number;
+        };
         /** Paginated[EncounterReadWithUserStats] */
         "app.Paginated_EncounterReadWithUserStats_": {
             /** Page */
@@ -13186,17 +13031,6 @@ export interface components {
             per_page: number;
             /** Results */
             results: components["schemas"]["app.EncounterReadWithUserStats"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[GamemodeRead] */
-        "app.Paginated_GamemodeRead_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.GamemodeRead"][];
             /** Total */
             total: number;
         };
@@ -13222,17 +13056,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** Paginated[HeroRead] */
-        "app.Paginated_HeroRead_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.HeroRead"][];
-            /** Total */
-            total: number;
-        };
         /** Paginated[HeroWithUserStats] */
         "app.Paginated_HeroWithUserStats_": {
             /** Page */
@@ -13241,17 +13064,6 @@ export interface components {
             per_page: number;
             /** Results */
             results: components["schemas"]["app.HeroWithUserStats"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[MapRead] */
-        "app.Paginated_MapRead_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.MapRead"][];
             /** Total */
             total: number;
         };
@@ -14954,6 +14766,8 @@ export interface components {
             created_at: string | null;
             /** Current Pick Id */
             current_pick_id: number | null;
+            /** Discipline */
+            discipline: string;
             /** Export Status */
             export_status: string | null;
             /** Exported At */
@@ -15216,8 +15030,6 @@ export interface components {
          *     construction.
          */
         "balancer.DraftPlayerRead": {
-            /** Battle Tag */
-            battle_tag: string | null;
             /** @default null */
             captain_role: components["schemas"]["balancer.RoleRef"] | null;
             /** Custom Fields */
@@ -15231,6 +15043,7 @@ export interface components {
             effective_rank: number | null;
             /** Id */
             id: number;
+            identity: components["schemas"]["balancer.PlayerIdentityRead"] | null;
             /** Is Captain */
             is_captain: boolean;
             /** Is Flex */
@@ -15255,8 +15068,8 @@ export interface components {
             role_sub_roles?: {
                 [key: string]: string;
             };
-            /** Role Top Heroes */
-            role_top_heroes?: {
+            /** Role Top Characters */
+            role_top_characters?: {
                 [key: string]: {
                     [key: string]: unknown;
                 }[];
@@ -15476,6 +15289,8 @@ export interface components {
             created_at: string | null;
             /** Current Pick Id */
             current_pick_id: number | null;
+            /** Discipline */
+            discipline: string;
             /** Export Status */
             export_status: string | null;
             /** Exported At */
@@ -15712,6 +15527,16 @@ export interface components {
             sub_role: string | null;
             /** Uuid */
             uuid: string;
+        };
+        /**
+         * PlayerIdentityRead
+         * @description ``provider`` is a ``SocialProvider`` value; ``handle`` is the display form (``display_social_handle``).
+         */
+        "balancer.PlayerIdentityRead": {
+            /** Handle */
+            handle: string;
+            /** Provider */
+            provider: string;
         };
         /**
          * RanksExportResponse
@@ -17521,6 +17346,8 @@ export interface components {
              * @default null
              */
             current_map_index: number | null;
+            /** Discipline */
+            discipline: string;
             /**
              * Ended At
              * @default null
@@ -17604,6 +17431,8 @@ export interface components {
             tournament: components["schemas"]["tournament.TournamentRead"] | null;
             /** Tournament Id */
             tournament_id: number;
+            /** Workspace Id */
+            workspace_id: number;
         };
         /**
          * EncounterResultStatus
@@ -18118,6 +17947,8 @@ export interface components {
              * @default null
              */
             away_team_id: number | null;
+            /** Discipline */
+            discipline: string;
             encounter: components["schemas"]["tournament.EncounterRead"] | null;
             /** Encounter Id */
             encounter_id: number;
@@ -18143,6 +17974,8 @@ export interface components {
             score: components["schemas"]["tournament.Score"];
             /** Time */
             time: number | null;
+            /** Workspace Id */
+            workspace_id: number;
         };
         /** MatchReadWithStats */
         "tournament.MatchReadWithStats": {
@@ -18153,6 +17986,8 @@ export interface components {
              * @default null
              */
             away_team_id: number | null;
+            /** Discipline */
+            discipline: string;
             encounter: components["schemas"]["tournament.EncounterRead"] | null;
             /** Encounter Id */
             encounter_id: number;
@@ -18180,6 +18015,8 @@ export interface components {
             score: components["schemas"]["tournament.Score"];
             /** Time */
             time: number | null;
+            /** Workspace Id */
+            workspace_id: number;
         };
         /**
          * MatchTimelineEvent
@@ -19280,6 +19117,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Discipline */
+            discipline: string;
             /** Encounter Id */
             encounter_id: number;
             /** Id */
@@ -20760,6 +20599,13 @@ export interface components {
              */
             slug: string | null;
         };
+        /** LookupItem */
+        "app.LookupItem": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
         /**
          * NotificationAdminItem
          * @description One produced row as an operator sees it.
@@ -20887,17 +20733,6 @@ export interface components {
             per_page: number;
             /** Results */
             results: components["schemas"]["app.CatalogAliasMissRead"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[CatalogEntityRead] */
-        "app.Paginated_CatalogEntityRead_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.CatalogEntityRead"][];
             /** Total */
             total: number;
         };
@@ -21648,18 +21483,29 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Paginated[WorkspacePlayerRead] */
+        "balancer.Paginated_WorkspacePlayerRead_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["balancer.WorkspacePlayerRead"][];
+            /** Total */
+            total: number;
+        };
         /**
          * RankContext
          * @description What the row belongs to, when it belongs to something.
          *
          *     ``tournament`` for registration/roster rows, ``mix`` for a recorded casual
-         *     match, ``battle_tag`` for an Overwatch snapshot -- whose ``team`` carries the
-         *     snapshot's platform, the only thing a battle tag is further split by.
+         *     match, ``native_account`` for a game-native rank snapshot (Overwatch: a BattleTag) --
+         *     whose ``team`` carries the snapshot's platform, the only thing an account is further split by.
          */
         "balancer.RankContext": {
             /**
              * Id
-             * @description Tournament or custom-game id; null for a battle tag.
+             * @description Tournament or custom-game id; null for a native account.
              * @default null
              */
             id: number | null;
@@ -21703,11 +21549,6 @@ export interface components {
              */
             author_user_id: number | null;
             /**
-             * Battle Tag
-             * @default null
-             */
-            battle_tag: string | null;
-            /**
              * Canon Diff
              * @description author only: rank_value minus the canon, null if none.
              * @default null
@@ -21732,6 +21573,11 @@ export interface components {
              * @default null
              */
             division: number | null;
+            /**
+             * @description The member's primary handle for the discipline's identity provider.
+             * @default null
+             */
+            identity: components["schemas"]["balancer.PlayerIdentityRead"] | null;
             /**
              * Layer
              * @enum {string}
@@ -21914,6 +21760,59 @@ export interface components {
              * @default null
              */
             rank_delta_threshold: number | null;
+        };
+        /**
+         * WorkspacePlayerRead
+         * @description One roster row, identically shaped for a list page and the upsert answer.
+         */
+        "balancer.WorkspacePlayerRead": {
+            /**
+             * Auth User Id
+             * @description Linked login (auth.user.id); null if the player never signed in.
+             */
+            auth_user_id: number | null;
+            /**
+             * Author Ranks
+             * @description The read author's own book, by rated role code.
+             */
+            author_ranks: {
+                [key: string]: number;
+            };
+            /** Display Name */
+            display_name: string | null;
+            /** @description Primary account of the requested discipline's identity provider; null when the player has none. */
+            identity: components["schemas"]["balancer.PlayerIdentityRead"] | null;
+            /** Member Id */
+            member_id: number;
+            /** Player Id */
+            player_id: number;
+            /**
+             * Ranks
+             * @description The workspace canon, by rated role code.
+             */
+            ranks: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * WorkspacePlayerUpsert
+         * @description ``POST /balancer/workspaces/{id}/players``: find-or-admit the member a game identity denotes.
+         *
+         *     ``identity.provider`` must be the discipline's own identity provider; there is no ``battle_tag`` spelling.
+         */
+        "balancer.WorkspacePlayerUpsert": {
+            /**
+             * Discipline
+             * @description An enabled discipline of the workspace.
+             */
+            discipline: string;
+            /**
+             * Display Name
+             * @description Roster display name; blank is none. Setting it needs workspace team.create.
+             * @default null
+             */
+            display_name: string | null;
+            identity: components["schemas"]["balancer.PlayerIdentityRead"];
         };
         /**
          * WorkspaceRankerRead
@@ -24376,15 +24275,12 @@ export interface components {
              */
             balancer_reason: string | null;
             /**
-             * Battle Tag
-             * @default null
-             */
-            battle_tag: string | null;
-            /**
              * Display Name
              * @default null
              */
             display_name: string | null;
+            /** @default null */
+            identity: components["schemas"]["tournament.PlayerIdentityRead"] | null;
             /**
              * Partial
              * @default false
@@ -26805,6 +26701,16 @@ export interface components {
             tournament_id: number;
             /** User Id */
             user_id: number;
+        };
+        /**
+         * PlayerIdentityRead
+         * @description ``provider`` is a ``SocialProvider`` value; ``handle`` is the display form (``display_social_handle``).
+         */
+        "tournament.PlayerIdentityRead": {
+            /** Handle */
+            handle: string;
+            /** Provider */
+            provider: string;
         };
         /** PlayerSubRoleCreate */
         "tournament.PlayerSubRoleCreate": {
@@ -35869,6 +35775,140 @@ export interface operations {
             };
         };
     };
+    get__api_v1_catalog__discipline___kind_: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                sort?: PathsApiV1CatalogDisciplineKindGetParametersQuerySort;
+                order?: components["schemas"]["app.SortOrder"];
+                search?: string | null;
+                parent_id?: number | null;
+                attrs?: string | null;
+                active?: boolean | null;
+            };
+            header?: never;
+            path: {
+                discipline: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_CatalogEntityRead_"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_catalog__discipline___kind___id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discipline: string;
+                kind: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.CatalogEntityRead"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_disciplines: {
         parameters: {
             query?: {
@@ -37913,318 +37953,6 @@ export interface operations {
             };
         };
     };
-    get__api_v1_gamemodes: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                sort?: PathsApiV1GamemodesGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
-                query?: string;
-                fields?: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.Paginated_GamemodeRead_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_gamemodes_lookup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.LookupItem"][];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_gamemodes__id_: {
-        parameters: {
-            query?: {
-                entities?: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.GamemodeRead"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_heroes: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                sort?: PathsApiV1HeroesGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
-                query?: string;
-                fields?: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.Paginated_HeroRead_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_heroes_lookup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.LookupItem"][];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     get__api_v1_heroes_statistics_playtime: {
         parameters: {
             query?: {
@@ -38317,253 +38045,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app.Paginated_HeroLeaderboardEntry_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_heroes__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.HeroRead"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_maps: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                sort?: PathsApiV1MapsGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
-                query?: string;
-                fields?: string[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.Paginated_MapRead_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_maps_lookup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.LookupItem"][];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_maps__id_: {
-        parameters: {
-            query?: {
-                entities?: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.MapRead"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -41657,6 +41138,7 @@ export interface operations {
                 is_league?: boolean | null;
                 workspace_id?: number | null;
                 status?: components["schemas"]["tournament.TournamentStatus"] | null;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
@@ -41719,6 +41201,7 @@ export interface operations {
                 workspace_id?: number | null;
                 status?: components["schemas"]["tournament.TournamentStatus"] | null;
                 is_league?: boolean | null;
+                discipline?: string | null;
                 query?: string;
             };
             header?: never;
@@ -43697,7 +43180,6 @@ export interface operations {
         parameters: {
             query?: {
                 query?: string;
-                fields?: string[];
             };
             header?: never;
             path?: never;
@@ -67830,7 +67312,9 @@ export interface operations {
     };
     get__api_v1_balancer_workspaces__workspace_id__custom_games: {
         parameters: {
-            query?: never;
+            query?: {
+                discipline?: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -67972,7 +67456,10 @@ export interface operations {
     };
     get__api_v1_balancer_workspaces__workspace_id__custom_games_stats: {
         parameters: {
-            query?: never;
+            query?: {
+                discipline?: string;
+                since?: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -70553,7 +70040,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["balancer.Paginated_WorkspacePlayerRead_"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -70625,7 +70112,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["balancer.WorkspacePlayerUpsert"];
             };
         };
         responses: {
@@ -70635,7 +70122,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["balancer.WorkspacePlayerRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -74610,6 +74097,14 @@ export enum PathsApiV1AuthApiKeysGetParametersQuerySort {
     last_used_at = "last_used_at",
     expires_at = "expires_at"
 }
+export enum PathsApiV1CatalogDisciplineKindGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    slug = "slug",
+    parent_id = "parent_id",
+    created_at = "created_at",
+    updated_at = "updated_at"
+}
 export enum PathsApiV1EncountersGetParametersQueryScope {
     all = "all",
     my_team = "my_team"
@@ -74618,31 +74113,11 @@ export enum PathsApiV1EncountersOverviewGetParametersQueryScope {
     all = "all",
     my_team = "my_team"
 }
-export enum PathsApiV1GamemodesGetParametersQuerySort {
-    id = "id",
-    name = "name",
-    slug = "slug",
-    similarity_name = "similarity:name",
-    similarity_slug = "similarity:slug"
-}
-export enum PathsApiV1HeroesGetParametersQuerySort {
-    id = "id",
-    name = "name",
-    slug = "slug",
-    similarity_name = "similarity:name",
-    similarity_slug = "similarity:slug"
-}
 export enum PathsApiV1HeroesStatisticsPlaytimeGetParametersQuerySort {
     id = "id",
     name = "name",
     slug = "slug",
     playtime = "playtime"
-}
-export enum PathsApiV1MapsGetParametersQuerySort {
-    id = "id",
-    parent_id = "parent_id",
-    name = "name",
-    similarity_name = "similarity:name"
 }
 export enum PathsApiV1StatisticsChampionGetParametersQuerySort {
     id = "id",
@@ -74787,6 +74262,11 @@ export enum AnalyticsPlayerAnalyticsPredicted_direction {
     promote = "promote",
     demote = "demote",
     flat = "flat"
+}
+export enum AppCatalogEntityReadKind {
+    character = "character",
+    map = "map",
+    mode = "mode"
 }
 export enum AppFormatDimensionWireMode {
     off = "off",
@@ -75294,7 +74774,7 @@ export enum BalancerMixSelfSignup {
 export enum BalancerRankContextKind {
     tournament = "tournament",
     mix = "mix",
-    battle_tag = "battle_tag"
+    native_account = "native_account"
 }
 export enum BalancerRankOverviewRowLayer {
     canon = "canon",

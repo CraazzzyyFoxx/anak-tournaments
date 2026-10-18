@@ -965,6 +965,14 @@
       },
       "summary": "Update catalog entity"
     },
+    "rpc.app.catalog.get": {
+      "description": "Permission: public; no authentication required. Returns one entity with its parent expanded; inactive rows are readable. 404 `not_found` when the id is not a row of that discipline and kind (never an entity relabelled from another game).",
+      "response": {
+        "array": false,
+        "ref": "app.CatalogEntityRead"
+      },
+      "summary": "Get a catalog entity"
+    },
     "rpc.app.catalog.legacy": {
       "description": "Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.",
       "response": {
@@ -972,6 +980,146 @@
         "ref": "app.CatalogLegacyRead"
       },
       "summary": "Resolve an old catalog id"
+    },
+    "rpc.app.catalog.list": {
+      "description": "Permission: public; no authentication required. Returns a paginated list of one discipline's characters, maps or modes (`kind`); `search`, `parent_id`, `attrs` (JSON object) and `active` filter it, active rows only unless `active=false` is passed. 404 `discipline_not_installed` for an unknown discipline, 404 `catalog_kind_not_declared` for a kind the game does not declare (League has no `mode`).",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "enum": [
+              "id",
+              "name",
+              "slug",
+              "parent_id",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "search",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Search"
+          }
+        },
+        {
+          "name": "parent_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Id"
+          }
+        },
+        {
+          "name": "attrs",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attrs"
+          }
+        },
+        {
+          "name": "active",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Active"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CatalogEntityRead_"
+      },
+      "summary": "List a discipline's catalog"
     },
     "rpc.app.catalog.workspace_characters": {
       "description": "Permission: workspace `achievement.create` or `achievement.update`. Read-only: returns a paginated list of one discipline's catalog characters (same entity shape as the admin catalog list) so an organizer can link an achievement rule to one; catalog mutations stay superuser only; 404 for a missing workspace, 422 for a discipline the workspace does not have enabled.",
@@ -1284,14 +1432,6 @@
       },
       "summary": "Get a discipline's native metadata"
     },
-    "rpc.app.gamemodes.lookup": {
-      "description": "Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).",
-      "response": {
-        "array": true,
-        "ref": "app.LookupItem"
-      },
-      "summary": "Gamemode lookup"
-    },
     "rpc.app.heroes.leaderboard": {
       "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated per-hero player leaderboard resolved against the workspace context and its division grid.",
       "query_params": [
@@ -1366,14 +1506,6 @@
         "ref": "app.Paginated_HeroLeaderboardEntry_"
       },
       "summary": "Hero leaderboard"
-    },
-    "rpc.app.heroes.lookup": {
-      "description": "Permission: public; no authentication required. Returns all heroes as id/name lookup items ordered by name (no pagination).",
-      "response": {
-        "array": true,
-        "ref": "app.LookupItem"
-      },
-      "summary": "Hero lookup"
     },
     "rpc.app.heroes.playtime": {
       "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns paginated aggregated hero-playtime statistics, optionally scoped to a workspace.",
@@ -1481,14 +1613,6 @@
         "ref": "app.Paginated_HeroPlaytime_"
       },
       "summary": "Hero playtime stats"
-    },
-    "rpc.app.maps.lookup": {
-      "description": "Permission: public; no authentication required. Returns all maps as id/name lookup items ordered by name (no pagination).",
-      "response": {
-        "array": true,
-        "ref": "app.LookupItem"
-      },
-      "summary": "Map lookup"
     },
     "rpc.app.matches.log": {
       "description": "Permission: any authenticated user \u2014 the gateway route requires a session and the handler performs no further permission or ownership check. Returns the raw match-log file bytes for a match (base64 from the worker, decoded by the gateway); 404 if the match or log is missing.",
@@ -1682,30 +1806,6 @@
       },
       "summary": "Get achievement"
     },
-    "rpc.app.read.get#gamemode": {
-      "description": "Permission: public; no authentication required. Returns a single gamemode by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
-      "response": {
-        "array": false,
-        "ref": "app.GamemodeRead"
-      },
-      "summary": "Get gamemode"
-    },
-    "rpc.app.read.get#hero": {
-      "description": "Permission: public; no authentication required. Returns a single hero by id via the shared CRUD read engine, 404 if not found.",
-      "response": {
-        "array": false,
-        "ref": "app.HeroRead"
-      },
-      "summary": "Get hero"
-    },
-    "rpc.app.read.get#map": {
-      "description": "Permission: public; no authentication required. Returns a single map by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
-      "response": {
-        "array": false,
-        "ref": "app.MapRead"
-      },
-      "summary": "Get map"
-    },
     "rpc.app.read.list#achievement": {
       "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.",
       "query_params": [
@@ -1797,290 +1897,6 @@
         "ref": "app.Paginated_AchievementRead_"
       },
       "summary": "List achievements"
-    },
-    "rpc.app.read.list#gamemode": {
-      "description": "Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of gamemodes via the shared CRUD read engine.",
-      "query_params": [
-        {
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "sort",
-          "required": false,
-          "schema": {
-            "default": "id",
-            "enum": [
-              "id",
-              "name",
-              "slug",
-              "similarity:name",
-              "similarity:slug"
-            ],
-            "title": "Sort",
-            "type": "string"
-          }
-        },
-        {
-          "name": "order",
-          "required": false,
-          "schema": {
-            "$ref": "#/components/schemas/app.SortOrder",
-            "default": "asc"
-          }
-        },
-        {
-          "name": "query",
-          "required": false,
-          "schema": {
-            "default": "",
-            "title": "Query",
-            "type": "string"
-          }
-        },
-        {
-          "name": "fields",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Fields",
-            "type": "array"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.Paginated_GamemodeRead_"
-      },
-      "summary": "List gamemodes"
-    },
-    "rpc.app.read.list#hero": {
-      "description": "Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of heroes via the shared CRUD read engine.",
-      "query_params": [
-        {
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "sort",
-          "required": false,
-          "schema": {
-            "default": "id",
-            "enum": [
-              "id",
-              "name",
-              "slug",
-              "similarity:name",
-              "similarity:slug"
-            ],
-            "title": "Sort",
-            "type": "string"
-          }
-        },
-        {
-          "name": "order",
-          "required": false,
-          "schema": {
-            "$ref": "#/components/schemas/app.SortOrder",
-            "default": "asc"
-          }
-        },
-        {
-          "name": "query",
-          "required": false,
-          "schema": {
-            "default": "",
-            "title": "Query",
-            "type": "string"
-          }
-        },
-        {
-          "name": "fields",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Fields",
-            "type": "array"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.Paginated_HeroRead_"
-      },
-      "summary": "List heroes"
-    },
-    "rpc.app.read.list#map": {
-      "description": "Permission: public; no authentication required. Returns a paginated, sortable, name-searchable list of maps via the shared CRUD read engine.",
-      "query_params": [
-        {
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "sort",
-          "required": false,
-          "schema": {
-            "default": "id",
-            "enum": [
-              "id",
-              "parent_id",
-              "name",
-              "similarity:name"
-            ],
-            "title": "Sort",
-            "type": "string"
-          }
-        },
-        {
-          "name": "order",
-          "required": false,
-          "schema": {
-            "$ref": "#/components/schemas/app.SortOrder",
-            "default": "asc"
-          }
-        },
-        {
-          "name": "query",
-          "required": false,
-          "schema": {
-            "default": "",
-            "title": "Query",
-            "type": "string"
-          }
-        },
-        {
-          "name": "fields",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Fields",
-            "type": "array"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.Paginated_MapRead_"
-      },
-      "summary": "List maps"
     },
     "rpc.app.statistics.champion": {
       "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, optionally workspace-scoped.",
@@ -3559,23 +3375,13 @@
       "summary": "Users overview stats"
     },
     "rpc.app.users.search": {
-      "description": "Permission: public; no authentication required. Returns players matching a free-text query across the requested identity fields.",
+      "description": "Permission: public; no authentication required. Returns players whose public game handle (any game's identity provider) matches a free-text query.",
       "query_params": [
         {
           "name": "query",
           "required": false,
           "schema": {
             "type": "string"
-          }
-        },
-        {
-          "name": "fields",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
           }
         }
       ],
@@ -4405,7 +4211,25 @@
       }
     },
     "rpc.balancer.custom.stats": {
-      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix this workspace has run, best record first. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
+      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix of one discipline this workspace has run, best record first; `identity` is the member's handle for that discipline's identity provider. The optional `discipline` query parameter defaults to the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "Enabled discipline; defaults to the workspace's first.",
+            "type": "string"
+          }
+        },
+        {
+          "name": "since",
+          "required": false,
+          "schema": {
+            "description": "ISO 8601 instant; only matches recorded on or after it.",
+            "type": "string"
+          }
+        }
+      ],
       "summary": "Get custom game statistics"
     },
     "rpc.balancer.custom.swap_seats": {
@@ -4829,7 +4653,7 @@
       "summary": "List rank authors"
     },
     "rpc.balancer.players.list": {
-      "description": "Permission: workspace membership (any role); no resource grant is checked. Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Another organiser's book is readable through `author_user_id`. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).",
+      "description": "Permission: workspace membership (any role); no resource grant is checked. Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Another organiser's book is readable through `author_user_id`. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on and whose identity provider names each row's `identity`; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another). Observation-only anchors are not roster members and never listed.",
       "query_params": [
         {
           "name": "discipline",
@@ -4859,7 +4683,7 @@
           "name": "query",
           "required": false,
           "schema": {
-            "description": "Needle matched against battle_tag, display_name and name.",
+            "description": "Needle matched against the identity handle, display_name and name.",
             "type": "string"
           }
         },
@@ -4880,6 +4704,10 @@
           }
         }
       ],
+      "response": {
+        "array": false,
+        "ref": "balancer.Paginated_WorkspacePlayerRead_"
+      },
       "summary": "List workspace players"
     },
     "rpc.balancer.players.set_ranks": {
@@ -4901,7 +4729,15 @@
       "summary": "Get workspace roster summary"
     },
     "rpc.balancer.players.upsert": {
-      "description": "Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row; 422 when battle_tag is missing or blank. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).",
+      "description": "Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Admits (or reuses) the workspace member a game identity denotes and returns it shaped exactly like a roster row. The body is `{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as the old `battle_tag`) are 422.",
+      "request": {
+        "array": false,
+        "ref": "balancer.WorkspacePlayerUpsert"
+      },
+      "response": {
+        "array": false,
+        "ref": "balancer.WorkspacePlayerRead"
+      },
       "summary": "Upsert workspace player"
     },
     "rpc.balancer.prefs.get": {
@@ -4963,7 +4799,7 @@
           "name": "q",
           "required": false,
           "schema": {
-            "description": "Needle matched against battle_tag, display_name and name.",
+            "description": "Needle matched against the identity handle, display_name and name.",
             "type": "string"
           }
         },
@@ -9671,6 +9507,22 @@
             ],
             "default": null
           }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
+          }
         }
       ],
       "response": {
@@ -10955,6 +10807,22 @@
             ],
             "default": null,
             "title": "Is League"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         },
         {
@@ -14332,30 +14200,8 @@
       "title": "CatalogEntityListQueryParams",
       "type": "object"
     },
-    "app.CatalogEntityParentRead": {
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "slug": {
-          "title": "Slug",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "slug",
-        "name"
-      ],
-      "title": "CatalogEntityParentRead",
-      "type": "object"
-    },
     "app.CatalogEntityRead": {
+      "description": "One ``catalog.entity`` row of any discipline and kind; the public, admin and embedded catalog wire.",
       "properties": {
         "active": {
           "title": "Active",
@@ -14398,6 +14244,11 @@
           "title": "Image Path"
         },
         "kind": {
+          "enum": [
+            "character",
+            "map",
+            "mode"
+          ],
           "title": "Kind",
           "type": "string"
         },
@@ -14408,7 +14259,7 @@
         "parent": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.CatalogEntityParentRead"
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
             },
             {
               "type": "null"
@@ -17103,37 +16954,6 @@
       "title": "Paginated[EncounterReadWithUserStats]",
       "type": "object"
     },
-    "app.Paginated_GamemodeRead_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.GamemodeRead"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[GamemodeRead]",
-      "type": "object"
-    },
     "app.Paginated_HeroLeaderboardEntry_": {
       "properties": {
         "page": {
@@ -17196,37 +17016,6 @@
       "title": "Paginated[HeroPlaytime]",
       "type": "object"
     },
-    "app.Paginated_HeroRead_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroRead"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[HeroRead]",
-      "type": "object"
-    },
     "app.Paginated_HeroWithUserStats_": {
       "properties": {
         "page": {
@@ -17256,37 +17045,6 @@
         "results"
       ],
       "title": "Paginated[HeroWithUserStats]",
-      "type": "object"
-    },
-    "app.Paginated_MapRead_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.MapRead"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[MapRead]",
       "type": "object"
     },
     "app.Paginated_NotificationAdminItem_": {
@@ -17611,123 +17369,6 @@
         }
       },
       "title": "PaginationSortQueryParams[Literal['id', 'name', 'winrate', 'tournaments']]",
-      "type": "object"
-    },
-    "app.PaginationSortSearchQueryParams_Literal__id____name____slug____similarity___similarity__": {
-      "properties": {
-        "entities": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entities",
-          "type": "array"
-        },
-        "fields": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Fields",
-          "type": "array"
-        },
-        "only_count": {
-          "default": false,
-          "title": "Only Count",
-          "type": "boolean"
-        },
-        "order": {
-          "$ref": "#/components/schemas/app.SortOrder",
-          "default": "asc"
-        },
-        "page": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "default": 10,
-          "maximum": 100,
-          "minimum": -1,
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "query": {
-          "default": "",
-          "title": "Query",
-          "type": "string"
-        },
-        "sort": {
-          "default": "id",
-          "enum": [
-            "id",
-            "name",
-            "slug",
-            "similarity:name",
-            "similarity:slug"
-          ],
-          "title": "Sort",
-          "type": "string"
-        }
-      },
-      "title": "PaginationSortSearchQueryParams[Literal['id', 'name', 'slug', 'similarity:name', 'similarity:slug']]",
-      "type": "object"
-    },
-    "app.PaginationSortSearchQueryParams_Literal__id____parent_id____name____similarity__": {
-      "properties": {
-        "entities": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entities",
-          "type": "array"
-        },
-        "fields": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Fields",
-          "type": "array"
-        },
-        "only_count": {
-          "default": false,
-          "title": "Only Count",
-          "type": "boolean"
-        },
-        "order": {
-          "$ref": "#/components/schemas/app.SortOrder",
-          "default": "asc"
-        },
-        "page": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "default": 10,
-          "maximum": 100,
-          "minimum": -1,
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "query": {
-          "default": "",
-          "title": "Query",
-          "type": "string"
-        },
-        "sort": {
-          "default": "id",
-          "enum": [
-            "id",
-            "parent_id",
-            "name",
-            "similarity:name"
-          ],
-          "title": "Sort",
-          "type": "string"
-        }
-      },
-      "title": "PaginationSortSearchQueryParams[Literal['id', 'parent_id', 'name', 'similarity:name']]",
       "type": "object"
     },
     "app.PlayerStatistics": {
@@ -25705,6 +25346,10 @@
           ],
           "title": "Current Pick Id"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "export_status": {
           "anyOf": [
             {
@@ -25789,6 +25434,7 @@
         "id",
         "tournament_id",
         "workspace_id",
+        "discipline",
         "status",
         "blocked_reason",
         "format",
@@ -26403,17 +26049,6 @@
     "balancer.DraftPlayerRead": {
       "description": "A seat, projected. Every role/rank field below is RESOLVED, never stored.\n\nBuilt by :meth:`from_seat` from the ``DraftPlayer`` row plus the\n``PlayerRoster`` the engine resolved for its registration, so what the\ndraft shows and what the balancer shows are the same numbers by\nconstruction.",
       "properties": {
-        "battle_tag": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Battle Tag"
-        },
         "captain_role": {
           "anyOf": [
             {
@@ -26458,6 +26093,16 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.PlayerIdentityRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "is_captain": {
           "title": "Is Captain",
@@ -26514,7 +26159,7 @@
           "title": "Role Sub Roles",
           "type": "object"
         },
-        "role_top_heroes": {
+        "role_top_characters": {
           "additionalProperties": {
             "items": {
               "additionalProperties": true,
@@ -26522,7 +26167,7 @@
             },
             "type": "array"
           },
-          "title": "Role Top Heroes",
+          "title": "Role Top Characters",
           "type": "object"
         },
         "secondary_roles": {
@@ -26560,7 +26205,7 @@
         "session_id",
         "registration_id",
         "user_id",
-        "battle_tag",
+        "identity",
         "primary_role",
         "is_flex",
         "status",
@@ -26995,6 +26640,10 @@
           ],
           "title": "Current Pick Id"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "export_status": {
           "anyOf": [
             {
@@ -27079,6 +26728,7 @@
         "id",
         "tournament_id",
         "workspace_id",
+        "discipline",
         "status",
         "blocked_reason",
         "format",
@@ -27622,6 +27272,37 @@
       "title": "Paginated[RankOverviewRow]",
       "type": "object"
     },
+    "balancer.Paginated_WorkspacePlayerRead_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/balancer.WorkspacePlayerRead"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[WorkspacePlayerRead]",
+      "type": "object"
+    },
     "balancer.PlayerData": {
       "properties": {
         "all_discomforts": {
@@ -27695,8 +27376,27 @@
       "title": "PlayerData",
       "type": "object"
     },
+    "balancer.PlayerIdentityRead": {
+      "description": "``provider`` is a ``SocialProvider`` value; ``handle`` is the display form (``display_social_handle``).",
+      "properties": {
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "handle"
+      ],
+      "title": "PlayerIdentityRead",
+      "type": "object"
+    },
     "balancer.RankContext": {
-      "description": "What the row belongs to, when it belongs to something.\n\n``tournament`` for registration/roster rows, ``mix`` for a recorded casual\nmatch, ``battle_tag`` for an Overwatch snapshot -- whose ``team`` carries the\nsnapshot's platform, the only thing a battle tag is further split by.",
+      "description": "What the row belongs to, when it belongs to something.\n\n``tournament`` for registration/roster rows, ``mix`` for a recorded casual\nmatch, ``native_account`` for a game-native rank snapshot (Overwatch: a BattleTag) --\nwhose ``team`` carries the snapshot's platform, the only thing an account is further split by.",
       "properties": {
         "id": {
           "anyOf": [
@@ -27708,14 +27408,14 @@
             }
           ],
           "default": null,
-          "description": "Tournament or custom-game id; null for a battle tag.",
+          "description": "Tournament or custom-game id; null for a native account.",
           "title": "Id"
         },
         "kind": {
           "enum": [
             "tournament",
             "mix",
-            "battle_tag"
+            "native_account"
           ],
           "title": "Kind",
           "type": "string"
@@ -27799,18 +27499,6 @@
           "description": "auth.user id of the book's author, the mix's host, or null.",
           "title": "Author User Id"
         },
-        "battle_tag": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Battle Tag"
-        },
         "canon_diff": {
           "anyOf": [
             {
@@ -27872,6 +27560,18 @@
           "default": null,
           "description": "Resolved on the workspace's effective grid.",
           "title": "Division"
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.PlayerIdentityRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The member's primary handle for the discipline's identity provider."
         },
         "layer": {
           "enum": [
@@ -28833,6 +28533,113 @@
         }
       },
       "title": "WorkspaceBalancerConfigUpsert",
+      "type": "object"
+    },
+    "balancer.WorkspacePlayerRead": {
+      "description": "One roster row, identically shaped for a list page and the upsert answer.",
+      "properties": {
+        "auth_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Linked login (auth.user.id); null if the player never signed in.",
+          "title": "Auth User Id"
+        },
+        "author_ranks": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "The read author's own book, by rated role code.",
+          "title": "Author Ranks",
+          "type": "object"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Display Name"
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.PlayerIdentityRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Primary account of the requested discipline's identity provider; null when the player has none."
+        },
+        "member_id": {
+          "title": "Member Id",
+          "type": "integer"
+        },
+        "player_id": {
+          "title": "Player Id",
+          "type": "integer"
+        },
+        "ranks": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "The workspace canon, by rated role code.",
+          "title": "Ranks",
+          "type": "object"
+        }
+      },
+      "required": [
+        "member_id",
+        "player_id",
+        "identity",
+        "display_name",
+        "auth_user_id",
+        "ranks",
+        "author_ranks"
+      ],
+      "title": "WorkspacePlayerRead",
+      "type": "object"
+    },
+    "balancer.WorkspacePlayerUpsert": {
+      "additionalProperties": false,
+      "description": "``POST /balancer/workspaces/{id}/players``: find-or-admit the member a game identity denotes.\n\n``identity.provider`` must be the discipline's own identity provider; there is no ``battle_tag`` spelling.",
+      "properties": {
+        "discipline": {
+          "description": "An enabled discipline of the workspace.",
+          "title": "Discipline",
+          "type": "string"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Roster display name; blank is none. Setting it needs workspace team.create.",
+          "title": "Display Name"
+        },
+        "identity": {
+          "$ref": "#/components/schemas/balancer.PlayerIdentityRead"
+        }
+      },
+      "required": [
+        "discipline",
+        "identity"
+      ],
+      "title": "WorkspacePlayerUpsert",
       "type": "object"
     },
     "balancer.WorkspaceRankerRead": {
@@ -37698,18 +37505,6 @@
           "default": null,
           "title": "Balancer Reason"
         },
-        "battle_tag": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Battle Tag"
-        },
         "display_name": {
           "anyOf": [
             {
@@ -37721,6 +37516,17 @@
           ],
           "default": null,
           "title": "Display Name"
+        },
+        "identity": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.PlayerIdentityRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "partial": {
           "default": false,
@@ -42517,6 +42323,10 @@
           "default": null,
           "title": "Current Map Index"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "ended_at": {
           "anyOf": [
             {
@@ -42700,10 +42510,16 @@
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
         }
       },
       "required": [
         "id",
+        "workspace_id",
+        "discipline",
         "name",
         "round",
         "tournament_id",
@@ -45883,6 +45699,10 @@
           "default": null,
           "title": "Away Team Id"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "encounter": {
           "anyOf": [
             {
@@ -45989,10 +45809,16 @@
             }
           ],
           "title": "Time"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
         }
       },
       "required": [
         "id",
+        "workspace_id",
+        "discipline",
         "score",
         "time",
         "log_name",
@@ -46037,6 +45863,10 @@
           ],
           "default": null,
           "title": "Away Team Id"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
         },
         "encounter": {
           "anyOf": [
@@ -46148,10 +45978,16 @@
             }
           ],
           "title": "Time"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
         }
       },
       "required": [
         "id",
+        "workspace_id",
+        "discipline",
         "score",
         "time",
         "log_name",
@@ -47175,6 +47011,25 @@
         "tournament_id"
       ],
       "title": "PlayerCreate",
+      "type": "object"
+    },
+    "tournament.PlayerIdentityRead": {
+      "description": "``provider`` is a ``SocialProvider`` value; ``handle`` is the display form (``display_social_handle``).",
+      "properties": {
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "handle"
+      ],
+      "title": "PlayerIdentityRead",
       "type": "object"
     },
     "tournament.PlayerRead": {
@@ -50539,6 +50394,10 @@
           "title": "Created At",
           "type": "string"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "encounter_id": {
           "title": "Encounter Id",
           "type": "integer"
@@ -50591,6 +50450,7 @@
         "token",
         "label",
         "workspace_id",
+        "discipline",
         "tournament_id",
         "stage_id",
         "encounter_id",
@@ -54161,6 +54021,18 @@
     "tournament.TournamentFacetsQueryParams": {
       "description": "Query model for ``rpc.tournament.tournaments_facets``.\n\nThe same filter axes ``TournamentPaginationSortSearchQueryParams`` carries,\nminus pagination and sorting: counting a facet consumes no page.",
       "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "is_league": {
           "anyOf": [
             {
@@ -54396,6 +54268,18 @@
     },
     "tournament.TournamentPaginationSortSearchQueryParams": {
       "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "entities": {
           "items": {
             "type": "string"
