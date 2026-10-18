@@ -379,7 +379,24 @@ async def assert_app_golden(session, ids, actual):
         assert abs(Fraction(old[3]) - Fraction(new[3])) <= Fraction(1, 10**12), ("MV average", key)
         old[3] = new[3]
     await _prove_comparison_population(session, ids, expected, actual, compare_module, pool, population_witness)
+    _accept_observed_history_of_the_event_only_player(ids, expected, actual)
     _strict(expected, actual)
+
+
+def _accept_observed_history_of_the_event_only_player(ids, expected, actual):
+    """The one approved difference between the frozen P3 golden and the P4 history reader.
+
+    P4 (``d7a05b79e``; P4 ledger, "detailed DTO/readers/UI now use native observed participations/members rather than
+    source rosters") lists every encounter a player has an observed participation in, retired seats included. The
+    event-only player has no statistics but does have an observed participation in the main match, so the frozen
+    page of ``[]`` becomes exactly that one encounter. Nothing else moves: the golden stays untouched on disk and only
+    this leaf pair is replaced, after proving it is exactly that encounter.
+    """
+    frozen = expected["edge_users"]["player_event_only"]["encounters"]
+    native = actual["edge_users"]["player_event_only"]["encounters"]
+    assert frozen["results"] == [] and frozen["total"] == 0
+    assert [row["id"] for row in native["results"]] == [ids["encounter"]] and native["total"] == 1
+    frozen["results"], frozen["total"] = native["results"], native["total"]
 
 
 def _prove_two_person_mean(values, observed):

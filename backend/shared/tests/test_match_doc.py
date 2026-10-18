@@ -479,5 +479,5 @@ def test_duplicate_key_detection_is_linear_in_object_size():
 
     body = ",".join(f'"k{i}":1' for i in range(200_000))
     started = time.perf_counter()
-    only(("{" + body + ',"k7":2}').encode(), [], "duplicate_key")
+    only(("{" + body + ',"k199999":2}').encode(), [], "duplicate_key")
     assert time.perf_counter() - started < 5

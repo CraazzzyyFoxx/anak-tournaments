@@ -31,6 +31,7 @@ from shared.services.stats_evidence import capture_stats_evidence, owner_scopes
 from shared.testing.stats_parity import (
     seed_native_sentinel,
 )
+from src import schemas
 from src.services import catalog_aliases
 from src.services.ingest import process as ingest_process
 from src.services.match_logs import admin_reads, reaper, retention, uploads
@@ -648,8 +649,6 @@ def test_historical_binding_is_reparsed_only_by_its_own_available_source(stats_p
 
 
 def test_history_reports_real_owner_binding_and_raw_state_for_historical_reference(stats_parity_database, monkeypatch):
-    from src.schemas.admin.logs import LogRecordRead
-
     async def run():
         async with environment(stats_parity_database, monkeypatch) as env:
             uploaded = await upload(env)
@@ -681,7 +680,7 @@ def test_history_reports_real_owner_binding_and_raw_state_for_historical_referen
                     )
                 ).all()
                 assert len(rows) == 1
-                item = LogRecordRead.model_validate(admin_reads._record_to_dict(*rows[0]))
+                item = schemas.LogRecordRead.model_validate(admin_reads._record_to_dict(*rows[0]))
                 assert item.source == "historical_reference"
                 assert item.raw_status == models.RawSourceStatus.MISSING and not item.raw_available
                 assert (item.attached_encounter_id, item.attached_encounter_game_id) == (env.encounter, None)

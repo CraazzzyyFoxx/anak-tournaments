@@ -68,6 +68,8 @@ def test_match_mapper_uses_historical_game_context():
     context = SimpleNamespace(
         match=SimpleNamespace(id=17, duration_s=600, map_entity_id=31),
         game=SimpleNamespace(encounter_id=9, position=2),
+        encounter=SimpleNamespace(id=9),
+        job=None,
         home_team=SimpleNamespace(id=2155),
         away_team=SimpleNamespace(id=2152),
         home_score=3,

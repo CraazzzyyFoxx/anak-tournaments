@@ -945,7 +945,7 @@ def test_runner_preserves_unknown_series_awards_without_freezing_other_rules(sta
                 ordinary_awards = await awards(ordinary.id, ids["encounter"])
                 assert len(ordinary_awards) == 1
                 assert ordinary_awards[0]["workspace_member_id"] == ids["member_away"]
-                assert ordinary_awards[0]["run_id"] == run.id
+                assert str(ordinary_awards[0]["run_id"]) == str(run.id)
                 assert await awards(comeback.id, ids["encounter_hidden"]) == []
 
                 # A later known-order evaluation reconciles the held row normally.
