@@ -51,6 +51,7 @@ __all__ = (
     "get_ingest_job",
     "is_current_claim",
     "load_document",
+    "provenance_classifier",
     "require_ingest_principal",
     "store_document",
     "submit_document",
@@ -176,6 +177,21 @@ async def load_document(s3: S3Client, document_ref: str) -> tuple[MatchDoc, Prod
         return MatchDoc.model_validate(envelope["document"]), envelope["producer"]
     except (ValueError, TypeError, ValidationError) as exc:
         raise ValueError("stored document envelope is invalid") from exc
+
+
+def provenance_classifier(s3: S3Client):
+    """Classify an existing row by its envelope's server-assigned producer; never guess from keys or FKs."""
+
+    async def classify(row: models.IngestJob) -> Literal["canonical", "raw"]:
+        try:
+            _, producer = await load_document(s3, row.document_ref)
+        except (LookupError, ValueError):
+            raise IngestRejected(
+                409, "stored_document_invalid", "The existing job's stored document is missing or invalid"
+            ) from None
+        return "canonical" if producer == "canonical" else "raw"
+
+    return classify
 
 
 # -- structured error ------------------------------------------------------------------------------------------
@@ -371,6 +387,7 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
             hint_tournament_id=hint.tournament_id if hint else None,
             hint_encounter_id=hint.encounter_id if hint else None,
             hint_encounter_game_id=hint.encounter_game_id if hint else None,
+            classify_existing=provenance_classifier(s3),
         )
         job_id = job.id
         failed_here = created and failure is not None

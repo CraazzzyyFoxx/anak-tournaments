@@ -7,7 +7,7 @@ credential (``None`` when ``validate_token`` answers 401).
 
 World (all owned by one ``owner`` holding the workspace ``admin`` role, except the superuser key):
 
-* A: ``ok`` (stats.ingest), ``no_scope`` (team.create only), ``expired``, ``revoked``
+* A: ``ok`` and ``ok2`` (stats.ingest), ``no_scope`` (team.create only), ``expired``, ``revoked``
 * B: ``denied`` (owner gets a workspace deny after issue), ``super`` (superuser-backed key with stats.ingest)
 * C: ``removed`` (the owner's custom role loses stats.ingest after issue)
 * D: ``inactive`` (workspace deactivated after issue)
@@ -142,6 +142,7 @@ async def main() -> dict:
 
         keys: dict[str, tuple[str, int, str]] = {}
         keys["ok"] = (*await issue("A", ["stats.ingest"]), "A")
+        keys["ok2"] = (*await issue("A", ["stats.ingest"]), "A")
         keys["no_scope"] = (*await issue("A", ["team.create"]), "A")
         keys["expired"] = (*await issue("A", ["stats.ingest"], expires_at=datetime.now(UTC) + timedelta(hours=1)), "A")
         await session.execute(

@@ -543,6 +543,7 @@ def test_canonical_and_raw_jobs_never_share_a_hash_whatever_their_object_keys_lo
                 hint_tournament_id=None,
                 hint_encounter_id=None,
                 hint_encounter_game_id=None,
+                classify_existing=jobs.provenance_classifier(env.s3),
             )
             await session.commit()
         return job.id, created
@@ -600,5 +601,65 @@ def test_object_locks_are_held_before_any_object_is_written(ingest_database):
             await retention_session.commit()
         job = await asyncio.wait_for(task, 30)
         assert job.status == PENDING and document_ref in env.s3.objects
+
+    run(ingest_database, scenario)
+
+
+def test_canonical_classification_survives_deleting_the_submitting_key(ingest_database):
+    async def scenario(env):
+        raw = body(make_doc(None, source={"kind": "manual"}))
+        first = await submit(env, raw, "ok")
+        async with env.sf() as session:
+            await session.execute(sa.delete(models.ApiKey).where(models.ApiKey.id == env.keys["ok"]["api_key_id"]))
+            await session.commit()
+        stored = await row(env, first.id)
+        assert stored.api_key_id is None and stored.document_ref is not None  # FK nulled, still canonical
+        again = await submit(env, raw, "ok2")  # identical bytes through another valid key
+        assert again.id == first.id and again.status == PENDING
+        assert (await counts(env))["jobs"] == 1
+
+    run(ingest_database, scenario)
+
+
+def test_existing_row_is_classified_by_its_envelope_producer_and_a_bad_envelope_is_explicit(ingest_database):
+    async def scenario(env):
+        raw = body(make_doc(None, source={"kind": "manual"}))
+        sha = hashlib.sha256(raw).hexdigest()
+        doc = MatchDoc.model_validate(json.loads(raw))
+        decoded_ref = await jobs.store_document(env.s3, workspace_id=env.ws["A"], doc=doc, producer="decoded")
+        async with env.sf() as session:
+            raw_job, _ = await jobs._jobs.create_or_get(
+                session,
+                workspace_id=env.ws["A"],
+                discipline="overwatch",
+                source_kind="manual",
+                external_id=None,
+                content_hash=sha,
+                filename="x.log",
+                raw_ref=f"logs/{sha}",
+                document_ref=decoded_ref,  # a raw job after decode: it has a document, but producer=decoded
+                uploader_user_id=None,
+                api_key_id=None,
+                hint_tournament_id=None,
+                hint_encounter_id=None,
+                hint_encounter_game_id=None,
+            )
+            await session.commit()
+        with pytest.raises(BaseAPIException) as caught:  # decoded -> raw: canonical submit must not reuse it
+            await submit(env, raw)
+        assert (caught.value.status_code, caught.value.detail) == (409, "stats_upload_scope_conflict")
+        for content in (None, b"{not an envelope"):
+            if content is None:
+                env.s3.objects.pop(decoded_ref)  # envelope missing
+            else:
+                env.s3.objects[decoded_ref] = content  # envelope corrupt
+            before = await counts(env)
+            with pytest.raises(jobs.IngestRejected) as caught:
+                await submit(env, raw)
+            assert (caught.value.status_code, caught.value.code) == (409, "stored_document_invalid")
+            assert {k: v for k, v in (await counts(env)).items() if k != "objects"} == {
+                k: v for k, v in before.items() if k != "objects"
+            }
+        assert (await row(env, raw_job.id)).document_ref == decoded_ref
 
     run(ingest_database, scenario)

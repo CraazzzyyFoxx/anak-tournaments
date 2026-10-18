@@ -14,6 +14,7 @@ from shared.repository.tournament import TournamentRepository
 from shared.schemas.events import AchievementEvaluateEvent
 from src import models
 from src.core.config import settings
+from src.services.ingest.jobs import provenance_classifier
 from src.services.match_logs.admin_reads import _validate_attached_encounter
 from src.services.match_logs.limits import MATCH_NOT_FINISHED_MESSAGE, match_log_finished, match_log_oversize_message
 from src.services.match_logs.log_records import compute_content_hash
@@ -91,6 +92,7 @@ class UploadService:
                 hint_tournament_id=tournament_id,
                 hint_encounter_id=attached_encounter_id,
                 hint_encounter_game_id=None,
+                classify_existing=provenance_classifier(s3),
             )
             if _created:
                 await emit_logs_updated(session, job.workspace_id, change="pending")

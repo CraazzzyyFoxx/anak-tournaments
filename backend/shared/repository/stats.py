@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime, timedelta
+from typing import Literal
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -763,8 +764,13 @@ class IngestJobRepository:
         hint_tournament_id: int | None,
         hint_encounter_id: int | None,
         hint_encounter_game_id: int | None,
+        classify_existing: Callable[[models.IngestJob], Awaitable[Literal["canonical", "raw"]]] | None = None,
     ) -> tuple[models.IngestJob, bool]:
         """Reserve one pending job per idempotency key; ``False`` returns the existing row untouched.
+
+        ``classify_existing`` tells whether an existing row that already has a document was submitted as a canonical
+        document or is raw input (the server-authored envelope producer; the service layer owns that S3 read). A row
+        without a document is raw. It is required only when a hash-key collision meets a row with a document.
 
         The key is ``(workspace, source_kind, external_id)`` when an external id is present, otherwise
         ``(workspace, content_hash)`` -- the two partial unique indexes. The caller owns the commit.
@@ -792,23 +798,28 @@ class IngestJobRepository:
             else (job.workspace_id == workspace_id, job.content_hash == content_hash, job.external_id.is_(None))
         )
 
-        def reuse_or_conflict(row: models.IngestJob) -> models.IngestJob:
+        async def reuse_or_conflict(row: models.IngestJob) -> models.IngestJob:
             if keyed:
                 if row.discipline != discipline or row.content_hash != content_hash:
                     raise BaseAPIException(status_code=409, detail={"code": "idempotency_conflict"})
             else:
                 # Upload kinds share one decoder, so the same bytes from another upload channel are the same
                 # job; any other kind colliding on a hash must never run a different decoder.
-                # Provenance, never key text: this call is a canonical submit iff it carries the server-built
-                # document; an existing row is a canonical submission iff it has a document AND the trusted API key
-                # that submitted it (raw uploads never carry a key; a decoded raw job's document has none).
+                # Provenance, never key text or an FK that can be nulled: the existing row is canonical iff its
+                # server-authored envelope says so (a document-less row is undecoded raw input).
                 canonical = document_ref is not None
+                if row.document_ref is None:
+                    existing_canonical = False
+                elif classify_existing is None:
+                    raise RuntimeError("an existing row with a document needs classify_existing")
+                else:
+                    existing_canonical = await classify_existing(row) == "canonical"
                 same_kind = row.source_kind == source_kind or (
                     not canonical and {row.source_kind, source_kind} <= UPLOAD_SOURCE_KINDS
                 )
                 if (
                     row.discipline != discipline
-                    or (row.document_ref is not None and row.api_key_id is not None) != canonical
+                    or existing_canonical != canonical
                     or not same_kind
                     or (source_kind in UPLOAD_SOURCE_KINDS and row.hint_tournament_id != hint_tournament_id)
                 ):
@@ -831,7 +842,7 @@ class IngestJobRepository:
             )
         ).one_or_none()
         if existing is not None:
-            reuse_or_conflict(existing)
+            await reuse_or_conflict(existing)
         query = sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id)
         if not await session.scalar(query.with_for_update(read=True) if existing is None else query):
             raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
@@ -914,7 +925,7 @@ class IngestJobRepository:
         )
         if inserted is None:
             existing = (await session.scalars(sa.select(job).where(*key_filter).with_for_update())).one()
-            return reuse_or_conflict(existing), False
+            return await reuse_or_conflict(existing), False
         await session.flush()
         after = await capture_stats_evidence(session, scopes=scopes)
         await stage_stats_evidence(
