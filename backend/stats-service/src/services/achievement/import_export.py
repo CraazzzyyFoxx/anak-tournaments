@@ -10,10 +10,10 @@ import sqlalchemy as sa
 
 from shared.clients import S3Client
 from shared.clients.s3.upload import upload_asset
+from shared.domain.achievements.validation import derive_depends_on, validate_rule_definition
 from shared.models.achievements.achievement import AchievementRule
 from shared.repository import AchievementRuleRepository, CatalogEntityRepository
 from src import models
-from src.domain.achievement_validation import derive_depends_on, validate_rule_definition
 
 EXPORT_SCHEMA_VERSION = 1
 
@@ -260,7 +260,7 @@ def _rule_data(
         "grain": payload.grain,
         "condition_tree": payload.condition_tree,
         # Imported declarations are not trusted; derive from the actual tree.
-        "depends_on": derive_depends_on(payload.condition_tree),
+        "depends_on": derive_depends_on(payload.condition_tree, discipline="overwatch"),
         "enabled": payload.enabled,
         "rule_version": payload.rule_version,
         "min_tournament_id": payload.min_tournament_id,
@@ -277,7 +277,9 @@ async def import_portable_rules(
 ) -> dict[str, Any]:
     validation_errors: list[dict[str, Any]] = []
     for payload in rules:
-        errors, _inferred_grain = validate_rule_definition(payload.condition_tree, payload.grain)
+        errors, _inferred_grain = validate_rule_definition(
+            payload.condition_tree, payload.grain, discipline="overwatch"
+        )
         if errors:
             validation_errors.append({"slug": payload.slug, "errors": errors})
     if validation_errors:

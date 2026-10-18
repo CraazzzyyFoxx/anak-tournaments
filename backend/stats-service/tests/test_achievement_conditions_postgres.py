@@ -32,8 +32,8 @@ from shared.services.ontology import rated_leaf  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 
 models = importlib.import_module("src.models")
-conditions = importlib.import_module("src.services.achievement.engine.conditions")
-eval_context = importlib.import_module("src.services.achievement.engine.context")
+registry = importlib.import_module("shared.domain.achievements.registry")
+eval_context = importlib.import_module("shared.domain.achievements.context")
 
 
 class SeriesConditionsOnPostgresTests(EncounterWriterCase):
@@ -119,8 +119,10 @@ class SeriesConditionsOnPostgresTests(EncounterWriterCase):
     async def run_node(self, node: str, params: dict) -> set:
         async with self.Session() as s:
             tournament = await s.get_one(models.Tournament, self.ids["t"])
-            context = eval_context.EvalContext(workspace_id=self.ids["ws"], tournament=tournament)
-            return await conditions.execute_leaf(s, node, params, context)
+            context = eval_context.EvalContext(
+                workspace_id=self.ids["ws"], discipline="overwatch", tournament=tournament
+            )
+            return await registry.execute_leaf(s, node, params, context)
 
     def user(self, index: int) -> int:
         return self.users[index]

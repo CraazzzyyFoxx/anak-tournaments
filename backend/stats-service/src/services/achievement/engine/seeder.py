@@ -1,7 +1,7 @@
 """Workspace seeder for the achievement engine.
 
 Default rule metadata (the canonical catalog + pure rule-builder functions)
-lives in ``src.domain.achievement_catalog``; this module keeps only the
+belongs to the discipline module and is reached through ``DisciplineSpec.achievement_catalog``; this module keeps only the
 DB-touching ``seed_workspace``/``hard_reset_workspace`` orchestration, wrapped
 in one class + singleton per ``backend/ARCHITECTURE.md``.
 """
@@ -12,6 +12,8 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.disciplines import discipline
+from shared.domain.achievements.validation import derive_depends_on, infer_grain
 from shared.models.achievements.achievement import (
     AchievementRule,
     EvaluationRun,
@@ -19,8 +21,6 @@ from shared.models.achievements.achievement import (
 )
 from shared.models.catalog.entity import CatalogEntity
 from shared.repository.support import AchievementEvaluationResultRepository, AchievementRuleRepository
-from src.domain.achievement_catalog import _all_default_rules
-from src.domain.achievement_validation import derive_depends_on, infer_grain
 
 from .runner import AchievementEvaluationRunnerService, achievement_evaluation_runner_service
 
@@ -66,7 +66,10 @@ class AchievementSeederService:
                 )
             ).scalars()
         )
-        all_rules = _all_default_rules(workspace_id, heroes)
+        catalog = discipline("overwatch").achievement_catalog
+        if catalog is None:
+            raise ValueError("discipline 'overwatch' declares no achievement catalog")
+        all_rules = catalog(workspace_id, heroes)
         count = 0
         removed = 0
         supported_slugs = {rule.slug for rule in all_rules}
@@ -90,9 +93,9 @@ class AchievementSeederService:
                 removed += 1
 
         for rule in all_rules:
-            rule.depends_on = derive_depends_on(rule.condition_tree)
+            rule.depends_on = derive_depends_on(rule.condition_tree, discipline=rule.discipline)
             if rule.condition_tree:
-                inferred_grain = infer_grain(rule.condition_tree)
+                inferred_grain = infer_grain(rule.condition_tree, discipline=rule.discipline)
                 if inferred_grain != rule.grain:
                     raise ValueError(
                         f"Seed rule '{rule.slug}' has grain '{rule.grain}' but infers '{inferred_grain.value}'"

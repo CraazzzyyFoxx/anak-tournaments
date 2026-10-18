@@ -26,7 +26,7 @@ from test_scrim_achievement_isolation import (  # noqa: E402
 )
 
 # Importing the module is what registers the nodes.
-importlib.import_module("src.services.achievement.engine.conditions.kill_feed")  # noqa: E402
+importlib.import_module("shared.disciplines.overwatch.achievements.conditions.kill_feed")  # noqa: E402
 
 evaluator = _scrim.evaluator
 eval_context = _scrim.eval_context
@@ -98,6 +98,7 @@ class _KillFeedCase(_EngineTestCase):
         tournament = self.db.session.get(models.Tournament, tournament_id) if tournament_id else None
         return eval_context.EvalContext(
             workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament=tournament,
             grid=grid,
             normalizer=None,

@@ -34,8 +34,8 @@ from test_scrim_achievement_isolation import (  # noqa: E402
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftStatus, TournamentStatus  # noqa: E402
 
 # Importing the modules is what registers the nodes.
-importlib.import_module("src.services.achievement.engine.conditions.registration")  # noqa: E402
-importlib.import_module("src.services.achievement.engine.conditions.draft")  # noqa: E402
+importlib.import_module("shared.disciplines.overwatch.achievements.conditions.registration")  # noqa: E402
+importlib.import_module("shared.disciplines.overwatch.achievements.conditions.draft")  # noqa: E402
 
 evaluator = _scrim.evaluator
 eval_context = _scrim.eval_context
@@ -172,6 +172,7 @@ class _RegistrationCase(_EngineTestCase):
         tournament = self.db.session.get(models.Tournament, tournament_id) if tournament_id else None
         return eval_context.EvalContext(
             workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament=tournament,
             grid=grid,
             normalizer=None,

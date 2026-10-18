@@ -29,7 +29,7 @@ from test_scrim_achievement_isolation import (  # noqa: E402
 
 from shared.core.enums import EncounterStatus, LogStatsName, StageType  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
-from src.services.achievement.engine.runner import _rule_requires_normalized_divisions  # noqa: E402
+from shared.domain.achievements.validation import requires_normalized_divisions  # noqa: E402
 
 evaluator = _scrim.evaluator
 eval_context = _scrim.eval_context
@@ -115,6 +115,7 @@ class _NodeCase(_EngineTestCase):
         tournament = self.db.session.get(models.Tournament, tournament_id) if tournament_id else None
         return eval_context.EvalContext(
             workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament=tournament,
             grid=grid,
             normalizer=None,
@@ -484,5 +485,37 @@ class HeroKdBestTests(_NodeCase):
 
 class DivisionNormalizerFlagTests(TestCase):
     def test_div_span_requires_normalized_divisions(self) -> None:
-        self.assertTrue(_rule_requires_normalized_divisions({"type": "div_span", "params": {"op": ">=", "value": 10}}))
-        self.assertFalse(_rule_requires_normalized_divisions({"type": "match_win"}))
+        def needs(tree: dict) -> bool:
+            return requires_normalized_divisions(tree, discipline="overwatch")
+
+        self.assertTrue(needs({"type": "div_span", "params": {"op": ">=", "value": 10}}))
+        self.assertFalse(needs({"type": "match_win"}))
+        # Through AND/NOT and a player sub-condition; stable_streak only when it tracks division.
+        self.assertTrue(
+            needs(
+                {
+                    "AND": [
+                        {"type": "match_win"},
+                        {"NOT": {"type": "div_change", "params": {"direction": "up", "min_shift": 1}}},
+                    ]
+                }
+            )
+        )
+        self.assertTrue(
+            needs(
+                {
+                    "type": "team_players_match",
+                    "params": {"mode": "any", "condition": {"type": "player_div", "params": {"op": ">=", "value": 3}}},
+                }
+            )
+        )
+        self.assertFalse(
+            needs(
+                {
+                    "type": "team_players_match",
+                    "params": {"mode": "any", "condition": {"type": "player_role", "params": {"role": "tank"}}},
+                }
+            )
+        )
+        self.assertTrue(needs({"type": "stable_streak", "params": {"fields": ["division"], "min_streak": 2}}))
+        self.assertFalse(needs({"type": "stable_streak", "params": {"fields": ["role"], "min_streak": 2}}))

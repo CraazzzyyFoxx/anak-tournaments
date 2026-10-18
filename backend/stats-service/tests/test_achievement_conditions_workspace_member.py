@@ -30,14 +30,16 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
 
 
-context_module = importlib.import_module("src.services.achievement.engine.context")
-conditions_init = importlib.import_module("src.services.achievement.engine.conditions")
-aggregate = importlib.import_module("src.services.achievement.engine.conditions.aggregate")
-division = importlib.import_module("src.services.achievement.engine.conditions.division")
-player_conditions = importlib.import_module("src.services.achievement.engine.conditions.player")
-team_conditions = importlib.import_module("src.services.achievement.engine.conditions.team")
-teammate_recurrence = importlib.import_module("src.services.achievement.engine.conditions.teammate_recurrence")
-tournament_winrate = importlib.import_module("src.services.achievement.engine.conditions.tournament_winrate")
+context_module = importlib.import_module("shared.domain.achievements.context")
+eligibility = importlib.import_module("shared.disciplines.overwatch.achievements.eligibility")
+aggregate = importlib.import_module("shared.disciplines.overwatch.achievements.conditions.aggregate")
+division = importlib.import_module("shared.disciplines.overwatch.achievements.conditions.division")
+player_conditions = importlib.import_module("shared.disciplines.overwatch.achievements.conditions.player")
+team_conditions = importlib.import_module("shared.disciplines.overwatch.achievements.conditions.team")
+teammate_recurrence = importlib.import_module(
+    "shared.disciplines.overwatch.achievements.conditions.teammate_recurrence"
+)
+tournament_winrate = importlib.import_module("shared.disciplines.overwatch.achievements.conditions.tournament_winrate")
 
 EvalContext = context_module.EvalContext
 
@@ -65,17 +67,18 @@ def _compiled(stmt) -> str:
     return str(stmt.compile(dialect=postgresql.dialect()))
 
 
-class GetAllEligibleUsersTests(IsolatedAsyncioTestCase):
+class AllEligibleUsersTests(IsolatedAsyncioTestCase):
     async def test_joins_workspace_member_and_selects_player_id(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
-        await conditions_init.get_all_eligible_users(session, ctx)
+        await eligibility.all_eligible_users(session, ctx)
 
         sql = _compiled(session.statements[0])
         self.assertIn("workspace_member", sql)
         self.assertIn("workspace_member.player_id", sql)
         self.assertIn("workspace_member.id = tournament.player.workspace_member_id", sql)
+        self.assertIn("tournament.tournament.discipline = ", sql)
 
 
 class IsCaptainConditionTests(IsolatedAsyncioTestCase):
@@ -86,7 +89,7 @@ class IsCaptainConditionTests(IsolatedAsyncioTestCase):
 
     async def test_compares_captain_id_to_workspace_member_player_id(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
         await player_conditions.execute_is_captain(session, {}, ctx)
 
@@ -102,7 +105,7 @@ class IsCaptainConditionTests(IsolatedAsyncioTestCase):
 class CaptainPropertyConditionTests(IsolatedAsyncioTestCase):
     async def test_captain_subquery_and_teammate_filter_both_use_workspace_member(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
         await team_conditions.execute_captain_property(
             session, {"condition": {"type": "is_newcomer", "params": {}}}, ctx
@@ -124,7 +127,7 @@ class TeammateRecurrenceSelfJoinTests(IsolatedAsyncioTestCase):
 
     async def test_each_player_alias_gets_its_own_workspace_member_alias(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
         await teammate_recurrence.execute_teammate_recurrence(session, {}, ctx)
 
@@ -144,7 +147,7 @@ class TeammateRecurrenceSelfJoinTests(IsolatedAsyncioTestCase):
 
     async def test_result_rows_are_still_pairs_of_two_ints(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
         result = await teammate_recurrence.execute_teammate_recurrence(session, {}, ctx)
 
@@ -164,7 +167,7 @@ class DivisionChangeWindowFunctionTests(IsolatedAsyncioTestCase):
             pass
 
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1, grid=_FakeGrid())
+        ctx = EvalContext(workspace_id=1, discipline="overwatch", grid=_FakeGrid())
 
         await division.execute_div_change(session, {"direction": "up", "min_shift": 1}, ctx)
 
@@ -181,7 +184,7 @@ class AggregateDistinctCountRoleTests(IsolatedAsyncioTestCase):
 
     async def test_role_branch_groups_by_workspace_member_player_id(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
         await aggregate.execute_distinct_count(session, {"field": "role", "op": ">=", "value": 1}, ctx)
 
@@ -195,7 +198,7 @@ class TournamentWinrateGroupByTests(IsolatedAsyncioTestCase):
 
     async def test_group_by_keeps_two_columns_with_substituted_identity(self) -> None:
         session = _CapturingSession()
-        ctx = EvalContext(workspace_id=1)
+        ctx = EvalContext(workspace_id=1, discipline="overwatch")
 
         await tournament_winrate.execute_tournament_winrate(session, {"op": ">=", "value": 0.5}, ctx)
 

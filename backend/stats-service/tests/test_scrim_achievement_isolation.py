@@ -53,9 +53,9 @@ models = importlib.import_module("src.models")
 enums = importlib.import_module("shared.core.enums")
 achievement = importlib.import_module("shared.models.achievements.achievement")
 runner = importlib.import_module("src.services.achievement.engine.runner")
-evaluator = importlib.import_module("src.services.achievement.engine.evaluator")
-eval_context = importlib.import_module("src.services.achievement.engine.context")
-achievement_catalog = importlib.import_module("src.domain.achievement_catalog")
+evaluator = importlib.import_module("shared.domain.achievements.evaluator")
+eval_context = importlib.import_module("shared.domain.achievements.context")
+achievement_catalog = importlib.import_module("shared.disciplines.overwatch.achievements.catalog")
 
 
 @compiles(JSONB, "sqlite")
@@ -664,6 +664,7 @@ class _EngineTestCase(IsolatedAsyncioTestCase):
         tournament = self.db.session.get(models.Tournament, tournament_id) if tournament_id else None
         return eval_context.EvalContext(
             workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament=tournament,
             grid=grid,
             normalizer=None,
@@ -743,7 +744,7 @@ class ScrimCaptainAchievementTests(_EngineTestCase):
     @staticmethod
     def _condition_trees() -> list[dict]:
         return [
-            rule.condition_tree for rule in achievement_catalog._all_default_rules(WORKSPACE_ID) if rule.condition_tree
+            rule.condition_tree for rule in achievement_catalog.all_default_rules(WORKSPACE_ID) if rule.condition_tree
         ]
 
 

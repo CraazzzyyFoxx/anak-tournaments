@@ -15,6 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from shared.core.enums import LogStatsName
 from shared.core.enums import MatchEvent as MatchEventName
+from shared.disciplines.overwatch.achievements import conditions
+from shared.disciplines.overwatch.achievements.conditions import log_stat_rank
+from shared.disciplines.overwatch.achievements.eligibility import eligible_keys
+from shared.domain.achievements import evaluator
+from shared.domain.achievements.context import EvalContext
+from shared.domain.achievements.validation import infer_grain, validate_condition_tree
 from shared.models.achievements.achievement import (
     AchievementEvaluationResult,
     AchievementGrain,
@@ -23,10 +29,6 @@ from shared.models.achievements.achievement import (
     EvaluationRunTrigger,
 )
 from src import models
-from src.domain.achievement_validation import infer_grain, validate_condition_tree
-from src.services.achievement.engine import conditions, evaluator
-from src.services.achievement.engine.conditions import log_stat_rank
-from src.services.achievement.engine.context import EvalContext
 from src.services.achievement.engine.runner import AchievementEvaluationRunnerService
 from src.services.achievement.rule_service import AchievementRuleService
 
@@ -116,11 +118,11 @@ def _trees(hero: models.CatalogEntity, support: models.CatalogEntity, map_: mode
 
 
 async def _evaluate(session: AsyncSession, tree: dict, context: EvalContext) -> dict:
-    errors = validate_condition_tree(tree)
+    errors = validate_condition_tree(tree, discipline="overwatch")
     assert not errors, errors
     keys = await evaluator.evaluate(session, tree, context)
     return {
-        "grain": infer_grain(tree).value,
+        "grain": infer_grain(tree, discipline="overwatch").value,
         "keys": [list(key) for key in sorted(keys)],
         # Keep evidence for non-surviving AND/NOT keys too: it is an actual
         # evaluator side channel, not a value invented by the capture.
@@ -292,14 +294,16 @@ async def _condition_outputs(session: AsyncSession, ids: dict[str, int]) -> dict
         tournament = await session.get(models.Tournament, tournament_id) if tournament_id is not None else None
         values = {}
         for name, tree in trees.items():
-            values[name] = await _evaluate(session, tree, EvalContext(workspace_id=workspace_id, tournament=tournament))
+            values[name] = await _evaluate(
+                session, tree, EvalContext(workspace_id=workspace_id, discipline="overwatch", tournament=tournament)
+            )
         eligible = {}
         for grain in AchievementGrain:
-            keys = await conditions.get_eligible_keys(
-                session, EvalContext(workspace_id=workspace_id, tournament=tournament), grain
+            keys = await eligible_keys(
+                session, EvalContext(workspace_id=workspace_id, discipline="overwatch", tournament=tournament), grain
             )
             eligible[grain.value] = [list(key) for key in sorted(keys)]
-        context = EvalContext(workspace_id=workspace_id, tournament=tournament)
+        context = EvalContext(workspace_id=workspace_id, discipline="overwatch", tournament=tournament)
         rank_values = {}
         for name, query in (
             (
@@ -1025,7 +1029,9 @@ def test_weighted_rank_reduction_is_stable_across_scopes_and_join_plans(stats_pa
                 for hash_join in ("on", "off"):
                     await session.execute(sa.text(f"SET LOCAL enable_hashjoin = {hash_join}"))
                     for scoped_tournament in (None, tournament):
-                        context = EvalContext(workspace_id=ids["workspace"], tournament=scoped_tournament)
+                        context = EvalContext(
+                            workspace_id=ids["workspace"], discipline="overwatch", tournament=scoped_tournament
+                        )
                         rows = (await session.execute(log_stat_rank._time_weighted_rate_query("kd", context))).all()
                         actual = {
                             (row.user_id, row.tournament_id): row.metric.hex() if row.metric is not None else None

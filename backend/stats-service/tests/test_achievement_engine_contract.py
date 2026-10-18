@@ -30,7 +30,9 @@ from test_scrim_achievement_isolation import (  # noqa: E402
     _EngineTestCase,
 )
 
+from shared.disciplines.overwatch.achievements.eligibility import eligible_keys  # noqa: E402
 from shared.models.achievements.achievement import (  # noqa: E402
+    AchievementGrain,
     EvaluationRunStatus,
     EvaluationRunTrigger,
 )
@@ -39,6 +41,8 @@ from src.services.achievement.engine.differ import DiffResult, EvaluationSlice  
 
 evaluator = _scrim.evaluator
 runner = _scrim.runner
+models = _scrim.models
+EvalContext = _scrim.eval_context.EvalContext
 
 NON_CAPTAIN_USER = 104
 SUBSTITUTE_USER = 105
@@ -91,6 +95,44 @@ class EvaluatorGrainTests(_EngineTestCase):
         self.assertNotIn((REAL_AWAY_USER, REAL_TOURNAMENT_ID), result)
         # Substitutes are outside the roster universe, like ``match_win``.
         self.assertNotIn((SUBSTITUTE_USER, REAL_TOURNAMENT_ID), result)
+
+    async def test_not_universe_is_scoped_to_the_rules_workspace_and_discipline(self) -> None:
+        # A player who only exists in another game's tournament, or in another workspace, must never be awarded by
+        # NOT: the universe is the complement's whole domain.
+        for tournament_id, workspace_id, discipline, user_id in (
+            (50, WORKSPACE_ID, "lol", 301),
+            (51, WORKSPACE_ID + 1, "overwatch", 302),
+        ):
+            self.db.insert(
+                models.Tournament.__table__,
+                id=tournament_id,
+                workspace_id=workspace_id,
+                name=f"T{tournament_id}",
+                slug=f"tournament-{tournament_id}",
+                is_hidden=False,
+                is_league=False,
+                start_date=None,
+                discipline=discipline,
+            )
+            team = self.db.team(tournament_id, f"t{tournament_id}", captain_id=None)
+            self.db.player(tournament_id, team, self.db.member(user_id, workspace_id=workspace_id), name="p")
+        self.db.session.commit()
+        foreign_users = {301, 302}
+
+        for grain in AchievementGrain:
+            universe = await eligible_keys(self.db.shim, await self.context(None), grain)
+            self.assertFalse({key[0] for key in universe} & foreign_users, grain)
+        users = await eligible_keys(self.db.shim, await self.context(None), AchievementGrain.user)
+        self.assertIn((NON_CAPTAIN_USER,), users)
+
+        result = await evaluator.evaluate(self.db.shim, {"NOT": IS_CAPTAIN_RULE}, await self.context(None))
+        self.assertIn((NON_CAPTAIN_USER, REAL_TOURNAMENT_ID), result)
+        self.assertFalse({key[0] for key in result} & foreign_users)
+
+        # LoL registers no conditions and declares no eligible keys: unsupported, never an empty or full universe.
+        lol = EvalContext(workspace_id=WORKSPACE_ID, discipline="lol")
+        with self.assertRaises(ValueError):
+            await evaluator.evaluate(self.db.shim, {"NOT": IS_CAPTAIN_RULE}, lol)
 
     async def test_mixed_and_raises_when_both_sides_match(self) -> None:
         with self.assertRaises(evaluator.GrainMismatchError):

@@ -87,6 +87,7 @@ def _rule() -> SimpleNamespace:
     return SimpleNamespace(
         id=1,
         slug="captain",
+        discipline="overwatch",
         enabled=True,
         condition_tree={"type": "is_captain"},
         depends_on=["tournament.encounter"],

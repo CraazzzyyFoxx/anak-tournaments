@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
+from shared.domain.achievements.validation import derive_depends_on
 from shared.models.achievements.achievement import (
     AchievementOverride,
     AchievementRule,
@@ -23,7 +24,6 @@ from shared.models.achievements.achievement import (
 )
 from shared.repository.support import AchievementOverrideRepository, AchievementRuleRepository
 from src import schemas
-from src.domain.achievement_validation import derive_depends_on
 
 from .engine.runner import AchievementEvaluationRunnerService, achievement_evaluation_runner_service
 
@@ -87,7 +87,7 @@ class AchievementRuleService:
             raise HTTPException(status_code=409, detail=f"Slug '{rule_data['slug']}' already exists in workspace")
         # Derived, never taken from the caller: a hand-written ``depends_on`` that
         # misses a table is a rule that silently stops re-evaluating.
-        rule_data["depends_on"] = derive_depends_on(rule_data.get("condition_tree") or {})
+        rule_data["depends_on"] = derive_depends_on(rule_data.get("condition_tree") or {}, discipline="overwatch")
         # The wire says hero_id until P6; the column is entity_id (spec §14.2).
         if "hero_id" in rule_data:
             rule_data["entity_id"] = rule_data.pop("hero_id")
@@ -109,7 +109,9 @@ class AchievementRuleService:
         if condition_tree_changed and "rule_version" not in update_data:
             update_data["rule_version"] = rule.rule_version + 1
         if condition_tree_changed:
-            update_data["depends_on"] = derive_depends_on(update_data.get("condition_tree") or rule.condition_tree)
+            update_data["depends_on"] = derive_depends_on(
+                update_data.get("condition_tree") or rule.condition_tree, discipline=rule.discipline
+            )
         else:
             update_data.pop("depends_on", None)
         # The wire says hero_id until P6; the column is entity_id (spec §14.2).

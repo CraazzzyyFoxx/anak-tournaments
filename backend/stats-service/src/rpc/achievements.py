@@ -27,6 +27,10 @@ from faststream.rabbit import RabbitMessage
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import PaginationParams, paginated_dict, paginated_dump
+from shared.domain.achievements.context import EvalContext
+from shared.domain.achievements.evaluator import evaluate
+from shared.domain.achievements.registry import get_specs
+from shared.domain.achievements.validation import infer_grain, validate_condition_tree, validate_rule_definition
 from shared.models.achievements.achievement import (
     AchievementOverride,
     AchievementOverrideAction,
@@ -47,17 +51,11 @@ from shared.services.achievement_effective import build_effective_achievement_ro
 from src import models, schemas
 from src.core import clients as _clients
 from src.core import db
-from src.domain.achievement_validation import (
-    infer_grain,
-    validate_condition_tree,
-    validate_rule_definition,
-)
 from src.services.achievement.admin_reads import (
     _get_source_workspace_or_404,
     _get_visible_workspace_ids,
     _get_workspace_or_404,
 )
-from src.services.achievement.engine.conditions import get_specs
 from src.services.achievement.engine.runner import run_evaluation
 from src.services.achievement.engine.seeder import hard_reset_workspace, seed_workspace
 from src.services.achievement.import_export import (
@@ -186,7 +184,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                     subcondition_only=spec.subcondition_only,
                     subcondition_ok=spec.subcondition_ok,
                 )
-                for _name, spec in sorted(get_specs().items())
+                for _name, spec in sorted(get_specs(discipline="overwatch").items())
             ]
 
         return await c.envelope(logger, "ach.condition_types", op, session_factory=_SF)
@@ -196,8 +194,8 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(_session: Any) -> Any:
             _require_ws(data, "read")
             body = schemas.ConditionTreeValidateRequest.model_validate(c.payload(data))
-            errors = validate_condition_tree(body.condition_tree)
-            grain = infer_grain(body.condition_tree) if not errors else None
+            errors = validate_condition_tree(body.condition_tree, discipline="overwatch")
+            grain = infer_grain(body.condition_tree, discipline="overwatch") if not errors else None
             return schemas.ConditionTreeValidateResponse(
                 valid=len(errors) == 0, errors=errors, inferred_grain=grain.value if grain else None
             )
@@ -310,7 +308,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "create")
             body = schemas.AchievementRuleCreate.model_validate(c.payload(data))
-            errors, _grain = validate_rule_definition(body.condition_tree, body.grain)
+            errors, _grain = validate_rule_definition(body.condition_tree, body.grain, discipline="overwatch")
             if errors:
                 raise HTTPException(status_code=400, detail={"validation_errors": errors})
             rule = await achievement_rule_service.create_rule(
@@ -335,7 +333,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             if "condition_tree" in update_data or "grain" in update_data:
                 next_condition_tree = update_data.get("condition_tree", rule.condition_tree)
                 next_grain = update_data.get("grain", rule.grain)
-                errors, _grain = validate_rule_definition(next_condition_tree, next_grain)
+                errors, _grain = validate_rule_definition(next_condition_tree, next_grain, discipline=rule.discipline)
                 if errors:
                     raise HTTPException(status_code=400, detail={"validation_errors": errors})
             rule = await achievement_rule_service.update_rule(
@@ -474,8 +472,6 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "update")
             from src.core.workspace import get_division_grid
-            from src.services.achievement.engine.context import EvalContext
-            from src.services.achievement.engine.evaluator import evaluate
 
             rule_id = _path_int(data, "rule_id")
             rule = await _rule_repo.get(session, rule_id)
@@ -484,7 +480,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             tournament_id = c.q1(data, "tournament_id", int)
             tournament = await _tournament_repo.get(session, tournament_id) if tournament_id else None
             grid = await get_division_grid(session, workspace_id, tournament_id=tournament_id)
-            context = EvalContext(workspace_id=workspace_id, tournament=tournament, grid=grid)
+            context = EvalContext(
+                workspace_id=workspace_id, discipline=rule.discipline, tournament=tournament, grid=grid
+            )
             results = await evaluate(session, rule.condition_tree, context)
             return {
                 "rule_slug": rule.slug,

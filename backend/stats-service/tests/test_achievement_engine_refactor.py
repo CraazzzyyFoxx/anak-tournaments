@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
@@ -15,32 +16,29 @@ for candidate in (str(REPO_BACKEND_ROOT), str(STATS_SERVICE_ROOT)):
 
 
 from shared.core.enums import StageType  # noqa: E402
-from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
-from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
-from src.domain.achievement_catalog import (  # noqa: E402
+from shared.disciplines.overwatch.achievements.catalog import (  # noqa: E402
     RULES,
-    _all_default_rules,
     _hero_kd_rules,
+    all_default_rules,
     get_default_rule_slugs,
 )
-from src.domain.achievement_validation import (  # noqa: E402
-    LEAF_GRAINS,
-    infer_grain,
-    leaf_grain,
-    validate_condition_tree,
-)
-from src.services.achievement.engine.conditions import (  # noqa: E402
-    get_registered_types,
-    resolve_stat_name,
-)
-from src.services.achievement.engine.conditions.tournament_format import (  # noqa: E402
+from shared.disciplines.overwatch.achievements.conditions import resolve_stat_name  # noqa: E402
+from shared.disciplines.overwatch.achievements.conditions.tournament_format import (  # noqa: E402
     matches_tournament_format,
 )
+from shared.domain.achievements import registry, validation  # noqa: E402
+from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
+from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
 from src.services.achievement.engine.differ import (  # noqa: E402
     EvaluationSlice,
     diff_and_apply,
     persist_slice_for_grain,
 )
+
+infer_grain = partial(validation.infer_grain, discipline="overwatch")
+leaf_grain = partial(validation.leaf_grain, discipline="overwatch")
+validate_condition_tree = partial(validation.validate_condition_tree, discipline="overwatch")
+OW_SPECS = registry.get_specs(discipline="overwatch")
 
 
 def _catalog_text() -> dict[str, tuple[str, str, str]]:
@@ -122,26 +120,26 @@ class ValidationTests(TestCase):
     def test_default_rule_grains_match_inferred_grains(self) -> None:
         mismatches = [
             (rule.slug, rule.grain, infer_grain(rule.condition_tree))
-            for rule in _all_default_rules(1)
+            for rule in all_default_rules(1)
             if rule.condition_tree and infer_grain(rule.condition_tree) != rule.grain
         ]
         self.assertEqual([], mismatches)
 
     def test_all_default_rules_are_implemented(self) -> None:
         """Every canonical achievement has a real condition tree (no placeholders)."""
-        placeholders = [rule.slug for rule in _all_default_rules(1) if not rule.condition_tree]
+        placeholders = [rule.slug for rule in all_default_rules(1) if not rule.condition_tree]
         self.assertEqual([], placeholders)
 
     def test_all_default_condition_trees_validate(self) -> None:
         errors = {
             rule.slug: validate_condition_tree(rule.condition_tree)
-            for rule in _all_default_rules(1)
+            for rule in all_default_rules(1)
             if rule.condition_tree and validate_condition_tree(rule.condition_tree)
         }
         self.assertEqual({}, errors)
 
     def test_new_leaf_types_registered_with_grain(self) -> None:
-        registered = set(get_registered_types())
+        registered = set(registry.get_registered_types(discipline="overwatch"))
         for ctype in (
             "log_stat_rank",
             "standing_count",
@@ -153,7 +151,7 @@ class ValidationTests(TestCase):
             "reached_playoffs",
         ):
             self.assertIn(ctype, registered)
-            self.assertIn(ctype, LEAF_GRAINS)
+            self.assertIn(ctype, OW_SPECS)
 
     def test_reached_playoffs_scope_drives_grain(self) -> None:
         self.assertEqual(

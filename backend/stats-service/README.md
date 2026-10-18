@@ -213,9 +213,12 @@ The outbox event type is `process_ingest_job`.
 
 Rules are data, not code. An `achievements.rule` row carries a JSON condition tree of `AND` / `OR` /
 `NOT` nodes over leaf conditions; each leaf is `{"type": ..., "params": {...}}` dispatched through a
-decorator-populated registry in `src/services/achievement/engine/conditions/`, so adding a condition
-type means adding one registered executor, and authoring an achievement means editing JSON through
-the admin API. Evaluation returns sets of tuples whose shape follows the rule's grain — `(user_id)`,
+decorator-populated registry (`shared/domain/achievements/registry.py`, one table per discipline), so
+adding a condition type means adding one executor registered by the discipline's module (Overwatch:
+`shared/disciplines/overwatch/achievements/conditions/`), and authoring an achievement means editing
+JSON through the admin API. A discipline with no `achievement_conditions` hook (LoL) has no
+conditions, and `NOT` needs its `achievement_eligible_keys` hook: unsupported games are rejected,
+never evaluated against an empty universe. Evaluation returns sets of tuples whose shape follows the rule's grain — `(user_id)`,
 `(user_id, tournament_id)` or `(user_id, tournament_id, match_id)`.
 
 A run is a reconcile, not an append: the differ loads the stored results for the rule (optionally

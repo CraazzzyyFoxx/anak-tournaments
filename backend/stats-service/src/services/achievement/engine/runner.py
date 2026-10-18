@@ -10,6 +10,9 @@ from loguru import logger
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.achievements.context import EvalContext
+from shared.domain.achievements.evaluator import GrainMismatchError, evaluate
+from shared.domain.achievements.validation import GRAIN_ARITY, requires_normalized_divisions
 from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.messaging.config import ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE
 from shared.models.achievements.achievement import (
@@ -34,11 +37,8 @@ from shared.services.division_grid.normalization import (
 )
 from src import models
 from src.core.broker import require_broker
-from src.domain.achievement_eval_context import EvalContext
-from src.domain.achievement_validation import GRAIN_ARITY
 
 from .differ import diff_and_apply, load_existing_results, persist_slice_for_grain
-from .evaluator import GrainMismatchError, evaluate
 
 # A full recompute an operator asked for, on a workspace nobody has vouched for.
 # ``parse_complete`` is absent on purpose: it is the bounded, already-paid-for
@@ -271,8 +271,8 @@ class AchievementEvaluationRunnerService:
                     rules_ok += 1
                     continue
 
-                rule_needs_normalized_divisions = eval_tournament is None and _rule_requires_normalized_divisions(
-                    rule.condition_tree
+                rule_needs_normalized_divisions = eval_tournament is None and requires_normalized_divisions(
+                    rule.condition_tree, discipline=rule.discipline
                 )
                 if rule_needs_normalized_divisions and normalizer is None:
                     if normalizer_error is None:
@@ -294,6 +294,7 @@ class AchievementEvaluationRunnerService:
                     async with session.begin_nested():
                         context = EvalContext(
                             workspace_id=workspace_id,
+                            discipline=rule.discipline,
                             tournament=eval_tournament,
                             grid=workspace_grid if eval_tournament is None else grid,
                             normalizer=normalizer if rule_needs_normalized_divisions else None,
@@ -460,28 +461,3 @@ async def _resolve_grid(
         tournament_id=tournament.id if tournament is not None else None,
         discipline="overwatch" if tournament is None else tournament.discipline,
     )
-
-
-def _rule_requires_normalized_divisions(condition: dict) -> bool:
-    if "AND" in condition:
-        return any(_rule_requires_normalized_divisions(child) for child in condition["AND"])
-    if "OR" in condition:
-        return any(_rule_requires_normalized_divisions(child) for child in condition["OR"])
-    if "NOT" in condition:
-        return _rule_requires_normalized_divisions(condition["NOT"])
-
-    condition_type = condition.get("type")
-    params = condition.get("params", {})
-    if condition_type in {"div_level", "div_change"}:
-        return True
-    if condition_type == "stable_streak" and "division" in params.get("fields", []):
-        return True
-    if condition_type == "div_span":
-        return True
-    if condition_type == "team_players_match":
-        return _rule_requires_normalized_divisions(params.get("condition", {}))
-    if condition_type == "captain_property":
-        return _rule_requires_normalized_divisions(params.get("condition", {}))
-    if condition_type == "player_div":
-        return True
-    return False
