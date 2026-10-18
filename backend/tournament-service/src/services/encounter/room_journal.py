@@ -47,6 +47,8 @@ resumed              map/hero admin          paused_seconds
 timer_extended       map/hero admin          seconds, step_index
 session_cancelled    map/hero admin          {} + reason
 technical_loss       --       admin          loser_side, home_score, away_score + reason
+match_ingested       --       stats-service  game_id, evidence_id, revision, event_id, basis_game_result_version,
+                                             accepted_game_result_version, outcome (+ reason on a refusal)
 ==================== ======== ============== ===============================================
 """
 
@@ -150,7 +152,8 @@ def _room_entry(row: EncounterRoomEvent, actor_name: str | None) -> schemas.Preg
         origin="room",
         action=row.action,
         kind=row.kind,
-        source=row.source,
+        # ``stats-service`` is the machine deciding: the wire's actor vocabulary stays captain/admin/system.
+        source=row.source if row.source in ("captain", "admin") else "system",
         encounter_team_id=row.encounter_team_id,
         actor_auth_user_id=row.actor_auth_user_id,
         actor_name=actor_name,

@@ -5,6 +5,8 @@ Sections, in order (a later task appends its own section to ``upgrade``):
 1. ``catalog.alias_miss.kind`` accepts the six diagnostic kinds ``character|map|mode|stat|event|role``. Only the CHECK
    domain changes: rows, ``uq_alias_miss`` and the 128-char ``raw_name`` are untouched, and ``catalog.entity.kind``
    stays three-valued. The existing CHECK is found by relation and the column it constrains, never by its name.
+2. ``tournament.tournament.logs_official BOOLEAN NOT NULL DEFAULT false`` (match-layer owner policy for accepting
+   ingest evidence). Every existing tournament stays off; a constant default is a metadata-only add on PG 11+.
 
 Forward-fix only, consistent with P4's release.
 
@@ -43,8 +45,18 @@ def _widen_alias_miss_kind() -> None:
     op.execute(f"ALTER TABLE catalog.alias_miss ADD CONSTRAINT ck_alias_miss_kind CHECK (kind IN ({domain}))")
 
 
+def _add_logs_official() -> None:
+    op.execute(sa.text("SET LOCAL lock_timeout = '3s'"))
+    op.add_column(
+        "tournament",
+        sa.Column("logs_official", sa.Boolean(), server_default="false", nullable=False),
+        schema="tournament",
+    )
+
+
 def upgrade() -> None:
     _widen_alias_miss_kind()
+    _add_logs_official()
 
 
 def downgrade() -> None:

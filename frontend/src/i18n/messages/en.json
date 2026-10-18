@@ -4304,7 +4304,17 @@
           "result_game_confirm": "Map {position} confirmed: {score}",
           "result_game_correct": "Map {position} corrected: {score}",
           "result_game_cancel": "Map {position} cancelled",
+          "match_ingested": "Match log revision {revision}: {outcome}",
           "unknown": "{action}"
+        },
+        "outcome": {
+          "accepted": "accepted as the official result",
+          "logs_disabled": "not used — this tournament does not accept logs as official",
+          "owner_policy_refused": "refused by the owner policy",
+          "result_locked": "not used — the map already has a result",
+          "stale_basis": "not used — the map result changed after the log was read",
+          "result_incomplete": "not used — the log does not decide every team's place",
+          "applied_roster_only": "roster updated, result not accepted"
         }
       },
       "waitingMapTitle": "Waiting for this round's map",
@@ -9180,7 +9190,9 @@
       "draw": "Draw",
       "loss": "Loss",
       "league": "Treat as league season",
-      "finished": "Mark tournament as finished"
+      "finished": "Mark tournament as finished",
+      "logsOfficial": "Accept match logs as official results",
+      "logsOfficialDescription": "An uploaded log decides a game that has no accepted result yet, from the placements it shows. Accepted, confirmed or admin results are never overwritten; reopen a game to correct it."
     },
     "rules": {
       "description": "The document published on the tournament's public Rules tab.",

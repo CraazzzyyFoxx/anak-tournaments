@@ -40,6 +40,8 @@ class TournamentCreate(BaseModel):
     end_date: date
     auto_transitions_enabled: bool = True
     allow_late_registration: bool = False
+    # Owner policy for canonical match ingest; false unless the authorized organizer sets it.
+    logs_official: bool = False
     win_points: float = 1.0
     draw_points: float = 0.5
     loss_points: float = 0.0
@@ -69,6 +71,7 @@ class TournamentUpdate(BaseModel):
     allow_late_registration: bool | None = None
     discord_broadcasts_enabled: bool | None = None
     discord_dms_enabled: bool | None = None
+    logs_official: bool | None = None
     win_points: float | None = None
     draw_points: float | None = None
     loss_points: float | None = None

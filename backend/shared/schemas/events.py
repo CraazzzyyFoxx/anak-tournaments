@@ -8,7 +8,9 @@ import time
 import uuid
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from shared.schemas.role import RoleRef
 
 
 class BaseEvent(BaseModel):
@@ -345,6 +347,48 @@ class TournamentStandingsInvalidatedEvent(BaseEvent):
     event_type: str = Field(default="tournament_standings_invalidated", frozen=True)
     tournament_id: int = Field(..., description="Tournament ID whose results changed")
     reason: str = Field(default="results_changed", description="Source/reason for observability")
+
+
+class MatchIngestPlacement(BaseModel):
+    """One bound encounter team's canonical placement; ``None`` = the document carries none for it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    encounter_team_id: int = Field(..., gt=0)
+    placement: int | None = Field(default=None, ge=1)
+
+
+class MatchIngestExtraParticipant(BaseModel):
+    """A participant the observation shows on a team whose roster lacks them (never a stats row id)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    encounter_team_id: int = Field(..., gt=0)
+    workspace_member_id: int = Field(..., gt=0)
+    handle_snapshot: str = Field(..., min_length=1, max_length=128)
+    observed_role: RoleRef | None = None
+
+
+class MatchIngestedEvent(BaseEvent):
+    """One observation revision a stats document bound to an encounter game (D95).
+
+    Published by: stats-service (transactional outbox), event id ``match.ingested:{evidence_id}:{revision}``.
+    Consumed by: the tournament match layer, which alone decides whether it is official. Carries no raw document,
+    S3 reference or interpreted score facts: only opaque evidence identity, the game-result basis it was captured
+    against, canonical placements and the extra participants the roster lacks.
+    """
+
+    event_type: str = Field(default="match_ingested", frozen=True)
+    workspace_id: int = Field(..., gt=0)
+    discipline: str = Field(..., min_length=1, max_length=32)
+    encounter_id: int = Field(..., gt=0)
+    encounter_game_id: int = Field(..., gt=0)
+    evidence_id: int = Field(..., gt=0, description="stats.match.id, opaque to the match layer")
+    revision: int = Field(..., ge=1, description="Observation revision of that match")
+    ingest_job_id: int = Field(..., gt=0)
+    basis_game_result_version: int = Field(..., ge=0, description="game.result_version the binding was made against")
+    placements: list[MatchIngestPlacement] = Field(default_factory=list)
+    extra_participants: list[MatchIngestExtraParticipant] = Field(default_factory=list)
 
 
 class CacheInvalidatedEvent(BaseEvent):

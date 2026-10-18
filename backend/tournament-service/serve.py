@@ -13,6 +13,7 @@ from shared.messaging.config import (
     CACHE_INVALIDATION_TOURNAMENT_QUEUE,
     DIVISION_GRID_IMPORT_JOBS_DLQ,
     DIVISION_GRID_IMPORT_JOBS_QUEUE,
+    MATCH_INGESTED_TOURNAMENT_DLQ,
     TOURNAMENT_BRACKET_JOBS_DLQ,
     TOURNAMENT_BRACKET_JOBS_QUEUE,
     TOURNAMENT_COMPUTE_EXCHANGE,
@@ -60,7 +61,7 @@ from src.services.challonge import sync as challonge_sync
 from src.services.computation.bracket_worker import process_bracket_job
 from src.services.computation.standings_worker import process_standings_job
 from src.services.division_grid.import_jobs import process_import_job, recover_stale_import_jobs
-from src.services.encounter import room_reconcile
+from src.services.encounter import log_evidence_events, room_reconcile
 from src.services.registration import sheet_sync
 from src.services.tournament import auto_transitions, recalculation_events
 from src.services.tournament.cache_invalidation import invalidate_tournament_resources
@@ -146,6 +147,8 @@ scrim.register(broker, logger)
 # Previously mounted by the deleted HTTP main.py; the worker now hosts them so
 # cache invalidation + standings recalculation run on those domain events.
 broker.include_router(recalculation_events.task_router)
+# Ingest evidence (match.ingested): the match layer alone decides whether a log becomes official.
+broker.include_router(log_evidence_events.task_router)
 
 
 async def drain_outbox() -> None:
@@ -238,6 +241,7 @@ async def start_worker() -> None:
     await declare_dead_letter_queue(broker, TOURNAMENT_STANDINGS_JOBS_DLQ)
     await declare_dead_letter_queue(broker, DIVISION_GRID_IMPORT_JOBS_DLQ)
     await declare_dead_letter_queue(broker, CACHE_INVALIDATION_TOURNAMENT_DLQ)
+    await declare_dead_letter_queue(broker, MATCH_INGESTED_TOURNAMENT_DLQ)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,

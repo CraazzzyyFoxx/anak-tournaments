@@ -38,6 +38,7 @@ export type TournamentFormState = {
   allow_late_registration: boolean;
   discord_broadcasts_enabled: boolean;
   discord_dms_enabled: boolean;
+  logs_official: boolean;
   phase_schedule: PhaseScheduleFormState;
   division_grid_version_id: number | null;
   team_formation: string;
@@ -131,6 +132,7 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     allow_late_registration: tournament.allow_late_registration ?? false,
     discord_broadcasts_enabled: tournament.discord_broadcasts_enabled ?? true,
     discord_dms_enabled: tournament.discord_dms_enabled ?? true,
+    logs_official: tournament.logs_official ?? false,
     phase_schedule: getPhaseScheduleForm(tournament, timezone),
     division_grid_version_id: tournament.division_grid_version_id ?? null,
     team_formation: tournament.team_formation ?? "balancer",
@@ -175,6 +177,7 @@ function normalizeTournamentFormValues(form: TournamentFormState): TournamentUpd
     allow_late_registration: form.allow_late_registration,
     discord_broadcasts_enabled: form.discord_broadcasts_enabled,
     discord_dms_enabled: form.discord_dms_enabled,
+    logs_official: form.logs_official,
     division_grid_version_id: form.division_grid_version_id,
     team_formation: form.team_formation,
     roster_slots_json: form.roster_slots_json,

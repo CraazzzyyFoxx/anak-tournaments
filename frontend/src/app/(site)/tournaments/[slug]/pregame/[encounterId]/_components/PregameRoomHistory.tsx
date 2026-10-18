@@ -49,6 +49,7 @@ const ACTIONS = {
   timer_extended: "warning",
   session_cancelled: "warning",
   technical_loss: "warning",
+  match_ingested: "plain",
   result_confirm: "plain",
   result_reopen: "warning",
   result_auto_confirm: "plain",
@@ -65,6 +66,17 @@ const ACTIONS = {
 type RoomHistoryAction = keyof typeof ACTIONS;
 
 const VERBS = { ban: true, pick: true, protect: true } as const;
+
+/** The outcomes a stats-service receipt records; anything else renders as its raw code. */
+const INGEST_OUTCOMES = {
+  accepted: true,
+  logs_disabled: true,
+  owner_policy_refused: true,
+  result_locked: true,
+  stale_basis: true,
+  result_incomplete: true,
+  applied_roster_only: true
+} as const;
 
 const asText = (value: unknown) => (typeof value === "string" ? value : null);
 const asNumber = (value: unknown) => (typeof value === "number" ? value : null);
@@ -163,6 +175,7 @@ export function PregameRoomHistory({
     const names = itemIds(data).map(
       (id) => itemsByKind[entry.kind === "hero" ? "hero" : "map"][id]?.name ?? `#${id}`
     );
+    const outcome = asText(data.outcome);
     return t(`history.action.${key}`, {
       team: teamId != null ? seatName(seats, teamId) : t("history.unknownTeam"),
       first: first != null ? seatName(seats, first) : t("history.unknownTeam"),
@@ -179,7 +192,12 @@ export function PregameRoomHistory({
       score: score ?? "—",
       seconds: asNumber(data.seconds) ?? asNumber(data.paused_seconds) ?? 0,
       attempt: asNumber(data.attempt) ?? "—",
-      policy: asText(data.policy) ?? "—"
+      policy: asText(data.policy) ?? "—",
+      revision: asNumber(data.revision) ?? "—",
+      outcome:
+        outcome != null && outcome in INGEST_OUTCOMES
+          ? t(`history.outcome.${outcome as keyof typeof INGEST_OUTCOMES}`)
+          : (outcome ?? "—")
     });
   };
 

@@ -1288,7 +1288,9 @@ def stats_parity_template() -> Iterator[tuple[str, dict[str, int]]]:
                 ids = seed_legacy(conn)
         finally:
             engine.dispose()
-        result = upgrade_database(url, "stats01")
+        # Head, not ``stats01``: the ORM selects every current model column (``tournament.logs_official``
+        # arrives with P5's ``ingest01``), so a template frozen at the P4 revision cannot serve a later model.
+        result = upgrade_database(url, "head")
         if result.returncode:
             raise RuntimeError(f"stats parity upgrade failed:\n{result.stdout}\n{result.stderr}")
         yield url, ids

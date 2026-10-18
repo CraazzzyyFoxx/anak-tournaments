@@ -110,6 +110,20 @@ function ScoringForm({
                 {t("finished")}
               </Label>
             </div>
+            <div className="flex flex-col gap-1 border-t border-border pt-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="settings-logs-official"
+                  checked={form.logs_official}
+                  disabled={disabled}
+                  onCheckedChange={(checked) => patch({ logs_official: checked === true })}
+                />
+                <Label htmlFor="settings-logs-official" className="cursor-pointer">
+                  {t("logsOfficial")}
+                </Label>
+              </div>
+              <p className="pl-6 text-xs text-muted-foreground">{t("logsOfficialDescription")}</p>
+            </div>
           </div>
         </CardContent>
       </Card>

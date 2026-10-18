@@ -220,6 +220,11 @@ export interface Tournament {
    * The in-app inbox gets them either way.
    */
   discord_dms_enabled: boolean;
+  /**
+   * Owner policy: an uploaded match log may become the official result of a
+   * game that has none yet. Off unless an organizer turned it on.
+   */
+  logs_official: boolean;
   phase_schedule: TournamentPhaseSchedule[];
   win_points: number;
   draw_points: number;

@@ -73,6 +73,7 @@ class TournamentRead(BaseRead):
     allow_late_registration: bool = False
     discord_broadcasts_enabled: bool = True
     discord_dms_enabled: bool = True
+    logs_official: bool = False
     phase_schedule: list[TournamentPhaseScheduleRead] = []
     win_points: float = 1.0
     draw_points: float = 0.5

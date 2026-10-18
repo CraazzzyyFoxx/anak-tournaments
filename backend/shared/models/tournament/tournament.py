@@ -112,6 +112,9 @@ class Tournament(db.TimeStampIntegerMixin):
     # Discord DMs. The in-app inbox row is written either way; checked at
     # delivery (app-service), so a DM still queued when it is switched off stays unsent.
     discord_dms_enabled: Mapped[bool] = mapped_column(Boolean(), default=True, server_default="true", nullable=False)
+    # Owner policy for the canonical match ingest (P5, D95): when true, an unaccepted game's observed placements
+    # may become its official ADMIN_LOG result. Off unless an organizer with ``tournament.update`` turns it on.
+    logs_official: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false", nullable=False)
     win_points: Mapped[float] = mapped_column(Float(), default=1.0, server_default="1.0", nullable=False)
     draw_points: Mapped[float] = mapped_column(Float(), default=0.5, server_default="0.5", nullable=False)
     loss_points: Mapped[float] = mapped_column(Float(), default=0.0, server_default="0.0", nullable=False)

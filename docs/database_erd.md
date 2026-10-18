@@ -1355,6 +1355,7 @@ erDiagram
         boolean allow_late_registration
         boolean discord_broadcasts_enabled
         boolean discord_dms_enabled
+        boolean logs_official
         float win_points
         float draw_points
         float loss_points

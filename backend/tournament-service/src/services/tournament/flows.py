@@ -188,6 +188,7 @@ class TournamentFlowsService:
             allow_late_registration=tournament.allow_late_registration,
             discord_broadcasts_enabled=tournament.discord_broadcasts_enabled,
             discord_dms_enabled=tournament.discord_dms_enabled,
+            logs_official=tournament.logs_official,
             phase_schedule=[
                 schemas.TournamentPhaseScheduleRead.model_validate(row, from_attributes=True)
                 for row in _loaded_relationship(tournament, "phase_schedule") or []

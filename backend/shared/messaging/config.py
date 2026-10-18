@@ -404,6 +404,35 @@ TOURNAMENT_STANDINGS_INVALIDATED_DLQ = RabbitQueue(
 )
 
 # ============================================================================
+# Match ingested (stats-service -> tournament match layer)
+# ============================================================================
+# One opaque evidence id/revision/placements payload per accepted observation
+# revision. The tournament consumer decides whether it is official (D95); the
+# stats side never writes ``encounter.*``.
+
+MATCH_INGESTED_EXCHANGE = RabbitExchange(
+    "match.ingested",
+    type=ExchangeType.TOPIC,
+    durable=True,
+)
+
+MATCH_INGESTED_TOURNAMENT_QUEUE = RabbitQueue(
+    "match.ingested.tournament",
+    durable=True,
+    routing_key="match.ingested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "match.ingested.tournament.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+MATCH_INGESTED_TOURNAMENT_DLQ = RabbitQueue(
+    "match.ingested.tournament.dlq",
+    durable=True,
+)
+
+# ============================================================================
 # Notification delivery (notify()/broadcast() outbox -> app-service)
 # ============================================================================
 # Routing keys: ``notification.created`` (one personal row, DM) and

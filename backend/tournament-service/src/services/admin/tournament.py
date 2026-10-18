@@ -421,6 +421,7 @@ class AdminTournamentService:
                 is_league=is_league,
                 start_date=start_date,
                 end_date=end_date,
+                logs_official=False,  # an imported bracket never starts accepting ingest evidence
                 division_grid_version_id=division_grid_version_id,
             ),
         )
