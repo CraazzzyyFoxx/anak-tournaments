@@ -75,13 +75,16 @@ def test_serve_registers_parser_unique_rpc_subjects() -> None:
 
 
 def test_shutdown_keeps_rank_fetch_available_until_consumers_finish(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Closing the rank client before draining consumers rejects queued fetches into the DLQ."""
+    """Schedules stop when shutdown begins; the rank client closes only after the consumers drained."""
     serve = _import_serve()
-    client_module = importlib.import_module("src.services.overwatch_rank.client")
+    client_module = importlib.import_module("shared.disciplines.overwatch.collector.client")
+    tasks = importlib.import_module("shared.disciplines.overwatch.collector.tasks")
+    scheduler = importlib.import_module("shared.disciplines.overwatch.collector.scheduler")
     client = client_module.OverFastRankClient("http://overfast.local")
-    monkeypatch.setattr(serve.rank_tasks, "rank_client", client)
+    schedule_stops: list[str] = []
+    monkeypatch.setattr(tasks, "rank_client", client)
+    monkeypatch.setattr(scheduler, "shutdown_scheduler", lambda: schedule_stops.append("stopped"))
     monkeypatch.setattr(serve.s3_client, "close", AsyncMock())
-    monkeypatch.setattr(serve.rank_tasks, "close_redis", AsyncMock())
     monkeypatch.setattr(serve.realtime_redis, "aclose", AsyncMock())
     monkeypatch.setattr(serve, "close_quota", AsyncMock())
 
@@ -92,6 +95,7 @@ def test_shutdown_keeps_rank_fetch_available_until_consumers_finish(monkeypatch:
             client._http._client = http
 
             async def drain_consumers() -> None:
+                assert schedule_stops == ["stopped"], "schedules must stop before the consumers drain"
                 result = await client.fetch_summary("Name#1234")
                 tank = next(rank for rank in result.ranks if rank.role == "tank")
                 assert (result.status, tank.division, tank.tier) == ("ok", "gold", 2)
@@ -100,5 +104,6 @@ def test_shutdown_keeps_rank_fetch_available_until_consumers_finish(monkeypatch:
             await serve.app.stop()
             with pytest.raises(RuntimeError):
                 await client.fetch_summary("Name#1234")
+            assert schedule_stops == ["stopped"]
 
     asyncio.run(exercise_shutdown())

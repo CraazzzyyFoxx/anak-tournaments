@@ -5,15 +5,14 @@ from .gamemode import *
 from .hero import *
 from .logs_parser import *
 from .map import *
-from .rank_history import *
 from .stage import *
 from .standing import *
 from .team import *
 from .tournament import *
 from .user import *
+from shared.schemas.rank_collection import *
 from .admin.achievement_rule import *
 from .admin.discord_channel import *
 from .admin.logs import *
-from .admin.rank_collection import *
 from .admin.settings import *
 from .admin.subscription_collection import *

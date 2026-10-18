@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-import importlib
-import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 
-backend_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
-
-
-read_service = importlib.import_module("src.services.overwatch_rank.queries")
-domain = importlib.import_module("src.domain.overwatch_rank")
+from shared.disciplines.overwatch.collector import domain
+from shared.disciplines.overwatch.collector import queries as read_service
 
 
 def _snap(**kw):

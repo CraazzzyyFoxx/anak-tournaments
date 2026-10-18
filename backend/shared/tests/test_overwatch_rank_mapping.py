@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-import importlib
-import sys
-from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-backend_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
-
-
-mapping = importlib.import_module("src.services.overwatch_rank.mapping")
-from shared.schemas.settings import RankMappingConfig, RankMappingEntry  # noqa: E402
+from shared.disciplines.overwatch.collector import mapping
+from shared.schemas.settings import RankMappingConfig, RankMappingEntry
 
 
 class MappingTests(IsolatedAsyncioTestCase):

@@ -295,9 +295,11 @@ to a matching discipline and kind and closes the miss in one request.
   `LOG_REAPER_MAX_ATTEMPTS`, `LOG_REAPER_BATCH_SIZE`.
 - **Failed-log retention** — `FAILED_LOG_RETENTION_DAYS` (14).
 - **OverFast** — `OVERFAST_BASE_URL`, `OVERFAST_TIMEOUT`, `OVERFAST_MAX_RETRIES`,
-  `RANK_FETCH_WORKER_PREFETCH` (kept low to protect the upstream). The operational
-  collection parameters — interval, scope, per-minute limit, backoff base, max consecutive
-  failures, rank mapping — live in `public.settings`, editable at runtime, not in the env file.
+  `RANK_FETCH_WORKER_PREFETCH` (kept low to protect the upstream). They belong to the Overwatch
+  module's rank collector (`shared/disciplines/overwatch/collector/settings.py`), not to the
+  parser's config. The operational collection parameters — interval, scope, per-minute limit,
+  backoff base, max consecutive failures, rank mapping — live in `public.settings`, editable at
+  runtime, not in the env file.
 - **Outbound proxy** — `PROXY_TYPE`, `PROXY_IP`, `PROXY_PORT`, `PROXY_USERNAME`, `PROXY_PASSWORD`.
 - **Subscription verification** — `DISCORD_TOKEN`, `TWITCH_CLIENT_ID`. Unset means every live check
   resolves `unknown` and fails open: the sweep runs and proves nothing.

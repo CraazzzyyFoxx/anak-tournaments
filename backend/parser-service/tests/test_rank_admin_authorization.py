@@ -12,6 +12,7 @@ goes through that subquery (``service.workspace_account_ids``).
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, TestCase
@@ -70,9 +71,10 @@ class CatalogTests(TestCase):
 
 class AuthorizeTests(TestCase):
     def _authorize(self, data: dict, action: str = "read") -> int | None:
-        from src.rpc import rank
+        from shared.disciplines.overwatch.collector import handlers
+        from shared.rpc.common import actor
 
-        return rank._authorize(data, action)
+        return handlers.authorize(actor(data), data, action)
 
     def test_workspace_owner_is_allowed_and_scoped(self) -> None:
         # The regression this change exists for: an owner holds no global role,
@@ -159,21 +161,21 @@ class ScopingTests(IsolatedAsyncioTestCase):
         return session
 
     async def test_fetch_log_filters_through_workspace_membership(self) -> None:
-        from src.services.overwatch_rank import admin
+        from shared.disciplines.overwatch.collector import admin
 
         session = self._empty_session()
         await admin.list_fetch_log(session, workspace_id=WORKSPACE)
         self.assertIn(self.MEMBER_JOIN, self._captured_sql(session))
 
     async def test_fetch_log_unscoped_query_has_no_membership_predicate(self) -> None:
-        from src.services.overwatch_rank import admin
+        from shared.disciplines.overwatch.collector import admin
 
         session = self._empty_session()
         await admin.list_fetch_log(session)
         self.assertNotIn(self.MEMBER_JOIN, self._captured_sql(session))
 
     async def test_user_collection_filters_through_workspace_membership(self) -> None:
-        from src.services.overwatch_rank import admin
+        from shared.disciplines.overwatch.collector import admin
 
         session = self._empty_session()
         await admin.get_user_collection_status(session, 5, workspace_id=WORKSPACE)
@@ -182,7 +184,7 @@ class ScopingTests(IsolatedAsyncioTestCase):
     async def test_trigger_cannot_reach_tags_outside_the_workspace(self) -> None:
         # An explicit social_account_ids list is caller-supplied, so the scope has
         # to constrain it too — otherwise a workspace admin force-fetches any tag.
-        from src.services.overwatch_rank import admin
+        from shared.disciplines.overwatch.collector import admin
 
         session = self._empty_session()
         enqueued = await admin.trigger_collection(session, social_account_ids=[1, 2], workspace_id=WORKSPACE)
@@ -193,8 +195,8 @@ class ScopingTests(IsolatedAsyncioTestCase):
     async def test_reenable_scopes_the_update(self) -> None:
         from unittest.mock import AsyncMock, patch
 
+        from shared.disciplines.overwatch.collector import service
         from shared.schemas.settings import RankCollectionConfig
-        from src.services.overwatch_rank import service
 
         session = self._empty_session()
         with patch.object(
@@ -202,7 +204,7 @@ class ScopingTests(IsolatedAsyncioTestCase):
             "get_rank_collection_config",
             AsyncMock(return_value=RankCollectionConfig()),
         ):
-            from src.services.overwatch_rank import admin
+            from shared.disciplines.overwatch.collector import admin
 
             await admin.reenable_disabled(session, workspace_id=WORKSPACE)
 
@@ -213,7 +215,7 @@ class ScopingTests(IsolatedAsyncioTestCase):
         self.assertIn(self.MEMBER_JOIN, str(service.workspace_account_ids(WORKSPACE)))
 
     async def test_collection_stats_scopes_every_aggregate(self) -> None:
-        from src.services.overwatch_rank import service
+        from shared.disciplines.overwatch.collector import service
 
         session = self._empty_session()
         session.scalar = self._scalar_zero()
@@ -229,3 +231,70 @@ class ScopingTests(IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
 
         return AsyncMock(return_value=0)
+
+
+class RpcDispatchTests(IsolatedAsyncioTestCase):
+    """Every ``rpc.parser.rank.*`` subject reaches the module handler behind it, with its authorization intact."""
+
+    SUBJECTS = {
+        f"rpc.parser.rank.{name}"
+        for name in (
+            "user_history",
+            "battle_tag_history",
+            "user_current",
+            "fetch_log",
+            "stats",
+            "user_collection",
+            "collect",
+            "reenable_disabled",
+        )
+    }
+
+    def setUp(self) -> None:
+        from unittest.mock import patch
+
+        from src.rpc import rank
+        from tests._fakes import FakeBroker, session_factory
+
+        self.broker = FakeBroker()
+        rank.register(self.broker, logging.getLogger("test"))
+        patcher = patch.object(rank, "_SF", session_factory(object()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_all_eight_subjects_are_served(self) -> None:
+        self.assertEqual(set(self.broker.handlers), self.SUBJECTS)
+
+    async def test_an_admin_subject_without_identity_is_unauthorized(self) -> None:
+        envelope = await self.broker.handlers["rpc.parser.rank.stats"]({"query": {}}, msg=None)
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual(envelope["error"]["code"], "unauthorized")
+
+    async def test_an_admin_subject_enforces_the_permission_behind_it(self) -> None:
+        reader = {
+            "user_id": 43,
+            "roles": [],
+            "permissions": [],
+            "workspaces": [
+                {
+                    "workspace_id": WORKSPACE,
+                    "rbac_roles": [],
+                    "rbac_permissions": [{"resource": "rank", "action": "read"}],
+                }
+            ],
+        }
+        envelope = await self.broker.handlers["rpc.parser.rank.collect"](_data(reader), msg=None)
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual(envelope["error"]["code"], "forbidden")
+
+    async def test_a_public_read_runs_without_identity(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        from shared.disciplines.overwatch.collector import queries
+
+        with patch.object(queries, "get_current_ranks", AsyncMock(return_value=[])):
+            envelope = await self.broker.handlers["rpc.parser.rank.user_current"](
+                {"id": 5, "query": {"platform": ["pc"]}}, msg=None
+            )
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(envelope["data"]["user_id"], 5)

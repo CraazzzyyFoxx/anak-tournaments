@@ -8,10 +8,10 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.social import SocialProvider
 from shared.schemas.events import FetchRankEvent
 from shared.services.settings_provider import settings_provider
-from src import models
 
 from . import service, tasks
 

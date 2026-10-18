@@ -1,4 +1,5 @@
 import base64
+from collections.abc import Awaitable
 
 import sqlalchemy as sa
 from faststream import FastStream
@@ -6,6 +7,8 @@ from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core.social import SocialProvider, normalize_social_handle
+from shared.disciplines import DISCIPLINES
+from shared.disciplines import jobs as discipline_jobs
 from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_DEFERRED_DLQ,
     ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
@@ -17,15 +20,11 @@ from shared.messaging.config import (
     PROCESS_TOURNAMENT_LOGS_QUEUE,
     RANK_FETCH_DLQ,
     RANK_FETCH_PRIORITY_DLQ,
-    RANK_FETCH_PRIORITY_QUEUE,
-    RANK_FETCH_QUEUE,
     TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_QUEUE,
     TOURNAMENT_EVENTS_EXCHANGE,
     TOURNAMENT_REGISTRATION_APPROVED_DLQ,
-    TOURNAMENT_REGISTRATION_APPROVED_QUEUE,
     TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ,
-    TOURNAMENT_REGISTRATION_RANK_CHECK_QUEUE,
     UPLOAD_MATCH_LOG_DLQ,
     UPLOAD_MATCH_LOG_QUEUE,
 )
@@ -85,8 +84,6 @@ from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.log_records import log_records_service
 from src.services.match_logs.objectiveless import resolve_encounter_maps
 from src.services.match_logs.result_events import publish_match_log_result
-from src.services.overwatch_rank import scheduler as rank_scheduler
-from src.services.overwatch_rank import tasks as rank_tasks
 from src.services.subscription_collection import scheduler as subscription_scheduler
 
 logger = setup_logging(
@@ -109,8 +106,6 @@ _JOBS_CHANNEL = Channel(prefetch_count=2)
 # keeps that blast radius to itself: upload_match_log, process_tournament_logs
 # and achievement_evaluate stay live.
 _MATCH_LOG_CHANNEL = Channel(prefetch_count=2)
-# OverFast-protective prefetch (existing setting, previously unwired).
-_RANK_FETCH_CHANNEL = Channel(prefetch_count=config.settings.rank_fetch_worker_prefetch)
 # Deferred achievement recompute for unverified workspaces: a full-history run
 # an operator asked for, on a workspace nobody has vouched for. One at a time,
 # so it can never crowd out the parse-driven evaluations on _JOBS_CHANNEL.
@@ -165,6 +160,14 @@ rpc_misc.register(broker, logger)
 rpc_impact.register(broker, logger)
 rpc_subscription.register(broker, logger)
 
+# Disciplines whose jobs this worker runs: every installed one until Task 6 adds STATS_DISCIPLINES selection.
+_JOB_DISCIPLINES = tuple(DISCIPLINES.values())
+# stop_jobs() awaitables handed back at shutdown start, awaited once the consumers have drained.
+_pending_closes: list[Awaitable[None]] = []
+discipline_jobs.register_jobs(
+    _JOB_DISCIPLINES, broker, session_factory=db.async_session_maker, redis=realtime_redis, logger=logger
+)
+
 
 @app.on_startup
 async def start_worker() -> None:
@@ -196,11 +199,10 @@ async def start_worker() -> None:
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
     await s3_client.start()
-    await rank_tasks.rank_client.start()
-    # Periodic OverFast rank collection trigger (Redis leader-locked across worker
-    # replicas, admin-settings-gated — no-ops while collection is disabled). Lives
-    # in the worker now that the HTTP service is decommissioned.
-    rank_scheduler.start_scheduler()
+    # The selected disciplines' jobs: OverFast client and rank schedule for Overwatch, nothing for LoL.
+    await discipline_jobs.start_jobs(
+        _JOB_DISCIPLINES, session_factory=db.async_session_maker, redis=realtime_redis, logger=logger
+    )
     # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
     # worker killed mid-parse). Redis leader-locked across worker replicas.
     logs_reaper.start_scheduler(redis=realtime_redis, broker=broker)
@@ -212,7 +214,7 @@ async def start_worker() -> None:
 
 @app.on_shutdown
 async def stop_worker() -> None:
-    rank_scheduler.shutdown_scheduler()
+    _pending_closes.extend(discipline_jobs.stop_jobs(_JOB_DISCIPLINES))
     logs_reaper.shutdown_scheduler()
     logs_retention.shutdown_scheduler()
     subscription_scheduler.shutdown_scheduler()
@@ -222,8 +224,8 @@ async def stop_worker() -> None:
 async def close_worker_resources() -> None:
     # Consumers must finish before their HTTP, S3 and Redis clients are closed.
     await s3_client.close()
-    await rank_tasks.rank_client.close()
-    await rank_tasks.close_redis()
+    for closing in _pending_closes:
+        await closing
     await realtime_redis.aclose()
     # The quota gate holds its own process-global Redis client (see
     # shared.quota.configure); every worker restart leaks a connection without this.
@@ -407,48 +409,3 @@ async def process_tournament_encounter_completed(data: dict, msg: RabbitMessage)
                 routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
             )
             await session.commit()
-
-
-@broker.subscriber(RANK_FETCH_QUEUE, channel=_RANK_FETCH_CHANNEL)
-async def process_rank_fetch(data: dict, msg: RabbitMessage) -> None:
-    async with observe_message_processing(
-        queue=RANK_FETCH_QUEUE,
-        handler="process_rank_fetch",
-        message=msg,
-        logger=logger,
-    ):
-        await rank_tasks.process_fetch_rank(data)
-
-
-@broker.subscriber(RANK_FETCH_PRIORITY_QUEUE, channel=_RANK_FETCH_CHANNEL)
-async def process_rank_fetch_priority(data: dict, msg: RabbitMessage) -> None:
-    async with observe_message_processing(
-        queue=RANK_FETCH_PRIORITY_QUEUE,
-        handler="process_rank_fetch_priority",
-        message=msg,
-        logger=logger,
-    ):
-        await rank_tasks.process_fetch_rank(data)
-
-
-@broker.subscriber(TOURNAMENT_REGISTRATION_APPROVED_QUEUE, exchange=TOURNAMENT_EVENTS_EXCHANGE)
-async def process_registration_approved_rank_check(data: dict, msg: RabbitMessage) -> None:
-    async with observe_message_processing(
-        queue=TOURNAMENT_REGISTRATION_APPROVED_QUEUE,
-        handler="process_registration_approved_rank_check",
-        message=msg,
-        logger=logger,
-    ):
-        await rank_tasks.handle_registration_approved(data, broker=broker)
-
-
-# The registrant's own "check again" from their card: same rank check, own queue.
-@broker.subscriber(TOURNAMENT_REGISTRATION_RANK_CHECK_QUEUE, exchange=TOURNAMENT_EVENTS_EXCHANGE)
-async def process_registration_rank_check(data: dict, msg: RabbitMessage) -> None:
-    async with observe_message_processing(
-        queue=TOURNAMENT_REGISTRATION_RANK_CHECK_QUEUE,
-        handler="process_registration_rank_check",
-        message=msg,
-        logger=logger,
-    ):
-        await rank_tasks.handle_registration_approved(data, broker=broker)

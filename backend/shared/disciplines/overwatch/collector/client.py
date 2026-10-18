@@ -18,7 +18,8 @@ import httpx
 from shared.clients.http_client import ResilientHttpClient
 from shared.core import enums
 from shared.core.social import PROVIDERS, SocialProvider, compile_handle_pattern
-from src.domain.overwatch_rank import ParsedRank, RankFetchResult
+
+from .domain import ParsedRank, RankFetchResult
 
 logger = logging.getLogger(__name__)
 

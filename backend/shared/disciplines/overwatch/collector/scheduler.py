@@ -25,10 +25,9 @@ from shared.services.distributed_lock import (
 )
 from shared.services.scheduler import IntervalScheduler
 from shared.services.settings_provider import settings_provider
-from src.core import db, metrics
-from src.domain.overwatch_rank import compute_per_tick
 
-from . import service, tasks
+from . import metrics, runtime, service, tasks
+from .domain import compute_per_tick
 
 SCHEDULER_TICK_SECONDS = 60
 LEADER_LOCK_KEY = "ow_rank:scheduler:leader"
@@ -49,10 +48,11 @@ async def run_collection_tick(
     *,
     redis: Any | None = None,
     broker: Any | None = None,
-    session_factory: Any = db.async_session_maker,
+    session_factory: Any | None = None,
 ) -> int:
     """One scheduling pass: enqueue due tags. Returns how many were enqueued."""
-    redis_client = redis or await tasks.get_redis()
+    redis_client = redis or runtime.redis()
+    session_factory = session_factory or runtime.session_factory()
 
     try:
         token = await acquire_distributed_lock(
@@ -159,12 +159,13 @@ async def run_collection_tick(
             await release_distributed_lock(redis_client, token)
 
 
-async def run_fetch_log_purge(*, session_factory: Any = db.async_session_maker) -> int:
+async def run_fetch_log_purge(*, session_factory: Any | None = None) -> int:
     """Drop ``fetch_log`` rows older than ``FETCH_LOG_RETENTION``; returns the count.
 
     No leader lock: the delete is idempotent, and two replicas racing for the
     same rows just split them.
     """
+    session_factory = session_factory or runtime.session_factory()
     async with observe_scheduled_job("ow_rank_fetch_log_purge"):
         try:
             async with session_factory() as session:

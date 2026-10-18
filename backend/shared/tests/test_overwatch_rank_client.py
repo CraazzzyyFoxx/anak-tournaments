@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-import importlib
-import sys
-from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
 import httpx
 
-backend_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
-
-
-client_mod = importlib.import_module("src.services.overwatch_rank.client")
-from shared.core import enums  # noqa: E402
+from shared.core import enums
+from shared.disciplines.overwatch.collector import client as client_mod
 
 OverFastRankClient = client_mod.OverFastRankClient
 OverFastError = client_mod.OverFastError

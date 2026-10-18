@@ -1,7 +1,7 @@
 """Effective native OverFast division+tier -> integer rank_value mapping.
 
 The default table (:func:`build_default_lookup`, in
-``src.domain.overwatch_rank``) is derived from ``shared/disciplines/overwatch/ladder.py``
+``collector.domain``) is derived from ``shared/disciplines/overwatch/ladder.py``
 — the one place the ladder's shape is written down — so it cannot drift from
 the division grid every service resolves ranks against. The mapping is
 configurable at runtime via the ``parser.rank_mapping`` settings key:
@@ -18,10 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.schemas.settings import DEFAULT_RANK_MAPPING_VERSION
 from shared.services.settings_provider import settings_provider
-from src.domain.overwatch_rank import RankLookup, build_default_lookup, map_division_tier_to_rank_value
 
-# ``build_default_lookup``/``map_division_tier_to_rank_value`` now live in
-# ``src.domain.overwatch_rank`` (pure logic); re-imported here so this module
+from .domain import RankLookup, build_default_lookup, map_division_tier_to_rank_value
+
+# ``build_default_lookup``/``map_division_tier_to_rank_value`` live in
+# ``collector.domain`` (pure logic); re-imported here so this module
 # keeps resolving them for existing callers/tests
 # (``mapping.build_default_lookup(...)``).
 __all__ = ("RankLookup", "build_default_lookup", "map_division_tier_to_rank_value", "get_rank_mapping")

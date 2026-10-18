@@ -9,26 +9,20 @@ Runs under stdlib unittest -- no pytest-asyncio in this repo.
 
 from __future__ import annotations
 
-import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
 
-backend_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
-
-from shared.core import enums  # noqa: E402
-from shared.schemas.settings import RankCollectionConfig  # noqa: E402
-from src.domain.overwatch_rank import (  # noqa: E402
+from shared.core import enums
+from shared.disciplines.overwatch.collector import service as service_mod
+from shared.disciplines.overwatch.collector.domain import (
     ParsedRank,
     RankFetchResult,
     RankSeriesState,
     changed_ranks,
 )
-from src.services.overwatch_rank import service as service_mod  # noqa: E402
+from shared.schemas.settings import RankCollectionConfig
 
 PC = enums.RankPlatform.pc.value
 CONSOLE = enums.RankPlatform.console.value

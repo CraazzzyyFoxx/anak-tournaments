@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import enums
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.core.tournament_state import FINISHED_STATUSES
@@ -26,11 +27,10 @@ from shared.repository.ranks import (
 )
 from shared.repository.ranks import jittered_interval as _jittered_interval
 from shared.schemas.settings import RankCollectionConfig
-from src import models
-from src.domain.overwatch_rank import RankFetchResult, RankSeriesState, battle_tag_to_slug, changed_ranks
 
 from . import mapping
 from .client import INVALID_BATTLE_TAG_ERROR
+from .domain import RankFetchResult, RankSeriesState, battle_tag_to_slug, changed_ranks
 
 # Multipliers applied to the base interval for non-error terminal states so we
 # poll quiet accounts less often.

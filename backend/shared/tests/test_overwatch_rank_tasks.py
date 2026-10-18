@@ -1,25 +1,29 @@
 from __future__ import annotations
 
-import importlib
-import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-backend_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
+from shared.clients.circuit_breaker import CircuitBreakerOpen
+from shared.core import enums
+from shared.disciplines.overwatch.collector import tasks
+from shared.disciplines.overwatch.collector.client import OverFastRateLimited
+from shared.disciplines.overwatch.collector.domain import RankFetchResult
+from shared.schemas.settings import RankCollectionConfig
 
 
-tasks = importlib.import_module("src.services.overwatch_rank.tasks")
-from shared.clients.circuit_breaker import CircuitBreakerOpen  # noqa: E402
-from shared.core import enums  # noqa: E402
-from shared.schemas.settings import RankCollectionConfig  # noqa: E402
-from src.domain.overwatch_rank import RankFetchResult  # noqa: E402
-from src.services.overwatch_rank.client import OverFastRateLimited  # noqa: E402
-from tests._fakes import session_factory as _session_factory  # noqa: E402
+def _session_factory(session):
+    """A zero-arg callable producing a minimal async-context-manager session stand-in."""
+
+    class _Ctx:
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+    return lambda: _Ctx()
 
 
 class FakeRedis:

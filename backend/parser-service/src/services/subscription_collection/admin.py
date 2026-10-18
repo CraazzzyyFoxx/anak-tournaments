@@ -1,6 +1,6 @@
 """Admin operations for subscription collection: health read, history, trigger.
 
-Mirrors ``services/overwatch_rank/admin.py``. The one structural difference is
+Mirrors ``shared/disciplines/overwatch/collector/admin.py``. The one structural difference is
 where "current state" comes from: rank keeps a dedicated ``battle_tag_state``
 bookkeeping table, whereas subscriptions already have ``subscriptions.entitlement``
 — one row per (workspace, user, provider) with ``state``/``checked_at`` — so this

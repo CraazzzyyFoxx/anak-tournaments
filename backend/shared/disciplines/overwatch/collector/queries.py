@@ -7,8 +7,10 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
-from src.domain.overwatch_rank import Granularity, fill_rank_series
+from shared import models
+from shared.schemas import rank_collection as schemas
+
+from .domain import Granularity, fill_rank_series
 
 
 def _point(snap: models.UserRankSnapshot, at: datetime) -> schemas.RankHistoryPoint:

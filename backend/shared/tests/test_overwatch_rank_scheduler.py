@@ -1,23 +1,13 @@
 from __future__ import annotations
 
-import importlib
-import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock
 
-backend_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(backend_root))
-sys.path.insert(0, str(backend_root / "parser-service"))
-
-
-scheduler = importlib.import_module("src.services.overwatch_rank.scheduler")
-service = importlib.import_module("src.services.overwatch_rank.service")
-
-from shared.core import enums  # noqa: E402
-from shared.schemas.settings import RankCollectionConfig  # noqa: E402
+from shared.core import enums
+from shared.disciplines.overwatch.collector import scheduler, service
+from shared.schemas.settings import RankCollectionConfig
 
 
 class ComputePerTickTests(TestCase):
@@ -182,8 +172,8 @@ class CollectionStatsAssemblyTests(IsolatedAsyncioTestCase):
     async def test_assembles_rates_tiers_and_validates(self) -> None:
         from unittest.mock import patch
 
-        from src import schemas
-        from src.services.overwatch_rank import admin
+        from shared.disciplines.overwatch.collector import admin
+        from shared.schemas import rank_collection as schemas
 
         raw = {
             "total": 100,

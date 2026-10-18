@@ -13,46 +13,28 @@ from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
-from redis import asyncio as redis_async
 
 from shared.clients.circuit_breaker import CircuitBreakerOpen
 from shared.core import enums
 from shared.messaging.config import RANK_FETCH_PRIORITY_QUEUE, RANK_FETCH_QUEUE
 from shared.observability import publish_message
+from shared.observability.broker import require_broker
 from shared.schemas.events import FetchRankEvent, RegistrationApprovedEvent
 from shared.services.settings_provider import settings_provider
-from src.core import config, db
-from src.core.broker import require_broker
 
-from . import mapping, service
+from . import mapping, runtime, service
 from .client import OverFastError, OverFastRankClient, OverFastRateLimited
+from .settings import settings
 
 PENDING_TTL_SECONDS = 15 * 60
 INFLIGHT_TTL_SECONDS = 180
 COOLDOWN_KEY = "ow_rank:cooldown"
 
 rank_client = OverFastRankClient(
-    base_url=config.settings.overfast_base_url,
-    timeout=config.settings.overfast_timeout,
-    max_retries=config.settings.overfast_max_retries,
+    base_url=settings().overfast_base_url,
+    timeout=settings().overfast_timeout,
+    max_retries=settings().overfast_max_retries,
 )
-
-_redis_client: redis_async.Redis | None = None
-
-
-async def get_redis() -> redis_async.Redis:
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis_async.from_url(str(config.settings.redis_url), decode_responses=True)
-    return _redis_client
-
-
-async def close_redis() -> None:
-    global _redis_client
-    if _redis_client is None:
-        return
-    await _redis_client.aclose()
-    _redis_client = None
 
 
 def _pending_key(social_account_id: int) -> str:
@@ -102,7 +84,7 @@ async def enqueue_fetch(
     ``force=True`` bypasses the enqueue dedup (used by manual admin triggers so a
     "collect now" always runs even if a fetch is already pending).
     """
-    redis_client = redis or await get_redis()
+    redis_client = redis or runtime.redis()
     pending = _pending_key(event.social_account_id)
     if force:
         await redis_client.set(pending, "1", ex=PENDING_TTL_SECONDS)
@@ -112,7 +94,7 @@ async def enqueue_fetch(
     queue = RANK_FETCH_PRIORITY_QUEUE if priority else RANK_FETCH_QUEUE
     try:
         await publish_message(
-            require_broker(broker),
+            require_broker(broker or runtime.broker()),
             event.model_dump(),
             queue,
             logger=logger.bind(social_account_id=event.social_account_id, source=event.source),
@@ -128,7 +110,7 @@ async def handle_registration_approved(
     *,
     broker: Any | None = None,
     redis: Any | None = None,
-    session_factory: Any = db.async_session_maker,
+    session_factory: Any | None = None,
 ) -> int:
     """On registration approval (or the registrant's own re-check request),
     prioritize + enqueue a rank check for the player.
@@ -141,6 +123,7 @@ async def handle_registration_approved(
     if event.user_id is None:
         return 0
 
+    session_factory = session_factory or runtime.session_factory()
     async with session_factory() as session:
         cfg = await settings_provider.get_rank_collection_config(session)
         # Only the registered pool (main + smurfs) + up to N extra accounts —
@@ -175,11 +158,12 @@ async def process_fetch_rank(
     *,
     redis: Any | None = None,
     client: OverFastRankClient | None = None,
-    session_factory: Any = db.async_session_maker,
+    session_factory: Any | None = None,
 ) -> None:
     """Handle one fetch event: rate-limit, call OverFast, persist snapshot/state."""
     event = FetchRankEvent.model_validate(data)
-    redis_client = redis or await get_redis()
+    redis_client = redis or runtime.redis()
+    session_factory = session_factory or runtime.session_factory()
     client = client or rank_client
     inflight = _inflight_key(event.social_account_id)
 
