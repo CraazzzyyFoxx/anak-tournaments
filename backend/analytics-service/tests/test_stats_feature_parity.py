@@ -26,6 +26,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared.disciplines.overwatch.analytics import COARSE_FEATURES, PerformanceModelV2
 from src import models
 from src.core import config
 from src.services.analytics.read_queries import analytics_read_service
@@ -36,8 +37,6 @@ from tests.ow_analytics import exports as ow
 from tests.ow_analytics import module as ow_module
 
 RATE_COLUMNS = ow_module("features.extractors").RATE_COLUMNS
-COARSE_FEATURES = ow.COARSE_FEATURES
-PerformanceModelV2 = ow.PerformanceModelV2
 compute_mvp_dominance = ow.compute_mvp_dominance
 extract_encounter_features = ow.extract_encounter_features
 extract_match_features = ow.extract_match_features

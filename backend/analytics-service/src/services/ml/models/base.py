@@ -11,6 +11,7 @@ Models are persisted as ``<algorithm_id>/<version>/<file>.joblib`` under the
 from __future__ import annotations
 
 import os
+import pickle
 import tempfile
 import typing
 from pathlib import Path
@@ -23,7 +24,12 @@ __all__ = (
     "artifact_path",
     "save_artifact",
     "load_artifact",
+    "ARTIFACT_UNAVAILABLE",
 )
+
+# A registry row whose file is gone or whose pickle still names a pre-conversion class path (module moved) is
+# unusable; runners log it and fall back to their neutral result instead of failing the pass.
+ARTIFACT_UNAVAILABLE = (FileNotFoundError, ModuleNotFoundError, pickle.UnpicklingError)
 
 
 def artifact_path(algorithm_id: int, version: str, filename: str, *, root: str | None = None) -> Path:

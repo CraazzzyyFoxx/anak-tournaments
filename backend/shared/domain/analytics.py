@@ -274,12 +274,6 @@ class AnalyticsExports(typing.Protocol):
     ) -> pd.DataFrame: ...
 
     # --- Models ------------------------------------------------------------------------------------------------
-    PerformanceModelV2: type[PerformanceModel]
-    ShiftModelV2: type[ShiftModel]
-    WinProbabilityModel: type[StandingsModel]
-    _ConstantClassifier: type
-    COARSE_FEATURES: list[str]
-
     def features_for_role(self, role: str) -> list[str]: ...
 
     def train_performance_v2(

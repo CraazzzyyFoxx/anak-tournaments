@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import pytest
 
 from shared.disciplines import DISCIPLINES, discipline
 from shared.domain import analytics as contract
-from src.core.analytics_exports import UnsupportedAnalytics, analytics_exports
+from src.core.analytics_exports import UnsupportedAnalytics, analytics_exports, assert_unique_algorithm_names
 from tests.ow_analytics import exports, module
 
 
@@ -46,6 +47,14 @@ def test_a_game_without_analytics_is_unsupported_never_overwatch() -> None:
     with pytest.raises(UnsupportedAnalytics):
         analytics_exports("a-code-nobody-wrote")
     assert analytics_exports("overwatch") is exports
+
+
+def test_analytics_algorithm_names_are_unique_across_disciplines() -> None:
+    """A second module reusing a declared algorithm name would share its registry rows and role-less artifacts."""
+    assert_unique_algorithm_names(DISCIPLINES.values())
+    twin = dataclasses.replace(DISCIPLINES["lol"], code="twin", analytics=lambda: exports)
+    with pytest.raises(ValueError, match="declared by both 'overwatch' and 'twin'"):
+        assert_unique_algorithm_names([*DISCIPLINES.values(), twin])
 
 
 def _declared_members() -> dict[str, typing.Any]:

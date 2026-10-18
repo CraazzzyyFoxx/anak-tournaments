@@ -23,7 +23,7 @@ from src.core.workspace import get_division_grid, get_tournament_workspace_id
 from ..features.aggregations import build_match_features_with_strength
 from ..features.shift_features import build_shift_feature_frame
 from ..features.standings_features import build_standings_forecast_frame
-from ..models.base import load_artifact
+from ..models.base import ARTIFACT_UNAVAILABLE, load_artifact
 from ..training.registry import registry_service
 from .player_anomaly_runner import run_player_anomalies_for_tournament
 
@@ -133,7 +133,7 @@ async def run_performance_for_tournament(
             continue
         try:
             models_by_role[code] = load_artifact(art.storage_uri)
-        except FileNotFoundError:
+        except ARTIFACT_UNAVAILABLE:
             logger.warning("Missing artifact file for role=%s (uri=%s)", code, art.storage_uri)
 
     if not models_by_role:
@@ -248,7 +248,7 @@ async def run_shift_for_tournament(
 
     try:
         model: ShiftModel = load_artifact(artifact.storage_uri)
-    except FileNotFoundError:
+    except ARTIFACT_UNAVAILABLE:
         logger.warning("Missing shift v2 artifact file at %s", artifact.storage_uri)
         return 0
 
@@ -355,7 +355,7 @@ async def run_standings_for_tournament(
         return 0
     try:
         model: StandingsModel = load_artifact(artifact.storage_uri)
-    except FileNotFoundError:
+    except ARTIFACT_UNAVAILABLE:
         logger.warning("Missing standings v2 artifact at %s", artifact.storage_uri)
         return 0
 

@@ -35,7 +35,7 @@ from src.services.ml.inference.backfill import backfill_range
 from src.services.ml.inference.match_quality_runner import _match_scores, run_match_quality_for_tournament
 from src.services.ml.inference.player_anomaly_runner import run_player_anomalies_for_tournament
 from src.services.ml.inference.runner import run_for_tournament, run_performance_for_tournament
-from src.services.ml.models.base import artifact_path, save_artifact
+from src.services.ml.models.base import artifact_path, load_artifact, save_artifact
 from src.services.ml.training.orchestrator import train_all_models
 from src.services.ml.training.registry import registry_service
 from src.services.ml.training.splits import tournament_ids_up_to
@@ -283,6 +283,47 @@ def test_match_quality_runs_on_the_real_declared_standings_artifact(stats_parity
                 encounters.assign(p_home_wins=0.123), await _match_scores(session, tid, discipline=OW)
             )
             assert not wrong["predictability"].round(6).equals(expected["predictability"].round(6))
+
+    asyncio.run(check())
+
+
+def test_runners_fall_back_when_an_artifact_names_a_class_path_that_no_longer_exists(
+    stats_parity_database, tmp_path
+) -> None:
+    """A pre-conversion pickle (module moved) is as unusable as a missing file: logged, neutral result, no failure."""
+    url, ids = stats_parity_database
+    stale = tmp_path / "stale.joblib"
+    stale.write_bytes(b"cshared.old_module_that_was_moved\nOldModel\n)\x81.")
+    with pytest.raises(ModuleNotFoundError):
+        load_artifact(f"file://{stale.as_posix()}")
+
+    async def check() -> None:
+        async with _session(url, ids, lol=True) as session:
+            exports = analytics_exports(OW)
+            tid, workspace = ids["tournament"], ids["workspace"]
+            tank = (await CatalogRoleRepository().rated_rows(session, discipline=OW, workspace_id=None))["tank"]
+            for kind, role_id in (("standings", None), ("performance", tank.id)):
+                declaration = exports.MODELS[kind]
+                algorithm = await registry_service.ensure_algorithm(session, declaration.algorithm_name)
+                await registry_service.register_artifact(
+                    session,
+                    discipline=OW,
+                    algorithm_id=algorithm.id,
+                    model_kind=kind,
+                    role_id=role_id,
+                    version=declaration.model_version,
+                    storage_uri=f"file://{stale.as_posix()}",
+                    feature_version="test",
+                    training_cutoff_tournament_id=None,
+                    metrics=None,
+                    feature_importance=None,
+                )
+            encounters = await build_standings_training_frame(session, [tid], discipline=OW, workspace_id=workspace)
+            neutral = exports.compute_match_quality(
+                encounters.assign(p_home_wins=None), await _match_scores(session, tid, discipline=OW)
+            )
+            assert await run_match_quality_for_tournament(session, tid, workspace_id=workspace) == len(neutral) > 0
+            assert await run_performance_for_tournament(session, tid, workspace_id=workspace, include_shap=False) == 0
 
     asyncio.run(check())
 

@@ -409,10 +409,10 @@ def _export_state(obj: typing.Any, spec: dict[str, typing.Any], label: str) -> d
 
 
 def _new_class(new_global: str) -> type:
-    """Resolve a mapped class through the discipline module's own exports (no alias)."""
-    from shared.disciplines import discipline
+    """Resolve a mapped class through the Overwatch analytics package itself (no alias)."""
+    from shared.disciplines.overwatch import analytics
 
-    cls = getattr(discipline(DISCIPLINE).analytics(), new_global.rsplit(".", 1)[1], None)
+    cls = getattr(analytics, new_global.rsplit(".", 1)[1], None)
     if cls is None or f"{cls.__module__}.{cls.__qualname__}" != new_global:
         raise ConversionError(f"the new image does not declare {new_global}")
     return cls
@@ -767,6 +767,12 @@ _SELECT = (
 )
 
 
+_UNCONVERTED = (
+    "SELECT id FROM analytics.ml_model_artifact WHERE model_kind = ANY(:kinds) AND id <> ALL(:ids) "
+    "AND storage_uri NOT LIKE '%/discipline06/%' ORDER BY id"
+)
+
+
 def _engine(database_url: str | None) -> typing.Any:
     import sqlalchemy as sa
 
@@ -816,6 +822,13 @@ def _switch(receipt_path: Path, database_url: str | None, *, target: str) -> dic
                 changed = sorted(f for f in snapshot if row[f] != snapshot[f])
                 if changed:
                     raise ConversionError(f"artifact {snapshot['id']}: registry changed since export: {changed}")
+            if forward:  # an inventory that left a row out would strand an old-path pickle the runtime cannot load
+                kinds = sorted({spec["kind"] for spec in CLASSES.values()})
+                stranded = [r[0] for r in conn.execute(sa.text(_UNCONVERTED), {"kinds": kinds, "ids": ids})]
+                if stranded:
+                    raise ConversionError(
+                        f"registry artifacts {stranded} are outside the receipt and still point at a non-converted URI"
+                    )
             current = {i: rows[i]["storage_uri"] for i in ids}
             if all(current[i] == uris[i][destination] for i in ids):
                 changed_rows = 0

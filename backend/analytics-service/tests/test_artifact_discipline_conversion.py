@@ -33,9 +33,9 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from shared.disciplines.overwatch import analytics as ow_analytics
 from src import models
 from src.services.ml.models.base import load_artifact
-from tests.ow_analytics import exports
 from tests.test_ml_prediction_parity import (
     GOLDEN,
     ROLES,
@@ -327,8 +327,8 @@ def test_supported_layouts_match_the_current_classes() -> None:
     for old_global, spec in tool.CLASSES.items():
         cls = tool._new_class(spec["new"])
         assert {f.name for f in dataclasses.fields(cls)} == {*spec["required"], *spec["optional"]}, old_global
-        assert cls is getattr(exports, spec["new"].rsplit(".", 1)[1])
-    assert tool._new_class(tool.NEW_CONSTANT) is exports._ConstantClassifier
+        assert cls is getattr(ow_analytics, spec["new"].rsplit(".", 1)[1])
+    assert tool._new_class(tool.NEW_CONSTANT) is ow_analytics._ConstantClassifier
     assert set(tool.CLASSES) == {OLD_GLOBAL[k] for k in OLD_GLOBAL}
 
 
@@ -406,16 +406,16 @@ def test_staged_predictions_are_bit_identical_to_the_frozen_receipts(staged: tup
     models_by_name = _models_from_registry_uris(_receipt(bundle))
     assert "src.services.ml.models.performance_v2" not in sys.modules
     moved = {
-        "performance_tank": exports.PerformanceModelV2,
-        "performance_damage": exports.PerformanceModelV2,
-        "performance_support": exports.PerformanceModelV2,
-        "standings": exports.WinProbabilityModel,
-        "shift_default": exports.ShiftModelV2,
-        "shift_tuned": exports.ShiftModelV2,
-        "shift_old_missing": exports.ShiftModelV2,
+        "performance_tank": ow_analytics.PerformanceModelV2,
+        "performance_damage": ow_analytics.PerformanceModelV2,
+        "performance_support": ow_analytics.PerformanceModelV2,
+        "standings": ow_analytics.WinProbabilityModel,
+        "shift_default": ow_analytics.ShiftModelV2,
+        "shift_tuned": ow_analytics.ShiftModelV2,
+        "shift_old_missing": ow_analytics.ShiftModelV2,
     }
     assert {n: type(m) for n, m in models_by_name.items()} == moved
-    assert type(models_by_name["performance_damage"].baseline) is exports._ConstantClassifier
+    assert type(models_by_name["performance_damage"].baseline) is ow_analytics._ConstantClassifier
     assert not hasattr(models_by_name["shift_old_missing"], "__dict__") or "indiv_scale_top" not in vars(
         models_by_name["shift_old_missing"]
     )
@@ -995,6 +995,28 @@ def test_apply_blocks_on_mixed_state_and_rolls_the_whole_transaction_back_on_fai
     _sql(registry, "DROP TRIGGER p6t6_fail ON analytics.ml_model_artifact")
     assert tool.apply(bundle / "receipt.json", registry)["status"] == "applied"
     assert _uris(registry) == new
+
+
+def test_apply_blocks_on_an_unconverted_registry_row_outside_the_receipt(
+    workspace: Workspace, exported: Path, registry: str, tmp_path: Path
+) -> None:
+    bundle, _ = _stage_in_process(workspace, exported, tmp_path)
+    original = _uris(registry)
+    template = workspace.inventory["artifacts"][0]
+    extra = {
+        **template,
+        "id": 9100,
+        "version": "left-out",
+        "is_active": False,
+        "storage_uri": "file:///old/left-out.joblib",
+    }
+    _insert_registry(registry, {"artifacts": [extra]})
+    with pytest.raises(tool.ConversionError, match=r"registry artifacts \[9100\] are outside the receipt"):
+        tool.apply(bundle / "receipt.json", registry)
+    assert {i: u for i, u in _uris(registry).items() if i != 9100} == original  # nothing was written
+    assert _receipt(bundle)["status"] == "staged"
+    _sql(registry, "DELETE FROM analytics.ml_model_artifact WHERE id = 9100")
+    assert tool.apply(bundle / "receipt.json", registry)["status"] == "applied"
 
 
 def test_apply_requires_a_complete_staged_and_verified_receipt(

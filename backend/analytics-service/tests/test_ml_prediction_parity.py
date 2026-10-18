@@ -34,6 +34,7 @@ from sklearn.pipeline import Pipeline
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared.disciplines.overwatch import analytics as ow_analytics
 from shared.division_grid import DEFAULT_GRID
 from shared.domain.analytics import align_features
 from src.core import config
@@ -51,14 +52,14 @@ from tests.test_stats_feature_parity import _frame, native_analytics_reader  # n
 ROLE_KPIS = ow_module("features.role_kpis").ROLE_KPIS
 STANDINGS_FEATURE_ORDER = ow_module("models.standings_v2").STANDINGS_FEATURE_ORDER
 SHIFT_BLEND_COLUMNS = ow_module("models.shift_v2").SHIFT_BLEND_COLUMNS
-COARSE_FEATURES = exports.COARSE_FEATURES
+COARSE_FEATURES = ow_analytics.COARSE_FEATURES
 
 # The concrete Overwatch code, reached through the registry; the three builders are the service's own.
 _ow = SimpleNamespace(
-    PerformanceModelV2=exports.PerformanceModelV2,
-    ConstantClassifier=exports._ConstantClassifier,
-    WinProbabilityModel=exports.WinProbabilityModel,
-    ShiftModelV2=exports.ShiftModelV2,
+    PerformanceModelV2=ow_analytics.PerformanceModelV2,
+    ConstantClassifier=ow_analytics._ConstantClassifier,
+    WinProbabilityModel=ow_analytics.WinProbabilityModel,
+    ShiftModelV2=ow_analytics.ShiftModelV2,
     align_features=align_features,
     build_target=ow_module("models.performance_v2").build_target,
     aggregate_to_tournament=exports.aggregate_to_tournament,
