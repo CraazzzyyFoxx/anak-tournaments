@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -251,8 +251,9 @@ def _rule_data(
     payload: PortableAchievementRule,
     *,
     image_url: str | None,
+    drop_cutoff: bool,
 ) -> dict[str, Any]:
-    return {
+    data = {
         "slug": payload.slug,
         "name": payload.name,
         "description_ru": payload.description_ru,
@@ -267,8 +268,10 @@ def _rule_data(
         "depends_on": derive_depends_on(payload.condition_tree, discipline=payload.discipline),
         "enabled": payload.enabled,
         "rule_version": payload.rule_version,
-        "min_tournament_id": payload.min_tournament_id,
     }
+    if not drop_cutoff:  # a dropped cutoff is left out, so an existing rule keeps its own and a new one has none
+        data["min_tournament_id"] = payload.min_tournament_id
+    return data
 
 
 async def _prevalidate(
@@ -276,6 +279,7 @@ async def _prevalidate(
     *,
     target_workspace: models.Workspace,
     rules: list[PortableAchievementRule],
+    drop_cutoff: bool,
 ) -> dict[str, AchievementRule]:
     """Everything that can reject the batch, before the first rule or image write.
 
@@ -326,7 +330,8 @@ async def _prevalidate(
 
     # The cutoff is a tournament of the *target* workspace and of the rule's own game: a foreign or invented id would
     # silently empty earlier tournaments' results on the next recompute.
-    tournament_ids = {payload.min_tournament_id for payload in rules if payload.min_tournament_id is not None}
+    cutoff_rules = [] if drop_cutoff else rules
+    tournament_ids = {payload.min_tournament_id for payload in cutoff_rules if payload.min_tournament_id is not None}
     tournament_owners = (
         {
             row.id: (row.workspace_id, row.discipline)
@@ -339,7 +344,7 @@ async def _prevalidate(
         if tournament_ids
         else {}
     )
-    for payload in rules:
+    for payload in cutoff_rules:
         if payload.min_tournament_id is not None and tournament_owners.get(payload.min_tournament_id) != (
             target_workspace.id,
             payload.discipline,
@@ -379,22 +384,22 @@ async def import_portable_rules(
     rules: list[PortableAchievementRule],
     source_workspace: models.Workspace | None = None,
 ) -> dict[str, Any]:
-    warnings: list[dict[str, str]] = []
-    if source_workspace is not None and source_workspace.id != target_workspace.id:
-        # A cutoff names a tournament of the source workspace; it cannot be translated, and rejecting it would make a
-        # library import of any rule that has one impossible. The organizer sets a new cutoff in the target.
-        for payload in rules:
-            if payload.min_tournament_id is not None:
-                warnings.append(
-                    {
-                        "slug": payload.slug,
-                        "message": f"min_tournament_id #{payload.min_tournament_id} belongs to another workspace "
-                        "and was not imported; set a cutoff in this workspace",
-                    }
-                )
-        rules = [replace(payload, min_tournament_id=None) for payload in rules]
-    existing_rules = await _prevalidate(session, target_workspace=target_workspace, rules=rules)
+    # A cutoff names a tournament of the source workspace; it cannot be translated, and rejecting it would make a
+    # library import of any rule that has one impossible. The organizer sets a new cutoff in the target.
+    drop_cutoff = source_workspace is not None and source_workspace.id != target_workspace.id
+    existing_rules = await _prevalidate(
+        session, target_workspace=target_workspace, rules=rules, drop_cutoff=drop_cutoff
+    )
 
+    warnings: list[dict[str, str]] = [
+        {
+            "slug": payload.slug,
+            "message": f"min_tournament_id #{payload.min_tournament_id} belongs to another workspace "
+            "and was not imported; set a cutoff in this workspace",
+        }
+        for payload in rules
+        if drop_cutoff and payload.min_tournament_id is not None
+    ]
     created = 0
     updated = 0
 
@@ -420,7 +425,7 @@ async def import_portable_rules(
                     warnings.append({"slug": payload.slug, "message": image_warning})
 
         existing = existing_rules.get(payload.slug)
-        data = _rule_data(payload, image_url=next_image_url)
+        data = _rule_data(payload, image_url=next_image_url, drop_cutoff=drop_cutoff)
         if existing is None:
             rule = AchievementRule(workspace_id=target_workspace.id, discipline=payload.discipline, **data)
             await _rule_repo.create(session, rule)

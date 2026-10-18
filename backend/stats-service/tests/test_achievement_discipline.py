@@ -8,6 +8,7 @@ unscoped query would have taken.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import sys
 import uuid
@@ -534,21 +535,68 @@ class PortableTests(_DbCase):
         result = await self._import([self._payload("fresh", min_tournament_id=mine.id)])
         self.assertEqual(1, result["created"])
 
+    def _wire(self, slug: str, **overrides) -> schemas.AchievementRulePortable:  # noqa: ANN003
+        """The real pydantic wire type the RPC handlers pass in (a dataclass-only fake once hid a TypeError)."""
+        fields = {k: v for k, v in dataclasses.asdict(self._payload(slug)).items() if k != "depends_on"}
+        return schemas.AchievementRulePortable(**{**fields, **overrides})
+
     async def test_cross_workspace_import_drops_the_cutoff_with_a_warning(self) -> None:
         source = await self.workspace("source")
         theirs = await self.tournament(source, "overwatch", "their-cup")
+        mine = await self.tournament(self.ws, "overwatch", "my-cup")
+        existing = await self.rule("kept", "overwatch", PLAYED_ONCE)
+        existing.min_tournament_id = mine.id
         await self.session.commit()
+        incoming = [
+            self._wire("copied", min_tournament_id=theirs.id),
+            self._wire("plain"),
+            self._wire("kept", min_tournament_id=theirs.id, name="renamed"),
+        ]
         result = await portable.import_portable_rules(
-            self.session,
-            None,
-            target_workspace=self.ws,
-            rules=[self._payload("copied", min_tournament_id=theirs.id), self._payload("plain")],
-            source_workspace=source,
+            self.session, None, target_workspace=self.ws, rules=incoming, source_workspace=source
         )
-        self.assertEqual(2, result["created"])
-        self.assertEqual(["copied"], [w["slug"] for w in result["warnings"] if "min_tournament_id" in w["message"]])
+        self.assertEqual((2, 1), (result["created"], result["updated"]))
+        self.assertEqual(
+            ["copied", "kept"], [w["slug"] for w in result["warnings"] if "min_tournament_id" in w["message"]]
+        )
+        self.assertEqual(theirs.id, incoming[0].min_tournament_id)  # the caller's payloads are not mutated
         rules = {r.slug: r for r in await portable.load_rules_for_workspace(self.session, self.ws.id, discipline=None)}
-        self.assertEqual((None, None), (rules["copied"].min_tournament_id, rules["plain"].min_tournament_id))
+        self.assertEqual(None, rules["copied"].min_tournament_id)
+        self.assertEqual(None, rules["plain"].min_tournament_id)
+        self.assertEqual((mine.id, "renamed"), (rules["kept"].min_tournament_id, rules["kept"].name))  # cutoff kept
+
+    async def test_lib_import_rpc_copies_a_rule_that_has_a_cutoff(self) -> None:
+        import logging
+        from unittest.mock import AsyncMock, patch
+
+        from src.rpc import achievements as achievements_rpc
+        from tests._fakes import FakeBroker, active_identity, session_factory
+
+        source = await self.workspace("lib-source")
+        theirs = await self.tournament(source, "overwatch", "lib-cup")
+        library_rule = await self.rule("lib-rule", "overwatch", PLAYED_ONCE, ws=source)
+        library_rule.min_tournament_id = theirs.id
+        await self.session.commit()
+
+        broker = FakeBroker()
+        with (
+            patch.object(achievements_rpc, "_SF", session_factory(self.session)),
+            patch.object(achievements_rpc.quota, "charge", AsyncMock()),
+        ):
+            achievements_rpc.register(broker, logging.getLogger("lib-import-test"))
+            reply = await broker.handlers["rpc.stats.ach.lib_import"](
+                {
+                    "identity": active_identity(),
+                    "workspace_id": self.ws.id,
+                    "payload": {"source_workspace_id": source.id, "discipline": "overwatch", "slugs": ["lib-rule"]},
+                },
+                None,
+            )
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(1, reply["data"]["created"])
+        self.assertEqual(["lib-rule"], [w["slug"] for w in reply["data"]["warnings"]])
+        copied = (await portable.load_rules_for_workspace(self.session, self.ws.id, discipline="overwatch"))[0]
+        self.assertEqual(("lib-rule", None), (copied.slug, copied.min_tournament_id))
 
     async def test_same_workspace_import_with_a_source_still_validates_the_cutoff(self) -> None:
         with self.assertRaises(ValueError) as ctx:
