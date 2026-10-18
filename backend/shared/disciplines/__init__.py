@@ -12,6 +12,9 @@ from shared.disciplines.lol import SPEC as _LOL
 from shared.disciplines.overwatch import SPEC as _OVERWATCH
 from shared.disciplines.spec import (
     CATALOG_KINDS,
+    AchievementCatalog,
+    AchievementConditions,
+    AchievementEligibleKeys,
     DimensionSpec,
     DisciplineSpec,
     EventTypeSpec,
@@ -28,6 +31,9 @@ from shared.disciplines.spec import (
 
 __all__ = (
     "INGESTORS",
+    "AchievementCatalog",
+    "AchievementConditions",
+    "AchievementEligibleKeys",
     "CATALOG_KINDS",
     "DISCIPLINES",
     "DimensionSpec",

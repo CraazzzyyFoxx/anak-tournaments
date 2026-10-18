@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
     from shared.catalog_sync import CatalogImageMirror
     from shared.disciplines.ingest import Decoder, DeriveMatch
+    from shared.domain.achievements.context import EvalContext
+    from shared.models.achievements.achievement import AchievementGrain, AchievementRule
+    from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
 
 #: Pull the module's catalog source into ``catalog.entity`` (commits itself).
@@ -45,7 +48,22 @@ StartJobs = Callable[..., Awaitable[None]]
 #: calls it when shutdown begins and awaits it once consumers have drained.
 StopJobs = Callable[[], Awaitable[None]]
 
+#: ``achievement_conditions()``: import the module's leaf conditions, which register themselves with
+#: ``shared.domain.achievements.registry`` under the module's code. Imports its own implementation only when called.
+AchievementConditions = Callable[[], None]
+
+#: ``achievement_catalog(workspace_id, characters)``: the module's built-in rules for one workspace, each carrying its
+#: own ``discipline`` and, for hero rules, the linked ``entity_id`` of one of ``characters``.
+AchievementCatalog = Callable[[int, Sequence["CatalogEntity"]], list["AchievementRule"]]
+
+#: ``achievement_eligible_keys(session, context, grain)``: every key a rule of ``grain`` could award in
+#: ``context.workspace_id`` for this discipline - the universe ``NOT`` complements against.
+AchievementEligibleKeys = Callable[["AsyncSession", "EvalContext", "AchievementGrain"], Awaitable[set[tuple[int, ...]]]]
+
 __all__ = (
+    "AchievementCatalog",
+    "AchievementConditions",
+    "AchievementEligibleKeys",
     "CATALOG_KINDS",
     "CatalogSync",
     "CollectionHandler",
@@ -205,6 +223,11 @@ class DisciplineSpec:
     ingestors: dict[str, Decoder] = field(default_factory=dict, compare=False, hash=False)
     #: Facts that need the bound match (baselines, registration ranks); ``None`` when nothing derives after binding.
     derive_match: DeriveMatch | None = field(default=None, compare=False)
+    #: Achievement kernel hooks, all lazy and all ``None`` for a game with no conditions (LoL): a missing hook is
+    #: unsupported, never an empty set (a ``NOT`` over an empty universe would otherwise be vacuous).
+    achievement_conditions: AchievementConditions | None = field(default=None, compare=False)
+    achievement_catalog: AchievementCatalog | None = field(default=None, compare=False)
+    achievement_eligible_keys: AchievementEligibleKeys | None = field(default=None, compare=False)
 
     @property
     def rated_dimension(self) -> DimensionSpec:

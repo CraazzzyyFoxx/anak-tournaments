@@ -23,6 +23,9 @@ if TYPE_CHECKING:
     from shared.catalog_sync import CatalogImageMirror
     from shared.disciplines.ingest import BoundMatch, DecodeContext
     from shared.disciplines.spec import CollectionHandler
+    from shared.domain.achievements.context import EvalContext
+    from shared.models.achievements.achievement import AchievementGrain, AchievementRule
+    from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
     from shared.schemas.match_doc import MatchDoc
 
@@ -89,6 +92,26 @@ def _collection_handler(name: str) -> CollectionHandler:
         return await HANDLERS[name](session, user, data)
 
     return handle
+
+
+def _achievement_conditions() -> None:
+    # Imported on call: the conditions load every SQL query builder of the game, which a service that never
+    # evaluates achievements must not pay for. Module import registers them once.
+    import shared.disciplines.overwatch.achievements.conditions  # noqa: F401
+
+
+def _achievement_catalog(workspace_id: int, characters: Sequence[CatalogEntity]) -> list[AchievementRule]:
+    from shared.disciplines.overwatch.achievements.catalog import all_default_rules
+
+    return all_default_rules(workspace_id, characters)
+
+
+async def _achievement_eligible_keys(
+    session: AsyncSession, context: EvalContext, grain: AchievementGrain
+) -> set[tuple[int, ...]]:
+    from shared.disciplines.overwatch.achievements.eligibility import eligible_keys
+
+    return await eligible_keys(session, context, grain)
 
 
 async def _recompute_baselines(session: AsyncSession, user: AuthUser | None, data: dict[str, Any]) -> object:
@@ -164,4 +187,7 @@ SPEC = DisciplineSpec(
     },
     ingestors=dict.fromkeys(_WORKSHOP_SOURCES, _decode),
     derive_match=_derive_match,
+    achievement_conditions=_achievement_conditions,
+    achievement_catalog=_achievement_catalog,
+    achievement_eligible_keys=_achievement_eligible_keys,
 )
