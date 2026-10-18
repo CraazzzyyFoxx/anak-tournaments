@@ -60,6 +60,7 @@ REQUIRED = (
     "P5_SMOKE_S3_ACCESS_KEY",
     "P5_SMOKE_S3_SECRET_KEY",
 )
+REDIS_OWNER_KEY = "p5smoke:owner"
 JWT_SECRET = "p5-live-smoke-secret-" + "x" * 24
 SECRET_PATTERNS = (
     re.compile(r"owt_sk_[A-Za-z0-9_\-]+"),
@@ -312,6 +313,7 @@ class LiveStack:
         )
         self.vhost_url = amqp._replace(path="/" + urllib.parse.quote(self.vhost, safe="")).geturl()
         self.redis_db: int | None = None
+        self.redis_token = uuid.uuid4().hex
         self.directory = Path(evidence_dir or tempfile.mkdtemp(prefix="p5-live-smoke-"))
         self.directory.mkdir(parents=True, exist_ok=True)
         (self.directory / "logs").mkdir(exist_ok=True)
@@ -381,7 +383,10 @@ class LiveStack:
 
     def provision(self) -> None:
         migrated_env = {**os.environ, "DATABASE_URL": self.db_url, "OWT_APPLY_ENCOUNTER_LAYER_DROP": "1"}
+        # Every dependency is awaited (bounded) before anything is created in it.
         wait_until(lambda: self.mgmt("overview").status == 200, "RabbitMQ management API", timeout=120)
+        wait_until(lambda: self._redis_client(0).ping(), "Redis to answer PING", timeout=60)
+        wait_until(lambda: asyncio.run(self._s3_ready()), "the S3 endpoint to list buckets", timeout=60)
         quoted = urllib.parse.quote(self.vhost, safe="")
         assert self.mgmt(f"vhosts/{quoted}", method="PUT", body={}).status in (201, 204)
         self._created["vhost"] = True
@@ -391,16 +396,20 @@ class LiveStack:
         ).status in (201, 204)
         self.evidence.append("ready_checks", {"check": "rabbitmq vhost created", "vhost": self.vhost})
 
-        import redis
-
+        # Exclusive reservation: an atomic SET NX of an ownership key. An empty DBSIZE alone would let two sessions
+        # claim the same database; here only one SET NX wins, a database holding foreign data is released again and
+        # skipped, and cleanup flushes a database only after re-reading its own token.
         for candidate in range(1, 16):
-            client = redis.Redis.from_url(f"{self._redis_root()}/{candidate}")
-            if client.dbsize() == 0:
+            client = self._redis_client(candidate)
+            if not client.set(REDIS_OWNER_KEY, self.redis_token, nx=True):
+                continue
+            if client.dbsize() == 1:
                 self.redis_db = candidate
                 self._created["redis"] = True
                 break
+            client.delete(REDIS_OWNER_KEY)
         else:
-            pytest.fail("no empty Redis logical database (1-15) available for the smoke")
+            pytest.fail("no unreserved, empty Redis logical database (1-15) available for the smoke")
         self.evidence.append("ready_checks", {"check": "redis database claimed", "db": self.redis_db})
 
         asyncio.run(self._create_bucket())
@@ -425,6 +434,18 @@ class LiveStack:
         if result.returncode:
             pytest.fail(f"migration failed:\n{result.stdout[-2000:]}\n{result.stderr[-3000:]}")
         self.evidence.append("ready_checks", {"check": "database migrated to head", "database": self.db})
+
+    def _redis_client(self, db: int):
+        import redis
+
+        return redis.Redis.from_url(f"{self._redis_root()}/{db}", socket_timeout=5, socket_connect_timeout=5)
+
+    async def _s3_ready(self) -> bool:
+        client = self.s3()
+        await client.start()
+        async with client._client() as raw:
+            await raw.list_buckets()
+        return True
 
     def _redis_root(self) -> str:
         parts = urllib.parse.urlsplit(self.redis_url)
@@ -656,14 +677,30 @@ class LiveStack:
         return proc.exit_code
 
     def _reap_tree(self, proc: Proc) -> None:
-        """A launcher can exit before the interpreter it spawned: nothing of a stopped process may keep running."""
-        for pid in proc.tree:
-            if pid != proc.pid and (_alive_windows(pid) if os.name == "nt" else _alive_posix(pid)):
-                wait_until(
-                    lambda pid=pid: not (_alive_windows(pid) if os.name == "nt" else _alive_posix(pid)),
-                    f"pid {pid} of {proc.name} to exit",
-                    timeout=20,
-                )
+        """A launcher can exit before the interpreter it spawned: nothing of a stopped process may keep running.
+
+        Survivors get a short grace, then are force-killed; one that still lives is an error.
+        """
+
+        def alive(pid: int) -> bool:
+            return _alive_windows(pid) if os.name == "nt" else _alive_posix(pid)
+
+        survivors = [pid for pid in proc.tree if pid != proc.pid and alive(pid)]
+        deadline = time.monotonic() + 10
+        while survivors and time.monotonic() < deadline:
+            time.sleep(0.25)
+            survivors = [pid for pid in survivors if alive(pid)]
+        for pid in survivors:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
+            else:
+                os.kill(pid, signal.SIGKILL)
+        deadline = time.monotonic() + 10
+        while survivors and time.monotonic() < deadline:
+            time.sleep(0.25)
+            survivors = [pid for pid in survivors if alive(pid)]
+        if survivors:
+            raise RuntimeError(f"processes {survivors} of {proc.name} survived a forced kill")
 
     def pause(self, name: str) -> None:
         """Freeze every process of the tree (SIGSTOP / NtSuspendProcess): a worker stuck inside a job."""
@@ -712,10 +749,17 @@ class LiveStack:
 
     def close(self) -> Path:
         """Stop what is still running, drop only what this fixture created, redact logs, write the evidence."""
-        for name, proc in self.procs.items():
-            if proc.popen.poll() is None:
-                self.stop(name)
         problems: list[str] = []
+        for name, proc in self.procs.items():
+            try:
+                if proc.popen.poll() is None or any(pid != proc.pid for pid in proc.tree):
+                    self.stop(name)
+            except Exception as exc:  # one stuck process must not leave the database, bucket or vhost behind
+                problems.append(f"stop {name}: {exc!r}")
+                try:
+                    self.kill(name)
+                except Exception as again:
+                    problems.append(f"kill {name}: {again!r}")
         steps: list[tuple[str, Callable[[], None]]] = []
         if self._created["db"]:
             steps.append(("database", self._drop_database))
@@ -730,16 +774,19 @@ class LiveStack:
                 step()
             except Exception as exc:  # report every leftover, never mask the first failure
                 problems.append(f"{what}: {exc!r}")
-        for proc in self.procs.values():
-            if proc.log.exists():
-                target = self.directory / "logs" / f"{proc.name}.log"
-                target.write_text(redact(proc.log.read_text(errors="replace"), self.secrets), encoding="utf-8")
-                proc.log.unlink()
-        # The services also write their own file logs under LOGS_ROOT_PATH: redact those in place too.
-        for log in (self.directory / "logs").glob("*.log"):
-            log.write_text(redact(log.read_text(errors="replace"), self.secrets), encoding="utf-8")
-        if self.gateway_binary and self.gateway_binary.exists():
-            self.gateway_binary.unlink()
+        try:
+            for proc in self.procs.values():
+                if proc.log.exists():
+                    target = self.directory / "logs" / f"{proc.name}.log"
+                    target.write_text(redact(proc.log.read_text(errors="replace"), self.secrets), encoding="utf-8")
+                    proc.log.unlink()
+            # The services also write their own file logs under LOGS_ROOT_PATH: redact those in place too.
+            for log in (self.directory / "logs").glob("*.log"):
+                log.write_text(redact(log.read_text(errors="replace"), self.secrets), encoding="utf-8")
+            if self.gateway_binary and self.gateway_binary.exists():
+                self.gateway_binary.unlink()
+        except Exception as exc:
+            problems.append(f"logs: {exc!r}")
         self.evidence.append(
             "ready_checks", {"check": "teardown", "dropped": [what for what, _ in steps], "problems": problems}
         )
@@ -754,9 +801,10 @@ class LiveStack:
             admin.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(self.db)))
 
     def _flush_redis(self) -> None:
-        import redis
-
-        redis.Redis.from_url(f"{self._redis_root()}/{self.redis_db}").flushdb()
+        client = self._redis_client(self.redis_db)
+        if client.get(REDIS_OWNER_KEY) != self.redis_token.encode():
+            raise RuntimeError(f"Redis database {self.redis_db} is not owned by this session; not flushing it")
+        client.flushdb()
 
     def _delete_vhost(self) -> None:
         assert VHOST_NAME.fullmatch(self.vhost)

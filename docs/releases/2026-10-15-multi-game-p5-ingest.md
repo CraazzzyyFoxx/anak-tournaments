@@ -158,9 +158,12 @@ another workspace (or an absent id) is the same `404 ingest_job_not_found`.
 
 ### Error table
 
-Errors are flat in HTTP v1: `{"detail", "code", "fields":[{"code","msg"}], …}`; the stable machine code
-is `fields[0].code` (the top-level `code` is the HTTP class). `ingest_job_id` and `issues[]` are
-top-level members when they apply.
+Errors are flat in HTTP v1: `{"detail", "code", "fields":[{"code","msg"}], …}`. **Extract the machine code as:
+the field-level code `fields[0].code` when `fields` is present, otherwise the top-level `code`.** Errors raised by
+the service carry `fields` (the top-level `code` is then only the HTTP class, e.g. `forbidden`, `unprocessable`);
+errors produced by the gateway itself (`413 match_document_too_large`, `415 unsupported_media_type`, 401, 429, 503)
+have no `fields`, and their top-level `code` is the machine code. `ingest_job_id` and `issues[]` are top-level
+members when they apply.
 
 | HTTP | Code | Cause |
 | --- | --- | --- |
@@ -245,10 +248,14 @@ All routes are workspace-checked admin routes (a session, not a key):
   `stale_binding`, `binding_mismatch`, `identity_conflict`, `invalid_team_map` (422),
   `binding_target_not_found` (404), `map_not_in_pool` (400), `ingest_busy`, `ingest_pending`,
   `job_not_done`. A refusal leaves the job row as it was.
-* **Tournament-wide reprocess** (`POST /api/v1/logs/{tournament_id}`): pending/failed/awaiting jobs are re-queued on
-  `stats.ingest.<discipline>`; every `done` job is replayed through the **TTL-less** durable
-  `stats.ingest.<discipline>.replay` queue with the revision seen at selection (stale or busy jobs are
-  logged and acknowledged, never forced).
+* **Tournament-wide reprocess** (`POST /api/v1/logs/{tournament_id}`) selects only jobs that carry that tournament's
+  hint (`hint_tournament_id`: uploads and documents whose `hint.tournament_id` was given); a canonical job submitted
+  without a tournament hint is never selected. Jobs being processed are left alone, and historical or refused jobs
+  (non-`raw_available` raw state, shared-source, unbound-historical, owner mismatch) are skipped. `pending`, `failed` and
+  `awaiting_link` jobs are re-queued on `stats.ingest.<discipline>`. A `done` job is replayed through the **TTL-less**
+  durable `stats.ingest.<discipline>.replay` queue, with the revision seen at selection, **only while it is still the
+  current provenance of its observation**: a superseded or unbound done job is untouched. Stale or busy jobs are logged and
+  acknowledged, never forced. The command is therefore not proof that every completed submission was reparsed.
 * Observation-only identities. People named by a document who are not members of the workspace get a
   virtual player and a workspace *anchor* (`workspace_member.observed_only`): never a membership, never a
   role, never visibility, never a revived removed member; they are excluded from every membership/visibility
@@ -347,6 +354,22 @@ Contract rulings that changed a wire, protocol or storage contract (each also do
 11. Placement rule: canonical placements only (`GameResultIn(score=None, placement=…)`); a complete placement set derives `win` from the sole first place; the Overwatch decoder derives placements from observed team scores (higher → 1, equal → both 1, absent → none).
 12. Virtual (observation-only) identities are not globally visible (`ensure_global_visibility=False`).
 13. `alias_miss.kind` widens to `stat|event|role` for diagnostics only; `catalog.entity.kind` and `CATALOG_KINDS` stay three.
+
+14. **Document envelope.** The server stores each document as a minimal internal envelope `{"document": MatchDoc, "producer":
+    "canonical"|"decoded"}` at `stats.ingest_job.document_ref` (`stats/documents/{workspace}/{sha256}.json`); the producer
+    is assigned by the server, never by the caller, and the public API only ever accepts the bare `MatchDoc`. Only a raw
+    job without a `document_ref` runs a registered decoder, and it persists `decoded`. Retries, reparses and admin bind
+    preserve the producer. Provenance is never inferred from a filename, an object path or `source.kind` (no new database
+    column); an envelope that is missing or not exactly `{document, producer}` is `409 stored_document_invalid`. Raw
+    `raw_ref`/`content_hash` still identify the original bytes.
+15. **Receipt contract.** The evidence consumer takes the encounter lock, then the game lock, and writes one durable
+    `encounter.room_event` (`action = match_ingested`) in the same transaction as any result change. `data` carries the
+    game id, evidence id, revision, event id, `basis_game_result_version` (the result version the evidence was computed
+    against), the accepted game-result version after the decision and the `outcome`; a short refusal code goes in the journal entry's `reason`. Duplicate and
+    out-of-order delivery is decided from the **full scoped journal** (a direct query by encounter, action, `data.game_id`
+    and `data.evidence_id`, not the UI's history window): a delivered revision or event id is a duplicate, a revision at or
+    below the highest delivered one is `stale_revision`, and the high-water mark never claims to know a later, unseen stats
+    revision. A stale basis is refused even at a higher revision; a failed transaction leaves neither receipt nor result.
 
 ## 13. P9 maintenance release: old queues, drain, rollback
 

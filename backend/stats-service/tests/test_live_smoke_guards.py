@@ -120,3 +120,43 @@ def test_the_release_guide_example_is_a_valid_document() -> None:
     example = re.search(r"```json\n(\{.*?\n\})\n```", guide.read_text(encoding="utf-8"), re.S).group(1)
     doc = parse_match_doc(example.encode())
     assert doc.protocol == "owt.match/1" and {p.key for p in doc.participants} == {"p1", "p2", "p3", "p7"}
+
+
+def test_redis_cleanup_flushes_only_a_database_this_session_owns(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    import fakeredis
+
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    server = fakeredis.FakeServer()
+    client = fakeredis.FakeStrictRedis(server=server)
+    monkeypatch.setattr(stack, "_redis_client", lambda db: client)
+    stack.redis_db = 3
+    client.set("p5smoke:owner", "someone-else")
+    client.set("their:data", "1")
+    with pytest.raises(RuntimeError, match="not owned"):
+        stack._flush_redis()
+    assert client.get("their:data") == b"1"
+    client.set("p5smoke:owner", stack.redis_token)
+    stack._flush_redis()
+    assert client.dbsize() == 0
+
+
+def test_teardown_continues_after_a_process_cannot_be_stopped(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    from types import SimpleNamespace
+
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    steps: list[str] = []
+    stuck = SimpleNamespace(
+        popen=SimpleNamespace(poll=lambda: None), tree=[1], pid=1, log=tmp_path / "missing.log", name="stuck"
+    )
+    stack.procs["stuck"] = stuck
+    stack.stop = lambda name, **_: (_ for _ in ()).throw(RuntimeError("will not die"))
+    stack.kill = lambda name: (_ for _ in ()).throw(RuntimeError("really will not die"))
+    stack._created["db"] = stack._created["vhost"] = True
+    stack._drop_database = lambda: steps.append("database")
+    stack._delete_vhost = lambda: steps.append("vhost")
+    with pytest.raises(pytest.fail.Exception, match="stuck"):
+        stack.close()
+    assert steps == ["database", "vhost"]
+    assert (tmp_path / "evidence.json").is_file()
