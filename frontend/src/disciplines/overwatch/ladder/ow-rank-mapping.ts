@@ -1,5 +1,6 @@
-import { OW_DIVISIONS_DESC, TIER_NUMBERS, owRankValue } from "@/lib/divisions/ow-ladder";
 import type { RankMappingEntry } from "@/types/admin.types";
+
+import { OW_DIVISIONS_DESC, TIER_NUMBERS, owRankValue } from "./ow-ladder";
 
 /**
  * Identity of the backend's built-in division+tier -> rank_value table

@@ -10,7 +10,8 @@ import { PANEL_CLASS, splitBattleTag } from "@/components/balancer/balancer-page
 import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { OW_REFERENCE_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,

@@ -25,7 +25,7 @@ import type {
   BalancerPlayerRecord,
 } from "@/types/balancer-admin.types";
 import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
-import { DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import { apiFetch } from "@/lib/api/fetch";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
@@ -522,7 +522,7 @@ describe("registration role pass-through", () => {
   });
 
   const built = (roles: AdminRegistrationRole[]) =>
-    createSyntheticPlayerFromRegistration(createRegistration({ roles }), DEFAULT_DIVISION_GRID);
+    createSyntheticPlayerFromRegistration(createRegistration({ roles }), OW_REFERENCE_GRID);
 
   // The roster engine already applied every flex rule server-side, so the
   // client copies the rows it was given instead of re-deriving them. A second

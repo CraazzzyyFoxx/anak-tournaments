@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { useTranslations } from "next-intl";
 
-import { CollectionSettingsPanel, useCollectionSettings } from "@/components/admin/CollectionSettingsPanel";
+import { CollectionSettingsPanel, useCollectionSettings } from "@/components/kit/CollectionSettingsPanel";
 import { formatInterval } from "@/components/kit/format-time";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";

@@ -7,10 +7,9 @@
  * emits with everything already resolved: the 45 tiers and the full native
  * division+tier → rank_value table.
  *
- * Why an artifact and not a fetch: the default division grid has to resolve
- * synchronously during SSR and the first client render (the workspace store
- * persists only `currentWorkspaceId` and fetches the workspace, which carries the
- * real grid, in a client effect). An API round-trip cannot fill that window.
+ * Why an artifact and not a fetch: the collector rank mapping and the OverFast
+ * rank history resolve OW-scale values synchronously during SSR and the first
+ * client render. An API round-trip cannot fill that window.
  *
  * Why an artifact and not a hand-written mirror: nothing here can drift. The JSON
  * is committed and `export_ow_ladder.py --check` fails CI when it goes stale, so

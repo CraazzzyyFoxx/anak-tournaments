@@ -10,14 +10,15 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
-import { bandsFromTiers } from "./editor/draftReducer";
+import { bandsFromTiers, type Ladder } from "./editor/draftReducer";
 import { LadderBar } from "./LadderBar";
 import { VERSION_STATE_TONE, versionState } from "./versionStatus";
 
 export interface VersionHistoryProps {
   versions: DivisionGridVersion[];
   activeVersionId: number | null;
-  hasNativeLadder: boolean;
+  /** The grid's discipline's native ladder; `null` when it has none (no ladder cut is drawn). */
+  ladder: Ladder | null;
   /**
    * Tournaments pinned to each version, from the active version's readiness
    * payload. `null` while that is unknown (nothing active, or still loading):
@@ -45,7 +46,7 @@ export interface VersionHistoryProps {
 export function VersionHistory({
   versions,
   activeVersionId,
-  hasNativeLadder,
+  ladder,
   tournamentCounts,
   activatable,
   onActivate,
@@ -59,7 +60,7 @@ export function VersionHistory({
     <ol className="divide-y divide-border rounded-xl border border-border bg-card">
       {ordered.map((version) => {
         const state = versionState(version, activeVersionId);
-        const bands = bandsFromTiers(version.tiers);
+        const bands = bandsFromTiers(ladder, version.tiers);
         const isDraft = version.status === "draft";
         const canActivate = version.id in activatable;
         const ready = activatable[version.id];
@@ -100,8 +101,8 @@ export function VersionHistory({
                 </span>
                 <StatusPill tone={VERSION_STATE_TONE[state]}>{state}</StatusPill>
               </div>
-              {hasNativeLadder ? (
-                <LadderBar bands={bands} tone={state === "active" ? "accent" : "neutral"} />
+              {ladder ? (
+                <LadderBar ladder={ladder} bands={bands} tone={state === "active" ? "accent" : "neutral"} />
               ) : null}
               <p className="font-mono text-label uppercase tracking-wider text-muted-foreground">
                 {[t("divisionCount", { count: bands.length }), usage, when]

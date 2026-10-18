@@ -11,16 +11,17 @@ import { cn } from "@/lib/utils";
 
 import {
   ladderOwners,
-  LADDER,
-  owSize,
-  RANK_COUNT,
+  nativeSize,
   rankLabel,
   type Action,
   type Band,
+  type Ladder,
   type Scale
 } from "./draftReducer";
 
 export interface LadderColumnProps {
+  /** The discipline's native ladder this column draws, one row per rank. */
+  ladder: Ladder;
   bands: Band[];
   scale: Scale;
   /** Slug of the band in `?band=`, drawn highlighted. */
@@ -50,6 +51,7 @@ export interface LadderColumnProps {
  * the page height.
  */
 export function LadderColumn({
+  ladder,
   bands,
   scale,
   selectedSlug,
@@ -60,7 +62,7 @@ export function LadderColumn({
 }: Readonly<LadderColumnProps>) {
   const t = useTranslations("adminSettings.divisions");
   const listRef = useRef<HTMLOListElement>(null);
-  const owners = ladderOwners(bands);
+  const owners = ladderOwners(ladder, bands);
   const gaps = owners.filter((owner) => owner === null).length;
   const onLadder = scale === "ladder";
 
@@ -80,7 +82,7 @@ export function LadderColumn({
     <div className="flex max-h-[calc(100vh-13rem)] flex-col rounded-xl border border-border bg-card xl:sticky xl:top-4">
       <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2">
         <h2 className="font-display text-sm font-semibold">{t("ladder.title")}</h2>
-        <span className={cn(EYEBROW_CLASS, "font-mono tabular-nums")}>{t("ladder.rankCount", { count: RANK_COUNT })}</span>
+        <span className={cn(EYEBROW_CLASS, "font-mono tabular-nums")}>{t("ladder.rankCount", { count: ladder.count })}</span>
       </div>
 
       <p className="px-3 pt-2 text-xs text-muted-foreground">{hint}</p>
@@ -95,7 +97,7 @@ export function LadderColumn({
         aria-label={t("ladder.aria")}
         className="min-h-0 flex-1 overflow-y-auto p-2"
       >
-        {LADDER.map((rank, index) => {
+        {ladder.ranks.map((rank, index) => {
           const owner = owners[index];
           const band = owner === null ? null : bands[owner];
           const above = index > 0 ? owners[index - 1] : null;
@@ -104,18 +106,18 @@ export function LadderColumn({
 
           const boundary = editable && index > 0 && startsRun;
           // -1 hands the rank above the boundary down to this row's side; +1 hands this rank up.
-          const canRaise = boundary && (!onLadder || (above !== null && owSize(bands[above]) >= 2));
-          const canLower = boundary && (!onLadder || (band !== null && owSize(band) >= 2));
+          const canRaise = boundary && (!onLadder || (above !== null && nativeSize(bands[above]) >= 2));
+          const canLower = boundary && (!onLadder || (band !== null && nativeSize(band) >= 2));
           const canJoin = boundary && onLadder && band !== null && above !== null;
           const canCut = editable && onLadder && !startsRun;
           const into = (target: number | null, moving: number) =>
             target === null
-              ? t("ladder.unlinkRank", { rank: rankLabel(moving) })
-              : t("ladder.moveRank", { rank: rankLabel(moving), target: bands[target].name });
+              ? t("ladder.unlinkRank", { rank: rankLabel(ladder, moving) })
+              : t("ladder.moveRank", { rank: rankLabel(ladder, moving), target: bands[target].name });
 
           return (
             <li
-              key={rank.slug ?? index}
+              key={rank.slug}
               data-selected-start={selected && startsRun ? "" : undefined}
               className={cn(
                 "group relative flex h-7 items-center gap-2 border-l-2 pl-2 pr-1",

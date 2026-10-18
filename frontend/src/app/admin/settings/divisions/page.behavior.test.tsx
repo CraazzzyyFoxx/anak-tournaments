@@ -22,7 +22,9 @@ import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
+import { TEST_LADDER_TIERS } from "./editor/__fixtures__/test-ladder";
 import DivisionsSettingsPage from "./page";
 
 declare global {
@@ -104,6 +106,66 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => (
     <a href={href}>{children}</a>
   )
+}));
+
+// The page reads its game from the shared browsing resolver and that game's native metadata; both are
+// driven by the URL here (`?discipline=`), exactly as the real hooks resolve an explicit choice.
+const INSTALLED = [
+  { code: "overwatch", name: "Overwatch", enabled: true },
+  { code: "lol", name: "League of Legends", enabled: true }
+];
+
+vi.mock("@/hooks/useBrowsingDiscipline", () => ({
+  useBrowsingDiscipline: () => {
+    const requested = new URLSearchParams(window.location.search).get("discipline") ?? "overwatch";
+    const known = INSTALLED.find((entry) => entry.code === requested);
+    return {
+      axis: 1,
+      disciplines: INSTALLED,
+      resolved: known
+        ? { kind: "concrete", code: known.code, source: "url" }
+        : { kind: "invalid", requested, reason: "unknown" },
+      isError: false,
+      refetch: vi.fn(),
+      select: vi.fn()
+    };
+  }
+}));
+
+function metadataFor(code: string): DisciplineMetadata {
+  const native = code === "overwatch";
+  return {
+    discipline: {
+      code,
+      name: code,
+      enabled: true,
+      kinds: {},
+      character_classes: [],
+      identity_provider: null,
+      capabilities: {
+        catalog_sync: false,
+        native_rank_collection: native,
+        native_ladder: native,
+        achievement_conditions: false,
+        analytics: false
+      }
+    },
+    workspace_id: 1,
+    dimensions: [],
+    roles: [],
+    stat_defs: [],
+    event_types: [],
+    team_format_presets: [],
+    native_ladder: native ? TEST_LADDER_TIERS : []
+  } as unknown as DisciplineMetadata;
+}
+
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: (_axis: unknown, code: string | null) => ({
+    data: code ? metadataFor(code) : undefined,
+    isError: false,
+    refetch: vi.fn()
+  })
 }));
 
 function tier(number: number) {
@@ -550,5 +612,62 @@ describe("Settings › Divisions", () => {
 
     expect(cloneDivisionGridVersion).toHaveBeenCalledWith(23);
     expect(replace).toHaveBeenCalledWith("/admin/settings/divisions/v/24");
+  });
+});
+
+describe("Settings › Divisions · browsing game", () => {
+  it("names an unknown ?discipline= and draws no grid for any game", async () => {
+    window.history.replaceState(null, "", "/admin/settings/divisions?discipline=chess");
+    const container = await mount();
+
+    expect(container.textContent).toContain("chess");
+    expect(container.querySelector("#divisions-in-force")).toBeNull();
+    expect(getDivisionGridVersions).not.toHaveBeenCalled();
+    expect(getDivisionGridVersionReadiness).not.toHaveBeenCalled();
+  });
+
+  it("scopes the page to the browsed game: a game with no grid of its own is asked for one, never given another's", async () => {
+    currentWorkspace = {
+      id: 1,
+      disciplines_enabled: ["overwatch", "lol"],
+      default_division_grid_versions: { overwatch: 22 },
+      effective_division_grid_versions: { overwatch: VERSIONS[2] }
+    };
+    window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol");
+    const container = await mount();
+
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
+      "Create a division grid for this game"
+    );
+    expect(container.textContent).not.toContain(VERSIONS[2].label);
+    expect(button("Load standard OW ladder")).toBeUndefined();
+    expect(getDivisionGridVersions).not.toHaveBeenCalled();
+  });
+
+  it("offers the native game's own standard ladder, built from its metadata", async () => {
+    getDivisionGrids.mockResolvedValue([{ ...grid(7, "Anak Division Grid"), versions: [] }]);
+    getDivisionGridVersions.mockResolvedValue([]);
+    currentWorkspace = {
+      id: 1,
+      disciplines_enabled: ["overwatch"],
+      default_division_grid_versions: {},
+      effective_division_grid_versions: {}
+    };
+    await mount();
+    await click(button("Load standard OW ladder"));
+
+    expect(createDivisionGridVersion).toHaveBeenCalledTimes(1);
+    const [, gridId, body] = createDivisionGridVersion.mock.calls[0] as [
+      number,
+      number,
+      { tiers: { id?: number; rank_min: number; native_rank_min: number | null }[] }
+    ];
+    expect(gridId).toBe(7);
+    expect(body.tiers).toHaveLength(TEST_LADDER_TIERS.length);
+    expect(body.tiers.every((entry) => entry.id === undefined)).toBe(true);
+    expect(body.tiers.map((entry) => entry.rank_min)).toEqual(
+      TEST_LADDER_TIERS.map((rank) => rank.rank_min)
+    );
+    expect(body.tiers.every((entry) => entry.native_rank_min === entry.rank_min)).toBe(true);
   });
 });

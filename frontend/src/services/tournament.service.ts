@@ -162,7 +162,7 @@ export default class tournamentService {
           "links",
           // The tournament's OWN division grid. Without this entity the read
           // returns `division_grid_version: null` and every consumer silently
-          // falls back to the global OW ladder (`getDefaultDivisionGrid`), so
+          // falls back to the global OW ladder (`OW_REFERENCE_GRID`), so
           // the draft room rendered ladder divisions instead of the grid the
           // tournament is actually seeded and balanced on.
           "division_grid_version",

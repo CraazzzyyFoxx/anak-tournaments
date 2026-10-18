@@ -12,6 +12,8 @@ import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Button } from "@/components/ui/button";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { useWorkspaceStore } from "@/stores/workspace.store";
+import type { DisciplineCapabilities } from "@/types/discipline.types";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
@@ -32,6 +34,7 @@ import {
   bandsCoverLadder,
   bandsDifferingFromBase,
   bandsFromTiers,
+  bandsMissingCrest,
   describeEdits,
   diffBands,
   draftReducer,
@@ -39,6 +42,7 @@ import {
   scaleOf,
   tiersFromBands,
   type Band,
+  type Ladder,
   type Scale
 } from "./draftReducer";
 import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
@@ -51,6 +55,11 @@ type TabKey = (typeof TAB_KEYS)[number];
 
 export interface DraftEditorProps {
   workspaceId: number;
+  /** The loaded grid's own discipline — never the browsing choice. */
+  discipline: string;
+  capabilities: DisciplineCapabilities;
+  /** That discipline's native ladder from its metadata; `null` when it declares none. */
+  ladder: Ladder | null;
   version: DivisionGridVersion;
   /** The parent version's bands; empty when this version has no parent. */
   base: Band[];
@@ -87,6 +96,9 @@ export interface DraftEditorProps {
  */
 export function DraftEditor({
   workspaceId,
+  discipline,
+  capabilities,
+  ladder,
   version,
   base,
   baseLabel,
@@ -106,16 +118,23 @@ export function DraftEditor({
   const router = useRouter();
   const queryClient = useQueryClient();
   const { searchParams, setParams } = useQueryParams();
+  const fetchWorkspaces = useWorkspaceStore((store) => store.fetchWorkspaces);
   const [state, dispatch] = useReducer(
     draftReducer,
-    { tiers: version.tiers, base },
-    (seed) => initDraftState(bandsFromTiers(seed.tiers), scaleOf(seed.tiers), seed.base)
+    { ladder, tiers: version.tiers, base },
+    (seed) =>
+      initDraftState(
+        seed.ladder,
+        bandsFromTiers(seed.ladder, seed.tiers),
+        scaleOf(seed.ladder, seed.tiers),
+        seed.base
+      )
   );
   const [manualChoice, setManualChoice] = useState<MappingChoices>(() => initialChoices ?? {});
   const [confirming, setConfirming] = useState<"publish" | "delete" | "scale" | null>(null);
   const [iconTarget, setIconTarget] = useState<number | null>(null);
   const iconInputRef = useRef<HTMLInputElement>(null);
-  // What the ladder draws for a version that stores no OW link is the backend's
+  // What the ladder draws for a version that stores no native link is the backend's
   // rank-range fallback, not a decision anyone made — the column says so.
   const implicitLinks = !version.tiers.some(
     (tier) => tier.native_rank_min != null && tier.native_rank_max != null
@@ -190,13 +209,14 @@ export function DraftEditor({
       mappingSources.reduce(
         (total, source) =>
           total +
-          unresolvedRows(autoMap(source.tiers, state.bands), chosen, state.bands).length,
+          unresolvedRows(autoMap(ladder, source.tiers, state.bands), chosen, state.bands).length,
         0
       ),
-    [chosen, mappingSources, state.bands]
+    [chosen, ladder, mappingSources, state.bands]
   );
 
   const checks = publishChecks({
+    ladder,
     bands: state.bands,
     scale: state.scale,
     readiness,
@@ -211,30 +231,40 @@ export function DraftEditor({
     return diff.added.length + diff.removed.length + diff.moved.length + diff.renamed.length;
   }, [state.base, state.bands]);
 
+  // Only this game's keys: another discipline's cached versions and readiness are not affected by an
+  // edit, publish or activation here.
   const invalidate = useCallback(async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.readinessAll() }),
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.versionsAll() }),
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.gridsAll() }),
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.mappingAll() })
+      queryClient.invalidateQueries({
+        queryKey: divisionGridQueryKeys.readinessByDiscipline(workspaceId, discipline)
+      }),
+      queryClient.invalidateQueries({
+        queryKey: divisionGridQueryKeys.versionsByDiscipline(workspaceId, discipline)
+      }),
+      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(workspaceId) }),
+      ...sources.map((source) =>
+        queryClient.invalidateQueries({
+          queryKey: divisionGridQueryKeys.mapping(source.version_id, version.id)
+        })
+      )
     ]);
-  }, [queryClient]);
+  }, [discipline, queryClient, sources, version.id, workspaceId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const updated = tiersDirty
         ? await workspaceService.updateDivisionGridVersion(version.id, {
-            tiers: tiersFromBands(state.bands)
+            tiers: tiersFromBands(ladder, state.bands)
           })
         : version;
       // Mappings are written against the SAVED tiers: the rules point at tier
       // ids, and a band created in this session only gets one here.
-      const savedBands = tiersDirty ? bandsFromTiers(updated.tiers) : state.bands;
+      const savedBands = tiersDirty ? bandsFromTiers(ladder, updated.tiers) : state.bands;
       // The backend stores a mapping only when it covers every source tier, so
       // a source with an open row keeps its server state and its picks carry over.
       const pending: MappingSource[] = [];
       for (const source of mappingSources) {
-        const rows = autoMap(source.tiers, savedBands);
+        const rows = autoMap(ladder, source.tiers, savedBands);
         if (unresolvedRows(rows, chosen, savedBands).length > 0) {
           pending.push(source);
           continue;
@@ -290,7 +320,8 @@ export function DraftEditor({
   const activateMutation = useMutation({
     mutationFn: () => workspaceService.activateDivisionGridVersion(workspaceId, version.id),
     onSuccess: async () => {
-      await invalidate();
+      // The workspace's per-discipline default map changed: refresh it with this game's keys.
+      await Promise.all([invalidate(), fetchWorkspaces()]);
       notify.success(t("toast.activated", { version: version.version }));
       onReload();
     },
@@ -505,18 +536,21 @@ export function DraftEditor({
       <div
         className={cn(
           "grid items-start gap-4",
-          "xl:grid-cols-[272px_minmax(0,1fr)_250px]"
+          ladder ? "xl:grid-cols-[272px_minmax(0,1fr)_250px]" : "xl:grid-cols-[minmax(0,1fr)_250px]"
         )}
       >
-        <LadderColumn
-          bands={state.bands}
-          scale={state.scale}
-          selectedSlug={selectedSlug}
-          editable={editable}
-          implicitLinks={implicitLinks && !tiersDirty}
-          onSelect={(slug) => setParams({ band: slug })}
-          dispatch={dispatch}
-        />
+        {ladder ? (
+          <LadderColumn
+            ladder={ladder}
+            bands={state.bands}
+            scale={state.scale}
+            selectedSlug={selectedSlug}
+            editable={editable}
+            implicitLinks={implicitLinks && !tiersDirty}
+            onSelect={(slug) => setParams({ band: slug })}
+            dispatch={dispatch}
+          />
+        ) : null}
 
         <div className="flex min-w-0 flex-col gap-3">
           <LinkTabs
@@ -531,22 +565,26 @@ export function DraftEditor({
               bands={state.bands}
               base={state.base}
               scale={state.scale}
+              discipline={discipline}
+              capabilities={capabilities}
+              ladder={ladder}
               editable={editable}
               selectedSlug={selectedSlug}
               onSelect={(slug) => setParams({ band: slug })}
               dispatch={dispatch}
               onPickIcon={onPickIcon}
               onScaleChange={changeScale}
-              canFollowLadder={bandsCoverLadder(state.bands)}
+              canFollowLadder={ladder !== null && bandsCoverLadder(ladder, state.bands)}
             />
           ) : null}
 
           {activeTab === "changes" ? (
-            <ChangesView base={state.base} bands={state.bands} baseLabel={baseLabel} />
+            <ChangesView ladder={ladder} base={state.base} bands={state.bands} baseLabel={baseLabel} />
           ) : null}
 
           {activeTab === "mappings" ? (
             <MappingsView
+              ladder={ladder}
               targetLabel={`v${version.version}`}
               bands={state.bands}
               sources={mappingSources}
@@ -587,7 +625,18 @@ export function DraftEditor({
             </>
           }
           onDiscard={() => onReload()}
-          onSave={() => saveMutation.mutate()}
+          onSave={() => {
+            const crestless = bandsMissingCrest(ladder, state.bands);
+            if (crestless.length > 0) {
+              notify.error(t("errors.crestRequired"), {
+                description: t("errors.crestRequiredDescription", {
+                  names: crestless.map((band) => band.name).join(", ")
+                })
+              });
+              return;
+            }
+            saveMutation.mutate();
+          }}
           // Divisions · Changes · Mappings · Impact are `?tab=` links of THIS
           // editor, and "resolve the open mapping decisions" is exactly what
           // the publish pre-flight sends a dirty draft off to do. Prompting

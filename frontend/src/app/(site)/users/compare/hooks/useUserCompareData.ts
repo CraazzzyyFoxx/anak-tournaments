@@ -20,7 +20,8 @@ import {
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { getDefaultDivisionGrid, getDivisionLabel } from "@/lib/divisions/grid";
+import { getDivisionLabel } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 interface UseUserCompareDataParams {
@@ -63,7 +64,7 @@ export const useUserCompareData = ({
   const currentWorkspaceId = useCurrentWorkspaceId();
   const workspaceGrid = useDivisionGrid("overwatch");
   const workspaceId = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
-  const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
+  const divisionGrid = scope === "all" ? OW_REFERENCE_GRID : workspaceGrid;
 
   const compareQuery = useQuery(
     buildOverallCompareQueryOptions({

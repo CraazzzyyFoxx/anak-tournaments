@@ -12,7 +12,8 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Switch } from "@/components/ui/switch";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { OW_REFERENCE_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import { ROLE_LABELS, getRoleIconName, type RoleCode } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 

@@ -5,7 +5,8 @@ import { useDebounce } from "use-debounce";
 
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { clampDivisionToGrid, getDefaultDivisionGrid } from "@/lib/divisions/grid";
+import { clampDivisionToGrid } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import { parsePositiveInt } from "@/app/(site)/users/components/shared/list-utils";
 import type { UserRoleType } from "@/types/user.types";
@@ -74,7 +75,7 @@ export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls 
   const workspaceGrid = useDivisionGrid("overwatch");
   // All-workspaces divisions span every grid, so the filter is plain tier
   // numbers from the reference grid rather than this workspace's own.
-  const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
+  const divisionGrid = scope === "all" ? OW_REFERENCE_GRID : workspaceGrid;
 
   const query = searchParams?.get("query") ?? "";
   const sort = parseSort(searchParams?.get("sort") ?? null);

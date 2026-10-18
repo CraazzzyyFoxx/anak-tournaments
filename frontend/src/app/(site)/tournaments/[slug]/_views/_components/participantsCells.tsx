@@ -21,7 +21,8 @@ import type { CatalogEntityChip } from "@/types/catalog.types";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { useTranslations } from "next-intl";
 import { formatSubroleSlug } from "@/lib/roster/roles";
-import { resolveDivisionFromRank, DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { DivisionGrid } from "@/types/workspace.types";
 import DivisionIcon from "@/components/DivisionIcon";
 
@@ -37,7 +38,7 @@ export function RolesCell({
   showRanks?: boolean;
 }>) {
   const t = useTranslations();
-  const resolvedGrid = grid || DEFAULT_DIVISION_GRID;
+  const resolvedGrid = grid || OW_REFERENCE_GRID;
   if (!roles || roles.length === 0)
     return <span className="text-[color:var(--aqt-fg-dim)]">&mdash;</span>;
 

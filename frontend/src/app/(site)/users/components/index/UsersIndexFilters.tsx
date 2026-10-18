@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SearchField } from "@/components/ui/search-field";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { getDefaultDivisionGrid } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { UserOverviewStats, UserRoleType } from "@/types/user.types";
 
 import {
@@ -102,7 +102,7 @@ export function UsersIndexFilters({
             multiple
             values={divisions}
             onValuesChange={controls.setDivisions}
-            grid={scope === "all" ? getDefaultDivisionGrid() : undefined}
+            grid={scope === "all" ? OW_REFERENCE_GRID : undefined}
             counts={divisionCounts}
             placeholder={t("users.list.filters.divisions")}
             ariaLabel={t("users.list.filters.divisions")}

@@ -6,12 +6,14 @@ import { useTranslations } from "next-intl";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
 
-import { diffBands, owShortLabel, rankRangeLabel, type Band } from "./draftReducer";
+import { diffBands, nativeShortLabel, rankRangeLabel, type Band, type Ladder } from "./draftReducer";
 
-/** Both coordinates of a band in one cell: "1900–1999 · GO1–GO3". */
-const spanLabel = (band: Band) => `${rankRangeLabel(band)} · ${owShortLabel(band)}`;
+/** Both coordinates of a band in one cell: "1900–1999 · GO1–GO3"; the range alone without a native ladder. */
+const spanLabel = (ladder: Ladder | null, band: Band) =>
+  ladder ? `${rankRangeLabel(band)} · ${nativeShortLabel(ladder, band)}` : rankRangeLabel(band);
 
 export interface ChangesViewProps {
+  ladder: Ladder | null;
   base: Band[];
   bands: Band[];
   baseLabel: string;
@@ -24,7 +26,7 @@ export interface ChangesViewProps {
  * that needs explaining — a division is never deleted, it is folded into a
  * neighbour, and the players in it move there.
  */
-export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProps>) {
+export function ChangesView({ ladder, base, bands, baseLabel }: Readonly<ChangesViewProps>) {
   const t = useTranslations("adminSettings.divisions");
   const diff = diffBands(base, bands);
   const total =
@@ -58,7 +60,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
             key={band.slug}
             left="—"
             right={`${band.number}. ${band.name}`}
-            detail={spanLabel(band)}
+            detail={spanLabel(ladder, band)}
           />
         ))}
       </Group>
@@ -69,7 +71,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
             key={band.slug}
             left={`${band.number}. ${band.name}`}
             right="—"
-            detail={spanLabel(band)}
+            detail={spanLabel(ladder, band)}
           />
         ))}
       </Group>
@@ -78,8 +80,8 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
         {diff.moved.map(({ before, after }) => (
           <Row
             key={after.slug}
-            left={spanLabel(before)}
-            right={spanLabel(after)}
+            left={spanLabel(ladder, before)}
+            right={spanLabel(ladder, after)}
             detail={after.name}
           />
         ))}
@@ -91,7 +93,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
             key={after.slug}
             left={before.name}
             right={after.name}
-            detail={spanLabel(after)}
+            detail={spanLabel(ladder, after)}
           />
         ))}
       </Group>

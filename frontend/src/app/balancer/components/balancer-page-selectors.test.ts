@@ -6,7 +6,7 @@ import {
   upsertSavedVariant,
 } from "./balancer-page-selectors";
 import type { BalanceVariant } from "@/components/balancer/workspace-helpers";
-import { DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { AdminRegistration, InternalBalancePayload } from "@/types/balancer-admin.types";
 
 function createPayload(teamName: string): InternalBalancePayload {
@@ -106,7 +106,7 @@ describe("buildBalancerPageCollections", () => {
         registration(3, "rejected"),
         registration(4, "pending"),
       ],
-      DEFAULT_DIVISION_GRID,
+      OW_REFERENCE_GRID,
     );
 
     expect(collections.allPlayerValidationStates.map((state) => state.player.id)).toEqual([1]);

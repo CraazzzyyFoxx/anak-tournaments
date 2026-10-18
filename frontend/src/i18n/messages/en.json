@@ -222,7 +222,12 @@
       },
       "invalidAction": "Choose one of the available games below.",
       "emptyTitle": "No games available",
-      "empty": "No game is enabled for this scope yet."
+      "empty": "No game is enabled for this scope yet.",
+      "widgetUnsupported": "This game does not support this feature.",
+      "widgetMissing": "This game declares the feature, but its interface is not installed.",
+      "gridMissing": "This game has no usable division grid in this workspace, so ranks cannot be resolved.",
+      "gridMissingAction": "Create or select a {game} division grid",
+      "gridMissingOrganizer": "Ask a workspace organizer to publish and activate a {game} division grid."
     },
     "divisionWithId": "Division {id}",
     "anyDivision": "Any division",
@@ -3619,6 +3624,8 @@
     "noProfileBody": "Rank history is unavailable because this BattleTag is not linked to a registered site account.",
     "errorTitle": "Failed to load",
     "errorBody": "Failed to load rank history. Please try again later.",
+    "unsupportedTitle": "Rank history needs a game",
+    "unsupportedBody": "No single installed game collects ranks, so there is no rank history to show here.",
     "groupByPlaceholder": "Group by...",
     "byRole": "By role",
     "byBattleNet": "By battle.net",
@@ -8146,7 +8153,9 @@
       "description": "Which division of the Overwatch ladder each OverFast rank lands on. The division's lower bound is stored; each workspace resolves it against its own grid.",
       "reset": "Reset to OW2 defaults",
       "selectAria": "Ladder division for {rank}",
-      "selectPlaceholder": "Select division"
+      "selectPlaceholder": "Select division",
+      "noCollectorTitle": "No rank collector",
+      "noCollector": "No installed game collects ranks, so there is no rank mapping to edit."
     },
     "hub": {
       "title": "Collectors",
@@ -10942,6 +10951,7 @@
         "division": "Division",
         "versionDivision": "{version} division",
         "borrowsCrest": "borrows crest",
+        "crestRequired": "crest required",
         "rankRange": "Rank range",
         "owRanks": "OW ranks",
         "players": "Players",
@@ -11021,6 +11031,7 @@
         "saved": "The draft is saved as a version",
         "crests": "Every division has its own crest",
         "crestsSome": "{count, plural, one {# division still borrows} other {# divisions still borrow}} a ladder crest",
+        "crestsRequired": "{count, plural, one {# division has} other {# divisions have}} no crest — upload one, the server refuses a division without it",
         "mappings": "Every older version maps onto this one",
         "mappingsSome": "{count, plural, one {# mapping decision} other {# mapping decisions}} left in the Mappings tab"
       },
@@ -11101,7 +11112,11 @@
         "draftSave": "Draft could not be saved",
         "publish": "Version could not be published",
         "discard": "Draft could not be discarded",
-        "crestUpload": "Crest could not be uploaded"
+        "crestUpload": "Crest could not be uploaded",
+        "crestRequired": "Every division needs a crest",
+        "crestRequiredDescription": "Upload a crest for: {names}.",
+        "activateWrongGame": "That version belongs to another game's grid; defaults are set per game.",
+        "noStandardLadder": "This game has no native ladder to load."
       },
       "standardLadder": "Standard OW ladder",
       "openDraft": "Open draft v{version}",

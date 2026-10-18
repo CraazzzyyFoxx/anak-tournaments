@@ -6,44 +6,62 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { TIER_NUMBERS } from "@/lib/divisions/ow-ladder";
 import { cn } from "@/lib/utils";
+import type { NativeTier } from "@/types/discipline.types";
 
-import { ladderOwners, owRangeLabel, RANK_COUNT, rankLabel, type Band } from "./draftReducer";
+import type { SlotProps } from "../../types";
 
-/** One grid row per OW division (Champion … Bronze), one column per tier. */
-const ROWS = Array.from({ length: RANK_COUNT / TIER_NUMBERS.length }, (_, row) => row);
+type Props = SlotProps["nativeRankEditor"];
 
-export interface OwRangePickerProps {
-  bands: Band[];
-  bandIndex: number;
-  onLink: (from: number, to: number) => void;
-  onUnlink: () => void;
+/** Ladder indices where each native division starts, in ladder order (one grid row per division). */
+function divisionRows(ladder: readonly NativeTier[]): { name: string; start: number; size: number }[] {
+  const rows: { name: string; start: number; size: number }[] = [];
+  ladder.forEach((rank, index) => {
+    const last = rows[rows.length - 1];
+    if (last && last.name === rank.native_division) last.size += 1;
+    else rows.push({ name: rank.native_division, start: index, size: 1 });
+  });
+  return rows;
 }
 
+const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
 /**
- * Which OW ranks land in one division of a custom-scale grid.
+ * Which native ranks land in one division of a custom-scale grid — the Overwatch `nativeRankEditor` slot.
  *
- * Click the first rank, then the last (the same one twice for a single rank);
- * hovering previews the run. Ranks already in another division are drawn
- * filled and say whose they are — taking them is allowed, because the reducer
- * keeps the runs in division order by clipping the neighbours. Unlinked ranks
- * are dashed, so a gap in the ladder is visible from any row.
+ * Click the first rank, then the last (the same one twice for a single rank); hovering previews the run.
+ * Ranks already in another division are drawn filled and say whose they are — taking them is allowed,
+ * because the reducer keeps the runs in division order by clipping the neighbours. Unlinked ranks are
+ * dashed, so a gap in the ladder is visible from any row. The layout follows the ladder's own
+ * `native_division` / `native_tier` fields, so it never assumes a rank count.
  */
-export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<OwRangePickerProps>) {
+export default function OwRangePicker({
+  ladder,
+  value,
+  onChange,
+  disabled,
+  owners,
+  label = ""
+}: Readonly<Props>) {
   const t = useTranslations("adminSettings.divisions");
-  const band = bands[bandIndex];
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
-  const owners = ladderOwners(bands);
+  const rows = divisionRows(ladder);
+  const columns = Math.max(1, ...rows.map((row) => row.size));
+  const rankName = (index: number) => ladder[index]?.name ?? `Rank ${index + 1}`;
+  const rangeLabel = value
+    ? value.from === value.to
+      ? rankName(value.from)
+      : `${rankName(value.from)} – ${rankName(value.to)}`
+    : t("ladder.notLinked");
 
   const edge = hovered ?? anchor;
   const [low, high] =
     anchor !== null && edge !== null
       ? [Math.min(anchor, edge), Math.max(anchor, edge)]
-      : band.ow
-        ? [band.ow.from, band.ow.to]
+      : value
+        ? [value.from, value.to]
         : [null, null];
 
   const toggle = (next: boolean) => {
@@ -59,7 +77,7 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
       setAnchor(index);
       return;
     }
-    onLink(Math.min(anchor, index), Math.max(anchor, index));
+    onChange({ from: Math.min(anchor, index), to: Math.max(anchor, index) });
     toggle(false);
   };
 
@@ -69,41 +87,40 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
         <Button
           variant="outline"
           size="sm"
-          aria-label={t("table.owRanksOf", { name: band.name, range: owRangeLabel(band) ?? t("ladder.notLinked") })}
+          disabled={disabled}
+          aria-label={t("table.owRanksOf", { name: label, range: rangeLabel })}
           className={cn(
             "h-8 w-full min-w-40 justify-between px-2 font-mono text-xs font-normal",
-            !band.ow && "text-warning"
+            !value && "text-warning"
           )}
         >
-          <span className="truncate">{owRangeLabel(band) ?? t("ladder.notLinked")}</span>
+          <span className="truncate">{rangeLabel}</span>
           <ChevronDown aria-hidden className="size-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-2" aria-label={t("table.owRanksOfName", { name: band.name })}>
+      <PopoverContent align="start" className="w-auto p-2" aria-label={t("table.owRanksOfName", { name: label })}>
         <div className="flex flex-col gap-1" onMouseLeave={() => setHovered(null)}>
-          {ROWS.map((row) => (
+          {rows.map((row) => (
             <div
-              key={row}
-              // Literal 5: Tailwind cannot see an interpolated class; TIER_NUMBERS drives the cells.
-              className="grid grid-cols-[92px_repeat(5,minmax(0,1fr))] items-center gap-1"
+              key={row.start}
+              style={{ gridTemplateColumns: `92px repeat(${columns}, minmax(0, 1fr))` }}
+              className="grid items-center gap-1"
             >
-              <span className="pr-2 text-xs text-muted-foreground">
-                {rankLabel(row * TIER_NUMBERS.length).replace(/\s+\d+$/, "")}
-              </span>
-              {TIER_NUMBERS.map((tier, column) => {
-                const index = row * TIER_NUMBERS.length + column;
-                const owner = owners[index];
-                const other = owner !== null && owner !== bandIndex ? bands[owner] : null;
+              <span className="pr-2 text-xs text-muted-foreground">{capitalize(row.name)}</span>
+              {Array.from({ length: row.size }, (_, column) => {
+                const index = row.start + column;
+                const owner = owners?.[index] ?? null;
+                const other = owner !== null && owner !== label ? owner : null;
                 const inRange = low !== null && high !== null && index >= low && index <= high;
                 const endpoint = index === low || index === high;
-                const label = other ? `${rankLabel(index)}, now in ${other.name}` : rankLabel(index);
+                const rankLabel = other ? `${rankName(index)}, now in ${other}` : rankName(index);
                 return (
                   <button
-                    key={tier}
+                    key={index}
                     type="button"
                     aria-pressed={inRange}
-                    aria-label={label}
-                    title={label}
+                    aria-label={rankLabel}
+                    title={rankLabel}
                     onClick={() => pick(index)}
                     onMouseEnter={() => setHovered(index)}
                     onFocus={() => setHovered(index)}
@@ -115,12 +132,12 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
                           ? "border-primary/40 bg-primary/15"
                           : other
                             ? "border-transparent bg-muted text-muted-foreground hover:border-border"
-                            : owner === null
+                            : owners && owner === null
                               ? "border-dashed border-warning/60 hover:bg-muted"
                               : "border-transparent hover:border-border hover:bg-muted"
                     )}
                   >
-                    {tier}
+                    {ladder[index].native_tier}
                   </button>
                 );
               })}
@@ -131,20 +148,20 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
           <p className="max-w-56 text-xs text-muted-foreground" aria-live="polite">
             {anchor === null
               ? t("table.owPickerHint")
-              : t("table.owPickerFrom", { rank: rankLabel(anchor) })}
+              : t("table.owPickerFrom", { rank: rankName(anchor) })}
           </p>
           <Button
             variant="ghost"
             size="sm"
             className="h-7 shrink-0 px-2 text-xs"
-            disabled={!band.ow}
+            disabled={!value}
             onClick={() => {
-              onUnlink();
+              onChange(null);
               toggle(false);
             }}
           >
             <Unlink aria-hidden className="size-3" />
-              {t("mapping.unlink")}
+            {t("mapping.unlink")}
           </Button>
         </div>
       </PopoverContent>

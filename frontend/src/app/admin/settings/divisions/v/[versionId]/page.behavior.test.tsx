@@ -29,6 +29,8 @@ import type {
   DivisionGridVersion,
   DivisionTier
 } from "@/types/workspace.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import { TEST_LADDER_TIERS } from "../../editor/__fixtures__/test-ladder";
 import DivisionDraftEditorPage from "./page";
 
 declare global {
@@ -91,6 +93,40 @@ vi.mock("@/services/workspace.service", () => ({
 
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn(), warning: vi.fn() }
+}));
+
+// The editor reads the GRID's own game metadata (here Overwatch, whose native ladder it declares).
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: (_axis: unknown, code: string | null) => ({
+    data: code
+      ? ({
+          discipline: {
+            code,
+            name: code,
+            enabled: true,
+            kinds: {},
+            character_classes: [],
+            identity_provider: null,
+            capabilities: {
+              catalog_sync: false,
+              native_rank_collection: code === "overwatch",
+              native_ladder: code === "overwatch",
+              achievement_conditions: false,
+              analytics: false
+            }
+          },
+          workspace_id: 1,
+          dimensions: [],
+          roles: [],
+          stat_defs: [],
+          event_types: [],
+          team_format_presets: [],
+          native_ladder: code === "overwatch" ? TEST_LADDER_TIERS : []
+        } as unknown as DisciplineMetadata)
+      : undefined,
+    isError: false,
+    refetch: vi.fn()
+  })
 }));
 
 const replace = vi.fn((url: string) => {

@@ -8,10 +8,14 @@ import { describe, expect, it } from "vitest";
 
 import type { DivisionTier } from "@/types/workspace.types";
 
-import { autoMap, mappingRules, resolveTarget, unresolvedRows } from "./autoMap";
-import { bandsFromTiers, LADDER, RANK_COUNT, type Band } from "./draftReducer";
+import { autoMap as mapRows, mappingRules, resolveTarget, unresolvedRows } from "./autoMap";
+import { bandsFromTiers as tiersToBands, type Band } from "./draftReducer";
+import { TEST_LADDER } from "./__fixtures__/test-ladder";
 
-const LAST = RANK_COUNT - 1;
+const LADDER = TEST_LADDER.ranks;
+const LAST = TEST_LADDER.count - 1;
+const bandsFromTiers = (tiers: DivisionTier[]) => tiersToBands(TEST_LADDER, tiers);
+const autoMap = (source: DivisionTier[], bands: Band[]) => mapRows(TEST_LADDER, source, bands);
 
 /** Stored tiers, each spanning ladder indices `from … to` on the OW scale. */
 function ladderTiers(spec: [id: number, name: string, from: number, to: number][]): DivisionTier[] {
@@ -183,11 +187,23 @@ describe("autoMap", () => {
       icon_url: null,
       rankMin: LADDER[LAST].rank_min,
       rankMax: null,
-      ow: { from: 0, to: LAST }
+      native: { from: 0, to: LAST }
     };
     const rows = autoMap(ladderTiers([[1, "Old", 0, LAST]]), [unsaved]);
 
     expect(rows[0].kind).toBe("auto");
     expect(mappingRules(rows, {}, [unsaved])).toEqual([]);
+  });
+
+  it("maps a grid of a discipline without a native ladder by overlap alone", () => {
+    // No ladder: the open top gets one step of the finest division, and nothing is read as native.
+    const targets = tiersToBands(null, newEra(100));
+    const rows = mapRows(null, newEra(0), targets);
+
+    expect(rows).toHaveLength(20);
+    expect(rows.every((row) => row.kind === "auto" && row.coverage === 1)).toBe(true);
+    expect(rows.map((row) => resolveTarget(row, {}, targets)?.primary.id)).toEqual(
+      Array.from({ length: 20 }, (_, index) => 101 + index)
+    );
   });
 });

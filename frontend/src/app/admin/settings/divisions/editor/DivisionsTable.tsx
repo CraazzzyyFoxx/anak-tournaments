@@ -13,19 +13,23 @@ import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
+import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import type { DisciplineCapabilities } from "@/types/discipline.types";
+
 import {
   bandIconUrl,
   bandVerdict,
   floorError,
-  owRangeLabel,
-  owSize,
+  ladderOwners,
+  nativeRangeLabel,
+  nativeSize,
   rankRangeLabel,
   type Action,
   type Band,
   type BandVerdict,
+  type Ladder,
   type Scale
 } from "./draftReducer";
-import { OwRangePicker } from "./OwRangePicker";
 
 const VERDICT_TONE: Record<BandVerdict, "info" | "accent" | "warning"> = {
   renamed: "info",
@@ -38,6 +42,11 @@ export interface DivisionsTableProps {
   bands: Band[];
   base: Band[];
   scale: Scale;
+  /** The grid's own discipline: the native-rank editor slot is that game's, never another's. */
+  discipline: string;
+  capabilities: DisciplineCapabilities;
+  /** The discipline's native ladder; `null` when it has none (no native column, no ladder scale). */
+  ladder: Ladder | null;
   editable: boolean;
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
@@ -46,7 +55,7 @@ export interface DivisionsTableProps {
   onPickIcon: (bandIndex: number) => void;
   /** Asks to switch the scale; the editor confirms the switch that rewrites ranges. */
   onScaleChange: (scale: Scale) => void;
-  /** Every OW rank and every division linked — the precondition for following the ladder. */
+  /** Every native rank and every division linked — the precondition for following the ladder. */
   canFollowLadder: boolean;
 }
 
@@ -62,6 +71,9 @@ export function DivisionsTable({
   bands,
   base,
   scale,
+  discipline,
+  capabilities,
+  ladder,
   editable,
   selectedSlug,
   onSelect,
@@ -88,14 +100,18 @@ export function DivisionsTable({
           const band = row.original;
           return (
             <div className="flex min-w-0 items-center gap-2">
-              <Image
-                src={bandIconUrl(band)}
-                alt=""
-                width={20}
-                height={20}
-                className="size-5 shrink-0 object-contain"
-                unoptimized
-              />
+              {bandIconUrl(ladder, band) ? (
+                <Image
+                  src={bandIconUrl(ladder, band)!}
+                  alt=""
+                  width={20}
+                  height={20}
+                  className="size-5 shrink-0 object-contain"
+                  unoptimized
+                />
+              ) : (
+                <span aria-hidden className="size-5 shrink-0 rounded border border-dashed border-border" />
+              )}
               <InlineEditText
                 value={band.name}
                 label={t("table.divisionName", { number: band.number })}
@@ -106,7 +122,9 @@ export function DivisionsTable({
                 }
               />
               {band.icon_url === null ? (
-                <StatusPill tone="neutral">{t("table.borrowsCrest")}</StatusPill>
+                <StatusPill tone="neutral">
+                  {ladder ? t("table.borrowsCrest") : t("table.crestRequired")}
+                </StatusPill>
               ) : null}
             </div>
           );
@@ -123,33 +141,52 @@ export function DivisionsTable({
             <span className="font-mono text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
           )
       },
-      {
-        id: "ow",
-        header: t("table.owRanks"),
-        cell: ({ row }) => {
-          const band = row.original;
-          if (custom && editable) {
-            return (
-              <OwRangePicker
-                bands={bands}
-                bandIndex={band.number - 1}
-                onLink={(from, to) =>
-                  dispatch({ type: "link", bandIndex: band.number - 1, from, to })
+      ...(ladder
+        ? [
+            {
+              id: "native",
+              header: t("table.owRanks"),
+              cell: ({ row }) => {
+                const band = row.original;
+                if (custom && editable) {
+                  return (
+                    <DisciplineWidget
+                      discipline={discipline}
+                      slot="nativeRankEditor"
+                      capabilities={capabilities}
+                      requires="native_ladder"
+                      props={{
+                        ladder: ladder.ranks,
+                        value: band.native,
+                        owners: ladderOwners(ladder, bands).map((owner) =>
+                          owner === null ? null : bands[owner].name
+                        ),
+                        label: band.name,
+                        onChange: (next) =>
+                          dispatch(
+                            next
+                              ? { type: "link", bandIndex: band.number - 1, from: next.from, to: next.to }
+                              : { type: "unlink", bandIndex: band.number - 1 }
+                          )
+                      }}
+                      fallback={null}
+                    />
+                  );
                 }
-                onUnlink={() => dispatch({ type: "unlink", bandIndex: band.number - 1 })}
-              />
-            );
-          }
-          return (
-            <span className="font-mono text-sm">
-              <span className={band.ow ? undefined : "text-warning"}>{owRangeLabel(band) ?? t("ladder.notLinked")}</span>
-              {band.ow ? (
-                <span className="ml-1.5 text-xs text-muted-foreground">· {owSize(band)}</span>
-              ) : null}
-            </span>
-          );
-        }
-      },
+                return (
+                  <span className="font-mono text-sm">
+                    <span className={band.native ? undefined : "text-warning"}>
+                      {nativeRangeLabel(ladder, band) ?? t("ladder.notLinked")}
+                    </span>
+                    {band.native ? (
+                      <span className="ml-1.5 text-xs text-muted-foreground">· {nativeSize(band)}</span>
+                    ) : null}
+                  </span>
+                );
+              }
+            } satisfies ColumnDef<Band>
+          ]
+        : []),
       {
         id: "players",
         header: t("table.players"),
@@ -184,7 +221,7 @@ export function DivisionsTable({
           const index = band.number - 1;
           const splittable = custom
             ? band.rankMax === null || band.rankMax > band.rankMin
-            : owSize(band) >= 2;
+            : nativeSize(band) >= 2;
           return [
             {
               label: t("table.setCrest"),
@@ -212,7 +249,7 @@ export function DivisionsTable({
             {
               label: t("table.unlink"),
               icon: Unlink,
-              hidden: !custom || band.ow === null,
+              hidden: !custom || band.native === null,
               onSelect: () => dispatch({ type: "unlink", bandIndex: index })
             }
           ];
@@ -220,7 +257,7 @@ export function DivisionsTable({
         { rowLabel: (band) => band.name }
       )
     ];
-  }, [bands, base, custom, dispatch, editable, onPickIcon, t]);
+  }, [bands, base, capabilities, custom, discipline, dispatch, editable, ladder, onPickIcon, t]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -231,26 +268,28 @@ export function DivisionsTable({
             {custom
               ? t("table.customScaleHint")
               : t("table.ladderScaleHint")}
-            {custom && editable && !canFollowLadder
+            {ladder && custom && editable && !canFollowLadder
               ? ` ${t("table.followLadderHint")}`
               : null}
           </p>
         </div>
-        <ToggleGroup
-          type="single"
-          variant="pill"
-          size="sm"
-          value={scale}
-          onValueChange={(next) => onScaleChange(next as Scale)}
-          aria-label={t("table.rankScale")}
-        >
-          <ToggleGroupItem value="ladder" disabled={!editable || (custom && !canFollowLadder)}>
-            {t("table.followLadder")}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="custom" disabled={!editable}>
-            {t("table.custom")}
-          </ToggleGroupItem>
-        </ToggleGroup>
+        {ladder ? (
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            value={scale}
+            onValueChange={(next) => onScaleChange(next as Scale)}
+            aria-label={t("table.rankScale")}
+          >
+            <ToggleGroupItem value="ladder" disabled={!editable || (custom && !canFollowLadder)}>
+              {t("table.followLadder")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="custom" disabled={!editable}>
+              {t("table.custom")}
+            </ToggleGroupItem>
+          </ToggleGroup>
+        ) : null}
       </div>
 
       <DataTable<Band>
@@ -267,7 +306,8 @@ export function DivisionsTable({
               {row.original.number}. {row.original.name}
             </p>
             <p className="truncate font-mono text-xs text-muted-foreground">
-              {rankRangeLabel(row.original)} · {owRangeLabel(row.original) ?? t("ladder.notLinked")}
+              {rankRangeLabel(row.original)}
+              {ladder ? ` · ${nativeRangeLabel(ladder, row.original) ?? t("ladder.notLinked")}` : null}
             </p>
           </div>
         )}

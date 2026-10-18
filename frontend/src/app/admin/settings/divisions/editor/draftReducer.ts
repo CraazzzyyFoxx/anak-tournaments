@@ -1,59 +1,74 @@
 /**
  * The draft division grid: divisions on the workspace's own rank scale, each
- * linked to a run of the Overwatch ladder.
+ * optionally linked to a run of the discipline's native ladder (the ranks its
+ * collector reports).
  *
  * Two coordinates, kept apart on purpose. `rankMin` is where a division starts
  * on the scale player ranks are stored on (`rank_min`); its ceiling is the
- * floor above minus one, so native ranges are contiguous by construction. `ow`
- * is the run of ladder ranks an OverFast snapshot resolves into the division
- * (`native_rank_min` / `native_rank_max`). On the OW scale the two coincide; on a grid
- * like "New Era x5" — twenty divisions of 100 on 100 … 2099 — they do not, and
- * forcing them together is what re-banded such grids and dropped divisions.
+ * floor above minus one, so ranges are contiguous by construction. `native`
+ * is the run of native ladder ranks a collected snapshot resolves into the
+ * division (`native_rank_min` / `native_rank_max`). On the native scale the two
+ * coincide; on a grid like "New Era x5" — twenty divisions of 100 on
+ * 100 … 2099 — they do not, and forcing them together is what re-banded such
+ * grids and dropped divisions.
+ *
+ * A discipline without a native ladder (`ladder === null`) has plain custom
+ * grids: floors are typed, no division carries a `native` run, and nothing here
+ * invents one.
  *
  * `scale` says which coordinate the editor drives:
- *  - `ladder` — rank ranges follow the OW ladder. Divisions are bands that
- *    partition all 45 ranks, cut and joined on the ladder; `rankMin` is derived.
- *  - `custom` — floors are typed. OW runs are linked per division, monotone and
- *    disjoint by construction, and may leave a rank or a division unlinked,
+ *  - `ladder` — rank ranges follow the native ladder. Divisions are bands that
+ *    partition every native rank, cut and joined on the ladder; `rankMin` is
+ *    derived. Only available with a ladder.
+ *  - `custom` — floors are typed. Native runs are linked per division, monotone
+ *    and disjoint by construction, and may leave a rank or a division unlinked,
  *    which the publish checks report instead of forbidding mid-edit.
  *
- * Indices, not ranks: a run's `from` / `to` are positions in `LADDER` (0 =
- * Champion 1, 44 = Bronze 5), `from <= to`. The conversion to stored OW values
- * happens once, in `tiersFromBands`, from the ladder artifact.
+ * Indices, not ranks: a run's `from` / `to` are positions in the ladder (0 =
+ * its top rank), `from <= to`. The conversion to stored native values happens
+ * once, in `tiersFromBands`.
  *
  * Pure by contract: no React, no services, no clock.
  */
 
-import { OW_REFERENCE_GRID, sortTiersDescending } from "@/lib/divisions/grid";
+import type { NativeRankRange } from "@/disciplines/types";
+import type { NativeTier } from "@/types/discipline.types";
 import type { DivisionTier } from "@/types/workspace.types";
 
-/** The 45 ladder ranks, top first — sorted here because the index arithmetic depends on it. */
-export const LADDER: readonly DivisionTier[] = sortTiersDescending(OW_REFERENCE_GRID);
+/** What the editor reads of one native rank: the `native_ladder` tier of the discipline's metadata. */
+export type LadderRank = NativeTier;
 
-/** Number of OW ladder ranks. */
-export const RANK_COUNT = LADDER.length;
-
-const LAST = RANK_COUNT - 1;
-
-/**
- * Bronze 5's floor. A bottom division may start below it: every lower rank
- * resolves into the bottom division anyway, so `0 … 3999` is still a ladder band.
- */
-const LADDER_FLOOR = LADDER[LAST].rank_min;
-
-/** Width of one ladder rank on the OW scale. */
-const LADDER_STEP = LADDER[0].rank_min - LADDER[1].rank_min;
-
-/** Full name of one ladder rank, e.g. "Grandmaster 4". */
-export function rankLabel(index: number): string {
-  return LADDER[index]?.name ?? `Rank ${index + 1}`;
+/** A discipline's native ladder, ranks top first. Index arithmetic everywhere below depends on that order. */
+export interface Ladder {
+  ranks: LadderRank[];
+  /** Number of native ranks. */
+  count: number;
+  last: number;
+  /**
+   * The bottom rank's floor. A bottom division may start below it: every lower
+   * rank resolves into the bottom division anyway.
+   */
+  floor: number;
+  /** Width of one rank on the native scale (top rank minus the one below it). */
+  step: number;
 }
 
-/** A run of consecutive ladder ranks, as `LADDER` indices. */
-export interface OwRun {
-  from: number;
-  to: number;
+/** The ladder of a discipline's metadata, or `null` when it declares none. */
+export function createLadder(ranks: readonly LadderRank[]): Ladder | null {
+  if (ranks.length === 0) return null;
+  const sorted = [...ranks].sort((left, right) => right.rank_min - left.rank_min);
+  const last = sorted.length - 1;
+  return {
+    ranks: sorted,
+    count: sorted.length,
+    last,
+    floor: sorted[last].rank_min,
+    step: sorted.length > 1 ? sorted[0].rank_min - sorted[1].rank_min : 1
+  };
 }
+
+/** A run of consecutive native ranks, as ladder indices. */
+export type NativeRun = NativeRankRange;
 
 export interface Band {
   /** Present for a tier that already exists server-side; absent for a new one. */
@@ -62,14 +77,14 @@ export interface Band {
   name: string;
   /** Position from the top, `1`-based. Derived. */
   number: number;
-  /** `null` means the band still borrows a ladder crest. */
+  /** `null` means the band has no crest of its own yet. */
   icon_url: string | null;
   /** Floor on the grid's own rank scale — the stored `rank_min`. */
   rankMin: number;
   /** The floor above minus one; `null` for the open-ended top division. Derived. */
   rankMax: number | null;
-  /** The ladder ranks that land in this division, or `null` when none does. */
-  ow: OwRun | null;
+  /** The native ranks that land in this division, or `null` when none does. */
+  native: NativeRun | null;
 }
 
 export type Scale = "ladder" | "custom";
@@ -95,6 +110,8 @@ export type EditNote =
   | { key: "edit.crest"; values: { name: string } };
 
 export interface DraftState {
+  /** `null` for a discipline without a native ladder. */
+  ladder: Ladder | null;
   bands: Band[];
   scale: Scale;
   /** One entry per edit, oldest first: the state before it. `undo` pops it. */
@@ -106,7 +123,7 @@ export interface DraftState {
 export type Action =
   /** Ladder scale: start a new division at this ladder rank. */
   | { type: "splitAt"; rank: number }
-  /** Halve a division — its ladder band, or its native range and OW run. */
+  /** Halve a division — its ladder band, or its range and native run. */
   | { type: "split"; bandIndex: number }
   | { type: "merge"; bandIndex: number; into: "up" | "down" }
   /** Move the boundary above ladder rank `rank` by one: `-1` up, `+1` down. */
@@ -125,29 +142,34 @@ export type Action =
 // Reading a band
 // ---------------------------------------------------------------------------
 
+/** Full name of one ladder rank, e.g. "Grandmaster 4". */
+export function rankLabel(ladder: Ladder, index: number): string {
+  return ladder.ranks[index]?.name ?? `Rank ${index + 1}`;
+}
+
 /** Ladder ranks linked to the band; `0` when it has none. */
-export function owSize(band: Band): number {
-  return band.ow ? band.ow.to - band.ow.from + 1 : 0;
+export function nativeSize(band: Band): number {
+  return band.native ? band.native.to - band.native.from + 1 : 0;
 }
 
-/** "Grandmaster 4 – Master 2", one rank's name, or "Not linked". */
-export function owRangeLabel(band: Band): string | null {
-  if (!band.ow) return null;
-  return band.ow.from === band.ow.to
-    ? rankLabel(band.ow.from)
-    : `${rankLabel(band.ow.from)} – ${rankLabel(band.ow.to)}`;
+/** "Grandmaster 4 – Master 2", one rank's name, or `null` when unlinked. */
+export function nativeRangeLabel(ladder: Ladder, band: Band): string | null {
+  if (!band.native) return null;
+  return band.native.from === band.native.to
+    ? rankLabel(ladder, band.native.from)
+    : `${rankLabel(ladder, band.native.from)} – ${rankLabel(ladder, band.native.to)}`;
 }
 
-/** "GR5–MA2" — the OW run in the width of a table cell; "—" when unlinked. */
-export function owShortLabel(band: Band): string {
-  if (!band.ow) return "\u2014";
+/** The native run in the width of a table cell ("GR5–MA2"); "—" when unlinked. */
+export function nativeShortLabel(ladder: Ladder, band: Band): string {
+  if (!band.native) return "\u2014";
   const short = (index: number) =>
-    rankLabel(index).replace(/^(\S{2})\S*\s+(\d+)$/, (_match, stem: string, digit: string) =>
+    rankLabel(ladder, index).replace(/^(\S{2})\S*\s+(\d+)$/, (_match, stem: string, digit: string) =>
       `${stem.toUpperCase()}${digit}`
     );
-  return band.ow.from === band.ow.to
-    ? short(band.ow.from)
-    : `${short(band.ow.from)}\u2013${short(band.ow.to)}`;
+  return band.native.from === band.native.to
+    ? short(band.native.from)
+    : `${short(band.native.from)}\u2013${short(band.native.to)}`;
 }
 
 /** "1900–1999", or "2000+" for the open-ended top. */
@@ -155,42 +177,46 @@ export function rankRangeLabel(band: Pick<Band, "rankMin" | "rankMax">): string 
   return band.rankMax === null ? `${band.rankMin}+` : `${band.rankMin}\u2013${band.rankMax}`;
 }
 
-/** The crest a band shows: its own, else the one of its top OW rank, else the ladder rank at its floor. */
-export function bandIconUrl(band: Band): string {
+/**
+ * The crest a band shows: its own, else the one of its top native rank (or the ladder rank at its
+ * floor) — read off the discipline's declared ladder. `null` without either: the caller says so.
+ */
+export function bandIconUrl(ladder: Ladder | null, band: Band): string | null {
   if (band.icon_url) return band.icon_url;
-  const index = band.ow?.from ?? LADDER.findIndex((rank) => rank.rank_min <= band.rankMin);
-  return LADDER[index === -1 ? LAST : index].icon_url;
+  if (!ladder) return null;
+  const index = band.native?.from ?? ladder.ranks.findIndex((rank) => rank.rank_min <= band.rankMin);
+  return ladder.ranks[index === -1 ? ladder.last : index].icon_url;
 }
 
 /** The band index each ladder rank lands in, top first; `null` where no division takes it. */
-export function ladderOwners(bands: Band[]): (number | null)[] {
-  const owners: (number | null)[] = Array.from({ length: RANK_COUNT }, () => null);
+export function ladderOwners(ladder: Ladder, bands: Band[]): (number | null)[] {
+  const owners: (number | null)[] = Array.from({ length: ladder.count }, () => null);
   bands.forEach((band, index) => {
-    if (!band.ow) return;
-    for (let rank = band.ow.from; rank <= band.ow.to; rank += 1) owners[rank] = index;
+    if (!band.native) return;
+    for (let rank = band.native.from; rank <= band.native.to; rank += 1) owners[rank] = index;
   });
   return owners;
 }
 
 /** Ladder ranks that land in no division. */
-export function unlinkedRanks(bands: Band[]): number[] {
-  return ladderOwners(bands).flatMap((owner, rank) => (owner === null ? [rank] : []));
+export function unlinkedRanks(ladder: Ladder, bands: Band[]): number[] {
+  return ladderOwners(ladder, bands).flatMap((owner, rank) => (owner === null ? [rank] : []));
 }
 
 /**
  * Every band owns a run and the runs partition the ladder — the `ladder` scale
  * invariant, and the precondition for switching to it.
  */
-export function bandsCoverLadder(bands: Band[]): boolean {
+export function bandsCoverLadder(ladder: Ladder, bands: Band[]): boolean {
   if (bands.length === 0) return false;
   return bands.every((band, index) => {
-    if (!band.ow || band.ow.from > band.ow.to) return false;
-    const expectedFrom = index === 0 ? 0 : (bands[index - 1].ow?.to ?? -2) + 1;
-    return band.ow.from === expectedFrom && (index < bands.length - 1 || band.ow.to === LAST);
+    if (!band.native || band.native.from > band.native.to) return false;
+    const expectedFrom = index === 0 ? 0 : (bands[index - 1].native?.to ?? -2) + 1;
+    return band.native.from === expectedFrom && (index < bands.length - 1 || band.native.to === ladder.last);
   });
 }
 
-/** Floors strictly descend, so every native range is non-empty and none overlap. */
+/** Floors strictly descend, so every range is non-empty and none overlap. */
 export function floorsDescend(bands: Band[]): boolean {
   return bands.every(
     (band, index) =>
@@ -222,12 +248,12 @@ export function floorError(bands: Band[], bandIndex: number, raw: string): Floor
  * Derived fields, recomputed after every edit: position, the ceiling from the
  * floor above, and — on the ladder scale — the floor from the band's run.
  */
-function finalize(bands: Band[], scale: Scale): Band[] {
+function finalize(ladder: Ladder | null, bands: Band[], scale: Scale): Band[] {
   const floors = bands.map((band) => {
-    if (scale !== "ladder" || !band.ow) return band.rankMin;
-    return band.ow.to === LAST
-      ? Math.min(band.rankMin, LADDER_FLOOR)
-      : LADDER[band.ow.to].rank_min;
+    if (scale !== "ladder" || !ladder || !band.native) return band.rankMin;
+    return band.native.to === ladder.last
+      ? Math.min(band.rankMin, ladder.floor)
+      : ladder.ranks[band.native.to].rank_min;
   });
   return bands.map((band, index) => {
     const number = index + 1;
@@ -251,8 +277,11 @@ function freshSlug(bands: Band[], stem: string): string {
   return `${stem}-${suffix}`;
 }
 
-function freshBand(bands: Band[], rankMin: number, ow: OwRun | null): Band {
-  const stem = ow ? (LADDER[ow.from]?.slug ?? `rank-${ow.from + 1}`) : `division-${rankMin}`;
+function freshBand(ladder: Ladder | null, bands: Band[], rankMin: number, native: NativeRun | null): Band {
+  const stem =
+    ladder && native
+      ? (ladder.ranks[native.from]?.slug ?? `rank-${native.from + 1}`)
+      : `division-${rankMin}`;
   return {
     slug: freshSlug(bands, stem),
     name: "Untitled division",
@@ -260,17 +289,17 @@ function freshBand(bands: Band[], rankMin: number, ow: OwRun | null): Band {
     icon_url: null,
     rankMin,
     rankMax: null,
-    ow
+    native
   };
 }
 
-function hull(upper: OwRun | null, lower: OwRun | null): OwRun | null {
+function hull(upper: NativeRun | null, lower: NativeRun | null): NativeRun | null {
   if (!upper) return lower;
   if (!lower) return upper;
   return { from: Math.min(upper.from, lower.from), to: Math.max(upper.to, lower.to) };
 }
 
-function clip(run: OwRun, min: number, max: number): OwRun | null {
+function clip(run: NativeRun, min: number, max: number): NativeRun | null {
   const from = Math.max(run.from, min);
   const to = Math.min(run.to, max);
   if (from > to) return null;
@@ -282,54 +311,54 @@ function clip(run: OwRun, min: number, max: number): OwRun | null {
  * there. The upper half keeps the division's identity; clicking a rank that
  * already starts a band is a no-op — honouring it would mean an empty band.
  */
-function splitAt(bands: Band[], rank: number): Band[] | null {
-  if (!Number.isInteger(rank) || rank <= 0 || rank > LAST) return null;
-  const index = bands.findIndex((band) => band.ow && rank >= band.ow.from && rank <= band.ow.to);
+function splitAt(ladder: Ladder, bands: Band[], rank: number): Band[] | null {
+  if (!Number.isInteger(rank) || rank <= 0 || rank > ladder.last) return null;
+  const index = bands.findIndex((band) => band.native && rank >= band.native.from && rank <= band.native.to);
   const band = bands[index];
-  if (!band?.ow || rank === band.ow.from) return null;
+  if (!band?.native || rank === band.native.from) return null;
 
-  const upper: Band = { ...band, ow: { from: band.ow.from, to: rank - 1 } };
+  const upper: Band = { ...band, native: { from: band.native.from, to: rank - 1 } };
   // The new band inherits the floor, which only survives `finalize` at the bottom of the ladder.
-  const lower = freshBand(bands, band.rankMin, { from: rank, to: band.ow.to });
+  const lower = freshBand(ladder, bands, band.rankMin, { from: rank, to: band.native.to });
   return [...bands.slice(0, index), upper, lower, ...bands.slice(index + 1)];
 }
 
 /**
  * Halve a division. On the ladder scale that is a cut through the middle of its
- * band. On a custom scale the native range is halved (the open-ended top gives
- * up one width of the division below it) and the new lower division takes the
- * lower half of the OW run, if the run has two ranks to share.
+ * band. On a custom scale the range is halved (the open-ended top gives up one
+ * width of the division below it) and the new lower division takes the lower
+ * half of the native run, if the run has two ranks to share.
  */
-function split(bands: Band[], bandIndex: number, scale: Scale): Band[] | null {
+function split(ladder: Ladder | null, bands: Band[], bandIndex: number, scale: Scale): Band[] | null {
   const band = bands[bandIndex];
   if (!band) return null;
   if (scale === "ladder") {
-    if (!band.ow || owSize(band) < 2) return null;
-    return splitAt(bands, band.ow.from + Math.ceil(owSize(band) / 2));
+    if (!ladder || !band.native || nativeSize(band) < 2) return null;
+    return splitAt(ladder, bands, band.native.from + Math.ceil(nativeSize(band) / 2));
   }
 
   const below = bands[bandIndex + 1];
   const width =
     band.rankMax === null
-      ? Math.max(1, below ? band.rankMin - below.rankMin : LADDER_STEP)
+      ? Math.max(1, below ? band.rankMin - below.rankMin : (ladder?.step ?? 1))
       : band.rankMax - band.rankMin + 1;
   if (band.rankMax !== null && width < 2) return null;
   const upperFloor = band.rankMax === null ? band.rankMin + width : band.rankMin + Math.floor(width / 2);
 
-  let upperRun = band.ow;
-  let lowerRun: OwRun | null = null;
-  if (band.ow && owSize(band) >= 2) {
-    const middle = band.ow.from + Math.ceil(owSize(band) / 2);
-    upperRun = { from: band.ow.from, to: middle - 1 };
-    lowerRun = { from: middle, to: band.ow.to };
+  let upperRun = band.native;
+  let lowerRun: NativeRun | null = null;
+  if (band.native && nativeSize(band) >= 2) {
+    const middle = band.native.from + Math.ceil(nativeSize(band) / 2);
+    upperRun = { from: band.native.from, to: middle - 1 };
+    lowerRun = { from: middle, to: band.native.to };
   }
 
-  const upper: Band = { ...band, rankMin: upperFloor, ow: upperRun };
-  const lower = freshBand(bands, band.rankMin, lowerRun);
+  const upper: Band = { ...band, rankMin: upperFloor, native: upperRun };
+  const lower = freshBand(ladder, bands, band.rankMin, lowerRun);
   return [...bands.slice(0, bandIndex), upper, lower, ...bands.slice(bandIndex + 1)];
 }
 
-/** Fold a band into a neighbour, which inherits its range and OW ranks and keeps its own identity. */
+/** Fold a band into a neighbour, which inherits its range and native ranks and keeps its own identity. */
 function merge(bands: Band[], bandIndex: number, into: "up" | "down"): Band[] | null {
   const band = bands[bandIndex];
   if (!band || bands.length < 2) return null;
@@ -337,13 +366,13 @@ function merge(bands: Band[], bandIndex: number, into: "up" | "down"): Band[] | 
   if (into === "up") {
     const above = bands[bandIndex - 1];
     if (!above) return null;
-    const survivor: Band = { ...above, rankMin: band.rankMin, ow: hull(above.ow, band.ow) };
+    const survivor: Band = { ...above, rankMin: band.rankMin, native: hull(above.native, band.native) };
     return [...bands.slice(0, bandIndex - 1), survivor, ...bands.slice(bandIndex + 1)];
   }
 
   const below = bands[bandIndex + 1];
   if (!below) return null;
-  const survivor: Band = { ...below, ow: hull(band.ow, below.ow) };
+  const survivor: Band = { ...below, native: hull(band.native, below.native) };
   return [...bands.slice(0, bandIndex), survivor, ...bands.slice(bandIndex + 2)];
 }
 
@@ -354,9 +383,9 @@ function merge(bands: Band[], bandIndex: number, into: "up" | "down"): Band[] | 
  * On a custom scale either side may be "no division", and a band that gives up
  * its last rank simply becomes unlinked.
  */
-function nudge(bands: Band[], rank: number, delta: -1 | 1, scale: Scale): Band[] | null {
-  if (!Number.isInteger(rank) || rank <= 0 || rank > LAST) return null;
-  const owners = ladderOwners(bands);
+function nudge(ladder: Ladder, bands: Band[], rank: number, delta: -1 | 1, scale: Scale): Band[] | null {
+  if (!Number.isInteger(rank) || rank <= 0 || rank > ladder.last) return null;
+  const owners = ladderOwners(ladder, bands);
   const above = owners[rank - 1];
   const below = owners[rank];
   if (above === below) return null;
@@ -364,20 +393,23 @@ function nudge(bands: Band[], rank: number, delta: -1 | 1, scale: Scale): Band[]
   const moving = delta === -1 ? rank - 1 : rank;
   const loser = delta === -1 ? above : below;
   const gainer = delta === -1 ? below : above;
-  if (scale === "ladder" && (loser === null || gainer === null || owSize(bands[loser]) < 2)) {
+  if (scale === "ladder" && (loser === null || gainer === null || nativeSize(bands[loser]) < 2)) {
     return null;
   }
 
   return bands.map((band, index) => {
-    if (index === loser && band.ow) {
-      if (band.ow.from === band.ow.to) return { ...band, ow: null };
+    if (index === loser && band.native) {
+      if (band.native.from === band.native.to) return { ...band, native: null };
       return {
         ...band,
-        ow: moving === band.ow.from ? { ...band.ow, from: moving + 1 } : { ...band.ow, to: moving - 1 }
+        native:
+          moving === band.native.from
+            ? { ...band.native, from: moving + 1 }
+            : { ...band.native, to: moving - 1 }
       };
     }
     if (index === gainer) {
-      return { ...band, ow: hull(band.ow, { from: moving, to: moving }) };
+      return { ...band, native: hull(band.native, { from: moving, to: moving }) };
     }
     return band;
   });
@@ -388,35 +420,36 @@ function nudge(bands: Band[], rank: number, delta: -1 | 1, scale: Scale): Band[]
  * only keep ranks above the run and one below only ranks below it, so taking
  * ranks from a neighbour clips it, and may leave ranks between them unlinked.
  */
-function link(bands: Band[], bandIndex: number, from: number, to: number): Band[] | null {
+function link(ladder: Ladder, bands: Band[], bandIndex: number, from: number, to: number): Band[] | null {
   const band = bands[bandIndex];
   if (!band || !Number.isInteger(from) || !Number.isInteger(to)) return null;
   const low = Math.max(0, Math.min(from, to));
-  const high = Math.min(LAST, Math.max(from, to));
-  if (low > high || (band.ow?.from === low && band.ow.to === high)) return null;
+  const high = Math.min(ladder.last, Math.max(from, to));
+  if (low > high || (band.native?.from === low && band.native.to === high)) return null;
 
   return bands.map((entry, index) => {
-    if (index === bandIndex) return { ...entry, ow: { from: low, to: high } };
-    if (!entry.ow) return entry;
-    const run = index < bandIndex ? clip(entry.ow, 0, low - 1) : clip(entry.ow, high + 1, LAST);
-    return run === entry.ow ? entry : { ...entry, ow: run };
+    if (index === bandIndex) return { ...entry, native: { from: low, to: high } };
+    if (!entry.native) return entry;
+    const run =
+      index < bandIndex ? clip(entry.native, 0, low - 1) : clip(entry.native, high + 1, ladder.last);
+    return run === entry.native ? entry : { ...entry, native: run };
   });
 }
 
 function apply(state: DraftState, action: Exclude<Action, { type: "undo" }>): Band[] | null {
-  const { bands, scale } = state;
+  const { bands, scale, ladder } = state;
   const replace = (bandIndex: number, patch: Partial<Band>) =>
     bands.map((band, index) => (index === bandIndex ? { ...band, ...patch } : band));
 
   switch (action.type) {
     case "splitAt":
-      return scale === "ladder" ? splitAt(bands, action.rank) : null;
+      return scale === "ladder" && ladder ? splitAt(ladder, bands, action.rank) : null;
     case "split":
-      return split(bands, action.bandIndex, scale);
+      return split(ladder, bands, action.bandIndex, scale);
     case "merge":
       return merge(bands, action.bandIndex, action.into);
     case "nudge":
-      return nudge(bands, action.rank, action.delta, scale);
+      return ladder ? nudge(ladder, bands, action.rank, action.delta, scale) : null;
     case "setFloor": {
       const band = bands[action.bandIndex];
       if (scale !== "custom" || !band || band.rankMin === action.rankMin) return null;
@@ -424,15 +457,16 @@ function apply(state: DraftState, action: Exclude<Action, { type: "undo" }>): Ba
       return replace(action.bandIndex, { rankMin: action.rankMin });
     }
     case "link":
-      return scale === "custom" ? link(bands, action.bandIndex, action.from, action.to) : null;
+      return scale === "custom" && ladder ? link(ladder, bands, action.bandIndex, action.from, action.to) : null;
     case "unlink":
-      return scale === "custom" && bands[action.bandIndex]?.ow
-        ? replace(action.bandIndex, { ow: null })
+      return scale === "custom" && bands[action.bandIndex]?.native
+        ? replace(action.bandIndex, { native: null })
         : null;
     case "setScale":
       if (action.scale === scale) return null;
       // Following the ladder derives every floor from a run, so every division needs one.
-      return action.scale === "custom" || bandsCoverLadder(bands) ? bands : null;
+      if (action.scale === "custom") return bands;
+      return ladder && bandsCoverLadder(ladder, bands) ? bands : null;
     case "rename": {
       const name = action.name.trim();
       const band = bands[action.bandIndex];
@@ -448,7 +482,13 @@ function apply(state: DraftState, action: Exclude<Action, { type: "undo" }>): Ba
 }
 
 /** The edit in a sentence, from the action and the states around it. */
-function describe(action: Exclude<Action, { type: "undo" }>, before: Band[], after: Band[]): EditNote {
+function describe(
+  ladder: Ladder | null,
+  action: Exclude<Action, { type: "undo" }>,
+  before: Band[],
+  after: Band[]
+): EditNote {
+  const label = (index: number) => (ladder ? rankLabel(ladder, index) : String(index + 1));
   switch (action.type) {
     case "splitAt":
     case "split": {
@@ -457,7 +497,7 @@ function describe(action: Exclude<Action, { type: "undo" }>, before: Band[], aft
       const parent = added ? after[after.indexOf(added) - 1] : undefined;
       if (!added || !parent) return { key: "edit.split", values: { name: "", range: "" } };
       return action.type === "splitAt"
-        ? { key: "edit.splitAt", values: { name: parent.name, rank: rankLabel(added.ow?.from ?? action.rank) } }
+        ? { key: "edit.splitAt", values: { name: parent.name, rank: label(added.native?.from ?? action.rank) } }
         : { key: "edit.split", values: { name: parent.name, range: rankRangeLabel(added) } };
     }
     case "merge": {
@@ -467,16 +507,22 @@ function describe(action: Exclude<Action, { type: "undo" }>, before: Band[], aft
     }
     case "nudge": {
       const moving = action.delta === -1 ? action.rank - 1 : action.rank;
-      const from = ladderOwners(before)[moving];
-      const to = ladderOwners(after)[moving];
+      const from = ladder ? ladderOwners(ladder, before)[moving] : null;
+      const to = ladder ? ladderOwners(ladder, after)[moving] : null;
       const name = (list: Band[], index: number | null) =>
         index === null ? "" : list[index].name;
-      return { key: "edit.moved", values: { rank: rankLabel(moving), from: name(before, from), to: name(after, to) } };
+      return { key: "edit.moved", values: { rank: label(moving), from: name(before, from), to: name(after, to) } };
     }
     case "setFloor":
       return { key: "edit.floor", values: { name: after[action.bandIndex].name, rank: action.rankMin } };
     case "link":
-      return { key: "edit.linked", values: { range: owRangeLabel(after[action.bandIndex]) ?? "", name: after[action.bandIndex].name } };
+      return {
+        key: "edit.linked",
+        values: {
+          range: ladder ? (nativeRangeLabel(ladder, after[action.bandIndex]) ?? "") : "",
+          name: after[action.bandIndex].name
+        }
+      };
     case "unlink":
       return { key: "edit.unlinked", values: { name: before[action.bandIndex].name } };
     case "setScale":
@@ -506,20 +552,20 @@ export function draftReducer(state: DraftState, action: Action): DraftState {
   // A rejected action returns the same object, so React skips the re-render.
   if (next === null) return state;
   const scale = action.type === "setScale" ? action.scale : state.scale;
-  const bands = finalize(next, scale);
+  const bands = finalize(state.ladder, next, scale);
   return {
     ...state,
     bands,
     scale,
     history: [
       ...state.history,
-      { bands: state.bands, scale: state.scale, note: describe(action, state.bands, bands) }
+      { bands: state.bands, scale: state.scale, note: describe(state.ladder, action, state.bands, bands) }
     ]
   };
 }
 
-export function initDraftState(bands: Band[], scale: Scale, base: Band[]): DraftState {
-  return { bands: finalize(bands, scale), scale, history: [], base };
+export function initDraftState(ladder: Ladder | null, bands: Band[], scale: Scale, base: Band[]): DraftState {
+  return { ladder, bands: finalize(ladder, bands, scale), scale, history: [], base };
 }
 
 /** The whole edit log, oldest first. */
@@ -545,12 +591,18 @@ export interface DraftTierPayload {
   native_rank_max: number | null;
 }
 
+/** Bands that cannot be stored yet: the server requires a crest and there is no ladder to borrow one from. */
+export function bandsMissingCrest(ladder: Ladder | null, bands: Band[]): Band[] {
+  return bands.filter((band) => bandIconUrl(ladder, band) === null);
+}
+
 /**
- * Bands as stored tiers. A ladder rank's `rank_min` IS its OW rank value, so a
- * run is stored as its floor and ceiling ranks' values; an unlinked band stores
- * both as `null`, which the backend reads as "no OW rank lands here".
+ * Bands as stored tiers. A native rank's `rank_min` IS its stored rank value, so a run is stored as its
+ * floor and ceiling ranks' values; an unlinked band stores both as `null`, which the backend reads as
+ * "no native rank lands here". A band with no crest and nothing to borrow one from (no ladder) is the
+ * caller's to prevent — see {@link bandsMissingCrest}; it is stored with an empty `icon_url` the server refuses.
  */
-export function tiersFromBands(bands: Band[]): DraftTierPayload[] {
+export function tiersFromBands(ladder: Ladder | null, bands: Band[]): DraftTierPayload[] {
   return bands.map((band, index) => ({
     ...(band.id === undefined ? {} : { id: band.id }),
     slug: band.slug,
@@ -559,13 +611,13 @@ export function tiersFromBands(bands: Band[]): DraftTierPayload[] {
     sort_order: index,
     rank_min: band.rankMin,
     rank_max: band.rankMax,
-    icon_url: bandIconUrl(band),
-    native_rank_min: band.ow ? LADDER[band.ow.to].rank_min : null,
-    native_rank_max: band.ow ? LADDER[band.ow.from].rank_min : null
+    icon_url: bandIconUrl(ladder, band) ?? "",
+    native_rank_min: ladder && band.native ? ladder.ranks[band.native.to].rank_min : null,
+    native_rank_max: ladder && band.native ? ladder.ranks[band.native.from].rank_min : null
   }));
 }
 
-function hasOwLink(tier: DivisionTier): boolean {
+function hasNativeLink(tier: DivisionTier): boolean {
   return tier.native_rank_min != null && tier.native_rank_max != null;
 }
 
@@ -579,24 +631,26 @@ function sortedTiers(tiers: DivisionTier[]): DivisionTier[] {
 }
 
 /**
- * Stored tiers as bands, resolving the ladder exactly as the backend resolves an
- * OW rank: through the explicit `ow_rank_*` pairs when any tier has one (first
- * match wins), else by rank range with the bottom division as the fallback. A
- * rank that would break the run order — only possible with overlapping stored
- * pairs — is left unlinked rather than guessed.
+ * Stored tiers as bands, resolving the ladder exactly as the backend resolves a
+ * native rank: through the explicit `native_rank_*` pairs when any tier has one
+ * (first match wins), else by rank range with the bottom division as the
+ * fallback. A rank that would break the run order — only possible with
+ * overlapping stored pairs — is left unlinked rather than guessed. Without a
+ * ladder no run exists.
  */
-export function bandsFromTiers(tiers: DivisionTier[]): Band[] {
+export function bandsFromTiers(ladder: Ladder | null, tiers: DivisionTier[]): Band[] {
   if (tiers.length === 0) {
     return finalize(
+      ladder,
       [
         {
           slug: "division-1",
           name: "Division 1",
           number: 1,
           icon_url: null,
-          rankMin: LADDER_FLOOR,
+          rankMin: ladder?.floor ?? 0,
           rankMax: null,
-          ow: { from: 0, to: LAST }
+          native: ladder ? { from: 0, to: ladder.last } : null
         }
       ],
       "custom"
@@ -614,17 +668,18 @@ export function bandsFromTiers(tiers: DivisionTier[]): Band[] {
       icon_url: tier.icon_url || null,
       rankMin: tier.rank_min,
       rankMax: null,
-      ow: null
+      native: null
     });
   }
+  if (!ladder) return finalize(ladder, bands, "custom");
 
-  const explicit = sorted.some(hasOwLink);
+  const explicit = sorted.some(hasNativeLink);
   const ownerOf = (rank: number): number | null => {
-    const value = LADDER[rank].rank_min;
+    const value = ladder.ranks[rank].rank_min;
     if (explicit) {
       const index = sorted.findIndex(
         (tier) =>
-          hasOwLink(tier) &&
+          hasNativeLink(tier) &&
           value >= Math.min(tier.native_rank_min!, tier.native_rank_max!) &&
           value <= Math.max(tier.native_rank_min!, tier.native_rank_max!)
       );
@@ -636,36 +691,55 @@ export function bandsFromTiers(tiers: DivisionTier[]): Band[] {
 
   let previous: number | null = null;
   let highest = -1;
-  for (let rank = 0; rank < RANK_COUNT; rank += 1) {
+  for (let rank = 0; rank < ladder.count; rank += 1) {
     const owner = ownerOf(rank);
     if (owner === null || (owner !== previous && owner <= highest)) {
       previous = null;
       continue;
     }
     const band = bands[owner];
-    band.ow = band.ow ? { from: band.ow.from, to: rank } : { from: rank, to: rank };
+    band.native = band.native ? { from: band.native.from, to: rank } : { from: rank, to: rank };
     previous = owner;
     highest = owner;
   }
 
-  return finalize(bands, "custom");
+  return finalize(ladder, bands, "custom");
 }
 
 /**
- * `ladder` when the stored ranges are exactly bands of the OW ladder and any
- * stored link is the band itself — what "Load standard OW ladder" writes, and
+ * `ladder` when the stored ranges are exactly bands of the native ladder and any
+ * stored link is the band itself — what "Load standard ladder" writes, and
  * the one case where a single edit can drive both coordinates. Anything else
  * opens as `custom`, so the editor never rewrites a scale it did not create.
  */
-export function scaleOf(tiers: DivisionTier[]): Scale {
-  const bands = bandsFromTiers(tiers);
-  if (!bandsCoverLadder(bands)) return "custom";
+export function scaleOf(ladder: Ladder | null, tiers: DivisionTier[]): Scale {
+  if (!ladder) return "custom";
+  const bands = bandsFromTiers(ladder, tiers);
+  if (!bandsCoverLadder(ladder, bands)) return "custom";
   const sorted = sortedTiers(tiers);
-  const aligned = finalize(bands, "ladder").every(
+  const aligned = finalize(ladder, bands, "ladder").every(
     (band, index) =>
       band.rankMin === sorted[index].rank_min && band.rankMax === sorted[index].rank_max
   );
   return aligned ? "ladder" : "custom";
+}
+
+/**
+ * The whole native ladder as saveable tiers — one division per native rank on the native scale, no `id`
+ * (so saving makes a new version). Same band conversion the editor uses, so it cannot disagree with a
+ * hand-edited draft about `rank_min` / `native_rank_*`.
+ */
+export function standardTiers(ladder: Ladder): DraftTierPayload[] {
+  const asTiers: DivisionTier[] = ladder.ranks.map((rank, index) => ({
+    slug: rank.slug,
+    number: index + 1,
+    name: rank.name,
+    sort_order: index,
+    rank_min: rank.rank_min,
+    rank_max: rank.rank_max,
+    icon_url: rank.icon_url
+  }));
+  return tiersFromBands(ladder, bandsFromTiers(ladder, asTiers));
 }
 
 // ---------------------------------------------------------------------------
@@ -674,7 +748,7 @@ export function scaleOf(tiers: DivisionTier[]): Scale {
 
 export type BandVerdict = "new" | "range moved" | "relinked" | "renamed";
 
-function sameRun(left: OwRun | null, right: OwRun | null): boolean {
+function sameRun(left: NativeRun | null, right: NativeRun | null): boolean {
   return left?.from === right?.from && left?.to === right?.to;
 }
 
@@ -684,14 +758,14 @@ function rangeMoved(before: Band, after: Band): boolean {
 
 /**
  * How one band differs from the version the draft was created from, or `null`.
- * A moved range outranks a new OW link, which outranks a rename: each changes
+ * A moved range outranks a new native link, which outranks a rename: each changes
  * fewer players' divisions than the one before it.
  */
 export function bandVerdict(base: Band[], band: Band): BandVerdict | null {
   const before = base.find((entry) => entry.slug === band.slug);
   if (!before) return "new";
   if (rangeMoved(before, band)) return "range moved";
-  if (!sameRun(before.ow, band.ow)) return "relinked";
+  if (!sameRun(before.native, band.native)) return "relinked";
   if (before.name !== band.name) return "renamed";
   return null;
 }
@@ -700,7 +774,7 @@ export interface BandDiff {
   added: Band[];
   /** In the parent version, gone from the draft — folded into a neighbour. */
   removed: Band[];
-  /** Rank range or OW link changed. */
+  /** Rank range or native link changed. */
   moved: { before: Band; after: Band }[];
   renamed: { before: Band; after: Band }[];
 }
@@ -716,7 +790,7 @@ export function diffBands(base: Band[], bands: Band[]): BandDiff {
       diff.added.push(band);
       continue;
     }
-    if (rangeMoved(before, band) || !sameRun(before.ow, band.ow)) {
+    if (rangeMoved(before, band) || !sameRun(before.native, band.native)) {
       diff.moved.push({ before, after: band });
     }
     if (before.name !== band.name) {

@@ -25,9 +25,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions, type AppPermission } from "@/hooks/usePermissions";
-import { OW_REFERENCE_GRID } from "@/lib/divisions/grid";
+import { activeGridVersionId, resolveOwnerGrid } from "@/lib/divisions/grid";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
@@ -41,10 +44,10 @@ import type {
 import {
   bandIconUrl,
   bandsFromTiers,
-  owRangeLabel,
-  RANK_COUNT,
+  createLadder,
+  nativeRangeLabel,
   rankRangeLabel,
-  tiersFromBands,
+  standardTiers,
   type Band
 } from "./editor/draftReducer";
 import { LadderBar } from "./LadderBar";
@@ -64,20 +67,6 @@ const SOURCE_STATUS_LABEL = {
 } as const;
 
 const MONO_CAPTION = "font-mono text-label uppercase tracking-wider text-muted-foreground";
-
-/**
- * The whole OW ladder as a saveable version — what "Load standard OW ladder"
- * writes.
- *
- * Derived by the same band conversion the editor uses, so the standard ladder
- * and a hand-edited draft cannot disagree about `rank_min` / `ow_rank_*`. No
- * tier carries an `id`, which is what makes the save a new version rather than
- * a rewrite of an existing one.
- */
-const STANDARD_OW_TIERS = tiersFromBands(bandsFromTiers(OW_REFERENCE_GRID.tiers));
-
-/** The built-in ladder as bands: 45 one-rank divisions, what an unactivated workspace resolves through. */
-const BUILT_IN_BANDS = bandsFromTiers(OW_REFERENCE_GRID.tiers);
 
 /**
  * Settings › Divisions (T5 section, F11): what grid is in force, the version
@@ -103,10 +92,10 @@ export default function DivisionsSettingsPage() {
   const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
-  const defaultDiscipline = workspace?.disciplines_enabled[0];
-  const preferredActiveVersionId = defaultDiscipline
-    ? (workspace?.default_division_grid_versions[defaultDiscipline] ?? null)
-    : null;
+  // A concrete-browsing surface: the resolved game scopes the whole page, shown in the URL.
+  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? undefined });
+  const browsedDiscipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const preferredActiveVersionId = activeGridVersionId(workspace, browsedDiscipline);
   const portableInputRef = useRef<HTMLInputElement>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [activating, setActivating] = useState<DivisionGridVersion | null>(null);
@@ -125,7 +114,7 @@ export default function DivisionsSettingsPage() {
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
   const gridParam = Number(searchParams?.get("grid"));
-  const scopedGrids = grids.filter((grid) => grid.discipline === defaultDiscipline);
+  const scopedGrids = grids.filter((grid) => grid.discipline === browsedDiscipline);
   const selectedGrid =
     grids.find((grid) => grid.id === gridParam) ??
     scopedGrids.find((grid) =>
@@ -134,14 +123,30 @@ export default function DivisionsSettingsPage() {
     scopedGrids.find((grid) => grid.archived_at === null) ??
     scopedGrids[0] ??
     null;
-  const selectedDiscipline = selectedGrid?.discipline ?? defaultDiscipline;
-  const hasNativeLadder = selectedDiscipline === "overwatch";
-  const activeVersionId = selectedDiscipline
-    ? (workspace?.default_division_grid_versions[selectedDiscipline] ?? null)
-    : null;
+  // An explicitly opened grid uses its own game, not the browsing choice.
+  const selectedDiscipline = selectedGrid?.discipline ?? browsedDiscipline;
+  const activeVersionId = activeGridVersionId(workspace, selectedDiscipline);
+
+  const metadataQuery = useDisciplineMetadata(workspaceId ?? "all", selectedDiscipline);
+  const metadata = metadataQuery.data;
+  const ladder = useMemo(
+    () =>
+      metadata?.discipline.capabilities.native_ladder ? createLadder(metadata.native_ladder) : null,
+    [metadata]
+  );
+  // A declared native ladder with no ranks is invalid metadata, never "no ladder".
+  const metadataInvalid =
+    metadata !== undefined && metadata.discipline.capabilities.native_ladder && ladder === null;
+  const hasNativeLadder = ladder !== null;
+  // The game's own standard ladder as a saveable version, and what an unactivated workspace resolves through.
+  const standardLadderTiers = useMemo(() => (ladder ? standardTiers(ladder) : null), [ladder]);
+  const builtInBands = useMemo(
+    () => (ladder && standardLadderTiers ? bandsFromTiers(ladder, standardLadderTiers) : []),
+    [ladder, standardLadderTiers]
+  );
 
   const versionsQuery = useQuery({
-    queryKey: divisionGridQueryKeys.versions(workspaceId, selectedGrid?.id ?? null),
+    queryKey: divisionGridQueryKeys.versions(workspaceId, selectedDiscipline, selectedGrid?.id ?? null),
     queryFn: () => workspaceService.getDivisionGridVersions(workspaceId!, selectedGrid!.id),
     enabled: canRead && selectedGrid !== null
   });
@@ -154,13 +159,13 @@ export default function DivisionsSettingsPage() {
       .sort((left, right) => right.version - left.version)[0] ?? null;
   const activeVersion =
     versions.find((version) => version.id === activeVersionId) ??
-    (selectedDiscipline ? workspace?.effective_division_grid_versions[selectedDiscipline] : null) ??
+    resolveOwnerGrid(workspace, selectedDiscipline) ??
     null;
   const activeIsShared =
     activeVersion !== null && !grids.some((grid) => grid.id === activeVersion.grid_id);
 
   const readinessQuery = useQuery({
-    queryKey: divisionGridQueryKeys.readiness(workspaceId, activeVersionId),
+    queryKey: divisionGridQueryKeys.readiness(workspaceId, selectedDiscipline, activeVersionId),
     queryFn: () => workspaceService.getDivisionGridVersionReadiness(workspaceId!, activeVersionId!),
     enabled: canRead && activeVersionId !== null
   });
@@ -186,7 +191,7 @@ export default function DivisionsSettingsPage() {
   );
   const candidateReadiness = useQueries({
     queries: candidates.map((version) => ({
-      queryKey: divisionGridQueryKeys.readiness(workspaceId, version.id),
+      queryKey: divisionGridQueryKeys.readiness(workspaceId, selectedDiscipline, version.id),
       queryFn: () => workspaceService.getDivisionGridVersionReadiness(workspaceId!, version.id),
       enabled: canRead
     }))
@@ -201,18 +206,19 @@ export default function DivisionsSettingsPage() {
   const readyCandidate = candidates.find((version) => activatable[version.id] === true) ?? null;
 
   const activeBands = useMemo(
-    () => (activeVersion ? bandsFromTiers(activeVersion.tiers) : []),
-    [activeVersion]
+    () => (activeVersion ? bandsFromTiers(ladder, activeVersion.tiers) : []),
+    [activeVersion, ladder]
   );
 
-  const refresh = async () => {
+  // Only the affected game's keys, plus the workspace's per-discipline default map.
+  const refresh = async (discipline = selectedDiscipline) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(workspaceId) }),
       queryClient.invalidateQueries({
-        queryKey: divisionGridQueryKeys.versionsByWorkspace(workspaceId)
+        queryKey: divisionGridQueryKeys.versionsByDiscipline(workspaceId, discipline)
       }),
       queryClient.invalidateQueries({
-        queryKey: divisionGridQueryKeys.readinessByWorkspace(workspaceId)
+        queryKey: divisionGridQueryKeys.readinessByDiscipline(workspaceId, discipline)
       }),
       fetchWorkspaces()
     ]);
@@ -231,11 +237,15 @@ export default function DivisionsSettingsPage() {
   });
 
   const standardMutation = useMutation({
-    mutationFn: () =>
-      workspaceService.createDivisionGridVersion(workspaceId!, selectedGrid!.id, {
+    mutationFn: () => {
+      if (!selectedGrid || !standardLadderTiers) {
+        throw new Error(t("errors.noStandardLadder"));
+      }
+      return workspaceService.createDivisionGridVersion(workspaceId!, selectedGrid.id, {
         label: t("standardLadder"),
-        tiers: STANDARD_OW_TIERS
-      }),
+        tiers: standardLadderTiers
+      });
+    },
     onSuccess: async (version) => {
       await refresh();
       notify.success(t("toast.standardLoaded", { version: version.version }));
@@ -245,8 +255,13 @@ export default function DivisionsSettingsPage() {
   });
 
   const activateMutation = useMutation({
-    mutationFn: (version: DivisionGridVersion) =>
-      workspaceService.activateDivisionGridVersion(workspaceId!, version.id),
+    mutationFn: async (version: DivisionGridVersion) => {
+      // Defaults are per game: a version that is not one of the open grid's own is never activated here.
+      if (!versions.some((entry) => entry.id === version.id)) {
+        throw new Error(t("errors.activateWrongGame"));
+      }
+      return workspaceService.activateDivisionGridVersion(workspaceId!, version.id);
+    },
     onSuccess: async (version) => {
       setActivating(null);
       await refresh();
@@ -259,7 +274,7 @@ export default function DivisionsSettingsPage() {
     mutationFn: (document: DivisionGridPortableImportDocument) =>
       workspaceService.importDivisionGridPortable(workspaceId!, document),
     onSuccess: async (grid) => {
-      await refresh();
+      await refresh(grid.discipline);
       setParams({ grid: String(grid.id) });
       notify.success(t("toast.jsonImported"));
     },
@@ -312,21 +327,24 @@ export default function DivisionsSettingsPage() {
       {
         id: "name",
         header: t("table.division"),
-        cell: ({ row }) => (
-          <span className="flex min-w-0 items-center gap-2">
-            {row.original.icon_url || hasNativeLadder ? (
-              <Image
-                src={bandIconUrl(row.original)}
-                alt=""
-                width={20}
-                height={20}
-                unoptimized
-                className="size-5 shrink-0"
-              />
-            ) : null}
-            <span className="truncate font-medium">{row.original.name}</span>
-          </span>
-        )
+        cell: ({ row }) => {
+          const crest = bandIconUrl(ladder, row.original);
+          return (
+            <span className="flex min-w-0 items-center gap-2">
+              {crest ? (
+                <Image
+                  src={crest}
+                  alt=""
+                  width={20}
+                  height={20}
+                  unoptimized
+                  className="size-5 shrink-0"
+                />
+              ) : null}
+              <span className="truncate font-medium">{row.original.name}</span>
+            </span>
+          );
+        }
       },
       {
         id: "range",
@@ -336,17 +354,21 @@ export default function DivisionsSettingsPage() {
           <span className="font-mono text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
         )
       },
-      {
-        id: "ow",
-        header: t("table.owRanks"),
-        cell: ({ row }) => (
-          <span className={cn("font-mono text-sm", !row.original.ow && "text-warning")}>
-            {owRangeLabel(row.original) ?? t("ladder.notLinked")}
-          </span>
-        )
-      }
+      ...(ladder
+        ? [
+            {
+              id: "native",
+              header: t("table.owRanks"),
+              cell: ({ row }) => (
+                <span className={cn("font-mono text-sm", !row.original.native && "text-warning")}>
+                  {nativeRangeLabel(ladder, row.original) ?? t("ladder.notLinked")}
+                </span>
+              )
+            } satisfies ColumnDef<Band>
+          ]
+        : [])
     ],
-    [t, hasNativeLadder]
+    [t, ladder]
   );
 
   if (workspaceId === null) {
@@ -390,6 +412,47 @@ export default function DivisionsSettingsPage() {
     );
   }
 
+  // Nothing game-shaped is read or drawn until one installed, enabled game is resolved: an explicit
+  // invalid `?discipline=` is named, never corrected.
+  const resolvedDiscipline = browsing.resolved;
+  if (resolvedDiscipline === null) {
+    return browsing.isError ? (
+      <PageStateCard
+        state="error"
+        title={t("loadError.title")}
+        description={t("loadError.description")}
+        actionLabel={t("retry")}
+        onAction={browsing.refetch}
+      />
+    ) : (
+      <Skeleton className="h-40 w-full rounded-xl" />
+    );
+  }
+  if (resolvedDiscipline.kind === "invalid" || resolvedDiscipline.kind === "empty") {
+    return (
+      <DisciplineUnavailable
+        resolved={resolvedDiscipline}
+        disciplines={browsing.disciplines ?? []}
+        allowsAll={false}
+        onSelect={browsing.select}
+      />
+    );
+  }
+  if (selectedDiscipline !== null && (metadataQuery.isError || metadataInvalid)) {
+    return (
+      <PageStateCard
+        state="error"
+        title={t("loadError.title")}
+        description={t("loadError.description")}
+        actionLabel={t("retry")}
+        onAction={() => void metadataQuery.refetch()}
+      />
+    );
+  }
+  if (selectedDiscipline !== null && metadata === undefined) {
+    return <Skeleton className="h-40 w-full rounded-xl" />;
+  }
+
   // The one thing worth doing next, ranked: finish the draft, put a finished
   // version in force, start a draft, start from the standard ladder.
   const nextAction = draft ? (
@@ -408,7 +471,7 @@ export default function DivisionsSettingsPage() {
     <Button size="sm" onClick={() => cloneMutation.mutate()} disabled={cloneMutation.isPending}>
       {t("newDraft", { version: latestVersion.version })}
     </Button>
-  ) : canCreate && selectedGrid && selectedDiscipline === "overwatch" ? (
+  ) : canCreate && selectedGrid && ladder ? (
     <Button
       size="sm"
       onClick={() => standardMutation.mutate()}
@@ -421,6 +484,15 @@ export default function DivisionsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {browsing.disciplines ? (
+        <DisciplineSelector
+          disciplines={browsing.disciplines}
+          value={browsedDiscipline ?? undefined}
+          allowsAll={false}
+          onSelect={browsing.select}
+          className="w-52 self-start"
+        />
+      ) : null}
       <section
         aria-labelledby="divisions-in-force"
         className={cn(
@@ -449,7 +521,7 @@ export default function DivisionsSettingsPage() {
               {activeVersion
                 ? [
                     `${activeBands.length} divisions`,
-                    hasNativeLadder ? `${RANK_COUNT} ranks` : null,
+                    ladder ? `${ladder.count} ranks` : null,
                     activeVersion.published_at
                       ? `published ${format.dateTime(new Date(activeVersion.published_at), {
                           dateStyle: "medium"
@@ -460,8 +532,8 @@ export default function DivisionsSettingsPage() {
                   ]
                     .filter(Boolean)
                     .join(" · ")
-                : hasNativeLadder
-                  ? `${RANK_COUNT} ranks · nothing activated`
+                : ladder
+                  ? `${ladder.count} ranks · nothing activated`
                   : t("noActiveVersion")}
             </p>
           </div>
@@ -473,9 +545,10 @@ export default function DivisionsSettingsPage() {
           ) : null}
         </div>
 
-        {hasNativeLadder ? (
+        {ladder ? (
           <LadderBar
-            bands={activeVersion ? activeBands : BUILT_IN_BANDS}
+            ladder={ladder}
+            bands={activeVersion ? activeBands : builtInBands}
             size="lg"
             tone={activeVersion ? "accent" : "neutral"}
             className="mt-4"
@@ -514,7 +587,7 @@ export default function DivisionsSettingsPage() {
                     + {t("newDraft", { version: latestVersion.version })}
                   </Button>
                 ) : null}
-                {selectedDiscipline === "overwatch" ? (
+                {ladder ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -559,7 +632,7 @@ export default function DivisionsSettingsPage() {
             <VersionHistory
               versions={versions}
               activeVersionId={activeVersionId}
-              hasNativeLadder={hasNativeLadder}
+              ladder={ladder}
               tournamentCounts={tournamentCounts}
               activatable={activatable}
               onActivate={setActivating}
@@ -645,7 +718,7 @@ export default function DivisionsSettingsPage() {
         {activeVersion ? (
           <DataTable<Band>
             rows={activeBands}
-            columns={hasNativeLadder ? columns : columns.filter((column) => column.id !== "ow")}
+            columns={columns}
             getRowId={(row) => row.slug}
             initialPageSize={50}
             emptyMessage={t("table.empty")}

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { CollectionSettingsPanel, useCollectionSettings } from "@/components/admin/CollectionSettingsPanel";
+import { CollectionSettingsPanel, useCollectionSettings } from "@/components/kit/CollectionSettingsPanel";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,18 +15,15 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import {
-  OW_REFERENCE_GRID,
   getTierForRank,
   resolveDivisionFromRank,
   resolveRankFromDivision,
   sortTiersDescending
 } from "@/lib/divisions/grid";
-import { OW_DIVISIONS_DESC } from "@/lib/divisions/ow-ladder";
-import {
-  DEFAULT_RANK_MAPPING_VERSION,
-  buildMappingCells,
-  defaultRankForCell
-} from "@/lib/divisions/ow-rank-mapping";
+
+import { OW_DIVISIONS_DESC } from "./ow-ladder";
+import { DEFAULT_RANK_MAPPING_VERSION, buildMappingCells, defaultRankForCell } from "./ow-rank-mapping";
+import { OW_REFERENCE_GRID } from "./ow-reference-grid";
 import type { RankMappingConfig, RankMappingEntry } from "@/types/admin.types";
 
 const RANK_MAPPING_KEY = "parser.rank_mapping";
@@ -68,7 +65,7 @@ const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slic
  * One group per OverFast division, one row per tier — the same rows-and-groups
  * layout as every other settings screen.
  */
-export function RankMappingPanel() {
+export default function RankMappingPanel() {
   const t = useTranslations("collectors.mapping");
   const tiers = useMemo(() => sortTiersDescending(GRID), []);
   const settings = useCollectionSettings<MappingForm>({

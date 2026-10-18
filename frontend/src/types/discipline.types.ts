@@ -9,3 +9,5 @@ export type RoleDimension = Schema<"app.RoleDimensionRead">;
 export type StatDefinition = Schema<"app.StatDefinition">;
 export type EventTypeDefinition = Schema<"app.EventTypeRead">;
 export type DisciplineMetadata = Schema<"app.DisciplineMetadata">;
+/** One native (collected) rank of a discipline's ladder, top first; `rank_min` is its stored `rank_value`. */
+export type NativeTier = Schema<"app.NativeTierRead">;

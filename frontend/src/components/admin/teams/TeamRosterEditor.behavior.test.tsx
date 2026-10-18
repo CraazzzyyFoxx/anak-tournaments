@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { OW_REFERENCE_GRID } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { Player } from "@/types/team.types";
 import { TeamRosterEditor } from "./TeamRosterEditor";
 

@@ -11,7 +11,6 @@ import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";
 import { getFormatter } from "@/lib/datetime/server";
 import { bracketRoundLabel, UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
 import {
-  DEFAULT_DIVISION_GRID,
   getDivisionIconSrc,
   type DivisionGridLike
 } from "@/lib/divisions/grid";
@@ -58,6 +57,9 @@ function loadFonts() {
  * that one stays a URL for Satori to fetch.
  */
 const crestCache = new Map<string, string | null>();
+
+/** A tournament without a resolved grid has no crests: the card renders without them, never another game's. */
+const NO_GRID: DivisionGridLike = { tiers: [] };
 
 async function resolveCrests(grid: DivisionGridLike, teams: (Team | null)[]) {
   const sources = new Set<string>();
@@ -430,7 +432,7 @@ export async function renderEncounterOg(encounterId: number) {
       ? format.dateTime(scheduledAt, { dateStyle: "medium", timeStyle: "short" })
       : t("common.tbd");
 
-  const grid = encounter.tournament?.division_grid_version ?? DEFAULT_DIVISION_GRID;
+  const grid = encounter.tournament?.division_grid_version ?? NO_GRID;
   const crests = await resolveCrests(grid, [one?.team ?? null, two?.team ?? null]);
   const ontology = await disciplineService.metadata(encounter.workspace_id, encounter.discipline).catch(error => {
     console.error("opengraph-image: role metadata unavailable:", error);

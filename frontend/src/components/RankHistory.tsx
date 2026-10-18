@@ -1,23 +1,17 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Link2Off } from "lucide-react";
+import { AlertCircle, Link2Off, Radar } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
 
-import RankHistoryChart, {
-  ChartEmptyState,
-  RankHistorySkeleton
-} from "@/components/RankHistoryChart";
+import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistoryState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  BACKEND_GRANULARITY,
-  getDefaultDateFrom,
-  useRankHistoryGranularity,
-  useUserRankHistory
-} from "@/hooks/useRankHistory";
-import userService from "@/services/user.service";
+import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import { useNativeRankCollector } from "@/hooks/useNativeRankCollector";
 import { userQueryKeys } from "@/lib/users/query-keys";
+import userService from "@/services/user.service";
 
 /**
  * The player is identified by exactly one of these. `userId` is the cheap path;
@@ -29,20 +23,32 @@ type RankHistoryTarget =
   | { battleTag: string | null | undefined; userId?: never };
 
 type RankHistoryProps = RankHistoryTarget & {
+  /**
+   * The game whose collected ranks to show. Rank history exists only for disciplines that collect native
+   * ranks; when omitted, the one installed discipline that does is used, and with none (or several) the
+   * card says it cannot tell — it never assumes a game.
+   */
+  discipline?: string;
   /** When set, the chart is wrapped in a titled card; otherwise it renders bare. */
   title?: string;
   className?: string;
 };
 
 /**
- * OverFast rank history for one player, across all their battle.net accounts.
- * Used on the player profile, the admin rank console, the registration review
- * and the balancer player sheet.
+ * Rank history for one player: resolves the player and the game, gates on the discipline's native-rank
+ * collection capability and hands the drawing to that game's `rankHistory` module slot. Used on the player
+ * profile, the admin rank console, the registration review and the balancer player sheet.
  */
-export default function RankHistory({ userId, battleTag, title, className }: RankHistoryProps) {
+export default function RankHistory({
+  userId,
+  battleTag,
+  discipline,
+  title,
+  className
+}: Readonly<RankHistoryProps>) {
   const t = useTranslations();
-  const [granularity, setGranularity] = useRankHistoryGranularity();
-  const dateFrom = useMemo(() => getDefaultDateFrom(granularity), [granularity]);
+  const axis = useCurrentWorkspaceId() ?? "all";
+  const collector = useNativeRankCollector(axis, discipline);
 
   const resolve = useQuery({
     queryKey: userQueryKeys.rankResolve(battleTag),
@@ -54,19 +60,15 @@ export default function RankHistory({ userId, battleTag, title, className }: Ran
     staleTime: 5 * 60_000,
     enabled: Boolean(battleTag)
   });
-
-  const resolvedUserId = battleTag === undefined ? userId ?? null : resolve.data ?? null;
-  const history = useUserRankHistory(resolvedUserId ?? NaN, {
-    granularity: BACKEND_GRANULARITY[granularity],
-    dateFrom
-  });
+  const resolvedUserId = battleTag === undefined ? (userId ?? null) : (resolve.data ?? null);
 
   // `title` owns the card chrome, so the caller's className lands on the Card
   // there and on the bare content otherwise.
   const contentClassName = title == null ? className : undefined;
+  const descriptor = collector.descriptor;
 
   let content: ReactNode;
-  if (resolve.isLoading || (resolvedUserId != null && history.isLoading)) {
+  if (resolve.isLoading || collector.isLoading) {
     content = <RankHistorySkeleton className={contentClassName} />;
   } else if (resolvedUserId == null) {
     content = (
@@ -77,7 +79,7 @@ export default function RankHistory({ userId, battleTag, title, className }: Ran
         body={t("rankHistory.noProfileBody")}
       />
     );
-  } else if (history.isError) {
+  } else if (collector.isError) {
     content = (
       <ChartEmptyState
         className={contentClassName}
@@ -87,14 +89,27 @@ export default function RankHistory({ userId, battleTag, title, className }: Ran
         body={t("rankHistory.errorBody")}
       />
     );
+  } else if (!descriptor) {
+    content = (
+      <ChartEmptyState
+        className={contentClassName}
+        icon={Radar}
+        title={t("rankHistory.unsupportedTitle")}
+        body={t("rankHistory.unsupportedBody")}
+      />
+    );
   } else {
     content = (
-      <RankHistoryChart
-        className={contentClassName}
-        series={history.data?.series ?? []}
-        granularity={granularity}
-        onGranularityChange={setGranularity}
-      />
+      <div className={contentClassName}>
+        <DisciplineWidget
+          discipline={descriptor.code}
+          slot="rankHistory"
+          capabilities={descriptor.capabilities}
+          requires="native_rank_collection"
+          props={{ userId: resolvedUserId, axis }}
+          fallback={null}
+        />
+      </div>
     );
   }
 

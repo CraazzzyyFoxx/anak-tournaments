@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import { DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import UsersClient from "./UsersClient";
 import { DEFAULT_MIN_ENCOUNTERS, parseMinEncounters } from "./users-index.model";
 
@@ -22,7 +22,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
-  useDivisionGrid: () => DEFAULT_DIVISION_GRID
+  useDivisionGrid: () => OW_REFERENCE_GRID
 }));
 
 // `vi.mock` factories are hoisted above module scope, so the spy they close

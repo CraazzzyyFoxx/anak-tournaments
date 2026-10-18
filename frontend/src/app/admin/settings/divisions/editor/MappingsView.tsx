@@ -18,7 +18,7 @@ import {
   type MappingRow,
   type MappingTarget
 } from "./autoMap";
-import { rankRangeLabel, type Band } from "./draftReducer";
+import { rankRangeLabel, type Band, type Ladder } from "./draftReducer";
 import { MappingTargetPicker, targetSummary } from "./MappingTargetPicker";
 
 export interface MappingSource {
@@ -27,6 +27,7 @@ export interface MappingSource {
 }
 
 export interface MappingsViewProps {
+  ladder: Ladder | null;
   targetLabel: string;
   bands: Band[];
   sources: MappingSource[];
@@ -64,6 +65,7 @@ function matchLabel(row: MappingRow, target: MappingTarget | null): string {
  * unresolved count here is the tab badge and the "Ready to publish?" blocker.
  */
 export function MappingsView({
+  ladder,
   targetLabel,
   bands,
   sources,
@@ -75,8 +77,8 @@ export function MappingsView({
 }: Readonly<MappingsViewProps>) {
   const t = useTranslations("adminSettings.divisions");
   const mapped = useMemo(
-    () => sources.map((source) => ({ ...source, rows: autoMap(source.tiers, bands) })),
-    [bands, sources]
+    () => sources.map((source) => ({ ...source, rows: autoMap(ladder, source.tiers, bands) })),
+    [bands, ladder, sources]
   );
 
   if (!mappable) {

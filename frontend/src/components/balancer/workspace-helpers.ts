@@ -15,7 +15,8 @@ import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/roster/player-rol
 import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
-import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import userService from "@/services/user.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { DivisionGridNormalizer } from "@/lib/divisions/grid-normalizer";
@@ -294,7 +295,7 @@ export function getPlayerValidationIssues(
   player: BalancerPlayerRecord,
   application: BalancerApplication | null | undefined,
   workspaceConfig?: { rank_delta_threshold: number | null } | null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  grid: DivisionGrid = OW_REFERENCE_GRID
 ): PlayerValidationIssue[] {
   const issues: PlayerValidationIssue[] = [];
 
@@ -474,7 +475,7 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
 
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  grid: DivisionGrid = OW_REFERENCE_GRID
 ): BalancerPlayerRecord {
   const battleTag = getRegistrationDisplayName(registration);
   const isFlex = registration.is_flex;
@@ -581,11 +582,11 @@ export function downloadPlayersExport(
 
 /**
  * Resolve division number from a rank value using the workspace division grid.
- * Falls back to DEFAULT_DIVISION_GRID when no grid is provided.
+ * Falls back to OW_REFERENCE_GRID when no grid is provided.
  */
 function resolveDivisionFromRankHelper(
   rankValue: number | null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID
+  grid: DivisionGrid = OW_REFERENCE_GRID
 ): number | null {
   return resolveDivisionFromRank(grid, rankValue);
 }
@@ -616,7 +617,7 @@ function toBalancerRoleCode(role: UserRoleType): BalancerRoleCode | null {
 export async function fetchPlayerRankHistoryPreview(
   battleTag: string,
   targetGridVersion: DivisionGridVersion | null = null,
-  grid: DivisionGrid = DEFAULT_DIVISION_GRID,
+  grid: DivisionGrid = OW_REFERENCE_GRID,
   workspaceId?: number | null,
   currentWorkspaceId?: number | null
 ): Promise<PlayerRankHistoryPreview | null> {

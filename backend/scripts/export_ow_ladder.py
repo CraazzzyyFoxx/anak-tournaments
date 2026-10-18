@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Generate frontend/src/lib/divisions/ow-ladder.generated.json from the Python ladder.
+"""Generate frontend/src/disciplines/overwatch/ladder/ow-ladder.generated.json from the Python ladder.
 
 The ladder is written down exactly once, in ``shared.disciplines.overwatch.ladder.LADDER``.
 Python consumers read the module's native ladder through the registry. The frontend cannot -- and cannot fetch it
@@ -35,7 +35,7 @@ sys.path.insert(0, str(BACKEND))
 
 from shared.disciplines.overwatch import ladder as ow_ladder  # noqa: E402
 
-ARTIFACT = BACKEND.parent / "frontend" / "src" / "lib" / "divisions" / "ow-ladder.generated.json"
+ARTIFACT = BACKEND.parent / "frontend" / "src" / "disciplines" / "overwatch" / "ladder" / "ow-ladder.generated.json"
 
 
 def build_document() -> dict:

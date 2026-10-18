@@ -40,7 +40,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
-import { getDefaultDivisionGrid, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roster/roles";
 import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
@@ -109,7 +110,7 @@ type RosterMemberRowProps = {
  * every row on every keystroke.
  */
 const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: RosterMemberRowProps) {
-  const grid = getDefaultDivisionGrid();
+  const grid = OW_REFERENCE_GRID;
   const label = memberLabel(member);
   const { name, suffix } = splitBattleTag(label);
   const effective = member.ranks;

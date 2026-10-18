@@ -110,7 +110,8 @@ export default function DivisionGridImportPage() {
 
   const importedGridId = job?.result?.imported_grids[0]?.target_grid_id ?? null;
   const importedVersionsQuery = useQuery({
-    queryKey: divisionGridQueryKeys.versions(workspaceId, importedGridId),
+    // The import result names the target grid, not its game; the grid id identifies the entry.
+    queryKey: divisionGridQueryKeys.versions(workspaceId, null, importedGridId),
     queryFn: () => workspaceService.getDivisionGridVersions(workspaceId!, importedGridId!),
     enabled: canImport && importedGridId !== null
   });

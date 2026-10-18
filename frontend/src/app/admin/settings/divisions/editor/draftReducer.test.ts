@@ -1,40 +1,53 @@
 // A division has two coordinates — its range on the workspace's rank scale and
-// the OW ranks that land in it — and the editor's safety argument is that each
+// the native ranks that land in it — and the editor's safety argument is that each
 // scale keeps its invariant by construction:
-//  - ladder: the bands partition all 45 ranks and every floor is the ladder's;
-//  - custom: floors strictly descend and OW runs stay ordered and disjoint.
+//  - ladder: the bands partition every native rank and every floor is the ladder's;
+//  - custom: floors strictly descend and native runs stay ordered and disjoint.
 // Both are re-asserted after EVERY action of a long mixed sequence, instead of
 // testing each action alone and hoping they compose.
 //
 // The second claim is the bridge to stored tiers: a version has to come back
 // bit-identical, and a grid on its own scale ("New Era x5", twenty divisions of
-// 100) must open as itself. Reading it through the OW ladder is what used to
+// 100) must open as itself. Reading it through the native ladder is what used to
 // drop four divisions and rewrite every range on save.
+//
+// A discipline without a native ladder runs the same reducer with `ladder === null`:
+// plain custom grids, no native runs, nothing invented.
 import { describe, expect, it } from "vitest";
 
-import { OW_REFERENCE_GRID } from "@/lib/divisions/grid";
 import type { DivisionTier } from "@/types/workspace.types";
 import {
-  bandsCoverLadder,
-  bandsFromTiers,
+  bandsCoverLadder as coversLadder,
+  bandsFromTiers as tiersToBands,
+  bandsMissingCrest,
   bandVerdict,
+  createLadder,
   describeEdits,
   diffBands,
   draftReducer,
   floorError,
   floorsDescend,
-  initDraftState,
-  LADDER,
-  ladderOwners,
-  RANK_COUNT,
-  scaleOf,
-  tiersFromBands,
+  initDraftState as initState,
+  ladderOwners as ownersOf,
+  scaleOf as scaleOfTiers,
+  standardTiers,
+  tiersFromBands as bandsToTiers,
   type Action,
   type Band,
   type DraftState
 } from "./draftReducer";
+import { TEST_LADDER, TEST_LADDER_TIERS } from "./__fixtures__/test-ladder";
 
+const LADDER = TEST_LADDER.ranks;
+const RANK_COUNT = TEST_LADDER.count;
 const LAST = RANK_COUNT - 1;
+const bandsCoverLadder = (bands: Band[]) => coversLadder(TEST_LADDER, bands);
+const bandsFromTiers = (tiers: DivisionTier[]) => tiersToBands(TEST_LADDER, tiers);
+const initDraftState = (bands: Band[], scale: "ladder" | "custom", base: Band[]) =>
+  initState(TEST_LADDER, bands, scale, base);
+const ladderOwners = (bands: Band[]) => ownersOf(TEST_LADDER, bands);
+const scaleOf = (tiers: DivisionTier[]) => scaleOfTiers(TEST_LADDER, tiers);
+const tiersFromBands = (bands: Band[]) => bandsToTiers(TEST_LADDER, bands);
 
 function ladderBand(slug: string, name: string, from: number, to: number): Band {
   return {
@@ -44,7 +57,7 @@ function ladderBand(slug: string, name: string, from: number, to: number): Band 
     icon_url: null,
     rankMin: LADDER[to].rank_min,
     rankMax: null,
-    ow: { from, to }
+    native: { from, to }
   };
 }
 
@@ -93,7 +106,7 @@ function expectDerived(bands: Band[], why: string) {
 function expectLadderInvariant(bands: Band[], why: string) {
   expect(bandsCoverLadder(bands), why).toBe(true);
   for (const band of bands) {
-    if (band.ow!.to !== LAST) expect(band.rankMin, why).toBe(LADDER[band.ow!.to].rank_min);
+    if (band.native!.to !== LAST) expect(band.rankMin, why).toBe(LADDER[band.native!.to].rank_min);
   }
   expectDerived(bands, why);
 }
@@ -106,8 +119,8 @@ function expectCustomInvariant(bands: Band[], why: string) {
   expect(linked, why).toEqual([...linked].sort((left, right) => left - right));
   // …and no run was overwritten by a neighbour's, i.e. no two runs overlap.
   bands.forEach((band, index) => {
-    if (!band.ow) return;
-    for (let rank = band.ow.from; rank <= band.ow.to; rank += 1) {
+    if (!band.native) return;
+    for (let rank = band.native.from; rank <= band.native.to; rank += 1) {
       expect(owners[rank], why).toBe(index);
     }
   });
@@ -158,10 +171,10 @@ describe("ladder scale", () => {
 
     // Joining frees the boundary: Champion 1–2 can now hand a rank down.
     const joined = apply(atomic, [{ type: "merge", bandIndex: 1, into: "up" }]);
-    expect(joined.bands[0]).toMatchObject({ slug: "champion-1", ow: { from: 0, to: 1 } });
+    expect(joined.bands[0]).toMatchObject({ slug: "champion-1", native: { from: 0, to: 1 } });
     const moved = apply(joined, [{ type: "nudge", rank: 2, delta: -1 }]);
-    expect(moved.bands[0].ow).toEqual({ from: 0, to: 0 });
-    expect(moved.bands[1].ow).toEqual({ from: 1, to: 2 });
+    expect(moved.bands[0].native).toEqual({ from: 0, to: 0 });
+    expect(moved.bands[1].native).toEqual({ from: 1, to: 2 });
   });
 
   it("refuses to split at a rank that is already a boundary, and outside the ladder", () => {
@@ -174,7 +187,7 @@ describe("ladder scale", () => {
   it("splits so the upper half keeps the division and the lower half is the new one", () => {
     const state = apply(threeBandDraft(), [{ type: "splitAt", rank: 10 }]);
 
-    expect(state.bands.map((band) => band.ow)).toEqual([
+    expect(state.bands.map((band) => band.native)).toEqual([
       { from: 0, to: 2 },
       { from: 3, to: 9 },
       { from: 10, to: 20 },
@@ -191,10 +204,10 @@ describe("ladder scale", () => {
 
   it("merges a band into a neighbour that keeps its own identity", () => {
     const up = apply(threeBandDraft(), [{ type: "merge", bandIndex: 1, into: "up" }]);
-    expect(up.bands[0]).toMatchObject({ slug: "champion", ow: { from: 0, to: 20 } });
+    expect(up.bands[0]).toMatchObject({ slug: "champion", native: { from: 0, to: 20 } });
 
     const down = apply(threeBandDraft(), [{ type: "merge", bandIndex: 1, into: "down" }]);
-    expect(down.bands[1]).toMatchObject({ slug: "open", ow: { from: 3, to: LAST } });
+    expect(down.bands[1]).toMatchObject({ slug: "open", native: { from: 3, to: LAST } });
 
     const three = threeBandDraft();
     expect(draftReducer(three, { type: "merge", bandIndex: 0, into: "up" })).toBe(three);
@@ -290,8 +303,8 @@ describe("custom scale", () => {
       { type: "link", bandIndex: 1, from: 3, to: 5 }
     ]);
 
-    expect(state.bands[0].ow).toEqual({ from: 0, to: 2 });
-    expect(state.bands[1].ow).toEqual({ from: 3, to: 5 });
+    expect(state.bands[0].native).toEqual({ from: 0, to: 2 });
+    expect(state.bands[1].native).toEqual({ from: 3, to: 5 });
     // Division 1 used to hold Champion 1 … Platinum 5 and Division 2 Gold 1:
     // what the links released lands nowhere until it is linked again.
     const owners = ladderOwners(state.bands);
@@ -302,14 +315,14 @@ describe("custom scale", () => {
   it("lets a boundary move unlink a division's last rank, and fill a gap", () => {
     // Division 16 holds only Bronze 5; handing it up leaves Division 16 unlinked.
     const state = apply(newEraDraft(), [{ type: "nudge", rank: LAST, delta: 1 }]);
-    expect(state.bands[15].ow).toBeNull();
-    expect(state.bands[14].ow).toEqual({ from: LAST - 1, to: LAST });
+    expect(state.bands[15].native).toBeNull();
+    expect(state.bands[14].native).toEqual({ from: LAST - 1, to: LAST });
 
     const gap = apply(newEraDraft(), [
       { type: "link", bandIndex: 1, from: 3, to: 5 },
       { type: "nudge", rank: 6, delta: 1 }
     ]);
-    expect(gap.bands[1].ow).toEqual({ from: 3, to: 6 });
+    expect(gap.bands[1].native).toEqual({ from: 3, to: 6 });
   });
 
   it("halves a native range, the open-ended top by one width of the division below", () => {
@@ -325,11 +338,11 @@ describe("custom scale", () => {
       slug: "division-1600",
       rankMin: 1600,
       rankMax: 1649,
-      ow: null
+      native: null
     });
     // Division 1 (2000+, thirty OW ranks) gives 2000–2099 and the lower fifteen ranks away.
-    expect(state.bands[0]).toMatchObject({ rankMin: 2100, rankMax: null, ow: { from: 0, to: 14 } });
-    expect(state.bands[1]).toMatchObject({ rankMin: 2000, rankMax: 2099, ow: { from: 15, to: 29 } });
+    expect(state.bands[0]).toMatchObject({ rankMin: 2100, rankMax: null, native: { from: 0, to: 14 } });
+    expect(state.bands[1]).toMatchObject({ rankMin: 2000, rankMax: 2099, native: { from: 15, to: 29 } });
   });
 
   it("merges into a neighbour that takes the lower floor and both runs", () => {
@@ -338,7 +351,7 @@ describe("custom scale", () => {
       slug: "division-16",
       rankMin: 400,
       rankMax: 599,
-      ow: { from: LAST, to: LAST }
+      native: { from: LAST, to: LAST }
     });
     expect(state.bands[16].rankMax).toBe(399);
   });
@@ -360,8 +373,8 @@ describe("custom scale", () => {
 
 describe("tiers <-> bands", () => {
   it("re-derives the reference ladder tier for tier, OW ranks included", () => {
-    const bands = bandsFromTiers(OW_REFERENCE_GRID.tiers);
-    expect(scaleOf(OW_REFERENCE_GRID.tiers)).toBe("ladder");
+    const bands = bandsFromTiers(TEST_LADDER_TIERS as DivisionTier[]);
+    expect(scaleOf(TEST_LADDER_TIERS as DivisionTier[])).toBe("ladder");
     expect(bandsCoverLadder(bands)).toBe(true);
 
     const tiers = tiersFromBands(bands);
@@ -380,10 +393,10 @@ describe("tiers <-> bands", () => {
 
     expect(bands.map((band) => band.id)).toEqual(NEW_ERA.map((tier) => tier.id));
     // No stored link: an OW rank resolves by rank range, bottom division as fallback.
-    expect(bands[0].ow).toEqual({ from: 0, to: 29 });
-    expect(bands[1].ow).toEqual({ from: 30, to: 30 });
-    expect(bands[15].ow).toEqual({ from: LAST, to: LAST });
-    expect(bands.slice(16).every((band) => band.ow === null)).toBe(true);
+    expect(bands[0].native).toEqual({ from: 0, to: 29 });
+    expect(bands[1].native).toEqual({ from: 30, to: 30 });
+    expect(bands[15].native).toEqual({ from: LAST, to: LAST });
+    expect(bands.slice(16).every((band) => band.native === null)).toBe(true);
 
     const tiers = tiersFromBands(bands);
     expect(tiers.map((tier) => [tier.rank_min, tier.rank_max])).toEqual(
@@ -416,7 +429,7 @@ describe("tiers <-> bands", () => {
     const bands = bandsFromTiers(stored);
 
     // First match wins, so Champion 3 stays in Division 1.
-    expect(bands.map((band) => band.ow)).toEqual([
+    expect(bands.map((band) => band.native)).toEqual([
       { from: 0, to: 2 },
       { from: 3, to: 4 },
       { from: 16, to: 17 }
@@ -433,7 +446,7 @@ describe("tiers <-> bands", () => {
         icon_url: null,
         rankMin: LADDER[LAST].rank_min,
         rankMax: null,
-        ow: { from: 0, to: LAST }
+        native: { from: 0, to: LAST }
       }
     ]);
   });
@@ -502,5 +515,63 @@ describe("edit log", () => {
       { key: "edit.unlinked", values: { name: "Division 3" } },
       { key: "edit.split", values: { name: "Division 6", range: "1500–1574" } }
     ]);
+  });
+});
+
+describe("a discipline without a native ladder", () => {
+  const stored: DivisionTier[] = [
+    { id: 1, slug: "gold", number: 1, name: "Gold", rank_min: 1000, rank_max: null, icon_url: "/g.png" },
+    { id: 2, slug: "iron", number: 2, name: "Iron", rank_min: 0, rank_max: 999, icon_url: "" }
+  ];
+
+  it("opens plain custom bands: no native run is invented and no scale but custom exists", () => {
+    const bands = tiersToBands(null, stored);
+    expect(bands.map((band) => band.native)).toEqual([null, null]);
+    expect(scaleOfTiers(null, stored)).toBe("custom");
+    expect(tiersToBands(null, [])[0]).toMatchObject({ rankMin: 0, native: null });
+  });
+
+  it("rejects every native action and the ladder scale, keeping floor/rename/split edits", () => {
+    const state = initState(null, tiersToBands(null, stored), "custom", []);
+    for (const action of [
+      { type: "link", bandIndex: 0, from: 0, to: 1 },
+      { type: "nudge", rank: 1, delta: 1 },
+      { type: "splitAt", rank: 1 },
+      { type: "setScale", scale: "ladder" }
+    ] satisfies Action[]) {
+      expect(draftReducer(state, action)).toBe(state);
+    }
+    const edited = draftReducer(state, { type: "split", bandIndex: 1 });
+    expect(edited.bands).toHaveLength(3);
+    expect(edited.bands.every((band) => band.native === null)).toBe(true);
+  });
+
+  it("stores no native link and borrows no crest: a band without its own crest is reported", () => {
+    const bands = tiersToBands(null, stored);
+    const tiers = bandsToTiers(null, bands);
+    expect(tiers.map((tier) => [tier.native_rank_min, tier.native_rank_max])).toEqual([
+      [null, null],
+      [null, null]
+    ]);
+    expect(tiers.map((tier) => tier.icon_url)).toEqual(["/g.png", ""]);
+    expect(bandsMissingCrest(null, bands).map((band) => band.slug)).toEqual(["iron"]);
+    // With a ladder the same band borrows the ladder's crest instead.
+    expect(bandsMissingCrest(TEST_LADDER, tiersToBands(TEST_LADDER, stored))).toEqual([]);
+  });
+});
+
+describe("native ladder", () => {
+  it("is absent for an empty declaration and sorted top first otherwise", () => {
+    expect(createLadder([])).toBeNull();
+    const shuffled = [...LADDER].reverse();
+    expect(createLadder(shuffled)?.ranks.map((rank) => rank.slug)).toEqual(LADDER.map((rank) => rank.slug));
+  });
+
+  it("loads the standard ladder as one division per native rank, linked to itself", () => {
+    const tiers = standardTiers(TEST_LADDER);
+    expect(tiers).toHaveLength(RANK_COUNT);
+    expect(tiers.every((tier) => tier.id === undefined)).toBe(true);
+    expect(tiers.map((tier) => tier.rank_min)).toEqual(LADDER.map((rank) => rank.rank_min));
+    expect(tiers.every((tier) => tier.native_rank_min === tier.rank_min)).toBe(true);
   });
 });
