@@ -5520,7 +5520,11 @@
       "typeToSearch": "Type at least 2 characters.",
       "noUsers": "No users found.",
       "searchUser": "Search user...",
-      "compareWithAllAvg": "Compare with all players avg"
+      "compareWithAllAvg": "Compare with all players avg",
+      "invalidSelection": {
+        "title": "That selection is not in this game",
+        "description": "The hero or map in the link does not exist in {game}. Choose again below, or switch to the game the link was made for."
+      }
     },
     "heroesCompare": {
       "selectHeroPrompt": "Select a hero above to rank every player who's logged time on it.",
@@ -5581,6 +5585,10 @@
         "breadcrumb": "Hero compare",
         "title": "Who plays it best?",
         "lede": "Pick a hero and rank every player who's logged time on it. One shared row order across every column — click any column header to sort the whole board by it."
+      },
+      "invalidHero": {
+        "title": "That hero is not in this game",
+        "description": "The hero in the link does not exist in {game}. Choose another hero, or switch to the game the link was made for."
       }
     }
   },

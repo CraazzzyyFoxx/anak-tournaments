@@ -18,7 +18,7 @@ import {
   shouldLoadHeroCatalogs
 } from "@/app/(site)/users/compare/hooks/compare-query-options";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDefaultDivisionGrid, getDivisionLabel } from "@/lib/divisions/grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -85,14 +85,22 @@ export const useUserCompareData = ({
   });
   const mapsQuery = useCatalogEntities(discipline, "map", { enabled: shouldLoadHeroCatalogs(isHeroScope) });
 
+  // Ids come from the URL: each must belong to this game's catalog before anything is requested for it (§3.4).
+  const checkSelections = shouldLoadHeroCatalogs(isHeroScope);
+  const leftSelection = useCatalogSelection(discipline, "character", leftHeroId, { enabled: checkSelections });
+  const rightSelection = useCatalogSelection(discipline, "character", rightHeroId, { enabled: checkSelections });
+  const mapSelection = useCatalogSelection(discipline, "map", mapId, { enabled: checkSelections });
+  const selections = [leftSelection, rightSelection, mapSelection];
+  const selectionInvalid = selections.some((selection) => selection.status === "invalid");
+  const selectionsSettled = selections.every((selection) => selection.status === "none" || selection.status === "valid");
+
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.selectOptions(workspaceId ?? null),
     queryFn: () => tournamentService.getAll(null, workspaceId ?? null),
     staleTime: 5 * 60 * 1000
   });
 
-  const heroCompareQuery = useQuery(
-    buildHeroCompareQueryOptions({
+  const heroCompareOptions = buildHeroCompareQueryOptions({
       isHeroScope,
       subjectUserId,
       baseline: effectiveBaseline,
@@ -107,19 +115,19 @@ export const useUserCompareData = ({
       mapId,
       stats: HERO_COMPARE_STATS,
       fetchCompare: userService.getUserHeroCompare
-    })
-  );
+    });
+  const heroCompareQuery = useQuery({
+    ...heroCompareOptions,
+    enabled: heroCompareOptions.enabled && selectionsSettled
+  });
 
   const heroes = heroesQuery.data ?? [];
   const maps = mapsQuery.data ?? [];
   const tournaments = tournamentsQuery.data?.results ?? [];
 
-  const heroMapById = useMemo(() => new Map(heroes.map((hero) => [hero.id, hero])), [heroes]);
-  const mapById = useMemo(() => new Map(maps.map((map) => [map.id, map])), [maps]);
-
-  const leftHero = leftHeroId ? heroMapById.get(leftHeroId) : undefined;
-  const rightHero = rightHeroId ? heroMapById.get(rightHeroId) : undefined;
-  const selectedMap = mapId ? mapById.get(mapId) : undefined;
+  const leftHero = leftSelection.entity ?? undefined;
+  const rightHero = rightSelection.entity ?? undefined;
+  const selectedMap = mapSelection.entity ?? undefined;
 
   const selectedSubjectName =
     compareQuery.data?.subject.name ?? heroCompareQuery.data?.subject.name;
@@ -146,7 +154,8 @@ export const useUserCompareData = ({
 
   const rows = useMemo<CompareRow[]>(() => {
     if (isHeroScope) {
-      if (!heroCompareQuery.data) return [];
+      // A conflicting selection has no results: a previous selection's data is never shown for it.
+      if (!heroCompareQuery.data || selectionInvalid) return [];
       return heroCompareQuery.data.metrics.map((metric) => ({
         key: metric.stat,
         label: getHumanizedStats(metric.stat),
@@ -172,7 +181,7 @@ export const useUserCompareData = ({
       betterWorse: metric.better_worse,
       higherIsBetter: metric.higher_is_better
     }));
-  }, [isHeroScope, compareQuery.data, heroCompareQuery.data]);
+  }, [isHeroScope, selectionInvalid, compareQuery.data, heroCompareQuery.data]);
 
   const activeLoading = isHeroScope ? heroCompareQuery.isLoading : compareQuery.isLoading;
   const activeFetching = isHeroScope ? heroCompareQuery.isFetching : compareQuery.isFetching;
@@ -220,6 +229,8 @@ export const useUserCompareData = ({
     activeError,
     activeErrorMessage,
     compareDisplayName,
-    divisionGrid
+    divisionGrid,
+    /** An id in the URL that is not in the scoped discipline's catalog: show it, request and render nothing. */
+    selectionInvalid
   };
 };

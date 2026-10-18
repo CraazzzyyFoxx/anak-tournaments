@@ -10,6 +10,7 @@ import CompareFiltersPanel from "@/app/(site)/users/compare/components/CompareFi
 import CompareUnifiedTable from "@/app/(site)/users/compare/components/CompareUnifiedTable";
 import { useUserCompareSearchParams } from "@/app/(site)/users/compare/hooks/useUserCompareSearchParams";
 import { useUserCompareData } from "@/app/(site)/users/compare/hooks/useUserCompareData";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -41,6 +42,7 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     activeError,
     activeErrorMessage,
     compareDisplayName,
+    selectionInvalid,
     heroesQuery,
     mapsQuery,
     tournamentsQuery,
@@ -73,7 +75,11 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     compareParams.updateParams
   ]);
 
-  const activeData = compareParams.isHeroScope ? heroCompareQuery.data : compareQuery.data;
+  const activeData = compareParams.isHeroScope
+    ? selectionInvalid
+      ? undefined
+      : heroCompareQuery.data
+    : compareQuery.data;
   const sampleSize = activeData?.baseline.sample_size;
   const retryActiveQuery = () => {
     void (compareParams.isHeroScope ? heroCompareQuery.refetch() : compareQuery.refetch());
@@ -149,7 +155,15 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
         />
       </CardSurface>
 
-      {compareParams.subjectUserId ? (
+      {selectionInvalid ? (
+        <PageStateCard
+          state="error"
+          title={t("users.compare.invalidSelection.title")}
+          description={t("users.compare.invalidSelection.description", {
+            game: browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? ""
+          })}
+        />
+      ) : compareParams.subjectUserId ? (
         <CompareUnifiedTable
           subjectName={
             selectedSubjectName ??

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { catalogMap, catalogMode } from "@/test/catalog";
+import { catalogEntity, catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { rollNextMap, rollableModes } from "./pickup-map-roll";
@@ -31,6 +31,26 @@ function sequence(...values: number[]): () => number {
 describe("rollableModes", () => {
   it("lists only modes that have a competitive map, name-ordered", () => {
     expect(rollableModes(CATALOGUE).map((mode) => mode.name)).toEqual(["Clash", "Control"]);
+  });
+});
+
+describe("a game without modes", () => {
+  const LOL_MAPS = [
+    catalogEntity({ id: 90, kind: "map", discipline: "lol", name: "Summoner's Rift" }),
+    catalogEntity({ id: 91, kind: "map", discipline: "lol", name: "Howling Abyss" })
+  ];
+
+  it("rolls its maps directly, with no mode chips", () => {
+    expect(rollableModes(LOL_MAPS)).toEqual([]);
+    expect(rollNextMap(LOL_MAPS, { gamemodeId: null, playedMapIds: [], random: sequence(0, 0) })?.id).toBe(90);
+    expect(rollNextMap(LOL_MAPS, { gamemodeId: null, playedMapIds: [], random: sequence(0, 0.9) })?.id).toBe(91);
+    expect(rollNextMap(LOL_MAPS, { gamemodeId: null, playedMapIds: [90], random: sequence(0, 0) })?.id).toBe(91);
+  });
+
+  it("treats an absent in_competitive as competitive, and an explicit false as arcade-only", () => {
+    const arcade = catalogEntity({ id: 92, kind: "map", discipline: "lol", attrs: { in_competitive: false } });
+    expect(rollNextMap([arcade], { gamemodeId: null, playedMapIds: [] })).toBeNull();
+    expect(rollNextMap([arcade, ...LOL_MAPS], { gamemodeId: null, playedMapIds: [] })?.id).not.toBe(92);
   });
 });
 

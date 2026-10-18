@@ -21,7 +21,8 @@ import HeroLeaderboardFiltersCard from "./HeroLeaderboardFiltersCard";
 import HeroLeaderboardTable from "./HeroLeaderboardTable";
 import { heroQueryKeys } from "@/lib/heroes/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { characterClass } from "@/lib/catalog/attrs";
@@ -54,6 +55,9 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const browsing = useBrowsingDiscipline({ allowsAll: false });
   const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
   const heroesQuery = useCatalogEntities(discipline, "character");
+  // The id comes from the URL: it must belong to this game's catalog before its statistics are requested (§3.4).
+  const heroSelection = useCatalogSelection(discipline, "character", heroId);
+  const heroInvalid = heroSelection.status === "invalid";
 
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const pickerWorkspaceId = scope === "all" ? "all" : currentWorkspaceId;
@@ -65,7 +69,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
 
   const leaderboardQuery = useQuery({
     queryKey: heroQueryKeys.leaderboard(heroId, tournamentId, scope),
-    enabled: heroId !== undefined,
+    enabled: heroId !== undefined && heroSelection.status === "valid",
     queryFn: () =>
       heroService.getHeroLeaderboard(heroId!, {
         tournamentId,
@@ -84,10 +88,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     [heroesQuery.data]
   );
 
-  const selectedHero = useMemo(
-    () => (heroesQuery.data ?? []).find((h) => h.id === heroId),
-    [heroesQuery.data, heroId]
-  );
+  const selectedHero = heroSelection.entity ?? undefined;
 
   const selectedTournamentName = useMemo(
     () => tournamentsQuery.data?.results.find((t) => t.id === tournamentId)?.name,
@@ -193,7 +194,15 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
         resetDisabled={heroId === undefined}
       />
 
-      {heroId === undefined ? (
+      {heroInvalid ? (
+        <PageStateCard
+          state="error"
+          title={t("users.heroesCompare.invalidHero.title")}
+          description={t("users.heroesCompare.invalidHero.description", {
+            game: browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? ""
+          })}
+        />
+      ) : heroId === undefined ? (
         <div className="flex flex-col items-center justify-center gap-3.5 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] py-[90px] text-center">
           <Sword aria-hidden className="h-10 w-10 text-[color:var(--aqt-fg-faint)] opacity-50" />
           <p className="max-w-sm text-sm leading-relaxed text-[color:var(--aqt-fg-dim)]">
@@ -206,7 +215,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           selectedTournamentName={selectedTournamentName}
           tournamentId={tournamentId}
           rows={rows}
-          isLoading={leaderboardQuery.isLoading}
+          isLoading={heroSelection.status === "loading" || leaderboardQuery.isLoading}
           columnKeys={columnKeys}
           sortIndex={sortIndex}
           sortDir={sortDir}

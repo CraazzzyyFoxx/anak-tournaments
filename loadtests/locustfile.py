@@ -128,14 +128,11 @@ class AnonymousBrowser(OwtUser):
     @task(2)
     def metadata(self) -> None:
         # Public catalog + achievements: cheap, high-frequency requests; one stats name per kind, not per discipline.
+        # Only kinds the discipline declares: an undeclared one (League has no `mode`) is a deterministic 404.
         base = f"/api/v1/catalog/{config.CATALOG_DISCIPLINE}"
         path, name = random.choice(
-            (
-                (f"{base}/character", "/api/v1/catalog/[discipline]/character"),
-                (f"{base}/map", "/api/v1/catalog/[discipline]/map"),
-                (f"{base}/mode", "/api/v1/catalog/[discipline]/mode"),
-                ("/api/v1/achievements", "/api/v1/achievements"),
-            )
+            [(f"{base}/{kind}", f"/api/v1/catalog/[discipline]/{kind}") for kind in self.seed.catalog_kinds]
+            + [("/api/v1/achievements", "/api/v1/achievements")]
         )
         self.get(path, name, {"page": 1, "per_page": 50})
 

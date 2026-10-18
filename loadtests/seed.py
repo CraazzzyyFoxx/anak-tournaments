@@ -38,6 +38,8 @@ class SeedData:
     hero_ids: list[int] = field(default_factory=list)
     map_ids: list[int] = field(default_factory=list)
     gamemode_ids: list[int] = field(default_factory=list)
+    #: Catalog kinds the configured discipline declares (League has no `mode`); requesting another is a 404.
+    catalog_kinds: list[str] = field(default_factory=list)
     match_ids: list[int] = field(default_factory=list)
     team_ids: list[int] = field(default_factory=list)
     encounter_ids: list[int] = field(default_factory=list)
@@ -77,6 +79,14 @@ def _names(payload: Any, key: str = "name") -> list[str]:
     return out[: config.SEED_POOL_SIZE]
 
 
+def _declared_kinds(payload: Any) -> list[str]:
+    """Kinds the configured discipline declares, in catalog order, from the public descriptor list."""
+    for item in _extract_items(payload):
+        if item.get("code") == config.CATALOG_DISCIPLINE and isinstance(item.get("kinds"), dict):
+            return [kind for kind in ("character", "map", "mode") if kind in item["kinds"]]
+    return []
+
+
 def _get(session: requests.Session, host: str, path: str, params: dict | None = None) -> Any:
     try:
         resp = session.get(f"{host}{path}", params=params, timeout=config.SEED_TIMEOUT)
@@ -114,9 +124,15 @@ def _load(host: str) -> SeedData:
     seed.user_names = _names(users_payload)
 
     catalog = f"/api/v1/catalog/{config.CATALOG_DISCIPLINE}"
-    seed.hero_ids = _ids(_get(session, host, f"{catalog}/character", page))
-    seed.map_ids = _ids(_get(session, host, f"{catalog}/map", page))
-    seed.gamemode_ids = _ids(_get(session, host, f"{catalog}/mode", page))
+    seed.catalog_kinds = _declared_kinds(_get(session, host, "/api/v1/disciplines", {"workspace_id": "all"}))
+    if not seed.catalog_kinds:
+        logger.warning("discipline %r declares no catalog kinds (or is not installed)", config.CATALOG_DISCIPLINE)
+    if "character" in seed.catalog_kinds:
+        seed.hero_ids = _ids(_get(session, host, f"{catalog}/character", page))
+    if "map" in seed.catalog_kinds:
+        seed.map_ids = _ids(_get(session, host, f"{catalog}/map", page))
+    if "mode" in seed.catalog_kinds:
+        seed.gamemode_ids = _ids(_get(session, host, f"{catalog}/mode", page))
     seed.match_ids = _ids(_get(session, host, "/api/v1/matches", {**page, **ws}))
     seed.team_ids = _ids(_get(session, host, "/api/v1/teams", {**page, **ws}))
     seed.encounter_ids = _ids(_get(session, host, "/api/v1/encounters", {**page, **ws}))
