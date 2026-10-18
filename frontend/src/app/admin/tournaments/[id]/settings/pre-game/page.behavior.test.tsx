@@ -28,7 +28,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { catalogEntity, catalogMap, catalogMode } from "@/test/catalog";
-import type { PickBanConfig, PickBanRuleset, Stage } from "@/types/tournament.types";
+import type { PickBanConfig, PickBanRulesCatalog, PickBanRuleset, Stage } from "@/types/tournament.types";
 
 import PreGameSettingsPage from "./page";
 
@@ -358,7 +358,7 @@ const LOL_CATALOG = {
     CATALOG.presets[1]
   ]
 };
-const CATALOG_BY_DISCIPLINE: Record<string, typeof CATALOG> = { overwatch: CATALOG, lol: LOL_CATALOG };
+const CATALOG_BY_DISCIPLINE: Record<string, PickBanRulesCatalog> = { overwatch: CATALOG, lol: LOL_CATALOG };
 
 let container: HTMLDivElement;
 let root: Root;
