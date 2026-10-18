@@ -7,18 +7,15 @@ parameter shapes used to be copy-pasted into each of those three services'
 one definition here and each service's local module re-exports what it needs.
 Same consolidation as ``shared/schemas/base.py``; see its docstring.
 
-Deliberate omission: ``aliases``. Only app-service serves it (the admin catalog
-editor), and ``MapRead`` is embedded in ``EncounterRead.map`` in both
-stats-service and tournament-service, so declaring ``aliases`` here would widen
-two unrelated public payloads. app-service subclasses these three models to add
-it.
-
-Built from a ``catalog.entity`` row with ``from_entity``; the wire shape is Overwatch's until P7 makes the
-reads data-driven.
+``CatalogEntityRead`` is the one native wire for a ``catalog.entity`` row of any discipline and kind (public reads,
+admin CRUD, embedded relationships). ``HeroRead``/``MapRead``/``GamemodeRead`` below are the legacy Overwatch-shaped
+reads, deleted once their last embedder moves to it. They omit ``aliases``: only app-service serves it, so declaring it
+here would widen unrelated public payloads; app-service subclasses them to add it.
 """
 
 import typing
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -28,6 +25,7 @@ from shared.schemas.base import BaseRead
 from shared.schemas.role import RoleRef
 
 __all__ = (
+    "CatalogEntityRead",
     "GamemodeRead",
     "HeroLeaderboardEntry",
     "HeroLeaderboardParams",
@@ -50,6 +48,45 @@ def _entity_fields(entity: Any) -> dict[str, Any]:
         "image_path": entity.image_path or "",
         "aliases": list(entity.aliases or []),
     }
+
+
+class CatalogEntityRead(BaseRead):
+    """One ``catalog.entity`` row of any discipline and kind; the public, admin and embedded catalog wire."""
+
+    created_at: datetime
+    updated_at: datetime | None = None
+    discipline: str
+    kind: typing.Literal["character", "map", "mode"]
+    slug: str
+    name: str
+    image_path: str | None
+    parent_id: int | None
+    attrs: dict[str, Any]
+    aliases: list[str]
+    active: bool
+    #: Same shape, one level deep: ``parent.parent`` is always ``None``.
+    parent: CatalogEntityRead | None = None
+
+    @classmethod
+    def from_entity(cls, entity: Any, *, with_parent: bool = True) -> typing.Self:
+        """``with_parent`` reads ``entity.parent`` when the row has a ``parent_id``; the caller must have loaded it
+        (an async lazy load raises). A row without a parent never touches the relationship."""
+        parent = entity.parent if with_parent and entity.parent_id is not None else None
+        return cls(
+            id=entity.id,
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+            discipline=entity.discipline,
+            kind=entity.kind,
+            slug=entity.slug,
+            name=entity.name,
+            image_path=entity.image_path,
+            parent_id=entity.parent_id,
+            attrs=dict(entity.attrs or {}),
+            aliases=list(entity.aliases or []),
+            active=entity.active,
+            parent=None if parent is None else cls.from_entity(parent, with_parent=False),
+        )
 
 
 class GamemodeRead(BaseRead):

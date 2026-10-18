@@ -1,8 +1,10 @@
-"""Public catalog payloads that are not the OW-shaped hero/map/gamemode reads."""
+"""Public catalog payloads: the shared native entity read and the legacy-id resolution."""
 
 from pydantic import BaseModel
 
-__all__ = ("CatalogLegacyRead",)
+from shared.schemas.catalog import CatalogEntityRead
+
+__all__ = ("CatalogEntityRead", "CatalogLegacyRead")
 
 
 class CatalogLegacyRead(BaseModel):

@@ -14,9 +14,9 @@ __all__ = (
     "AchievementMatchTeamRef",
 )
 
+from shared.schemas.catalog import CatalogEntityRead
 from src.core import pagination
 from src.schemas import UserRead
-from src.schemas.admin.catalog import CatalogEntityRead
 
 ACHIEVEMENT_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 

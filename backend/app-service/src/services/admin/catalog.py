@@ -56,7 +56,7 @@ def check_parent(spec: DisciplineSpec, kind: str, parent_id: int | None) -> None
 
 def to_read(entity: models.CatalogEntity) -> schemas.CatalogEntityRead:
     """``parent`` must be loaded (``_WITH_PARENT``): an async lazy load would raise."""
-    return schemas.CatalogEntityRead.model_validate(entity, from_attributes=True)
+    return schemas.CatalogEntityRead.from_entity(entity)
 
 
 class CatalogAdminService:

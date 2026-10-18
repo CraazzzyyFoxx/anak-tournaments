@@ -3,19 +3,15 @@
 import json
 import typing
 from dataclasses import dataclass
-from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
 from src.core import pagination
-from src.schemas import BaseRead
 
 __all__ = (
     "CatalogEntityCreate",
     "CatalogEntityListParams",
     "CatalogEntityListQueryParams",
-    "CatalogEntityParentRead",
-    "CatalogEntityRead",
     "CatalogEntityUpdate",
 )
 
@@ -51,26 +47,6 @@ class CatalogEntityUpdate(BaseModel):
         if value is None:
             raise ValueError("must not be null")
         return value
-
-
-class CatalogEntityParentRead(BaseRead):
-    slug: str
-    name: str
-
-
-class CatalogEntityRead(BaseRead):
-    created_at: datetime
-    updated_at: datetime | None = None
-    discipline: str
-    kind: str
-    slug: str
-    name: str
-    image_path: str | None
-    parent_id: int | None
-    attrs: dict[str, typing.Any]
-    aliases: list[str]
-    active: bool
-    parent: CatalogEntityParentRead | None = None
 
 
 class CatalogEntityListQueryParams(pagination.PaginationSortQueryParams[_SORT]):
