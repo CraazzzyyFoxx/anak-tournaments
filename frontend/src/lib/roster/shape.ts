@@ -43,14 +43,6 @@ export interface RosterShape {
   source: "tournament" | "custom_game" | "workspace" | "preset" | null;
 }
 
-export type RosterPresetId = "ow5v5" | "flex6";
-
-/** The two shapes worth one click in the admin form; anything else is custom. */
-export const ROSTER_PRESETS: readonly { readonly id: RosterPresetId; readonly slots: RosterSlotMap }[] = [
-  { id: "ow5v5", slots: { tank: 1, damage: 2, support: 2 } },
-  { id: "flex6", slots: { flex: 6 } }
-];
-
 /** Present codes in canonical order. Absent (and zeroed) codes are dropped. */
 export function orderSlotCodes(slots: RosterSlotMap): RosterSlotCode[] {
   return ROSTER_SLOT_CODES.filter((code) => (slots[code] ?? 0) > 0);
@@ -74,27 +66,4 @@ export function isRoleSlotCode(code: string): code is RosterRoleSlotCode {
  */
 export function isRosterSlotCode(code: string): code is RosterSlotCode {
   return (ROSTER_SLOT_CODES as readonly string[]).includes(code);
-}
-
-/**
- * Live total of a slot map still being edited. This is NOT a stand-in for
- * `RosterShape.team_size`: wherever a server shape exists, read `team_size` off
- * it. This exists only for the roster-shape editor, where the steppers move
- * faster than any round trip and no server shape exists yet.
- */
-export function slotsTotal(slots: RosterSlotMap): number {
-  return ROSTER_SLOT_CODES.reduce((total, code) => total + (slots[code] ?? 0), 0);
-}
-
-/** Which preset a slot map equals, ignoring key order. */
-export function presetForSlots(slots: RosterSlotMap): RosterPresetId | "custom" {
-  const codes = orderSlotCodes(slots);
-  const preset = ROSTER_PRESETS.find(({ slots: presetSlots }) => {
-    const presetCodes = orderSlotCodes(presetSlots);
-    return (
-      presetCodes.length === codes.length &&
-      presetCodes.every((code, index) => code === codes[index] && presetSlots[code] === slots[code])
-    );
-  });
-  return preset?.id ?? "custom";
 }

@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
@@ -44,6 +46,8 @@ import { Spinner } from "@/components/ui/spinner";
  */
 export default function WorkspaceRegistrationFormsSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
+  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const tErrors = useTranslations("forms.errors");
@@ -64,7 +68,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   >(null);
 
   const canEdit = canAccessPermission("registration_form.update", workspaceId);
-  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId);
+  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, discipline);
 
   const listQuery = useQuery({
     queryKey: registrationFormTemplatesKey(workspaceId ?? 0),
@@ -160,9 +164,13 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       />
     );
   }
+  if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
+    return <DisciplineUnavailable resolved={browsing.resolved} disciplines={browsing.disciplines ?? []} allowsAll={false} onSelect={browsing.select} />;
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      <DisciplineSelector disciplines={browsing.disciplines ?? []} value={discipline ?? undefined} allowsAll={false} onSelect={browsing.select} disabled={draft !== null} />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div className="flex w-full shrink-0 flex-col gap-2 lg:w-72">
           {listQuery.isLoading ? (

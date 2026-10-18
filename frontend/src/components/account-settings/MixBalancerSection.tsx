@@ -18,7 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROSTER_SLOT_CODES } from "@/lib/roster/shape";
+import { ratedDimension, selectableRoles } from "@/lib/roster/ontology";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { notify } from "@/lib/notify";
 import {
   mixPreferencesKeys,
@@ -36,7 +39,6 @@ import {
   MAX_POINTS_PER_WIN,
   MAX_RESULT_VARIANTS,
   MAX_ROLE_WEIGHT,
-  SLOT_LABELS,
   draftOf,
   preferencesPayload,
   withRoleWeight,
@@ -63,6 +65,12 @@ const AUTOSAVE_DELAY_MS = 700;
 export default function MixBalancerSection() {
   const t = useTranslations("accountSettings");
   const queryClient = useQueryClient();
+  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: "all" });
+  const code = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const metadata = useDisciplineMetadata(browsing.axis, code);
+  const rated = metadata.data ? ratedDimension(metadata.data) : null;
+  const roleT = useTranslations("common.roleOntology");
+  const weightRoles = metadata.data && rated ? selectableRoles(metadata.data, rated.code).filter(role => role.workspace_id === null && role.parent_id === null) : [];
 
   const preferencesQuery = useQuery({
     queryKey: mixPreferencesKeys.all,
@@ -123,6 +131,8 @@ export default function MixBalancerSection() {
 
   return (
     <div className="space-y-4">
+      <DisciplineSelector disciplines={browsing.disciplines ?? []} value={code ?? undefined} allowsAll={false} onSelect={browsing.select} disabled={dirty || save.isPending} />
+      {(browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") && <DisciplineUnavailable resolved={browsing.resolved} disciplines={browsing.disciplines ?? []} allowsAll={false} onSelect={browsing.select} />}
       <Card className="border-border/40 bg-card/50">
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-4">
           <div className="flex items-center gap-2">
@@ -184,13 +194,13 @@ export default function MixBalancerSection() {
               <span>{t("mixBalancer.weights.label")}</span>
             </Label>
             <div className="flex flex-wrap gap-2">
-              {ROSTER_SLOT_CODES.map((code) => (
+              {code && !metadata.isError && rated && [...weightRoles.map(role => ({ code: role.code, name: role.name })), { code: "flex", name: roleT("openSlot") }].map(({ code, name }) => (
                 <div key={code} className="flex items-center gap-2">
                   <Label
                     htmlFor={`mix-role-weight-${code}`}
                     className="text-xs text-[color:var(--aqt-fg-dim)]"
                   >
-                    {SLOT_LABELS[code]}
+                    {name}
                   </Label>
                   <NumberInput
                     id={`mix-role-weight-${code}`}
@@ -209,6 +219,7 @@ export default function MixBalancerSection() {
                 </div>
               ))}
             </div>
+            {metadata.isError || (metadata.data && !rated) ? <p role="alert">{roleT("metadataError")}</p> : null}
             <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.weights.hint")}</p>
           </div>
 

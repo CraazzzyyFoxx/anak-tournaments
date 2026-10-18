@@ -1,65 +1,54 @@
+"use client";
+
+import { useState } from "react";
 import { useTranslations } from "next-intl";
-import TankIcon from "@/components/icons/TankIcon";
-import DamageIcon from "@/components/icons/DamageIcon";
-import SupportIcon from "@/components/icons/SupportIcon";
 import FlexIcon from "@/components/icons/FlexIcon";
-import { normalizePlayerRole, normalizeRoleTint, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
+import { findRole, ratedDimension, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
+import type { RoleRef } from "@/lib/roster/team-format";
 
-/** Canonical English player role names, the only values that map to a glyph. */
-const ROLE_ICON = {
-  Tank: TankIcon,
-  Damage: DamageIcon,
-  Support: SupportIcon,
-  Flex: FlexIcon
-} as const;
-
-/**
- * Player role glyph — tank, damage, support or flex.
- *
- * Ontology codes and display names share the same glyph. An unassigned role
- * uses the Flex presentation; an unknown code renders nothing.
- *
- * The glyph is announced as the localized role name by default. Pass
- * `decorative` (or `aria-hidden`) wherever the call site already renders the
- * role as visible or screen-reader-only text, so it is not announced twice.
- */
-const PlayerRoleIcon = ({
-  role,
-  size = 24,
-  color,
-  decorative,
-  label,
-  "aria-hidden": ariaHidden
-}: {
-  role: string | null;
+/** The dictionary is explicit owner scope. Missing/unknown history is never reclassified. */
+export default function PlayerRoleIcon({
+  role, ontology, size = 24, color, decorative, label, "aria-hidden": ariaHidden
+}: Readonly<{
+  role: RoleRef | string | null;
+  ontology?: RoleOntology | null;
   size?: number;
   color?: string;
-  /** Hide from assistive tech: the role is already announced next to the icon. */
   decorative?: boolean;
-  /** Override the accessible name; defaults to the localized role name. */
   label?: string;
   "aria-hidden"?: boolean | "true" | "false";
-}) => {
+}>) {
   const t = useTranslations();
-
-  const tint = normalizeRoleTint(role ?? "flex");
-  if (!tint) return null;
-
-  const roleName = normalizePlayerRole(tint);
-  const Icon = ROLE_ICON[roleName];
+  const [failedIcon, setFailedIcon] = useState<string | null>(null);
+  const open = role === null || (typeof role === "string" && role.toLowerCase() === "flex");
+  const ref = typeof role === "string"
+    ? { dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role }
+    : role;
+  const node = ontology ? findRole(ontology, ref) : null;
+  const retired = node && (!node.active || !ontology?.dimensions.some(d => d.code === node.dimension && d.active));
+  const name = open ? t("common.roles.flex") : node?.name ?? ref?.role ?? "";
+  const accessibleName = label ?? (open ? name : retired
+    ? t("common.roleOntology.retired", { role: name })
+    : node ? name : t("common.roleOntology.unknown", { role: name }));
+  const presentation = node && ontology ? rolePresentation(ontology.roles, node.id) : { icon: null, color: null };
   const hidden = decorative === true || ariaHidden === true || ariaHidden === "true";
-  const accessibleName = label ?? t(PLAYER_ROLE_LABEL_KEY[roleName] as Parameters<typeof t>[0]);
-
   return (
     <span
-      className="inline-flex"
+      className={`inline-flex shrink-0 items-center justify-center${retired ? " opacity-50" : ""}`}
       role={hidden ? undefined : "img"}
       aria-hidden={hidden || undefined}
       aria-label={hidden ? undefined : accessibleName}
+      title={accessibleName}
+      style={{ width: size, height: size, fontSize: size, color: node ? presentation.color ?? "var(--aqt-fg-muted)" : open ? color ?? "var(--aqt-fg-muted)" : "var(--aqt-fg-muted)" }}
     >
-      <Icon height={size} width={size} color={color} />
+      {open ? <FlexIcon width={size} height={size} color="currentColor" /> : presentation.icon && failedIcon !== presentation.icon ? (
+        <>
+          {/* The same cached image detects failed artwork; masks themselves have no error event. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={presentation.icon} alt="" aria-hidden style={{ display: "none" }} onError={() => setFailedIcon(presentation.icon)} />
+          <span aria-hidden style={{ width: size, height: size, backgroundColor: "currentColor", maskImage: `url("${presentation.icon}")`, WebkitMaskImage: `url("${presentation.icon}")`, maskSize: "contain", WebkitMaskSize: "contain", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat", maskPosition: "center", WebkitMaskPosition: "center" }} />
+        </>
+      ) : <span aria-hidden className="text-[0.55em] font-medium">{node ? node.name.slice(0, 2).toUpperCase() : "?"}</span>}
     </span>
   );
-};
-
-export default PlayerRoleIcon;
+}

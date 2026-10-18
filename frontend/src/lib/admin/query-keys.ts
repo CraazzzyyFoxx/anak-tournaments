@@ -25,9 +25,11 @@ export const adminQueryKeys = {
   personAchievements: (personId: KeyPart) =>
     ["admin", "person", personId, "achievements"] as const,
   person: (personId: KeyPart) => ["admin", "person", personId] as const,
-  playerSubRolesAll: (workspaceId: KeyPart) =>
-    ["admin", "player-sub-roles", workspaceId, "all"] as const,
-  playerSubRoles: (workspaceId: KeyPart) => ["admin", "player-sub-roles", workspaceId] as const,
+  playerSubRolesAll: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "player-sub-roles", workspaceId, discipline, "all"] as const,
+  playerSubRoles: (workspaceId: KeyPart, discipline?: KeyPart) => discipline === undefined
+    ? ["admin", "player-sub-roles", workspaceId] as const
+    : ["admin", "player-sub-roles", workspaceId, discipline] as const,
   playerSubRolesRoot: () => ["admin", "player-sub-roles"] as const,
   rankCollection: (workspaceId: KeyPart, userId: KeyPart) =>
     ["admin", "rank", "collection", workspaceId, userId] as const,
@@ -83,6 +85,8 @@ export const adminQueryKeys = {
   tournamentTeams: (tournamentId: KeyPart) =>
     ["admin", "tournament", tournamentId, "teams"] as const,
   tournament: (tournamentId: KeyPart) => ["admin", "tournament", tournamentId] as const,
+  tournamentTeamFormat: (tournamentId: KeyPart, workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "tournament", tournamentId, "team-format", workspaceId, discipline] as const,
   tournamentEncountersCount: (tournamentId: KeyPart) =>
     ["admin", "tournament", tournamentId, "encounters", "count"] as const,
   tournamentEncounters: (tournamentId: KeyPart) =>
@@ -112,7 +116,7 @@ export const adminQueryKeys = {
   workspace: (workspaceId: KeyPart) => ["admin-workspace", workspaceId] as const,
   workspaces: () => ["admin-workspaces"] as const,
   workspaceOwner: (workspaceId: KeyPart) => ["workspace-owner", workspaceId] as const,
-  playerSubRolesPublic: (workspaceId: KeyPart) => ["player-sub-roles", workspaceId] as const,
+  playerSubRolesPublic: (workspaceId: KeyPart, discipline: KeyPart) => ["player-sub-roles", workspaceId, discipline] as const,
   /** The parser's unresolved log names, and the badge counting them. */
   catalogAliasMisses: () => ["admin", "catalog-alias-misses"] as const,
   /** The parser console, mounted workspace-wide rather than per tournament. */

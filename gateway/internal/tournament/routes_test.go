@@ -251,3 +251,28 @@ func TestRegistrationTeamCrestRouting(t *testing.T) {
 		}
 	}
 }
+
+func TestPlayerSubRoleListForwardsExplicitDiscipline(t *testing.T) {
+	var spec edge.RouteSpec
+	for _, route := range AdminCrudRoutes {
+		if route.Method == "GET" && route.Pattern == "/api/v1/admin/player-sub-roles" {
+			spec = route
+		}
+	}
+	caller := &capturingCaller{}
+	identity := func(*http.Request) (map[string]any, bool, error) {
+		return map[string]any{"user_id": 1}, true, nil
+	}
+	mux := http.NewServeMux()
+	edge.New(caller, slog.New(slog.DiscardHandler), identity).Register(mux, []edge.RouteSpec{spec})
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/v1/admin/player-sub-roles?workspace_id=7&discipline=lol&include_inactive=true", nil))
+	var sent struct {
+		Query map[string][]string `json:"query"`
+	}
+	if err := json.Unmarshal(caller.body, &sent); err != nil {
+		t.Fatalf("no RPC body captured: %v (%q)", err, caller.body)
+	}
+	if !slices.Equal(sent.Query["discipline"], []string{"lol"}) || !slices.Equal(sent.Query["workspace_id"], []string{"7"}) {
+		t.Fatalf("lost concrete sub-role scope: %#v", sent.Query)
+	}
+}

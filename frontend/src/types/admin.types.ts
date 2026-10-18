@@ -282,7 +282,6 @@ export interface StreamPollTick {
 
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
-import type { RosterSlotMap } from "@/lib/roster/shape";
 import type { DraftFormatSettings } from "@/types/draft.types";
 import type {
   StageItemType,
@@ -334,8 +333,6 @@ export interface TournamentUpdateInput {
   draw_points?: number;
   loss_points?: number;
   division_grid_version_id?: number | null;
-  /** Sent as the tournament's team format by adminService.updateTournament. */
-  roster_slots_json?: RosterSlotMap;
   /** Draft format rule; `null` clears it back to snake. */
   draft_format_json?: DraftFormatSettings | null;
 }
@@ -648,6 +645,9 @@ export interface PlayerUpdateInput {
 export interface PlayerSubRole {
   id: number;
   workspace_id: number;
+  discipline: string;
+  dimension: string;
+  attrs: Record<string, unknown>;
   role: string;
   slug: string;
   label: string;
@@ -658,12 +658,15 @@ export interface PlayerSubRole {
 
 export interface PlayerSubRoleCreateInput {
   workspace_id: number;
+  discipline: string;
   role: string;
   label: string;
   slug?: string | null;
   description?: string | null;
   sort_order?: number;
   is_active?: boolean;
+  icon?: string | null;
+  color?: string | null;
 }
 
 export interface PlayerSubRoleUpdateInput {
@@ -673,6 +676,8 @@ export interface PlayerSubRoleUpdateInput {
   description?: string | null;
   sort_order?: number;
   is_active?: boolean;
+  icon?: string | null;
+  color?: string | null;
 }
 
 // ─── Encounter ───────────────────────────────────────────────────────────────

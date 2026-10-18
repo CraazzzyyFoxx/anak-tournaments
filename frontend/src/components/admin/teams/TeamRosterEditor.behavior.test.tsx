@@ -22,6 +22,7 @@ const deletePlayer = vi.fn();
 
 vi.mock("@/services/admin.service", () => ({
   default: {
+    getTournament: vi.fn().mockResolvedValue({ id: 1, discipline: "overwatch" }),
     getPlayerSubRoles: (...args: unknown[]) => getPlayerSubRoles(...args),
     updatePlayer: (...args: unknown[]) => updatePlayer(...args),
     createPlayer: (...args: unknown[]) => createPlayer(...args),
@@ -147,6 +148,9 @@ describe("TeamRosterEditor", () => {
       {
         id: 9,
         workspace_id: 1,
+        discipline: "overwatch",
+        dimension: "player_role",
+        attrs: {},
         role: "tank",
         slug: "main_heal",
         label: "Main Heal",

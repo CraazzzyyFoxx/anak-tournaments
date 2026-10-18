@@ -439,7 +439,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin.list#player_sub_role": {
         "summary": "List player sub-roles",
-        "description": "Permission: workspace `player.read`. Lists a workspace's player sub-roles, optionally filtered by role and including inactive ones.",
+        "description": "Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.",
     },
     # ── generic CRUD engine: tournament_link ───────────────────────────────
     "rpc.tournament.admin.create#tournament_link": {

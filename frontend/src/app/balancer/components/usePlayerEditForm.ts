@@ -107,9 +107,9 @@ export function usePlayerEditForm({
   const workspaceId = useCurrentWorkspaceId();
 
   const { data: subRoles } = useQuery({
-    queryKey: adminQueryKeys.playerSubRoles(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: Boolean(workspaceId && open)
+    queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
+    enabled: Boolean(workspaceId && open && discipline)
   });
 
   const subtypeOptions = useMemo(() => {

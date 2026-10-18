@@ -1,242 +1,101 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-
 import { InlineEditText } from "@/components/kit/InlineEditText";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import { ROLES, canonicalToRegistrationRole } from "@/lib/roster/roles";
+import { ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { PlayerSubRole } from "@/types/admin.types";
-import { Spinner } from "@/components/ui/spinner";
+import type { PlayerSubRoleUpdateInput } from "@/types/admin.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
-/**
- * Workspace sub-role catalog (`PlayerSubRole`). This used to live inside a
- * tournament's registration form builder, where creating or removing an entry
- * silently rewrote the options of every *other* tournament in the workspace —
- * plus the player, roster and balancer pickers that read the same table. The
- * catalog is workspace-global, so it is configured here; a registration form
- * only chooses which catalog entries it offers.
- */
 export default function WorkspaceSubRolesSettingsPage() {
+  const workspaceId = useWorkspaceStore(state => state.currentWorkspaceId);
   const t = useTranslations("adminSettings.subRoles");
-  const tRoles = useTranslations("common.roles");
-  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const scope = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
+  const code = scope.resolved?.kind === "concrete" ? scope.resolved.code : null;
+  const metadata = useDisciplineMetadata(scope.axis, code);
+  if (workspaceId === null) return <PageStateCard state="empty" title={t("noWorkspace.title")} description={t("noWorkspace.description")} />;
+  if (scope.resolved?.kind === "invalid" || scope.resolved?.kind === "empty") return <DisciplineUnavailable resolved={scope.resolved} disciplines={scope.disciplines ?? []} allowsAll={false} onSelect={scope.select} />;
+  if (scope.isError || metadata.isError) return <PageStateCard state="error" title={t("errors.update")} onAction={() => { scope.refetch(); if (code) void metadata.refetch(); }} />;
+  if (!metadata.data || !code || typeof scope.axis !== "number") return <Skeleton className="h-64" />;
+  return <div className="space-y-4">
+    <DisciplineSelector disciplines={scope.disciplines ?? []} value={code} allowsAll={false} onSelect={scope.select} />
+    <SubRoleCatalog key={`${scope.axis}:${code}`} workspaceId={scope.axis} discipline={code} ontology={metadata.data} />
+  </div>;
+}
+
+function SubRoleCatalog({ workspaceId, discipline, ontology }: Readonly<{ workspaceId: number; discipline: string; ontology: RoleOntology }>) {
+  const t = useTranslations("adminSettings.subRoles");
+  const roleT = useTranslations("common.roleOntology");
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
-
+  const rated = ratedDimension(ontology);
+  const roots = rated ? selectableRoles(ontology, rated.code).filter(role => role.parent_id === null) : [];
   const canEdit = canAccessPermission("player.update", workspaceId);
   const canCreate = canAccessPermission("player.create", workspaceId);
   const canDeactivate = canAccessPermission("player.delete", workspaceId);
-
-  const catalogQuery = useQuery({
-    // Same key family every sub-role picker uses, with an `"all"` leaf because
-    // this page is the only reader that wants the deactivated rows too. Sharing
-    // the prefix means one `invalidateQueries` refreshes this page *and* every
-    // picker in the app.
-    queryKey: adminQueryKeys.playerSubRolesAll(workspaceId),
-    // Inactive entries are included so a deactivated sub-role can be restored;
-    // the tournament form builder only ever sees the active ones.
-    queryFn: () =>
-      adminService.getPlayerSubRoles({
-        workspace_id: workspaceId as number,
-        include_inactive: true
-      }),
-    enabled: workspaceId !== null
+  const catalog = useQuery({
+    queryKey: adminQueryKeys.playerSubRolesAll(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId, discipline, include_inactive: true }, signal)
   });
-
-  const invalidateCatalog = () =>
-    queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRolesRoot() });
-
-  const createMutation = useMutation({
-    mutationFn: ({ role, label }: { role: string; label: string }) => {
-      if (workspaceId === null) throw new Error("No workspace selected");
-      return adminService.createPlayerSubRole({ workspace_id: workspaceId, role, label });
-    },
-    onSuccess: async (_created, { role }) => {
-      setDraftLabels((prev) => ({ ...prev, [role]: "" }));
-      await invalidateCatalog();
-      notify.success(t("toast.added"));
-    },
-    onError: (error) => notify.apiError(error, { title: t("errors.add") })
+  const invalidate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline) }),
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId, discipline) }),
+      queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.metadata(workspaceId, discipline) })
+    ]);
+  };
+  const create = useMutation({
+    mutationFn: ({ role, label }: { role: string; label: string }) => adminService.createPlayerSubRole({ workspace_id: workspaceId, discipline, role, label }),
+    onSuccess: async (_, { role }) => { setDraftLabels(prev => ({ ...prev, [role]: "" })); await invalidate(); notify.success(t("toast.added")); },
+    onError: error => notify.apiError(error, { title: t("errors.add") })
   });
-
-  const renameMutation = useMutation({
-    mutationFn: ({ id, label }: { id: number; label: string }) =>
-      // The slug is deliberately left alone: it is what every stored player
-      // assignment references, so renaming is a display-label change only.
-      adminService.updatePlayerSubRole(id, { label }),
-    onSuccess: async () => {
-      await invalidateCatalog();
-      notify.success(t("toast.renamed"));
-    },
-    onError: (error) => notify.apiError(error, { title: t("errors.rename") })
+  const update = useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: PlayerSubRoleUpdateInput }) => adminService.updatePlayerSubRole(id, patch),
+    onSuccess: invalidate,
+    onError: error => notify.apiError(error, { title: t("errors.update") })
   });
-
-  const setActiveMutation = useMutation({
-    // Deactivation keeps going through DELETE so it stays gated by
-    // `player.delete` exactly as it was in the form builder; the endpoint only
-    // flips `is_active`, nothing is destroyed. Restoring is a plain update.
-    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
-      isActive
-        ? adminService.updatePlayerSubRole(id, { is_active: true }).then(() => undefined)
-        : adminService.deletePlayerSubRole(id),
-    onSuccess: async (_result, { isActive }) => {
-      await invalidateCatalog();
-      notify.success(isActive ? t("toast.restored") : t("toast.deactivated"));
-    },
-    onError: (error) => notify.apiError(error, { title: t("errors.update") })
+  const deactivate = useMutation({
+    mutationFn: (id: number) => adminService.deletePlayerSubRole(id), onSuccess: invalidate,
+    onError: error => notify.apiError(error, { title: t("errors.update") })
   });
-
-  const byRole = useMemo(() => {
-    const grouped: Record<string, PlayerSubRole[]> = Object.fromEntries(
-      ROLES.map((role) => [role.code, [] as PlayerSubRole[]])
-    );
-    for (const row of catalogQuery.data ?? []) {
-      const code = canonicalToRegistrationRole(row.role);
-      if (code && grouped[code]) {
-        grouped[code].push(row);
-      }
-    }
-    return grouped;
-  }, [catalogQuery.data]);
-
-  const isMutating =
-    createMutation.isPending || renameMutation.isPending || setActiveMutation.isPending;
-
-  if (workspaceId === null) {
-    return (
-      <PageStateCard
-        state="empty"
-        title={t("noWorkspace.title")}
-        description={t("noWorkspace.description")}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-3">
-        {ROLES.map((role) => {
-          const entries = byRole[role.code] ?? [];
-          const draft = draftLabels[role.code] ?? "";
-          const submitCreate = () => {
-            const label = draft.trim();
-            if (label) {
-              createMutation.mutate({ role: role.code, label });
-            }
-          };
-
-          return (
-            <Card key={role.code}>
-              <CardHeader>
-                <CardTitle asChild>
-                  <h2>{tRoles(role.code)}</h2>
-                </CardTitle>
-                <CardDescription>
-                  {entries.length === 0
-                    ? t("empty")
-                    : t("activeCount", {
-                        active: entries.filter((entry) => entry.is_active).length,
-                        total: entries.length
-                      })}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {catalogQuery.isLoading ? (
-                  <Skeleton className="h-32 w-full rounded-md" />
-                ) : (
-                  <ul className="space-y-1.5">
-                    {entries.map((entry) => (
-                      <li
-                        key={entry.id}
-                        className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <InlineEditText
-                            value={entry.label}
-                            label={t("nameLabel", { role: tRoles(role.code) })}
-                            canEdit={canEdit}
-                            onSave={(label) => renameMutation.mutateAsync({ id: entry.id, label })}
-                            textClassName={entry.is_active ? undefined : "text-muted-foreground"}
-                          />
-                          <p className="truncate font-mono text-xs text-muted-foreground/70">
-                            {entry.slug}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={entry.is_active}
-                          disabled={isMutating || (entry.is_active ? !canDeactivate : !canEdit)}
-                          onCheckedChange={(isActive) =>
-                            setActiveMutation.mutate({ id: entry.id, isActive })
-                          }
-                          aria-label={
-                            entry.is_active
-                              ? t("deactivate", { name: entry.label })
-                              : t("restore", { name: entry.label })
-                          }
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {canCreate && (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={draft}
-                      onChange={(event) =>
-                        setDraftLabels((prev) => ({ ...prev, [role.code]: event.target.value }))
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          submitCreate();
-                        }
-                      }}
-                      placeholder={t("addPlaceholder", {
-                        role: tRoles(role.code)
-                      })}
-                      className="h-8 text-xs"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 shrink-0"
-                      disabled={isMutating || !draft.trim()}
-                      onClick={submitCreate}
-                    >
-                      {createMutation.isPending ? (
-                        <Spinner className="mr-1 size-3.5" />
-                      ) : (
-                        <Plus className="mr-1 size-3.5" aria-hidden />
-                      )}
-                      {t("add")}
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        {t("deactivationNote")}
-      </p>
-    </div>
-  );
+  if (!rated) return <p role="alert">{roleT("metadataError")}</p>;
+  if (catalog.isError) return <PageStateCard state="error" title={t("errors.update")} onAction={() => void catalog.refetch()} />;
+  const busy = create.isPending || update.isPending || deactivate.isPending;
+  return <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+    {roots.map(role => {
+      const entries = (catalog.data ?? []).filter(row => row.discipline === discipline && row.dimension === rated.code && row.role === role.code);
+      const draft = draftLabels[role.code] ?? "";
+      const add = () => { if (draft.trim()) create.mutate({ role: role.code, label: draft.trim() }); };
+      return <Card key={role.id}><CardHeader><CardTitle asChild><h2 className="flex items-center gap-2"><PlayerRoleIcon role={{ dimension: rated.code, role: role.code }} ontology={ontology} size={20} decorative />{role.name}</h2></CardTitle>
+        <CardDescription>{entries.length ? t("activeCount", { active: entries.filter(row => row.is_active).length, total: entries.length }) : t("empty")}</CardDescription></CardHeader>
+        <CardContent className="space-y-3">{catalog.isLoading ? <Skeleton className="h-32" /> : <ul className="space-y-3">{entries.map(entry => <li key={entry.id} className="space-y-2 rounded-md border p-2">
+          <div className="flex items-center gap-2"><InlineEditText value={entry.label} label={t("nameLabel", { role: role.name })} canEdit={canEdit && !busy} onSave={label => update.mutateAsync({ id: entry.id, patch: { label } })} textClassName={entry.is_active ? undefined : "text-muted-foreground"} />
+            <Switch checked={entry.is_active} disabled={busy || (entry.is_active ? !canDeactivate : !canEdit)} aria-label={entry.is_active ? t("deactivate", { name: entry.label }) : t("restore", { name: entry.label })} onCheckedChange={active => active ? update.mutate({ id: entry.id, patch: { is_active: true } }) : deactivate.mutate(entry.id)} />
+          </div><p className="font-mono text-xs text-muted-foreground">{entry.slug}</p>
+          {(["icon", "color"] as const).map(key => <div key={key} className="space-y-1 text-xs"><span>{roleT(key)} · {roleT(Object.hasOwn(entry.attrs, key) ? entry.attrs[key] === null ? "cleared" : "override" : "inherits")}</span>
+            <InlineEditText value={typeof entry.attrs[key] === "string" ? entry.attrs[key] as string : ""} label={`${roleT(key)}: ${entry.label}`} canEdit={canEdit && !busy} onSave={value => update.mutateAsync({ id: entry.id, patch: { [key]: value.trim() || null } })} />
+          </div>)}
+        </li>)}</ul>}
+        {canCreate && <div className="flex gap-2"><Input aria-label={t("nameLabel", { role: role.name })} value={draft} onChange={event => setDraftLabels(prev => ({ ...prev, [role.code]: event.target.value }))} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); add(); } }} placeholder={t("addPlaceholder", { role: role.name })} /><Button type="button" variant="outline" disabled={busy || !draft.trim()} onClick={add}><Plus className="mr-1 size-4" aria-hidden />{t("add")}</Button></div>}
+      </CardContent></Card>;
+    })}
+  </div>;
 }

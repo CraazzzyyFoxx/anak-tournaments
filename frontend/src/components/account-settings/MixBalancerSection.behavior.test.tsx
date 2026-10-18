@@ -39,6 +39,16 @@ vi.mock("@/services/mix-preferences.service", () => ({
     update: (preferences: unknown) => updatePreferences(preferences),
   },
 }));
+vi.mock("@/hooks/useBrowsingDiscipline", () => ({
+  useBrowsingDiscipline: () => ({ axis: "all", resolved: { kind: "concrete", code: "overwatch" }, disciplines: [], select: vi.fn() })
+}));
+vi.mock("@/hooks/useDisciplineMetadata", () => ({
+  useDisciplineMetadata: () => ({ data: {
+    discipline: { code: "overwatch" }, workspace_id: null,
+    dimensions: [{ id: 1, code: "player_role", name: "Role", active: true, rated: true, selection_mode: "single", sort_order: 0 }],
+    roles: ["tank", "damage", "support"].map((code, id) => ({ id, code, name: code, dimension: "player_role", active: true, selectable: true, parent_id: null, workspace_id: null, sort_order: id, attrs: {} }))
+  }, isError: false })
+}));
 
 // Labels come through as their message keys; this panel's contract is the
 // payload, not the copy.

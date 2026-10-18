@@ -1,18 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-
 import PlayerRoleIcon from "./PlayerRoleIcon";
-
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 
-describe("player role icons", () => {
-  it("renders ontology codes, legacy display names and the unassigned Flex presentation", () => {
-    for (const [role, name] of [["tank", "tank"], ["damage", "damage"], ["support", "support"], ["Tank", "tank"], [null, "flex"]]) {
-      const html = renderToStaticMarkup(<PlayerRoleIcon role={role} />);
-      expect(html).toContain("<svg");
-      expect(html).toContain(`aria-label="common.roles.${name}"`);
-    }
-    expect(renderToStaticMarkup(<PlayerRoleIcon role="unknown" />)).toBe("");
+describe("role presentation without a dictionary", () => {
+  it("keeps an unassigned/open slot distinct from unknown historical references", () => {
+    expect(renderToStaticMarkup(<PlayerRoleIcon role={null} />)).toContain("<svg");
+    const unknown = renderToStaticMarkup(<PlayerRoleIcon role={{ dimension: "position", role: "missing" }} />);
+    expect(unknown).toContain("common.roleOntology.unknown");
+    expect(unknown).not.toContain("<svg");
+    expect(unknown).toContain("?");
     expect(renderToStaticMarkup(<PlayerRoleIcon role="support" decorative />)).toContain('aria-hidden="true"');
   });
 });

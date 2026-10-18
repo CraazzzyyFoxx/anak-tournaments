@@ -6,7 +6,9 @@ import { useTranslations } from "next-intl";
 import { CompareScope } from "@/app/(site)/users/compare/types";
 import { ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
 import { parseOptionalInt, getMapIconSrc } from "@/app/(site)/users/compare/utils";
-import { roleImageSrc } from "@/lib/roster/player-role";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension } from "@/lib/roster/ontology";
 import type { DivisionGridLike } from "@/lib/divisions/grid";
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
@@ -24,6 +26,7 @@ interface CompareFiltersPanelProps {
   targetUserId?: number;
   scope: CompareScope;
   role?: UserRoleType;
+  ontology?: RoleOntology | null;
   divMin?: number;
   divMax?: number;
   tournamentId?: number;
@@ -64,6 +67,7 @@ const CompareFiltersPanel = ({
   targetUserId,
   scope,
   role,
+  ontology,
   divMin,
   divMax,
   tournamentId,
@@ -111,7 +115,7 @@ const CompareFiltersPanel = ({
   const roleOptions: SearchableImageOption[] = ROLE_FILTER_OPTIONS.map((option) => ({
     value: option.value,
     label: t(option.labelKey),
-    imageSrc: roleImageSrc(option.value)
+    icon: <PlayerRoleIcon role={option.value === "Flex" ? null : { dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role: option.value.toLowerCase() }} ontology={ontology} size={20} decorative />
   }));
 
   const isHeroScope = scope === "hero";

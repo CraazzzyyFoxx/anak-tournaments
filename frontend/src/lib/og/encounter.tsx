@@ -3,12 +3,10 @@ import { join } from "node:path";
 
 import { ImageResponse } from "next/og";
 import { getTranslations } from "next-intl/server";
-import { roleOf } from "@/lib/roster/role-ref";
 
-import DamageIcon from "@/components/icons/DamageIcon";
 import FlexIcon from "@/components/icons/FlexIcon";
-import SupportIcon from "@/components/icons/SupportIcon";
-import TankIcon from "@/components/icons/TankIcon";
+import disciplineService from "@/services/discipline.service";
+import { findRole, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
 import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";
 import { getFormatter } from "@/lib/datetime/server";
 import { bracketRoundLabel, UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
@@ -103,12 +101,28 @@ const FAINT = "#6b7f9c";
 const LINE = "#1f2b45";
 const ACCENT = "#2dd4bf";
 
-const ROLE_ICON = {
-  tank: TankIcon,
-  damage: DamageIcon,
-  support: SupportIcon,
-  flex: FlexIcon
-} as const;
+/** Satori has no CSS masks. Tint the white module SVG bytes at this server-only boundary. */
+async function resolveRoleArtwork(ontology: RoleOntology | null): Promise<Map<number, string>> {
+  const icons = new Map<number, string>();
+  if (!ontology) return icons;
+  for (const role of ontology.roles) {
+    const presentation = rolePresentation(ontology.roles, role.id);
+    const icon = presentation.icon;
+    if (!icon) continue;
+    if (icon.startsWith(`/disciplines/${ontology.discipline.code}/`) && icon.endsWith(".svg") && !icon.includes("..")) {
+      try {
+        let svg = await readFile(join(process.cwd(), "public", icon), "utf8");
+        if (presentation.color && /^#[0-9a-fA-F]{6}$/.test(presentation.color)) svg = svg.replaceAll("#ffffff", presentation.color);
+        icons.set(role.id, `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+      } catch (error) {
+        console.error(`opengraph-image: missing role icon ${icon}:`, error);
+      }
+    } else {
+      icons.set(role.id, new URL(icon, SITE_URL_OBJ).toString());
+    }
+  }
+  return icons;
+}
 
 /** `EncounterState` sentinels are English words; the catalog keys are camelCase. */
 const STATE_KEY: Record<string, string> = {
@@ -123,15 +137,19 @@ function RosterRow({
   player,
   divisionIcon,
   isCaptain,
-  subLabel
+  subLabel,
+  ontology,
+  roleArtwork
 }: {
   player: Player;
   divisionIcon: string | null;
   isCaptain: boolean;
   subLabel: string;
+  ontology: RoleOntology | null;
+  roleArtwork: Map<number, string>;
 }) {
-  const role = roleOf(player.role) ?? "flex";
-  const RoleIcon = role in ROLE_ICON ? ROLE_ICON[role as keyof typeof ROLE_ICON] : null;
+  const role = ontology ? findRole(ontology, player.role) : null;
+  const icon = role ? roleArtwork.get(role.id) : null;
   return (
     <div
       style={{
@@ -144,7 +162,10 @@ function RosterRow({
     >
       {/* The slot is kept even for an unknown role, so nicks line up. */}
       <div style={{ display: "flex", width: 22, height: 22, alignItems: "center" }}>
-        {RoleIcon ? <RoleIcon width={22} height={22} color={MUTED} /> : null}
+        {!player.role ? <FlexIcon width={22} height={22} color={MUTED} /> : icon ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={icon} alt={role?.name ?? player.role.role} width={22} height={22} />
+        ) : <span style={{ color: MUTED, fontSize: 14 }}>{role?.name.slice(0, 2).toUpperCase() ?? "?"}</span>}
       </div>
       {divisionIcon ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -196,7 +217,9 @@ function TeamColumn({
   align,
   tbd,
   srLabel,
-  subLabel
+  subLabel,
+  ontology,
+  roleArtwork
 }: {
   team: Team | null;
   grid: DivisionGridLike;
@@ -205,6 +228,8 @@ function TeamColumn({
   tbd: string;
   srLabel: string;
   subLabel: string;
+  ontology: RoleOntology | null;
+  roleArtwork: Map<number, string>;
 }) {
   if (!team) {
     return (
@@ -278,6 +303,8 @@ function TeamColumn({
               divisionIcon={(src && crests.get(src)) ?? null}
               isCaptain={player.user_id === team.captain_id}
               subLabel={subLabel}
+              ontology={ontology}
+              roleArtwork={roleArtwork}
             />
           );
         })}
@@ -405,6 +432,11 @@ export async function renderEncounterOg(encounterId: number) {
 
   const grid = encounter.tournament?.division_grid_version ?? DEFAULT_DIVISION_GRID;
   const crests = await resolveCrests(grid, [one?.team ?? null, two?.team ?? null]);
+  const ontology = await disciplineService.metadata(encounter.workspace_id, encounter.discipline).catch(error => {
+    console.error("opengraph-image: role metadata unavailable:", error);
+    return null;
+  });
+  const roleArtwork = await resolveRoleArtwork(ontology);
 
   return new ImageResponse(
     <Shell>
@@ -426,6 +458,8 @@ export async function renderEncounterOg(encounterId: number) {
             team={one?.team ?? null}
             grid={grid}
             crests={crests}
+            ontology={ontology}
+            roleArtwork={roleArtwork}
             align="flex-start"
             tbd={t("common.tbd")}
             srLabel={t("teams.roster.avgSr")}
@@ -458,6 +492,8 @@ export async function renderEncounterOg(encounterId: number) {
             team={two?.team ?? null}
             grid={grid}
             crests={crests}
+            ontology={ontology}
+            roleArtwork={roleArtwork}
             align="flex-end"
             tbd={t("common.tbd")}
             srLabel={t("teams.roster.avgSr")}

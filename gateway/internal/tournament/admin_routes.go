@@ -44,7 +44,7 @@ var AdminCrudRoutes = []edge.RouteSpec{
 	{Method: "PATCH", Pattern: "/api/v1/admin/standings/{standing_id}", Queue: "rpc.tournament.admin.update", Entity: "standing", Action: "update", IDParam: "standing_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/standings/{standing_id}", Queue: "rpc.tournament.admin.delete", Entity: "standing", Action: "delete", IDParam: "standing_id", Auth: edge.AuthRequired, Success: 204},
 	// player_sub_role
-	{Method: "GET", Pattern: "/api/v1/admin/player-sub-roles", Queue: "rpc.tournament.admin.list", Entity: "player_sub_role", Action: "list", Query: []string{"workspace_id", "role", "include_inactive"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/player-sub-roles", Queue: "rpc.tournament.admin.list", Entity: "player_sub_role", Action: "list", Query: []string{"workspace_id", "discipline", "role", "include_inactive"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/player-sub-roles", Queue: "rpc.tournament.admin.create", Entity: "player_sub_role", Action: "create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/admin/player-sub-roles/{sub_role_id}", Queue: "rpc.tournament.admin.update", Entity: "player_sub_role", Action: "update", IDParam: "sub_role_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/player-sub-roles/{sub_role_id}", Queue: "rpc.tournament.admin.delete", Entity: "player_sub_role", Action: "delete", IDParam: "sub_role_id", Auth: edge.AuthRequired, Success: 204},

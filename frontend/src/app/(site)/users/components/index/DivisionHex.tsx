@@ -1,12 +1,14 @@
 "use client";
 
-import Image from "next/image";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { roleImageSrc } from "@/lib/roster/player-role";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { ratedDimension } from "@/lib/roster/ontology";
 import { ROLE_LABEL_KEY } from "@/app/(site)/users/components/shared/list-utils";
 import type { UserRoleType } from "@/types/user.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
@@ -28,6 +30,9 @@ export const DivisionHex = ({
   size?: number;
 }>) => {
   const t = useTranslations();
+  const browsing = useBrowsingDiscipline({ allowsAll: false });
+  const code = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const metadata = useDisciplineMetadata(browsing.axis, code);
   const workspaceGrid = useDivisionGrid("overwatch");
   const title = t("users.list.division.badgeTitle", {
     role: t(ROLE_LABEL_KEY[role]),
@@ -51,12 +56,8 @@ export const DivisionHex = ({
         className="h-full w-full"
       />
       <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center overflow-hidden rounded-full border-2 border-[color:var(--aqt-card)] bg-[color:var(--aqt-card-2)] p-px">
-        <Image
-          src={roleImageSrc(role)}
-          alt={t("users.list.a11y.roleAlt", { role: t(ROLE_LABEL_KEY[role]) })}
-          width={12}
-          height={12}
-        />
+        <PlayerRoleIcon role={role === "Flex" ? null : { dimension: metadata.data ? ratedDimension(metadata.data)?.code ?? "" : "", role: role.toLowerCase() }}
+          ontology={metadata.data} size={12} label={t("users.list.a11y.roleAlt", { role: t(ROLE_LABEL_KEY[role]) })} />
       </span>
     </span>
   );

@@ -89,12 +89,16 @@ export function PersonParticipationsTab({
     queryFn: () => userService.getUserTournaments(personId, workspaceId)
   });
 
-  // Sub-roles are a workspace catalog, and the participation list is already
-  // scoped to the active workspace, so one fetch covers every row.
+  const selectedTournament = useQuery({
+    queryKey: adminQueryKeys.tournament(form.tournament_id),
+    queryFn: ({ signal }) => adminService.getTournament(form.tournament_id, signal),
+    enabled: form.tournament_id > 0
+  });
+  const discipline = selectedTournament.data?.discipline;
   const subRolesQuery = useQuery({
-    queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: workspaceId != null
+    queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
+    enabled: workspaceId != null && discipline !== undefined
   });
 
   const tournamentsQuery = useQuery({

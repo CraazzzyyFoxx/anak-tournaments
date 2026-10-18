@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Image from "next/image";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -22,6 +22,7 @@ export interface SearchableImageOption {
   value: string;
   label: string;
   imageSrc?: string | null;
+  icon?: ReactNode;
   /** Optional trailing facet count ("how many rows this option matches"). */
   count?: number;
 }
@@ -150,7 +151,7 @@ const SearchableImageSelect = (props: SearchableImageSelectProps) => {
                     height={22}
                     className="h-5.5 w-5.5 shrink-0 select-none object-contain"
                   />
-                ) : null
+                ) : option.icon ? <span key={option.value}>{option.icon}</span> : null
               )}
             </span>
             {props.multiple ? null : triggerLabel}
@@ -199,7 +200,7 @@ const SearchableImageSelect = (props: SearchableImageSelectProps) => {
                         height={20}
                         className="h-5 w-5 select-none object-contain"
                       />
-                    ) : null}
+                    ) : option.icon ?? null}
                     <span>{option.label}</span>
                   </div>
                   {option.count !== undefined ? (

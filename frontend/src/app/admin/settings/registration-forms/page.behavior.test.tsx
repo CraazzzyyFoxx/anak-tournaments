@@ -61,6 +61,9 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ canAccessPermission: () => true })
 }));
+vi.mock("@/hooks/useBrowsingDiscipline", () => ({
+  useBrowsingDiscipline: () => ({ axis: 1, resolved: { kind: "concrete", code: "overwatch" }, disciplines: [], select: vi.fn() })
+}));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), apiError: vi.fn() }
 }));

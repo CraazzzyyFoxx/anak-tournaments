@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 const colorOf = (entity: { attrs: Record<string, unknown> } | undefined) =>
@@ -25,6 +26,7 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const compareParams = useUserCompareSearchParams();
   const browsing = useBrowsingDiscipline({ allowsAll: false });
   const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const roleMetadata = useDisciplineMetadata(browsing.axis, discipline);
 
   const {
     compareQuery,
@@ -129,6 +131,7 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
 
       <CardSurface bodyClassName="space-y-5">
         <CompareFiltersPanel
+          ontology={roleMetadata.data}
           subjectUserId={compareParams.subjectUserId}
           targetUserId={compareParams.targetUserId}
           scope={compareParams.scope}

@@ -110,14 +110,6 @@ export function playerRoleTint(role: string | null | undefined): PlayerRoleTint 
 }
 
 /**
- * Image src for a role badge. Flex ships as an SVG; the other three predate it
- * and are still PNGs.
- */
-export function roleImageSrc(role: PlayerRoleOption): string {
-  return role === "Flex" ? "/roles/Flex.svg" : `/disciplines/overwatch/roles/${role.toLowerCase()}.png`;
-}
-
-/**
  * Lowercase role key excluding `Flex` — hero-class tinting/selection never
  * sees a flex hero (no hero has that class), so this is `PlayerRoleTint`
  * minus its one player-only member.

@@ -264,7 +264,9 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
         with patch(
             "shared.rpc.player_sub_role.player_sub_role_service.list_sub_roles", AsyncMock(return_value=[row])
         ) as listed:
-            result = await cfg.list_fn(session, {"query": {"workspace_id": ["7"], "include_inactive": ["true"]}})
+            result = await cfg.list_fn(
+                session, {"query": {"workspace_id": ["7"], "discipline": ["overwatch"], "include_inactive": ["true"]}}
+            )
         listed.assert_awaited_once_with(
             session, workspace_id=7, discipline="overwatch", role=None, include_inactive=True
         )
@@ -283,3 +285,20 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
                 "attrs": {"color": "#112233"},
             }
         ]
+
+    async def test_list_requires_explicit_discipline_before_loading_rows(self) -> None:
+        cfg = player_sub_role_entity()
+        for query in ({"workspace_id": "7"}, {"workspace_id": "7", "discipline": ""}):
+            with self.assertRaises(BaseAPIException) as raised:
+                await cfg.list_fn(object(), {"query": query})
+            assert raised.exception.status_code == 400
+            assert raised.exception.detail == "missing discipline"
+
+    async def test_list_forwards_non_overwatch_discipline_without_a_default(self) -> None:
+        cfg = player_sub_role_entity()
+        session = object()
+        with patch(
+            "shared.rpc.player_sub_role.player_sub_role_service.list_sub_roles", AsyncMock(return_value=[])
+        ) as listed:
+            assert await cfg.list_fn(session, {"query": {"workspace_id": "7", "discipline": "lol"}}) == []
+        listed.assert_awaited_once_with(session, workspace_id=7, discipline="lol", role=None, include_inactive=False)

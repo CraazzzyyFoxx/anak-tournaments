@@ -315,11 +315,17 @@ export function TeamRosterEditor({
   const tableStyles = getAdminDetailTableStyles("compact");
   const [draft, setDraft] = useState<RosterDraft | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<Player | null>(null);
+  const owner = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: ({ signal }) => adminService.getTournament(tournamentId, signal),
+    enabled: tournamentId > 0
+  });
+  const discipline = owner.data?.discipline;
 
   const { data: playerSubRoles } = useQuery({
-    queryKey: adminQueryKeys.playerSubRoles(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId! }),
-    enabled: workspaceId != null
+    queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
+    enabled: workspaceId != null && discipline !== undefined
   });
 
   const rows = useMemo(() => buildRosterRows(players), [players]);

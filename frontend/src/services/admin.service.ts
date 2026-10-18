@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api/fetch";
-import { slotsToTeamFormat, type TeamFormatWrite } from "@/lib/roster/team-format";
+import { teamFormatPayload, type TeamFormatRead, type TeamFormatWrite } from "@/lib/roster/team-format";
 import { PaginatedResponse } from "@/types/pagination.types";
 import {
   Tournament,
@@ -235,8 +235,8 @@ class AdminService {
     return response.json();
   }
 
-  async getTournament(id: number): Promise<Tournament> {
-    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`);
+  async getTournament(id: number, signal?: AbortSignal): Promise<Tournament> {
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, { signal, skipWorkspace: true });
     return response.json();
   }
 
@@ -247,18 +247,20 @@ class AdminService {
   }
 
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
-    const { roster_slots_json: slots, ...patch } = data;
-    if (slots !== undefined) {
-      const response = await apiFetch(`/api/v1/admin/tournaments/${id}/team-format`);
-      const current: TeamFormatWrite & { roster_shape: { dimension: string } } = await response.json();
-      await apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
-        method: "PUT",
-        body: slotsToTeamFormat(slots, current.roster_shape.dimension, current),
-      });
-      if (Object.keys(patch).length === 0) return this.getTournament(id);
-    }
-    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, { method: "PATCH", body: patch });
+    const response = await apiFetch(`/api/v1/admin/tournaments/${id}`, { method: "PATCH", body: data });
     return response.json();
+  }
+
+  async getTournamentTeamFormat(id: number, workspaceId: number, signal?: AbortSignal): Promise<TeamFormatRead> {
+    return apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
+      query: { workspace_id: workspaceId }, skipWorkspace: true, signal
+    }).then(response => response.json());
+  }
+
+  async updateTournamentTeamFormat(id: number, workspaceId: number, format: TeamFormatWrite): Promise<TeamFormatRead> {
+    return apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
+      method: "PUT", query: { workspace_id: workspaceId }, skipWorkspace: true, body: teamFormatPayload(format)
+    }).then(response => response.json());
   }
 
   async setTournamentSchedule(
@@ -509,11 +511,12 @@ class AdminService {
 
   async getPlayerSubRoles(params: {
     workspace_id: number;
+    discipline: string;
     role?: string;
     include_inactive?: boolean;
-  }): Promise<PlayerSubRole[]> {
+  }, signal?: AbortSignal): Promise<PlayerSubRole[]> {
     const response = await apiFetch("/api/v1/admin/player-sub-roles", {
-      query: params
+      query: params, signal, skipWorkspace: true
     });
     return response.json();
   }

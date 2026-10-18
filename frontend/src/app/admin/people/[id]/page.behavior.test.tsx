@@ -66,6 +66,7 @@ vi.mock("@/components/RankHistory", () => ({ default: () => <div>Rank history</d
 
 vi.mock("@/services/admin.service", () => ({
   default: {
+    getTournament: vi.fn().mockResolvedValue({ id: 1, discipline: "overwatch" }),
     getUsers: (...args: unknown[]) => getUsers(...args),
     getPlayerSubRoles: (...args: unknown[]) => getPlayerSubRoles(...args),
     updatePlayer: (...args: unknown[]) => updatePlayer(...args),

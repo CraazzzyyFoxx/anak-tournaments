@@ -1,4 +1,3 @@
-import type { RosterSlotCode } from "@/lib/roster/shape";
 import type { MixBalancerPreferences, MixRatingMode } from "@/services/mix-preferences.service";
 
 /**
@@ -31,14 +30,6 @@ export const MAX_RESULT_VARIANTS = DEFAULT_RESULT_VARIANTS;
 
 /** Ceiling the server enforces on the rank-adjustment-per-win. */
 export const MAX_POINTS_PER_WIN = 1000;
-
-/** Display names for the slot codes, matching the roster-shape vocabulary. */
-export const SLOT_LABELS: Record<RosterSlotCode, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex",
-};
 
 /** Stored tilt, clamped to the range the server enforces. */
 export function tiltOf(preferences: MixBalancerPreferences | null | undefined): number {

@@ -1,79 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import adminService from "@/services/admin.service";
 
-type Call = { path: string; options?: { method?: string; body?: unknown } };
-
+type Call = { path: string; options?: { method?: string; body?: unknown; query?: unknown; signal?: AbortSignal } };
 const calls: Call[] = [];
-const currentFormat = {
-  name: "Cup format",
-  preset_code: "role_queue_5v5",
-  starter_min: 5,
-  starter_max: 5,
-  substitute_min: 1,
-  substitute_max: 3,
-  roster_shape: { dimension: "player_role" },
-  dimensions: [
-    { dimension: "player_role", mode: "enforced", player_max_assignments: 1 },
-    { dimension: "communication", mode: "informational" }
-  ],
-  rules: [
-    {
-      role: { dimension: "player_role", role: "tank" },
-      hard_min: 1,
-      hard_max: 1,
-      recommended_max: 2
-    },
-    { role: { dimension: "player_role", role: "damage" }, hard_min: 2, hard_max: 2 },
-    { role: { dimension: "player_role", role: "support_main" }, hard_max: 2, recommended_max: 1 },
-    { role: { dimension: "communication", role: "caller" }, hard_min: 1, recommended_min: 1 }
-  ]
-};
+vi.mock("@/lib/api/fetch", () => ({ apiFetch: (path: string, options?: Call["options"]) => {
+  calls.push({ path, options }); return Promise.resolve({ json: async () => ({ id: 7 }) });
+} }));
+const format = { name: "Native", preset_code: null, starter_min: 4, starter_max: 6, substitute_min: 0, substitute_max: 2,
+  dimensions: [{ dimension: "position", mode: "preference" as const, player_min_assignments: 0, player_max_assignments: null }],
+  rules: [{ role: { dimension: "position", role: "support_child", parent: "support" }, hard_max: 0, recommended_min: null, include_descendants: false }] };
 
-vi.mock("@/lib/api/fetch", () => ({
-  apiFetch: (path: string, options?: Call["options"]) => {
-    calls.push({ path, options });
-    return Promise.resolve({
-      json: async () => (path.endsWith("/team-format") ? currentFormat : { id: 7 })
-    });
-  }
-}));
-
-describe("adminService.updateTournament with a roster", () => {
-  beforeEach(() => {
-    calls.length = 0;
+describe("native tournament team format service", () => {
+  beforeEach(() => { calls.length = 0; });
+  it("PATCHes only tournament fields, with no slot-map GET/adapt/PUT", async () => {
+    await adminService.updateTournament(7, { name: "Cup" });
+    expect(calls).toEqual([{ path: "/api/v1/admin/tournaments/7", options: { method: "PATCH", body: { name: "Cup" } } }]);
   });
-
-  it("sends the slot map as the tournament's team format and the rest as a patch", async () => {
-    await adminService.updateTournament(7, { name: "Cup", roster_slots_json: { flex: 6 } });
-    expect(calls.map((call) => [call.options?.method ?? "GET", call.path])).toEqual([
-      ["GET", "/api/v1/admin/tournaments/7/team-format"],
-      ["PUT", "/api/v1/admin/tournaments/7/team-format"],
-      ["PATCH", "/api/v1/admin/tournaments/7"]
-    ]);
-    expect(calls[2].options?.body).toEqual({ name: "Cup" });
+  it("PUTs the full native format directly, preserving zero/null and stripping read-only parent", async () => {
+    await adminService.updateTournamentTeamFormat(7, 9, format);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].options?.query).toEqual({ workspace_id: 9 });
+    expect(calls[0].options?.body).toEqual({ ...format, rules: [{ ...format.rules[0], role: { dimension: "position", role: "support_child" } }] });
   });
-
-  it("re-reads the tournament when only the roster changed", async () => {
-    await adminService.updateTournament(7, { roster_slots_json: { tank: 1, flex: 5 } });
-    expect(calls.map((call) => call.options?.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
-    expect(calls[1].options?.body).toEqual({
-      name: currentFormat.name,
-      preset_code: currentFormat.preset_code,
-      starter_min: 6,
-      starter_max: 6,
-      substitute_min: 1,
-      substitute_max: 3,
-      dimensions: currentFormat.dimensions,
-      rules: [
-        {
-          role: { dimension: "player_role", role: "tank" },
-          hard_min: 1,
-          hard_max: 1,
-          recommended_max: 2
-        },
-        { role: { dimension: "player_role", role: "support_main" }, recommended_max: 1 },
-        currentFormat.rules[3]
-      ]
-    });
+  it("passes the captured owner workspace and query cancellation signal to the native read", async () => {
+    const signal = new AbortController().signal;
+    await adminService.getTournamentTeamFormat(7, 9, signal);
+    expect(calls[0].options).toMatchObject({ query: { workspace_id: 9 }, signal, skipWorkspace: true });
   });
 });

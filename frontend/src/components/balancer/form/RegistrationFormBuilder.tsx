@@ -516,11 +516,11 @@ export function SchemaEditor({
 
 /** The workspace sub-role catalog, grouped the way both the params editor and
  *  the preview renderers want it. */
-export function useSubroleCatalog(workspaceId: number | null) {
+export function useSubroleCatalog(workspaceId: number | null, discipline: string | null) {
   const catalogQuery = useQuery({
-    queryKey: adminQueryKeys.playerSubRoles(workspaceId),
-    queryFn: () => adminService.getPlayerSubRoles({ workspace_id: workspaceId as number }),
-    enabled: workspaceId !== null
+    queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
+    queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId as number, discipline: discipline! }, signal),
+    enabled: workspaceId !== null && discipline !== null
   });
 
   const catalog = useMemo<SubroleCatalogByRole>(() => {
@@ -587,7 +587,12 @@ export default function RegistrationFormBuilder({
   // The form's own workspace wins: a superuser may be looking at a tournament
   // that is not in the workspace their sidebar has selected.
   const workspaceId = formQuery.data?.workspace_id ?? currentWorkspaceId ?? null;
-  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId);
+  const owner = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: ({ signal }) => adminService.getTournament(tournamentId!, signal),
+    enabled: tournamentId !== null
+  });
+  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, owner.data?.discipline ?? null);
 
   // A known tournament's default must wait for its owner metadata. A saved
   // questionnaire is already authoritative and does not need that lookup.

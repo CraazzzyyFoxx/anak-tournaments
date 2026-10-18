@@ -65,10 +65,13 @@ def _list_rpc(public_origin: str | None) -> Callable[[AsyncSession, dict[str, An
         query = data.get("query") or {}
         include = _first(query.get("include_inactive"))
         include_inactive = str(include).lower() in ("1", "true", "yes", "on") if include is not None else False
+        discipline = _first(query.get("discipline"))
+        if not isinstance(discipline, str) or not discipline.strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="missing discipline")
         rows = await player_sub_role_service.list_sub_roles(
             session,
             workspace_id=_int_or_400(query.get("workspace_id"), "workspace_id"),
-            discipline=_first(query.get("discipline")) or "overwatch",
+            discipline=discipline,
             role=_first(query.get("role")) or None,
             include_inactive=include_inactive,
         )
