@@ -47,13 +47,9 @@ export async function generateMetadata(props: {
       url: SITE_URL,
       type: "website",
       siteName: SITE_NAME,
-      images: [
-        {
-          url: match.map?.image_path || "",
-          width: 1200,
-          height: 630
-        }
-      ],
+      images: match.map?.image_path
+        ? [{ url: match.map.image_path, width: 1200, height: 630 }]
+        : undefined,
       locale: "en_US"
     }
   };
@@ -78,12 +74,15 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
         <CardHeader>
           <div className="flex flex-row gap-8 items-center">
             <div className="flex flex-row gap-4 items-center">
-              <Image
-                src={match.map?.parent?.image_path || ""}
-                alt={match.map?.parent?.name || t("matches.gamemode")}
-                height={40}
-                width={40}
-              />
+              {/* A map without a mode (every LoL map) or a mode without an image has no badge: never an empty src. */}
+              {match.map?.parent?.image_path ? (
+                <Image
+                  src={match.map.parent.image_path}
+                  alt={match.map.parent.name || t("matches.gamemode")}
+                  height={40}
+                  width={40}
+                />
+              ) : null}
               <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.map?.name}</h4>
             </div>
             <div className="flex flex-row flex-wrap gap-4">
