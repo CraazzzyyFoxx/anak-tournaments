@@ -5459,7 +5459,7 @@ export interface paths {
         };
         /**
          * Get user rank history
-         * @description Permission: workspace `registration.read` on the workspace named by the required `workspace_id` query param. Returns a user's balancer rank history within that workspace.
+         * @description Permission: workspace `registration.read` on the workspace named by the required `workspace_id` query param. Returns a user's balancer rank history within that workspace for the installed game named by the required `discipline` query param (422 `discipline_not_installed` otherwise); another game's ranks are never included.
          *
          *     RPC subject: `rpc.tournament.reg_user_rank_history`
          */
@@ -48397,8 +48397,8 @@ export interface operations {
     };
     get__api_v1_admin_balancer_users__user_id__registration_rank_history: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                discipline: string;
             };
             header?: never;
             path: {

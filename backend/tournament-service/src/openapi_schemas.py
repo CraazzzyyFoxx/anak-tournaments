@@ -308,7 +308,10 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.BalancerRegistrationRankAutofillResponse,
     ),
     "rpc.tournament.reg_check_in": Op(request=schemas.CheckInRequest, response=schemas.BalancerRegistrationRead),
-    "rpc.tournament.reg_user_rank_history": Op(response=schemas.BalancerRegistrationRankHistoryResponse),
+    "rpc.tournament.reg_user_rank_history": Op(
+        response=schemas.BalancerRegistrationRankHistoryResponse,
+        query_params=(QueryParam("discipline", required=True, description="Explicit discipline code."),),
+    ),
     # ── registration status catalog ────────────────────────────────────────
     "rpc.tournament.regstatus_catalog": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
     "rpc.tournament.regstatus_list": Op(response=schemas.BalancerRegistrationStatusRead, response_array=True),
