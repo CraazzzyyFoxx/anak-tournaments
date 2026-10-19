@@ -33,9 +33,12 @@ from shared.schemas.role import RoleRef
 from shared.services.ontology import rated_leaf
 from src import schemas
 from src.core import db as app_db
-from src.services.user.queries.overview import overview as overview_queries
-from src.services.user.service import users as user_service
+from src.services.user.queries.overview import UserOverviewQueries
+from src.services.user.service import UserService
 from tests.encounter_seed import add_observed_game, seed_encounter, seed_scoring_rule
+
+overview_queries = UserOverviewQueries.of("overwatch")
+user_service = UserService.of("overwatch")
 
 RECENT = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=5)
 

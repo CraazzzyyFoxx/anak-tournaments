@@ -3,9 +3,6 @@ from . import auth as auth
 from .base import *
 from .challonge import *
 from .division_grid import *
-from .gamemode import *
-from .hero import *
-from .map import *
 from .user_base import *
 from shared.schemas.roster_slots import RosterShapeRead
 from .stage import *

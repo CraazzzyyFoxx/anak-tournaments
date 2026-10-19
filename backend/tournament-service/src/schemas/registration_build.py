@@ -580,6 +580,7 @@ async def _build_tournament_history(
         entry = TournamentHistoryEntry(
             tournament_id=tournament_id,
             tournament_name=tournament_name,
+            discipline=row[7],
             role=role_ref,
             division=division,
             division_grid_version_id=version_id,

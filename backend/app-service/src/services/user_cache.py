@@ -27,11 +27,12 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     "user_tournaments",
     "user_tournament_stats",
     # Versioned in the prefix, like the compare namespaces: both embed ``MatchReadWithUserStats`` (native match
-    # header + viewer facts), and a pre-cutover pickle must sit under a name no reader asks for. The version stays a
-    # part of the prefix so the subject's id is still the first component after it (``{prefix}:{user_id}:*``).
-    "user_tournament_encounters:v4",
-    "user_heroes",
-    "user_encounters:v4",
+    # header + viewer facts) of one discipline, and a pre-cutover pickle must sit under a name no reader asks for. The
+    # version stays a part of the prefix so the subject's id is still the first component after it
+    # (``{prefix}:{user_id}:*``).
+    "user_tournament_encounters:v5",
+    "user_characters",
+    "user_encounters:v5",
     "user_maps",
     "user_teammates",
     "user_matches_summary",
@@ -41,8 +42,8 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
 # they can never be scoped to a single subject id — they always invalidate
 # broadly. Kept separate from the per-user prefixes above for that reason.
 USER_COMPARE_KEY_PREFIXES: tuple[str, ...] = (
-    "user_compare:v2",
-    "user_hero_compare:v2",
+    "user_compare:v3",
+    "user_character_compare:v3",
 )
 
 

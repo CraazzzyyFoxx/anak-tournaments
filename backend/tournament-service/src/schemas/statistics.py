@@ -5,9 +5,6 @@ __all__ = (
     "DivisionStatistics",
     "PlayerStatistics",
     "OverallStatistics",
-    "DashboardActiveTournamentStats",
-    "DashboardIssues",
-    "DashboardStats",
 )
 
 
@@ -45,30 +42,3 @@ class OverallStatistics(BaseModel):
     maps: int
     days: int
     hours: int
-
-
-class DashboardActiveTournamentStats(BaseModel):
-    tournament_id: int
-    encounters_total: int
-    encounters_missing_logs: int
-    log_coverage_percent: int
-
-
-class DashboardIssues(BaseModel):
-    encounters_missing_logs: int
-    teams_without_players: int
-    tournaments_without_stages: int
-    users_without_identities: int
-
-
-class DashboardStats(BaseModel):
-    tournaments_total: int
-    tournaments_active: int
-    teams_total: int
-    players_total: int
-    encounters_total: int
-    heroes_total: int
-    gamemodes_total: int
-    maps_total: int
-    active_tournament_stats: DashboardActiveTournamentStats | None
-    issues: DashboardIssues

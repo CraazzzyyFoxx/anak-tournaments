@@ -1178,8 +1178,7 @@ class UserMergeService:
             "backend:get_statistics_by_heroes_all_values*",
             # Global/cohort baselines can change even when the merged user is not
             # the subject, so compare responses need broad short-TTL invalidation.
-            "backend:user_compare:v2:*",
-            "backend:user_hero_compare:v2:*",
+            *(f"backend:{prefix}:*" for prefix in user_cache.USER_COMPARE_KEY_PREFIXES),
         }
         for user_id in (source_user_id, target_user_id):
             patterns.update(
@@ -1190,7 +1189,7 @@ class UserMergeService:
                     f"backend:*tournaments*{user_id}*",
                     f"backend:*maps*{user_id}*",
                     f"backend:*encounters*{user_id}*",
-                    f"backend:*heroes*{user_id}*",
+                    f"backend:*characters*{user_id}*",
                     f"backend:*teammates*{user_id}*",
                 }
             )

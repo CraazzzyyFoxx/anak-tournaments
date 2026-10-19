@@ -15,8 +15,9 @@ class DashboardService:
     """Aggregate dashboard reads: counts, data-quality issues, active-tournament
     stats, and the fan-out that runs the three of them concurrently."""
 
-    async def get_dashboard_stats(self, *, workspace_id: int | None = None) -> schemas.DashboardStats:
-        counts, issues, active_stats = await self._gather(workspace_id)
+    async def get_dashboard_stats(self, *, discipline: str, workspace_id: int | None = None) -> schemas.DashboardStats:
+        """Workspace-wide tournament counts plus ``discipline``'s catalog sizes."""
+        counts, issues, active_stats = await self._gather(workspace_id, discipline)
 
         active_tournament_stats = None
         if active_stats is not None:
@@ -28,13 +29,13 @@ class DashboardService:
             issues=schemas.DashboardIssues(**issues),
         )
 
-    async def _gather(self, workspace_id: int | None) -> tuple[dict, dict, dict | None]:
+    async def _gather(self, workspace_id: int | None, discipline: str) -> tuple[dict, dict, dict | None]:
         # AsyncSession isn't concurrency-safe for parallel .execute() — spawn
         # independent sessions so the three independent dashboard queries
         # actually run in parallel.
         async def _run_counts() -> dict:
             async with async_session_maker() as s:
-                return await self.get_counts(s, workspace_id)
+                return await self.get_counts(s, workspace_id, discipline=discipline)
 
         async def _run_issues() -> dict:
             async with async_session_maker() as s:
@@ -50,6 +51,8 @@ class DashboardService:
         self,
         session: AsyncSession,
         workspace_id: int | None = None,
+        *,
+        discipline: str,
     ) -> dict[str, int]:
         # Hidden tournaments (issue #115) never contribute to the public dashboard —
         # counts, issues, or the active-tournament pick — regardless of viewer. Every
@@ -97,15 +100,11 @@ class DashboardService:
             )
             .where(registration_open_clause(), *ws_filters)
         )
-        heroes_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
-            models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "character"
-        )
-        gamemodes_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
-            models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "mode"
-        )
-        maps_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
-            models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "map"
-        )
+
+        def catalog_total(kind: str) -> sa.Select:
+            return sa.select(sa.func.count(models.CatalogEntity.id)).where(
+                models.CatalogEntity.discipline == discipline, models.CatalogEntity.kind == kind
+            )
 
         results = await session.execute(
             sa.select(
@@ -116,9 +115,9 @@ class DashboardService:
                 encounters_total.scalar_subquery(),
                 encounters_completed.scalar_subquery(),
                 tournaments_registration_open.scalar_subquery(),
-                heroes_total.scalar_subquery(),
-                gamemodes_total.scalar_subquery(),
-                maps_total.scalar_subquery(),
+                catalog_total("character").scalar_subquery(),
+                catalog_total("mode").scalar_subquery(),
+                catalog_total("map").scalar_subquery(),
             )
         )
         row = results.one()
@@ -130,8 +129,8 @@ class DashboardService:
             "encounters_total": row[4] or 0,
             "encounters_completed": row[5] or 0,
             "tournaments_registration_open": row[6] or 0,
-            "heroes_total": row[7] or 0,
-            "gamemodes_total": row[8] or 0,
+            "characters_total": row[7] or 0,
+            "modes_total": row[8] or 0,
             "maps_total": row[9] or 0,
         }
 

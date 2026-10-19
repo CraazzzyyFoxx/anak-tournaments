@@ -31,9 +31,12 @@ from shared.schemas.role import RoleRef
 from shared.services.ontology import rated_leaf
 from src.core import pagination
 from src.services.user import _mappers
-from src.services.user.queries.encounters import encounters as encounter_queries
-from src.services.user.queries.overview import overview as overview_queries
+from src.services.user.queries.encounters import UserEncounterQueries
+from src.services.user.queries.overview import UserOverviewQueries
 from tests.encounter_seed import seed_confirmed_games, seed_encounter, seed_scoring_rule
+
+encounter_queries = UserEncounterQueries.of("overwatch")
+overview_queries = UserOverviewQueries.of("overwatch")
 
 
 class _Seed:

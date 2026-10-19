@@ -164,6 +164,8 @@ class RegistrationRead(BaseModel):
 class TournamentHistoryEntry(BaseModel):
     tournament_id: int
     tournament_name: str
+    #: The past tournament's own game: its ``role`` belongs to that discipline's ontology, not the viewed one's.
+    discipline: str
     role: RoleRef | None = None
     division: int | None = None
     # References a version in ``RegistrationListResponse.division_grids`` instead of

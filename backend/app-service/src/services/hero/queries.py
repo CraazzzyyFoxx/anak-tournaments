@@ -12,18 +12,14 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid, division_case_expr
-from shared.repository.stats_queries import match_context, player_facts
-from shared.repository.stats_reads import duel_matches
 from shared.services.division_grid.access import effective_division_number_expr
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models
 from src.core import enums, pagination
+from src.services.discipline_queries import DisciplineQueries
 
-__all__ = ("HeroQueries", "queries")
+__all__ = ("HeroQueries",)
 
-_facts = player_facts(discipline="overwatch")
-_matches = match_context(discipline="overwatch")
-_duels = duel_matches(discipline="overwatch")
 
 _LEADERBOARD_STATS = [
     enums.LogStatsName.HeroTimePlayed,
@@ -75,7 +71,7 @@ _STAT_COLUMN_MAP: dict[enums.LogStatsName, str] = {
 }
 
 
-class HeroQueries:
+class HeroQueries(DisciplineQueries):
     """Analytical hero SQL (leaderboard, per-map playtime, stat aggregates)."""
 
     async def get_heroes_playtime_by_maps(
@@ -90,26 +86,26 @@ class HeroQueries:
             sa.select(
                 sa.func.sum(
                     aggregate_order_by(
-                        _facts.c.value,
-                        _facts.c.match_id,
-                        _facts.c.workspace_member_id,
-                        _facts.c.entity_id,
+                        self._facts.c.value,
+                        self._facts.c.match_id,
+                        self._facts.c.workspace_member_id,
+                        self._facts.c.entity_id,
                     )
                 )
             )
             .select_from(models.CatalogEntity)
-            .join(_facts, _facts.c.entity_id == models.CatalogEntity.id)
-            .join(_matches, _matches.c.id == _facts.c.match_id)
-            .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+            .join(self._facts, self._facts.c.entity_id == models.CatalogEntity.id)
+            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
+            .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
             .where(
                 sa.and_(
                     models.CatalogEntity.kind == "character",
-                    models.CatalogEntity.discipline == "overwatch",
-                    _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                    _facts.c.value > 60,
-                    _facts.c.segment == 0,
-                    _facts.c.player_id == user_id,
-                    _matches.c.map_entity_id.in_(maps_ids),
+                    models.CatalogEntity.discipline == self.discipline,
+                    self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                    self._facts.c.value > 60,
+                    self._facts.c.segment == 0,
+                    self._facts.c.player_id == user_id,
+                    self._matches.c.map_entity_id.in_(maps_ids),
                 )
             )
         )
@@ -127,14 +123,14 @@ class HeroQueries:
         query = (
             sa.select(
                 models.CatalogEntity,
-                _matches.c.map_entity_id,
+                self._matches.c.map_entity_id,
                 (
                     sa.func.sum(
                         aggregate_order_by(
-                            _facts.c.value,
-                            _facts.c.match_id,
-                            _facts.c.workspace_member_id,
-                            _facts.c.entity_id,
+                            self._facts.c.value,
+                            self._facts.c.match_id,
+                            self._facts.c.workspace_member_id,
+                            self._facts.c.entity_id,
                         )
                     )
                     / overall_play_time_subquery.as_scalar()
@@ -142,21 +138,21 @@ class HeroQueries:
             )
             .select_from(models.CatalogEntity)
             .join(
-                _facts,
+                self._facts,
                 sa.and_(
-                    _facts.c.entity_id == models.CatalogEntity.id,
-                    _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                    _facts.c.value > 60,
-                    _facts.c.segment == 0,
-                    _facts.c.player_id == user_id,
+                    self._facts.c.entity_id == models.CatalogEntity.id,
+                    self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                    self._facts.c.value > 60,
+                    self._facts.c.segment == 0,
+                    self._facts.c.player_id == user_id,
                 ),
             )
-            .join(_matches, _matches.c.id == _facts.c.match_id)
-            .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
+            .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
             .where(
-                _matches.c.map_entity_id.in_(maps_ids),
+                self._matches.c.map_entity_id.in_(maps_ids),
                 models.CatalogEntity.kind == "character",
-                models.CatalogEntity.discipline == "overwatch",
+                models.CatalogEntity.discipline == self.discipline,
             )
         )
 
@@ -168,7 +164,9 @@ class HeroQueries:
                 models.Tournament.workspace_id == workspace_id
             )
 
-        query = query.group_by(models.CatalogEntity.id, _matches.c.map_entity_id).order_by(sa.text("playtime DESC"))
+        query = query.group_by(models.CatalogEntity.id, self._matches.c.map_entity_id).order_by(
+            sa.text("playtime DESC")
+        )
 
         result = await session.execute(query)
         return result.all()  # type: ignore
@@ -199,28 +197,30 @@ class HeroQueries:
 
         hero_match_q = (
             sa.select(
-                _facts.c.entity_id.label("hero_id"),
-                _facts.c.encounter_team_id,
-                _matches.c.id.label("match_id"),
-                _matches.c.map_entity_id.label("map_id"),
-                sa.func.sum(aggregate_order_by(_facts.c.value, _facts.c.workspace_member_id)).label("playtime_seconds"),
+                self._facts.c.entity_id.label("hero_id"),
+                self._facts.c.encounter_team_id,
+                self._matches.c.id.label("match_id"),
+                self._matches.c.map_entity_id.label("map_id"),
+                sa.func.sum(aggregate_order_by(self._facts.c.value, self._facts.c.workspace_member_id)).label(
+                    "playtime_seconds"
+                ),
             )
-            .select_from(_facts)
-            .join(_matches, _matches.c.id == _facts.c.match_id)
+            .select_from(self._facts)
+            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
             .where(
                 sa.and_(
-                    _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                    _facts.c.value > min_seconds,
-                    _facts.c.segment == 0,
-                    _facts.c.player_id == user_id,
-                    _facts.c.entity_id.isnot(None),
-                    _matches.c.map_entity_id.in_(maps_ids),
+                    self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                    self._facts.c.value > min_seconds,
+                    self._facts.c.segment == 0,
+                    self._facts.c.player_id == user_id,
+                    self._facts.c.entity_id.isnot(None),
+                    self._matches.c.map_entity_id.in_(maps_ids),
                 )
             )
         )
 
         if tournament_id is not None or workspace_id is not None:
-            hero_match_q = hero_match_q.join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+            hero_match_q = hero_match_q.join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
 
             if tournament_id is not None:
                 hero_match_q = hero_match_q.where(models.Encounter.tournament_id == tournament_id)
@@ -231,19 +231,19 @@ class HeroQueries:
                 ).where(models.Tournament.workspace_id == workspace_id)
 
         hero_match = hero_match_q.group_by(
-            _facts.c.entity_id,
-            _facts.c.encounter_team_id,
-            _matches.c.id,
-            _matches.c.map_entity_id,
+            self._facts.c.entity_id,
+            self._facts.c.encounter_team_id,
+            self._matches.c.id,
+            self._matches.c.map_entity_id,
         ).cte("hero_match")
 
         team_score = sa.case(
-            (_duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, _duels.c.home_score),
-            else_=_duels.c.away_score,
+            (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.home_score),
+            else_=self._duels.c.away_score,
         )
         opponent_score = sa.case(
-            (_duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, _duels.c.away_score),
-            else_=_duels.c.home_score,
+            (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.away_score),
+            else_=self._duels.c.home_score,
         )
 
         win_case = sa.case((team_score > opponent_score, 1), else_=0)
@@ -270,7 +270,7 @@ class HeroQueries:
                 ).label("playtime_seconds"),
             )
             .select_from(hero_match)
-            .join(_duels, _duels.c.id == hero_match.c.match_id)
+            .join(self._duels, self._duels.c.id == hero_match.c.match_id)
             .group_by(hero_match.c.map_id, hero_match.c.hero_id)
             .cte("hero_map_agg")
         )
@@ -323,7 +323,7 @@ class HeroQueries:
             .where(
                 ranked.c.rn <= limit_per_map,
                 models.CatalogEntity.kind == "character",
-                models.CatalogEntity.discipline == "overwatch",
+                models.CatalogEntity.discipline == self.discipline,
             )
             .order_by(ranked.c.map_id, ranked.c.rn)
         )
@@ -342,18 +342,18 @@ class HeroQueries:
         *,
         grid: DivisionGrid,
     ) -> tuple[typing.Sequence[typing.Any], int]:
-        hero_pt_alias = sa.alias(_facts)
+        hero_pt_alias = sa.alias(self._facts)
 
         base_conditions: list[typing.Any] = [
-            _facts.c.segment == 0,
-            _facts.c.entity_id == hero_id,
-            _facts.c.stat_code.in_(_LEADERBOARD_STATS),
+            self._facts.c.segment == 0,
+            self._facts.c.entity_id == hero_id,
+            self._facts.c.stat_code.in_(_LEADERBOARD_STATS),
             sa.exists(
                 sa.select(sa.literal(1))
                 .select_from(hero_pt_alias)
                 .where(
-                    hero_pt_alias.c.match_id == _facts.c.match_id,
-                    hero_pt_alias.c.workspace_member_id == _facts.c.workspace_member_id,
+                    hero_pt_alias.c.match_id == self._facts.c.match_id,
+                    hero_pt_alias.c.workspace_member_id == self._facts.c.workspace_member_id,
                     hero_pt_alias.c.entity_id == hero_id,
                     hero_pt_alias.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
                     hero_pt_alias.c.segment == 0,
@@ -366,33 +366,33 @@ class HeroQueries:
             # Cross-tournament leaderboard: exclude hidden tournaments' stats (issue
             # #115). A specific tournament_id is authorized upstream by the handler gate.
             base_conditions.append(
-                _facts.c.match_id.in_(
-                    sa.select(_matches.c.id)
-                    .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+                self._facts.c.match_id.in_(
+                    sa.select(self._matches.c.id)
+                    .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
                     .where(models.Encounter.tournament_id.in_(visible_tournament_ids_subquery(None)))
                 )
             )
 
         base_select = sa.select(
-            _facts.c.match_id,
-            _facts.c.workspace_member_id,
-            _facts.c.stat_id,
-            _facts.c.player_id.label("user_id"),
-            _facts.c.stat_code.label("name"),
-            _facts.c.value,
+            self._facts.c.match_id,
+            self._facts.c.workspace_member_id,
+            self._facts.c.stat_id,
+            self._facts.c.player_id.label("user_id"),
+            self._facts.c.stat_code.label("name"),
+            self._facts.c.value,
         ).where(*base_conditions)
 
         if tournament_id is not None:
             base_select = (
-                base_select.join(_matches, _matches.c.id == _facts.c.match_id)
-                .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+                base_select.join(self._matches, self._matches.c.id == self._facts.c.match_id)
+                .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
                 .where(models.Encounter.tournament_id == tournament_id)
             )
 
         if workspace_id is not None:
             if tournament_id is None:
-                base_select = base_select.join(_matches, _matches.c.id == _facts.c.match_id).join(
-                    models.Encounter, models.Encounter.id == _matches.c.encounter_id
+                base_select = base_select.join(self._matches, self._matches.c.id == self._facts.c.match_id).join(
+                    models.Encounter, models.Encounter.id == self._matches.c.encounter_id
                 )
             base_select = base_select.join(
                 models.Tournament, models.Tournament.id == models.Encounter.tournament_id
@@ -527,7 +527,7 @@ class HeroQueries:
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(models.Player.is_substitution.is_(False), models.Tournament.discipline == "overwatch")
+            .where(models.Player.is_substitution.is_(False), models.Tournament.discipline == self.discipline)
         ).subquery("player_rn")
 
         player_latest_subq = (
@@ -600,6 +600,3 @@ class HeroQueries:
         result = await session.execute(query)
         total = await session.execute(total_query)
         return result.all(), total.scalar_one()
-
-
-queries = HeroQueries()

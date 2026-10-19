@@ -1,10 +1,28 @@
-"""Public catalog payloads: the shared native entity read and the legacy-id resolution."""
+"""Public catalog payloads: the shared native entity read, the legacy-id resolution and the character statistics
+shapes (playtime shares and the per-character leaderboard)."""
 
 from pydantic import BaseModel
 
-from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.catalog import (
+    CatalogEntityRead,
+    CharacterLeaderboardEntry,
+    CharacterLeaderboardParams,
+    CharacterLeaderboardQueryParams,
+    CharacterPlaytime,
+    CharacterPlaytimePaginationParams,
+    CharacterPlaytimeQueryPaginationParams,
+)
 
-__all__ = ("CatalogEntityRead", "CatalogLegacyRead")
+__all__ = (
+    "CatalogEntityRead",
+    "CatalogLegacyRead",
+    "CharacterLeaderboardEntry",
+    "CharacterLeaderboardParams",
+    "CharacterLeaderboardQueryParams",
+    "CharacterPlaytime",
+    "CharacterPlaytimePaginationParams",
+    "CharacterPlaytimeQueryPaginationParams",
+)
 
 
 class CatalogLegacyRead(BaseModel):

@@ -17,7 +17,6 @@ from difflib import unified_diff
 from enum import Enum
 from itertools import groupby, islice
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -343,7 +342,7 @@ def _golden_killfeed(feed: Any, statistics: dict[str, Any], participants: list[d
     Actors resolve to their global player and source team through the match's own members and participants; only
     kills and the three timeline types the old reader selected are kept.
     """
-    from shared.schemas.catalog import HeroRead
+    from shared.core.enums import HeroClass
 
     data = feed.model_dump(mode="python")
     player = {member["workspace_member_id"]: member["player_id"] for member in statistics["members"]}
@@ -351,10 +350,19 @@ def _golden_killfeed(feed: Any, statistics: dict[str, Any], participants: list[d
     entities = {entity["id"]: entity for entity in data["entities"]}
 
     def hero(entity_id: int | None) -> Any:
+        """The frozen OW hero object (the pre-native ``HeroRead`` wire, removed by §4.1) of a native entity."""
         if entity_id is None:
             return None
         entity = entities[entity_id]
-        return HeroRead.from_entity(SimpleNamespace(**entity)).model_dump(mode="python")
+        attrs = entity["attrs"]
+        return {
+            "id": entity["id"],
+            "slug": entity["slug"],
+            "name": entity["name"],
+            "image_path": entity["image_path"] or "",
+            "type": HeroClass[attrs["class"]].value,
+            "color": attrs.get("color", "#ffffff"),
+        }
 
     def team(seat: int | None) -> int | None:
         return None if seat is None else source[seat]

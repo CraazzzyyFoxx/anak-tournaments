@@ -27,19 +27,15 @@ from src import models, schemas
 from src.core import config, enums, errors, pagination
 from src.core.db import async_session_maker
 from src.core.workspace import get_division_grid_version
+from src.services.discipline_queries import DisciplineQueries
 from src.services.hero.service import heroes as hero_service
 from src.services.statistics.queries import StatisticsQueries
-from src.services.statistics.queries import queries as statistics_queries
 
 from . import _mappers
 from .queries.compare import COMPARE_METRIC_DEFINITIONS, DEFAULT_HERO_COMPARE_STATS, UserCompareQueries
-from .queries.compare import compare as compare_queries
 from .queries.encounters import UserEncounterQueries
-from .queries.encounters import encounters as encounter_queries
 from .queries.overview import UserOverviewQueries
-from .queries.overview import overview as overview_queries
 from .queries.profile import UserProfileQueries
-from .queries.profile import profile as profile_queries
 
 __all__ = ["UserService", "users"]
 
@@ -196,23 +192,16 @@ def _compute_better_worse(
     return "better" if subject < baseline else "worse"
 
 
-class UserService:
-    """Orchestrates the user read surface: query objects in, pydantic DTOs out."""
+class UserService(DisciplineQueries):
+    """Orchestrates one game's user statistics; unbound instances serve only identity reads."""
 
-    def __init__(
-        self,
-        *,
-        profile: UserProfileQueries = profile_queries,
-        overview: UserOverviewQueries = overview_queries,
-        compare: UserCompareQueries = compare_queries,
-        encounters: UserEncounterQueries = encounter_queries,
-        statistics: StatisticsQueries = statistics_queries,
-    ) -> None:
-        self.profile = profile
-        self.overview = overview
-        self.compare = compare
-        self.encounters = encounters
-        self.statistics_queries = statistics
+    def __init__(self, discipline: str | None = None) -> None:
+        super().__init__(discipline)
+        self.profile = UserProfileQueries.of(discipline)
+        self.overview = UserOverviewQueries.of(discipline)
+        self.compare = UserCompareQueries.of(discipline)
+        self.encounters = UserEncounterQueries.of(discipline)
+        self.statistics_queries = StatisticsQueries.of(discipline)
 
     @staticmethod
     def to_read(user: models.User, entities: list[str], *, visible_only: bool = False) -> schemas.UserRead:
@@ -389,9 +378,9 @@ class UserService:
                     name=user.name,
                     avatar_url=user.avatar_url,
                     roles=roles_by_user.get(user.id, []),
-                    top_heroes=[
-                        schemas.UserOverviewHero(
-                            hero=hero_service.to_read(hero),
+                    top_characters=[
+                        schemas.UserOverviewCharacter(
+                            character=hero_service.to_read(hero),
                             playtime_seconds=round(playtime_seconds, 2),
                         )
                         for hero, playtime_seconds in top_heroes_map.get(user.id, [])
@@ -510,9 +499,9 @@ class UserService:
                         name=user.name,
                         avatar_url=user.avatar_url,
                         roles=roles_by_user.get(user.id, []),
-                        top_heroes=[
-                            schemas.UserOverviewHero(
-                                hero=hero_service.to_read(hero),
+                        top_characters=[
+                            schemas.UserOverviewCharacter(
+                                character=hero_service.to_read(hero),
                                 playtime_seconds=round(playtime_seconds, 2),
                             )
                             for hero, playtime_seconds in top_heroes_map.get(user.id, [])
@@ -698,7 +687,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_compare:v2:{id}:{baseline}:{target_user_id}:{role}:{div_min}:{div_max}:"
+            "backend:user_compare:v3:{id}:{self.discipline}:{baseline}:{target_user_id}:{role}:{div_min}:{div_max}:"
             "{tournament_id}:{workspace_id}:{grid_version}"
         ),
         lock=True,
@@ -766,11 +755,11 @@ class UserService:
         self,
         session: AsyncSession,
         id: int,
-        params: schemas.UserHeroCompareParams,
+        params: schemas.UserCharacterCompareParams,
         *,
         grid: DivisionGrid,
         workspace_id: int | None = None,
-    ) -> schemas.UserHeroCompareResponse:
+    ) -> schemas.UserCharacterCompareResponse:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
                 status_code=400,
@@ -794,6 +783,27 @@ class UserService:
             )
 
         subject = await self.get(session, id, [])
+        left_hero_model, right_hero_model, map_model = await self.compare.get_compare_catalog_entities(
+            session,
+            left_hero_id=params.left_entity_id,
+            right_hero_id=params.right_entity_id,
+            map_id=params.map_id,
+        )
+        if params.left_entity_id is not None and left_hero_model is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Character {params.left_entity_id} not found")],
+            )
+        if params.right_entity_id is not None and right_hero_model is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Character {params.right_entity_id} not found")],
+            )
+        if params.map_id is not None and map_model is None:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Map with ID {params.map_id} not found")],
+            )
         target: schemas.UserCompareUser | None = None
         baseline_target: schemas.UserCompareUser | None = None
         sample_size = 0
@@ -805,7 +815,7 @@ class UserService:
         left_playtime, left_stats = await self.compare.get_user_hero_compare_stats(
             session,
             user_id=subject.id,
-            hero_id=params.left_hero_id,
+            hero_id=params.left_entity_id,
             map_id=params.map_id,
             stats=requested_stats,
             role=compare_role,
@@ -823,7 +833,7 @@ class UserService:
             right_playtime, right_stats = await self.compare.get_user_hero_compare_stats(
                 session,
                 user_id=target_model.id,
-                hero_id=params.right_hero_id,
+                hero_id=params.right_entity_id,
                 map_id=params.map_id,
                 stats=requested_stats,
                 tournament_id=params.tournament_id,
@@ -842,7 +852,7 @@ class UserService:
             baseline_playtime_by_user, baseline_stats_by_user = await self.compare.get_users_hero_compare_stats(
                 session,
                 user_ids=None,
-                hero_id=params.right_hero_id,
+                hero_id=params.right_entity_id,
                 map_id=params.map_id,
                 stats=requested_stats,
                 role=compare_role,
@@ -882,7 +892,7 @@ class UserService:
                 for stat in requested_stats
             }
 
-        metrics: list[schemas.UserHeroCompareMetric] = []
+        metrics: list[schemas.UserCharacterCompareMetric] = []
         for stat in requested_stats:
             left_value = float(left_stats.get(stat, 0.0))
             right_value = float(right_stats.get(stat, 0.0))
@@ -892,7 +902,7 @@ class UserService:
             if right_value != 0:
                 delta_percent = (delta / abs(right_value)) * 100
             metrics.append(
-                schemas.UserHeroCompareMetric(
+                schemas.UserCharacterCompareMetric(
                     stat=stat,
                     left_value=round(left_value, 2),
                     right_value=round(right_value, 2),
@@ -903,28 +913,6 @@ class UserService:
                 )
             )
 
-        left_hero_model, right_hero_model, map_model = await self.compare.get_compare_catalog_entities(
-            session,
-            left_hero_id=params.left_hero_id,
-            right_hero_id=params.right_hero_id,
-            map_id=params.map_id,
-        )
-        if params.left_hero_id is not None and left_hero_model is None:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="not_found", msg=f"Hero {params.left_hero_id} not found")],
-            )
-        if params.right_hero_id is not None and right_hero_model is None:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="not_found", msg=f"Hero {params.right_hero_id} not found")],
-            )
-        if params.map_id is not None and map_model is None:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="not_found", msg=f"Map with ID {params.map_id} not found")],
-            )
-
         # Local import: ``map.service`` imports this module's ``users`` singleton at
         # module level, so importing it at the top would be a cycle.
         from src.services.map.service import maps as map_service
@@ -933,7 +921,7 @@ class UserService:
         right_hero = hero_service.to_read(right_hero_model) if right_hero_model else None
         map_value = map_service.to_read(map_model, []) if map_model else None
 
-        return schemas.UserHeroCompareResponse(
+        return schemas.UserCharacterCompareResponse(
             subject=schemas.UserCompareUser(id=subject.id, name=subject.name),
             target=target,
             baseline=schemas.UserCompareBaselineInfo(
@@ -944,8 +932,8 @@ class UserService:
                 div_min=resolved_div_min if mode == "cohort" else None,
                 div_max=resolved_div_max if mode == "cohort" else None,
             ),
-            subject_hero=left_hero,
-            target_hero=right_hero,
+            subject_character=left_hero,
+            target_character=right_hero,
             map=map_value,
             left_playtime_seconds=round(left_playtime, 2),
             right_playtime_seconds=round(right_playtime, 2),
@@ -955,7 +943,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_hero_compare:v2:{id}:{baseline}:{target_user_id}:{left_hero_id}:"
+            "backend:user_character_compare:v3:{id}:{self.discipline}:{baseline}:{target_user_id}:{left_hero_id}:"
             "{right_hero_id}:{map_id}:{role}:{div_min}:{div_max}:{tournament_id}:{workspace_id}:"
             "{stats_key}:{grid_version}"
         ),
@@ -979,16 +967,16 @@ class UserService:
         grid_version: int | None,
         *,
         grid: DivisionGrid,
-    ) -> schemas.UserHeroCompareResponse:
+    ) -> schemas.UserCharacterCompareResponse:
         del grid_version
         return await self.get_hero_compare(
             session,
             id,
-            schemas.UserHeroCompareParams(
+            schemas.UserCharacterCompareParams(
                 baseline=baseline,
                 target_user_id=target_user_id,
-                left_hero_id=left_hero_id,
-                right_hero_id=right_hero_id,
+                left_entity_id=left_hero_id,
+                right_entity_id=right_hero_id,
                 map_id=map_id,
                 role=RoleRef.model_validate_json(role) if role is not None else None,
                 div_min=div_min,
@@ -1004,11 +992,11 @@ class UserService:
         self,
         session: AsyncSession,
         id: int,
-        params: schemas.UserHeroCompareParams,
+        params: schemas.UserCharacterCompareParams,
         *,
         grid: DivisionGrid,
         workspace_id: int | None = None,
-    ) -> schemas.UserHeroCompareResponse:
+    ) -> schemas.UserCharacterCompareResponse:
         requested_stats = {stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed}
         if not requested_stats:
             requested_stats = set(DEFAULT_HERO_COMPARE_STATS)
@@ -1019,8 +1007,8 @@ class UserService:
             id,
             params.baseline,
             params.target_user_id if params.baseline == "target_user" else None,
-            params.left_hero_id,
-            params.right_hero_id,
+            params.left_entity_id,
+            params.right_entity_id,
             params.map_id,
             params.role.model_dump_json(exclude={"parent"}) if is_cohort and params.role is not None else None,
             params.div_min if is_cohort else None,
@@ -1111,7 +1099,7 @@ class UserService:
     # changes are rare; a TournamentChangedEvent invalidates all user_* keys.
     @cache(
         ttl=config.settings.user_profile_cache_ttl,
-        key="backend:user_profile:{id}:{workspace_id}",
+        key="backend:user_profile:{id}:{self.discipline}:{workspace_id}:native",
     )
     async def get_profile(
         self,
@@ -1134,12 +1122,12 @@ class UserService:
                     session,
                     workspace_id,
                     require_complete=False,
-                    discipline="overwatch",
+                    discipline=self.discipline,
                 )
             except DivisionGridNormalizationError:
                 normalizer = None
 
-        current_grid_version_model = await get_division_grid_version(session, workspace_id, discipline="overwatch")
+        current_grid_version_model = await get_division_grid_version(session, workspace_id, discipline=self.discipline)
         current_grid_version = (
             schemas.DivisionGridVersionRead.model_validate(current_grid_version_model, from_attributes=True)
             if current_grid_version_model is not None
@@ -1156,7 +1144,8 @@ class UserService:
         )
         hero_statistics = await hero_service.get_playtime(
             session,
-            schemas.HeroPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
+            schemas.CharacterPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
+            discipline=self.discipline,
             workspace_id=workspace_id,
         )
 
@@ -1219,16 +1208,16 @@ class UserService:
             avg_playoff_placement=(round(mean(placements_playoff), 2) if placements_playoff else None),
             avg_group_placement=(round(mean(placements_group), 2) if placements_group else None),
             avg_closeness=round(avg_closeness, 2) if avg_closeness else 0,
-            most_played_hero=(hero_statistics.results[0].hero if hero_statistics.results else None),
-            heroes_count=hero_statistics.total,
+            most_played_character=(hero_statistics.results[0].entity if hero_statistics.results else None),
+            characters_count=hero_statistics.total,
             roles=roles,
-            hero_statistics=hero_statistics.results,
+            character_statistics=hero_statistics.results,
             tournaments=sorted(tournaments, key=lambda x: x.id, reverse=True),
         )
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_draft_card:{id}:{workspace_id}",
+        key="backend:user_draft_card:{id}:{self.discipline}:{workspace_id}:native",
     )
     async def get_draft_card(
         self, session: AsyncSession, id: int, workspace_id: int | None = None
@@ -1325,10 +1314,9 @@ class UserService:
             best_placement=min(placements) if placements else None,
             avg_placement=round(mean(placements), 2) if placements else None,
             roles=roles,
-            heroes=[
-                schemas.UserDraftCardHero(
-                    hero=hero_service.to_read(hero),
-                    role=enums.HeroClass[hero.attrs["class"]].slot_code,
+            characters=[
+                schemas.UserDraftCardCharacter(
+                    character=hero_service.to_read(hero),
                     maps=hero_maps,
                     maps_won=hero_maps_won,
                 )
@@ -1339,7 +1327,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournaments:{id}:{workspace_id}:owner_scope",
+        key="backend:user_tournaments:{id}:{self.discipline}:{workspace_id}:native",
     )
     async def get_tournaments(
         self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
@@ -1374,7 +1362,9 @@ class UserService:
             }
         )
         avg_mvp_map = await self.encounters.get_roster_avg_mvp_bulk(session, tournaments_ids, roster_user_ids)
-        top_heroes_map = await self.encounters.get_roster_top_heroes_bulk(session, tournaments_ids, roster_user_ids)
+        top_characters_map = await self.encounters.get_roster_top_characters_bulk(
+            session, tournaments_ids, roster_user_ids
+        )
         version_by_tournament, tournament_version_reads = await _tournament_grid_versions(session, tournaments_ids)
         grids_by_version = await load_division_grids(
             session,
@@ -1421,8 +1411,8 @@ class UserService:
                         if player.workspace_member is not None
                         else None
                     ),
-                    heroes=(
-                        top_heroes_map.get((team.tournament_id, player.workspace_member.player_id), [])
+                    characters=(
+                        top_characters_map.get((team.tournament_id, player.workspace_member.player_id), [])
                         if player.workspace_member is not None
                         else []
                     ),
@@ -1457,7 +1447,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:v4:{id}:{tournament_id}",
+        key="backend:user_tournament_encounters:v5:{id}:{self.discipline}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self, session: AsyncSession, id: int, tournament_id: int
@@ -1529,7 +1519,7 @@ class UserService:
     # TournamentChangedEvent that broadly drops ``user_tournament_stats:*``.
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_stats:{id}:{tournament_id}",
+        key="backend:user_tournament_stats:{id}:{self.discipline}:{tournament_id}:native",
         lock=True,
     )
     async def get_tournament_with_stats(
@@ -1660,7 +1650,7 @@ class UserService:
         stats: list[enums.LogStatsName] | None = None,
         tournament_id: int | None = None,
         workspace_id: int | None = None,
-    ) -> pagination.Paginated[schemas.HeroWithUserStats]:
+    ) -> pagination.Paginated[schemas.CharacterWithUserStats]:
         """Cache wrapper for a user's hero statistics.
 
         Normalizes the requested-stats list (sort + dedup) into a stable cache key
@@ -1680,7 +1670,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_heroes:{id}:{workspace_id}:{tournament_id}:{stats_key}:{params.page}:{params.per_page}",
+        key="backend:user_characters:{id}:{self.discipline}:{workspace_id}:{tournament_id}:{stats_key}:{params.page}:{params.per_page}",
         lock=True,
     )
     async def _get_heroes_cached(
@@ -1692,7 +1682,7 @@ class UserService:
         stats: list[enums.LogStatsName] | None = None,
         tournament_id: int | None = None,
         workspace_id: int | None = None,
-    ) -> pagination.Paginated[schemas.HeroWithUserStats]:
+    ) -> pagination.Paginated[schemas.CharacterWithUserStats]:
         """Paginated hero statistics for a user, each stat paired with the global
         per-hero comparison values.
         """
@@ -1705,10 +1695,10 @@ class UserService:
             session, user.id, stats_filter, tournament_id=tournament_id, workspace_id=workspace_id
         )
         all_stats = await self.profile.get_statistics_by_heroes_all_values(session, stats_filter)
-        payload: list[schemas.HeroWithUserStats] = []
+        payload: list[schemas.CharacterWithUserStats] = []
 
-        stats_by_hero: dict[int, dict[enums.LogStatsName, schemas.HeroStat]] = {}
-        cache_hero: dict[int, schemas.HeroRead] = {}
+        stats_by_hero: dict[int, dict[enums.LogStatsName, schemas.CharacterStat]] = {}
+        cache_hero: dict[int, schemas.CatalogEntityRead] = {}
 
         for name, hero, value, value_best, value_avg_10, best_meta in user_stats:
             if requested_stats and name not in requested_stats and name != enums.LogStatsName.HeroTimePlayed:
@@ -1717,10 +1707,10 @@ class UserService:
                 cache_hero[hero.id] = hero_service.to_read(hero)
             if hero.id not in stats_by_hero:
                 stats_by_hero[hero.id] = {}
-            stats_by_hero[hero.id][name] = schemas.HeroStat(
+            stats_by_hero[hero.id][name] = schemas.CharacterStat(
                 name=name,
                 overall=round(value, 2),
-                best=schemas.HeroStatBest(
+                best=schemas.CharacterStatBest(
                     encounter_id=best_meta["encounter_id"],
                     map_name=best_meta["map_name"],
                     value=round(value_best, 2),
@@ -1737,7 +1727,7 @@ class UserService:
             if requested_stats and name not in requested_stats:
                 continue
             if hero_id in stats_by_hero:
-                stats_by_hero[hero_id][name].best_all = schemas.HeroStatBest(
+                stats_by_hero[hero_id][name].best_all = schemas.CharacterStatBest(
                     encounter_id=best_meta["encounter_id"],
                     map_name=best_meta["map_name"],
                     value=round(value_best, 2),
@@ -1761,8 +1751,8 @@ class UserService:
                     continue
 
             payload.append(
-                schemas.HeroWithUserStats(
-                    hero=cache_hero[hero_id],
+                schemas.CharacterWithUserStats(
+                    character=cache_hero[hero_id],
                     stats=hero_stats,
                 )
             )
@@ -1776,7 +1766,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_teammates:{id}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}",
+        key="backend:user_teammates:{id}:{self.discipline}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}",
     )
     async def get_best_teammates(
         self,
@@ -1812,7 +1802,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:v4:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v5:{user_id}:{self.discipline}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,
@@ -1868,7 +1858,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_matches_summary:{user_id}:{workspace_id}:{opponents_limit}",
+        key="backend:user_matches_summary:{user_id}:{self.discipline}:{workspace_id}:{opponents_limit}",
     )
     async def get_matches_summary(
         self,

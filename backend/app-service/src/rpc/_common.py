@@ -11,6 +11,12 @@ from __future__ import annotations
 from functools import partial
 from typing import Any
 
+import sqlalchemy as sa
+
+from shared.core import http_status as status
+from shared.core.errors import ApiExc, ApiHTTPException
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.rpc.common import (
     actor,
     dump,
@@ -32,6 +38,7 @@ from shared.rpc.common import (
     envelope as _envelope,
 )
 from shared.services.tournament.visibility import ensure_tournament_viewable
+from src import models
 
 __all__ = (
     "identity_user_id",
@@ -50,10 +57,39 @@ __all__ = (
     "require_id",
     "require_query_int",
     "dump",
+    "require_discipline",
+    "tournament_discipline",
     "envelope",
 )
 
 envelope = partial(_envelope, service="app")
+
+
+def require_discipline(data: dict[str, Any], *, in_path: bool = False) -> str:
+    """The request's explicit game, from ``?discipline=`` or the route's ``{discipline}`` segment.
+
+    Absent is a 422 and a code no module declares is a 404 ``discipline_not_installed``: a stats read never falls back
+    to a default game and never reads another game's facts under a bogus label.
+    """
+    raw = data.get("discipline") if in_path else q1(data, "discipline", str, None)
+    if not isinstance(raw, str) or not raw.strip():
+        raise HTTPException(status_code=422, detail="discipline is required")
+    if raw not in DISCIPLINES:
+        raise ApiHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {raw!r} is not installed")],
+        )
+    return raw
+
+
+async def tournament_discipline(session: Any, tournament_id: int) -> str:
+    """The game a tournament belongs to: its owner discipline overrides any browsing choice."""
+    discipline = await session.scalar(
+        sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id)
+    )
+    if discipline is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return discipline
 
 
 async def gate_tournament(session: Any, data: dict[str, Any], tournament_id: int | None) -> None:

@@ -75,12 +75,12 @@ def hidden_workspace_tournament(db):
 
 
 def _q(tid: int) -> dict:
-    return {"query": {"tournament_id": [str(tid)]}}
+    return {"discipline": "overwatch", "query": {"tournament_id": [str(tid)]}}
 
 
 def test_hidden_playtime_404_for_anon(rpc, hidden_and_visible):
     _ws, hidden_id, _visible = hidden_and_visible
-    resp = rpc.call_sync("rpc.app.heroes.playtime", _q(hidden_id))  # no identity
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", _q(hidden_id))  # no identity
     assert resp["ok"] is False
     assert resp["error"]["code"] == "not_found"
 
@@ -89,13 +89,13 @@ def test_hidden_playtime_allowed_for_superuser(rpc, hidden_and_visible):
     _ws, hidden_id, _visible = hidden_and_visible
     data = _q(hidden_id)
     data["identity"] = {"user_id": 1, "is_superuser": True, "is_active": True}
-    resp = rpc.call_sync("rpc.app.heroes.playtime", data)
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", data)
     assert resp["ok"] is True  # gate passed; playtime is simply empty for a fresh tournament
 
 
 def test_visible_playtime_ok_for_anon(rpc, hidden_and_visible):
     _ws, _hidden, visible_id = hidden_and_visible
-    resp = rpc.call_sync("rpc.app.heroes.playtime", _q(visible_id))  # no identity
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", _q(visible_id))  # no identity
     assert resp["ok"] is True
 
 
@@ -112,7 +112,7 @@ def test_hidden_user_tournament_404_for_anon(rpc, hidden_and_visible):
 
 def test_cascade_hidden_workspace_404_for_anon(rpc, hidden_workspace_tournament):
     _ws, tid = hidden_workspace_tournament
-    resp = rpc.call_sync("rpc.app.heroes.playtime", _q(tid))  # no identity
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", _q(tid))  # no identity
     assert resp["ok"] is False
     assert resp["error"]["code"] == "not_found"
 
@@ -121,7 +121,7 @@ def test_cascade_hidden_workspace_404_for_non_member(rpc, hidden_workspace_tourn
     _ws, tid = hidden_workspace_tournament
     data = _q(tid)
     data["identity"] = {"user_id": 999999, "is_active": True}
-    resp = rpc.call_sync("rpc.app.heroes.playtime", data)
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", data)
     assert resp["ok"] is False
     assert resp["error"]["code"] == "not_found"
 
@@ -131,7 +131,7 @@ def test_cascade_hidden_workspace_allowed_for_a_plain_member(rpc, hidden_workspa
     ws_id, tid = hidden_workspace_tournament
     data = _q(tid)
     data["identity"] = {"user_id": 999999, "is_active": True, "workspaces": [{"workspace_id": ws_id}]}
-    resp = rpc.call_sync("rpc.app.heroes.playtime", data)
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", data)
     assert resp["ok"] is True
 
 
@@ -139,5 +139,5 @@ def test_cascade_hidden_workspace_allowed_for_superuser(rpc, hidden_workspace_to
     _ws, tid = hidden_workspace_tournament
     data = _q(tid)
     data["identity"] = {"user_id": 1, "is_superuser": True, "is_active": True}
-    resp = rpc.call_sync("rpc.app.heroes.playtime", data)
+    resp = rpc.call_sync("rpc.app.statistics.character_playtime", data)
     assert resp["ok"] is True

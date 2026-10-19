@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from shared.core.errors import ApiHTTPException
 from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DEFAULT_GRID
 from shared.schemas.role import RoleRef
@@ -30,11 +31,18 @@ from shared.testing import configure_test_cache
 from src import models, schemas
 from src.core import enums, pagination
 from src.services.achievements.service import achievements
+from src.services.hero.queries import HeroQueries
 from src.services.hero.service import heroes
 from src.services.map.service import maps
-from src.services.statistics.queries import queries as statistics_queries
+from src.services.statistics.queries import StatisticsQueries
 from src.services.statistics.service import statistics
-from src.services.user.service import tournament_stats, users
+from src.services.user.service import UserService, tournament_stats
+
+#: Every reader of the frozen capture was the OW-bound one; the native readers take the game explicitly.
+OW = "overwatch"
+users = UserService.of(OW)
+statistics_queries = StatisticsQueries.of(OW)
+hero_queries = HeroQueries.of(OW)
 
 GOLDEN = Path(__file__).parent / "fixtures" / "stats_reader_parity.json"
 ALL_STATS = list(enums.LogStatsName)
@@ -90,6 +98,54 @@ def _frozen_hero(entity: dict[str, Any]) -> dict[str, Any]:
         "slug": entity["slug"],
         "type": entity["attrs"].get("class"),
     }
+
+
+def _read_hero(entity: dict[str, Any]) -> dict[str, Any]:
+    """A native character in the frozen app ``HeroRead`` representation (``type`` spelled as the ``HeroClass`` value)."""
+    return {**_frozen_hero(entity), "type": enums.HeroClass[entity["attrs"]["class"]].value}
+
+
+#: §4.1 renames, mapped back to the frozen field names (projection only).
+_LEGACY_KEYS = {
+    "characters": "heroes",
+    "character": "hero",
+    "top_characters": "top_heroes",
+    "most_played_character": "most_played_hero",
+    "characters_count": "heroes_count",
+    "character_statistics": "hero_statistics",
+    "character_stats": "hero_stats",
+    "subject_character": "subject_hero",
+    "target_character": "target_hero",
+}
+
+
+def _legacy_catalog(value: Any, *, roster: bool = False) -> Any:
+    """Native catalog entities and the renamed character fields in the frozen OW representation.
+
+    Characters become the app ``HeroRead`` (roster players' top heroes were JSON-built: ``type`` is the class label),
+    maps the frozen ``MapRead``; a playtime row's ``entity`` is its ``hero``; a draft-card row regains its class slot
+    code. Values are untouched.
+    """
+    if isinstance(value, list):
+        return [_legacy_catalog(item, roster=roster) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if {"kind", "discipline", "attrs", "aliases", "active"} <= value.keys():
+        if value["kind"] == "map":
+            return _frozen_map(value)
+        return _frozen_hero(value) if roster else _read_hero(value)
+    if value.keys() == {"entity", "playtime"}:
+        value = {"hero": value["entity"], "playtime": value["playtime"]}
+    # Achievement payloads went native in P6; ``_accept_p6_achievement_wire`` projects those, not this walker.
+    result = {
+        _LEGACY_KEYS.get(key, key): item
+        if key == "achievements"
+        else _legacy_catalog(item, roster=roster or key == "players")
+        for key, item in value.items()
+    }
+    if "character" in value and {"maps", "maps_won"} <= value.keys():
+        result["role"] = enums.HeroClass[value["character"]["attrs"]["class"]].slot_code
+    return result
 
 
 def _frozen_map(entity: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -171,7 +227,7 @@ def _frozen_match(match: dict[str, Any]) -> dict[str, Any]:
 def _hero_stat_rows(rows: Any) -> list[Any]:
     # The query groups by (hero, stat) without an ORDER BY.
     return [
-        _json((name, heroes.to_read(hero), *values))
+        _json((name, _read_hero(_json(heroes.to_read(hero))), *values))
         for name, hero, *values in sorted(rows, key=lambda row: (row[1].id, row[0].value))
     ]
 
@@ -179,7 +235,7 @@ def _hero_stat_rows(rows: Any) -> list[Any]:
 def _hero_page(page: Any) -> dict[str, Any]:
     result = _json(page)
     # These are unordered SQL aggregate groups, not a leaderboard.
-    result["results"].sort(key=lambda row: row["hero"]["id"])
+    result["results"].sort(key=lambda row: row["character"]["id"])
     for row in result["results"]:
         row["stats"].sort(key=lambda stat: stat["name"])
     return result
@@ -375,14 +431,14 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
             for label, filters in (
                 ("all_stats", {}),
                 ("damage", {"baseline": "cohort", "role": DAMAGE}),
-                ("hero_and_map", {"left_hero_id": ids["hero"], "right_hero_id": ids["hero"], "map_id": ids["map"]}),
+                ("hero_and_map", {"left_entity_id": ids["hero"], "right_entity_id": ids["hero"], "map_id": ids["map"]}),
                 (
                     "target",
                     {
                         "baseline": "target_user",
                         "target_user_id": opponent,
-                        "left_hero_id": ids["hero"],
-                        "right_hero_id": ids["hero_other"],
+                        "left_entity_id": ids["hero"],
+                        "right_entity_id": ids["hero_other"],
                     },
                 ),
                 ("no_stats_target", {"baseline": "target_user", "target_user_id": ids["player_event_only"]}),
@@ -391,7 +447,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                     await users.get_hero_compare(
                         session,
                         ids["player"],
-                        schemas.UserHeroCompareParams(stats=ALL_STATS, **filters),
+                        schemas.UserCharacterCompareParams(stats=ALL_STATS, **filters),
                         workspace_id=workspace_id,
                         grid=DEFAULT_GRID,
                     )
@@ -426,8 +482,9 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                     scoped["hero_leaderboards"][f"{hero_key}:{stat.value}"] = _leaderboard_page(
                         await heroes.get_hero_leaderboard(
                             session,
-                            ids[hero_key],
-                            schemas.HeroLeaderboardParams(per_page=100, stat=stat),
+                            discipline=OW,
+                            entity_id=ids[hero_key],
+                            params=schemas.CharacterLeaderboardParams(per_page=100, stat=stat),
                             workspace_id=workspace_id,
                             grid=DEFAULT_GRID,
                         )
@@ -435,7 +492,8 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
             scoped["hero_playtime_all_players"] = _json(
                 await heroes.get_playtime(
                     session,
-                    schemas.HeroPlaytimePaginationParams(per_page=100),
+                    schemas.CharacterPlaytimePaginationParams(per_page=100),
+                    discipline=OW,
                     workspace_id=workspace_id,
                 )
             )
@@ -443,16 +501,17 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                 per_page=100,
                 sort="count",
                 order="desc",
-                entities=["gamemode", "heroes", "hero_stats"],
+                entities=["parent", "characters", "character_stats"],
             )
             scoped["maps"] = _json(
-                await maps.get_top_user(session, ids["player"], map_params, workspace_id=workspace_id)
+                await maps.get_top_user(session, ids["player"], map_params, discipline=OW, workspace_id=workspace_id)
             )
             scoped["maps_summary"] = _json(
                 await maps.get_top_user_summary(
                     session,
                     ids["player"],
                     map_params,
+                    discipline=OW,
                     workspace_id=workspace_id,
                 )
             )
@@ -461,6 +520,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                     session,
                     ids["player"],
                     schemas.UserMapsSearchParams(per_page=100, sort="id", min_count=2),
+                    discipline=OW,
                     workspace_id=workspace_id,
                 )
             )
@@ -478,6 +538,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                         await reader(
                             session,
                             params,
+                            discipline=OW,
                             workspace_id=workspace_id,
                         )
                     )
@@ -565,8 +626,9 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
             item["hero_leaderboard"] = _leaderboard_page(
                 await heroes.get_hero_leaderboard(
                     session,
-                    ids["hero"],
-                    schemas.HeroLeaderboardParams(
+                    discipline=OW,
+                    entity_id=ids["hero"],
+                    params=schemas.CharacterLeaderboardParams(
                         per_page=100,
                         tournament_id=tournament_id,
                         stat=enums.LogStatsName.Eliminations,
@@ -589,8 +651,9 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                         per_page=100,
                         sort="id",
                         tournament_id=tournament_id,
-                        entities=["heroes", "hero_stats", "gamemode"],
+                        entities=["characters", "character_stats", "parent"],
                     ),
+                    discipline=OW,
                 )
             )
             item["achievements"] = _json(
@@ -602,7 +665,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                 )
             )
             output["tournaments"][tournament_key] = item
-        return _json(output)
+        return _legacy_catalog(_json(output))
     finally:
         user_module.async_session_maker = original_factory
 
@@ -666,14 +729,14 @@ def test_native_hero_thresholds_and_distinct_denominators(
                 tournament_id=ids["tournament"],
                 workspace_id=ids["workspace"],
             )
-            map_rows = await heroes.queries.get_user_hero_stats_by_maps(
+            map_rows = await hero_queries.get_user_hero_stats_by_maps(
                 session,
                 [ids["map"]],
                 ids["player"],
                 tournament_id=ids["tournament"],
                 workspace_id=ids["workspace"],
             )
-            shares = await heroes.queries.get_heroes_playtime_by_maps(
+            shares = await hero_queries.get_heroes_playtime_by_maps(
                 session,
                 [ids["map"]],
                 ids["player"],
@@ -695,8 +758,9 @@ def test_native_hero_thresholds_and_distinct_denominators(
                 assert (shares[0][0].id, shares[0][1], shares[0][2]) == (ids["hero"], ids["map"], 1)
             leaderboard = await heroes.get_hero_leaderboard(
                 session,
-                ids["hero"],
-                schemas.HeroLeaderboardParams(
+                discipline=OW,
+                entity_id=ids["hero"],
+                params=schemas.CharacterLeaderboardParams(
                     per_page=100,
                     tournament_id=ids["tournament"],
                     stat=enums.LogStatsName.Eliminations,
@@ -718,11 +782,11 @@ def test_native_hero_thresholds_and_distinct_denominators(
             comparison = await users.get_hero_compare(
                 session,
                 ids["player"],
-                schemas.UserHeroCompareParams(
+                schemas.UserCharacterCompareParams(
                     baseline="target_user",
                     target_user_id=ids["player_event_only"],
-                    left_hero_id=ids["hero"],
-                    right_hero_id=ids["hero"],
+                    left_entity_id=ids["hero"],
+                    right_entity_id=ids["hero"],
                     map_id=ids["map"],
                     tournament_id=ids["tournament"],
                     stats=[enums.LogStatsName.Eliminations],
@@ -892,13 +956,13 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
                     workspace_id=workspace_id,
                     grid=DEFAULT_GRID,
                 )
-                map_playtime = await heroes.queries.get_heroes_playtime_by_maps(
+                map_playtime = await hero_queries.get_heroes_playtime_by_maps(
                     session,
                     map_ids,
                     ids["player"],
                     workspace_id=workspace_id,
                 )
-                map_stats = await heroes.queries.get_user_hero_stats_by_maps(
+                map_stats = await hero_queries.get_user_hero_stats_by_maps(
                     session,
                     map_ids,
                     ids["player"],
@@ -915,7 +979,8 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
                         ),
                         "hero_playtime": await heroes.get_playtime(
                             session,
-                            schemas.HeroPlaytimePaginationParams(user_id=ids["player"], per_page=100),
+                            schemas.CharacterPlaytimePaginationParams(user_id=ids["player"], per_page=100),
+                            discipline=OW,
                             workspace_id=workspace_id,
                         ),
                         "hero_comparison": {
@@ -959,17 +1024,17 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
                 right_hero_id=ids["hero_lol"],
                 map_id=ids["map_lol"],
             ) == (None, None, None)
-            leaderboard = await heroes.get_hero_leaderboard(
-                session,
-                ids["hero_lol"],
-                schemas.HeroLeaderboardParams(
-                    per_page=100,
-                    stat=enums.LogStatsName.HeroDamageDealt,
-                ),
-                workspace_id=workspace_id,
-                grid=DEFAULT_GRID,
-            )
-            assert leaderboard.total == 0 and leaderboard.results == []
+            # Another game's character is not a character of this game: a 404, never an empty OW board.
+            with pytest.raises(ApiHTTPException) as foreign_character:
+                await heroes.get_hero_leaderboard(
+                    session,
+                    discipline=OW,
+                    entity_id=ids["hero_lol"],
+                    params=schemas.CharacterLeaderboardParams(per_page=100, stat=enums.LogStatsName.HeroDamageDealt),
+                    workspace_id=workspace_id,
+                    grid=DEFAULT_GRID,
+                )
+            assert foreign_character.value.status_code == 404
             foreign = await session.get(models.Tournament, ids["tournament_lol"])
             assert foreign is not None
             assert (

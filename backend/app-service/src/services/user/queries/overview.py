@@ -12,13 +12,13 @@ from sqlalchemy.orm import aliased
 
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
-from shared.repository.stats_queries import match_context, player_facts
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import config, enums, pagination
 from src.domain.encounter_seats import Seat
+from src.services.discipline_queries import DisciplineQueries
 
 from ._scope import (
     _apply_overview_role_filters,
@@ -31,9 +31,6 @@ from ._scope import (
     player_role_filter,
 )
 
-_facts = player_facts(discipline="overwatch")
-_matches = match_context(discipline="overwatch")
-
 if typing.TYPE_CHECKING:
     from src import schemas as app_schemas
 
@@ -44,7 +41,7 @@ _EXPENSIVE_OVERVIEW_SORTS = frozenset(
 )
 
 
-class UserOverviewQueries:
+class UserOverviewQueries(DisciplineQueries):
     """Population-wide list queries: the users grid, its KPI header and the catalog."""
 
     def _overview_scope_where(
@@ -71,6 +68,7 @@ class UserOverviewQueries:
             *_compare_player_scope_filters(
                 models.Player,
                 user_id_column,
+                discipline=self.discipline,
                 role=role,
                 div_min=div_min,
                 div_max=div_max,
@@ -87,14 +85,14 @@ class UserOverviewQueries:
             where_conditions.append(models.Tournament.id == tournament_id)
         return where_conditions
 
-    @staticmethod
-    def _overview_standing_select(*columns: typing.Any) -> sa.Select:
-        """Player -> Team -> Tournament -> Standing chain (placement aggregates)."""
+    def _overview_standing_select(self, *columns: typing.Any) -> sa.Select:
+        """Player -> Team -> Tournament -> Standing chain (placement aggregates) of this game's tournaments."""
         return (
             sa.select(*columns)
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(
                 models.Standing,
                 sa.and_(
@@ -124,6 +122,7 @@ class UserOverviewQueries:
         return (
             seat.join(query, models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .where(*where_conditions)
         )
 
@@ -152,6 +151,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .where(*where_conditions)
             .scalar_subquery()
         )
@@ -181,11 +181,12 @@ class UserOverviewQueries:
         if role is None and div_min is None and div_max is None and tournament_id is None:
             return query.scalar_subquery()
 
-        achievement_match = _matches.alias()
+        achievement_match = self._matches.alias()
         achievement_encounter = aliased(models.Encounter)
         tournament_scope = _compare_tournament_scope_exists(
             user_id_column,
             effective_rows.c.tournament_id,
+            discipline=self.discipline,
             role=role,
             div_min=div_min,
             div_max=div_max,
@@ -201,6 +202,7 @@ class UserOverviewQueries:
                 _compare_tournament_scope_exists(
                     user_id_column,
                     achievement_encounter.tournament_id,
+                    discipline=self.discipline,
                     role=role,
                     div_min=div_min,
                     div_max=div_max,
@@ -472,19 +474,19 @@ class UserOverviewQueries:
         tournament_id: int | None = None,
         grid: DivisionGrid,
     ) -> sa.ScalarSelect:
-        hero_time_alias = _facts.alias()
+        hero_time_alias = self._facts.alias()
         where_conditions: list[typing.Any] = [
-            _facts.c.player_id == user_id_column,
-            _facts.c.segment == 0,
-            _facts.c.entity_id.isnot(None),
-            _facts.c.stat_code == stat,
+            self._facts.c.player_id == user_id_column,
+            self._facts.c.segment == 0,
+            self._facts.c.entity_id.isnot(None),
+            self._facts.c.stat_code == stat,
             sa.exists(
                 sa.select(1)
                 .select_from(hero_time_alias)
                 .where(
-                    hero_time_alias.c.match_id == _facts.c.match_id,
-                    hero_time_alias.c.workspace_member_id == _facts.c.workspace_member_id,
-                    hero_time_alias.c.entity_id == _facts.c.entity_id,
+                    hero_time_alias.c.match_id == self._facts.c.match_id,
+                    hero_time_alias.c.workspace_member_id == self._facts.c.workspace_member_id,
+                    hero_time_alias.c.entity_id == self._facts.c.entity_id,
                     hero_time_alias.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
                     hero_time_alias.c.segment == 0,
                     hero_time_alias.c.value > 60,
@@ -496,28 +498,29 @@ class UserOverviewQueries:
             where_conditions.append(
                 _compare_team_scope_exists(
                     user_id_column,
-                    _facts.c.tournament_team_id,
+                    self._facts.c.tournament_team_id,
                     role=role,
                     div_min=div_min,
                     div_max=div_max,
                     tournament_id=tournament_id,
                     grid=grid,
+                    discipline=self.discipline,
                 )
             )
-        reduction_order = (_facts.c.match_id, _facts.c.workspace_member_id, _facts.c.entity_id)
+        reduction_order = (self._facts.c.match_id, self._facts.c.workspace_member_id, self._facts.c.entity_id)
 
         query = (
             sa.select(
-                sa.func.sum(aggregate_order_by(_facts.c.value, *reduction_order))
-                / sa.func.nullif(sa.func.sum(aggregate_order_by(_matches.c.duration_s, *reduction_order)), 0)
+                sa.func.sum(aggregate_order_by(self._facts.c.value, *reduction_order))
+                / sa.func.nullif(sa.func.sum(aggregate_order_by(self._matches.c.duration_s, *reduction_order)), 0)
                 * 600
             )
-            .select_from(_facts)
-            .join(_matches, _matches.c.id == _facts.c.match_id)
+            .select_from(self._facts)
+            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
         )
 
         if tournament_id is not None:
-            query = query.join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+            query = query.join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
             where_conditions.append(models.Encounter.tournament_id == tournament_id)
 
         return query.where(*where_conditions).scalar_subquery()
@@ -655,8 +658,8 @@ class UserOverviewQueries:
             total_query = params.apply_search(total_query, models.User)
 
         if params.has_logs:
-            query = apply_has_logs_filter(query)
-            total_query = apply_has_logs_filter(total_query)
+            query = apply_has_logs_filter(query, discipline=self.discipline)
+            total_query = apply_has_logs_filter(total_query, discipline=self.discipline)
 
         if params.has_role_filter or params.role is not None or params.divisions:
             query = _apply_overview_role_filters(
@@ -666,6 +669,7 @@ class UserOverviewQueries:
                 divisions=params.divisions,
                 grid=grid,
                 workspace_id=workspace_id,
+                discipline=self.discipline,
             )
             total_query = _apply_overview_role_filters(
                 total_query,
@@ -674,6 +678,7 @@ class UserOverviewQueries:
                 divisions=params.divisions,
                 grid=grid,
                 workspace_id=workspace_id,
+                discipline=self.discipline,
             )
 
         query = query.order_by(
@@ -728,6 +733,7 @@ class UserOverviewQueries:
             )
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Player.is_substitution.is_(False),
@@ -782,6 +788,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -844,6 +851,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(
                 models.Standing,
                 sa.and_(
@@ -882,6 +890,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(
                 models.Standing,
                 sa.and_(
@@ -912,6 +921,7 @@ class UserOverviewQueries:
                 models.Team.id,
             )
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -963,38 +973,38 @@ class UserOverviewQueries:
             return {}
         playtime_sum = sa.func.sum(
             aggregate_order_by(
-                _facts.c.value,
-                _facts.c.match_id,
-                _facts.c.workspace_member_id,
+                self._facts.c.value,
+                self._facts.c.match_id,
+                self._facts.c.workspace_member_id,
             )
         )
 
         playtime_select = (
             sa.select(
-                _facts.c.player_id.label("user_id"),
-                _facts.c.entity_id.label("hero_id"),
+                self._facts.c.player_id.label("user_id"),
+                self._facts.c.entity_id.label("hero_id"),
                 playtime_sum.label("playtime_seconds"),
                 sa.func.row_number()
                 .over(
-                    partition_by=_facts.c.player_id,
+                    partition_by=self._facts.c.player_id,
                     order_by=[
                         playtime_sum.desc(),
-                        _facts.c.entity_id.asc(),
+                        self._facts.c.entity_id.asc(),
                     ],
                 )
                 .label("row_num"),
             )
             .where(
-                _facts.c.player_id.in_(user_ids),
-                _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                _facts.c.segment == 0,
-                _facts.c.entity_id.isnot(None),
-                _facts.c.value > 0,
+                self._facts.c.player_id.in_(user_ids),
+                self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                self._facts.c.segment == 0,
+                self._facts.c.entity_id.isnot(None),
+                self._facts.c.value > 0,
             )
-            .group_by(_facts.c.player_id, _facts.c.entity_id)
+            .group_by(self._facts.c.player_id, self._facts.c.entity_id)
         )
         if workspace_id is not None:
-            playtime_select = playtime_select.where(_facts.c.workspace_id == workspace_id)
+            playtime_select = playtime_select.where(self._facts.c.workspace_id == workspace_id)
         playtime_subquery = playtime_select.cte("overview_user_hero_playtime")
 
         query = (
@@ -1007,7 +1017,7 @@ class UserOverviewQueries:
             .where(
                 playtime_subquery.c.row_num <= limit,
                 models.CatalogEntity.kind == "character",
-                models.CatalogEntity.discipline == "overwatch",
+                models.CatalogEntity.discipline == self.discipline,
             )
             .order_by(playtime_subquery.c.user_id.asc(), playtime_subquery.c.row_num.asc())
         )
@@ -1053,6 +1063,7 @@ class UserOverviewQueries:
                 models.Team.id,
             )
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -1099,6 +1110,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -1142,7 +1154,7 @@ class UserOverviewQueries:
             base_query = pagination.apply_search(models.User, base_query, query, ["name"])
 
         if has_logs:
-            base_query = apply_has_logs_filter(base_query)
+            base_query = apply_has_logs_filter(base_query, discipline=self.discipline)
 
         if has_role_filter or role is not None:
             base_query = _apply_overview_role_filters(
@@ -1151,6 +1163,7 @@ class UserOverviewQueries:
                 has_role_filter=has_role_filter,
                 grid=grid,
                 workspace_id=workspace_id,
+                discipline=self.discipline,
             )
 
         # The candidate set stays in SQL. Every sub-aggregate below semi-joins
@@ -1170,6 +1183,7 @@ class UserOverviewQueries:
                 divisions=divisions,
                 grid=grid,
                 workspace_id=workspace_id,
+                discipline=self.discipline,
             )
 
         candidates = base_query.distinct().cte("overview_candidates")
@@ -1202,7 +1216,9 @@ class UserOverviewQueries:
 
         # Preserve the existing global has-logs KPI over workspace-scoped candidates.
         # Actual statistic aggregates apply their own workspace filters.
-        owns_logs = sa.select(sa.literal(1)).select_from(_facts).where(_facts.c.player_id == candidates.c.id).exists()
+        owns_logs = (
+            sa.select(sa.literal(1)).select_from(self._facts).where(self._facts.c.player_id == candidates.c.id).exists()
+        )
         with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(owns_logs)
         with_logs_count = (await session.execute(with_logs_query)).scalar_one() or 0
 
@@ -1214,6 +1230,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(candidate_ids),
@@ -1243,6 +1260,7 @@ class UserOverviewQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(candidate_ids),
@@ -1268,9 +1286,11 @@ class UserOverviewQueries:
             .distinct()
         )
         if workspace_id is not None:
-            roles_query = roles_query.join(
-                models.Tournament, models.Tournament.id == models.Player.tournament_id
-            ).where(models.Tournament.workspace_id == workspace_id)
+            roles_query = (
+                roles_query.join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+                .where(models.Tournament.discipline == self.discipline)
+                .where(models.Tournament.workspace_id == workspace_id)
+            )
         user_roles: dict[int, set[str | None]] = defaultdict(set)
         for user_id, player_role in (await session.execute(roles_query)).all():
             user_roles[user_id].add(player_role)
@@ -1376,7 +1396,7 @@ class UserOverviewQueries:
             base_query = pagination.apply_search(models.User, base_query, query, ["name"])
 
         if has_logs:
-            base_query = apply_has_logs_filter(base_query)
+            base_query = apply_has_logs_filter(base_query, discipline=self.discipline)
 
         if has_role_filter or role is not None or divisions:
             base_query = _apply_overview_role_filters(
@@ -1386,6 +1406,7 @@ class UserOverviewQueries:
                 divisions=divisions,
                 grid=grid,
                 workspace_id=workspace_id,
+                discipline=self.discipline,
             )
 
         all_users = list((await session.execute(base_query)).unique().scalars().all())
@@ -1405,6 +1426,3 @@ class UserOverviewQueries:
             letters_with_users = [(lbl, grouped[lbl][:per_letter]) for lbl in sorted_letters[:max_letters]]
 
         return letters_with_users, len(all_users), available_letters
-
-
-overview = UserOverviewQueries()

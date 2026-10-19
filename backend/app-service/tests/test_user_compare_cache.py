@@ -25,6 +25,7 @@ enums = importlib.import_module("src.core.enums")
 division_grid = importlib.import_module("shared.division_grid")
 user_merge = importlib.import_module("src.services.admin.user_merge")
 caching = importlib.import_module("src.core.caching")
+users = flows.UserService.of("overwatch")
 
 
 def _grid(version_id: int = 17):
@@ -35,8 +36,8 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         cache.setup("mem://", prefix="backend:")
         cache.setup("mem://", prefix="lock:")
-        await cache.delete_match("backend:user_compare:v2:*")
-        await cache.delete_match("backend:user_hero_compare:v2:*")
+        await cache.delete_match("backend:user_compare:v3:*")
+        await cache.delete_match("backend:user_character_compare:v3:*")
 
     async def test_overall_cache_ignores_runtime_session_and_uses_grid_version(self) -> None:
         response = {"result": "overall"}
@@ -45,10 +46,10 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             baseline="cohort", role=RoleRef(dimension="player_role", role="support"), div_min=4, div_max=9
         )
 
-        with patch.object(flows.users, "get_compare", compute):
-            first = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))
-            second = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))
-            third = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(18))
+        with patch.object(users, "get_compare", compute):
+            first = await users.get_compare_cached(object(), 101, params, grid=_grid(17))
+            second = await users.get_compare_cached(object(), 101, params, grid=_grid(17))
+            third = await users.get_compare_cached(object(), 101, params, grid=_grid(18))
 
         self.assertEqual(first, response)
         self.assertEqual(second, response)
@@ -61,24 +62,38 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         compute = AsyncMock(return_value={"result": "scoped"})
         params = schemas.UserCompareParams(baseline="global")
 
-        with patch.object(flows.users, "get_compare", compute):
-            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=1)
-            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=1)
-            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=2)
-            await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))
+        with patch.object(users, "get_compare", compute):
+            await users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=1)
+            await users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=1)
+            await users.get_compare_cached(object(), 101, params, grid=_grid(17), workspace_id=2)
+            await users.get_compare_cached(object(), 101, params, grid=_grid(17))
 
         self.assertEqual(3, compute.await_count)
 
     async def test_hero_cache_keys_the_workspace_apart(self) -> None:
         compute = AsyncMock(return_value=object())
-        params = schemas.UserHeroCompareParams(baseline="global", stats=[enums.LogStatsName.Eliminations])
+        params = schemas.UserCharacterCompareParams(baseline="global", stats=[enums.LogStatsName.Eliminations])
 
-        with patch.object(flows.users, "get_hero_compare", compute):
-            await flows.users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=1)
-            await flows.users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=1)
-            await flows.users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=2)
+        with patch.object(users, "get_hero_compare", compute):
+            await users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=1)
+            await users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=1)
+            await users.get_hero_compare_cached(object(), 202, params, grid=_grid(), workspace_id=2)
 
         self.assertEqual(2, compute.await_count)
+
+    async def test_two_disciplines_never_share_an_entry(self) -> None:
+        """The same subject, ids and workspace in another game is another read, not a cache hit of the first."""
+        league = flows.UserService.of("lol")
+        overwatch_compute = AsyncMock(return_value={"game": "overwatch"})
+        league_compute = AsyncMock(return_value={"game": "lol"})
+        params = schemas.UserCompareParams(baseline="global")
+
+        with patch.object(users, "get_compare", overwatch_compute), patch.object(league, "get_compare", league_compute):
+            first = await users.get_compare_cached(object(), 505, params, grid=_grid(), workspace_id=1)
+            second = await league.get_compare_cached(object(), 505, params, grid=_grid(), workspace_id=1)
+
+        self.assertEqual(({"game": "overwatch"}, {"game": "lol"}), (first, second))
+        self.assertEqual((1, 1), (overwatch_compute.await_count, league_compute.await_count))
 
     async def test_user_merge_invalidates_both_compare_namespaces(self) -> None:
         preview = SimpleNamespace(
@@ -95,8 +110,8 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             )
 
         patterns = {call.args[0] for call in delete_match.await_args_list}
-        self.assertIn("backend:user_compare:v2:*", patterns)
-        self.assertIn("backend:user_hero_compare:v2:*", patterns)
+        self.assertIn("backend:user_compare:v3:*", patterns)
+        self.assertIn("backend:user_character_compare:v3:*", patterns)
 
     def test_cache_configuration_registers_the_lock_namespace(self) -> None:
         with patch.object(caching.cache, "setup") as setup:
@@ -141,16 +156,16 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
     async def test_hero_cache_normalizes_stat_order_and_deduplicates(self) -> None:
         response = object()
         compute = AsyncMock(return_value=response)
-        first_params = schemas.UserHeroCompareParams(
+        first_params = schemas.UserCharacterCompareParams(
             baseline="global",
-            left_hero_id=1,
-            right_hero_id=2,
+            left_entity_id=1,
+            right_entity_id=2,
             stats=[enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations],
         )
-        second_params = schemas.UserHeroCompareParams(
+        second_params = schemas.UserCharacterCompareParams(
             baseline="global",
-            left_hero_id=1,
-            right_hero_id=2,
+            left_entity_id=1,
+            right_entity_id=2,
             stats=[
                 enums.LogStatsName.Eliminations,
                 enums.LogStatsName.Deaths,
@@ -158,9 +173,9 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             ],
         )
 
-        with patch.object(flows.users, "get_hero_compare", compute):
-            await flows.users.get_hero_compare_cached(object(), 202, first_params, grid=_grid())
-            await flows.users.get_hero_compare_cached(object(), 202, second_params, grid=_grid())
+        with patch.object(users, "get_hero_compare", compute):
+            await users.get_hero_compare_cached(object(), 202, first_params, grid=_grid())
+            await users.get_hero_compare_cached(object(), 202, second_params, grid=_grid())
 
         compute.assert_awaited_once()
 
@@ -174,10 +189,10 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
             return {"ok": True}
 
         params = schemas.UserCompareParams(baseline="global")
-        with patch.object(flows.users, "get_compare", AsyncMock(side_effect=compute)) as mocked:
-            first = asyncio.create_task(flows.users.get_compare_cached(object(), 303, params, grid=_grid()))
+        with patch.object(users, "get_compare", AsyncMock(side_effect=compute)) as mocked:
+            first = asyncio.create_task(users.get_compare_cached(object(), 303, params, grid=_grid()))
             await entered.wait()
-            second = asyncio.create_task(flows.users.get_compare_cached(object(), 303, params, grid=_grid()))
+            second = asyncio.create_task(users.get_compare_cached(object(), 303, params, grid=_grid()))
             await asyncio.sleep(0)
             release.set()
             self.assertEqual(await first, {"ok": True})
@@ -189,10 +204,10 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         params = schemas.UserCompareParams(baseline="global")
         compute = AsyncMock(side_effect=RuntimeError("boom"))
 
-        with patch.object(flows.users, "get_compare", compute):
+        with patch.object(users, "get_compare", compute):
             with self.assertRaisesRegex(RuntimeError, "boom"):
-                await flows.users.get_compare_cached(object(), 404, params, grid=_grid())
+                await users.get_compare_cached(object(), 404, params, grid=_grid())
             with self.assertRaisesRegex(RuntimeError, "boom"):
-                await flows.users.get_compare_cached(object(), 404, params, grid=_grid())
+                await users.get_compare_cached(object(), 404, params, grid=_grid())
 
         self.assertEqual(2, compute.await_count)

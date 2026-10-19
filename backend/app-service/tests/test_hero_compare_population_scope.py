@@ -47,7 +47,9 @@ from shared.testing import create_sqlite_tables  # noqa: E402
 from src import models  # noqa: E402
 from src.core import enums  # noqa: E402
 from src.services.user.queries import _scope  # noqa: E402
-from src.services.user.queries.compare import compare as compare_queries  # noqa: E402
+from src.services.user.queries.compare import UserCompareQueries  # noqa: E402
+
+compare_queries = UserCompareQueries.of("overwatch")
 
 
 @compiles(JSONB, "sqlite")
@@ -194,6 +196,7 @@ class HeroCompareBaselineScopeTests(TestCase):
             query = query.where(
                 _scope._compare_user_scope_exists(  # noqa: SLF001 - the predicate that function applies
                     models.User.id,
+                    discipline="overwatch",
                     grid=_grid(),
                     **filters,  # type: ignore[arg-type]
                 )

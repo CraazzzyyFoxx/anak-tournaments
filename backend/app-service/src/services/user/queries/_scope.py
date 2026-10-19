@@ -72,13 +72,14 @@ def _hero_direction_score(value_column: sa.ColumnElement[typing.Any], name_colum
 
 def _build_eligible_hero_stats_cte(
     *,
+    discipline: str,
     user_id: int | None,
     stats: list[enums.LogStatsName] | None,
     cte_name: str,
     tournament_id: int | None = None,
     workspace_id: int | None = None,
 ) -> sa.CTE:
-    facts = player_facts(discipline="overwatch")
+    facts = player_facts(discipline=discipline)
     # Qualification is at observed member/entity grain, not today's roster.
     qualified_where = [
         facts.c.segment == 0,
@@ -181,6 +182,7 @@ def player_role_filter(player_model: type[models.Player], ref: RoleRef | None) -
 def _apply_overview_role_filters(
     query: sa.Select,
     *,
+    discipline: str,
     role: RoleRef | None,
     has_role_filter: bool = False,
     divisions: typing.Sequence[int] = (),
@@ -197,6 +199,7 @@ def _apply_overview_role_filters(
     role_filters: list[typing.Any] = [
         models.Player.workspace_member.has(models.WorkspaceMember.player_id == models.User.id),
         models.Player.is_substitution.is_(False),
+        models.Player.tournament.has(models.Tournament.discipline == discipline),
     ]
 
     if has_role_filter or role is not None:
@@ -215,9 +218,9 @@ def _apply_overview_role_filters(
     return query.where(role_exists)
 
 
-def apply_has_logs_filter(query: sa.Select) -> sa.Select:
-    """Keep users with observed OW facts; the existing KPI is explicitly global."""
-    facts = player_facts(discipline="overwatch")
+def apply_has_logs_filter(query: sa.Select, *, discipline: str) -> sa.Select:
+    """Keep users with observed facts of the selected game."""
+    facts = player_facts(discipline=discipline)
     return query.where(sa.exists(sa.select(1).select_from(facts).where(facts.c.player_id == models.User.id)))
 
 
@@ -246,6 +249,7 @@ def _compare_player_scope_filters(
     player_model: type[models.Player],
     user_id_column: sa.ColumnElement[typing.Any] | int,
     *,
+    discipline: str,
     role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
@@ -255,6 +259,7 @@ def _compare_player_scope_filters(
     filters: list[typing.Any] = [
         player_model.workspace_member.has(models.WorkspaceMember.player_id == user_id_column),
         player_model.is_substitution.is_(False),
+        player_model.tournament.has(models.Tournament.discipline == discipline),
     ]
 
     if role is not None:
@@ -270,6 +275,7 @@ def _compare_tournament_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     tournament_id_column: sa.ColumnElement[typing.Any],
     *,
+    discipline: str,
     role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
@@ -281,6 +287,7 @@ def _compare_tournament_scope_exists(
     filters = _compare_player_scope_filters(
         scoped_player,
         user_id_column,
+        discipline=discipline,
         role=role,
         div_min=div_min,
         div_max=div_max,
@@ -302,6 +309,7 @@ def _compare_team_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     team_id_column: sa.ColumnElement[typing.Any],
     *,
+    discipline: str,
     role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
@@ -312,6 +320,7 @@ def _compare_team_scope_exists(
     filters = _compare_player_scope_filters(
         scoped_player,
         user_id_column,
+        discipline=discipline,
         role=role,
         div_min=div_min,
         div_max=div_max,
@@ -325,6 +334,7 @@ def _compare_team_scope_exists(
 def _compare_user_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     *,
+    discipline: str,
     role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
@@ -337,6 +347,7 @@ def _compare_user_scope_exists(
     filters = _compare_player_scope_filters(
         scoped_player,
         user_id_column,
+        discipline=discipline,
         role=role,
         div_min=div_min,
         div_max=div_max,

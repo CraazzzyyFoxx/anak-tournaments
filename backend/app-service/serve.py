@@ -44,7 +44,6 @@ from src.rpc import (
     catalog_aliases,
     catalog_legacy,
     disciplines,
-    heroes,
     metadata_admin,
     notifications,
     notifications_admin,
@@ -121,7 +120,7 @@ register_invalidation_consumer(
 # achievement get+list via the shared CRUD read engine:
 reads_generic.register(broker, logger)
 # bespoke reads (aggregations, users/*) + workspace reads/writes/members:
-for _mod in (users, heroes, achievements, statistics, workspaces):
+for _mod in (users, achievements, statistics, workspaces):
     _mod.register(broker, logger)
 catalog.register(broker, logger)
 catalog_legacy.register(broker, logger)

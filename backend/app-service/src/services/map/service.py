@@ -6,12 +6,10 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.repository import CatalogEntityRepository
 from shared.repository.stats_reads import duel_matches
 from src import models, schemas
 from src.core import config, pagination
 from src.services.hero.queries import HeroQueries
-from src.services.hero.queries import queries as hero_queries
 from src.services.hero.service import heroes as hero_service
 from src.services.user.service import users as user_service
 
@@ -19,26 +17,19 @@ __all__ = ("MapService", "maps")
 
 
 class MapService:
-    def __init__(
-        self,
-        *,
-        repo: CatalogEntityRepository = CatalogEntityRepository("map", discipline="overwatch"),
-        hero_queries: HeroQueries = hero_queries,
-    ) -> None:
-        self.repo = repo
-        self.hero_queries = hero_queries
+    """One game's per-user map statistics (the map catalog itself is the native catalog read)."""
 
     @staticmethod
-    def to_read(game_map: models.CatalogEntity, entities: list[str]) -> schemas.MapRead:
-        """Project the OW-shaped map read; the caller loads its parent when ``gamemode`` is requested."""
-        return schemas.MapRead.from_entity(game_map, with_gamemode="gamemode" in entities)
+    def to_read(game_map: models.CatalogEntity, entities: list[str]) -> schemas.CatalogEntityRead:
+        """The catalog entity of a map; its mode is ``parent`` (loaded by the caller when requested)."""
+        return schemas.CatalogEntityRead.from_entity(game_map, with_parent="parent" in entities)
 
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_maps:{id}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:"
+            "backend:user_maps:{id}:{discipline}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:"
             "{params.order}:{params.query}:{params.fields}:{params.min_count}:"
-            "{params.gamemode_id}:{params.tournament_id}:{params.entities}"
+            "{params.mode_id}:{params.tournament_id}:{params.entities}"
         ),
         lock=True,
     )
@@ -48,14 +39,18 @@ class MapService:
         id: int,
         params: schemas.UserMapsSearchParams,
         *,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.UserMap]:
-        """Paginated top maps for a user, with per-map statistics.
+        """Paginated top maps of ``discipline`` for a user, with per-map statistics.
 
         ``workspace_id`` scopes the stats to a single workspace; ``None`` spans all of them.
         """
         user = await user_service.get(session, id, [])
-        maps, total = await self.get_top_maps(session, user.id, params, workspace_id=workspace_id)
+        maps, total = await self.get_top_maps(
+            session, user.id, params, discipline=discipline, workspace_id=workspace_id
+        )
+        queries = HeroQueries.of(discipline)
         results: list[schemas.UserMap] = []
 
         for map_, count, win, loss, draw, win_rate in maps:
@@ -67,30 +62,27 @@ class MapService:
                     loss=loss,
                     draw=draw,
                     win_rate=win_rate,
-                    heroes=[],
+                    characters=[],
                 )
             )
 
-        if "heroes" in params.entities:
+        if "characters" in params.entities:
             maps_ids = [result.map.id for result in results]
-            heroes_data = await self.hero_queries.get_heroes_playtime_by_maps(
+            characters_data = await queries.get_heroes_playtime_by_maps(
                 session, maps_ids, user.id, tournament_id=params.tournament_id, workspace_id=workspace_id
             )
-            heroes_data_per_map: dict[int, list[schemas.HeroPlaytime]] = {map_id: [] for map_id in maps_ids}
-            for hero, map_id, playtime in heroes_data:
-                heroes_data_per_map[map_id].append(
-                    schemas.HeroPlaytime(
-                        hero=hero_service.to_read(hero),
-                        playtime=playtime,
-                    )
+            characters_per_map: dict[int, list[schemas.CharacterPlaytime]] = {map_id: [] for map_id in maps_ids}
+            for character, map_id, playtime in characters_data:
+                characters_per_map[map_id].append(
+                    schemas.CharacterPlaytime(entity=hero_service.to_read(character), playtime=playtime)
                 )
 
             for result in results:
-                result.heroes = heroes_data_per_map[result.map.id][:5]
+                result.characters = characters_per_map[result.map.id][:5]
 
-        if "hero_stats" in params.entities:
+        if "character_stats" in params.entities:
             maps_ids = [result.map.id for result in results]
-            hero_stats_rows = await self.hero_queries.get_user_hero_stats_by_maps(
+            character_rows = await queries.get_user_hero_stats_by_maps(
                 session,
                 maps_ids,
                 user.id,
@@ -98,11 +90,11 @@ class MapService:
                 tournament_id=params.tournament_id,
                 workspace_id=workspace_id,
             )
-            hero_stats_per_map: dict[int, list[schemas.UserMapHeroStats]] = {map_id: [] for map_id in maps_ids}
-            for hero, map_id, games, win, loss, draw, win_rate, playtime_seconds, playtime_share in hero_stats_rows:
-                hero_stats_per_map[map_id].append(
-                    schemas.UserMapHeroStats(
-                        hero=hero_service.to_read(hero),
+            stats_per_map: dict[int, list[schemas.UserMapCharacterStats]] = {map_id: [] for map_id in maps_ids}
+            for character, map_id, games, win, loss, draw, win_rate, playtime_seconds, playtime_share in character_rows:
+                stats_per_map[map_id].append(
+                    schemas.UserMapCharacterStats(
+                        character=hero_service.to_read(character),
                         games=games,
                         win=win,
                         loss=loss,
@@ -114,7 +106,7 @@ class MapService:
                 )
 
             for result in results:
-                result.hero_stats = hero_stats_per_map.get(result.map.id, [])
+                result.character_stats = stats_per_map.get(result.map.id, [])
 
         return pagination.Paginated(
             page=params.page,
@@ -129,17 +121,18 @@ class MapService:
         id: int,
         params: schemas.UserMapsSearchParams,
         *,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> schemas.UserMapsSummary:
-        """Build a summary for the user's map performance.
+        """Build a summary for the user's map performance in ``discipline``.
 
         The summary is computed for the full filtered dataset (not just one page).
-        To keep it cheap, this endpoint ignores heavy entities like hero stats.
+        To keep it cheap, this endpoint ignores heavy entities like character stats.
         """
 
         user = await user_service.get(session, id, [])
 
-        safe_entities = [e for e in params.entities if e in {"gamemode"}]
+        safe_entities = [e for e in params.entities if e in {"parent"}]
         all_params = replace(
             params,
             page=1,
@@ -149,7 +142,9 @@ class MapService:
             entities=safe_entities,
         )
 
-        rows, total = await self.get_top_maps(session, user.id, all_params, workspace_id=workspace_id)
+        rows, total = await self.get_top_maps(
+            session, user.id, all_params, discipline=discipline, workspace_id=workspace_id
+        )
 
         if not rows:
             return schemas.UserMapsSummary(
@@ -221,14 +216,15 @@ class MapService:
         user_id: int,
         params: schemas.UserMapsSearchParams,
         *,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> tuple[typing.Sequence[tuple[models.CatalogEntity, int, int, int, int, float]], int]:
-        """Paginated top maps for a user as ``(map, matches, wins, losses, draws, win_rate)``
+        """Paginated top maps of ``discipline`` for a user as ``(map, matches, wins, losses, draws, win_rate)``
         rows plus the total map count.
 
         ``workspace_id`` scopes the stats to a single workspace; ``None`` spans all of them.
         """
-        matches = duel_matches(discipline="overwatch")
+        matches = duel_matches(discipline=discipline)
         # DISTINCT avoids fan-out when a roster has multiple rows for one player.
         user_match_teams = (
             sa.select(
@@ -289,7 +285,7 @@ class MapService:
             )
             .select_from(user_match_teams)
             .join(models.CatalogEntity, models.CatalogEntity.id == user_match_teams.c.map_id)
-            .where(models.CatalogEntity.kind == "map", models.CatalogEntity.discipline == "overwatch")
+            .where(models.CatalogEntity.kind == "map", models.CatalogEntity.discipline == discipline)
             .group_by(models.CatalogEntity.id)
         )
 
@@ -306,8 +302,8 @@ class MapService:
                     models.Tournament, models.Tournament.id == models.Encounter.tournament_id
                 ).where(models.Tournament.workspace_id == workspace_id)
 
-        if params.gamemode_id:
-            subquery_query = subquery_query.where(sa.and_(models.CatalogEntity.parent_id == params.gamemode_id))
+        if params.mode_id:
+            subquery_query = subquery_query.where(models.CatalogEntity.parent_id == params.mode_id)
 
         if params.query:
             fields = params.fields if params.fields else ["name"]
@@ -328,10 +324,10 @@ class MapService:
             subquery.c.draw,
             subquery.c.winrate,
         ).join(subquery, subquery.c.map_id == models.CatalogEntity.id)
-        if "gamemode" in params.entities:
+        if "parent" in params.entities:
             query = query.options(selectinload(models.CatalogEntity.parent))
 
-        sort_params = replace(params, sort="parent_id") if params.sort == "gamemode_id" else params
+        sort_params = replace(params, sort="parent_id") if params.sort == "mode_id" else params
         query = sort_params.apply_sort(query)
         if params.sort == "winrate":
             query = query.order_by(subquery.c.count.desc())

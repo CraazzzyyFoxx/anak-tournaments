@@ -12,5 +12,5 @@ class MixEncountersStayInvisibleTests(EncounterWriterCase):
             await self.mix_encounter(s)
             await s.commit()
         async with self.Session() as s:
-            counts = await DashboardService().get_counts(s, self.ids["ws"])
+            counts = await DashboardService().get_counts(s, self.ids["ws"], discipline="overwatch")
         self.assertEqual(1, counts["encounters_total"])

@@ -31,8 +31,10 @@ from shared.models.stats import StatDef, StatsFact, StatsMatch, StatsMatchPlayer
 from shared.schemas.role import RoleRef
 from src import models
 from src.core import enums
-from src.services.user.queries import compare as compare_queries
-from src.services.user.queries import profile as profile_queries
+from src.services.user.queries import UserCompareQueries, UserProfileQueries
+
+compare_queries = UserCompareQueries.of("overwatch")
+profile_queries = UserProfileQueries.of("overwatch")
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _UNIT_ROUNDOFF = Fraction(1, 2**53)
@@ -225,11 +227,10 @@ async def assert_app_golden(session, ids, actual):
         pool.append((*row, participant))
     assert Counter(await _all_native_operands(session)) == Counter(pool), "Frozen/native operand bits or owners changed"
 
-    # Imports are local to this native-only assertion: the unchanged collector also loads in frozen P3.
-    from importlib import import_module
-
-    compare_module = import_module("src.services.user.queries.compare")
-    profile_module = import_module("src.services.user.queries.profile")
+    # The fact/match subqueries are the OW-bound instances' own (built once per discipline), so the operand columns
+    # below are the very objects the readers' statements embed.
+    compare_module = compare_queries
+    profile_module = profile_queries
 
     for scope, workspace in (
         ("all", None),

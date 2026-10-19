@@ -1,3 +1,3 @@
-from shared.schemas.base import BaseRead, Score
+from shared.schemas.base import BaseRead
 
-__all__ = ("BaseRead", "Score")
+__all__ = ("BaseRead",)

@@ -11,12 +11,12 @@ from shared.core.social import GAME_PROVIDERS, SocialProvider, normalize_social_
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.models.stats.match import mv_entity_global_stats
-from shared.repository.stats_queries import match_context, player_facts
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import enums, pagination
 from src.domain.encounter_seats import Seat
+from src.services.discipline_queries import DisciplineQueries
 
 from ._scope import (
     _build_eligible_hero_stats_cte,
@@ -26,11 +26,8 @@ from ._scope import (
     user_entities,
 )
 
-_facts = player_facts(discipline="overwatch")
-_matches = match_context(discipline="overwatch")
 
-
-class UserProfileQueries:
+class UserProfileQueries(DisciplineQueries):
     """Single-user reads: identity lookups, tournaments, roles and hero statistics."""
 
     async def get(self, session: AsyncSession, user_id: int, entities: list[str]) -> models.User | None:
@@ -211,8 +208,10 @@ class UserProfileQueries:
         )
         q = seat.join(q, models.Team.id)
         if workspace_id is not None:
-            q = q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
-                models.Tournament.workspace_id == workspace_id
+            q = (
+                q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+                .where(models.Tournament.discipline == self.discipline)
+                .where(models.Tournament.workspace_id == workspace_id)
             )
         sides = q.subquery("profile_map_sides")
         query = (
@@ -255,6 +254,7 @@ class UserProfileQueries:
             sa.select(sa.func.count(sa.distinct(models.Team.id)))
             .join(models.Player, models.Player.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(sa.and_(*scope))
         )
@@ -264,6 +264,7 @@ class UserProfileQueries:
             .options(*_team_load_options(params.entities))
             .join(models.Player, models.Player.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(sa.and_(*scope))
         )
@@ -306,6 +307,7 @@ class UserProfileQueries:
             )
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.Player.is_substitution.is_(False),
@@ -390,6 +392,7 @@ class UserProfileQueries:
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id == user_id,
@@ -430,6 +433,7 @@ class UserProfileQueries:
             )
             .join(agg, agg.c.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             # Newest event first; undated (legacy) tournaments last, by id.
             .order_by(models.Tournament.start_date.desc().nulls_last(), models.Tournament.id.desc())
         )
@@ -446,7 +450,7 @@ class UserProfileQueries:
 
         seat = Seat(name="playtime_seat")
         playtime_query = (
-            sa.select(_facts.c.value, _facts.c.match_id, _facts.c.workspace_member_id)
+            sa.select(self._facts.c.value, self._facts.c.match_id, self._facts.c.workspace_member_id)
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
@@ -454,16 +458,16 @@ class UserProfileQueries:
                 models.WorkspaceMember.player_id == user_id,
                 models.Player.is_substitution.is_(False),
                 models.Team.tournament_id == tournament.id,
-                _facts.c.player_id == models.WorkspaceMember.player_id,
-                _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                _facts.c.entity_id.is_(None),
-                _facts.c.segment == 0,
+                self._facts.c.player_id == models.WorkspaceMember.player_id,
+                self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                self._facts.c.entity_id.is_(None),
+                self._facts.c.segment == 0,
             )
         )
         playtime_query = (
             seat.join(playtime_query, models.Team.id, duel=False)
-            .join(_matches, _matches.c.encounter_id == models.Encounter.id)
-            .join(_facts, _facts.c.match_id == _matches.c.id)
+            .join(self._matches, self._matches.c.encounter_id == models.Encounter.id)
+            .join(self._facts, self._facts.c.match_id == self._matches.c.id)
         )
         playtime_rows = playtime_query.subquery("profile_playtime_sides")
         playtime_subquery = sa.select(
@@ -521,6 +525,7 @@ class UserProfileQueries:
         map and tournament metadata; match duration remains the per-10 denominator.
         """
         eligible_stats = _build_eligible_hero_stats_cte(
+            discipline=self.discipline,
             user_id=user_id,
             stats=stats,
             cte_name="eligible_user_hero_stats",
@@ -537,10 +542,10 @@ class UserProfileQueries:
                 eligible_stats.c.entity_id,
                 eligible_stats.c.stat_code,
                 sa.func.sum(aggregate_order_by(eligible_stats.c.value, *reduction_order)).label("total_value"),
-                sa.func.sum(aggregate_order_by(_matches.c.duration_s, *reduction_order)).label("total_time"),
+                sa.func.sum(aggregate_order_by(self._matches.c.duration_s, *reduction_order)).label("total_time"),
             )
             .select_from(eligible_stats)
-            .join(_matches, _matches.c.id == eligible_stats.c.match_id)
+            .join(self._matches, self._matches.c.id == eligible_stats.c.match_id)
             .group_by(eligible_stats.c.entity_id, eligible_stats.c.stat_code)
             .cte("hero_stats_agg")
         )
@@ -572,23 +577,24 @@ class UserProfileQueries:
                 ranked_cte.c.entity_id,
                 ranked_cte.c.stat_code,
                 ranked_cte.c.value.label("best_value"),
-                _matches.c.encounter_id,
+                self._matches.c.encounter_id,
                 models.CatalogEntity.name.label("map_name"),
                 models.CatalogEntity.image_path.label("map_link"),
                 models.Tournament.name.label("tournament_name"),
             )
             .select_from(ranked_cte)
-            .join(_matches, _matches.c.id == ranked_cte.c.match_id)
+            .join(self._matches, self._matches.c.id == ranked_cte.c.match_id)
             .join(
                 models.CatalogEntity,
                 sa.and_(
-                    models.CatalogEntity.id == _matches.c.map_entity_id,
+                    models.CatalogEntity.id == self._matches.c.map_entity_id,
                     models.CatalogEntity.kind == "map",
-                    models.CatalogEntity.discipline == "overwatch",
+                    models.CatalogEntity.discipline == self.discipline,
                 ),
             )
-            .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+            .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(models.Tournament.discipline == self.discipline)
             .where(ranked_cte.c.row_num == 1)
             .cte("best_result_cte")
         )
@@ -620,7 +626,7 @@ class UserProfileQueries:
                     best_result_cte.c.stat_code == agg_cte.c.stat_code,
                 ),
             )
-            .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == "overwatch")
+            .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == self.discipline)
         )
 
     async def get_statistics_by_heroes(
@@ -665,7 +671,7 @@ class UserProfileQueries:
                     models.StatDef.discipline == mv.c.discipline,
                 ),
             )
-            .where(mv.c.discipline == "overwatch")
+            .where(mv.c.discipline == self.discipline)
         )
         if stats:
             query = query.where(models.StatDef.code.in_([stat.value for stat in stats]))
@@ -719,9 +725,11 @@ class UserProfileQueries:
         )
 
         if workspace_id is not None:
-            shared_teams_select = shared_teams_select.join(
-                models.Tournament, models.Tournament.id == self_player.tournament_id
-            ).where(models.Tournament.workspace_id == workspace_id)
+            shared_teams_select = (
+                shared_teams_select.join(models.Tournament, models.Tournament.id == self_player.tournament_id)
+                .where(models.Tournament.discipline == self.discipline)
+                .where(models.Tournament.workspace_id == workspace_id)
+            )
 
         shared_teams = shared_teams_select.cte("shared_teams")
 
@@ -762,25 +770,27 @@ class UserProfileQueries:
         stats_per_match = (
             sa.select(
                 shared_teams.c.teammate_id.label("user_id"),
-                _facts.c.match_id.label("match_id"),
-                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.ImpactRank, _facts.c.value))).label(
-                    "impact_rank"
+                self._facts.c.match_id.label("match_id"),
+                sa.func.max(
+                    sa.case((self._facts.c.stat_code == enums.LogStatsName.ImpactRank, self._facts.c.value))
+                ).label("impact_rank"),
+                sa.func.max(
+                    sa.case((self._facts.c.stat_code == enums.LogStatsName.Performance, self._facts.c.value))
+                ).label("performance"),
+                sa.func.max(sa.case((self._facts.c.stat_code == enums.LogStatsName.KDA, self._facts.c.value))).label(
+                    "kda"
                 ),
-                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.Performance, _facts.c.value))).label(
-                    "performance"
-                ),
-                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.KDA, _facts.c.value))).label("kda"),
             )
             .select_from(shared_teams)
             .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
             .outerjoin(
-                _facts,
+                self._facts,
                 sa.and_(
-                    _facts.c.tournament_team_id == shared_teams.c.team_id,
-                    _facts.c.player_id == shared_teams.c.teammate_id,
-                    _facts.c.segment == 0,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.stat_code.in_(
+                    self._facts.c.tournament_team_id == shared_teams.c.team_id,
+                    self._facts.c.player_id == shared_teams.c.teammate_id,
+                    self._facts.c.segment == 0,
+                    self._facts.c.entity_id.is_(None),
+                    self._facts.c.stat_code.in_(
                         [
                             enums.LogStatsName.ImpactRank,
                             enums.LogStatsName.Performance,
@@ -789,7 +799,7 @@ class UserProfileQueries:
                     ),
                 ),
             )
-            .group_by(shared_teams.c.teammate_id, _facts.c.match_id)
+            .group_by(shared_teams.c.teammate_id, self._facts.c.match_id)
         ).cte("teammate_stats_per_match")
 
         mvp_placement = sa.func.coalesce(stats_per_match.c.impact_rank, stats_per_match.c.performance)
@@ -808,14 +818,14 @@ class UserProfileQueries:
             map_seat.join(
                 sa.select(
                     shared_teams.c.teammate_id.label("user_id"),
-                    _matches.c.map_entity_id.label("map_id"),
+                    self._matches.c.map_entity_id.label("map_id"),
                 )
                 .select_from(shared_teams)
                 .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id),
                 shared_teams.c.team_id,
                 duel=False,
             )
-            .outerjoin(_matches, _matches.c.encounter_id == models.Encounter.id)
+            .outerjoin(self._matches, self._matches.c.encounter_id == models.Encounter.id)
             .subquery("teammate_map_sides")
         )
         maps_query = (
@@ -846,6 +856,3 @@ class UserProfileQueries:
         result = await session.execute(query)
         count_result = await session.execute(count_query)
         return result.all(), count_result.scalar_one()  # type: ignore
-
-
-profile = UserProfileQueries()

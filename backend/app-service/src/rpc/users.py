@@ -27,13 +27,14 @@ from src.core.workspace import (
 )
 from src.rpc import _common as c
 from src.services.map.service import maps as map_service
+from src.services.user.service import UserService
 from src.services.user.service import users as user_service
 
 _SF = db.async_session_maker
 
 _USERS_SORT = typing.Literal["id", "name", "similarity:name"]
 _ENCOUNTER_SORT = typing.Literal["id", "name", "closeness", "round", "played_at"]
-_MAPS_SORT = typing.Literal["id", "count", "win", "loss", "draw", "winrate", "gamemode_id", "slug", "name"]
+_MAPS_SORT = typing.Literal["id", "count", "win", "loss", "draw", "winrate", "mode_id", "slug", "name"]
 _TEAMMATES_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
 
 
@@ -62,6 +63,11 @@ def _compare_scope(data: dict[str, Any]) -> WorkspaceScope:
     return ALL_WORKSPACES if scope is None else scope
 
 
+def _stats(data: dict[str, Any]) -> UserService:
+    """The user statistics of the request's explicit game (``?discipline=``, required)."""
+    return UserService.of(c.require_discipline(data))
+
+
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
@@ -82,9 +88,10 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview")
     async def _overview(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
+            stats = _stats(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
             qp = build_query_model(schemas.UserOverviewQueryParams, data.get("query"))
-            return await user_service.get_overview(
+            return await stats.get_overview(
                 session,
                 schemas.UserOverviewParams.from_query_params(qp),
                 workspace_id=ws.id,
@@ -97,19 +104,21 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview_stats")
     async def _overview_stats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
+            stats = _stats(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
             # Route passes the QueryParams model straight to the flow (no from_query_params).
             params = build_query_model(schemas.UserOverviewStatsQueryParams, data.get("query"))
-            return await user_service.get_overview_stats(session, params, grid=ws.grid, workspace_id=ws.id)
+            return await stats.get_overview_stats(session, params, grid=ws.grid, workspace_id=ws.id)
 
         return await c.envelope(logger, "users.overview_stats", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.overview_catalog")
     async def _overview_catalog(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
+            stats = _stats(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
             qp = build_query_model(schemas.UserCatalogQueryParams, data.get("query"))
-            return await user_service.get_catalog(
+            return await stats.get_catalog(
                 session,
                 schemas.UserCatalogParams.from_query_params(qp),
                 grid=ws.grid,
@@ -122,10 +131,11 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.compare")
     async def _compare(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            stats = _stats(data)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, _compare_scope(data), discipline="overwatch")
+            ws = await resolve_workspace_context(session, _compare_scope(data), discipline=stats.discipline)
             qp = build_query_model(schemas.UserCompareQueryParams, data.get("query"))
-            return await user_service.get_compare_cached(
+            return await stats.get_compare_cached(
                 session,
                 c.require_id(data),
                 schemas.UserCompareParams.from_query_params(qp),
@@ -135,21 +145,22 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "users.compare", op, session_factory=_SF)
 
-    @broker.subscriber("rpc.app.users.compare_heroes")
-    async def _compare_heroes(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.app.users.compare_characters")
+    async def _compare_characters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            stats = _stats(data)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, _compare_scope(data), discipline="overwatch")
-            qp = build_query_model(schemas.UserHeroCompareQueryParams, data.get("query"))
-            return await user_service.get_hero_compare_cached(
+            ws = await resolve_workspace_context(session, _compare_scope(data), discipline=stats.discipline)
+            qp = build_query_model(schemas.UserCharacterCompareQueryParams, data.get("query"))
+            return await stats.get_hero_compare_cached(
                 session,
                 c.require_id(data),
-                schemas.UserHeroCompareParams.from_query_params(qp),
+                schemas.UserCharacterCompareParams.from_query_params(qp),
                 grid=ws.grid,
                 workspace_id=ws.id,
             )
 
-        return await c.envelope(logger, "users.compare_heroes", op, session_factory=_SF)
+        return await c.envelope(logger, "users.compare_characters", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.by_name")
     async def _by_name(data: dict, msg: RabbitMessage) -> dict:
@@ -163,38 +174,43 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.get_profile")
     async def _get_profile(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
-            return await user_service.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
+            stats = _stats(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            return await stats.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.get_profile", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.draft_card")
     async def _draft_card(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            stats = _stats(data)
             # Draft card is a workspace tool (roster drafting), not a public
             # cross-workspace read: ``workspace_id=all`` has no meaning here.
             workspace_id = _ws_id(data)
             if workspace_id is None:
                 raise HTTPException(status_code=400, detail="workspace_id=all is not supported for the draft card")
-            return await user_service.get_draft_card(session, c.require_id(data), workspace_id=workspace_id)
+            return await stats.get_draft_card(session, c.require_id(data), workspace_id=workspace_id)
 
         return await c.envelope(logger, "users.draft_card", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.tournaments")
     async def _tournaments(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
-            return await user_service.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
+            stats = _stats(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            return await stats.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.tournaments", op, session_factory=_SF)
 
+    # The three per-tournament reads are owner-scoped: the tournament's own game, never a browsing choice.
     @broker.subscriber("rpc.app.users.tournament")
     async def _tournament(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             tournament_id = int(data["tournament_id"])
             await c.gate_tournament(session, data, tournament_id)
+            stats = UserService.of(await c.tournament_discipline(session, tournament_id))
             grid = await get_division_grid(session, None, tournament_id)
-            return await user_service.get_tournament_with_stats(session, c.require_id(data), tournament_id, grid=grid)
+            return await stats.get_tournament_with_stats(session, c.require_id(data), tournament_id, grid=grid)
 
         return await c.envelope(logger, "users.tournament", op, session_factory=_SF)
 
@@ -203,7 +219,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             tournament_id = int(data["tournament_id"])
             await c.gate_tournament(session, data, tournament_id)
-            return await user_service.get_tournament_encounters(session, c.require_id(data), tournament_id)
+            stats = UserService.of(await c.tournament_discipline(session, tournament_id))
+            return await stats.get_tournament_encounters(session, c.require_id(data), tournament_id)
 
         return await c.envelope(logger, "users.tournament_encounters", op, session_factory=_SF)
 
@@ -211,7 +228,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _tournament_leaderboard(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             # Scoped by tournament_id (a tournament belongs to exactly one
-            # workspace), mirroring rpc.app.users.tournament — no separate
+            # workspace and game), mirroring rpc.app.users.tournament — no separate
             # workspace_id is needed. The route's user id (data["id"]) is only
             # the viewing context and is intentionally unused here.
             tournament_id = int(data["tournament_id"])
@@ -223,19 +240,22 @@ def register(broker: Any, logger: Any) -> None:
                 stat = enums.LogStatsName(raw_stat)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=f"invalid stat value: {raw_stat}") from exc
-            return await user_service.get_tournament_leaderboard(session, tournament_id, stat)
+            stats = UserService.of(await c.tournament_discipline(session, tournament_id))
+            return await stats.get_tournament_leaderboard(session, tournament_id, stat)
 
         return await c.envelope(logger, "users.tournament_leaderboard", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.maps")
     async def _maps(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            discipline = c.require_discipline(data)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             qp = build_query_model(schemas.UserMapsSearchQueryParams[_MAPS_SORT], data.get("query"))
             return await map_service.get_top_user(
                 session,
                 c.require_id(data),
                 schemas.UserMapsSearchParams.from_query_params(qp),
+                discipline=discipline,
                 workspace_id=_ws_id(data),
             )
 
@@ -244,12 +264,14 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.maps_summary")
     async def _maps_summary(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            discipline = c.require_discipline(data)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             qp = build_query_model(schemas.UserMapsSearchQueryParams[_MAPS_SORT], data.get("query"))
             return await map_service.get_top_user_summary(
                 session,
                 c.require_id(data),
                 schemas.UserMapsSearchParams.from_query_params(qp),
+                discipline=discipline,
                 workspace_id=_ws_id(data),
             )
 
@@ -258,8 +280,9 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.encounters")
     async def _encounters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            stats = _stats(data)
             qp = build_query_model(pagination.PaginationSortQueryParams[_ENCOUNTER_SORT], data.get("query"))
-            return await user_service.get_encounters_by_user(
+            return await stats.get_encounters_by_user(
                 session,
                 c.require_id(data),
                 pagination.PaginationSortParams.from_query_params(qp),
@@ -276,36 +299,38 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.matches_summary")
     async def _matches_summary(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            return await user_service.get_matches_summary(session, c.require_id(data), workspace_id=_ws_id(data))
+            stats = _stats(data)
+            return await stats.get_matches_summary(session, c.require_id(data), workspace_id=_ws_id(data))
 
         return await c.envelope(logger, "users.matches_summary", op, session_factory=_SF)
 
-    @broker.subscriber("rpc.app.users.heroes")
-    async def _heroes(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.app.users.characters")
+    async def _characters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            stats = _stats(data)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
             qp = build_query_model(pagination.PaginationQueryParams, data.get("query"))
             raw_stats = c.q(data, "stats") or []
             try:
-                stats = [enums.LogStatsName(s) for s in raw_stats]
+                codes = [enums.LogStatsName(s) for s in raw_stats]
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=f"invalid stats value: {exc}") from exc
-            return await user_service.get_heroes(
+            return await stats.get_heroes(
                 session,
                 c.require_id(data),
                 pagination.PaginationParams.from_query_params(qp),
-                stats,
+                codes,
                 tournament_id=c.q1(data, "tournament_id", int),
                 workspace_id=_ws_id(data),
             )
 
-        return await c.envelope(logger, "users.heroes", op, session_factory=_SF)
+        return await c.envelope(logger, "users.characters", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.teammates")
     async def _teammates(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             qp = build_query_model(pagination.PaginationSortQueryParams[_TEAMMATES_SORT], data.get("query"))
-            return await user_service.get_best_teammates(
+            return await _stats(data).get_best_teammates(
                 session,
                 c.require_id(data),
                 pagination.PaginationSortParams.from_query_params(qp),

@@ -37,7 +37,7 @@ var PublicCacheableReads = map[string]respcache.Rule{
 	"/api/v1/statistics/winrate":              {Extract: respcache.TTLOnly()},
 	"/api/v1/statistics/won-maps":             {Extract: respcache.TTLOnly()},
 	// /users/[slug] page: slug resolution + every profile tab. NO AuthedRead:
-	// several reads are AuthOptional (heroes, maps, tournaments) — the viewer
+	// several reads are AuthOptional (characters, maps, tournaments) — the viewer
 	// reaches the handler, so viewer-agnostic bodies are not guaranteed.
 	"/api/v1/users/{name}":               {Extract: respcache.TTLOnly()},
 	"/api/v1/users/{id}/profile":         {Extract: respcache.TTLOnly()},
@@ -47,11 +47,11 @@ var PublicCacheableReads = map[string]respcache.Rule{
 	"/api/v1/users/{id}/maps/summary":    {Extract: respcache.TTLOnly()},
 	"/api/v1/users/{id}/encounters":      {Extract: respcache.TTLOnly()},
 	"/api/v1/users/{id}/matches/summary": {Extract: respcache.TTLOnly()},
-	"/api/v1/users/{id}/heroes":          {Extract: respcache.TTLOnly()},
+	"/api/v1/users/{id}/characters":      {Extract: respcache.TTLOnly()},
 	"/api/v1/users/{id}/teammates":       {Extract: respcache.TTLOnly()},
 	// Compare page: the most expensive anonymous reads (20-30s cold).
-	"/api/v1/users/{id}/compare":        {Extract: respcache.TTLOnly()},
-	"/api/v1/users/{id}/compare/heroes": {Extract: respcache.TTLOnly()},
+	"/api/v1/users/{id}/compare":            {Extract: respcache.TTLOnly()},
+	"/api/v1/users/{id}/compare/characters": {Extract: respcache.TTLOnly()},
 	// Per-tournament user reads have a real tournament id in the path -> full
 	// event-driven invalidation, same as the tournament page routes.
 	"/api/v1/users/{id}/tournaments/{tournament_id}":             {Extract: respcache.FromPathValue("tournament_id")},

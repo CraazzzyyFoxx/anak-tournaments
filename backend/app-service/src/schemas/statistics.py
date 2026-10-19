@@ -76,8 +76,8 @@ class DashboardStats(BaseModel):
     # Decision metrics: how far the current cycle has progressed.
     tournaments_registration_open: int
     encounters_completed: int
-    heroes_total: int
-    gamemodes_total: int
+    characters_total: int
+    modes_total: int
     maps_total: int
     active_tournament_stats: DashboardActiveTournamentStats | None
     issues: DashboardIssues

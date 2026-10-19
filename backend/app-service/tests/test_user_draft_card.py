@@ -21,17 +21,24 @@ from shared.schemas.role import RoleRef
 
 user_flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("src.core.enums")
-queries = importlib.import_module("src.services.user.queries.encounters")
+users = user_flows.UserService.of("overwatch")
 
 
 def _hero(hero_id: int, slug: str, hero_type: enums.HeroClass) -> SimpleNamespace:
+    """A catalog character row (the card embeds it as the native entity)."""
     return SimpleNamespace(
         id=hero_id,
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        updated_at=None,
+        discipline="overwatch",
+        kind="character",
         slug=slug,
         name=slug.capitalize(),
         image_path=f"/heroes/{slug}.png",
+        parent_id=None,
         attrs={"class": hero_type.name, "color": "#ffffff"},
         aliases=[],
+        active=True,
     )
 
 
@@ -63,18 +70,18 @@ def _queries(
     """Stand in for every query behind the card; ids differ per test so the
     decorator's cache never serves one test's card to another."""
     with (
-        patch.object(user_flows.users, "get", AsyncMock(return_value=SimpleNamespace(id=user_id))),
-        patch.object(user_flows.users.profile, "get_overall_statistics", AsyncMock(return_value=overall)),
-        patch.object(user_flows.users.profile, "get_roles", AsyncMock(return_value=roles or [])),
-        patch.object(user_flows.users.profile, "get_teams", AsyncMock(return_value=(teams or [], len(teams or [])))),
+        patch.object(users, "get", AsyncMock(return_value=SimpleNamespace(id=user_id))),
+        patch.object(users.profile, "get_overall_statistics", AsyncMock(return_value=overall)),
+        patch.object(users.profile, "get_roles", AsyncMock(return_value=roles or [])),
+        patch.object(users.profile, "get_teams", AsyncMock(return_value=(teams or [], len(teams or [])))),
         patch.object(
-            user_flows.users.encounters,
+            users.encounters,
             "get_user_hero_records",
             hero_records or AsyncMock(return_value=heroes or []),
         ),
-        patch.object(user_flows.users.encounters, "count_user_mvp_maps", AsyncMock(return_value=mvp_maps)),
+        patch.object(users.encounters, "count_user_mvp_maps", AsyncMock(return_value=mvp_maps)),
         patch.object(
-            user_flows.users.encounters,
+            users.encounters,
             "count_teams_by_tournament_bulk",
             AsyncMock(return_value=teams_counts or {}),
         ),
@@ -87,7 +94,7 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
         """The draft room opens on players who have never played: the card must be
         zeros and empty lists, never the 404 an empty-history guard would raise."""
         with _queries(101):
-            card = await user_flows.users.get_draft_card(object(), 101, workspace_id=1)
+            card = await users.get_draft_card(object(), 101, workspace_id=1)
 
         self.assertEqual(0, card.tournaments)
         self.assertEqual(0, card.tournaments_won)
@@ -95,12 +102,12 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
         self.assertIsNone(card.best_placement)
         self.assertIsNone(card.avg_placement)
         self.assertEqual([], card.roles)
-        self.assertEqual([], card.heroes)
+        self.assertEqual([], card.characters)
         self.assertEqual([], card.recent_tournaments)
 
-    async def test_heroes_are_the_ranking_verbatim_with_slot_code_roles(self) -> None:
-        """`heroes` is the query's ranking verbatim (most maps first) and the hero's
-        class is emitted as a draft slot code, not the `HeroClass` value."""
+    async def test_characters_are_the_ranking_verbatim(self) -> None:
+        """`characters` is the query's ranking verbatim (most maps first); each entry is the catalog entity, whose
+        class stays in its own ``attrs`` (no derived slot code)."""
         records = AsyncMock(
             return_value=[
                 (_hero(1, "ashe", enums.HeroClass.damage), 76, 46),
@@ -109,12 +116,13 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
             ]
         )
         with _queries(102, overall=(67, 60, 0.5), mvp_maps=6, hero_records=records):
-            card = await user_flows.users.get_draft_card(object(), 102, workspace_id=1)
+            card = await users.get_draft_card(object(), 102, workspace_id=1)
 
-        self.assertEqual(["ashe", "ana", "dva"], [entry.hero.slug for entry in card.heroes])
-        self.assertEqual([76, 40, 12], [entry.maps for entry in card.heroes])
-        self.assertEqual([46, 20, 5], [entry.maps_won for entry in card.heroes])
-        self.assertEqual(["damage", "support", "tank"], [entry.role for entry in card.heroes])
+        self.assertEqual(["ashe", "ana", "dva"], [entry.character.slug for entry in card.characters])
+        self.assertEqual([76, 40, 12], [entry.maps for entry in card.characters])
+        self.assertEqual([46, 20, 5], [entry.maps_won for entry in card.characters])
+        self.assertEqual(["damage", "support", "tank"], [entry.character.attrs["class"] for entry in card.characters])
+        self.assertEqual({"overwatch"}, {entry.character.discipline for entry in card.characters})
         self.assertEqual(127, card.maps)
         self.assertEqual(6, card.mvp_maps)
 
@@ -137,7 +145,7 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
             teams=[_team(tid, placement=tid) for tid in range(1, 8)],
             teams_counts=dict.fromkeys(range(1, 8), 24),
         ):
-            card = await user_flows.users.get_draft_card(object(), 103, workspace_id=1)
+            card = await users.get_draft_card(object(), 103, workspace_id=1)
 
         self.assertEqual([7, 6, 5, 4, 3], [entry.id for entry in card.recent_tournaments])
         self.assertEqual([7, 6, 5, 4, 3], [entry.placement for entry in card.recent_tournaments])
@@ -163,7 +171,7 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
             teams=[_team(2, placement=3), _team(9, placement=None, is_league=True)],
             teams_counts={2: 16},
         ):
-            card = await user_flows.users.get_draft_card(object(), 104, workspace_id=1)
+            card = await users.get_draft_card(object(), 104, workspace_id=1)
 
         self.assertEqual(1, card.tournaments)
         self.assertEqual([2], [entry.id for entry in card.recent_tournaments])
@@ -194,9 +202,9 @@ class DraftCardQueryScopeTests(IsolatedAsyncioTestCase):
         return str(session.statements[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
     async def test_hero_records_are_workspace_scoped(self) -> None:
-        sql = await self._compiled(lambda session: queries.encounters.get_user_hero_records(session, 7, workspace_id=2))
+        sql = await self._compiled(lambda session: users.encounters.get_user_hero_records(session, 7, workspace_id=2))
         self.assertIn("tournament.workspace_id = 2", sql)
 
     async def test_mvp_map_count_is_workspace_scoped(self) -> None:
-        sql = await self._compiled(lambda session: queries.encounters.count_user_mvp_maps(session, 7, workspace_id=2))
+        sql = await self._compiled(lambda session: users.encounters.count_user_mvp_maps(session, 7, workspace_id=2))
         self.assertIn("tournament.workspace_id = 2", sql)

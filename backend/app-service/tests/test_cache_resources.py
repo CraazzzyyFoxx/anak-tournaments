@@ -51,8 +51,8 @@ class CacheResourceTableTests(IsolatedAsyncioTestCase):
         # The whole point of the fan-out: a tournament write moves per-user
         # aggregates this service cannot attribute to a tournament.
         patterns = set(cache_resources.RESOURCE_CACHE_PATTERNS["tournament.standings"](42))
-        self.assertIn("backend:user_compare:v2:*", patterns)
-        self.assertIn("backend:user_hero_compare:v2:*", patterns)
+        self.assertIn("backend:user_compare:v3:*", patterns)
+        self.assertIn("backend:user_character_compare:v3:*", patterns)
         self.assertIn("backend:achievement_rarity_map:*", patterns)
 
     def test_a_score_report_drops_nothing_here(self) -> None:
@@ -61,10 +61,10 @@ class CacheResourceTableTests(IsolatedAsyncioTestCase):
         self.assertEqual((), tuple(cache_resources.RESOURCE_CACHE_PATTERNS["tournament.encounters"](42)))
 
     async def test_local_invalidation_clears_the_matching_keys(self) -> None:
-        await cache.set("backend:user_compare:v2:9:x", 1)
+        await cache.set("backend:user_compare:v3:9:x", 1)
         await cache.set("backend:untouched:9:x", 1)
 
         await cache_resources.invalidate_local(Scope.tournament(42), frozenset({"tournament.standings"}), {})
 
-        self.assertIsNone(await cache.get("backend:user_compare:v2:9:x"))
+        self.assertIsNone(await cache.get("backend:user_compare:v3:9:x"))
         self.assertEqual(1, await cache.get("backend:untouched:9:x"))

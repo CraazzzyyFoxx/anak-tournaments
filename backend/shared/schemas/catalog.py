@@ -1,16 +1,8 @@
 """Catalog read models shared by app-service, stats-service, and tournament-service.
 
-``HeroRead``/``MapRead``/``GamemodeRead`` and the hero playtime/stats/leaderboard
-parameter shapes used to be copy-pasted into each of those three services'
-``schemas`` packages -- 121 identical lines, including a 44-field
-``HeroLeaderboardEntry``. They carry no per-service behavior, so there is exactly
-one definition here and each service's local module re-exports what it needs.
-Same consolidation as ``shared/schemas/base.py``; see its docstring.
-
 ``CatalogEntityRead`` is the one native wire for a ``catalog.entity`` row of any discipline and kind (public reads,
-admin CRUD, embedded relationships). ``HeroRead``/``MapRead``/``GamemodeRead`` below are the legacy Overwatch-shaped
-reads, deleted once their last embedder moves to it. They omit ``aliases``: only app-service serves it, so declaring it
-here would widen unrelated public payloads; app-service subclasses them to add it.
+admin CRUD, embedded relationships). The character playtime/leaderboard parameter shapes live here once so every
+service that serves them shares one definition (same consolidation as ``shared/schemas/base.py``).
 """
 
 import typing
@@ -26,28 +18,13 @@ from shared.schemas.role import RoleRef
 
 __all__ = (
     "CatalogEntityRead",
-    "GamemodeRead",
-    "HeroLeaderboardEntry",
-    "HeroLeaderboardParams",
-    "HeroLeaderboardQueryParams",
-    "HeroPlaytime",
-    "HeroPlaytimePaginationParams",
-    "HeroPlaytimeQueryPaginationParams",
-    "HeroRead",
-    "MapRead",
+    "CharacterLeaderboardEntry",
+    "CharacterLeaderboardParams",
+    "CharacterLeaderboardQueryParams",
+    "CharacterPlaytime",
+    "CharacterPlaytimePaginationParams",
+    "CharacterPlaytimeQueryPaginationParams",
 )
-
-
-def _entity_fields(entity: Any) -> dict[str, Any]:
-    """What every catalog read model takes from a ``catalog.entity`` row (``aliases`` is read by the subclasses that
-    declare it and ignored by the rest)."""
-    return {
-        "id": entity.id,
-        "slug": entity.slug,
-        "name": entity.name,
-        "image_path": entity.image_path or "",
-        "aliases": list(entity.aliases or []),
-    }
 
 
 class CatalogEntityRead(BaseRead):
@@ -89,80 +66,27 @@ class CatalogEntityRead(BaseRead):
         )
 
 
-class GamemodeRead(BaseRead):
-    slug: str
-    name: str
-    image_path: str
-    description: str | None
+class CharacterPlaytime(BaseModel):
+    """One character's share of the observed playtime (a fraction of the returned set), not a duration."""
 
-    @classmethod
-    def from_entity(cls, entity: Any) -> typing.Self:
-        return cls.model_validate({**_entity_fields(entity), "description": (entity.attrs or {}).get("description")})
-
-
-class HeroRead(BaseRead):
-    slug: str
-    name: str
-    image_path: str
-    type: str
-    color: str
-
-    @classmethod
-    def from_entity(cls, entity: Any) -> typing.Self:
-        """``type`` keeps today's spelling, the ``HeroClass`` value ("Tank"); a JSON-built hero object keeps the label."""
-        attrs = entity.attrs or {}
-        return cls.model_validate(
-            {
-                **_entity_fields(entity),
-                "type": enums.HeroClass[attrs["class"]].value,
-                "color": attrs.get("color", "#ffffff"),
-            }
-        )
-
-
-class MapRead(BaseRead):
-    gamemode_id: int
-    name: str
-    image_path: str
-    in_competitive: bool = True
-
-    gamemode: GamemodeRead | None
-
-    @classmethod
-    def from_entity(cls, entity: Any, *, with_gamemode: bool = False) -> typing.Self:
-        """``with_gamemode`` reads ``entity.parent``, which the caller must have loaded."""
-        parent = entity.parent if with_gamemode else None
-        return cls.model_validate(
-            {
-                **_entity_fields(entity),
-                "gamemode_id": entity.parent_id,
-                "in_competitive": (entity.attrs or {}).get("in_competitive", True),
-                "gamemode": None
-                if parent is None
-                else {**_entity_fields(parent), "description": (parent.attrs or {}).get("description")},
-            }
-        )
-
-
-class HeroPlaytime(BaseModel):
-    hero: HeroRead
+    entity: CatalogEntityRead
     playtime: float
 
 
-class HeroPlaytimeQueryPaginationParams(pagination.PaginationSortQueryParams):
+class CharacterPlaytimeQueryPaginationParams(pagination.PaginationSortQueryParams):
     user_id: int | typing.Literal["all"] = "all"
     sort: typing.Literal["id", "name", "slug", "playtime"] = "playtime"
     tournament_id: int | None = None
 
 
 @dataclass
-class HeroPlaytimePaginationParams(pagination.PaginationSortParams):
+class CharacterPlaytimePaginationParams(pagination.PaginationSortParams):
     user_id: int | typing.Literal["all"] = "all"
     # role: enums.HeroRole | typing.Literal["all"] = "all"
     tournament_id: int | None = None
 
 
-class HeroLeaderboardEntry(BaseModel):
+class CharacterLeaderboardEntry(BaseModel):
     rank: int
     user_id: int
     username: str
@@ -196,18 +120,18 @@ class HeroLeaderboardEntry(BaseModel):
     kda: float
 
 
-class HeroLeaderboardQueryParams(pagination.PaginationQueryParams):
+class CharacterLeaderboardQueryParams(pagination.PaginationQueryParams):
     tournament_id: int | None = None
     stat: enums.LogStatsName = enums.LogStatsName.Eliminations
 
 
 @dataclass
-class HeroLeaderboardParams(pagination.PaginationParams):
+class CharacterLeaderboardParams(pagination.PaginationParams):
     tournament_id: int | None = None
     stat: enums.LogStatsName = enums.LogStatsName.Performance
 
     @classmethod
-    def from_query_params(cls, query_params: HeroLeaderboardQueryParams) -> HeroLeaderboardParams:  # type: ignore[override]
+    def from_query_params(cls, query_params: CharacterLeaderboardQueryParams) -> CharacterLeaderboardParams:  # type: ignore[override]
         return cls(
             page=query_params.page,
             per_page=query_params.per_page,

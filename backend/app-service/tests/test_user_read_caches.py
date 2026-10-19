@@ -31,6 +31,7 @@ enums = importlib.import_module("src.core.enums")
 pagination = importlib.import_module("shared.core.pagination")
 user_cache = importlib.import_module("src.services.user_cache")
 cache_resources = importlib.import_module("src.services.cache_resources")
+users = flows.UserService.of("overwatch")
 
 _ALL_PREFIXES = (*user_cache.USER_CACHE_KEY_PREFIXES, *user_cache.USER_COMPARE_KEY_PREFIXES)
 
@@ -71,16 +72,16 @@ class UserCacheInvalidationTests(_CacheTestBase):
             self.assertEqual(1, await cache.get(f"backend:{prefix}:6:x"))
 
     async def test_invalidate_user_caches_routes_every_pattern(self) -> None:
-        await cache.set("backend:user_heroes:9:x", 1)
+        await cache.set("backend:user_characters:9:x", 1)
         await cache.set("backend:user_matches_summary:9:x", 1)
-        await cache.set("backend:user_compare:v2:9:x", 1)
+        await cache.set("backend:user_compare:v3:9:x", 1)
 
         # Must not raise NotConfiguredError and must clear the subject's keys.
         await user_cache.invalidate_user_caches(9)
 
-        self.assertIsNone(await cache.get("backend:user_heroes:9:x"))
+        self.assertIsNone(await cache.get("backend:user_characters:9:x"))
         self.assertIsNone(await cache.get("backend:user_matches_summary:9:x"))
-        self.assertIsNone(await cache.get("backend:user_compare:v2:9:x"))
+        self.assertIsNone(await cache.get("backend:user_compare:v3:9:x"))
 
     def test_tournament_invalidation_patterns_include_new_read_caches(self) -> None:
         patterns = set(cache_resources.RESOURCE_CACHE_PATTERNS["tournament.standings"](42))
@@ -91,17 +92,17 @@ class UserCacheInvalidationTests(_CacheTestBase):
                 msg=f"tournament change does not drop {prefix}",
             )
         # Regression: compare namespaces stay covered (was asserted before refactor).
-        self.assertIn("backend:user_compare:v2:*", patterns)
-        self.assertIn("backend:user_hero_compare:v2:*", patterns)
+        self.assertIn("backend:user_compare:v3:*", patterns)
+        self.assertIn("backend:user_character_compare:v3:*", patterns)
 
 
-class HeroesCacheTests(_CacheTestBase):
+class CharactersCacheTests(_CacheTestBase):
     def _patch_deps(self):
         user = SimpleNamespace(id=101, name="Player")
-        get_user = patch.object(flows.users, "get", AsyncMock(return_value=user))
+        get_user = patch.object(users, "get", AsyncMock(return_value=user))
         compute = AsyncMock(return_value=[])
         svc = patch.multiple(
-            flows.users.profile,
+            users.profile,
             get_statistics_by_heroes=compute,
             get_statistics_by_heroes_all_values=AsyncMock(return_value=[]),
         )
@@ -112,22 +113,22 @@ class HeroesCacheTests(_CacheTestBase):
         params = pagination.PaginationParams(page=1, per_page=10)
         stats = [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations]
         with get_user, svc:
-            await flows.users.get_heroes(object(), 101, params, stats, workspace_id=1)
-            await flows.users.get_heroes(object(), 101, params, stats, workspace_id=1)
+            await users.get_heroes(object(), 101, params, stats, workspace_id=1)
+            await users.get_heroes(object(), 101, params, stats, workspace_id=1)
         compute.assert_awaited_once()
 
     async def test_stats_order_and_duplicates_share_one_key(self) -> None:
         get_user, svc, compute = self._patch_deps()
         params = pagination.PaginationParams(page=1, per_page=10)
         with get_user, svc:
-            await flows.users.get_heroes(
+            await users.get_heroes(
                 object(),
                 101,
                 params,
                 [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations],
                 workspace_id=1,
             )
-            await flows.users.get_heroes(
+            await users.get_heroes(
                 object(),
                 101,
                 params,
@@ -140,10 +141,10 @@ class HeroesCacheTests(_CacheTestBase):
         get_user, svc, compute = self._patch_deps()
         stats = [enums.LogStatsName.Deaths]
         with get_user, svc:
-            await flows.users.get_heroes(
+            await users.get_heroes(
                 object(), 101, pagination.PaginationParams(page=1, per_page=10), stats, workspace_id=1
             )
-            await flows.users.get_heroes(
+            await users.get_heroes(
                 object(), 101, pagination.PaginationParams(page=2, per_page=10), stats, workspace_id=1
             )
         self.assertEqual(2, compute.await_count)
@@ -154,13 +155,13 @@ class MatchesSummaryCacheTests(_CacheTestBase):
         user = SimpleNamespace(id=202, name="Player")
         opponents = AsyncMock(return_value=[])
         with (
-            patch.object(flows.users, "get", AsyncMock(return_value=user)),
-            patch.object(flows.users.encounters, "get_user_opponents", opponents),
-            patch.object(flows.users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
+            patch.object(users, "get", AsyncMock(return_value=user)),
+            patch.object(users.encounters, "get_user_opponents", opponents),
+            patch.object(users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
         ):
-            await flows.users.get_matches_summary(object(), 202, workspace_id=1)
-            await flows.users.get_matches_summary(object(), 202, workspace_id=1)
-            await flows.users.get_matches_summary(object(), 202, workspace_id=2)  # different scope
+            await users.get_matches_summary(object(), 202, workspace_id=1)
+            await users.get_matches_summary(object(), 202, workspace_id=1)
+            await users.get_matches_summary(object(), 202, workspace_id=2)  # different scope
         self.assertEqual(2, opponents.await_count)
 
 
@@ -183,17 +184,17 @@ class CacheKeyRoutabilityTests(_CacheTestBase):
         user = SimpleNamespace(id=303, name="Player")
         opponents = AsyncMock(return_value=[])
         with (
-            patch.object(flows.users, "get", AsyncMock(return_value=user)),
-            patch.object(flows.users.encounters, "get_user_opponents", opponents),
-            patch.object(flows.users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
+            patch.object(users, "get", AsyncMock(return_value=user)),
+            patch.object(users.encounters, "get_user_opponents", opponents),
+            patch.object(users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
         ):
-            await flows.users.get_matches_summary(object(), 303, workspace_id=1)
+            await users.get_matches_summary(object(), 303, workspace_id=1)
             stored = [key async for key in cache.scan("backend:*")]
 
             await user_cache.invalidate_user_caches(303)
             self.assertEqual([], [key async for key in cache.scan("backend:*")])
 
-            await flows.users.get_matches_summary(object(), 303, workspace_id=1)
+            await users.get_matches_summary(object(), 303, workspace_id=1)
 
         self.assertTrue(stored, "the decorated read stored nothing")
         for key in stored:
@@ -204,26 +205,26 @@ class CacheKeyRoutabilityTests(_CacheTestBase):
         self.assertEqual(2, opponents.await_count, "invalidation did not force a recompute")
 
     async def test_the_versioned_encounter_families_are_dropped_by_both_invalidation_shapes(self) -> None:
-        """``user_encounters`` and ``user_tournament_encounters`` embed the native match header, so their keys are
-        versioned (``:v4:``). The version belongs to the prefix: a subject's precise pattern is
+        """``user_encounters`` and ``user_tournament_encounters`` embed the native match header of one game, so their
+        keys are versioned (``:v5:``). The version belongs to the prefix: a subject's precise pattern is
         ``{prefix}:{user_id}:*`` and must still reach the key the decorator wrote, and so must the broad one."""
         user = SimpleNamespace(id=404, name="Player")
         page = AsyncMock(return_value=([], 0))
         dossier = AsyncMock(return_value=[])
         params = pagination.PaginationSortParams(page=1, per_page=10, sort="played_at")
         with (
-            patch.object(flows.users, "get", AsyncMock(return_value=user)),
-            patch.object(flows.users.encounters, "get_user_encounters_paginated", page),
-            patch.object(flows.users.encounters, "get_user_encounter_matches_unpaginated", dossier),
+            patch.object(users, "get", AsyncMock(return_value=user)),
+            patch.object(users.encounters, "get_user_encounters_paginated", page),
+            patch.object(users.encounters, "get_user_encounter_matches_unpaginated", dossier),
         ):
             for drop in ("subject", "tournament"):
-                await flows.users.get_encounters_by_user(object(), 404, params, workspace_id=1)
-                await flows.users.get_tournament_encounters(object(), 404, 7)
+                await users.get_encounters_by_user(object(), 404, params, workspace_id=1)
+                await users.get_tournament_encounters(object(), 404, 7)
                 stored = sorted([key async for key in cache.scan("backend:*")])
                 self.assertEqual(
                     [
-                        "backend:user_encounters:v4:404:",
-                        "backend:user_tournament_encounters:v4:404:",
+                        "backend:user_encounters:v5:404:",
+                        "backend:user_tournament_encounters:v5:404:",
                     ],
                     [key[: key.index("404:") + 4] for key in stored],
                 )

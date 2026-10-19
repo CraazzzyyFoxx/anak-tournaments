@@ -4,15 +4,13 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository.stats_queries import match_context, player_facts
 from src import models
 from src.core import enums, pagination
 from src.domain.encounter_seats import Seat
+from src.services.discipline_queries import DisciplineQueries
 
-__all__ = ("StatisticsQueries", "encounter_query", "queries")
+__all__ = ("StatisticsQueries", "encounter_query")
 
-_facts = player_facts(discipline="overwatch")
-_matches = match_context(discipline="overwatch")
 
 _seat = Seat(name="statistics_seat")
 # One row per player and two-seat encounter their team played; ``maps_won`` /
@@ -29,7 +27,7 @@ encounter_query = _seat.join(
 ).subquery("encounters")
 
 
-class StatisticsQueries:
+class StatisticsQueries(DisciplineQueries):
     """Analytical statistics reads (leaderboards, per-tournament ranks, top-N pages)."""
 
     # ---- shared query builders -------------------------------------------------
@@ -58,6 +56,7 @@ class StatisticsQueries:
                 models.Player.is_substitution.is_(False),
                 *extra_filters,
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == self.discipline,
                 *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
             )
             .group_by(models.User.id)
@@ -89,9 +88,9 @@ class StatisticsQueries:
     def _tournament_match_ids_cte(self, tournament_id: int, *, cte_name: str) -> sa.CTE:
         """Materialize the tournament's native match ids to drive bounded fact probes."""
         return (
-            sa.select(_matches.c.id.label("match_id"))
-            .select_from(_matches)
-            .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
+            sa.select(self._matches.c.id.label("match_id"))
+            .select_from(self._matches)
+            .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
             .where(models.Encounter.tournament_id == tournament_id)
             .cte(cte_name)
             .prefix_with("MATERIALIZED")
@@ -109,25 +108,25 @@ class StatisticsQueries:
         tournament_matches = self._tournament_match_ids_cte(tournament_id, cte_name=f"{cte_prefix}matches")
         per_match = (
             sa.select(
-                _facts.c.player_id.label("user_id"),
-                _facts.c.match_id.label("match_id"),
-                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.ImpactRank, _facts.c.value))).label(
-                    "impact_rank"
-                ),
-                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.Performance, _facts.c.value))).label(
-                    "performance"
-                ),
+                self._facts.c.player_id.label("user_id"),
+                self._facts.c.match_id.label("match_id"),
+                sa.func.max(
+                    sa.case((self._facts.c.stat_code == enums.LogStatsName.ImpactRank, self._facts.c.value))
+                ).label("impact_rank"),
+                sa.func.max(
+                    sa.case((self._facts.c.stat_code == enums.LogStatsName.Performance, self._facts.c.value))
+                ).label("performance"),
             )
-            .select_from(_facts)
-            .join(tournament_matches, tournament_matches.c.match_id == _facts.c.match_id)
+            .select_from(self._facts)
+            .join(tournament_matches, tournament_matches.c.match_id == self._facts.c.match_id)
             .where(
                 sa.and_(
-                    _facts.c.stat_code.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
+                    self._facts.c.stat_code.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
+                    self._facts.c.entity_id.is_(None),
+                    self._facts.c.segment == 0,
                 )
             )
-            .group_by(_facts.c.player_id, _facts.c.match_id)
+            .group_by(self._facts.c.player_id, self._facts.c.match_id)
             .cte(f"{cte_prefix}per_match")
         )
         placement = sa.func.coalesce(per_match.c.impact_rank, per_match.c.performance)
@@ -188,6 +187,7 @@ class StatisticsQueries:
                     models.Player.is_substitution.is_(False),
                     models.Tournament.is_league.is_(False),
                     models.Tournament.is_hidden.is_(False),
+                    models.Tournament.discipline == self.discipline,
                     *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
                 )
             )
@@ -241,35 +241,37 @@ class StatisticsQueries:
         descending rank, ascending rank, ranked user count)`` rows, one per requested stat.
         """
         tournament_matches = self._tournament_match_ids_cte(tournament.id, cte_name="tournament_stat_matches")
-        avg_value = sa.func.avg(aggregate_order_by(_facts.c.value, _facts.c.match_id, _facts.c.workspace_member_id))
+        avg_value = sa.func.avg(
+            aggregate_order_by(self._facts.c.value, self._facts.c.match_id, self._facts.c.workspace_member_id)
+        )
         stats_query = (
             sa.select(
-                _facts.c.stat_code.label("name"),
-                _facts.c.player_id.label("user_id"),
+                self._facts.c.stat_code.label("name"),
+                self._facts.c.player_id.label("user_id"),
                 avg_value.cast(sa.Numeric(10, 2)).label("value"),
                 sa.func.dense_rank()
                 .over(
                     order_by=sa.desc(avg_value),
-                    partition_by=_facts.c.stat_code,
+                    partition_by=self._facts.c.stat_code,
                 )
                 .label("rank"),
                 sa.func.dense_rank()
                 .over(
                     order_by=sa.asc(avg_value),
-                    partition_by=_facts.c.stat_code,
+                    partition_by=self._facts.c.stat_code,
                 )
                 .label("rank_asc"),
             )
-            .select_from(_facts)
-            .join(tournament_matches, tournament_matches.c.match_id == _facts.c.match_id)
+            .select_from(self._facts)
+            .join(tournament_matches, tournament_matches.c.match_id == self._facts.c.match_id)
             .where(
                 sa.and_(
-                    _facts.c.stat_code.in_(stats_names),
-                    _facts.c.segment == 0,
-                    _facts.c.entity_id.is_(None),
+                    self._facts.c.stat_code.in_(stats_names),
+                    self._facts.c.segment == 0,
+                    self._facts.c.entity_id.is_(None),
                 )
             )
-            .group_by(_facts.c.player_id, _facts.c.stat_code)
+            .group_by(self._facts.c.player_id, self._facts.c.stat_code)
         ).cte("stats_query")
 
         query = sa.select(
@@ -350,26 +352,28 @@ class StatisticsQueries:
         Returns rows shaped ``(user_id, name, value, rank)`` ordered by rank.
         ``limit`` is a defensive cap — lobbies are small (< ~200 players).
         """
-        avg_value = sa.func.avg(aggregate_order_by(_facts.c.value, _facts.c.match_id, _facts.c.workspace_member_id))
+        avg_value = sa.func.avg(
+            aggregate_order_by(self._facts.c.value, self._facts.c.match_id, self._facts.c.workspace_member_id)
+        )
         order_by = sa.asc(avg_value) if enums.is_ascending_stat(stat_name) else sa.desc(avg_value)
 
         tournament_matches = self._tournament_match_ids_cte(tournament_id, cte_name="leaderboard_matches")
         stats_query = (
             sa.select(
-                _facts.c.player_id.label("user_id"),
+                self._facts.c.player_id.label("user_id"),
                 avg_value.cast(sa.Numeric(10, 2)).label("value"),
                 sa.func.dense_rank().over(order_by=order_by).label("rank"),
             )
-            .select_from(_facts)
-            .join(tournament_matches, tournament_matches.c.match_id == _facts.c.match_id)
+            .select_from(self._facts)
+            .join(tournament_matches, tournament_matches.c.match_id == self._facts.c.match_id)
             .where(
                 sa.and_(
-                    _facts.c.stat_code == stat_name,
-                    _facts.c.segment == 0,
-                    _facts.c.entity_id.is_(None),
+                    self._facts.c.stat_code == stat_name,
+                    self._facts.c.segment == 0,
+                    self._facts.c.entity_id.is_(None),
                 )
             )
-            .group_by(_facts.c.player_id)
+            .group_by(self._facts.c.player_id)
         ).cte("leaderboard_stats")
 
         result = await session.execute(self._ranked_leaderboard_query(stats_query, limit))
@@ -420,6 +424,3 @@ class StatisticsQueries:
 
         result = await session.execute(query)
         return result.first()
-
-
-queries = StatisticsQueries()

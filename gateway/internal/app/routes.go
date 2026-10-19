@@ -17,9 +17,10 @@ import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 // surface is in AchievementsSubtreeRoutes (ServeMux can't disambiguate
 // /{id}/users vs /user/{user_id}); the achievements *list* stays here.
 var ReadRoutes = []edge.RouteSpec{
-	// --- hero statistics (the catalog reads are the native /api/v1/catalog routes below) ---
-	{Method: "GET", Pattern: "/api/v1/heroes/statistics/playtime", Queue: "rpc.app.heroes.playtime", AllQuery: true, Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/heroes/{hero_id}/leaderboard", Queue: "rpc.app.heroes.leaderboard", IDParam: "hero_id", AllQuery: true, Auth: edge.AuthOptional},
+	// --- one discipline's character statistics (the catalog reads are the native /api/v1/catalog routes below).
+	// Five/six segments: no clash with the three-segment /statistics/{champion,winrate,won-maps} literals. ---
+	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/playtime", Queue: "rpc.app.statistics.character_playtime", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard", Queue: "rpc.app.statistics.character_leaderboard", IDParam: "entity_id", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
 	// --- catalog: one discipline's characters/maps/modes, public, never cached (P7 §3.2). The literal `legacy`
 	// segment below is more specific than {discipline}, so ServeMux keeps the old-id resolver reachable. ---
 	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.list", Path: []string{"discipline", "kind"}, AllQuery: true, Auth: edge.AuthNone},
@@ -33,7 +34,7 @@ var ReadRoutes = []edge.RouteSpec{
 	// --- achievements (list only; get surface is the subtree) ---------------
 	{Method: "GET", Pattern: "/api/v1/achievements", Queue: "rpc.app.read.list", Entity: "achievement", Action: "list", AllQuery: true, Auth: edge.AuthNone},
 	// --- statistics ---------------------------------------------------------
-	{Method: "GET", Pattern: "/api/v1/statistics/dashboard", Queue: "rpc.app.statistics.dashboard", Query: []string{"workspace_id"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/statistics/dashboard", Queue: "rpc.app.statistics.dashboard", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/statistics/champion", Queue: "rpc.app.statistics.champion", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/statistics/winrate", Queue: "rpc.app.statistics.winrate", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/statistics/won-maps", Queue: "rpc.app.statistics.won_maps", AllQuery: true, Auth: edge.AuthNone},
@@ -53,18 +54,18 @@ var ReadRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/users/overview/stats", Queue: "rpc.app.users.overview_stats", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/users/overview/catalog", Queue: "rpc.app.users.overview_catalog", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/compare", Queue: "rpc.app.users.compare", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/compare/heroes", Queue: "rpc.app.users.compare_heroes", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/profile", Queue: "rpc.app.users.get_profile", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/draft-card", Queue: "rpc.app.users.draft_card", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments", Queue: "rpc.app.users.tournaments", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/compare/characters", Queue: "rpc.app.users.compare_characters", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/profile", Queue: "rpc.app.users.get_profile", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/draft-card", Queue: "rpc.app.users.draft_card", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments", Queue: "rpc.app.users.tournaments", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments/{tournament_id}", Queue: "rpc.app.users.tournament", IDParam: "id", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments/{tournament_id}/encounters", Queue: "rpc.app.users.tournament_encounters", IDParam: "id", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments/{tournament_id}/leaderboard", Queue: "rpc.app.users.tournament_leaderboard", IDParam: "id", Path: []string{"tournament_id"}, Query: []string{"stat"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/maps", Queue: "rpc.app.users.maps", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/maps/summary", Queue: "rpc.app.users.maps_summary", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/encounters", Queue: "rpc.app.users.encounters", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/matches/summary", Queue: "rpc.app.users.matches_summary", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/heroes", Queue: "rpc.app.users.heroes", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/matches/summary", Queue: "rpc.app.users.matches_summary", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/characters", Queue: "rpc.app.users.characters", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/users/{id}/teammates", Queue: "rpc.app.users.teammates", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/users/{name}", Queue: "rpc.app.users.by_name", Path: []string{"name"}, Query: []string{"entities"}, Auth: edge.AuthNone},
 }

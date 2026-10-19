@@ -1,4 +1,4 @@
-"""Bespoke statistics + dashboard reads (all public, workspace-filtered)."""
+"""Bespoke statistics + dashboard reads (all public, workspace-filtered, one discipline each)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,13 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
+from src import schemas
 from src.core import db, pagination
+from src.core.workspace import resolve_workspace_context
 from src.rpc import _common as c
 from src.services.dashboard.readiness import readiness as readiness_service
 from src.services.dashboard.service import dashboard as dashboard_service
+from src.services.hero.service import heroes as character_service
 from src.services.statistics.service import statistics as statistics_service
 
 _SF = db.async_session_maker
@@ -26,9 +29,46 @@ def register(broker: Any, logger: Any) -> None:
         # fan-out (AsyncSession is not concurrency-safe), so the envelope's
         # session is deliberately unused here.
         async def op(_session: Any) -> Any:
-            return await dashboard_service.get_dashboard_stats(workspace_id=c.q1(data, "workspace_id", int))
+            return await dashboard_service.get_dashboard_stats(
+                discipline=c.require_discipline(data), workspace_id=c.q1(data, "workspace_id", int)
+            )
 
         return await c.envelope(logger, "statistics.dashboard", op, session_factory=_SF)
+
+    # GET /api/v1/statistics/{discipline}/characters/playtime — one game's character playtime shares.
+    @broker.subscriber("rpc.app.statistics.character_playtime")
+    async def _character_playtime(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            discipline = c.require_discipline(data, in_path=True)
+            await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
+            qp = build_query_model(schemas.CharacterPlaytimeQueryPaginationParams, data.get("query"))
+            return await character_service.get_playtime(
+                session,
+                schemas.CharacterPlaytimePaginationParams.from_query_params(qp),
+                discipline=discipline,
+                workspace_id=c.q1(data, "workspace_id", int),
+            )
+
+        return await c.envelope(logger, "statistics.character_playtime", op, session_factory=_SF)
+
+    # GET /api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard — 404 for another game's character.
+    @broker.subscriber("rpc.app.statistics.character_leaderboard")
+    async def _character_leaderboard(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            discipline = c.require_discipline(data, in_path=True)
+            await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
+            qp = build_query_model(schemas.CharacterLeaderboardQueryParams, data.get("query"))
+            return await character_service.get_hero_leaderboard(
+                session,
+                discipline=discipline,
+                entity_id=c.require_id(data),
+                params=schemas.CharacterLeaderboardParams.from_query_params(qp),
+                workspace_id=ws.id,
+                grid=ws.grid,
+            )
+
+        return await c.envelope(logger, "statistics.character_leaderboard", op, session_factory=_SF)
 
     # GET /api/v1/admin/tournaments/{id}/readiness — hub living checklist (D13, §7.1).
     # Gate: ANY(tournament.read, team.read) on the tournament's workspace; the
@@ -66,6 +106,7 @@ def register(broker: Any, logger: Any) -> None:
             return await statistics_service.get_most_champions(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
+                discipline=c.require_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 
@@ -78,6 +119,7 @@ def register(broker: Any, logger: Any) -> None:
             return await statistics_service.get_to_winrate_players(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
+                discipline=c.require_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 
@@ -90,6 +132,7 @@ def register(broker: Any, logger: Any) -> None:
             return await statistics_service.get_to_won_players(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
+                discipline=c.require_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 

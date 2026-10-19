@@ -7,7 +7,6 @@ from src import schemas
 from src.core import pagination
 
 from .queries import StatisticsQueries
-from .queries import queries as statistics_queries
 
 __all__ = ("StatisticsService", "statistics")
 
@@ -22,9 +21,6 @@ class StatisticsService:
     All three differ only in which query feeds them and how the value is
     rounded, so they share one assembler instead of three copies of it.
     """
-
-    def __init__(self, *, queries: StatisticsQueries = statistics_queries) -> None:
-        self.queries = queries
 
     @staticmethod
     async def _paginate(
@@ -52,11 +48,14 @@ class StatisticsService:
         self,
         session: AsyncSession,
         params: pagination.PaginationSortParams,
+        *,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.PlayerStatistics]:
         """Players ranked by championships won."""
+        queries = StatisticsQueries.of(discipline)
         return await self._paginate(
-            lambda: self.queries.get_top_champions(session, params, workspace_id=workspace_id),
+            lambda: queries.get_top_champions(session, params, workspace_id=workspace_id),
             params,
         )
 
@@ -64,11 +63,14 @@ class StatisticsService:
         self,
         session: AsyncSession,
         params: pagination.PaginationSortParams,
+        *,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.PlayerStatistics]:
         """Players ranked by map win rate. Rounded — the query returns a ratio."""
+        queries = StatisticsQueries.of(discipline)
         return await self._paginate(
-            lambda: self.queries.get_top_winrate_players(session, params, workspace_id=workspace_id),
+            lambda: queries.get_top_winrate_players(session, params, workspace_id=workspace_id),
             params,
             round_to=2,
         )
@@ -77,11 +79,14 @@ class StatisticsService:
         self,
         session: AsyncSession,
         params: pagination.PaginationSortParams,
+        *,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.PlayerStatistics]:
         """Players ranked by maps won."""
+        queries = StatisticsQueries.of(discipline)
         return await self._paginate(
-            lambda: self.queries.get_top_won_players(session, params, workspace_id=workspace_id),
+            lambda: queries.get_top_won_players(session, params, workspace_id=workspace_id),
             params,
         )
 

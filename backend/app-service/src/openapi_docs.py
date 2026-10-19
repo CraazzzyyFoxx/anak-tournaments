@@ -43,31 +43,30 @@ DOCS: dict[str, dict] = {
         "summary": "Get a discipline's native metadata",
         "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the descriptor, the role dictionary (inactive rows included for history; global roles plus the requested workspace's sub-roles), stat and event vocabularies, team-format presets and the native ladder. 404 `discipline_not_installed` for an unknown code; a disabled discipline is still readable.",
     },
-    # ── heroes (bespoke) ─────────────────────────────────────────────────────────
-    "rpc.app.heroes.playtime": {
-        "summary": "Hero playtime stats",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns paginated aggregated hero-playtime statistics, optionally scoped to a workspace.",
-    },
-    "rpc.app.heroes.leaderboard": {
-        "summary": "Hero leaderboard",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated per-hero player leaderboard resolved against the workspace context and its division grid.",
-    },
     # ── statistics ───────────────────────────────────────────────────────────────
+    "rpc.app.statistics.character_playtime": {
+        "summary": "Character playtime shares",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns one discipline's paginated character playtime shares (fractions of the returned set, not seconds), optionally scoped to a user, tournament and workspace. 404 `discipline_not_installed` for an unknown game.",
+    },
+    "rpc.app.statistics.character_leaderboard": {
+        "summary": "Character leaderboard",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.",
+    },
     "rpc.app.statistics.dashboard": {
         "summary": "Dashboard stats",
-        "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace.",
+        "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace; the catalog counts are the required `discipline`'s.",
     },
     "rpc.app.statistics.champion": {
         "summary": "Most-champion players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.",
     },
     "rpc.app.statistics.winrate": {
         "summary": "Top winrate players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.",
     },
     "rpc.app.statistics.won_maps": {
         "summary": "Top won-maps players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.",
     },
     "rpc.app.statistics.tournament_readiness": {
         "summary": "Tournament readiness checklist",
@@ -87,11 +86,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.get_profile": {
         "summary": "User profile",
-        "description": "Permission: public; no authentication required. Returns a player's full profile resolved against the workspace context and division grid.",
+        "description": "Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.",
     },
     "rpc.app.users.draft_card": {
         "summary": "User draft card",
-        "description": "Permission: public; no authentication required. Returns the draft room's player card for a user: career record, per-role and per-hero map records, MVP maps and the last five tournaments, scoped to the workspace.",
+        "description": "Permission: public; no authentication required. Returns the draft room's player card for a user in the required `discipline`: career record, per-role and per-character map records, MVP maps and the last five tournaments, scoped to the workspace.",
     },
     "rpc.app.users.search": {
         "summary": "Search users",
@@ -131,13 +130,14 @@ DOCS: dict[str, dict] = {
             "across every workspace with `workspace_id=all` (the default)."
         ),
     },
-    "rpc.app.users.compare_heroes": {
-        "summary": "Compare user heroes",
+    "rpc.app.users.compare_characters": {
+        "summary": "Compare user characters",
         "description": (
             "Permission: public; no authentication required, though a hidden tournament 404s unless the "
-            "optional identity may view it. Returns a per-hero head-to-head comparison for the given user "
-            "against others, resolved against the `workspace_id` workspace's division grid and tournaments, "
-            "or across every workspace with `workspace_id=all` (the default)."
+            "optional identity may view it. Returns a per-character head-to-head comparison for the given user "
+            "against others in the required `discipline`, resolved against the `workspace_id` workspace's division "
+            "grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or "
+            "map id of another game is a 404."
         ),
     },
     "rpc.app.users.by_name": {
@@ -146,7 +146,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.tournaments": {
         "summary": "User tournaments",
-        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in, scoped to the workspace context and grid.",
+        "description": "Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.",
     },
     "rpc.app.users.tournament": {
         "summary": "User tournament stats",
@@ -176,9 +176,9 @@ DOCS: dict[str, dict] = {
         "summary": "User matches summary",
         "description": "Permission: public; no authentication required. Returns aggregate match totals for a player, optionally workspace-scoped.",
     },
-    "rpc.app.users.heroes": {
-        "summary": "User heroes",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-hero stats for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
+    "rpc.app.users.characters": {
+        "summary": "User characters",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
     },
     "rpc.app.users.teammates": {
         "summary": "User best teammates",

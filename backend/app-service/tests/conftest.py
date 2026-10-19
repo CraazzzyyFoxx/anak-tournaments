@@ -176,7 +176,6 @@ def rpc() -> RpcHarness:
     from src.rpc import (
         achievements,
         catalog,
-        heroes,
         reads_generic,
         statistics,
         users,
@@ -186,7 +185,6 @@ def rpc() -> RpcHarness:
     harness.register(
         reads_generic,
         users,
-        heroes,
         catalog,
         achievements,
         statistics,

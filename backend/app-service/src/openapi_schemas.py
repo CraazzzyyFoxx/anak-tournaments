@@ -46,6 +46,8 @@ _WS_OR_ALL = QueryParam(
     "workspace_id", "string", description='Workspace id (positive integer) or the literal "all" for the global view'
 )
 _TID = QueryParam("tournament_id", "integer")
+# Every statistics read names its game explicitly (no default, no fallback).
+_DISCIPLINE = QueryParam("discipline", required=True, description="Installed discipline code")
 
 OPERATIONS: dict[str, Op] = {
     "rpc.app.workspaces.team_format_get": Op(response=TeamFormatRead),
@@ -63,51 +65,73 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.catalog.legacy": Op(response=schemas.CatalogLegacyRead),
     "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS_OR_ALL,)),
     "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS_OR_ALL,)),
-    # ── heroes (bespoke) ───────────────────────────────────────────────────
-    "rpc.app.heroes.playtime": Op(
-        response=Paginated[schemas.HeroPlaytime], query=schemas.HeroPlaytimeQueryPaginationParams
-    ),
-    "rpc.app.heroes.leaderboard": Op(
-        response=Paginated[schemas.HeroLeaderboardEntry], query=schemas.HeroLeaderboardQueryParams
-    ),
     # ── statistics ─────────────────────────────────────────────────────────
-    "rpc.app.statistics.dashboard": Op(response=schemas.DashboardStats),
+    "rpc.app.statistics.character_playtime": Op(
+        response=Paginated[schemas.CharacterPlaytime], query=schemas.CharacterPlaytimeQueryPaginationParams
+    ),
+    "rpc.app.statistics.character_leaderboard": Op(
+        response=Paginated[schemas.CharacterLeaderboardEntry], query=schemas.CharacterLeaderboardQueryParams
+    ),
+    "rpc.app.statistics.dashboard": Op(response=schemas.DashboardStats, query_params=(_DISCIPLINE, _WS)),
     "rpc.app.statistics.champion": Op(
-        response=Paginated[schemas.PlayerStatistics], query=PaginationSortQueryParams[_STAT_SORT]
+        response=Paginated[schemas.PlayerStatistics],
+        query=PaginationSortQueryParams[_STAT_SORT],
+        query_params=(_DISCIPLINE,),
     ),
     "rpc.app.statistics.winrate": Op(
-        response=Paginated[schemas.PlayerStatistics], query=PaginationSortQueryParams[_STAT_SORT]
+        response=Paginated[schemas.PlayerStatistics],
+        query=PaginationSortQueryParams[_STAT_SORT],
+        query_params=(_DISCIPLINE,),
     ),
     "rpc.app.statistics.won_maps": Op(
-        response=Paginated[schemas.PlayerStatistics], query=PaginationSortQueryParams[_STAT_SORT]
+        response=Paginated[schemas.PlayerStatistics],
+        query=PaginationSortQueryParams[_STAT_SORT],
+        query_params=(_DISCIPLINE,),
     ),
     "rpc.app.statistics.tournament_readiness": Op(response=schemas.TournamentReadiness),
     # ── users (bespoke reads) ──────────────────────────────────────────────
-    "rpc.app.users.get_profile": Op(response=schemas.UserProfile),
-    "rpc.app.users.draft_card": Op(response=schemas.UserDraftCard),
+    "rpc.app.users.get_profile": Op(response=schemas.UserProfile, query_params=(_DISCIPLINE, _WS)),
+    "rpc.app.users.draft_card": Op(response=schemas.UserDraftCard, query_params=(_DISCIPLINE, _WS)),
     "rpc.app.users.search": Op(
         response=schemas.UserSearch,
         response_array=True,
         query_params=(QueryParam("query"),),
     ),
-    "rpc.app.users.overview": Op(response=schemas.UserOverviewResponse, query=schemas.UserOverviewQueryParams),
-    "rpc.app.users.overview_stats": Op(response=schemas.UserOverviewStats, query=schemas.UserOverviewStatsQueryParams),
-    "rpc.app.users.overview_catalog": Op(response=schemas.UserCatalogResponse, query=schemas.UserCatalogQueryParams),
-    "rpc.app.users.compare": Op(response=schemas.UserCompareResponse, query=schemas.UserCompareQueryParams),
-    "rpc.app.users.compare_heroes": Op(
-        response=schemas.UserHeroCompareResponse, query=schemas.UserHeroCompareQueryParams
+    "rpc.app.users.overview": Op(
+        response=schemas.UserOverviewResponse, query=schemas.UserOverviewQueryParams, query_params=(_DISCIPLINE,)
+    ),
+    "rpc.app.users.overview_stats": Op(
+        response=schemas.UserOverviewStats, query=schemas.UserOverviewStatsQueryParams, query_params=(_DISCIPLINE,)
+    ),
+    "rpc.app.users.overview_catalog": Op(
+        response=schemas.UserCatalogResponse, query=schemas.UserCatalogQueryParams, query_params=(_DISCIPLINE,)
+    ),
+    "rpc.app.users.compare": Op(
+        response=schemas.UserCompareResponse, query=schemas.UserCompareQueryParams, query_params=(_DISCIPLINE,)
+    ),
+    "rpc.app.users.compare_characters": Op(
+        response=schemas.UserCharacterCompareResponse,
+        query=schemas.UserCharacterCompareQueryParams,
+        query_params=(_DISCIPLINE,),
     ),
     "rpc.app.users.by_name": Op(response=schemas.UserRead),
-    "rpc.app.users.tournaments": Op(response=schemas.UserTournament, response_array=True),
+    "rpc.app.users.tournaments": Op(
+        response=schemas.UserTournament, response_array=True, query_params=(_DISCIPLINE, _WS)
+    ),
     "rpc.app.users.tournament": Op(response=schemas.UserTournamentWithStats),
     "rpc.app.users.tournament_encounters": Op(response=schemas.EncounterReadWithUserStats, response_array=True),
     "rpc.app.users.tournament_leaderboard": Op(response=schemas.LobbyLeaderboard, query_params=(QueryParam("stat"),)),
-    "rpc.app.users.maps": Op(response=Paginated[schemas.UserMap], query=schemas.UserMapsSearchQueryParams),
-    "rpc.app.users.maps_summary": Op(response=schemas.UserMapsSummary, query=schemas.UserMapsSearchQueryParams),
+    "rpc.app.users.maps": Op(
+        response=Paginated[schemas.UserMap], query=schemas.UserMapsSearchQueryParams, query_params=(_DISCIPLINE,)
+    ),
+    "rpc.app.users.maps_summary": Op(
+        response=schemas.UserMapsSummary, query=schemas.UserMapsSearchQueryParams, query_params=(_DISCIPLINE,)
+    ),
     "rpc.app.users.encounters": Op(
         response=Paginated[schemas.EncounterReadWithUserStats],
         query=PaginationSortQueryParams[_ENC_SORT],
         query_params=(
+            _DISCIPLINE,
             QueryParam("result"),
             QueryParam("stage"),
             QueryParam("mvp1", "boolean"),
@@ -115,14 +139,16 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("opponent"),
         ),
     ),
-    "rpc.app.users.matches_summary": Op(response=schemas.UserMatchesSummary),
-    "rpc.app.users.heroes": Op(
-        response=Paginated[schemas.HeroWithUserStats],
+    "rpc.app.users.matches_summary": Op(response=schemas.UserMatchesSummary, query_params=(_DISCIPLINE, _WS)),
+    "rpc.app.users.characters": Op(
+        response=Paginated[schemas.CharacterWithUserStats],
         query=PaginationQueryParams,
-        query_params=(QueryParam("stats", array=True), _TID, _WS),
+        query_params=(_DISCIPLINE, QueryParam("stats", array=True), _TID, _WS),
     ),
     "rpc.app.users.teammates": Op(
-        response=Paginated[schemas.UserBestTeammate], query=PaginationSortQueryParams[_MATE_SORT]
+        response=Paginated[schemas.UserBestTeammate],
+        query=PaginationSortQueryParams[_MATE_SORT],
+        query_params=(_DISCIPLINE,),
     ),
     # ── achievements (bespoke) ─────────────────────────────────────────────
     "rpc.app.achievements.user": Op(

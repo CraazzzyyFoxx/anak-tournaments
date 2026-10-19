@@ -1,6 +1,6 @@
 """Minimal read-model primitives shared by every service's ``schemas`` package.
 
-Identical ``BaseRead``/``LookupItem``/``Score`` definitions used to be
+Identical ``BaseRead``/``LookupItem`` definitions used to be
 copy-pasted verbatim into app-service, tournament-service, balancer-service,
 stats-service, and stream-service. They carry no per-service behavior, so
 there is exactly one definition here; each service's local ``schemas/base.py``
@@ -13,7 +13,7 @@ shape and must not be conflated with this one.
 
 from pydantic import BaseModel
 
-__all__ = ("BaseRead", "LookupItem", "Score")
+__all__ = ("BaseRead", "LookupItem")
 
 
 class BaseRead(BaseModel):
@@ -23,8 +23,3 @@ class BaseRead(BaseModel):
 class LookupItem(BaseModel):
     id: int
     name: str
-
-
-class Score(BaseModel):
-    home: int
-    away: int

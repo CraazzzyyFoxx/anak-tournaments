@@ -93,11 +93,11 @@ def to_user_tournament_player(
     *,
     grid: DivisionGrid,
     avg_mvp: float | None = None,
-    heroes: list[dict] | None = None,
+    characters: list[models.CatalogEntity] | None = None,
 ) -> schemas.UserTournamentPlayer:
     """Player card inside UserTournament.players.
 
-    ``avg_mvp`` and ``heroes`` are supplied by the caller from bulk lookups
+    ``avg_mvp`` and ``characters`` are supplied by the caller from bulk lookups
     keyed by (tournament_id, user_id) — see ``queries.encounters`` — so this stays a
     pure ORM→DTO conversion with no per-player queries.
     """
@@ -116,7 +116,7 @@ def to_user_tournament_player(
         related_player_id=player.related_player_id,
         relative_player=getattr(player, "relative_player", None),
         avg_mvp=avg_mvp,
-        heroes=[schemas.HeroRead.model_validate(h) for h in (heroes or [])],
+        characters=[schemas.CatalogEntityRead.from_entity(entity, with_parent=False) for entity in (characters or [])],
     )
 
 

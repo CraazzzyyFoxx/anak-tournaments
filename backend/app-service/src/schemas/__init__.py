@@ -2,9 +2,6 @@ from . import auth
 from .base import *
 from .catalog import *
 from .division_grid import *
-from .gamemode import *
-from .hero import *
-from .map import *
 from .user_base import *
 from .statistics import *
 from .achievement import *

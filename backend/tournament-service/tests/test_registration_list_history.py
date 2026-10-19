@@ -135,6 +135,8 @@ class BuildTournamentHistoryTests(IsolatedAsyncioTestCase):
         for entry in history_map[1]:
             self.assertEqual(5, entry.division_grid_version_id)
             self.assertEqual(4, entry.division)
+            # The past tournament's own game travels with its role (another game's row renders its own ontology).
+            self.assertEqual("overwatch", entry.discipline)
         # division_grids is keyed by stringified version id (JSON wire format).
         self.assertEqual({"5"}, set(division_grids))
 

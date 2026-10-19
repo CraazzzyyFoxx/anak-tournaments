@@ -1,49 +1,48 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.disciplines import discipline
+from shared.core import http_status as status
+from shared.core.errors import ApiExc, ApiHTTPException
+from shared.disciplines import discipline as discipline_spec
 from shared.division_grid import DivisionGrid
 from shared.repository import CatalogEntityRepository
+from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.role import RoleRef
 from src import models, schemas
 from src.core import pagination
 
 from .queries import HeroQueries
-from .queries import queries as hero_queries
 
 __all__ = ("HeroService", "heroes")
 
 
 class HeroService:
-    def __init__(
-        self,
-        *,
-        queries: HeroQueries = hero_queries,
-        repo: CatalogEntityRepository = CatalogEntityRepository("character", discipline="overwatch"),
-    ) -> None:
-        self.queries = queries
-        self.repo = repo
+    """One discipline's character statistics: playtime shares and the per-character leaderboard."""
 
     @staticmethod
-    def to_read(hero: models.CatalogEntity) -> schemas.HeroRead:
-        """Serialize a catalog character into ``HeroRead``.
-
-        A hero has no expandable relation in this payload, so there is nothing to
-        load and nothing to await — callers map whole result sets through this.
-        """
-        return schemas.HeroRead.from_entity(hero)
+    def to_read(hero: models.CatalogEntity) -> CatalogEntityRead:
+        """A character row as the catalog's entity DTO (a character has no parent to load)."""
+        return CatalogEntityRead.from_entity(hero, with_parent=False)
 
     async def get_hero_leaderboard(
         self,
         session: AsyncSession,
-        hero_id: int,
-        params: schemas.HeroLeaderboardParams,
-        workspace_id: int | None = None,
         *,
+        discipline: str,
+        entity_id: int,
+        params: schemas.CharacterLeaderboardParams,
+        workspace_id: int | None = None,
         grid: DivisionGrid,
-    ) -> pagination.Paginated[schemas.HeroLeaderboardEntry]:
-        rows, total = await self.queries.get_hero_leaderboard(
+    ) -> pagination.Paginated[schemas.CharacterLeaderboardEntry]:
+        """The ranking of one character of ``discipline``; an id of another game or kind is a 404, never an empty board."""
+        entity = await CatalogEntityRepository("character", discipline=discipline).get(session, entity_id)
+        if entity is None:
+            raise ApiHTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=[ApiExc(code="not_found", msg=f"No character {entity_id} in discipline {discipline!r}")],
+            )
+        rows, total = await HeroQueries.of(discipline).get_hero_leaderboard(
             session,
-            hero_id=hero_id,
+            hero_id=entity_id,
             tournament_id=params.tournament_id,
             stat=params.stat,
             params=pagination.PaginationParams(page=params.page, per_page=params.per_page),
@@ -55,12 +54,12 @@ class HeroService:
             per_page=params.per_page,
             total=total,
             results=[
-                schemas.HeroLeaderboardEntry(
+                schemas.CharacterLeaderboardEntry(
                     rank=row.rank,
                     user_id=row.user_id,
                     username=row.username,
                     player_name=row.player_name,
-                    role=RoleRef.of(discipline(row.discipline).rated_dimension.code, row.role, row.sub_role),
+                    role=RoleRef.of(discipline_spec(row.discipline).rated_dimension.code, row.role, row.sub_role),
                     div=row.div,
                     team=row.team,
                     team_id=row.team_id,
@@ -95,31 +94,33 @@ class HeroService:
     async def get_playtime(
         self,
         session: AsyncSession,
-        params: schemas.HeroPlaytimePaginationParams,
+        params: schemas.CharacterPlaytimePaginationParams,
+        *,
+        discipline: str,
         workspace_id: int | None = None,
-    ) -> pagination.Paginated[schemas.HeroPlaytime]:
-        """Hero playtime share — delegates to `CatalogEntityRepository.playtime`."""
+    ) -> pagination.Paginated[schemas.CharacterPlaytime]:
+        """One game's character playtime shares — delegates to `CatalogEntityRepository.playtime`."""
         user_id: int | None = None if params.user_id == "all" else params.user_id
-        heroes = await self.repo.playtime(
+        characters = await CatalogEntityRepository("character", discipline=discipline).playtime(
             session,
             user_id=user_id,
             tournament_id=params.tournament_id,
             workspace_id=workspace_id,
         )
         # Default sort: descending by playtime (was params.apply_sort with the same default).
-        heroes = sorted(heroes, key=lambda row: float(row[1]), reverse=True)
-        total = len(heroes)
-        paginated = params.paginate_data(heroes)
+        characters = sorted(characters, key=lambda row: float(row[1]), reverse=True)
+        total = len(characters)
+        paginated = params.paginate_data(characters)
         return pagination.Paginated(
             page=params.page,
             per_page=params.per_page,
             total=total,
             results=[
-                schemas.HeroPlaytime(
-                    hero=self.to_read(hero),
+                schemas.CharacterPlaytime(
+                    entity=self.to_read(character),
                     playtime=round(float(playtime), 4),
                 )
-                for hero, playtime in paginated
+                for character, playtime in paginated
             ],
         )
 

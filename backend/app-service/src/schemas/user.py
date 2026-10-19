@@ -11,7 +11,6 @@ from shared.schemas.match import MatchRead, NativeFact
 from shared.schemas.role import RoleRef
 from src import schemas
 from src.core import enums, pagination
-from src.schemas import MapRead
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # Structured GET filters are JSON-encoded query values; RPC callers may supply the object directly.
@@ -22,7 +21,7 @@ RoleQuery = typing.Annotated[
 __all__ = (
     "UserProfile",
     "UserDraftCard",
-    "UserDraftCardHero",
+    "UserDraftCardCharacter",
     "UserDraftCardRole",
     "UserDraftCardTournament",
     "UserRole",
@@ -39,7 +38,7 @@ __all__ = (
     "UserMatchViewer",
     "EncounterReadWithUserStats",
     "UserMap",
-    "UserMapHeroStats",
+    "UserMapCharacterStats",
     "UserMapHighlight",
     "UserMapsOverall",
     "UserMapsSummary",
@@ -48,9 +47,9 @@ __all__ = (
     "UserTournamentStat",
     "LobbyLeaderboardEntry",
     "LobbyLeaderboard",
-    "HeroStat",
-    "HeroWithUserStats",
-    "HeroStatBest",
+    "CharacterStat",
+    "CharacterWithUserStats",
+    "CharacterStatBest",
     "UserBestTeammate",
     "UserOpponentStat",
     "UserStageRecord",
@@ -58,7 +57,7 @@ __all__ = (
     "UserSearch",
     "UserOverviewRoleDivision",
     "UserOverviewDivisionCount",
-    "UserOverviewHero",
+    "UserOverviewCharacter",
     "UserOverviewAverages",
     "UserOverviewRow",
     "UserOverviewResponse",
@@ -78,10 +77,10 @@ __all__ = (
     "UserCompareBaselineInfo",
     "UserCompareMetric",
     "UserCompareResponse",
-    "UserHeroCompareQueryParams",
-    "UserHeroCompareParams",
-    "UserHeroCompareMetric",
-    "UserHeroCompareResponse",
+    "UserCharacterCompareQueryParams",
+    "UserCharacterCompareParams",
+    "UserCharacterCompareMetric",
+    "UserCharacterCompareResponse",
 )
 
 
@@ -132,9 +131,9 @@ class UserTournamentPlayer(BaseModel):
     # COALESCE(ImpactRank, Performance); ImpactRank preferred, Performance the
     # legacy fallback. `None` when the player has no such stat rows.
     avg_mvp: float | None = None
-    # This player's top heroes by playtime in THIS tournament (same hero-read
-    # shape used elsewhere on the response). Empty when none recorded.
-    heroes: list[schemas.HeroRead] = Field(default_factory=list)
+    # This player's top characters by playtime in THIS tournament (the catalog's entity
+    # shape). Empty when none recorded.
+    characters: list[CatalogEntityRead] = Field(default_factory=list)
 
 
 class UserEncounterTournament(BaseModel):
@@ -292,7 +291,8 @@ class UserTournamentWithStats(BaseModel):
     maps: int
     playtime: float
 
-    stats: dict[enums.LogStatsName | typing.Literal["winrate"], UserTournamentStat]
+    #: By stat code (the tournament's game declares them) plus ``"winrate"``.
+    stats: dict[str, UserTournamentStat]
 
 
 class LobbyLeaderboardEntry(BaseModel):
@@ -312,13 +312,13 @@ class LobbyLeaderboard(BaseModel):
     render a per-stat "lobby leaderboard" modal.
     """
 
-    stat: enums.LogStatsName
+    stat: str
     total_players: int
     entries: list[LobbyLeaderboardEntry]
 
 
-class UserMapHeroStats(BaseModel):
-    hero: schemas.HeroRead
+class UserMapCharacterStats(BaseModel):
+    character: CatalogEntityRead
     games: int
     win: int
     loss: int
@@ -329,18 +329,18 @@ class UserMapHeroStats(BaseModel):
 
 
 class UserMap(BaseModel):
-    map: MapRead
+    map: CatalogEntityRead
     count: int
     win: int
     loss: int
     draw: int
     win_rate: float
-    heroes: list[schemas.HeroPlaytime]
-    hero_stats: list[UserMapHeroStats] | None = None
+    characters: list[schemas.CharacterPlaytime]
+    character_stats: list[UserMapCharacterStats] | None = None
 
 
 class UserMapHighlight(BaseModel):
-    map: MapRead
+    map: CatalogEntityRead
     count: int
     win: int
     loss: int
@@ -366,14 +366,14 @@ class UserMapsSummary(BaseModel):
 
 class UserMapsSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     min_count: int | None = Field(default=None, ge=1)
-    gamemode_id: int | None = None
+    mode_id: int | None = None
     tournament_id: int | None = None
 
 
 @dataclass
 class UserMapsSearchParams(pagination.PaginationSortSearchParams):
     min_count: int | None = None
-    gamemode_id: int | None = None
+    mode_id: int | None = None
     tournament_id: int | None = None
 
     def apply_search(self, query: sa.Select, model: type) -> sa.Select:
@@ -390,12 +390,12 @@ class UserProfile(BaseModel):
     avg_placement: float | None
     avg_playoff_placement: float | None
     avg_group_placement: float | None
-    most_played_hero: schemas.HeroRead | None
-    heroes_count: int
+    most_played_character: CatalogEntityRead | None
+    characters_count: int
 
     roles: list[UserRole]
     tournaments: list[UserTournamentSummary]
-    hero_statistics: list[schemas.HeroPlaytime]
+    character_statistics: list[schemas.CharacterPlaytime]
 
 
 class UserDraftCardRole(BaseModel):
@@ -406,11 +406,10 @@ class UserDraftCardRole(BaseModel):
     maps_won: int
 
 
-class UserDraftCardHero(BaseModel):
-    """One of the player's signature heroes on the draft-room player card."""
+class UserDraftCardCharacter(BaseModel):
+    """One of the player's signature characters on the draft-room player card."""
 
-    hero: schemas.HeroRead
-    role: str
+    character: CatalogEntityRead
     maps: int
     maps_won: int
 
@@ -449,14 +448,14 @@ class UserDraftCard(BaseModel):
     best_placement: int | None = None
     avg_placement: float | None = None
     roles: list[UserDraftCardRole] = Field(default_factory=list)
-    #: Every hero played, most-played first: the table shows the top five, the
-    #: role tiles look up the heroes the player declared.
-    heroes: list[UserDraftCardHero] = Field(default_factory=list)
+    #: Every character played, most-played first: the table shows the top five, the
+    #: role tiles look up the characters the player declared.
+    characters: list[UserDraftCardCharacter] = Field(default_factory=list)
     #: Newest first, at most 5.
     recent_tournaments: list[UserDraftCardTournament] = Field(default_factory=list)
 
 
-class HeroStatBest(BaseModel):
+class CharacterStatBest(BaseModel):
     encounter_id: int
     tournament_name: str
     map_name: str
@@ -465,18 +464,19 @@ class HeroStatBest(BaseModel):
     player_name: str
 
 
-class HeroStat(BaseModel):
-    name: enums.LogStatsName
+class CharacterStat(BaseModel):
+    #: A stat code the discipline declares.
+    name: str
     overall: float
-    best: HeroStatBest
+    best: CharacterStatBest
     avg_10: float
-    best_all: HeroStatBest | None
+    best_all: CharacterStatBest | None
     avg_10_all: float
 
 
-class HeroWithUserStats(BaseModel):
-    hero: schemas.HeroRead
-    stats: list[HeroStat]
+class CharacterWithUserStats(BaseModel):
+    character: CatalogEntityRead
+    stats: list[CharacterStat]
 
 
 class UserBestTeammate(BaseModel):
@@ -484,7 +484,7 @@ class UserBestTeammate(BaseModel):
     tournaments: int
     maps: int
     winrate: float
-    stats: dict[enums.LogStatsName, float | None]
+    stats: dict[str, float | None]
 
 
 class UserOpponentStat(BaseModel):
@@ -522,8 +522,8 @@ class UserOverviewRoleDivision(BaseModel):
     division_grid_version_id: int | None = None
 
 
-class UserOverviewHero(BaseModel):
-    hero: schemas.HeroRead
+class UserOverviewCharacter(BaseModel):
+    character: CatalogEntityRead
     playtime_seconds: float
 
 
@@ -539,7 +539,7 @@ class UserOverviewRow(BaseModel):
     name: str
     avatar_url: str | None = None
     roles: list[UserOverviewRoleDivision]
-    top_heroes: list[UserOverviewHero]
+    top_characters: list[UserOverviewCharacter]
     tournaments_count: int
     achievements_count: int
     maps_won: int
@@ -638,7 +638,7 @@ class UserCatalogEntry(BaseModel):
     name: str
     avatar_url: str | None = None
     roles: list[UserOverviewRoleDivision]
-    top_heroes: list[UserOverviewHero]
+    top_characters: list[UserOverviewCharacter]
     tournaments_count: int
     achievements_count: int
     maps_won: int
@@ -752,8 +752,8 @@ class UserCompareParams:
         return cls(**(query_params.model_dump() | {"role": query_params.role}))
 
 
-class UserHeroCompareMetric(BaseModel):
-    stat: enums.LogStatsName
+class UserCharacterCompareMetric(BaseModel):
+    stat: str
     left_value: float
     right_value: float
     delta: float
@@ -762,46 +762,46 @@ class UserHeroCompareMetric(BaseModel):
     higher_is_better: bool
 
 
-class UserHeroCompareResponse(BaseModel):
+class UserCharacterCompareResponse(BaseModel):
     subject: UserCompareUser
     target: UserCompareUser | None
     baseline: UserCompareBaselineInfo
-    subject_hero: schemas.HeroRead | None
-    target_hero: schemas.HeroRead | None
-    map: schemas.MapRead | None
+    subject_character: CatalogEntityRead | None
+    target_character: CatalogEntityRead | None
+    map: CatalogEntityRead | None
     left_playtime_seconds: float
     right_playtime_seconds: float
-    metrics: list[UserHeroCompareMetric]
+    metrics: list[UserCharacterCompareMetric]
 
 
-class UserHeroCompareQueryParams(BaseModel):
+class UserCharacterCompareQueryParams(BaseModel):
     baseline: UserCompareBaselineMode = "global"
     target_user_id: int | None = Field(default=None, ge=1)
-    left_hero_id: int | None = Field(default=None, ge=1)
-    right_hero_id: int | None = Field(default=None, ge=1)
+    left_entity_id: int | None = Field(default=None, ge=1)
+    right_entity_id: int | None = Field(default=None, ge=1)
     map_id: int | None = Field(default=None, ge=1)
     role: RoleQuery = None
     div_min: int | None = Field(default=None, ge=1, le=20)
     div_max: int | None = Field(default=None, ge=1, le=20)
     tournament_id: int | None = Field(default=None, ge=1)
-    stats: list[enums.LogStatsName] | None = None
+    stats: list[str] | None = None
 
 
 @dataclass
-class UserHeroCompareParams:
+class UserCharacterCompareParams:
     baseline: UserCompareBaselineMode = "global"
     target_user_id: int | None = None
-    left_hero_id: int | None = None
-    right_hero_id: int | None = None
+    left_entity_id: int | None = None
+    right_entity_id: int | None = None
     map_id: int | None = None
     role: RoleRef | None = None
     div_min: int | None = None
     div_max: int | None = None
     tournament_id: int | None = None
-    stats: list[enums.LogStatsName] = field(default_factory=list)
+    stats: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_query_params(cls, query_params: UserHeroCompareQueryParams):
+    def from_query_params(cls, query_params: UserCharacterCompareQueryParams):
         payload = query_params.model_dump()
         payload["role"] = query_params.role
         payload["stats"] = payload.get("stats") or []
