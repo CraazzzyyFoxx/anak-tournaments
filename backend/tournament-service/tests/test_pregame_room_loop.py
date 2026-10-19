@@ -46,7 +46,7 @@ from shared.services.encounter.participants import place_team
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 from src.rpc import _helpers as rpc_helpers
-from src.rpc import pick_ban_admin
+from src.rpc import admin_misc, pick_ban_admin
 from src.services.encounter import room_control
 from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.games import GameResultIn, encounter_game_service
@@ -118,6 +118,8 @@ class LoopCase(IsolatedAsyncioTestCase):
     #: The game the hero pool's catalog rows belong to; the pool is ``{item_id: class}``.
     hero_discipline = "overwatch"
     rotation = enums.FirstBanRotation.FIXED
+    #: The series runs its whole card by default; a case that needs two wins to decide a Bo3 overrides it.
+    end_formula = "games >= best_of"
 
     def pool_rows(self) -> dict[int, str]:
         return {hero_id: role.name for hero_id, role in HEROES.items()}
@@ -172,7 +174,7 @@ class LoopCase(IsolatedAsyncioTestCase):
                 preset="wins",
                 columns=[],
                 game_formula="win",
-                end_formula="games >= best_of",
+                end_formula=self.end_formula,
             )
             s.add(rule)
             await s.flush()
@@ -1175,6 +1177,28 @@ class SideRewindTests(PositionCase):
         await self.act(self.slot1, 1, action="side_pick")
         self.assertEqual(played, await self.sides(first))
 
+    async def test_a_hero_reset_takes_back_every_unplayed_games_sides_whoever_picked_them(self) -> None:
+        """Not only the sides this hero room handed out: game 2's were written by another room (a map room's side
+        pick, say) and round 2 of this one was never appended, yet the reset still takes them back."""
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        first, second = await self.game_id(1), await self.open_position(2)
+        async with self.Session() as s:
+            for row in (
+                (await s.execute(sa.select(EncounterGameTeam).where(EncounterGameTeam.game_id == second)))
+                .scalars()
+                .all()
+            ):
+                row.starting_side = "attack" if row.encounter_team_id == self.slot1 else "defence"
+            await s.commit()
+        self.assertEqual(1, max(step.round or 1 for step in await self.steps()))
+
+        await self.reset(enums.PickBanKind.HERO)
+        self.assertEqual({self.slot1: "attack", self.slot2: "defence"}, await self.sides(first))
+        self.assertEqual({self.slot1: None, self.slot2: None}, await self.sides(second))
+
 
 # ── a corrected result and the round it opened ──────────────────────────────
 
@@ -1408,11 +1432,85 @@ class CorrectionReaddressesAPendingChoiceTests(CorrectionCase):
         self.assertEqual((True, self.slot1), (pick_ban.awaiting_choice, pick_ban.pending_chooser_team_id))
 
 
-class SidedCorrectionRecoveryTests(CorrectionCase):
+class SidedRecoveryCase(CorrectionCase):
     """``dependent_round_started`` has a way out through calls that already exist."""
 
     discipline = SIDED.code
 
+    async def result_status(self) -> enums.EncounterResultStatus:
+        async with self.Session() as s:
+            return (await s.get_one(Encounter, self.encounter_id)).result_status
+
+    async def reopen_result(self) -> dict:
+        """Through the real ``rpc.tournament.encounter_reopen_result`` handler."""
+        broker = CapturingBroker()
+        admin_misc.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+        data = {
+            "identity": make_identity(user_id=self.actor_id, is_superuser=True),
+            "id": self.encounter_id,
+            "payload": {"reason": "game 1 was scored backwards"},
+        }
+        with patch.object(rpc_helpers.db, "async_session_maker", self.Session):
+            return await broker.handlers["rpc.tournament.encounter_reopen_result"](data, None)
+
+    async def recover_through_resets(self, *, confirmed: bool) -> None:
+        """Recovery (b): game 2 was played, so no undo can reach round 2. The chain is a result reopen (when the
+        series is confirmed), the MAP reset, the HERO reset, and a replacement game 1 entered with the corrected
+        numbers -- every old game retired as history."""
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        await self.act(self.slot2, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(2, winner=self.slot1)
+        old = (await self.game_id(1), await self.game_id(2))
+        self.assertEqual("dependent_round_started", await self.refused(self.correct(1, winner=self.slot2)))
+
+        async def history() -> list[tuple]:
+            async with self.Session() as s:
+                return [
+                    tuple(row)
+                    for row in await s.execute(
+                        sa.select(
+                            EncounterGameTeam.game_id,
+                            EncounterGameTeam.encounter_team_id,
+                            EncounterGameTeam.score,
+                            EncounterGameTeam.starting_side,
+                        )
+                        .where(EncounterGameTeam.game_id.in_(old))
+                        .order_by(EncounterGameTeam.game_id, EncounterGameTeam.encounter_team_id)
+                    )
+                ]
+
+        played = await history()
+        self.assertEqual(confirmed, await self.result_status() == enums.EncounterResultStatus.CONFIRMED)
+        if confirmed:
+            envelope = await self.reopen_result()
+            self.assertTrue(envelope["ok"], envelope)
+            self.assertNotEqual(enums.EncounterResultStatus.CONFIRMED, await self.result_status())
+        await self.reset(enums.PickBanKind.MAP)
+        await self.reset(enums.PickBanKind.HERO)
+
+        await self.act(self.slot1, 0, action="side_pick")
+        replacement = await self.game_id(1)
+        self.assertNotIn(replacement, old)
+        await self.play_round()
+        await self.correct(1, winner=self.slot2)
+        await self.reconcile()
+        self.assertEqual(self.slot1, (await self.openers())[-1])
+        state = await self.state()
+        self.assertEqual((2, [self.slot1]), (state["current_round"], state["acting_team_ids"]))
+        self.assertNotEqual(enums.EncounterResultStatus.CONFIRMED, await self.result_status())
+
+        # The retired games are history: cancelled, with their numbers and sides as they were played.
+        self.assertEqual(played, await history())
+        for game_id in old:
+            self.assertEqual(enums.EncounterGameState.CANCELLED, (await self.game_row(game_id))[0])
+
+
+class SidedCorrectionRecoveryTests(SidedRecoveryCase):
     async def touched_round_two(self) -> tuple[int, int]:
         """G1 won by slot 1; round 2 opened by slot 2, who picked a side on G2. Returns (G1, G2)."""
         await self.start(ban_ruleset(with_side_pick=True))
@@ -1458,56 +1556,16 @@ class SidedCorrectionRecoveryTests(CorrectionCase):
         state = await self.state()
         self.assertEqual((2, [self.slot1]), (state["current_round"], state["acting_team_ids"]))
 
-    async def test_a_played_next_game_is_recovered_through_resets_and_a_replacement_first_game(self) -> None:
-        await self.start(ban_ruleset(with_side_pick=True))
-        await self.act(self.slot1, 0, action="side_pick")
-        await self.play_round()
-        await self.confirm_position(1, winner=self.slot1)
-        await self.reconcile()
-        await self.act(self.slot2, 0, action="side_pick")
-        await self.play_round()
-        await self.confirm_position(2, winner=self.slot1)
-        old = (await self.game_id(1), await self.game_id(2))
-        self.assertEqual("dependent_round_started", await self.refused(self.correct(1, winner=self.slot2)))
+    async def test_a_played_next_game_of_an_open_series_is_recovered_through_resets(self) -> None:
+        await self.recover_through_resets(confirmed=False)
 
-        async def history() -> list[tuple]:
-            async with self.Session() as s:
-                return [
-                    tuple(row)
-                    for row in await s.execute(
-                        sa.select(
-                            EncounterGameTeam.game_id,
-                            EncounterGameTeam.encounter_team_id,
-                            EncounterGameTeam.score,
-                            EncounterGameTeam.starting_side,
-                        )
-                        .where(EncounterGameTeam.game_id.in_(old))
-                        .order_by(EncounterGameTeam.game_id, EncounterGameTeam.encounter_team_id)
-                    )
-                ]
 
-        played = await history()
-        async with self.Session() as s:
-            # A Bo3 at 2:0 under `games >= best_of` is still open: no result reopen is owed first.
-            encounter = await s.get_one(Encounter, self.encounter_id)
-            self.assertNotEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
-        await self.reset(enums.PickBanKind.MAP)
-        await self.reset(enums.PickBanKind.HERO)
+class SidedConfirmedSeriesRecoveryTests(SidedRecoveryCase):
+    #: Two wins decide a Bo3, so game 2 confirms the encounter itself.
+    end_formula = "games >= best_of or max_wins * 2 > best_of"
 
-        await self.act(self.slot1, 0, action="side_pick")
-        replacement = await self.game_id(1)
-        self.assertNotIn(replacement, old)
-        await self.play_round()
-        await self.correct(1, winner=self.slot2)
-        await self.reconcile()
-        self.assertEqual(self.slot1, (await self.openers())[-1])
-        state = await self.state()
-        self.assertEqual((2, [self.slot1]), (state["current_round"], state["acting_team_ids"]))
-
-        # The retired games are history: cancelled, with their numbers and sides as they were played.
-        self.assertEqual(played, await history())
-        for game_id in old:
-            self.assertEqual(enums.EncounterGameState.CANCELLED, (await self.game_row(game_id))[0])
+    async def test_a_confirmed_series_is_reopened_then_recovered_through_resets(self) -> None:
+        await self.recover_through_resets(confirmed=True)
 
 
 # ── League of Legends: the real side-selection preset ───────────────────────

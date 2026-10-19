@@ -913,10 +913,11 @@ class PickBanSessionService:
         OLD veto keep collecting claims (and counting into the live score) under
         a pool that no longer names it.
 
-        A reset also takes back the sides the scrapped session's ``side_pick``
-        steps handed out on positions nobody has played yet: left behind, they
-        would satisfy ``side_pick_required`` for a game whose side is about to be
-        picked again. A played position keeps its sides (history).
+        A reset also takes back the sides of every position nobody has played
+        yet, whichever room handed them out -- the room is being redone, and a
+        side left behind would satisfy ``side_pick_required`` for a game whose
+        side is about to be picked again. A played position keeps its sides
+        (history).
 
         ``source`` defaults to the organizer who normally asks for this; the
         seat-change hook passes ``system``, having no human behind it."""
@@ -928,17 +929,13 @@ class PickBanSessionService:
                 actor_user_id=None,
                 reason="map_session_reset",
             )
+        if side_codes(encounter):
+            live = {game.position for game in await self.games.list_games(session, encounter.id)}
+            await self.games.clear_sides(
+                session, encounter.id, live - await self.games.played_positions(session, encounter.id)
+            )
         existing = await self.get_pick_ban_session(session, encounter.id, kind)
         if existing is not None:
-            if side_codes(encounter):
-                picked = {
-                    step.get("round") or 1
-                    for step in existing.resolved_sequence_json or []
-                    if step.get("action") == "side_pick"
-                }
-                await self.games.clear_sides(
-                    session, encounter.id, picked - await self.games.played_positions(session, encounter.id)
-                )
             await self.session_repo.delete_by_id(session, existing.id)
             # Only when there WAS a session: the journal records what was
             # scrapped, and resetting a room that never opened scrapped nothing.
