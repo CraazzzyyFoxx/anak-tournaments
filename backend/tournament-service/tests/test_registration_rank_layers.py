@@ -109,6 +109,7 @@ def _registration(
         stream_pov=False,
         identities=[identity],
         handles=lambda provider: [identity.handle] if provider == SocialProvider.BATTLENET else [],
+        primary_game_identity=lambda *, provider: identity if provider == SocialProvider.BATTLENET else None,
         roles=[
             SimpleNamespace(
                 id=index,

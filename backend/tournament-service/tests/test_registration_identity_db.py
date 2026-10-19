@@ -129,7 +129,7 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
         assert set(rosters) == set(ids)
         assert rosters[ids[0]].player_id == self.user_id
         assert rosters[ids[0]].rank_on("support") == 100
-        assert all(row.battle_tag is None for row in rosters.values())
+        assert all(row.identity is None for row in rosters.values())
 
     async def test_self_service_without_an_identity_question_keeps_owned_player(self) -> None:
         async with self.Session() as s:
@@ -175,7 +175,7 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
         assert len(rosters) == 1
         roster = next(iter(rosters.values()))
         assert roster.display_name == "Optional Sheet Player"
-        assert roster.battle_tag is None and roster.player_id is None
+        assert roster.identity is None and roster.player_id is None
 
     async def _sync_riot_sheet(self, *, explicit_key: bool) -> None:
         suffix = uuid.uuid4().hex[:4]
@@ -220,12 +220,12 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
 
         async with self.Session() as s:
             rosters = await roster_engine.for_tournament(s, self.tournament_id)
-            assert {row.battle_tag for row in rosters.values()} == set(handles)
+            assert {row.identity.handle for row in rosters.values()} == set(handles)
             assert len({row.player_id for row in rosters.values()}) == 4
             for row in rosters.values():
                 loaded = await lifecycle_service.get_registration_by_id(s, row.registration_id)
                 assert [(identity.provider, identity.handle) for identity in loaded.identities] == [
-                    ("riot", row.battle_tag)
+                    ("riot", row.identity.handle)
                 ]
                 assert row.player_id is not None
                 account = await s.scalar(
@@ -233,7 +233,7 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
                         models.SocialAccount.user_id == row.player_id, models.SocialAccount.provider == "riot"
                     )
                 )
-                assert account.username == row.battle_tag
+                assert account.username == row.identity.handle
 
     async def test_riot_sheet_without_record_key_keeps_space_distinct_identities(self) -> None:
         await self._sync_riot_sheet(explicit_key=False)
@@ -287,13 +287,13 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
         async with self.Session() as s:
             rosters = await roster_engine.for_tournament(s, self.tournament_id)
             assert rosters[wrong_id].registration_team_id is None
-            assert rosters[wrong_id].battle_tag is None
+            assert rosters[wrong_id].identity is None
             attached = [row for row in rosters.values() if row.registration_team_id == team_id]
-            assert {row.battle_tag for row in attached} == {handle, display_social_handle(provider, second_handle)}
+            assert {row.identity.handle for row in attached} == {handle, display_social_handle(provider, second_handle)}
             for row in attached:
                 loaded = await lifecycle_service.get_registration_by_id(s, row.registration_id)
                 assert [(identity.provider, identity.handle) for identity in loaded.identities] == [
-                    (provider, row.battle_tag)
+                    (provider, row.identity.handle)
                 ]
                 assert row.player_id is not None
                 account = await s.scalar(
@@ -302,7 +302,7 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
                         models.SocialAccount.provider == provider,
                     )
                 )
-                assert account.username == row.battle_tag
+                assert account.username == row.identity.handle
 
     async def test_lol_organizer_attach_is_visible_to_riot_roster_consumers(self) -> None:
         await self._attach_team_game_handles(discipline="lol", provider="riot", other_provider="battlenet")

@@ -187,7 +187,7 @@ class IntegrationsAuditTests(IsolatedAsyncioTestCase):
             label="season 5",
             status="draft",
             published_at=None,
-            grid=SimpleNamespace(id=GRID_ID, workspace_id=WORKSPACE_ID),
+            grid=SimpleNamespace(id=GRID_ID, workspace_id=WORKSPACE_ID, discipline="overwatch"),
         )
         published = SimpleNamespace(
             id=VERSION_ID,

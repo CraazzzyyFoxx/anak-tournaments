@@ -611,6 +611,9 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
         async def _stale(_session, _form):
             return 0
 
+        async def _discipline(_session, _tournament_id):
+            return "overwatch"
+
         envelope, calls = await self._invoke(
             "rpc.tournament.regform_template_apply",
             {"identity": _IDENTITY, "id": 9, "payload": {"template_id": 42}},
@@ -625,6 +628,7 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
                 ),
                 patch.object(registration_admin.windows_service, "load_registration_open", _open),
                 patch.object(registration_admin.form_service, "stale_count", _stale),
+                patch.object(registration_admin, "_tournament_discipline", _discipline),
             ),
         )
 

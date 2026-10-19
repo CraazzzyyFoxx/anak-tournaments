@@ -47,7 +47,7 @@ from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa
 from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
-from src.schemas.admin.balancer import BalancerRegistrationUpdateRequest  # noqa: E402
+from src.schemas import BalancerRegistrationUpdateRequest  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
 from src.schemas.registration_build import _public_rosters  # noqa: E402
 from src.services.registration.answers import answer_service  # noqa: E402
