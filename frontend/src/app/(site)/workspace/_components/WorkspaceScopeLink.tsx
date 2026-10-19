@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
-import { useBrowsingHref } from "@/hooks/useBrowsingHref";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /**
@@ -31,13 +30,12 @@ export function WorkspaceScopeLink({
   children: ReactNode;
 }>) {
   const router = useRouter();
-  const target = useBrowsingHref(href);
   const setCurrentWorkspace = useWorkspaceStore((state) => state.setCurrentWorkspace);
   const setStatsScope = useWorkspaceStore((state) => state.setStatsScope);
 
   return (
     <Link
-      href={target}
+      href={href}
       prefetch={false}
       className={className}
       aria-label={ariaLabel}
@@ -47,7 +45,7 @@ export function WorkspaceScopeLink({
         event.preventDefault();
         setCurrentWorkspace(workspaceId);
         setStatsScope("workspace");
-        router.push(target);
+        router.push(href);
       }}
     >
       {children}
