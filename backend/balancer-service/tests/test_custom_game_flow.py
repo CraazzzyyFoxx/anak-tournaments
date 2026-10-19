@@ -308,6 +308,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         game = await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Thursday scrim",
             actor_user_id=9,

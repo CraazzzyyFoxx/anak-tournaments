@@ -646,7 +646,8 @@ class CustomGameService:
         actor_user_id: int,
         member_ids: Sequence[int] = (),
         clone_from_game_id: int | None = None,
-        discipline: str = "overwatch",
+        # The mix's game: the host's explicit choice (a clone keeps its source's).
+        discipline: str,
         team_format_preset: str | None = None,
     ) -> models.CustomGame:
         """Open a mix, optionally starting from a previous one's setup.

@@ -568,6 +568,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         game = await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Scrim",
             actor_user_id=9,
@@ -583,11 +584,15 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual([row.sort_order for row in rows], [0, 1])
 
     async def test_create_without_members_is_an_empty_mix(self) -> None:
-        await self.service.create(self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9)
+        await self.service.create(
+            self.session, workspace_id=1, discipline="overwatch", host_user_id=9, name="Scrim", actor_user_id=9
+        )
         self.roster.create_many.assert_not_called()
 
     async def test_create_opens_the_mixs_own_wins_rule(self) -> None:
-        game = await self.service.create(self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9)
+        game = await self.service.create(
+            self.session, workspace_id=1, discipline="overwatch", host_user_id=9, name="Scrim", actor_user_id=9
+        )
 
         rule = self.scoring_rules.create.await_args.args[1]
         self.assertEqual((rule.workspace_id, rule.preset, rule.game_formula), (1, "wins", "win"))
@@ -601,6 +606,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             await self.service.create(
                 self.session,
                 workspace_id=1,
+                discipline="overwatch",
                 host_user_id=9,
                 name="Scrim",
                 actor_user_id=9,
@@ -623,6 +629,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         game = await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Scrim 2",
             actor_user_id=9,
@@ -667,6 +674,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Scrim 2",
             actor_user_id=9,
@@ -686,6 +694,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         game = await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Rematch",
             actor_user_id=9,
@@ -708,6 +717,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         game = await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Scrim 2",
             actor_user_id=9,
@@ -728,6 +738,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             await self.service.create(
                 self.session,
                 workspace_id=1,
+                discipline="overwatch",
                 host_user_id=9,
                 name="Scrim 2",
                 actor_user_id=9,
@@ -2043,6 +2054,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         await self.service.create(
             self.session,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Scrim",
             actor_user_id=9,
@@ -2071,7 +2083,13 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         }
 
         await self.service.create(
-            self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9, member_ids=[7]
+            self.session,
+            workspace_id=1,
+            discipline="overwatch",
+            host_user_id=9,
+            name="Scrim",
+            actor_user_id=9,
+            member_ids=[7],
         )
 
         # Only the inherited role is copied; an unranked one stays unranked
@@ -2082,7 +2100,13 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.ranks.resolve.return_value = {}
 
         await self.service.create(
-            self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9, member_ids=[7]
+            self.session,
+            workspace_id=1,
+            discipline="overwatch",
+            host_user_id=9,
+            name="Scrim",
+            actor_user_id=9,
+            member_ids=[7],
         )
 
         self.ranks.set_ranks.assert_not_awaited()
@@ -4454,7 +4478,13 @@ class MixCloneDisciplineTests(IsolatedAsyncioTestCase):
         service.members = AsyncMock(return_value=[])
         with self.assertRaises(custom_game_module.HTTPException) as raised:
             await service.create(
-                object(), workspace_id=1, host_user_id=3, name="x", actor_user_id=3, clone_from_game_id=7
+                object(),
+                workspace_id=1,
+                discipline="overwatch",
+                host_user_id=3,
+                name="x",
+                actor_user_id=3,
+                clone_from_game_id=7,
             )
         assert raised.exception.status_code == 422
         assert "discipline_not_enabled" in str(raised.exception.detail)
@@ -4570,7 +4600,7 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
             await grid_cache.invalidate_workspace(workspace.id)
             after_state = await service.self_state(db_session, custom_game_id=created.id, auth_user=host)
             assert after_state["seat"] == before_state["seat"]
-            cloned = await service.create(db_session, **args, clone_from_game_id=created.id)
+            cloned = await service.create(db_session, **args, clone_from_game_id=created.id, discipline="overwatch")
             assert (created.discipline, cloned.discipline) == ("lol", "lol")
             assert (
                 await get_effective_division_grid(db_session, workspace.id, discipline=cloned.discipline)
@@ -4588,7 +4618,7 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
                 .where(models.ScoringRule.workspace_id == workspace.id)
             )
             with pytest.raises(HTTPException) as caught:
-                await service.create(db_session, **args, clone_from_game_id=created.id)
+                await service.create(db_session, **args, clone_from_game_id=created.id, discipline="overwatch")
             assert "division_grid_required" in str(caught.value.detail)
             assert (
                 await db_session.scalar(
