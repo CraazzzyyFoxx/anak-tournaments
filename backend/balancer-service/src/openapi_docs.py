@@ -620,10 +620,9 @@ DOCS: dict[str, dict] = {
             "and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes "
             "roles from the layer instead of zeroing them, so a cleared author rank falls back to "
             "canon, while an omitted role is left alone. 404 when the member belongs to another "
-            "workspace. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
-            "are held on; omitted, the workspace's first enabled discipline "
-            "(422 `discipline_not_enabled` for another). A role code outside that discipline's rated module roles "
-            "-- `flex` included -- is 422 `unknown_role`."
+            "workspace. The body's `discipline` is required (422 when omitted) and picks whose rated roles "
+            "the ranks are held on; it must be enabled for the workspace (422 `discipline_not_enabled`). "
+            "A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`."
         ),
     },
     "rpc.balancer.players.authors": {

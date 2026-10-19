@@ -1,12 +1,14 @@
-"""The workspace roster's wire shapes: the add-player body and the row ``players.list`` / ``players.upsert`` return."""
+"""The workspace roster's wire shapes: the add-player and rank-write bodies and the row ``players.list`` / ``players.upsert`` return."""
 
 from __future__ import annotations
+
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shared.schemas.identity import PlayerIdentityRead
 
-__all__ = ("WorkspacePlayerRead", "WorkspacePlayerUpsert")
+__all__ = ("WorkspacePlayerRanksWrite", "WorkspacePlayerRead", "WorkspacePlayerUpsert")
 
 
 class WorkspacePlayerUpsert(BaseModel):
@@ -27,6 +29,22 @@ class WorkspacePlayerUpsert(BaseModel):
     @classmethod
     def _blank_is_none(cls, value: str | None) -> str | None:
         return (value or "").strip() or None
+
+
+class WorkspacePlayerRanksWrite(BaseModel):
+    """``PUT /balancer/workspaces/{id}/players/{member_id}/ranks``: one rank layer of one member.
+
+    ``discipline`` is required: a rank write names its game rather than landing on the workspace's first.
+    """
+
+    discipline: str = Field(description="An enabled discipline of the workspace whose rated roles hold the ranks.")
+    scope: Literal["workspace", "author"] = Field(
+        default="workspace", description="The shared canon, or the caller's own book."
+    )
+    ranks: dict[str, int] = Field(default_factory=dict, description="Rank values to set, by rated role code.")
+    clear: list[str] = Field(
+        default_factory=list, description="Role codes deleted from the layer, restoring inheritance."
+    )
 
 
 class WorkspacePlayerRead(BaseModel):

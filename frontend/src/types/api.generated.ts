@@ -10588,7 +10588,7 @@ export interface paths {
         get?: never;
         /**
          * Set workspace player ranks
-         * @description Permission: workspace membership (any role); no resource grant is checked. Writes one rank layer for a member and returns that layer. `scope: "workspace"` edits the shared canon every author inherits; `scope: "author"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another). A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`.
+         * @description Permission: workspace membership (any role); no resource grant is checked. Writes one rank layer for a member and returns that layer. `scope: "workspace"` edits the shared canon every author inherits; `scope: "author"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace. The body's `discipline` is required (422 when omitted) and picks whose rated roles the ranks are held on; it must be enabled for the workspace (422 `discipline_not_enabled`). A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`.
          *
          *     RPC subject: `rpc.balancer.players.set_ranks`
          */
@@ -21703,6 +21703,38 @@ export interface components {
              * @default null
              */
             rank_delta_threshold: number | null;
+        };
+        /**
+         * WorkspacePlayerRanksWrite
+         * @description ``PUT /balancer/workspaces/{id}/players/{member_id}/ranks``: one rank layer of one member.
+         *
+         *     ``discipline`` is required: a rank write names its game rather than landing on the workspace's first.
+         */
+        "balancer.WorkspacePlayerRanksWrite": {
+            /**
+             * Clear
+             * @description Role codes deleted from the layer, restoring inheritance.
+             */
+            clear?: string[];
+            /**
+             * Discipline
+             * @description An enabled discipline of the workspace whose rated roles hold the ranks.
+             */
+            discipline: string;
+            /**
+             * Ranks
+             * @description Rank values to set, by rated role code.
+             */
+            ranks?: {
+                [key: string]: number;
+            };
+            /**
+             * Scope
+             * @description The shared canon, or the caller's own book.
+             * @default workspace
+             * @enum {string}
+             */
+            scope: BalancerWorkspacePlayerRanksWriteScope;
         };
         /**
          * WorkspacePlayerRead
@@ -70351,7 +70383,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["balancer.WorkspacePlayerRanksWrite"];
             };
         };
         responses: {
@@ -74753,6 +74785,10 @@ export enum BalancerUserMixPreferencesReadRating_mode {
 export enum BalancerUserMixPreferencesUpsertRating_mode {
     points = "points",
     ranker = "ranker"
+}
+export enum BalancerWorkspacePlayerRanksWriteScope {
+    workspace = "workspace",
+    author = "author"
 }
 export enum BalancerWorkspaceRankerReadVariant {
     reference = "reference",

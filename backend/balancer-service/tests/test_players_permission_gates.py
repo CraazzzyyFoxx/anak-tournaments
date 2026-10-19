@@ -162,7 +162,9 @@ class UpsertPermissionGateTests(_GateTests):
 
 class SetRanksPermissionGateTests(_GateTests):
     async def _set(self, identity: dict, scope: str) -> dict:
-        return await self._call("rpc.balancer.players.set_ranks", identity, scope=scope, ranks={"tank": 2500})
+        return await self._call(
+            "rpc.balancer.players.set_ranks", identity, discipline="overwatch", scope=scope, ranks={"tank": 2500}
+        )
 
     async def test_writing_the_shared_canon_requires_team_update(self) -> None:
         self.assert_forbidden(await self._set(HOST, "workspace"))

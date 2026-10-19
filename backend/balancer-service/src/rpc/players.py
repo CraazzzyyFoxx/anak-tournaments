@@ -28,42 +28,10 @@ from shared.services.member_rank import member_rank_service
 from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
-from src.schemas import WorkspacePlayerRead, WorkspacePlayerUpsert
+from src.schemas import WorkspacePlayerRanksWrite, WorkspacePlayerRead, WorkspacePlayerUpsert
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 
 _SF = db.async_session_maker
-
-_SCOPES = ("workspace", "author")
-
-
-def _ranks_payload(data: dict[str, Any]) -> dict[str, int]:
-    body = c.payload(data)
-    ranks = body.get("ranks", data.get("ranks")) or {}
-    if not isinstance(ranks, dict):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ranks is required")
-    try:
-        return {str(role): int(value) for role, value in ranks.items()}
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ranks is required") from exc
-
-
-def _clear_payload(data: dict[str, Any]) -> list[str]:
-    """Roles to *delete* from the layer -- which is how inheritance is restored."""
-    body = c.payload(data)
-    raw = body.get("clear", data.get("clear")) or []
-    if not isinstance(raw, list):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="clear must be a list")
-    return [str(role) for role in raw]
-
-
-def _scope(data: dict[str, Any]) -> str:
-    body = c.payload(data)
-    raw = body.get("scope", data.get("scope")) or "workspace"
-    if raw not in _SCOPES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"scope must be one of {list(_SCOPES)}"
-        )
-    return str(raw)
 
 
 def _member_id(data: dict[str, Any]) -> int:
@@ -171,8 +139,11 @@ def _by_member(layer: dict[tuple[int, str], int]) -> dict[int, dict[str, int]]:
 
 
 def _requested_discipline(data: dict[str, Any]) -> str | None:
-    """Body on writes or query on reads; omitted means the workspace's first enabled discipline."""
-    raw = c.payload(data).get("discipline") or c.q1(data, "discipline")
+    """The ``discipline`` query of a read; omitted means the workspace's first enabled discipline.
+
+    Writes never default the game: their bodies require ``discipline``.
+    """
+    raw = c.q1(data, "discipline")
     return str(raw) if raw else None
 
 
@@ -289,16 +260,15 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
-            discipline = await workspace_discipline(
-                session, workspace_id=workspace_id, requested=_requested_discipline(data)
-            )
+            body = WorkspacePlayerRanksWrite.model_validate(c.payload(data))
+            discipline = await workspace_discipline(session, workspace_id=workspace_id, requested=body.discipline)
             # ``author`` is the caller's own layer, full stop: accepting an
             # author id here would let one member rewrite another's private book.
             # Membership alone is enough to write it -- it is self-service. The
             # ``workspace`` (canon) layer is everyone's shared book, so writing it
             # additionally needs the same team.update grant admin.py/binary.py
             # require for the other roster-shaping writes.
-            is_author_scope = _scope(data) == "author"
+            is_author_scope = body.scope == "author"
             if not is_author_scope:
                 ensure_workspace_permission(user, workspace_id, "team", "update")
             author_user_id = user.id if is_author_scope else None
@@ -309,8 +279,8 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=workspace_id,
                 discipline=discipline,
                 workspace_member_id=_member_id(data),
-                ranks=_ranks_payload(data),
-                clear=_clear_payload(data),
+                ranks=body.ranks,
+                clear=body.clear,
                 author_user_id=author_user_id,
             )
             await emit_pickup_mix_changed(

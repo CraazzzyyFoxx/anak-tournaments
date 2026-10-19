@@ -79,7 +79,7 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
             self.session, user_id=player.id, provider=provider, username=handle, **fields
         )
 
-    async def _call(self, subject, *, host_only=False, query=None, **body):
+    async def _call(self, subject, *, host_only=False, query=None, path_id=None, **body):
         broker = _Broker()
         logger = SimpleNamespace(exception=lambda *a, **k: None, warning=lambda *a, **k: None)
         players.register(broker, logger)
@@ -108,7 +108,14 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
         }
         with patch.object(players, "_SF", factory):
             return await broker.handlers[subject](
-                {"workspace_id": self.workspace.id, "identity": identity, "payload": body, "query": query or {}}, None
+                {
+                    "workspace_id": self.workspace.id,
+                    "id": path_id,
+                    "identity": identity,
+                    "payload": body,
+                    "query": query or {},
+                },
+                None,
             )
 
     async def test_lol_rpc_normalizes_reuses_real_player_and_keeps_verification_unset(self):
@@ -221,6 +228,36 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
             member_ids=[r["member_id"] for r in by_player.values()],
         )
         assert all(r.identity.provider == SocialProvider.BATTLENET for r in rows.values())
+
+    async def test_rank_write_names_its_game_and_reads_default_to_the_first_enabled(self):
+        player = await self._player("ranked")
+        member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=player.id)
+        self.session.add(member)
+        await self.session.flush()
+
+        async def write(**body):
+            return await self._call("rpc.balancer.players.set_ranks", path_id=member.id, scope="author", **body)
+
+        async def own_book(query):
+            listed = await self._call("rpc.balancer.players.list", query=query)
+            assert listed["ok"], listed
+            return {row["member_id"]: row["author_ranks"] for row in listed["data"]["results"]}[member.id]
+
+        omitted = await write(ranks={"support": 2500})
+        assert not omitted["ok"] and omitted["error"]["code"] == "unprocessable", omitted
+        assert omitted["error"]["details"]["fields"][0]["field"] == "discipline"
+        unknown = await write(discipline="valorant", ranks={"support": 2500})
+        assert not unknown["ok"] and "discipline_not_enabled" in unknown["error"]["message"], unknown
+        assert await own_book({}) == {}
+        assert await own_book({"discipline": "lol"}) == {}
+
+        # Same role code in both games: each write lands on the game it names.
+        for discipline, value in (("lol", 3300), ("overwatch", 1600)):
+            written = await write(discipline=discipline, ranks={"support": value})
+            assert written["ok"] and written["data"] == {"ranks": {"support": value}}, written
+        # Reads still default to the workspace's first enabled game (overwatch).
+        assert await own_book({}) == {"support": 1600}
+        assert await own_book({"discipline": "lol"}) == {"support": 3300}
 
     async def test_old_wire_is_forbidden_and_mix_host_cannot_rename_existing_member(self):
         handle = f"Existing {uuid4().hex[:5]}#EUW"

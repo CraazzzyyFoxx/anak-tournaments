@@ -211,6 +211,7 @@ OPERATIONS: dict[str, Op] = {
         ),
     ),
     "rpc.balancer.players.upsert": Op(request=schemas.WorkspacePlayerUpsert, response=schemas.WorkspacePlayerRead),
+    "rpc.balancer.players.set_ranks": Op(request=schemas.WorkspacePlayerRanksWrite),
     "rpc.balancer.players.summary": Op(
         query_params=(
             QueryParam(

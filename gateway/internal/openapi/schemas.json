@@ -4952,7 +4952,11 @@
       "summary": "List workspace players"
     },
     "rpc.balancer.players.set_ranks": {
-      "description": "Permission: workspace membership (any role); no resource grant is checked. Writes one rank layer for a member and returns that layer. `scope: \"workspace\"` edits the shared canon every author inherits; `scope: \"author\"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another). A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`.",
+      "description": "Permission: workspace membership (any role); no resource grant is checked. Writes one rank layer for a member and returns that layer. `scope: \"workspace\"` edits the shared canon every author inherits; `scope: \"author\"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace. The body's `discipline` is required (422 when omitted) and picks whose rated roles the ranks are held on; it must be enabled for the workspace (422 `discipline_not_enabled`). A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`.",
+      "request": {
+        "array": false,
+        "ref": "balancer.WorkspacePlayerRanksWrite"
+      },
       "summary": "Set workspace player ranks"
     },
     "rpc.balancer.players.summary": {
@@ -28802,6 +28806,47 @@
         }
       },
       "title": "WorkspaceBalancerConfigUpsert",
+      "type": "object"
+    },
+    "balancer.WorkspacePlayerRanksWrite": {
+      "description": "``PUT /balancer/workspaces/{id}/players/{member_id}/ranks``: one rank layer of one member.\n\n``discipline`` is required: a rank write names its game rather than landing on the workspace's first.",
+      "properties": {
+        "clear": {
+          "description": "Role codes deleted from the layer, restoring inheritance.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Clear",
+          "type": "array"
+        },
+        "discipline": {
+          "description": "An enabled discipline of the workspace whose rated roles hold the ranks.",
+          "title": "Discipline",
+          "type": "string"
+        },
+        "ranks": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Rank values to set, by rated role code.",
+          "title": "Ranks",
+          "type": "object"
+        },
+        "scope": {
+          "default": "workspace",
+          "description": "The shared canon, or the caller's own book.",
+          "enum": [
+            "workspace",
+            "author"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "discipline"
+      ],
+      "title": "WorkspacePlayerRanksWrite",
       "type": "object"
     },
     "balancer.WorkspacePlayerRead": {
