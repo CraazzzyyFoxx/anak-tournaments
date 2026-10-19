@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { CreateWorkspaceDialog } from "@/components/CreateWorkspaceDialog";
 import { DataTable } from "@/components/data-table";
 import { Inspector } from "@/components/kit/Inspector";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -31,17 +30,8 @@ const PAGE_SIZE = 15;
  * sections behind `/admin/workspaces/[id]/*` (the same ones `/admin/settings`
  * mounts for the current workspace), so editing here means going there rather
  * than reproducing a form the sections already own.
- *
- * The create button sits in the page header, so its open state comes from the
- * page; the dialog lives here because a new workspace refreshes this list.
  */
-export function WorkspacesBrowser({
-  createOpen,
-  onCreateOpenChange
-}: Readonly<{
-  createOpen: boolean;
-  onCreateOpenChange: (open: boolean) => void;
-}>) {
+export function WorkspacesBrowser() {
   const t = useTranslations("adminAccess.common");
   const tw = useTranslations("adminAccess.workspace");
   const { isSuperuser, isWorkspaceAdmin } = usePermissions();
@@ -137,11 +127,7 @@ export function WorkspacesBrowser({
                       ws.slug.toLowerCase().includes(needle)
                   )
                 : visible;
-              return paginateResults(
-                sortArray(matching, sortField, sortDir),
-                page,
-                pageSize
-              );
+              return paginateResults(sortArray(matching, sortField, sortDir), page, pageSize);
             }}
             onPageRowsChange={setPageRows}
           />
@@ -175,12 +161,6 @@ export function WorkspacesBrowser({
         </Inspector>
       </div>
 
-      <CreateWorkspaceDialog
-        open={createOpen}
-        onOpenChange={onCreateOpenChange}
-        onCreated={invalidate}
-      />
-
       <ConfirmDialog
         open={pendingDelete != null}
         onOpenChange={(next) => {
@@ -189,14 +169,12 @@ export function WorkspacesBrowser({
         pending={deleteMutation.isPending}
         intent={{
           title: t("deleteWorkspace"),
-          description: tw("deleteDescription", { workspace: pendingDelete?.name ?? t("thisWorkspace") }),
+          description: tw("deleteDescription", {
+            workspace: pendingDelete?.name ?? t("thisWorkspace")
+          }),
           confirmLabel: t("deleteWorkspace"),
           tone: "danger",
-          cascade: [
-            tw("deleteTournaments"),
-            tw("deleteTeams"),
-            tw("deleteMembers")
-          ],
+          cascade: [tw("deleteTournaments"), tw("deleteTeams"), tw("deleteMembers")],
           requireTyped: pendingDelete?.name
         }}
         onConfirm={() => {

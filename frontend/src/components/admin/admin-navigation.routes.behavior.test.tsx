@@ -148,6 +148,7 @@ const ROUTES = {
     "/admin/audit",
   ],
   workspace: [
+    "/admin/settings",
     "/admin/settings/general",
     "/admin/settings/branding",
     "/admin/settings/visibility",

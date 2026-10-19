@@ -420,7 +420,7 @@ the IA is wrong — say so before inventing a surface.
 | T3  | Hub           | entity header (name, status, metrics, 1–2 actions) → routed tabs → optional routed sub-tabs → body                                       | tournament hub, `people/[id]`, `teams/[id]`, `achievements/[id]`                                                                  |
 | T4  | Master-detail | sortable list left (`+ Add`) → editor right; destructive actions in a menu, one parameterised confirm                                    | bracket stages, pre-game phase scopes, access roles; Divisions draft editor (full-screen variant)                                 |
 | T5  | Settings      | section nav left → the section's form → sticky save bar while dirty                                                                      | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings                                             |
-| T6  | Wizard        | step rail → step body → footer (Back · Save draft · Continue)                                                                            | new tournament, draft setup, divisions import, Challonge sync                                                                     |
+| T6  | Wizard        | step rail → step body → footer (Back · Save draft · Continue)                                                                            | new workspace, new tournament, draft setup, divisions import, Challonge sync                                                      |
 | T7  | Control room  | status hero (phase, timer, connection) → current action + lifecycle buttons → right column (presence, feasibility)                       | live draft                                                                                                                        |
 
 Rules on every admin screen:
@@ -438,17 +438,37 @@ Rules on every admin screen:
   _absent_, never disabled; the menu is always visible.
 - **At most three dialogs per screen**: `EntityFormDialog`, one
   `ConfirmDialog` with a swapped `intent`, at most one domain dialog.
-- **All three page states**, through `PageStateCard`.
+- **All three page states**, through `PageStateCard`; the first load is a
+  skeleton, never the empty state.
 - **State lives in the URL** (`useQueryParams` / `kit/useFilters.ts`). Depth
   stays at three: sidebar → screen → (sub-tab | inspector).
-- Chips in admin: lifecycle → `kit/StatusPill`; a category → `Badge`
-  (`rounded-md`); a boolean in a table → `StatusIcon`. The §4 limits apply.
+- **Chips in admin follow §4 exactly.** A lifecycle state that needs
+  attention → `kit/StatusPill`; the default or finished state of a row
+  (active, verified, published, done, processed, completed, accepted,
+  connected, monitoring) renders _nothing_, because on a list where most rows
+  are in that state the absence of a pill says it. One pill per row, in the
+  status column only. A boolean → `StatusIcon`, shown for the exception, not
+  the norm. A category (role, kind, scope, provider, format, type, mode,
+  class, direction) is plain text; a count beside a heading is plain text; an
+  id is plain text. `Badge` is not an admin primitive: the only chip that is
+  not a status is a chosen entity shown as a removable `FilterChip`.
+- **No metric strip above a table.** `StatTile` lives on the dashboard (T1)
+  and on a collector's health page. A count that restates the table below, a
+  filter chip's count or a checklist row is said once, there.
+- **A fact is shown once per screen.** The hub header carries the status;
+  the body does not repeat it in a pill, a `Select` value, a strip and a
+  checklist row. An inspector repeats nothing the row already shows.
+- **Helper copy earns its line.** No `description` under a heading that
+  restates the heading or lists the tabs below it; no placeholder equal to its
+  label; no "Yes/No" for a boolean; no `—` or `-` for a missing value (render
+  nothing); no raw API enum on screen.
 
 | Component                                    | Owns                                                           |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | `kit/LinkTabs.tsx`                           | routed tabs and sub-tabs                                       |
 | `kit/FilterBar.tsx` + `kit/useFilters.ts`    | the filter surface and its URL state                           |
 | `kit/Inspector.tsx`                          | row detail: right panel at `lg`+, a sheet below                |
+| `kit/InspectorField.tsx`                     | a labelled fact and a titled group inside an inspector or detail dialog; no local `Field` copies |
 | `kit/ConfirmDialog.tsx`                      | every confirmation                                             |
 | `kit/SectionNav.tsx`                         | T5 navigation (`<nav>` at `md`+, `Select` below)               |
 | `kit/SaveBar.tsx` + `kit/useUnsavedGuard.ts` | dirty-form save/discard and the leave guard                    |

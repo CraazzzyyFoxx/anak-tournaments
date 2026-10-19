@@ -12,6 +12,7 @@ import type { SectionNavGroup } from "@/components/kit/SectionNav";
  * told the reader they were the same settings surface.
  */
 export const WORKSPACE_SETTINGS_SECTIONS = [
+  "overview",
   "general",
   "branding",
   "visibility",
@@ -33,6 +34,7 @@ export type WorkspaceSettingsSectionKey = (typeof WORKSPACE_SETTINGS_SECTIONS)[n
  * are camelCase.
  */
 const SECTION_MESSAGE_KEYS = {
+  overview: "overview",
   general: "general",
   branding: "branding",
   visibility: "visibility",
@@ -76,6 +78,7 @@ export function workspaceSectionDescription(
  * `/admin/settings`.
  */
 export const WORKSPACE_RECORD_SECTIONS = [
+  "overview",
   "general",
   "branding",
   "visibility",
@@ -91,7 +94,7 @@ const GROUPS: ReadonlyArray<{
 }> = [
   {
     label: "workspace",
-    sections: ["general", "branding", "visibility", "domain", "discord"]
+    sections: ["overview", "general", "branding", "visibility", "domain", "discord"]
   },
   { label: "competitive", sections: ["divisions", "statuses", "sub-roles", "registration-forms"] },
   { label: "entitlements", sections: ["subscriptions", "quota"] }
@@ -99,7 +102,8 @@ const GROUPS: ReadonlyArray<{
 
 /**
  * Rail groups for `SectionNav`, with `basePath` deciding which shell they
- * point at.
+ * point at. Overview is the shell's root itself: there is no `/overview`
+ * route, the bare `basePath` is the overview.
  *
  * `only` narrows the rail to the sections a shell actually routes: the
  * superuser's `/admin/workspaces/[id]` shell mounts `WORKSPACE_RECORD_SECTIONS`
@@ -117,7 +121,7 @@ export function workspaceSettingsNavGroups(
     items: group.sections.map((section) => ({
       key: section,
       label: workspaceSectionLabel(section, t),
-      href: `${basePath}/${section}`,
+      href: section === "overview" ? basePath : `${basePath}/${section}`,
       hidden: allowed ? !allowed.has(section) : false
     }))
   }));

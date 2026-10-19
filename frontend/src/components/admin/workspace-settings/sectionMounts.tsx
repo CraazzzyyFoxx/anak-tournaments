@@ -7,6 +7,7 @@ import { BrandingSection } from "./BrandingSection";
 import { DiscordSection } from "./DiscordSection";
 import { DomainSection } from "./DomainSection";
 import { GeneralSection } from "./GeneralSection";
+import { OverviewSection } from "./OverviewSection";
 import { VisibilitySection } from "./VisibilitySection";
 import type { WorkspaceRecordSectionKey } from "./sections";
 
@@ -19,6 +20,7 @@ const SECTION_COMPONENTS: Record<
   WorkspaceRecordSectionKey,
   (props: Readonly<{ workspaceId: number | null }>) => React.ReactElement
 > = {
+  overview: OverviewSection,
   general: GeneralSection,
   branding: BrandingSection,
   visibility: VisibilitySection,

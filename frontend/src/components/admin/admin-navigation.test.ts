@@ -30,7 +30,7 @@ describe("admin navigation structure", () => {
       "/admin/teams",
       "/admin/matches",
       "/admin/achievements",
-      "/admin/settings/general",
+      "/admin/settings",
       "/admin/members",
       "/admin/content/heroes",
       "/admin/collectors/rank",
@@ -67,7 +67,7 @@ describe("admin navigation structure", () => {
     const groups = getVisibleAdminNavigationGroups((item) => item.workspaceAdminVisible === true);
     const hrefs = groups.flatMap((group) => group.items.map((item) => item.href));
 
-    expect(hrefs).toContain("/admin/settings/general");
+    expect(hrefs).toContain("/admin/settings");
     expect(hrefs).toContain("/admin/members");
     expect(hrefs).toContain("/admin/workspaces");
   });
@@ -103,10 +103,10 @@ describe("active-entry matching", () => {
   });
 
   it("keeps Settings active across every section, not just its landing one", () => {
-    // The entry points at `/admin/settings/general`; without `activePrefix`
-    // the sidebar would go dark on `/admin/settings/divisions`.
+    // The entry points at the overview, `/admin/settings`; `activePrefix`
+    // keeps the sidebar lit on `/admin/settings/divisions` as well.
     expect(getActiveAdminNavHref("/admin/settings/divisions", allItems)).toBe(
-      "/admin/settings/general",
+      "/admin/settings",
     );
     expect(getActiveAdminNavHref("/admin/content/unresolved", allItems)).toBe(
       "/admin/content/heroes",
@@ -214,6 +214,7 @@ describe("route gates", () => {
       "/admin/matches",
       "/admin/achievements",
       "/admin/achievements/3",
+      "/admin/settings",
       "/admin/settings/general",
       "/admin/settings/divisions",
       "/admin/settings/divisions/v/4",

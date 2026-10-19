@@ -158,6 +158,21 @@ describe("Workspaces › [id] › General", () => {
     expect(container.querySelector<HTMLInputElement>("#workspace-name")?.value).toBe("Rivals Cup");
   });
 
+  it("previews the typed tagline in the community page header", async () => {
+    await render();
+    const tagline = container.querySelector<HTMLInputElement>("#workspace-tagline")!;
+
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        tagline,
+        "Weekly cups since 2019"
+      );
+      tagline.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container.querySelector("figure")?.textContent).toContain("Weekly cups since 2019");
+  });
+
   // The owner is the one field on this screen the public workspace payload
   // cannot carry, so it is fetched separately — and it has to be fetched for
   // the workspace in the route, like everything else here.

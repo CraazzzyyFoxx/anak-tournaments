@@ -3317,11 +3317,12 @@
         "edges": "The address cannot start or end with a hyphen",
         "reserved": "“{slug}” is reserved by the platform",
         "ok": "The format works. Whether the address is free we check on create.",
-        "taken": "The address “{slug}” is already taken by another community. Pick a different one."
+        "taken": "The address “{slug}” is already taken by another community. Pick a different one.",
+        "length": "The address is at most {max} characters"
       },
       "submit": "Create community",
       "submitSignedOut": "Sign in and create",
-      "note": "You become the owner. Logo, subdomain and colours come later, in the settings.",
+      "note": "You become the owner. Next comes a short setup: the profile, colours and Discord. A subdomain is in the settings.",
       "revoked": {
         "title": "Community creation is turned off for your account",
         "hint": "If that is a mistake, message the platform team on Discord."
@@ -11311,8 +11312,139 @@
     "markdownEditor": {
       "nothingPublished": "Nothing published yet."
     },
+    "newWorkspace": {
+      "title": "New workspace",
+      "description": "A name and an address, then the profile, colours and Discord. Everything after step 1 can be skipped and set up later.",
+      "unauthorized": "Unauthorized",
+      "unauthorizedDescription": "Creating workspaces is turned off for your account. If that is a mistake, message the platform team.",
+      "stepOf": "Step {current} of {total}",
+      "saveError": "Could not save the changes",
+      "steps": {
+        "basics": {
+          "label": "Basics",
+          "description": "The name and the address of the community page. The address cannot change after creation."
+        },
+        "profile": {
+          "label": "Profile",
+          "description": "What players see on the community page: the tagline, the story, the links. And the timezone of your tournaments."
+        },
+        "branding": {
+          "label": "Colours",
+          "description": "Your own palette for the community pages. Without it the platform look is used."
+        },
+        "discord": {
+          "label": "Discord",
+          "description": "The community's server: match logs and patron roles come from it, announcements go to it."
+        },
+        "done": {
+          "label": "Done",
+          "description": "The workspace is created. Below is what is still worth setting up, and where to start."
+        }
+      },
+      "actions": {
+        "create": "Create",
+        "creating": "Creating…",
+        "continue": "Continue",
+        "saving": "Saving…",
+        "skip": "Skip",
+        "finish": "Finish",
+        "finishLater": "Finish later"
+      },
+      "basics": {
+        "name": "Name",
+        "namePlaceholder": "For example, Funny Cup",
+        "address": "Page address",
+        "addressHelp": "Latin a-z, digits, hyphen and underscore. Filled in from the name until you edit it yourself.",
+        "addressLocked": "The address is fixed at creation. A subdomain and your own domain are set up in the settings.",
+        "icon": "Icon",
+        "iconHelp": "PNG, JPEG, WebP or GIF, up to 2 MB.",
+        "iconError": "The workspace is saved, but the icon did not upload",
+        "description": "Description",
+        "descriptionHelp": "A sentence or two about the community for the workspace list. Optional."
+      },
+      "validation": {
+        "name": {
+          "empty": "Enter a name."
+        },
+        "slug": {
+          "empty": "Enter an address.",
+          "format": "Latin a-z, digits, hyphen and underscore only.",
+          "edges": "The address cannot start or end with a hyphen or an underscore.",
+          "reserved": "This address is reserved by the platform. Pick a different one.",
+          "length": "The address is at most {max} characters.",
+          "taken": "This address is already taken by another community. Pick a different one."
+        },
+        "limit": "You already own a workspace. One per account: message the platform team if you need another.",
+        "createError": "Could not create the workspace."
+      },
+      "profile": {
+        "tagline": "Tagline",
+        "taglineHelp": "One line under the name on the community page, up to 120 characters.",
+        "about": "About the community",
+        "aboutHelp": "Markdown: headings, lists, links. Up to 4000 characters.",
+        "links": {
+          "discord": "Discord server",
+          "twitch": "Twitch channel",
+          "boosty": "Boosty page"
+        },
+        "timezone": "Timezone",
+        "selectTimezone": "Select a timezone",
+        "timezoneHelp": "Tournament schedule times are entered and shown in this timezone."
+      },
+      "discord": {
+        "linkedHelp": "The server is linked. The bot, announcements and mixes are set up in the Discord section of the settings."
+      },
+      "done": {
+        "setupTitle": "Still to set up",
+        "nextTitle": "Where to start",
+        "next": {
+          "tournament": {
+            "title": "Create a tournament",
+            "description": "Dates, format and registration: the wizard walks you through them."
+          },
+          "members": {
+            "title": "Bring in your team",
+            "description": "Add the admins and referees who will run tournaments."
+          },
+          "access": {
+            "title": "Set up access",
+            "description": "Roles and permissions: who can do what in the workspace."
+          }
+        }
+      }
+    },
     "workspaceSettings": {
+      "overview": {
+        "address": "Platform address"
+      },
+      "setup": {
+        "title": "Setup checklist",
+        "done": "Done",
+        "todo": "Not yet",
+        "setUp": "Set up",
+        "items": {
+          "icon": "Icon",
+          "profile": "Description and tagline",
+          "links": "Community links",
+          "discord": "Discord server",
+          "branding": "Site branding",
+          "subdomain": "Subdomain",
+          "customDomain": "Custom domain",
+          "verification": "Platform verification"
+        },
+        "hints": {
+          "icon": "Shown next to the name everywhere the workspace is listed.",
+          "profile": "The first thing a visitor reads on the community page.",
+          "links": "Discord, Twitch and Boosty links on the community page and in its footer.",
+          "discord": "Match logs, subscriber roles and announcements all come from one server.",
+          "branding": "Your own palette on the public site instead of the platform default.",
+          "subdomain": "A short address such as yourcup.{zone} instead of the /workspace/ path.",
+          "customDomain": "Your own domain, verified through a DNS record.",
+          "verification": "The platform reviews new communities before listing them on the home page. Nothing to do on your side."
+        }
+      },
       "sections": {
+        "overview": "Overview",
         "general": "General",
         "branding": "Branding",
         "visibility": "Visibility",
@@ -11330,6 +11462,7 @@
         "settingsTitle": "Workspace settings"
       },
       "sectionDescriptions": {
+        "overview": "What this workspace already has set up, and what is left.",
         "general": "How this workspace is named, described and scheduled.",
         "branding": "The palette the public site paints this workspace in.",
         "visibility": "Who can find this workspace, and who counts as a newcomer in it.",
@@ -11375,6 +11508,25 @@
           "discord": "Discord",
           "twitch": "Twitch",
           "boosty": "Boosty"
+        },
+        "groups": {
+          "identity": {
+            "title": "Name and icon",
+            "description": "The name and icon stand for the workspace in the site header, the workspace switcher, home page cards and notifications."
+          },
+          "publicPage": {
+            "title": "Community page",
+            "description": "The tagline, description and About text fill the public community page, and the description also appears on the workspace's home page card.",
+            "preview": "Community page header"
+          },
+          "links": {
+            "title": "Links",
+            "description": "Each filled link becomes a button in the community page header."
+          },
+          "time": {
+            "title": "Time",
+            "description": "The community page shows this zone as the time its matches are played in."
+          }
         }
       },
       "branding": {
@@ -11404,7 +11556,17 @@
         "selectScope": "Select scope",
         "platformWide": "Platform-wide",
         "workspaceOnly": "This workspace only",
-        "scopeHelp": "Decides who counts as a “newcomer” (rating confidence, achievements) when a roster is created: platform-wide counts a player's history in any workspace, this-workspace-only ignores it — a veteran of another workspace will show as a newcomer the first time they join this one."
+        "scopeHelp": "Decides who counts as a “newcomer” (rating confidence, achievements) when a roster is created: platform-wide counts a player's history in any workspace, this-workspace-only ignores it — a veteran of another workspace will show as a newcomer the first time they join this one.",
+        "groups": {
+          "discovery": {
+            "title": "Listing",
+            "description": "Decides whether people outside the workspace can find it on the platform."
+          },
+          "newcomers": {
+            "title": "Newcomers",
+            "description": "Decides whose tournament history counts when a roster marks a player as new."
+          }
+        }
       },
       "domain": {
         "saved": "Custom domain saved — add the DNS records below, then verify",
@@ -11447,7 +11609,20 @@
         "removeTitle": "Remove custom domain",
         "removeDescription": "{domain} stops serving {workspace} the moment you confirm — visitors land on the platform URL instead. You can add it back later, but the DNS records have to be verified again.",
         "copied": "Copied to clipboard",
-        "copyError": "Could not copy to clipboard"
+        "copyError": "Could not copy to clipboard",
+        "groups": {
+          "address": {
+            "title": "Address",
+            "description": "A subdomain gives the workspace its own address on the platform, and its /workspace/ page keeps working alongside it."
+          },
+          "customDomain": {
+            "description": "The workspace opens on a domain you own, and once verified that domain is the address shown to visitors."
+          },
+          "search": {
+            "title": "Search engines",
+            "description": "On the subdomain and the custom domain, these replace the workspace name and description in browser tabs, search results and link previews."
+          }
+        }
       },
       "discord": {
         "owner": "Owner ·",

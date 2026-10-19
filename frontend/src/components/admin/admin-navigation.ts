@@ -41,8 +41,8 @@ export type AdminNavItem = {
   href: string;
   /**
    * Path prefix that marks this entry active, when `href` points deeper than
-   * the section it owns (`/admin/settings/general` is the landing section of
-   * `/admin/settings`, and `/admin/settings/divisions` must still light it up).
+   * the section it owns (`/admin/content/heroes` is the landing section of
+   * `/admin/content`, and `/admin/content/unresolved` must still light it up).
    */
   activePrefix?: string;
   icon: LucideIcon;
@@ -194,7 +194,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     items: [
       {
         title: "nav.settings",
-        href: "/admin/settings/general",
+        href: "/admin/settings",
         activePrefix: "/admin/settings",
         icon: Settings2,
         description:
@@ -214,6 +214,7 @@ export const adminNavigationGroups: AdminNavGroup[] = [
           "subscription providers",
         ],
         views: [
+          { key: "overview", label: "nav.overview", href: "/admin/settings" },
           { key: "general", label: "nav.general", href: "/admin/settings/general" },
           { key: "branding", label: "nav.branding", href: "/admin/settings/branding" },
           { key: "visibility", label: "nav.visibilitySeo", href: "/admin/settings/visibility" },

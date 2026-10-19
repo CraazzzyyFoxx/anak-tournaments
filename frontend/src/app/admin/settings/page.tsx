@@ -1,2 +1,8 @@
-/** The hub root renders its first section in place, instead of hopping to it. */
-export { default } from "./general/page";
+"use client";
+
+import { CurrentWorkspaceSection } from "@/components/admin/workspace-settings/sectionMounts";
+
+/** Overview of the workspace this admin is working in: identity and setup checklist. */
+export default function WorkspaceOverviewPage() {
+  return <CurrentWorkspaceSection section="overview" />;
+}

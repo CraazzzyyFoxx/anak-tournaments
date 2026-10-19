@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 
@@ -33,41 +34,47 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
       {({ form: values }) => (
         <>
           <Card>
-            <CardContent className="flex flex-col gap-4 pt-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <Label htmlFor="workspace-is-hidden">{t("hidden")}</Label>
-                  <p className="max-w-prose text-xs text-muted-foreground">
-                    {t("hiddenHelp")}
-                  </p>
+            <CardContent className="flex flex-col gap-5 pt-6">
+              <SettingGroup
+                title={t("groups.discovery.title")}
+                description={t("groups.discovery.description")}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="workspace-is-hidden">{t("hidden")}</Label>
+                    <p className="max-w-prose text-xs text-muted-foreground">{t("hiddenHelp")}</p>
+                  </div>
+                  <Switch
+                    id="workspace-is-hidden"
+                    checked={values.is_hidden}
+                    onCheckedChange={(checked) => patch({ is_hidden: checked })}
+                  />
                 </div>
-                <Switch
-                  id="workspace-is-hidden"
-                  checked={values.is_hidden}
-                  onCheckedChange={(checked) => patch({ is_hidden: checked })}
-                />
-              </div>
+              </SettingGroup>
 
-              <div>
-                <Label htmlFor="workspace-newcomer-scope">{t("newcomerScope")}</Label>
-                <Select
-                  value={values.newcomer_scope}
-                  onValueChange={(value) =>
-                    patch({ newcomer_scope: value as "global" | "workspace" })
-                  }
-                >
-                  <SelectTrigger id="workspace-newcomer-scope" className="mt-1.5 w-full">
-                    <SelectValue placeholder={t("selectScope")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="global">{t("platformWide")}</SelectItem>
-                    <SelectItem value="workspace">{t("workspaceOnly")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-                  {t("scopeHelp")}
-                </p>
-              </div>
+              <SettingGroup
+                title={t("groups.newcomers.title")}
+                description={t("groups.newcomers.description")}
+              >
+                <div>
+                  <Label htmlFor="workspace-newcomer-scope">{t("newcomerScope")}</Label>
+                  <Select
+                    value={values.newcomer_scope}
+                    onValueChange={(value) =>
+                      patch({ newcomer_scope: value as "global" | "workspace" })
+                    }
+                  >
+                    <SelectTrigger id="workspace-newcomer-scope" className="mt-1.5 w-full">
+                      <SelectValue placeholder={t("selectScope")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">{t("platformWide")}</SelectItem>
+                      <SelectItem value="workspace">{t("workspaceOnly")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t("scopeHelp")}</p>
+                </div>
+              </SettingGroup>
             </CardContent>
           </Card>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Plus } from "lucide-react";
 
@@ -15,7 +15,6 @@ export default function WorkspacesPage() {
   const t = useTranslations("adminAccess.common");
   const tw = useTranslations("adminAccess.workspace");
   const { canManageAnyWorkspace, canUseCapability, isLoaded } = usePermissions();
-  const [createOpen, setCreateOpen] = useState(false);
 
   if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
 
@@ -27,9 +26,7 @@ export default function WorkspacesPage() {
       <Card>
         <CardHeader>
           <CardTitle>{tw("unauthorized")}</CardTitle>
-          <CardDescription>
-            {tw("unauthorizedDescription")}
-          </CardDescription>
+          <CardDescription>{tw("unauthorizedDescription")}</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -47,14 +44,16 @@ export default function WorkspacesPage() {
              negative RBAC, and the backend refuses a denied one, so the button
              goes away with it rather than offering a guaranteed 403. */
           canUseCapability("workspace.self_create") ? (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="size-3.5" aria-hidden />
-              {t("createWorkspace")}
+            <Button asChild size="sm">
+              <Link href="/admin/workspaces/new">
+                <Plus className="size-3.5" aria-hidden />
+                {t("createWorkspace")}
+              </Link>
             </Button>
           ) : null
         }
       />
-      <WorkspacesBrowser createOpen={createOpen} onCreateOpenChange={setCreateOpen} />
+      <WorkspacesBrowser />
     </div>
   );
 }

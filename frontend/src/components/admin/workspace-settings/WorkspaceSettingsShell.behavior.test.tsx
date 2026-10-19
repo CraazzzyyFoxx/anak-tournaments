@@ -8,7 +8,9 @@
 //     active key comes from the first segment after `basePath`, never the last
 //     segment of the path;
 //  3. the superuser shell (`/admin/workspaces/[id]`) rails only the sections it
-//     actually routes, so it cannot link to a 404.
+//     actually routes, so it cannot link to a 404;
+//  4. the bare root of either shell is the overview: its rail item links to the
+//     root itself (there is no `/overview` route) and is current there.
 import { act, forwardRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -104,6 +106,24 @@ describe("WorkspaceSettingsShell", () => {
     expect(currentLabel()).toBe("Divisions");
   });
 
+  it.each([
+    ["/admin/settings", undefined],
+    ["/admin/workspaces/8", WORKSPACE_RECORD_SECTIONS]
+  ] as const)("makes the overview current at the bare root %s", async (basePath, sections) => {
+    pathname = basePath;
+    await render(
+      <WorkspaceSettingsShell basePath={basePath} sections={sections}>
+        <p />
+      </WorkspaceSettingsShell>
+    );
+
+    expect(container.querySelector("h1")?.textContent).toBe("Overview");
+    expect(currentLabel()).toBe("Overview");
+    expect(container.querySelector('nav a[aria-current="page"]')?.getAttribute("href")).toBe(
+      basePath
+    );
+  });
+
   it("stands aside entirely for the full-screen division-grid editor", async () => {
     // Next.js nests layouts: the editor's own `v/layout.tsx` cannot remove this
     // one, so the header and the rail would eat a column of its three-column
@@ -120,7 +140,7 @@ describe("WorkspaceSettingsShell", () => {
     expect(container.querySelector("nav")).toBeNull();
   });
 
-  it("rails all eleven sections of the workspace hub", async () => {
+  it("rails all twelve sections of the workspace hub, the overview first", async () => {
     await render(
       <WorkspaceSettingsShell basePath="/admin/settings">
         <p />
@@ -128,6 +148,7 @@ describe("WorkspaceSettingsShell", () => {
     );
 
     expect(railLinks().map((link) => link.getAttribute("href"))).toEqual([
+      "/admin/settings",
       "/admin/settings/general",
       "/admin/settings/branding",
       "/admin/settings/visibility",
@@ -145,15 +166,13 @@ describe("WorkspaceSettingsShell", () => {
   it("rails only the routed sections under a workspace id", async () => {
     pathname = "/admin/workspaces/8/general";
     await render(
-      <WorkspaceSettingsShell
-        basePath="/admin/workspaces/8"
-        sections={WORKSPACE_RECORD_SECTIONS}
-      >
+      <WorkspaceSettingsShell basePath="/admin/workspaces/8" sections={WORKSPACE_RECORD_SECTIONS}>
         <p />
       </WorkspaceSettingsShell>
     );
 
     expect(railLinks().map((link) => link.getAttribute("href"))).toEqual([
+      "/admin/workspaces/8",
       "/admin/workspaces/8/general",
       "/admin/workspaces/8/branding",
       "/admin/workspaces/8/visibility",

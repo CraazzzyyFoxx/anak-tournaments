@@ -46,7 +46,8 @@ const FULL_SCREEN_PREFIXES = ["/admin/settings/divisions/v/"] as const;
  *
  * The active section is resolved from the first path segment after `basePath`,
  * not the last segment of the URL: `/admin/settings/divisions/import` is a
- * child screen of Divisions and has to leave that rail item current.
+ * child screen of Divisions and has to leave that rail item current. The bare
+ * `basePath` is the overview.
  */
 
 export function WorkspaceSettingsShell({
@@ -60,7 +61,7 @@ export function WorkspaceSettingsShell({
   if (FULL_SCREEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return <>{children}</>;
 
   const trailing = pathname.startsWith(basePath) ? pathname.slice(basePath.length) : "";
-  const segment = trailing.split("/").filter(Boolean)[0] ?? "";
+  const segment = trailing.split("/").filter(Boolean)[0] ?? "overview";
   const activeKey = (WORKSPACE_SETTINGS_SECTIONS as readonly string[]).includes(segment)
     ? (segment as WorkspaceSettingsSectionKey)
     : null;

@@ -9,11 +9,18 @@ import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { PhaseStrip, type PhaseState } from "@/components/kit/PhaseStrip";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { PLATFORM_ZONE } from "@/lib/site/host";
 import { notify } from "@/lib/notify";
@@ -153,64 +160,56 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
       {({ form: values, workspace: ws }) => (
         <>
           <Card>
-            <CardContent className="flex flex-col gap-4 pt-6">
-              <div>
-                <Label htmlFor="workspace-subdomain">{t("subdomain")}</Label>
-                <Input
-                  id="workspace-subdomain"
-                  className="mt-1.5"
-                  value={values.subdomain ?? ""}
-                  placeholder="my-team"
-                  onChange={(event) =>
-                    patch({
-                      subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
-                    })
-                  }
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {values.subdomain
-                    ? `${values.subdomain}.${PLATFORM_ZONE}`
-                    : t("platformUrlOnly")}
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="workspace-seo-title">{t("seoTitle")}</Label>
-                <Input
-                  id="workspace-seo-title"
-                  className="mt-1.5"
-                  value={values.seo_title ?? ""}
-                  placeholder={t("seoTitlePlaceholder")}
-                  onChange={(event) => patch({ seo_title: event.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="workspace-seo-description">{t("seoDescription")}</Label>
-                <Textarea
-                  id="workspace-seo-description"
-                  className="mt-1.5"
-                  value={values.seo_description ?? ""}
-                  placeholder={t("seoDescriptionPlaceholder")}
-                  onChange={(event) => patch({ seo_description: event.target.value })}
-                />
-              </div>
+            <CardContent className="pt-6">
+              <SettingGroup
+                title={t("groups.address.title")}
+                description={t("groups.address.description")}
+              >
+                <div>
+                  <Label htmlFor="workspace-subdomain">{t("subdomain")}</Label>
+                  <InputGroup className="mt-1.5">
+                    <InputGroupInput
+                      id="workspace-subdomain"
+                      value={values.subdomain ?? ""}
+                      placeholder="my-team"
+                      onChange={(event) =>
+                        patch({
+                          subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
+                        })
+                      }
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupText>.{PLATFORM_ZONE}</InputGroupText>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {values.subdomain
+                      ? `https://${values.subdomain}.${PLATFORM_ZONE}`
+                      : t("platformUrlOnly")}
+                  </p>
+                </div>
+              </SettingGroup>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="flex flex-col gap-3 pt-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
-                {domain.verifiedAt ? (
-                  <StatusPill tone="success">
-                    <CheckCircle aria-hidden className="size-3" /> {t("verifiedLive")}
-                  </StatusPill>
-                ) : domain.domain ? (
-                  <StatusPill tone="warning">
-                    <Spinner className="size-3" />{" "}
-                    {t("pending")}
-                  </StatusPill>
-                ) : null}
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
+                  {domain.verifiedAt ? (
+                    <StatusPill tone="success">
+                      <CheckCircle aria-hidden className="size-3" /> {t("verifiedLive")}
+                    </StatusPill>
+                  ) : domain.domain ? (
+                    <StatusPill tone="warning">
+                      <Spinner className="size-3" /> {t("pending")}
+                    </StatusPill>
+                  ) : null}
+                </div>
+                <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+                  {t("groups.customDomain.description")}
+                </p>
               </div>
 
               <PhaseStrip
@@ -265,9 +264,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
               {pending ? (
                 <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3">
                   <div>
-                    <h3 className="text-xs font-semibold text-foreground">
-                      {t("howToConnect")}
-                    </h3>
+                    <h3 className="text-xs font-semibold text-foreground">{t("howToConnect")}</h3>
                     <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
                       <li>{t("openProvider")}</li>
                       <li>{t("addRecords")}</li>
@@ -275,7 +272,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                         {t.rich("propagationHelp", {
                           seconds: VERIFY_POLL_MS / 1000,
                           num: (chunks) => <span className="tabular-nums">{chunks}</span>,
-                          strong: (chunks) => <strong>{chunks}</strong>,
+                          strong: (chunks) => <strong>{chunks}</strong>
                         })}
                       </li>
                     </ol>
@@ -324,6 +321,38 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
             </CardContent>
           </Card>
 
+          <Card>
+            <CardContent className="pt-6">
+              <SettingGroup
+                title={t("groups.search.title")}
+                description={t("groups.search.description")}
+              >
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <Label htmlFor="workspace-seo-title">{t("seoTitle")}</Label>
+                    <Input
+                      id="workspace-seo-title"
+                      className="mt-1.5"
+                      value={values.seo_title ?? ""}
+                      placeholder={t("seoTitlePlaceholder")}
+                      onChange={(event) => patch({ seo_title: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="workspace-seo-description">{t("seoDescription")}</Label>
+                    <Textarea
+                      id="workspace-seo-description"
+                      className="mt-1.5"
+                      value={values.seo_description ?? ""}
+                      placeholder={t("seoDescriptionPlaceholder")}
+                      onChange={(event) => patch({ seo_description: event.target.value })}
+                    />
+                  </div>
+                </div>
+              </SettingGroup>
+            </CardContent>
+          </Card>
+
           <SaveBar
             dirty={settings.dirty}
             summary={settings.summary}
@@ -338,7 +367,10 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
             pending={clearMutation.isPending}
             intent={{
               title: t("removeTitle"),
-                description: t("removeDescription", { domain: domain.domain ?? t("thisDomain"), workspace: ws.name }),
+              description: t("removeDescription", {
+                domain: domain.domain ?? t("thisDomain"),
+                workspace: ws.name
+              }),
               confirmLabel: t("removeDomain"),
               tone: "danger"
             }}

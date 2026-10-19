@@ -56,9 +56,7 @@ vi.mock("@/services/workspace.service", () => ({
       last_name: null,
       avatar_url: null
     })),
-    create: vi.fn(),
-    delete: (...args: unknown[]) => deleteWorkspace(...args),
-    uploadIcon: vi.fn()
+    delete: (...args: unknown[]) => deleteWorkspace(...args)
   }
 }));
 vi.mock("@/lib/notify", () => ({
@@ -335,23 +333,18 @@ describe("/admin/workspaces", () => {
     expect(cards[0].textContent).toContain("Hidden");
   });
 
-  it("opens the create dialog for a non-superuser, because creation is no longer superuser-only", async () => {
+  it("links a non-superuser to the creation wizard, because creation is no longer superuser-only", async () => {
     superuser = false;
     const container = await mount();
     const create = await waitFor(
       () =>
-        Array.from(container.querySelectorAll("button")).find(
-          (button) => button.textContent?.trim() === "Create workspace"
+        Array.from(container.querySelectorAll("a")).find(
+          (link) => link.textContent?.trim() === "Create workspace"
         ),
-      "the create button"
+      "the create link"
     );
 
-    expect(create.hasAttribute("disabled")).toBe(false);
-    await click(create);
-
-    const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), "the dialog");
-    expect(dialog.querySelector("#slug")).not.toBeNull();
-    expect(dialog.querySelector("#name")).not.toBeNull();
+    expect(create.getAttribute("href")).toBe("/admin/workspaces/new");
   });
 
   // `workspace.self_create` is allow-by-default and revocable per account
@@ -363,8 +356,8 @@ describe("/admin/workspaces", () => {
     await waitFor(() => container.textContent?.includes("Rivals Cup"), "the workspace row");
 
     expect(
-      Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent?.trim() === "Create workspace"
+      Array.from(container.querySelectorAll("a, button")).find(
+        (element) => element.textContent?.trim() === "Create workspace"
       )
     ).toBeUndefined();
   });
