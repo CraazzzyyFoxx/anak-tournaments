@@ -83,9 +83,6 @@ export const RANK_LAYERS = [...CURRENT_RANK_LAYERS, ...HISTORY_RANK_LAYERS] as c
 
 export type RankLayer = (typeof RANK_LAYERS)[number];
 
-/** The three roles a rank can be held for; a casual seat may carry another hero class. */
-export const RANK_OVERVIEW_ROLES = ["tank", "damage", "support"] as const;
-
 /**
  * What a row is *about* beyond the member: the tournament it was registered
  * for, the mix it was seated in, or the native account it was scraped from.

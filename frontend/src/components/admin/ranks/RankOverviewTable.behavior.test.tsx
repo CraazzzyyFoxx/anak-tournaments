@@ -52,6 +52,33 @@ vi.mock("@/stores/workspace.store", () => ({
     selector({ currentWorkspaceId: 7 })
 }));
 
+// The browsing game is a test input; the owner's metadata is the real OW / League fixture.
+let browsing = "overwatch";
+vi.mock("@/hooks/useBrowsingDiscipline", () => ({
+  useBrowsingDiscipline: () => ({
+    axis: 7,
+    resolved: { kind: "concrete", code: browsing },
+    disciplines: [],
+    select: vi.fn(),
+    refetch: vi.fn(),
+    isError: false
+  })
+}));
+vi.mock("@/components/workspace/DisciplineSelector", () => ({
+  DisciplineSelector: () => null,
+  DisciplineUnavailable: () => null
+}));
+vi.mock("@/hooks/useDisciplineMetadata", async () => {
+  const { LOL_METADATA, OW_METADATA } = await import("@/test/discipline-metadata");
+  return {
+    useDisciplineMetadata: (_axis: unknown, code: string) => ({
+      data: code === "lol" ? LOL_METADATA : OW_METADATA,
+      isError: false,
+      refetch: vi.fn()
+    })
+  };
+});
+
 const listRanks = vi.fn();
 const listAuthors = vi.fn();
 
@@ -121,6 +148,7 @@ async function render(search: string, playerId?: number) {
 }
 
 beforeEach(() => {
+  browsing = "overwatch";
   listRanks.mockReset();
   listRanks.mockResolvedValue({ page: 1, per_page: 30, total: 1, results: [row()] });
   listAuthors.mockReset();
@@ -178,5 +206,29 @@ describe("rank overview table", () => {
       differsFromCanon: true,
       dateFrom: "2026-01-01"
     });
+  });
+
+  it("reads the browsing game's ranks with its own discipline, never an implied one", async () => {
+    browsing = "lol";
+    await render("");
+
+    expect(lastParams().discipline).toBe("lol");
+  });
+
+  it("shows a League role as its own glyph and keeps a role the dictionary does not know as its code", async () => {
+    browsing = "lol";
+    listRanks.mockResolvedValue({
+      page: 1,
+      per_page: 30,
+      total: 2,
+      results: [row({ role: "jungle" }), row({ member_id: 10, role: "tank" })]
+    });
+    await render("");
+
+    // The i18n mock echoes keys, so a known role's glyph is titled by its code.
+    expect(container.querySelector('[role="img"][title="jungle"]')).not.toBeNull();
+    // OW's `tank` is not a League position: no glyph, the raw code.
+    expect(container.querySelector('[role="img"][title="tank"]')).toBeNull();
+    expect(container.textContent).toContain("tank");
   });
 });

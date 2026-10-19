@@ -1335,10 +1335,11 @@
     "rankOverview": {
       "title": "Ранги",
       "description": "Все значения рангов в этом воркспейсе — по строке на значение, только для чтения.",
-      "searchPlaceholder": "Поиск по battle tag или имени…",
+      "searchPlaceholder": "Поиск по игровому нику или имени…",
       "empty": "Значений рангов пока нет. Они появятся, когда участнику выставят ранг, спарсят его или он зарегистрируется.",
       "emptyFiltered": "Ни одно значение не подходит под эти фильтры.",
       "noWorkspace": "Выберите воркспейс, чтобы увидеть его ранги.",
+      "loadError": "Не удалось загрузить ранги.",
       "lobby": "Лобби {letter}",
       "unauthorized": {
         "title": "Недоступно",
@@ -1361,7 +1362,7 @@
       "layers": {
         "canon": "Канон",
         "author": "Автор",
-        "ow": "Overwatch",
+        "ow": "{game}",
         "hidden": "Скрытый",
         "effective_tournament": "Эффективный (турнир)",
         "effective_mix": "Эффективный (микс)",
@@ -1372,7 +1373,7 @@
       "sources": {
         "author": "Автор",
         "workspace": "Воркспейс",
-        "native": "Overwatch"
+        "native": "{game}"
       },
       "filters": {
         "layer": "Слой",

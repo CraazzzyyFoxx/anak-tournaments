@@ -26,20 +26,28 @@ import { FilterBar } from "@/components/kit/FilterBar";
 import { formatDate } from "@/components/kit/format-time";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import { getDivisionLabel, getDivisionOptions } from "@/lib/divisions/grid";
+import { findRole, ratedDimension, registrationRoles } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import {
   RANK_LAYERS,
-  RANK_OVERVIEW_ROLES,
   workspacePlayerKeys,
   workspacePlayerService,
   type RankLayer,
   type RankOverviewRow,
 } from "@/services/workspace-player.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import type { DisciplineDescriptor, DisciplineMetadata } from "@/types/discipline.types";
 
 const PAGE_SIZE = 30;
 
@@ -54,9 +62,6 @@ const LAYER_ICON: Record<RankLayer, LucideIcon> = {
   tournament: Users,
   casual: Gamepad2,
 };
-
-/** Roles `PlayerRoleIcon` has a glyph for, in its capitalised spelling. */
-const GLYPH_ROLES: Record<string, true> = { Tank: true, Damage: true, Support: true, Flex: true };
 
 /** Dates live outside `useFilters` (the chip bar has no range kind), so they reset the page themselves. */
 const DATE_PARAMS = { from: "date_from", to: "date_to" } as const;
@@ -73,9 +78,65 @@ export interface RankOverviewTableProps {
 }
 
 /**
- * Every rank value in the workspace, one row per value: canon, each author's
- * book, the OW scrape, the hidden rating, both computed effective numbers, and
- * the three historical layers.
+ * One game's rank values in the workspace. A concrete-browsing surface: the
+ * game is the one `?discipline=` names (or the saved/first-enabled choice), its
+ * roles, grid and native layer are that game's own, and an invalid or empty
+ * resolution reads nothing. Switching game remounts the table, so no row of the
+ * previous game is shown while the next one loads.
+ */
+export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
+  const t = useTranslations("admin.rankOverview");
+  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const scope = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
+  const discipline = scope.resolved?.kind === "concrete" ? scope.resolved.code : null;
+  const metadata = useDisciplineMetadata(scope.axis, discipline);
+
+  if (workspaceId == null) {
+    return <EmptyNote>{t("noWorkspace")}</EmptyNote>;
+  }
+  if (scope.resolved?.kind === "invalid" || scope.resolved?.kind === "empty") {
+    return (
+      <DisciplineUnavailable
+        resolved={scope.resolved}
+        disciplines={scope.disciplines ?? []}
+        allowsAll={false}
+        onSelect={scope.select}
+      />
+    );
+  }
+  if (scope.isError || metadata.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title={t("loadError")}
+        onAction={() => {
+          scope.refetch();
+          void metadata.refetch();
+        }}
+      />
+    );
+  }
+  if (discipline === null || !metadata.data) {
+    return <Skeleton className="h-64" />;
+  }
+  return (
+    <RankOverviewRows
+      key={`${workspaceId}:${discipline}`}
+      playerId={playerId}
+      workspaceId={workspaceId}
+      discipline={discipline}
+      ontology={metadata.data}
+      disciplines={scope.disciplines ?? []}
+      onSelectDiscipline={scope.select}
+    />
+  );
+}
+
+/**
+ * Every rank value of the game in the workspace, one row per value: canon, each
+ * author's book, the native-ladder scrape (for a game that collects one), the
+ * hidden rating, both computed effective numbers, and the three historical
+ * layers.
  *
  * Read-only on purpose. Editing a rank has two owners already (the roster's
  * rank editor and a person's own panel), and a table that mixes nine layers —
@@ -83,22 +144,35 @@ export interface RankOverviewTableProps {
  * to grow a third. Filters, sort and page live in the URL, and `useQueryParams`
  * merges rather than replaces, so the person page's `?tab=ranks` survives.
  */
-export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
+function RankOverviewRows({
+  playerId,
+  workspaceId,
+  discipline,
+  ontology,
+  disciplines,
+  onSelectDiscipline,
+}: Readonly<{
+  playerId?: number;
+  workspaceId: number;
+  discipline: string;
+  ontology: DisciplineMetadata;
+  disciplines: readonly DisciplineDescriptor[];
+  onSelectDiscipline: (code: string) => void;
+}>) {
   const t = useTranslations("admin.rankOverview");
   const tBracket = useTranslations("adminBracket");
-  const tRoles = useTranslations("common.roles");
+  const slotLabel = useSlotLabel(ontology);
   const format = useFormatter();
-  const grid = useDivisionGrid();
-  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-
+  const grid = useDivisionGrid(discipline);
+  // Only a game that collects a native rank has that layer, named by the game.
+  const nativeRankName = ontology.discipline.capabilities.native_rank_collection ? ontology.discipline.name : null;
   const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page"] });
   const dateFrom = searchParams?.get(DATE_PARAMS.from) ?? "";
   const dateTo = searchParams?.get(DATE_PARAMS.to) ?? "";
 
   const authorsQuery = useQuery({
-    queryKey: workspacePlayerKeys.authors(workspaceId ?? 0),
-    queryFn: () => workspacePlayerService.listAuthors(workspaceId as number),
-    enabled: workspaceId != null,
+    queryKey: workspacePlayerKeys.authors(workspaceId),
+    queryFn: () => workspacePlayerService.listAuthors(workspaceId),
     staleTime: 60_000,
   });
 
@@ -117,7 +191,10 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
         key: "layer",
         label: t("filters.layer"),
         kind: "multi",
-        options: RANK_LAYERS.map((layer) => ({ value: layer, label: t(`layers.${layer}`) })),
+        options: RANK_LAYERS.filter((layer) => layer !== "ow" || nativeRankName !== null).map((layer) => ({
+          value: layer,
+          label: t(`layers.${layer}`, { game: nativeRankName ?? "" }),
+        })),
       },
       {
         key: "author",
@@ -133,7 +210,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
         key: "role",
         label: t("filters.role"),
         kind: "multi",
-        options: RANK_OVERVIEW_ROLES.map((role) => ({ value: role, label: tRoles(role) })),
+        options: registrationRoles(ontology).map((role) => ({ value: role.code, label: slotLabel(role.code) })),
       },
       // A division band IS a rank range, and the workspace grid is the only
       // honest mapping between them — two numeric inputs would ask the operator
@@ -142,7 +219,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
       { key: "div_max", label: t("filters.divisionMax"), kind: "single", options: divisionOptions },
       { key: "differs", label: t("filters.differsFromCanon"), kind: "toggle" },
     ],
-    [t, tRoles, authorsQuery.data, divisionOptions],
+    [t, slotLabel, ontology, nativeRankName, authorsQuery.data, divisionOptions],
   );
 
   const filters = useFilters(defs);
@@ -204,14 +281,17 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
         cell: ({ row }) => {
           const role = row.original.role;
           if (!role) return <span className="text-muted-foreground">—</span>;
-          const key = role as "tank";
-          const label = tRoles.has(key) ? tRoles(key) : role;
-          const glyph = role.charAt(0).toUpperCase() + role.slice(1);
-          return (
-            <span className="inline-flex" title={label}>
-              {/* PlayerRoleIcon renders nothing for an unknown role: keep the text then. */}
-              {GLYPH_ROLES[glyph] ? <PlayerRoleIcon role={glyph} size={18} label={label} /> : label}
+          const rated = ratedDimension(ontology);
+          const known =
+            role === OPEN_SLOT_CODE ||
+            (rated !== null && findRole(ontology, { dimension: rated.code, role }) !== null);
+          // A role the game's dictionary does not know stays its raw code, never a guessed glyph.
+          return known ? (
+            <span className="inline-flex">
+              <PlayerRoleIcon role={role} ontology={ontology} size={18} />
             </span>
+          ) : (
+            <span className="text-xs">{role}</span>
           );
         },
       },
@@ -233,7 +313,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
                 <span className="text-muted-foreground">—</span>
               ) : (
                 <>
-                  <DivisionIcon division={division} width={20} height={20} />
+                  <DivisionIcon division={division} tournamentGrid={grid} width={20} height={20} />
                   <span className="truncate">
                     {getDivisionLabel(grid, division) ??
                       tBracket("labels.divisionFallback", { number: division })}
@@ -241,7 +321,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
                 </>
               )}
               {owDivision ? (
-                // The OW ladder's own naming, kept beside the workspace grid's:
+                // The native ladder's own naming, kept beside the workspace grid's:
                 // the two disagree, and the scrape is only readable as itself.
                 <span className="whitespace-nowrap text-xs capitalize text-muted-foreground">
                   {owDivision}
@@ -259,7 +339,11 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
         cell: ({ row }) => {
           const source = row.original.source;
           if (!source) return <span className="text-muted-foreground">—</span>;
-          return <span className="text-xs text-muted-foreground">{t(`sources.${source}`)}</span>;
+          return (
+            <span className="text-xs text-muted-foreground">
+              {t(`sources.${source}`, { game: ontology.discipline.name })}
+            </span>
+          );
         },
       },
       {
@@ -359,11 +443,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
     ];
 
     return playerId == null ? [player, ...rest] : rest;
-  }, [t, tRoles, tBracket, format, grid, playerId]);
-
-  if (workspaceId == null) {
-    return <EmptyNote>{t("noWorkspace")}</EmptyNote>;
-  }
+  }, [t, ontology, tBracket, format, grid, playerId]);
 
   const activeKey = [filters.filterKey, dateFrom, dateTo].filter(Boolean).join("&");
 
@@ -371,6 +451,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
     <DataTable<RankOverviewRow>
       queryKey={(page, search, pageSize, sortField, sortDir) =>
         adminQueryKeys.rankOverview(workspaceId, {
+          discipline,
           playerId,
           page,
           search,
@@ -382,6 +463,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
       }
       queryFn={(page, search, pageSize, sortField, sortDir) =>
         workspacePlayerService.listRanks(workspaceId, {
+          discipline,
           page,
           perPage: pageSize,
           playerId,
@@ -411,15 +493,24 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
           defs={defs}
           filters={filters}
           trailing={
-            <div className="w-64">
-              <DateRangePicker
-                startDate={dateFrom || undefined}
-                endDate={dateTo || undefined}
-                placeholder={t("filters.dateRange")}
-                onChange={(from, to) =>
-                  setParams({ [DATE_PARAMS.from]: from || null, [DATE_PARAMS.to]: to || null })
-                }
+            <div className="flex flex-wrap items-center gap-2">
+              <DisciplineSelector
+                disciplines={disciplines}
+                value={discipline}
+                allowsAll={false}
+                onSelect={onSelectDiscipline}
+                className="w-44"
               />
+              <div className="w-64">
+                <DateRangePicker
+                  startDate={dateFrom || undefined}
+                  endDate={dateTo || undefined}
+                  placeholder={t("filters.dateRange")}
+                  onChange={(from, to) =>
+                    setParams({ [DATE_PARAMS.from]: from || null, [DATE_PARAMS.to]: to || null })
+                  }
+                />
+              </div>
             </div>
           }
         />
