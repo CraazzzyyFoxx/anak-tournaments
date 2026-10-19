@@ -3,23 +3,6 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
-import { ApiError } from "@/lib/api/error";
-
-/**
- * True for the server's `division_grid_required` refusal (422): the workspace has no published grid with
- * tiers for the game the request is about, so nothing may silently balance or rank on another game's
- * ladder. Callers that surface such an error render {@link MissingGridNotice} instead of a raw message.
- */
-export function isDivisionGridRequired(error: unknown): boolean {
-  return (
-    error instanceof ApiError &&
-    error.status === 422 &&
-    error.details.some(
-      (detail) => detail.code === "division_grid_required" || detail.msg.startsWith("division_grid_required")
-    )
-  );
-}
-
 /**
  * The state behind a missing-grid refusal: an organizer gets the way out (create or select a grid of
  * THIS game in THIS workspace, with the game preselected); anyone else gets a plain message — never a link

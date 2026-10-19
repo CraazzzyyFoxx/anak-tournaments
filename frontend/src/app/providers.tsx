@@ -11,8 +11,7 @@ import React from "react";
 
 import AuthBootstrap from "@/components/auth/AuthBootstrap";
 import WorkspaceBootstrap from "@/components/workspace/WorkspaceBootstrap";
-import { isDivisionGridRequired } from "@/components/divisions/MissingGridNotice";
-import { ApiError } from "@/lib/api/error";
+import { ApiError, isDivisionGridRequired } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 
 export function makeQueryClient() {

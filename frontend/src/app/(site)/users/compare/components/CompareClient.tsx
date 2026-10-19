@@ -10,13 +10,13 @@ import CompareFiltersPanel from "@/app/(site)/users/compare/components/CompareFi
 import CompareUnifiedTable from "@/app/(site)/users/compare/components/CompareUnifiedTable";
 import { useUserCompareSearchParams } from "@/app/(site)/users/compare/hooks/useUserCompareSearchParams";
 import { useUserCompareData } from "@/app/(site)/users/compare/hooks/useUserCompareData";
-import { isDivisionGridRequired, MissingGridNotice } from "@/components/divisions/MissingGridNotice";
+import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { usePermissions } from "@/hooks/usePermissions";
+import { isDivisionGridRequired } from "@/lib/api/error";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 const colorOf = (entity: { attrs: Record<string, unknown> } | undefined) =>
@@ -92,7 +92,6 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       : undefined
     : compareQuery.data;
   const sampleSize = activeData?.baseline.sample_size;
-  const { canAccessAnyPermission } = usePermissions();
   const gameName = browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? "";
   const retryActiveQuery = () => {
     void (compareParams.isHeroScope ? heroCompareQuery.refetch() : compareQuery.refetch());
@@ -185,15 +184,7 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           actionLabel={t("common.retry")}
         />
       ) : isDivisionGridRequired(activeError) && discipline ? (
-        <MissingGridNotice
-          discipline={discipline}
-          gameName={gameName}
-          // Only a workspace's own grid can be fixed from its settings; the all-workspaces axis has none to edit.
-          canManage={
-            typeof workspaceId === "number" &&
-            canAccessAnyPermission(["division_grid.create", "division_grid.update"], workspaceId)
-          }
-        />
+        <UsersMissingGrid discipline={discipline} gameName={gameName} axis={workspaceId} />
       ) : selectionPending ? (
         <CardSurface>
           <div className="flex justify-center py-16" role="status" aria-busy="true">

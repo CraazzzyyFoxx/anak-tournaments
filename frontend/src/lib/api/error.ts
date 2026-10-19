@@ -44,6 +44,21 @@ export function isNotFoundError(error: unknown): boolean {
   );
 }
 
+/**
+ * True for the server's `division_grid_required` refusal (422): the workspace has no published grid with
+ * tiers for the game the request is about, so nothing may silently balance or rank on another game's
+ * ladder. Callers that surface such an error render `MissingGridNotice` instead of a raw message.
+ */
+export function isDivisionGridRequired(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 422 &&
+    error.details.some(
+      (detail) => detail.code === "division_grid_required" || detail.msg.startsWith("division_grid_required")
+    )
+  );
+}
+
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
 const PYDANTIC_LOC_PREFIXES = ["body", "query", "path", "header", "cookie"];

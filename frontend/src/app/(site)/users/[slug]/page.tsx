@@ -19,13 +19,14 @@ import {
 } from "@/app/(site)/users/_views/UserTournamentsPage";
 import UserAchievementPage from "@/app/(site)/users/_views/UserAchievementPage";
 import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";
-import { isNotFoundError } from "@/lib/api/error";
+import { isDivisionGridRequired, isNotFoundError } from "@/lib/api/error";
 import { decodePlayerSlug } from "@/lib/player";
 import { Skeleton } from "@/components/ui/skeleton";
 import UserTabsClient from "@/app/(site)/users/components/tabs/UserTabsClient";
 import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderSkeleton";
 import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-jsonld";
 import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEmpty";
+import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
 import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -350,6 +351,30 @@ const ProfileBody = async ({
   );
 };
 
+/**
+ * The profile, or — when the viewed axis has no division grid for the game (the server's `division_grid_required`)
+ * — the missing-grid notice in its place: the header and every tab read through the same refused context.
+ */
+const ProfileOrMissingGrid = async ({
+  userAndProfile,
+  profileScope,
+  gameName,
+  children
+}: {
+  userAndProfile: Promise<UserAndProfile>;
+  profileScope: ProfileScope;
+  gameName: string;
+  children: React.ReactNode;
+}) => {
+  try {
+    await userAndProfile;
+  } catch (error) {
+    if (!isDivisionGridRequired(error)) throw error;
+    return <UsersMissingGrid discipline={profileScope.discipline} gameName={gameName} axis={profileScope.axis} />;
+  }
+  return children;
+};
+
 export default async function UserPage({
   params,
   searchParams
@@ -395,36 +420,53 @@ export default async function UserPage({
     matchFilters,
     profileScope
   });
+  const gameName =
+    browsing.init.disciplines?.find((entry) => entry.code === profileScope.discipline)?.name ?? profileScope.discipline;
   return (
     <>
       <div className="flex justify-end">
         <ServerBrowsingDiscipline initial={browsing.init} />
       </div>
-      <Suspense fallback={<UserHeaderSkeleton />}>
-        <UserHeaderSection
-          userAndProfile={userAndProfile}
-          slug={resolvedParams.slug}
-          profileScope={profileScope}
-        />
-      </Suspense>
       <Suspense
         fallback={
-          <UserTabsClient activeTab={activeTab}>
-            <Suspense fallback={tabContent.fallback}>
+          <>
+            <UserHeaderSkeleton />
+            <UserTabsClient activeTab={activeTab}>
               <TabsContent value={tabContent.value} className="mt-0">
-                {tabContent.content}
+                {tabContent.fallback}
               </TabsContent>
-            </Suspense>
-          </UserTabsClient>
+            </UserTabsClient>
+          </>
         }
       >
-        <ProfileBody userAndProfile={userAndProfile} activeTab={activeTab}>
-          <Suspense fallback={tabContent.fallback}>
-            <TabsContent value={tabContent.value} className="mt-0">
-              {tabContent.content}
-            </TabsContent>
+        <ProfileOrMissingGrid userAndProfile={userAndProfile} profileScope={profileScope} gameName={gameName}>
+          <Suspense fallback={<UserHeaderSkeleton />}>
+            <UserHeaderSection
+              userAndProfile={userAndProfile}
+              slug={resolvedParams.slug}
+              profileScope={profileScope}
+            />
           </Suspense>
-        </ProfileBody>
+          <Suspense
+            fallback={
+              <UserTabsClient activeTab={activeTab}>
+                <Suspense fallback={tabContent.fallback}>
+                  <TabsContent value={tabContent.value} className="mt-0">
+                    {tabContent.content}
+                  </TabsContent>
+                </Suspense>
+              </UserTabsClient>
+            }
+          >
+            <ProfileBody userAndProfile={userAndProfile} activeTab={activeTab}>
+              <Suspense fallback={tabContent.fallback}>
+                <TabsContent value={tabContent.value} className="mt-0">
+                  {tabContent.content}
+                </TabsContent>
+              </Suspense>
+            </ProfileBody>
+          </Suspense>
+        </ProfileOrMissingGrid>
       </Suspense>
     </>
   );

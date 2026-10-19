@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
+import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { catalogEntity } from "@/test/catalog";
 import { navigation } from "@/test/url-navigation";
@@ -76,14 +77,14 @@ async function settle(turns = 8) {
 
 let client: QueryClient;
 
-async function mount(url: string) {
+async function mount(url: string, scope: StatsScope = "all") {
   navigation.reset(url);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={messages}>
         <QueryClientProvider client={client}>
-          <CompareClient scope="all" />
+          <CompareClient scope={scope} />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -200,20 +201,35 @@ describe("compare selection", () => {
 });
 
 describe("a game without a division grid", () => {
-  it("names the missing grid instead of the server's refusal", async () => {
+  beforeEach(() => {
     mocks.compare.mockRejectedValue(
       new ApiError(422, [
         { msg: "division_grid_required: 'lol' needs a division grid of its own with tiers", code: "unprocessable" }
       ])
     );
+  });
 
+  it("tells the all-communities view to choose a community instead of the server's refusal", async () => {
     await mount("/users/compare?user_id=5&discipline=lol");
 
     const notice = container.querySelector('[role="alert"]');
-    expect(notice?.textContent).toContain(messages.common.discipline.gridMissing);
-    expect(notice?.textContent).toContain("League of Legends");
-    // The all-workspaces axis has no workspace grid to fix: no settings link.
+    expect(notice?.textContent).toBe(
+      messages.common.discipline.gridMissingAcross.replaceAll("{game}", "League of Legends")
+    );
     expect(notice?.querySelector("a")).toBeNull();
     expect(container.textContent).not.toContain("division_grid_required");
+  });
+
+  it("names the workspace's missing grid on a workspace", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: 1 });
+
+    await mount("/users/compare?user_id=5&discipline=lol", "workspace");
+
+    const notice = container.querySelector('[role="alert"]');
+    expect(notice?.textContent).toContain(messages.common.discipline.gridMissing);
+    expect(notice?.textContent).toContain(
+      messages.common.discipline.gridMissingOrganizer.replace("{game}", "League of Legends")
+    );
+    expect(mocks.compare.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ workspaceId: 1 }));
   });
 });

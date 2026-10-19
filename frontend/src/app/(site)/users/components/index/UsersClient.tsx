@@ -1,12 +1,12 @@
 "use client";
 
-import { isDivisionGridRequired, MissingGridNotice } from "@/components/divisions/MissingGridNotice";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { usePermissions } from "@/hooks/usePermissions";
+import { isDivisionGridRequired } from "@/lib/api/error";
 import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 
 import { useUsersIndexParams } from "./useUsersIndexParams";
 import { useUsersIndexData } from "./useUsersIndexData";
@@ -33,8 +33,6 @@ const UsersClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
   const data = useUsersIndexData(controls.params, discipline, metadata);
   const compare = useCompareSelection();
   const { view } = controls.params;
-  const { canAccessAnyPermission } = usePermissions();
-  const { workspaceId } = data;
   // The game has no grid on this axis: every list read is refused the same way, so the notice stands in for the view.
   const gridMissing = isDivisionGridRequired((view === "catalog" ? data.catalogQuery : data.overviewQuery).error);
 
@@ -69,14 +67,10 @@ const UsersClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
       />
 
       {gridMissing && discipline ? (
-        <MissingGridNotice
+        <UsersMissingGrid
           discipline={discipline}
           gameName={disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline}
-          // Only a workspace's own grid can be fixed from its settings; the all-workspaces axis has none to edit.
-          canManage={
-            typeof workspaceId === "number" &&
-            canAccessAnyPermission(["division_grid.create", "division_grid.update"], workspaceId)
-          }
+          axis={data.workspaceId}
         />
       ) : view === "catalog" ? (
         <UsersCatalogView controls={controls} data={data} compare={compare} />

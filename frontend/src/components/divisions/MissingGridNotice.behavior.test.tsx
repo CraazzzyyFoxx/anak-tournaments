@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError } from "@/lib/api/error";
+import { ApiError, isDivisionGridRequired } from "@/lib/api/error";
 
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => (
@@ -11,7 +11,7 @@ vi.mock("next/link", () => ({
   )
 }));
 
-import { isDivisionGridRequired, MissingGridNotice } from "./MissingGridNotice";
+import { MissingGridNotice } from "./MissingGridNotice";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;

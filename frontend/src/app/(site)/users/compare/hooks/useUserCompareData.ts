@@ -22,6 +22,7 @@ import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorksp
 import { getDivisionLabel } from "@/lib/divisions/grid";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole } from "@/lib/roster/ontology";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 interface UseUserCompareDataParams {
@@ -67,7 +68,7 @@ export const useUserCompareData = ({
   // from the same place. All communities read the reference grid.
   const currentWorkspaceId = useCurrentWorkspaceId();
   const workspaceGrid = useDivisionGrid(discipline ?? undefined);
-  const workspaceId = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
+  const workspaceId: WorkspaceAxis | undefined = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
   // All communities read the game's own native ladder (none → no division bounds), never another game's.
   const divisionGrid = useMemo(
     () => (scope === "all" ? { tiers: [...(metadata?.native_ladder ?? [])] } : workspaceGrid),

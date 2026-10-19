@@ -95,15 +95,12 @@ const renderIndex = async (scope: StatsScope, axis: WorkspaceAxis) => {
 const overviewReads = () =>
   fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith("/api/v1/users/overview?"));
 
-it("names the missing grid instead of printing the server's refusal", async () => {
+it("tells the all-communities view to choose a community instead of printing the server's refusal", async () => {
   await renderIndex("all", "all");
 
   const notice = container.querySelector('[role="alert"]');
-  expect(notice?.textContent).toContain(en.common.discipline.gridMissing);
-  // Nobody can fix the all-workspaces axis from a workspace's settings: a plain message, no way out.
-  expect(notice?.textContent).toContain(
-    en.common.discipline.gridMissingOrganizer.replace("{game}", "League of Legends")
-  );
+  expect(notice?.textContent).toBe(en.common.discipline.gridMissingAcross.replaceAll("{game}", "League of Legends"));
+  // No workspace grid applies across communities: no organizer line, no settings link.
   expect(notice?.querySelector("a")).toBeNull();
   expect(container.textContent).not.toContain("division_grid_required");
   expect(container.textContent).not.toContain(en.users.list.errors.overview);
@@ -127,7 +124,9 @@ it("sends an organizer of the workspace to this game's grid settings", async () 
 
   await renderIndex("workspace", 1);
 
-  const link = container.querySelector<HTMLAnchorElement>('[role="alert"] a');
+  const notice = container.querySelector('[role="alert"]');
+  expect(notice?.textContent).toContain(en.common.discipline.gridMissing);
+  const link = notice?.querySelector<HTMLAnchorElement>("a");
   expect(link?.getAttribute("href")).toBe("/admin/settings/divisions?discipline=lol");
   expect(link?.textContent).toBe(en.common.discipline.gridMissingAction.replace("{game}", "League of Legends"));
   expect(overviewReads()[0]).toContain("workspace_id=1");
