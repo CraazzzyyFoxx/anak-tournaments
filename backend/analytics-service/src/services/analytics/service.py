@@ -44,8 +44,9 @@ class AnalyticsService:
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role.label("role"),
                 models.Player.team_id.label("team_id"),
-                sa.func.sum(maps_won).label("wins"),
-                sa.func.sum(maps_lost).label("losses"),
+                # ``sum`` over the bigint ``count()`` maps is numeric (Decimal); the ratings math divides by floats.
+                sa.cast(sa.func.sum(maps_won), sa.Integer).label("wins"),
+                sa.cast(sa.func.sum(maps_lost), sa.Integer).label("losses"),
             )
             .select_from(models.Player)
             .join(

@@ -354,6 +354,8 @@ async def _native_scores_roster_attribution_and_analytics_reads(stats_parity_dat
             assert row["user_id"] == ids["player"] and row["rank"] == 3500 and row["role"] == "damage"
             assert math.isclose(row["performance_points"], 50.00078333333333, rel_tol=0, abs_tol=1e-12)
             assert not any(row["tournament_id"] == ids["tournament_other"] for row in rows)
+            # Postgres sums bigint counts to numeric; Decimal broke ``compute_points_shifts`` (Decimal / float).
+            assert all(type(r["wins"]) is int and type(r["losses"]) is int for r in rows)
             await session.execute(
                 sa.insert(models.AnalyticsPlayerAnomaly).values(
                     tournament_id=ids["tournament"],
