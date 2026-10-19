@@ -43,10 +43,11 @@ from shared.core.enums import (
     MapVetoSessionStatus,
     PickBanKind,
 )
+from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
-from shared.domain.encounter_scoring import GameLine, resolve_placements
+from shared.domain.encounter_scoring import GameLine, ScoringRules, resolve_placements
 from shared.domain.pick_ban_config import has_pool, pick_config
 from shared.models.catalog.entity import CatalogEntity
 from shared.models.encounter.encounter import Encounter
@@ -67,7 +68,12 @@ from shared.repository import (
 from shared.repository.pick_ban import CONFIG_POOL_LOAD
 from shared.services.bracket.usability import is_encounter_live
 from shared.services.encounter.participants import active_teams
-from src.services.encounter.games import EncounterGameService, encounter_game_service
+from src.services.encounter.games import (
+    EncounterGameService,
+    GameResultIn,
+    encounter_game_service,
+    normalize_results,
+)
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
 from src.services.encounter.room_reconcile import request_room_reconcile
@@ -184,6 +190,28 @@ def round_candidates(pool: dict[str, Any], round_number: int | None) -> list[int
         index = (round_number or 1) - 1
         return list(slots[index]) if 0 <= index < len(slots) else None
     return list(pool.get("items") or [])
+
+
+def winner_of(rules: ScoringRules, lines: Sequence[GameLine]) -> int | None:
+    """The participation one game's lines place first, alone; ``None`` on a draw.
+
+    Pure, so the rotation reads a stored result (``round_result``) and a result
+    still being written (``plan_dependent_rounds``) through one rule."""
+    first = [team_id for team_id, place in resolve_placements(rules, lines).items() if place == 1]
+    return first[0] if len(first) == 1 else None
+
+
+@dataclass(frozen=True, slots=True)
+class DependentRounds:
+    """What a result correction owes the rooms whose next round its old result
+    opened: rounds to scrap and re-append, and pending choices to re-address."""
+
+    #: The round the corrected position opened.
+    round: int
+    #: Sessions whose untouched ``round`` is dropped and re-appended.
+    drop: tuple[PickBanSession, ...] = ()
+    #: ``result_loser_choice`` sessions still waiting on the OLD loser's call.
+    rechoose: tuple[PickBanSession, ...] = ()
 
 
 def parse_ruleset(data: object) -> pbr.Ruleset:
@@ -342,14 +370,20 @@ class PickBanSessionService:
         return engine.current_round(list(entries))
 
     async def highest_round_of(self, session: AsyncSession, pick_ban: PickBanSession) -> int | None:
-        """The highest round `pick_ban` has ever created entries for, or ``None``
-        in flat mode. Unlike `current_round_of` (which reports the round with
+        """The highest round `pick_ban` has ever appended, or ``None`` in flat
+        mode. Unlike `current_round_of` (which reports the round with
         something still `AVAILABLE`, and so goes ``None`` the instant a round
         finishes), this stays truthful right through the `awaiting_choice` gap —
         exactly the round `elect_opener` needs `advance_to_next_round` to resume
         after, when nothing is `AVAILABLE` because the next round hasn't been
-        created yet."""
+        created yet.
+
+        The steps count as much as the entries: appending a round drops the
+        previous round's untouched candidates, so a round that spent none of them
+        (a side pick) is left with steps alone once the round after it is
+        scrapped by a result correction."""
         rounds = [row for row in await self.entry_repo.list_rounds(session, pick_ban.id) if row is not None]
+        rounds += [step["round"] for step in pick_ban.resolved_sequence_json or [] if step.get("round") is not None]
         return max(rounds) if rounds else None
 
     async def get_pick_ban_session(
@@ -1300,7 +1334,7 @@ class PickBanSessionService:
         if game is None or game.state != EncounterGameState.CONFIRMED:
             return False, None
         lines = (await self.games.lines_by_game(session, [game])).get(game.id) or []
-        places = resolve_placements(
+        return True, winner_of(
             await self.games.rules(session, encounter),
             [
                 GameLine(
@@ -1312,8 +1346,139 @@ class PickBanSessionService:
                 for row in lines
             ],
         )
-        first = [team_id for team_id, place in places.items() if place == 1]
-        return True, (first[0] if len(first) == 1 else None)
+
+    # -- a corrected result's next round -----------------------------------
+    async def plan_dependent_rounds(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        game: EncounterGame,
+        results: Sequence[GameResultIn],
+    ) -> DependentRounds:
+        """What correcting ``game`` to ``results`` owes the rooms. Read-only.
+
+        A result rotation opened round ``position + 1`` off the OLD result (the
+        session's own rotation snapshot decides, never the config's). When the
+        correction changes who opens it, the round is rebuilt -- provided nobody
+        has used it yet. Once it was used (a live submission on one of its steps;
+        its game confirmed, claimed or given a side) the correction refuses with
+        409 ``dependent_round_started``, before anything is written: the captains
+        undo that round, or the organizer resets the room, first.
+
+        Run by the caller under the encounter lock; :meth:`apply_dependent_rounds`
+        is the write.
+        """
+        next_round = game.position + 1
+        rooms: list[PickBanSession] = []
+        for kind in (PickBanKind.MAP, PickBanKind.HERO):
+            pick_ban = await self.get_pick_ban_session(session, encounter.id, kind, for_update=True)
+            if pick_ban is None or pick_ban.status == MapVetoSessionStatus.CANCELLED:
+                continue
+            pool = dict(pick_ban.pool_json or {})
+            if pool.get("progressive") and pool_rotation(pool) in _RESULT_ROTATIONS:
+                rooms.append(pick_ban)
+        if not rooms:
+            return DependentRounds(round=next_round)
+
+        rules = await self.games.rules(session, encounter)
+        participants = [team.id for team in await self.teams_of(session, encounter.id)]
+        old_winner = (await self.round_result(session, encounter, game.position))[1]
+        new_winner = winner_of(rules, normalize_results(results, participants, rules))
+        drop: list[PickBanSession] = []
+        rechoose: list[PickBanSession] = []
+        for pick_ban in rooms:
+            rotation = pool_rotation(dict(pick_ban.pool_json or {}))
+            if rotation == FirstBanRotation.RESULT_LOSER_CHOICE:
+                # The loser elects: a different winner is a different elector.
+                changed = old_winner != new_winner
+            else:
+                changed = (
+                    len(
+                        {
+                            engine.resolve_round_opener(
+                                rotation=rotation,
+                                round_number=next_round,
+                                participants=participants,
+                                session_opener=pick_ban.first_team_id or participants[0],
+                                previous_round_winner=winner,
+                                previous_round_loser_choice=None,
+                            )
+                            for winner in (old_winner, new_winner)
+                        }
+                    )
+                    > 1
+                )
+            if not changed:
+                continue
+            highest = await self.highest_round_of(session, pick_ban) or 0
+            if highest < next_round:
+                if pick_ban.awaiting_choice and highest == game.position:
+                    rechoose.append(pick_ban)
+                continue
+            if await self._round_touched(session, encounter, pick_ban, next_round):
+                raise HTTPException(
+                    status_code=409,
+                    detail=[
+                        ApiExc(
+                            code="dependent_round_started",
+                            msg=(
+                                f"Game {next_round}'s pick-ban already started on the old result; "
+                                "undo that round or reset the room before correcting"
+                            ),
+                        )
+                    ],
+                )
+            drop.append(pick_ban)
+        return DependentRounds(round=next_round, drop=tuple(drop), rechoose=tuple(rechoose))
+
+    async def _round_touched(
+        self, session: AsyncSession, encounter: Encounter, pick_ban: PickBanSession, round_number: int
+    ) -> bool:
+        """Whether anybody already used ``round_number`` of ``pick_ban``: a live
+        submission on one of its steps, or its position's game confirmed,
+        claimed or given a side. A map named on the game is not use of a hero
+        round (a map room's pick IS its own round's submission)."""
+        indices = {step["index"] for step in pick_ban.resolved_sequence_json or [] if step.get("round") == round_number}
+        submissions = await self.submission_repo.list_by_session(session, pick_ban.id)
+        if any(row.step_index in indices and row.state != pbr.VOIDED for row in submissions):
+            return True
+        game = next(
+            (game for game in await self.games.list_games(session, encounter.id) if game.position == round_number),
+            None,
+        )
+        if game is None:
+            return False
+        if game.state == EncounterGameState.CONFIRMED or (await self.games.claims_by_game(session, [game]))[game.id]:
+            return True
+        return any(row.starting_side is not None for row in (await self.games.lines_by_game(session, [game]))[game.id])
+
+    async def apply_dependent_rounds(self, session: AsyncSession, plan: DependentRounds) -> tuple[PickBanKind, ...]:
+        """Scrap what :meth:`plan_dependent_rounds` found, and name the kinds the
+        caller must re-grow (``_sync_rounds``) once the corrected result is
+        written: the dropped round re-appends with the new opener (its own
+        ``round_opened`` row), and a pending choice re-raises for the new loser."""
+        for pick_ban in plan.rechoose:
+            pick_ban.awaiting_choice = False
+            pick_ban.pending_chooser_team_id = None
+        for pick_ban in plan.drop:
+            sequence = list(pick_ban.resolved_sequence_json or [])
+            kept = [step for step in sequence if (step.get("round") or 0) < plan.round]
+            scrapped = [step["index"] for step in sequence if (step.get("round") or 0) >= plan.round]
+            if scrapped:
+                # Only VOIDED rows can be left on an untouched round.
+                await self.submission_repo.delete_for_steps_from(
+                    session, session_id=pick_ban.id, step_index=min(scrapped)
+                )
+            await self.entry_repo.delete_for_round(session, session_id=pick_ban.id, round=plan.round)
+            pick_ban.resolved_sequence_json = kept
+            # Back to "ran out of sequence": the re-append flips it to ACTIVE.
+            pick_ban.status = MapVetoSessionStatus.COMPLETED
+            # ``pick_ban_undo.clear_undo_request``, which imports this module: a
+            # consent given against a scrapped step must not survive it.
+            pick_ban.undo_requested_by_team_id = None
+            pick_ban.undo_target_index = None
+        await session.flush()
+        return tuple(PickBanKind(pick_ban.kind) for pick_ban in (*plan.drop, *plan.rechoose))
 
     async def round_target(
         self, session: AsyncSession, encounter: Encounter, kind: PickBanKind, *, encounter_locked: bool = False

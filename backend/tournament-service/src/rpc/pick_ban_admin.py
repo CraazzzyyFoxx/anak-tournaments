@@ -18,6 +18,7 @@ who may not save a config may not probe the engine with one either.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Literal
 
 from faststream.rabbit.annotations import RabbitMessage
@@ -730,22 +731,10 @@ def register(broker: Any, logger: Any) -> None:
             game_id = _path_int(data, "game_id")
             body = AdminGameResultInput.model_validate(_payload(data))
             encounter = await _load_encounter(session, encounter_id)
-            await record_admin_audit(
-                session,
-                action="encounter.game_result",
-                actor=user,
-                data=data,
-                workspace_id=ws_id,
-                entity_type="encounter",
-                entity_id=encounter.id,
-                after={
-                    "game_id": game_id,
-                    "results": [line.model_dump(mode="json") for line in body.results],
-                    "reason": body.reason,
-                },
-            )
-            # Commits internally (the accepted numbers, the live standing and
-            # any rebuilt round land together).
+            # The audit row is written by ``correct_game`` itself, once the
+            # dependent-round guard has passed: a refused correction leaves none.
+            # One commit lands it with the accepted numbers, the live standing
+            # and any rebuilt round.
             return await game_correction_service.correct_game(
                 session,
                 encounter.id,
@@ -761,6 +750,20 @@ def register(broker: Any, logger: Any) -> None:
                 ],
                 actor_user_id=user.id,
                 reason=body.reason,
+                audit=partial(
+                    record_admin_audit,
+                    action="encounter.game_result",
+                    actor=user,
+                    data=data,
+                    workspace_id=ws_id,
+                    entity_type="encounter",
+                    entity_id=encounter.id,
+                    after={
+                        "game_id": game_id,
+                        "results": [line.model_dump(mode="json") for line in body.results],
+                        "reason": body.reason,
+                    },
+                ),
             )
 
         return await _run(logger, op)

@@ -1024,6 +1024,11 @@ class CascadeTests(ResultFlowCase):
 
         # The organizer corrects the SECOND map: the other team won it, so the
         # series is 1:1 and nobody has advanced any more.
+        audited: list[object] = []
+
+        async def record_audit(session) -> None:
+            audited.append(session)
+
         async with self.Session() as s:
             await game_correction_service.correct_game(
                 s,
@@ -1032,7 +1037,9 @@ class CascadeTests(ResultFlowCase):
                 results=self.win(second.id, first.id),
                 actor_user_id=self.users[0],
                 reason="the second map was scored backwards",
+                audit=record_audit,
             )
+        self.assertEqual(1, len(audited))
 
         async with self.Session() as s:
             encounter = await self.encounter(s)

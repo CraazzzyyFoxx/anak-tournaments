@@ -12,11 +12,16 @@ defines -- ``reopen`` the encounter, ``reset_downstream`` to un-seat and
 re-state everything it fed, write the new game result, then
 ``advance_after_result`` on what the games now say. Anything less leaves a later
 round holding a team that no longer won.
+
+The old result also opened the room's NEXT round under a result rotation. An
+untouched one is scrapped and re-appended for the corrected opener; one already
+in use refuses the whole correction (409 ``dependent_round_started``) before
+the audit and before any write -- guard, audit, correction, one commit.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +42,7 @@ from src.services.encounter.games import (
     GameResultIn,
     encounter_game_service,
 )
+from src.services.encounter.pick_ban_session import PickBanSessionService, pick_ban_session_service
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.tournament.events import enqueue_tournament_recalculation
 
@@ -47,8 +53,14 @@ class GameCorrectionService:
     """The organizer's override of one position's result, and the cascade it
     sometimes owes."""
 
-    def __init__(self, *, games: EncounterGameService = encounter_game_service) -> None:
+    def __init__(
+        self,
+        *,
+        games: EncounterGameService = encounter_game_service,
+        sessions: PickBanSessionService = pick_ban_session_service,
+    ) -> None:
         self.games = games
+        self.sessions = sessions
 
     async def correct_game(
         self,
@@ -59,8 +71,14 @@ class GameCorrectionService:
         results: Sequence[GameResultIn],
         actor_user_id: int,
         reason: str,
+        audit: Callable[[AsyncSession], Awaitable[object]],
     ) -> dict:
-        """Write ``results`` onto one position as an ADMIN result. Commits.
+        """Write ``results`` onto one position as an ADMIN result. Commits once.
+
+        ``audit`` writes the caller's audit row on ``session``. It runs only once
+        the dependent-round guard has passed and before anything is written, so
+        a refused correction leaves no audit row, and an accepted one commits
+        its audit, result, bracket and rebuilt round together.
 
         Returns ``{"game": ..., "reset_downstream": bool}``.
         """
@@ -77,6 +95,9 @@ class GameCorrectionService:
         if game is None or game.encounter_id != encounter.id or game.state == EncounterGameState.CANCELLED:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
 
+        plan = await self.sessions.plan_dependent_rounds(session, encounter, game, results)
+        await audit(session)
+        rebuilt = await self.sessions.apply_dependent_rounds(session, plan)
         cascaded = await self._unwind(session, encounter, actor_user_id=actor_user_id, reason=reason)
         await self.games.record_result(
             session,
@@ -87,6 +108,10 @@ class GameCorrectionService:
             actor_user_id=actor_user_id,
             reason=reason,
         )
+        for kind in rebuilt:
+            # Re-appends the scrapped round off the corrected result (its own
+            # ``round_opened`` row), or re-raises the choice for the new loser.
+            await self.sessions._sync_rounds(session, encounter, kind, commit=False, encounter_locked=True)
         # A correction moves the encounter's standing and may reseat a whole
         # bracket branch through ``reset_downstream``: every cached
         # tournament-encounters read is stale and the standings have to be

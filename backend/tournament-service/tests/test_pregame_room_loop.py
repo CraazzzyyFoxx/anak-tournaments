@@ -20,11 +20,12 @@ import json
 import os
 import sys
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.core import enums
 from shared.core.errors import BaseAPIException
@@ -34,6 +35,9 @@ from shared.models.encounter import Encounter, EncounterTeam, ScoringRule
 from shared.models.encounter.game import EncounterGame, EncounterGameTeam
 from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession, PickBanSubmission
 from shared.models.encounter.room_event import EncounterRoomEvent
+from shared.models.identity.user import User
+from shared.models.platform.audit import AuditLog
+from shared.models.platform.outbox import EventOutbox
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigItem
 from shared.models.tournament.team import Team
@@ -41,13 +45,17 @@ from shared.models.tournament.tournament import Tournament
 from shared.services.encounter.participants import place_team
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
+from src.rpc import _helpers as rpc_helpers
+from src.rpc import pick_ban_admin
 from src.services.encounter import room_control
+from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.games import GameResultIn, encounter_game_service
 from src.services.encounter.map_report import ClaimResultIn, map_report_service
 from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service, resolved_steps
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
 from src.services.encounter.veto_session import side_pick_pending, side_pick_required
+from tests._rpc_fakes import CapturingBroker, make_identity
 from tests.test_pregame_participations import FIRST_HERO, HEROES, SIDED
 
 #: A second game with its own character classes: nothing about its pool is Overwatch's.
@@ -1166,6 +1174,340 @@ class SideRewindTests(PositionCase):
         # The replayed round-1 pick chooses the OTHER side; the game it was played on keeps its own.
         await self.act(self.slot1, 1, action="side_pick")
         self.assertEqual(played, await self.sides(first))
+
+
+# ── a corrected result and the round it opened ──────────────────────────────
+
+
+class CorrectionCase(PositionCase):
+    rotation = enums.FirstBanRotation.RESULT_LOSER_FIRST
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        async with self.Session() as s:
+            user = User(name=self.tag)
+            s.add(user)
+            await s.commit()
+            self.actor_id = user.id
+        self.audited: list[AsyncSession] = []
+
+    async def asyncTearDown(self) -> None:
+        async with self.Session() as s:
+            await s.execute(
+                sa.delete(AuditLog).where(AuditLog.entity_type == "encounter", AuditLog.entity_id == self.encounter_id)
+            )
+            await s.execute(sa.delete(User).where(User.id == self.actor_id))
+            await s.commit()
+        await super().asyncTearDown()
+
+    async def record_audit(self, session: AsyncSession) -> None:
+        self.audited.append(session)
+
+    async def correct(self, position: int, *, winner: int, score: int = 3) -> dict:
+        game_id = await self.game_id(position)
+        async with self.Session() as s:
+            return await game_correction_service.correct_game(
+                s,
+                self.encounter_id,
+                game_id=game_id,
+                results=self.lines(winner, score),
+                actor_user_id=self.actor_id,
+                reason="scored backwards",
+                audit=self.record_audit,
+            )
+
+    async def admin_result(self, game_id: int, *, winner: int, reason: str = "scored backwards") -> dict:
+        """Through the real ``rpc.tournament.admin_game_result`` handler, on a
+        real session that is rolled back on the way out of a refusal."""
+        broker = CapturingBroker()
+        pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+        data = {
+            "identity": make_identity(user_id=self.actor_id, is_superuser=True),
+            "id": self.encounter_id,
+            "game_id": game_id,
+            "payload": {
+                "results": [{"encounter_team_id": seat, "score": 3 if seat == winner else 1} for seat in self.seats],
+                "reason": reason,
+            },
+        }
+        with patch.object(rpc_helpers.db, "async_session_maker", self.Session):
+            return await broker.handlers["rpc.tournament.admin_game_result"](data, None)
+
+    async def audit_rows(self) -> int:
+        async with self.Session() as s:
+            return await s.scalar(
+                sa.select(sa.func.count())
+                .select_from(AuditLog)
+                .where(
+                    AuditLog.entity_type == "encounter",
+                    AuditLog.entity_id == self.encounter_id,
+                    AuditLog.action == "encounter.game_result",
+                )
+            )
+
+    async def round_entries(self, round_number: int) -> set[int]:
+        async with self.Session() as s:
+            return set(
+                (
+                    await s.execute(
+                        sa.select(PickBanEntry.id).where(
+                            PickBanEntry.encounter_id == self.encounter_id, PickBanEntry.round == round_number
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+    async def snapshot(self) -> dict:
+        """Everything a refused correction must leave exactly as it was."""
+        async with self.Session() as s:
+
+            async def rows(query) -> list[tuple]:
+                return [tuple(row) for row in await s.execute(query)]
+
+            return {
+                "games": await rows(
+                    sa.select(EncounterGame.id, EncounterGame.state, EncounterGame.result_version)
+                    .where(EncounterGame.encounter_id == self.encounter_id)
+                    .order_by(EncounterGame.id)
+                ),
+                "lines": await rows(
+                    sa.select(
+                        EncounterGameTeam.game_id,
+                        EncounterGameTeam.encounter_team_id,
+                        EncounterGameTeam.score,
+                        EncounterGameTeam.starting_side,
+                    )
+                    .where(EncounterGameTeam.encounter_id == self.encounter_id)
+                    .order_by(EncounterGameTeam.game_id, EncounterGameTeam.encounter_team_id)
+                ),
+                "sessions": await rows(
+                    sa.select(
+                        PickBanSession.resolved_sequence_json, PickBanSession.status, PickBanSession.awaiting_choice
+                    ).where(PickBanSession.encounter_id == self.encounter_id)
+                ),
+                "submissions": await rows(
+                    sa.select(PickBanSubmission.id, PickBanSubmission.state)
+                    .where(PickBanSubmission.encounter_id == self.encounter_id)
+                    .order_by(PickBanSubmission.id)
+                ),
+                "entries": await rows(
+                    sa.select(PickBanEntry.id, PickBanEntry.round, PickBanEntry.status)
+                    .where(PickBanEntry.encounter_id == self.encounter_id)
+                    .order_by(PickBanEntry.id)
+                ),
+                "events": await self.events(),
+                "outbox": await s.scalar(sa.select(sa.func.count()).select_from(EventOutbox)),
+                "encounter": await rows(
+                    sa.select(Encounter.status, Encounter.result_status).where(Encounter.id == self.encounter_id)
+                ),
+                "seats": await rows(
+                    sa.select(EncounterTeam.id, EncounterTeam.score, EncounterTeam.active)
+                    .where(EncounterTeam.encounter_id == self.encounter_id)
+                    .order_by(EncounterTeam.id)
+                ),
+            }
+
+    async def opened_round_two(self, ruleset: dict | None = None) -> int:
+        """Round 1 played, G1 won by slot 1, round 2 appended off it. Returns G1."""
+        await self.start(ruleset)
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        return await self.game_id(1)
+
+
+class CorrectionRebuildsTheNextRoundTests(CorrectionCase):
+    async def test_flipping_the_winner_rebuilds_an_untouched_round_for_the_new_loser(self) -> None:
+        first = await self.opened_round_two()
+        self.assertEqual([self.slot2], (await self.state())["acting_team_ids"])
+        scrapped = await self.round_entries(2)
+
+        commits: list[AsyncSession] = []
+        real_commit = AsyncSession.commit
+
+        async def counted(session: AsyncSession) -> None:
+            commits.append(session)
+            await real_commit(session)
+
+        with patch.object(AsyncSession, "commit", counted):
+            envelope = await self.admin_result(first, winner=self.slot2)
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(1, len(commits))
+
+        state = await self.state()
+        self.assertEqual((2, [self.slot1]), (state["current_round"], state["acting_team_ids"]))
+        self.assertEqual([self.slot1, self.slot2, self.slot1], await self.openers())
+        rebuilt = await self.round_entries(2)
+        self.assertTrue(rebuilt)
+        self.assertFalse(scrapped & rebuilt)
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            game = await s.get_one(EncounterGame, first)
+            self.assertEqual((enums.EncounterGameResultSource.ADMIN, 2), (game.result_source, game.result_version))
+            self.assertEqual((True, self.slot2), await pick_ban_session_service.round_result(s, encounter, 1))
+        self.assertEqual(1, await self.audit_rows())
+
+    async def test_a_round_already_acted_in_refuses_the_correction_before_its_audit(self) -> None:
+        first = await self.opened_round_two()
+        await self.act(self.slot2, FIRST_HERO)
+        frozen = await self.snapshot()
+
+        envelope = await self.admin_result(first, winner=self.slot2)
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertIn("dependent_round_started", str(envelope["error"]))
+        self.assertEqual(frozen, await self.snapshot())
+        self.assertEqual(0, await self.audit_rows())
+
+        # A missing reason is refused just as early.
+        envelope = await self.admin_result(first, winner=self.slot2, reason="  ")
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+        self.assertEqual(frozen, await self.snapshot())
+        self.assertEqual(0, await self.audit_rows())
+
+    async def test_a_claimed_next_game_refuses_the_correction(self) -> None:
+        await self.opened_round_two()
+        await self.claim(await self.game_id(2), claimant=self.slot1, winner=self.slot1)
+        self.assertEqual("dependent_round_started", await self.refused(self.correct(1, winner=self.slot2)))
+        self.assertEqual([], self.audited)
+
+    async def test_a_score_only_correction_leaves_the_next_round_alone(self) -> None:
+        await self.opened_round_two()
+        before = ((await self.hero_session()).resolved_sequence_json, await self.round_entries(2))
+        await self.correct(1, winner=self.slot1, score=4)
+        self.assertEqual(before, ((await self.hero_session()).resolved_sequence_json, await self.round_entries(2)))
+        self.assertEqual([self.slot1, self.slot2], await self.openers())
+        self.assertEqual(1, len(self.audited))
+
+
+class CorrectionUnderAnAlternatingOrderTests(CorrectionCase):
+    rotation = enums.FirstBanRotation.ALTERNATE
+
+    async def test_an_order_that_ignores_results_reconciles_nothing(self) -> None:
+        await self.opened_round_two()
+        before = (await self.hero_session()).resolved_sequence_json, await self.round_entries(2), await self.openers()
+        await self.correct(1, winner=self.slot2)
+        after = (await self.hero_session()).resolved_sequence_json, await self.round_entries(2), await self.openers()
+        self.assertEqual(before, after)
+
+
+class CorrectionUnderAFixedOrderTests(CorrectionUnderAnAlternatingOrderTests):
+    rotation = enums.FirstBanRotation.FIXED
+
+
+class CorrectionReaddressesAPendingChoiceTests(CorrectionCase):
+    rotation = enums.FirstBanRotation.RESULT_LOSER_CHOICE
+
+    async def test_a_flipped_winner_hands_the_pending_choice_to_the_new_loser(self) -> None:
+        await self.opened_round_two()
+        pick_ban = await self.hero_session()
+        self.assertEqual((True, self.slot2), (pick_ban.awaiting_choice, pick_ban.pending_chooser_team_id))
+        await self.correct(1, winner=self.slot2)
+        pick_ban = await self.hero_session()
+        self.assertEqual((True, self.slot1), (pick_ban.awaiting_choice, pick_ban.pending_chooser_team_id))
+
+
+class SidedCorrectionRecoveryTests(CorrectionCase):
+    """``dependent_round_started`` has a way out through calls that already exist."""
+
+    discipline = SIDED.code
+
+    async def touched_round_two(self) -> tuple[int, int]:
+        """G1 won by slot 1; round 2 opened by slot 2, who picked a side on G2. Returns (G1, G2)."""
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        self.assertEqual([self.slot2], (await self.state())["acting_team_ids"])
+        await self.act(self.slot2, 0, action="side_pick")
+        self.assertEqual("dependent_round_started", await self.refused(self.correct(1, winner=self.slot2)))
+        return await self.game_id(1), await self.game_id(2)
+
+    async def test_undoing_the_next_rounds_side_pick_lets_the_correction_rebuild_it(self) -> None:
+        first, second = await self.touched_round_two()
+        played = await self.sides(first)
+        for seat in self.seats:
+            await self.undo(seat)
+        self.assertEqual({self.slot1: None, self.slot2: None}, await self.sides(second))
+
+        await self.correct(1, winner=self.slot2)
+        state = await self.state()
+        self.assertEqual(("side_pick", [self.slot1]), (state["expected_action"], state["acting_team_ids"]))
+        self.assertEqual(self.slot1, (await self.openers())[-1])
+        self.assertEqual(played, await self.sides(first))
+
+    async def test_a_hero_reset_and_a_replayed_first_round_let_the_correction_rebuild_the_next(self) -> None:
+        first, second = await self.touched_round_two()
+        played = await self.sides(first)
+        await self.reset(enums.PickBanKind.HERO)
+        self.assertEqual(played, await self.sides(first))
+        self.assertEqual({self.slot1: None, self.slot2: None}, await self.sides(second))
+        # Round 1's side step is open again, so G1 cannot be corrected yet.
+        self.assertEqual("side_pick_pending", await self.refused(self.correct(1, winner=self.slot2)))
+
+        await self.act(self.slot1, 1, action="side_pick")
+        self.assertEqual(played, await self.sides(first))
+        await self.play_round()
+        await self.reconcile()
+        self.assertEqual(self.slot2, (await self.openers())[-1])  # appended off the stored result
+
+        await self.correct(1, winner=self.slot2)
+        self.assertEqual(self.slot1, (await self.openers())[-1])
+        state = await self.state()
+        self.assertEqual((2, [self.slot1]), (state["current_round"], state["acting_team_ids"]))
+
+    async def test_a_played_next_game_is_recovered_through_resets_and_a_replacement_first_game(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        await self.act(self.slot2, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(2, winner=self.slot1)
+        old = (await self.game_id(1), await self.game_id(2))
+        self.assertEqual("dependent_round_started", await self.refused(self.correct(1, winner=self.slot2)))
+
+        async def history() -> list[tuple]:
+            async with self.Session() as s:
+                return [
+                    tuple(row)
+                    for row in await s.execute(
+                        sa.select(
+                            EncounterGameTeam.game_id,
+                            EncounterGameTeam.encounter_team_id,
+                            EncounterGameTeam.score,
+                            EncounterGameTeam.starting_side,
+                        )
+                        .where(EncounterGameTeam.game_id.in_(old))
+                        .order_by(EncounterGameTeam.game_id, EncounterGameTeam.encounter_team_id)
+                    )
+                ]
+
+        played = await history()
+        async with self.Session() as s:
+            # A Bo3 at 2:0 under `games >= best_of` is still open: no result reopen is owed first.
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            self.assertNotEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
+        await self.reset(enums.PickBanKind.MAP)
+        await self.reset(enums.PickBanKind.HERO)
+
+        await self.act(self.slot1, 0, action="side_pick")
+        replacement = await self.game_id(1)
+        self.assertNotIn(replacement, old)
+        await self.play_round()
+        await self.correct(1, winner=self.slot2)
+        await self.reconcile()
+        self.assertEqual(self.slot1, (await self.openers())[-1])
+        state = await self.state()
+        self.assertEqual((2, [self.slot1]), (state["current_round"], state["acting_team_ids"]))
+
+        # The retired games are history: cancelled, with their numbers and sides as they were played.
+        self.assertEqual(played, await history())
+        for game_id in old:
+            self.assertEqual(enums.EncounterGameState.CANCELLED, (await self.game_row(game_id))[0])
 
 
 # ── League of Legends: the real side-selection preset ───────────────────────

@@ -371,6 +371,7 @@ class PrecedenceTests(EvidenceCase):
                 ],
                 actor_user_id=None,
                 reason="wrong winner",
+                audit=AsyncMock(),
             )
         # the correction is an organizer decision on an accepted game: still locked for evidence
         self.assertEqual("result_locked", await self.deliver(self.event(2, placements=(1, 2), basis=2)))
