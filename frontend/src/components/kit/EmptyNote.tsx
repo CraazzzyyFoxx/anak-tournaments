@@ -19,8 +19,8 @@ export interface EmptyNoteProps {
 
 const BORDER: Record<NonNullable<EmptyNoteProps["tone"]>, string> = {
   neutral: "border-border/70",
-  warning: "border-warning/40 bg-warning/5",
-  danger: "border-danger/40 bg-danger/5"
+  warning: "border-warning/40",
+  danger: "border-danger/40"
 };
 
 /**

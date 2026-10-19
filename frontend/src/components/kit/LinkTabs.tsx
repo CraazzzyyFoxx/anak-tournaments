@@ -54,6 +54,8 @@ export function LinkTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<Li
   const listRef = useRef<HTMLUListElement>(null);
   const activeRef = useRef<HTMLAnchorElement | null>(null);
   const visible = items.filter((item) => !item.hidden);
+  // One tab is not a choice: the screen is the only view there is.
+  const single = visible.length < 2;
 
   useEffect(() => {
     if (listRef.current && activeRef.current) revealTab(listRef.current, activeRef.current);
@@ -70,6 +72,8 @@ export function LinkTabs({ items, activeKey, level = 1, ariaLabel }: Readonly<Li
     const delta = event.key === "ArrowRight" ? 1 : -1;
     links[(index + delta + links.length) % links.length]?.focus();
   };
+
+  if (single) return null;
 
   return (
     <nav aria-label={ariaLabel}>

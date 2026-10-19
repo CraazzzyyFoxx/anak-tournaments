@@ -70,6 +70,15 @@ export function AdminTablePagination({
     pages.push(pageButton(totalPageCount));
   }
 
+  // One page is not a choice: only the count stays.
+  if (totalPageCount <= 1) {
+    return (
+      <div className="border-t border-border/40 px-4 py-2 text-sm tabular-nums text-muted-foreground">
+        {t("range", { start: rangeStart, end: rangeEnd, total })}
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-2">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">

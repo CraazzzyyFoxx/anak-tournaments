@@ -59,7 +59,7 @@ export function AuthUserSearchCombobox({
   });
 
   const label =
-    selectedLabel ?? (typeof value === "number" && value > 0 ? `User #${value}` : resolvedPlaceholder);
+    selectedLabel ?? (typeof value === "number" && value > 0 ? t("userId", { id: value }) : resolvedPlaceholder);
 
   return (
     <Combobox

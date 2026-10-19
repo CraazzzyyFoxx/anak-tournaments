@@ -214,7 +214,7 @@ export function Inspector({
       data-inspector-mode="panel"
       className={cn(
         "flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-xl border border-border bg-card",
-        "sticky top-16 animate-in fade-in slide-in-from-right-2 duration-150 motion-reduce:animate-none"
+        "sticky top-16"
       )}
     >
       {renderHeader(true)}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, ListFilter, Plus, X } from "lucide-react";
+import { ChevronLeft, Plus, X } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
 import {
@@ -20,8 +20,7 @@ import {
   isFilterActive,
   type FilterState,
   type FilterDef,
-  type FilterOption,
-  type FilterValue
+  type FilterOption
 } from "@/components/kit/useFilters";
 import { cn } from "@/lib/utils";
 
@@ -29,10 +28,6 @@ export interface FilterBarProps {
   defs: FilterDef[];
   filters: FilterState;
   search?: { placeholder: string; value: string; onChange: (value: string) => void };
-  /** Chips the screen owns and the user cannot remove — the tournament inside a hub. */
-  pinned?: { key: string; label: string }[];
-  /** Saved combinations. Applied in one URL write, so they cannot half-apply. */
-  presets?: { label: string; values: Record<string, unknown> }[];
   trailing?: ReactNode;
 }
 
@@ -63,8 +58,6 @@ export function FilterBar({
   defs,
   filters,
   search,
-  pinned,
-  presets,
   trailing
 }: Readonly<FilterBarProps>) {
   const t = useTranslations("kit.actions");
@@ -80,8 +73,17 @@ export function FilterBar({
    */
   const [entityLabels, setEntityLabels] = useState<Record<string, string>>({});
 
-  const pinnedKeys = new Set((pinned ?? []).map((chip) => chip.key));
-  const available = defs.filter((def) => !pinnedKeys.has(def.key));
+  /**
+   * A filter is offered only when it is a choice: a toggle, a search, or a
+   * list with two or more options. An option nobody holds is not offered.
+   */
+  const available = defs
+    .map((def) =>
+      def.kind === "single" || def.kind === "multi"
+        ? { ...def, options: def.options.filter((option) => option.count !== 0) }
+        : def
+    )
+    .filter((def) => def.kind === "toggle" || def.kind === "entity" || def.options.length > 1);
   const picker = available.find((def) => def.key === pickerKey) ?? null;
 
   useEffect(() => {
@@ -102,8 +104,10 @@ export function FilterBar({
     setEntityResults([]);
   };
 
+  // Every def, not only the offered ones: a value already in the URL must
+  // stay removable even when its filter has no second option to offer.
   const chips: ActiveChip[] = [];
-  for (const def of available) {
+  for (const def of defs) {
     const value = filters.values[def.key];
     if (!isFilterActive(value)) continue;
 
@@ -171,15 +175,6 @@ export function FilterBar({
       ) : null}
 
       <div role="group" aria-label={t("activeFilters")} className="flex flex-wrap items-center gap-2">
-        {(pinned ?? []).map((chip) => (
-          <span
-            key={chip.key}
-            className="aqt-filter-chip active pointer-events-none"
-            data-pinned-filter={chip.key}
-          >
-            {chip.label}
-          </span>
-        ))}
 
         {chips.map((chip) => (
           <FilterChip
@@ -193,6 +188,7 @@ export function FilterBar({
           </FilterChip>
         ))}
 
+        {available.length > 0 ? (
         <Popover
           open={open}
           onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
@@ -223,7 +219,6 @@ export function FilterBar({
                           setPickerKey(def.key);
                         }}
                       >
-                        <ListFilter aria-hidden className="mr-2 size-3.5" />
                         {def.label}
                       </CommandItem>
                     ))}
@@ -271,21 +266,9 @@ export function FilterBar({
             )}
           </PopoverContent>
         </Popover>
+        ) : null}
 
-        {(presets ?? []).map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            className="aqt-filter-chip"
-            onClick={() =>
-              filters.setMany(preset.values as Record<string, FilterValue | null>)
-            }
-          >
-            {preset.label}
-          </button>
-        ))}
-
-        {chips.length > 0 ? (
+        {chips.length > 1 ? (
           <button
             type="button"
             onClick={filters.clear}

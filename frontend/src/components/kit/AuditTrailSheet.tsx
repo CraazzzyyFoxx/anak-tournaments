@@ -25,7 +25,6 @@ import {
   type AuditTrailScope,
   useAuditTranslator
 } from "@/components/kit/audit-log";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -35,7 +34,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { usePermissions } from "@/hooks/usePermissions";
-import { cn } from "@/lib/utils";
 
 /**
  * The per-entity audit trail, as one right-hand drawer for the whole admin panel.
@@ -158,9 +156,7 @@ function AuditTrailSheet({
             <History aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             {t("changeHistory")}
           </SheetTitle>
-          <SheetDescription>
-            {t("everyAdminAction", { scope: scopeLabel })}
-          </SheetDescription>
+          <SheetDescription>{scopeLabel}</SheetDescription>
         </SheetHeader>
 
         {/* `overscroll-contain` keeps a flick at the end of the trail from
@@ -235,7 +231,7 @@ export function AuditTrailButton({
       variant="outline"
       size="sm"
       onClick={() => open(scope)}
-      className={cn("transition-transform active:scale-[0.96]", className)}
+      className={className}
     >
       <History aria-hidden className="size-4" />
       <span>{t("changeHistory")}</span>
@@ -250,9 +246,7 @@ export function AuditTrailButton({
         })}
       </span>
       {count > 0 ? (
-        <Badge variant="secondary" className="ms-0.5 px-1.5 font-normal tabular-nums">
-          {count}
-        </Badge>
+        <span className="ms-0.5 text-xs tabular-nums text-muted-foreground">{count}</span>
       ) : null}
     </Button>
   );

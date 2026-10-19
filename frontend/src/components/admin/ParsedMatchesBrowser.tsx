@@ -65,16 +65,13 @@ const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: LogProce
 export function ParsedMatchesBrowser({
   tournamentId,
   discipline,
-  workspaceId,
-  tournamentName
+  workspaceId
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   /** The game whose maps the filter offers: the pinned tournament's, else the browsing choice; `null` = none yet. */
   discipline: string | null;
   workspaceId: number | null;
-  /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
-  tournamentName?: string | null;
 }>) {
   const t = useTranslations("adminMatches.parsed");
   // `id` is the inspector, not a filter: opening a map must not drop the page
@@ -245,16 +242,6 @@ export function ParsedMatchesBrowser({
               <FilterBar
                 defs={defs}
                 filters={filters}
-                pinned={
-                  tournamentId != null
-                    ? [
-                        {
-                          key: TOURNAMENT_QUERY_PARAM,
-                          label: `Tournament: ${tournamentName ?? `#${tournamentId}`}`
-                        }
-                      ]
-                    : undefined
-                }
               />
             }
             emptyMessage={

@@ -85,12 +85,6 @@ export function StandingsBrowser({
     enabled: tournamentId == null
   });
 
-  const tournamentQuery = useQuery({
-    queryKey: adminQueryKeys.tournament(scopeTournamentId),
-    queryFn: () => adminService.getTournament(scopeTournamentId!),
-    enabled: scopeTournamentId != null
-  });
-
   // The hub shell already holds this exact key, so mounting the tab costs no
   // request; realtime addresses it too (`tournament.standings`).
   const standingsQuery = useQuery({
@@ -232,19 +226,6 @@ export function StandingsBrowser({
     <FilterBar
       defs={defs}
       filters={filters}
-      pinned={[
-        ...(tournamentId != null
-          ? [
-              {
-                key: TOURNAMENT_QUERY_PARAM,
-                label: t("pinnedTournament", { name: tournamentQuery.data?.name ?? `#${tournamentId}` })
-              }
-            ]
-          : []),
-        ...(stageId != null
-          ? [{ key: "stage", label: t("pinnedStage", { name: scopedStage?.name ?? `#${stageId}` }) }]
-          : [])
-      ]}
       trailing={
         <>
           {scopeTournamentId != null ? (

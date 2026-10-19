@@ -147,9 +147,9 @@ export function describeAuditAction(action: string, t: AuditTranslator): AuditAc
   const noun = isAuditEntityType(subject) ? t(`entities.${subject}`) : undefined;
 
   if (noun && CRUD_VERBS.has(verb)) return { label: t(`crud.${verb}`, { entity: noun }), raw: action, recognised: true };
-  if (noun) return { label: `${noun} — ${humanizeToken(verb).toLowerCase()}`, raw: action, recognised: false };
+  if (noun) return { label: `${noun} · ${humanizeToken(verb).toLowerCase()}`, raw: action, recognised: false };
 
-  const derived = [humanizeToken(subject), humanizeToken(verb).toLowerCase()].filter(Boolean).join(" — ");
+  const derived = [humanizeToken(subject), humanizeToken(verb).toLowerCase()].filter(Boolean).join(" · ");
   return { label: derived || action || t("unknownAction"), raw: action, recognised: false };
 }
 
@@ -236,7 +236,7 @@ function isAuditRecord(value: unknown): value is AuditRecord {
 /** Compact, readable rendering. Strings stay bare so they are not double-quoted. */
 function formatAuditValue(value: unknown, t: AuditTranslator): string {
   if (value === null) return "null";
-  if (value === undefined) return "—";
+  if (value === undefined) return "";
   if (typeof value === "string") return value.length > 0 ? value : t("emptyValue");
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   // Tag lists and the like: `a, b` reads, `["a","b"]` is wire format.

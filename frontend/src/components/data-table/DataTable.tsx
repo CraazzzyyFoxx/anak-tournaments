@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import type { Row } from "@tanstack/react-table";
 
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { useIsMobile, usePathname } from "@/components/data-table/host";
 import {
@@ -124,7 +125,7 @@ export function DataTable<TData>({
     useTablePreferences(prefsKey, columns);
   const { scrollElement, tableRef, cardRef } = useTableScrollBox();
 
-  const { data, clientRows, isRefreshing } = useAdminTableData({
+  const { data, clientRows, isInitialLoading, isRefreshing } = useAdminTableData({
     queryKey,
     queryFn,
     rows,
@@ -408,9 +409,7 @@ export function DataTable<TData>({
       {/* ── TABLE ───────────────────────────────────────── */}
       <div>
         <p id={rowHintId} className="sr-only">
-          {t("useArrows")}
-          {enableRowSelection ? t("spaceSelect") : ""}
-          {onRowClick ? t("enterOpen") : ""}.
+          {t("rowHint", { select: enableRowSelection ? "yes" : "no", open: onRowClick ? "yes" : "no" })}
         </p>
         {isMobile ? (
           pageRows.length > 0 ? (
@@ -450,7 +449,19 @@ export function DataTable<TData>({
           />
           <AdminRowContextMenu table={table} rowActions={rowActions}>
           <TableBody onKeyDown={handleBodyKeyDown}>
-            {bodyItems.length === 0 ? (
+            {bodyItems.length === 0 && isInitialLoading ? (
+              // The first load draws rows, not "nothing here": the empty
+              // state is a fact about the data, and there is no data yet.
+              Array.from({ length: 5 }, (_, index) => (
+                <TableRow key={`skeleton-${index}`} aria-hidden>
+                  {Array.from({ length: bodyColumnCount }, (_, cell) => (
+                    <TableCell key={cell} className="py-3">
+                      <Skeleton className="h-4 w-3/4" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : bodyItems.length === 0 ? (
               // Not a row: right-click keeps the browser's menu instead of the row menu.
               <TableRow onContextMenu={(event) => event.stopPropagation()}>
                 <TableCell colSpan={bodyColumnCount} className="py-8 text-center">

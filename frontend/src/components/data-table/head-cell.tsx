@@ -78,7 +78,7 @@ export function renderHeadCell<TData>(
                 <ArrowUpDown aria-hidden className="size-3 shrink-0 opacity-30" />
               )}
               {sortIndex >= 0 ? (
-                <span aria-label={i18n("sortPriority", { index: sortIndex + 1 })} className="font-mono text-[10px] tabular-nums opacity-70">{sortIndex + 1}</span>
+                <span aria-label={i18n("sortPriority", { index: sortIndex + 1 })} className="text-xs tabular-nums opacity-70">{sortIndex + 1}</span>
               ) : null}
             </button>
           ) : (

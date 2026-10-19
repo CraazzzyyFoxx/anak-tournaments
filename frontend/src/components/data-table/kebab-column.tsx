@@ -41,11 +41,7 @@ function KebabCell({ actions, label, rowId }: Readonly<{ actions: KebabAction[];
       <DropdownMenuTrigger
         aria-label={t("actionsFor", { label: label ?? t("rowFallback", { id: rowId }) })}
         className={cn(
-          "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,opacity]",
-          // Quiet until the row is hovered or holds focus; the right-click
-          // menu covers the pointer path, this covers discoverability.
-          // Touch has neither hover nor focus-within, so it is always shown.
-          "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100",
+          "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color]",
           "hover:bg-accent/40 hover:text-foreground",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         )}
@@ -93,10 +89,6 @@ function KebabHeader() {
  *
  * It replaced two competing conventions — an edit-pencil/delete-trash pair
  * and a catalogue dropdown, each with its own permission gating.
- *
- * The trigger fades in on row hover so a dense list stays quiet, but it is
- * never mouse-only: it shows whenever the row holds focus and always on touch,
- * which is what the previous `opacity-0`-until-hover column got wrong.
  */
 export function createKebabColumn<T>(
   items: (row: T) => KebabAction[],

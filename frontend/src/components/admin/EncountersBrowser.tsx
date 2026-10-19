@@ -219,16 +219,6 @@ export function EncountersBrowser({
               defs={defs}
               filters={filters}
               trailing={trailing}
-              pinned={
-                tournamentId != null
-                  ? [
-                      {
-                        key: TOURNAMENT_QUERY_PARAM,
-                        label: t("tournamentChip", { name: scope.tournament?.name ?? `#${tournamentId}` })
-                      }
-                    ]
-                  : undefined
-              }
             />
           }
           emptyMessage={

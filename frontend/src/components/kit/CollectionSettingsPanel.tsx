@@ -11,7 +11,7 @@ import {
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import adminService from "@/services/admin.service";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
@@ -114,11 +114,7 @@ export function CollectionSettingsPanel<T>({
   }
 
   if (settings.isLoading || !settings.form) {
-    return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Spinner className="mr-2 size-5" /> {t("loading")}
-      </div>
-    );
+    return <Skeleton className="h-80 w-full rounded-xl" />;
   }
 
   return (

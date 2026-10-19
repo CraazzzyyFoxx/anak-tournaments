@@ -76,6 +76,8 @@ export function useAdminTableData<TData>({
   return {
     data,
     clientRows,
+    /** No rows have ever been shown: the body draws a skeleton, not the empty state. */
+    isInitialLoading: isClientMode ? isLoading : dataQuery.isLoading,
     /** A refetch behind an already-rendered page, or the caller's own client-mode fetch. */
     isRefreshing: isClientMode ? isLoading : dataQuery.isFetching && !dataQuery.isLoading
   };

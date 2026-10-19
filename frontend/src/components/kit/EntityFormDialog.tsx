@@ -49,10 +49,10 @@ export function EntityFormDialog({
   title,
   description,
   onSubmit,
-  submitLabel = "Save",
-  cancelLabel = "Cancel",
+  submitLabel,
+  cancelLabel,
   isSubmitting = false,
-  submittingLabel = "Saving…",
+  submittingLabel,
   errorMessage,
   fieldErrors,
   isDirty = false,
@@ -64,6 +64,10 @@ export function EntityFormDialog({
   isReadOnly = false,
 }: Readonly<EntityFormDialogProps>) {
   const t = useTranslations("kit.entityForm");
+  const tc = useTranslations("common");
+  const submitText = submitLabel ?? tc("save");
+  const submittingText = submittingLabel ?? tc("saving");
+  const cancelText = cancelLabel ?? (isReadOnly ? tc("close") : tc("cancel"));
   const router = useRouter();
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null);
@@ -170,17 +174,17 @@ export function EntityFormDialog({
 
             <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
               <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
-                {isReadOnly && cancelLabel === "Cancel" ? t("close") : cancelLabel}
+                {cancelText}
               </Button>
               {!isReadOnly && (
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
                       <Spinner />
-                      {submittingLabel}
+                      {submittingText}
                     </>
                   ) : (
-                    submitLabel
+                    submitText
                   )}
                 </Button>
               )}

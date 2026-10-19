@@ -130,8 +130,7 @@ export function useSortableRow(id: string, disabled = false): SortableRowHandle 
     // Lifted out of flow while dragging so it renders over its siblings instead
     // of being clipped by the next row's background.
     zIndex: isDragging ? 50 : undefined,
-    position: isDragging ? "relative" : undefined,
-    boxShadow: isDragging ? "0 22px 56px rgba(0,0,0,0.34)" : undefined
+    position: isDragging ? "relative" : undefined
   };
 
   return {

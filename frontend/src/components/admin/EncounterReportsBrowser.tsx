@@ -51,15 +51,12 @@ const PAGE_SIZE = 25;
 export function EncounterReportsBrowser({
   tournamentId,
   workspaceId,
-  canUpdateEncounter,
-  tournamentName
+  canUpdateEncounter
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   workspaceId: number | null;
   canUpdateEncounter: boolean;
-  /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
-  tournamentName?: string | null;
 }>) {
   const t = useTranslations("adminMatches.reports");
   const queryClient = useQueryClient();
@@ -161,16 +158,6 @@ export function EncounterReportsBrowser({
               <FilterBar
                 defs={defs}
                 filters={filters}
-                pinned={
-                  tournamentId != null
-                    ? [
-                        {
-                          key: TOURNAMENT_QUERY_PARAM,
-                          label: `Tournament: ${tournamentName ?? `#${tournamentId}`}`
-                        }
-                      ]
-                    : undefined
-                }
               />
             }
             emptyMessage={t("empty")}

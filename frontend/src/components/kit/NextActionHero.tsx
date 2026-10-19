@@ -23,9 +23,9 @@ export interface NextActionHeroProps {
  */
 export function NextActionHero({ eyebrow, title, href, cta }: Readonly<NextActionHeroProps>) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className={cn(EYEBROW_CLASS, "text-primary/80")}>{eyebrow}</p>
+        <p className={EYEBROW_CLASS}>{eyebrow}</p>
         <p className="mt-0.5 text-sm font-medium text-foreground">{title}</p>
       </div>
       <Link

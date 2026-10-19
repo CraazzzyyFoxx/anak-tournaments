@@ -9,8 +9,6 @@ import { Button } from "@/components/ui/button";
 export interface BulkBarProps {
   /** How many rows the actions will apply to. Zero renders nothing. */
   count: number;
-  /** Plural noun for the selection, e.g. "registrations". */
-  unit: string;
   onClear: () => void;
   children: ReactNode;
 }
@@ -24,7 +22,7 @@ export interface BulkBarProps {
  * `bulkActions` inside its toolbar row — which is exactly where bulk actions
  * used to be mistaken for filters, and the reason they moved down here.
  */
-export function BulkBar({ count, unit, onClear, children }: Readonly<BulkBarProps>) {
+export function BulkBar({ count, onClear, children }: Readonly<BulkBarProps>) {
   const t = useTranslations("kit.actions");
   if (count === 0) return null;
 
@@ -37,7 +35,6 @@ export function BulkBar({ count, unit, onClear, children }: Readonly<BulkBarProp
       <p className="text-sm text-muted-foreground">
         {t.rich("selectedSummary", {
           count,
-          unit,
           num: (chunks) => <span className="font-medium tabular-nums text-foreground">{chunks}</span>
         })}
       </p>

@@ -52,6 +52,9 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
   const allItems = visibleGroups.flatMap((group) => group.items);
   const active = allItems.find((item) => item.key === activeKey);
 
+  // One section is not a choice: no rail, no select.
+  if (allItems.length < 2) return null;
+
   return (
     <>
       <div className="md:hidden">

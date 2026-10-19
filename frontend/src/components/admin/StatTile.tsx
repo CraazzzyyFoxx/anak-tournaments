@@ -1,7 +1,7 @@
-import type { ElementType } from "react";
+import type { ElementType, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/kit/tone";
+import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
 
 interface StatTileProps {
   /** Uppercase eyebrow naming what is measured. */
@@ -10,7 +10,14 @@ interface StatTileProps {
   /** Optional second line qualifying the value (scope, breakdown). */
   detail?: string;
   icon?: ElementType;
+  /**
+   * Colours the value, and only for `warning` / `danger`: a number that needs
+   * attention. Every other tone renders neutral, because a green "8/8" or a
+   * teal "3" is decoration (§0 rule 5).
+   */
   tone?: Tone;
+  /** One control the tile owns (a bulk re-enable beside an outage count). */
+  action?: ReactNode;
   className?: string;
 }
 
@@ -18,8 +25,7 @@ interface StatTileProps {
  * The admin's single status/metric tile.
  *
  * Replaces seven independent implementations that had drifted to three
- * eyebrow specs (`text-xs`, `11px`, `tracking-wider`) and three value
- * scales (`text-2xl`, `text-xl`, `text-lg`). `value` carries `tabular-nums`
+ * eyebrow specs and three value scales. `value` carries `tabular-nums`
  * unconditionally because every consumer feeds it a refetching number.
  */
 export function StatTile({
@@ -28,8 +34,10 @@ export function StatTile({
   detail,
   icon: Icon,
   tone = "neutral",
+  action,
   className
 }: Readonly<StatTileProps>) {
+  const attention = tone === "warning" || tone === "danger";
   return (
     <div
       className={cn(
@@ -39,14 +47,13 @@ export function StatTile({
     >
       <div className="min-w-0">
         <p className={EYEBROW_CLASS}>{label}</p>
-        <p className="mt-2 truncate text-2xl font-semibold tabular-nums">{value}</p>
+        <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", attention && TONE_TEXT[tone])}>
+          {value}
+        </p>
         {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
+        {action ? <div className="mt-3">{action}</div> : null}
       </div>
-      {Icon ? (
-        <span className={cn("shrink-0 rounded-lg border p-2", TONE_CLASS[tone])}>
-          <Icon className="size-4" aria-hidden />
-        </span>
-      ) : null}
+      {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden /> : null}
     </div>
   );
 }

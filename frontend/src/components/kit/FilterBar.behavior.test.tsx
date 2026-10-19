@@ -6,10 +6,7 @@
 //     reason chips replaced the old `<Select>`;
 //  2. a reload restores the chip from the URL;
 //  3. `clear` drops every filter AND `page`, so narrowing does not strand the
-//     user on a page the new result set no longer has;
-//  4. a pinned chip has no remove control (the tournament inside a hub);
-//  5. a preset applies all its keys in ONE write — sequential `set` calls read
-//     the same stale query snapshot and only the last one would survive.
+//     user on a page the new result set no longer has.
 import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,12 +59,7 @@ function Harness() {
   }, []);
   const filters = useFilters(DEFS);
   return (
-    <FilterBar
-      defs={DEFS}
-      filters={filters}
-      pinned={[{ key: "tournament", label: "Tournament: Anak Cup #14" }]}
-      presets={[{ label: "Needs attention", values: { status: "disputed", has_logs: true } }]}
-    />
+    <FilterBar defs={DEFS} filters={filters} />
   );
 }
 
@@ -166,29 +158,5 @@ describe("FilterBar", () => {
     expect(url.searchParams.get("status")).toBeNull();
     expect(url.searchParams.get("has_logs")).toBeNull();
     expect(url.searchParams.get("page")).toBeNull();
-  });
-
-  it("renders a pinned chip with no remove control", async () => {
-    await render();
-
-    const pinnedChip = container.querySelector('[data-pinned-filter="tournament"]');
-    expect(pinnedChip?.textContent).toContain("Anak Cup #14");
-    expect(pinnedChip?.tagName).toBe("SPAN");
-    expect(chip("Tournament: Anak Cup #14")).toBeNull();
-  });
-
-  it("applies a preset in a single URL write", async () => {
-    await render();
-
-    await click(
-      [...container.querySelectorAll("button")].find(
-        (button) => button.textContent?.trim() === "Needs attention"
-      )
-    );
-
-    expect(replace).toHaveBeenCalledTimes(1);
-    const url = new URL(replace.mock.calls.at(-1)![0], "http://x");
-    expect(url.searchParams.get("status")).toBe("disputed");
-    expect(url.searchParams.get("has_logs")).toBe("1");
   });
 });

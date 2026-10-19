@@ -260,7 +260,7 @@ export function RegistrationTeamsBrowser({
               bulkActions={
                 canExport
                   ? (selected, clear) => (
-                      <BulkBar count={selected.length} unit="teams" onClear={clear}>
+                      <BulkBar count={selected.length} onClear={clear}>
                         <Button
                           type="button"
                           size="sm"

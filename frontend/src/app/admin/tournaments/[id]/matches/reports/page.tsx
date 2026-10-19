@@ -22,11 +22,10 @@ export default function ReportsViewPage() {
 
   return (
     <MatchesView tournamentId={tournamentId}>
-      {({ workspaceId, tournamentName }) => (
+      {({ workspaceId }) => (
         <EncounterReportsBrowser
           tournamentId={tournamentId}
           workspaceId={workspaceId}
-          tournamentName={tournamentName}
           canUpdateEncounter={canAccessPermission("match.result", workspaceId)}
         />
       )}

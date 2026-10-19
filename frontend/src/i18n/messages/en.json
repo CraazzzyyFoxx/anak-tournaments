@@ -381,7 +381,8 @@
     "confirm": {
       "cascade": "This also removes:",
       "typeToConfirm": "Type <code>{name}</code> to confirm"
-    }
+    },
+    "saving": "Saving…"
   },
   "registration": {
     "edit": {
@@ -12736,7 +12737,7 @@
       "commandPalette": "Command palette",
       "sidebar": "Sidebar",
       "mobileSidebar": "Displays the mobile sidebar.",
-      "toggleSidebar": "Toggle Sidebar",
+      "toggleSidebar": "Toggle sidebar",
       "extraMore": "+{count} more"
     },
     "actions": {
@@ -12746,7 +12747,7 @@
       "save": "Save",
       "clearSelection": "Clear selection",
       "bulkActions": "Bulk actions",
-      "selectedSummary": "<num>{count, plural, one {#} other {#}}</num> {unit} selected",
+      "selectedSummary": "<num>{count}</num> selected",
       "activeFilters": "Active filters",
       "filter": "Filter",
       "filterBy": "Filter by…",
@@ -12768,10 +12769,7 @@
       "skipped": "(skipped)",
       "selectSection": "Choose a section",
       "settingsSection": "Settings section",
-      "settingsSections": "Settings sections",
-      "close": "Close",
-      "cancel": "Cancel",
-      "discardChanges": "Discard changes"
+      "settingsSections": "Settings sections"
     },
     "inlineEdit": {
       "edit": "Edit {label}",
@@ -12786,11 +12784,11 @@
       "error": "Could not load accounts. Try again.",
       "minChars": "Type at least 2 characters to search.",
       "empty": "No accounts match that email or username.",
-      "clearSelection": "Clear selection"
+      "clearSelection": "Clear selection",
+      "userId": "User #{id}"
     },
     "entityForm": {
       "couldNotSave": "Could not save your changes.",
-      "close": "Close",
       "discardChanges": "Discard changes",
       "unsavedDescription": "You have unsaved changes in this form. Leave now and the current edits will be lost."
     },
@@ -12974,37 +12972,37 @@
       "correlation": "Correlation",
       "reason": "Reason:",
       "unrecognised": "unrecognised action",
-      "by": "by",
       "byActor": "by <actor>{actorName}</actor>",
       "hideDetails": "Hide details",
       "details": "Details",
-      "loading": "Loading…",
-      "noChanges": "No changes recorded for this {entity}.",
-      "noChangesWithStart": "No changes recorded for this {entity}. The audit log in this workspace starts on <date>{dateValue}</date> — anything done before that date left no trail.",
-      "auditStarts": "The audit log in this workspace starts on",
-      "beforeNoTrail": "— anything done before that date left no trail.",
-      "noEntries": "The audit log has no entries in this workspace yet. It records admin actions from the moment it was switched on, so history begins with the next change.",
+      "noChangesWithStart": "No changes recorded for this {entity}. The audit log in this workspace starts on <date>{dateValue}</date>.",
+      "noEntries": "No audit entries yet.",
       "showing": "Showing {shown} of {total}",
       "loadMore": "Load more",
-      "accessHidden": "You do not have access to the audit log for this workspace, so this’s history is hidden rather than empty. Ask an owner for the audit read permission.",
-      "loadFailed": "The change history could not be loaded",
+      "accessHidden": "You do not have access to the audit log for this workspace, so this {entity}’s history is hidden rather than empty. Ask an owner for the audit read permission.",
       "loadFailedWithReason": "The change history could not be loaded: {reason}",
       "loadFailedWithPeriod": "The change history could not be loaded.",
       "changeHistory": "Change history",
-      "everyAdminAction": "Every admin action recorded for {scope}, newest first.",
       "searchAndFilter": "Search and filter this {noun} in the audit log",
       "record": "Record",
       "recordWithId": "{entity} #{id}",
-      "changeCount": "{count, plural, one {# change} other {# changes}}"
+      "changeCount": "{count, plural, one {# change} other {# changes}}",
+      "diffKind": {
+        "added": "added",
+        "removed": "removed",
+        "changed": "changed",
+        "set": "set"
+      },
+      "diffLine": {
+        "added": "added",
+        "removed": "removed",
+        "set": "set to",
+        "was": "was",
+        "now": "now"
+      }
     },
     "auditTrail": {
-      "forTarget": " for {target}",
-      "changeHistory": "Change history",
-      "everyAdminAction": "Every admin action recorded for {scope}, newest first.",
-      "searchAndFilter": "Search and filter this {noun} in the audit log",
-      "noChanges": "No changes recorded for this {entity}.",
-      "changeCount": "{count, plural, one {# change} other {# changes}}",
-      "accessHidden": "You do not have access to the audit log for this workspace, so this {entity}’s history is hidden rather than empty. Ask an owner for the audit read permission."
+      "forTarget": " for {target}"
     }
   },
   "kitTable": {
@@ -13016,31 +13014,11 @@
       "range": "{start}–{end} of {total}",
       "rowsPerPage": "Rows per page",
       "previousPage": "Previous page",
-      "nextPage": "Next page",
-      "nothingMatches": "Nothing matches the current",
-      "views": "Views",
-      "deleteView": "Delete view {name}",
-      "saveViewPrompt": "Save current view…",
-      "saveView": "Save current view",
-      "viewName": "View name",
-      "refreshing": "Refreshing results…",
-      "selectVisibleRows": "Select visible selectable rows",
-      "selectRow": "Select row {id}",
-      "sortPriority": "Sort priority {index}",
-      "actions": "Actions",
-      "actionsFor": "Actions for {label}",
-      "resize": "Resize {id} column",
-      "resizeHint": "Drag to resize, double-click to reset",
-      "filterBy": "Filter by…",
-      "nothingMatchesShort": "Nothing matches.",
-      "noFilters": "No filters available."
+      "nextPage": "Next page"
     },
     "dataTableExtra": {
-      "noRecords": "No records to show yet.",
+      "noRecords": "Nothing here yet.",
       "search": "Search…",
-      "useArrows": "Use the Up and Down arrows to move between rows",
-      "spaceSelect": ", Space to select, Shift with an arrow to extend the selection",
-      "enterOpen": ", Enter to open the focused row",
       "clearSearchAndFilters": "Clear search and filters",
       "clearSearch": "Clear search",
       "clearFilters": "Clear filters",
@@ -13057,7 +13035,7 @@
       "refreshing": "Refreshing results…",
       "selectedRowsOtherPages": "Selected rows not on this page are included in bulk actions",
       "exportSelected": "{count, plural, one {Export # selected row as CSV} other {Export # selected rows as CSV}}",
-      "selectedOnOtherPages": "{count} on other pages",
+      "selectedOnOtherPages": "{count} selected on other pages",
       "exportCurrent": "Export the current view as CSV",
       "comfortableRows": "Comfortable rows",
       "compactRows": "Compact rows",
@@ -13072,7 +13050,11 @@
       "saveViewPrompt": "Save current view…",
       "saveView": "Save current view",
       "viewName": "View name",
-      "rowFallback": "row {id}"
+      "rowFallback": "row {id}",
+      "noMatchSearch": "Nothing matches the search.",
+      "noMatchFilters": "Nothing matches these filters.",
+      "noMatchBoth": "Nothing matches the search and filters.",
+      "rowHint": "Use the Up and Down arrows to move between rows{select, select, yes {, Space to select, Shift with an arrow to extend the selection} other {}}{open, select, yes {, Enter to open the focused row} other {}}."
     }
   },
   "sheetsFeed": {
