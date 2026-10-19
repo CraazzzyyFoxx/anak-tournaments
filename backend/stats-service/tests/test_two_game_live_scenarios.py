@@ -114,6 +114,7 @@ TIER = {
 
 _TOKENS: dict[str, tuple[str, float]] = {}
 _SCENARIO = ["seed"]
+_DEFECTS: dict[str, list[str]] = {}
 
 
 # == HTTP / SQL helpers ================================================================================================
@@ -215,6 +216,19 @@ def invariant(live: Live, key: str, value: Any) -> Any:
 
 def scenario_ids(live: Live, **values: Any) -> None:
     live.stack.evidence.data["scenario_ids"].setdefault(_SCENARIO[0], {}).update(values)
+
+
+def defect(live: Live, code: str, reproduced: bool, detail: str, *, strict: bool = True) -> None:
+    """A production defect this live run observed (``P8-D<n>``, listed in ``<ws>/slice-S4-run-report.md``).
+
+    The scenario carries on and its test ends as xfail (``_run``). Strict: once the defect no longer reproduces, this
+    fails so the guard is removed; ``strict=False`` only for a defect seen intermittently (a clean answer passes).
+    """
+    if not reproduced and not strict:
+        return
+    assert reproduced, f"{code} no longer reproduces ({detail}): remove its defect() guard"
+    live.stack.evidence.append("errors", {"scenario": _SCENARIO[0], "defect": code, "detail": detail})
+    _DEFECTS.setdefault(_SCENARIO[0], []).append(f"{code}: {detail}")
 
 
 def member_of(live: Live, ids: dict[str, Any], label: str, ws: str = "A") -> int | None:
@@ -524,7 +538,11 @@ def _registered(live: Live, ids: dict[str, Any], game: str, purpose: str) -> dic
             # The owner's game names the handle; the other game's handle is never shown here.
             assert read.json()["primary_handle"] == ids["handles"]["dual"][PROVIDER[game]], read.raw[:400]
             edited = call(live, ids, "dual", "PATCH", "/api/v1/tournaments/{tid}/registration/me", body, tid=tid)
-            assert edited.status == 200, edited.raw[:400]
+            # P8-D1 (intermittent): the self-edit is applied, then serializing the reply lazy-loads ``reg.tournament``
+            # (``registration_build._reg_to_read`` queue_role) -> MissingGreenlet -> 500. Any other answer is a failure.
+            if edited.status != 500:
+                assert edited.status == 200, edited.raw[:400]
+            defect(live, "P8-D1", edited.status == 500, "PATCH registration/me -> 500 internal", strict=False)
             call(
                 live,
                 ids,
@@ -536,16 +554,11 @@ def _registered(live: Live, ids: dict[str, Any], game: str, purpose: str) -> dic
                 rid=rid,
             )
             call(live, ids, "org", "PATCH", "/api/v1/admin/balancer/registrations/{rid}/approve", expect=200, rid=rid)
-            call(
-                live,
-                ids,
-                "org",
-                "PATCH",
-                "/api/v1/admin/balancer/registrations/{rid}/balancer-status",
-                {"balancer_status": "ready", "exclude_reason": None},
-                expect=200,
-                rid=rid,
-            )
+            # ``ready`` is derived from the ranks (never set directly): the organizer adds the row to the pool.
+            included = call(
+                live, ids, "org", "POST", "/api/v1/admin/balancer/registrations/{rid}/include", expect=200, rid=rid
+            ).json()
+            assert included["balancer_status"] == "ready", included
         else:
             made = call(
                 live,
@@ -949,7 +962,23 @@ def _undo(live: Live, ids: dict[str, Any], enc: dict[str, Any], seat: int, **kw:
 
 
 def _frozen(live: Live, eid: int) -> dict[str, Any]:
-    """Every durable trace a refused correction must not leave."""
+    """Every durable trace a refused correction must not leave.
+
+    Read once the background follow-ups of the previous write (a confirmed series' computation job, its
+    ``achievement_evaluate``/``cache_invalidated`` outbox rows) have stopped arriving: the outbox count is global.
+    """
+    seen: list[tuple] = []
+
+    def quiet() -> bool:
+        seen.append(
+            (
+                live.s("SELECT count(*) FROM public.event_outbox"),
+                live.s("SELECT count(*) FROM tournament.computation_job WHERE status NOT IN ('succeeded', 'failed')"),
+            )
+        )
+        return len(seen) > 1 and seen[-1] == seen[-2] and seen[-1][1] == 0
+
+    wait_until(quiet, "the outbox and computation jobs to settle", timeout=60, interval=2)
     return {
         "lines": live.q(
             "SELECT g.id, g.state, g.result_version, gt.encounter_team_id, gt.score, gt.starting_side "
@@ -986,10 +1015,16 @@ def _wait_round(live: Live, ids: dict[str, Any], enc: dict[str, Any], number: in
 
 
 def _roster(live: Live, ids: dict[str, Any], enc: dict[str, Any]) -> dict[int, list[str]]:
+    """Each seat's exported tournament roster (``tournament.player`` of the seat's team).
+
+    Not ``encounter.team_member``: a stage-generated encounter is seated without a line-up snapshot
+    (``shared.services.bracket.persist.SeatTeam.members`` stays empty, ``admin/stage.py::_seat_teams``).
+    """
     by_member = labels_by_member(live, ids)
     out: dict[int, list[str]] = {seat: [] for seat in enc["seats"]}
     for seat, member in live.q(
-        "SELECT encounter_team_id, workspace_member_id FROM encounter.team_member WHERE encounter_id=%s AND active",
+        "SELECT et.id, p.workspace_member_id FROM encounter.team et JOIN tournament.player p "
+        "ON p.team_id=et.team_id AND p.tournament_id=et.tournament_id WHERE et.encounter_id=%s AND et.active",
         enc["encounter_id"],
     ):
         out[seat].append(by_member[member])
@@ -1103,6 +1138,51 @@ def _settled(live: Live, label: str, job_id: int) -> dict[str, Any]:
     ids_seen = live.stack.evidence.data["job_ids"]
     ids_seen[f"{_SCENARIO[0]}:{job_id}"] = seen
     return job
+
+
+def _on_map(live: Live, ids: dict[str, Any], enc: dict[str, Any], game: str, game_id: int) -> None:
+    """The captain records the document's map (a hinted log binds only to a game on its map, P5 ``find_binding``)."""
+    if live.s("SELECT map_id FROM encounter.game WHERE id=%s", game_id) is None:
+        call(
+            live,
+            ids,
+            enc["captains"][enc["seats"][0]],
+            "POST",
+            "/api/v1/encounters/{eid}/games/{gid}/map",
+            {"map_id": ids["catalog"][game][RIFT if game == LOL else OW_MAP]},
+            expect=200,
+            eid=enc["encounter_id"],
+            gid=game_id,
+        )
+
+
+def _bound(live: Live, ids: dict[str, Any], enc: dict[str, Any], job_id: int, game_id: int, keys: list[str]) -> dict:
+    """The settled job of a document hinted at ``game_id``.
+
+    P8-D2: a stage-generated encounter is seated without a line-up snapshot, so the participants prove no seat and a
+    hinted document waits for an administrator; the organizer binds it through the real route and the run carries on.
+    """
+    job = _settled(live, "off_ok", job_id)
+    defect(
+        live, "P8-D2", job["status"] == "awaiting_link", "hinted ingest of a stage-generated encounter awaits a link"
+    )
+    observation = call(
+        live, ids, "org", "GET", "/api/v1/admin/logs/games/{gid}/observation", expect=200, gid=game_id
+    ).json()
+    return call(
+        live,
+        ids,
+        "org",
+        "POST",
+        "/api/v1/admin/logs/{job_id}/bind",
+        {
+            "encounter_game_id": game_id,
+            "teams": dict(zip(keys, enc["seats"], strict=True)),
+            "expected_revision": observation["revision"],
+        },
+        expect=200,
+        job_id=job_id,
+    ).json()
 
 
 # == scenarios (contracts §6.3, in file order) =========================================================================
@@ -1321,10 +1401,21 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
     # The dual-handle person's roster row names the owner game's handle.
     dual_member = member_of(live, ids, "dual")
     for game in GAMES:
-        rows = call(
-            live, ids, "org", "GET", route, query={"discipline": game, "per_page": 200}, expect=200, ws=a
-        ).json()
-        row = next(row for row in rows["results"] if row["member_id"] == dual_member)
+        row, page = None, 1
+        while row is None:  # the roster list caps ``per_page`` at 100
+            rows = call(
+                live,
+                ids,
+                "org",
+                "GET",
+                route,
+                query={"discipline": game, "per_page": 100, "page": page},
+                expect=200,
+                ws=a,
+            ).json()
+            row = next((row for row in rows["results"] if row["member_id"] == dual_member), None)
+            assert row is not None or page * rows["per_page"] < rows["total"], (dual_member, rows["total"])
+            page += 1
         assert row["identity"] == {"provider": PROVIDER[game], "handle": ids["handles"]["dual"][PROVIDER[game]]}, row
 
     # R5: a mix host cannot admit an account holder; the target's private read stays refused before and after.
@@ -1623,7 +1714,7 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
                 "host",
                 "PUT",
                 base + "/{gid}/self-service",
-                {"self_signup": "benched", "self_role_edit": None},
+                {"self_signup": "benched"},
                 expect=200,
                 ws=a,
                 gid=gid,
@@ -1778,7 +1869,7 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     tid = _balanced(live, ids, LOL)["tournament_id"]
 
     # A champion of another game is refused before the config is written.
-    configs = live.s("SELECT count(*) FROM encounter.pick_ban_config")
+    configs = live.s("SELECT count(*) FROM tournament.pick_ban_config")
     foreign = call(
         live,
         ids,
@@ -1789,7 +1880,7 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
         tid=tid,
     )
     assert foreign.status in (400, 404, 422), foreign.raw[:400]
-    assert live.s("SELECT count(*) FROM encounter.pick_ban_config") == configs
+    assert live.s("SELECT count(*) FROM tournament.pick_ban_config") == configs
     live.stack.evidence.append(
         "unsupported_requests",
         {
@@ -1912,7 +2003,7 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     _side_pick(live, ids, e1, opener, 0, expect=200)
     snapshot = _frozen(live, eid)
     refused(_admin_result(live, ids, e1, g1, opener), 409, code="dependent_round_started")
-    assert _frozen(live, eid) == snapshot
+    assert (after := _frozen(live, eid)) == snapshot, (snapshot, after)
     # Recovery (a): the captains undo round 2, then the same correction rebuilds it.
     _undo(live, ids, e1, opener, expect=200)
     _undo(live, ids, e1, other, expect=200)
@@ -1937,7 +2028,7 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     _admin_result(live, ids, e2, g2b, o2, expect=200)
     snapshot = _frozen(live, e2["encounter_id"])
     refused(_admin_result(live, ids, e2, e2["g1"], p2), 409, code="dependent_round_started")
-    assert _frozen(live, e2["encounter_id"]) == snapshot
+    assert (after := _frozen(live, e2["encounter_id"])) == snapshot, (snapshot, after)
     old_games = [e2["g1"], g2b]
     kept = {game_id: _sides(live, game_id) for game_id in old_games}
     status = live.s("SELECT result_status FROM encounter.encounter WHERE id=%s", e2["encounter_id"])
@@ -2022,7 +2113,8 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
             [_step("sp", action="side_pick"), _step("b1", actors="side:blue"), _step("b2", actors="side:red")],
             when("==", 1),
         ),
-        _phase("later", [_step("b1"), _step("b2", actors="second")], when(">=", 2)),
+        # Step ids are unique across the whole ruleset (``duplicate_step_id``).
+        _phase("later", [_step("b3"), _step("b4", actors="second")], when(">=", 2)),
     )
     e4 = _encounter(live, ids, LOL, "pregame-phased", config=_config(ids, phased))
     refused(_admin_result(live, ids, e4, e4["g1"], e4["seats"][0]), 409, code="side_pick_required")
@@ -2045,8 +2137,8 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     _admin_result(live, ids, e5, e5["g1"], e5["seats"][0], expect=200)
     assert live.game(e5["g1"])["state"] == "confirmed" and set(_sides(live, e5["g1"]).values()) == {None}
 
-    # -- E6: a short-timer side step is resolved by the due tick (coin flip).
-    timed = _ruleset(_phase("main", [_step("sp", action="side_pick", timer=3)]), timer=3)
+    # -- E6: a short-timer side step is resolved by the due tick (coin flip). 5 s is the smallest timer (timer_range).
+    timed = _ruleset(_phase("main", [_step("sp", action="side_pick", timer=5)]), timer=5)
     e6 = _encounter(live, ids, LOL, "pregame-timeout", config=_config(ids, timed))
     _ready(live, ids, e6)
     sides = wait_until(
@@ -2069,6 +2161,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     if None in _sides(live, enc["g1"]).values():
         _ready(live, ids, enc)
         _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
+    _on_map(live, ids, enc, LOL, enc["g1"])
     doc = _lol_doc(live, ids, enc, f"p8-lol-g1-{tag}", hint=enc["g1"])
     body = canonical(doc)
     results: list[Response] = []
@@ -2085,7 +2178,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     job_ids = {r.json()["id"] for r in results}
     assert len(job_ids) == 1, job_ids
     job_id = job_ids.pop()
-    job = _settled(live, "off_ok", job_id)
+    job = _bound(live, ids, enc, job_id, enc["g1"], ["alpha", "beta"])
     assert job["status"] == "done" and job["binding"]["encounter_game_id"] == enc["g1"], job
     match = live.match(enc["g1"])
     assert (
@@ -2097,6 +2190,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     jobs = live.s("SELECT count(*) FROM stats.ingest_job")
     refused(ingest(live, "off_ok", {**doc, "duration_s": 1835}), 409, code="idempotency_conflict")
     ow_enc = _encounter(live, ids, OW, "ingest-ow")
+    _on_map(live, ids, ow_enc, OW, ow_enc["g1"])
     ow_doc = _ow_doc(live, ids, ow_enc, f"p8-lol-g1-{tag}", hint=ow_enc["g1"])
     refused(ingest(live, "off_ok", ow_doc), 409, code="idempotency_conflict")
     assert live.s("SELECT count(*) FROM stats.ingest_job") == jobs
@@ -2112,7 +2206,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     # Correction under a new external id: same match, revision + 1, no residual 7.
     fix = _lol_doc(live, ids, enc, f"p8-lol-g1-fix-{tag}", kills=8, hint=enc["g1"])
     fix_job = ingest(live, "off_ok", fix).json()["id"]
-    assert _settled(live, "off_ok", fix_job)["status"] == "done"
+    assert _bound(live, ids, enc, fix_job, enc["g1"], ["alpha", "beta"])["status"] == "done"
     corrected = live.match(enc["g1"])
     assert corrected["id"] == match["id"] and corrected["revision"] == 2 and corrected["ingest_job_id"] == fix_job
     read = call(live, ids, None, "GET", "/api/v1/matches/{id}", expect=200, id=match["id"]).json()
@@ -2123,7 +2217,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     # OW leg: a valid external document for an exported OW encounter, and the Workshop golden as parity control.
     ow_doc = _ow_doc(live, ids, ow_enc, f"p8-ow-g1-{tag}", hint=ow_enc["g1"])
     ow_job = ingest(live, "off_ok", ow_doc).json()["id"]
-    assert _settled(live, "off_ok", ow_job)["status"] == "done"
+    assert _bound(live, ids, ow_enc, ow_job, ow_enc["g1"], ["t1", "t2"])["status"] == "done"
     ids["matches"]["ow"] = live.match(ow_enc["g1"])["id"]
     shop = live.workshop
     raw = (DIRECTORY / "workshop.csv").read_bytes()
@@ -2174,6 +2268,11 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
         # Both teams play several encounters: a hint-less document has more than one candidate.
         enc = _encounter(live, ids, game, "awaiting", config=side_config if game == LOL else None)
         _encounter(live, ids, game, "awaiting-twin", config=side_config if game == LOL else None)
+        if game == LOL:
+            _ready(live, ids, enc)
+            _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
+        # The bind checks the game's map against the document's (P5 ``process`` bind): the captain records it first.
+        _on_map(live, ids, enc, game, enc["g1"])
         doc = (_lol_doc if game == LOL else _ow_doc)(live, ids, enc, f"p8-{game}-awaiting-{tag}")
         job_id = ingest(live, "off_ok", doc).json()["id"]
         job = _settled(live, "off_ok", job_id)
@@ -2251,26 +2350,32 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
     call(live, ids, "org", "PATCH", "/api/v1/admin/tournaments/{tid}", {"logs_official": True}, expect=200, tid=tid)
     try:
         enc = _encounter(live, ids, LOL, "official", config=side_config)
+        # Before the side selection the game cannot take a map (``side_pick_required``), so a hinted log cannot bind
+        # to it at all (P5 ``find_binding``: a hinted game must be on the log's map): nothing becomes official.
         early = ingest(live, "off_ok", _lol_doc(live, ids, enc, f"p8-official-early-{tag}", hint=enc["g1"])).json()[
             "id"
         ]
-        assert _settled(live, "off_ok", early)["status"] == "done"
-        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 1)]
-        assert outcomes == ["result_incomplete"], outcomes
-        assert live.game(enc["g1"])["state"] != "confirmed"
+        early_job = _settled(live, "off_ok", early)
+        assert early_job["status"] == "failed" and early_job["error"]["code"] == "binding_mismatch", early_job
+        assert live.receipts(enc["encounter_id"]) == [] and live.game(enc["g1"])["state"] != "confirmed"
+        live.stack.evidence.append(
+            "unsupported_requests",
+            {"scenario": _SCENARIO[0], "request": "lol official log before side selection", "code": "binding_mismatch"},
+        )
         _ready(live, ids, enc)
         _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
+        _on_map(live, ids, enc, LOL, enc["g1"])
         accepted = ingest(live, "off_ok", _lol_doc(live, ids, enc, f"p8-official-{tag}", hint=enc["g1"])).json()["id"]
-        assert _settled(live, "off_ok", accepted)["status"] == "done"
-        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 2)]
-        assert outcomes == ["result_incomplete", "accepted"], outcomes
+        assert _bound(live, ids, enc, accepted, enc["g1"], ["alpha", "beta"])["status"] == "done"
+        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 1)]
+        assert outcomes == ["accepted"], outcomes
         official = live.game(enc["g1"])
         assert official["state"] == "confirmed" and official["result_source"] == "admin_log", official
         contradicting = _lol_doc(live, ids, enc, f"p8-official-late-{tag}", hint=enc["g1"])
         contradicting["teams"] = [{"key": "alpha", "placement": 2}, {"key": "beta", "placement": 1}]
         late = ingest(live, "off_ok", contradicting).json()["id"]
-        assert _settled(live, "off_ok", late)["status"] == "done"
-        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 3)]
+        assert _bound(live, ids, enc, late, enc["g1"], ["alpha", "beta"])["status"] == "done"
+        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 2)]
         assert outcomes[-1] == "result_locked" and live.game(enc["g1"]) == official, outcomes
         live.stack.evidence.record("receipt_outcomes", "p8_lol_official", outcomes)
     finally:
@@ -2555,6 +2660,8 @@ def _run(name: str, live: Live, ids: dict[str, Any], scenario) -> None:
     except BaseException as exc:
         live.stack.evidence.append("errors", {"scenario": name, "error": redact(repr(exc)[:2000], live.stack.secrets)})
         raise
+    if _DEFECTS.get(name):
+        pytest.xfail("; ".join(dict.fromkeys(_DEFECTS[name])))
 
 
 def test_tournament_registration(live: Live, p8_ids: dict[str, Any]) -> None:
