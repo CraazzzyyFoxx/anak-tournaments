@@ -9845,7 +9845,7 @@ export interface paths {
         put?: never;
         /**
          * Create custom game
-         * @description Permission: workspace membership plus `custom_game.create`. Opens a pickup mix in the workspace and returns it with its roster; the caller becomes its host, and member_ids may be empty to start from an empty lineup. With clone_from_game_id the new mix starts from a previous mix of the same workspace -- its pool (everyone back in the pool), per-seat role setup, role shape, points per win, team names, solver overrides and co-hosts -- but never its balance result, rolled map, match history or status.
+         * @description Permission: workspace membership plus `custom_game.create`. Opens a pickup mix of the requested game (`discipline`, required) in the workspace and returns it with its roster; the caller becomes its host, and member_ids may be empty to start from an empty lineup. With clone_from_game_id the new mix starts from a previous mix of the same workspace -- its pool (everyone back in the pool), per-seat role setup, role shape, points per win, team names, solver overrides and co-hosts -- but never its balance result, rolled map, match history or status.
          *
          *     RPC subject: `rpc.balancer.custom.create`
          */
@@ -21215,10 +21215,7 @@ export interface components {
              * @default null
              */
             clone_from_game_id: number | null;
-            /**
-             * Discipline
-             * @default overwatch
-             */
+            /** Discipline */
             discipline: string;
             /** Member Ids */
             member_ids?: number[];
