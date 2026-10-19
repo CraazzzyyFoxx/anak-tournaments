@@ -701,3 +701,23 @@ RANK_FETCH_PRIORITY_DLQ = RabbitQueue(
     "rank_fetch_priority.dlq",
     durable=True,
 )
+
+# ============================================================================
+# Every exchange the outbox relay may publish to, by name
+# ============================================================================
+# The drain declares an exchange before its first publish to it. A publish to an
+# exchange the broker does not know (``NOT_FOUND``) closes the channel and
+# fails the rest of the batch, and now that every producing service drains,
+# app-svc can be the first process to publish onto ``tournament.events`` on a
+# fresh broker, before the consumer that used to declare it has started.
+
+EXCHANGES_BY_NAME: dict[str, RabbitExchange] = {
+    exchange.name: exchange
+    for exchange in (
+        TOURNAMENT_COMPUTE_EXCHANGE,
+        CACHE_INVALIDATION_EXCHANGE,
+        TOURNAMENT_EVENTS_EXCHANGE,
+        MATCH_INGESTED_EXCHANGE,
+        NOTIFICATIONS_EXCHANGE,
+    )
+}

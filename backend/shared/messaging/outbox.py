@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.messaging.config import EXCHANGES_BY_NAME
 from shared.models.platform.outbox import EventOutbox
 from shared.observability.worker import observe_scheduled_job
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
@@ -84,6 +85,24 @@ async def enqueue_outbox_event(
     return row
 
 
+#: Exchange names this process has declared already; declaring is idempotent but costs a broker round trip.
+_declared_exchanges: set[str] = set()
+
+
+async def _declare_exchanges(broker: Any, names: set[str]) -> None:
+    """Declare every known exchange the batch publishes to, once per process.
+
+    An unknown name is left alone: its publish fails with the broker's own ``NOT_FOUND`` and the row backs off,
+    which is the right signal for a routing key pointed at an exchange ``config.py`` does not define.
+    """
+    for name in names - _declared_exchanges:
+        exchange = EXCHANGES_BY_NAME.get(name)
+        if exchange is None:
+            continue
+        await broker.declare_exchange(exchange)
+        _declared_exchanges.add(name)
+
+
 async def publish_pending_outbox_events(
     session: AsyncSession,
     broker: Any,
@@ -123,6 +142,7 @@ async def publish_pending_outbox_events(
     if not rows:
         return 0
 
+    await _declare_exchanges(broker, {row.exchange for row in rows if row.exchange})
     published = 0
     for row in rows:
         try:

@@ -36,7 +36,9 @@ from shared.rbac import assign_workspace_system_role, ensure_workspace_system_ro
 from shared.repository import get_or_create_workspace_member  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.core import db  # noqa: E402
+from src.core.redis import close_redis, init_redis  # noqa: E402
 from src.services.auth import auth  # noqa: E402
+from src.services.session_cache import session_cache  # noqa: E402
 
 PASSWORD = "Correct-horse-battery1!"
 RIOT, BATTLENET, DISCORD = SocialProvider.RIOT, SocialProvider.BATTLENET, SocialProvider.DISCORD
@@ -181,6 +183,13 @@ async def main(payload: dict) -> dict:
             await social(player.id, RIOT, game_handles["dup"][RIOT])
             dup_players.append(player.id)
         await session.commit()
+    # The owner's RBAC payload was cached by its first login (gateway readiness) before it held C's admin role; a real
+    # membership write drops it through ``workspace.member_changed``, this direct seed drops it the same way.
+    await init_redis()
+    try:
+        await session_cache.invalidate_rbac(int(payload["owner_auth_user_id"]))
+    finally:
+        await close_redis()
 
     return {
         "tag": tag,

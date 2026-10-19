@@ -246,24 +246,49 @@ refactor's own correction pass explicitly walked back — see §6-7 of
 A service never publishes to RabbitMQ from inside a request. It calls
 `shared.messaging.outbox.enqueue_outbox_event(session, event, exchange=..., routing_key=...)`
 in the *same transaction* as the mutation, so "the row changed" and "the world was told" commit
-or roll back together. `serve.py`'s scheduler drains the table with
-`publish_pending_outbox_events` (`tournament-service/serve.py`'s `event_outbox_drain`), retrying
-failures with exponential backoff capped at 300s. Every tournament-service replica runs that
-drain, so it takes its batch with `FOR UPDATE SKIP LOCKED` and holds the locks until the one
-commit that ends the pass: a row released mid-pass is free for the other replica to take and
-publish a second time.
+or roll back together. **Every service that writes outbox rows also drains them**: its
+`serve.py` schedules `shared.messaging.outbox.drain_outbox(session_factory, broker)` every
+second (tournament, stats-worker, app, balancer, analytics-svc). The drain takes its batch
+`FOR UPDATE SKIP LOCKED` and holds the locks until the one commit that ends the pass, so any
+number of drains across services and replicas never publish a row twice; failures retry with
+exponential backoff capped at 300 s. One relay per service means no service's events stop
+flowing because another service is down (they all did, when tournament-service ran the only
+drain).
+
+The exceptions that stay direct, and why: `publish_required` for a replay request (an
+unroutable request must fail the caller, not sit in a table), `MatchLogProcessedEvent` (a reply
+to a bot with no transaction of its own), `FetchRankEvent` (Redis-deduped sweep), balancer
+jobs (their state lives in Redis, there is no transaction to join), and the discord bot's own
+gateway events (`UploadMatchLogEvent`, `DiscordMemberChangedEvent`: the bot has nothing to
+commit). Anything else publishing from a request or a consumer is a bug.
 
 - Event payloads are Pydantic models in `shared/schemas/events.py` and **must** carry
-  `event_id` — `enqueue_outbox_event` raises `ValueError` without one. That id is the
-  consumer's idempotency key; every consumer must tolerate redelivery.
-- Exchange/queue/DLQ names are constants in `shared/messaging/config.py`, declared with
-  `shared.messaging.topology.declare_dead_letter_queue`. No string literals at call sites.
-- Exactly one service owns each queue (`TOURNAMENT_CHANGED_APP_QUEUE` → app-service's
-  `services/tournament_events.py`). Two consumers of one queue is a bug, not fan-out; fan-out
-  is two queues bound to the same exchange.
+  `event_id` — `enqueue_outbox_event` raises `ValueError` without one. Delivery is
+  at-least-once, and **no consumer dedupes on `event_id`**: every consumer is idempotent through
+  its own state — a job row's status (`claim_job`, `run_job`'s runnable-status guard), a
+  version fence (`result_version` on the Challonge push, `revision` on `match.ingested`), a
+  `discord_message` row's status machine, or an operation that is naturally repeatable (drop a
+  cache key, reload a registry, re-render a card from current state). A new consumer must be
+  one of those; a deterministic `event_id` (`challonge_push:<encounter>:<version>`,
+  `achievement:<ws>:<tournament>:<source>:<key>`) makes a duplicate attributable in logs and
+  is the hook for a dedupe table if one is ever needed.
+- Exchange/queue/DLQ names are constants in `shared/messaging/config.py`. Every queue a service
+  consumes has its DLQ declared by that service at startup
+  (`shared.messaging.topology.declare_dead_letter_queue` over an `_OWNED_DLQS` tuple): RabbitMQ
+  creates nothing for a dead-letter routing key, so an undeclared DLQ means expired and
+  rejected messages vanish. `backend/tests/test_messaging_config.py` fails on a queue constant
+  no `subscriber(...)` names and on a DLQ constant no service declares — that is how two
+  produced-but-never-consumed events and eleven undeclared DLQs were found.
+- Exactly one service owns each queue (`NOTIFICATION_DELIVERY_QUEUE` → app-service's
+  `services/notification_delivery/consumer.py`). Two consumers of one queue is a bug, not
+  fan-out; fan-out is two queues bound to the same exchange. A per-replica reload signal (the
+  discord bot's channel registry) is a server-named exclusive queue bound to the exchange, one
+  per replica.
 - Synchronous cross-service calls use `shared.messaging.request_dict(broker, payload, queue)`
   and nothing else — `broker.request()` returns a message, not a body, and mistaking the two
-  is how the Discord entity endpoints shipped empty lists to production.
+  is how the Discord entity endpoints shipped empty lists to production. They are for answers a
+  request cannot proceed without (an ownership proof, a merge finalization, a voice-move
+  report), never for telling another service that something happened.
 
 ## Realtime patches are part of the transaction
 

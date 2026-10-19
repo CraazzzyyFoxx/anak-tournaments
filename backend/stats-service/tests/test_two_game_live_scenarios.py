@@ -346,11 +346,12 @@ def seed_p8(live: Live) -> dict[str, Any]:
         "jobs": {},
         "grids": {},
     }
-    # A member of A removed through the real route (its observation later must not revive it).
+    # A member of A removed through the real route (its observation later must not revive it). A workspace admin never
+    # holds ``workspace_member.delete`` (``AuthUser.has_permission``), so the superuser removes it.
     call(
         live,
         ids,
-        "org",
+        "root",
         "DELETE",
         "/api/v1/workspaces/{ws}/members/{auth_user_id}",
         expect=(200, 204),

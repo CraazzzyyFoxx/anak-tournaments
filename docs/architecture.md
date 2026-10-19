@@ -121,9 +121,20 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   are dropped by `DeadlineDropMiddleware`; `prefetch_count` provides QoS backpressure;
   failures route to per-queue DLX/DLQ.
 - **Domain events + transactional outbox.** State changes write an `event_outbox` row in the
-  same DB transaction; a sweeper (in `tournament-svc`) drains it `FOR UPDATE SKIP LOCKED` and
-  publishes with retry/backoff. For example, tournament mutations emit `tournament.changed`
-  for cache invalidation and downstream workers.
+  same DB transaction; every service that writes rows drains them every second
+  (`FOR UPDATE SKIP LOCKED`, retry with backoff), so no service's events depend on another
+  service being up. The event map (`backend/shared/messaging/config.py`,
+  `backend/shared/schemas/events.py`): `tournament.events` carries `encounter.completed`,
+  `registration.approved` / `rank_check_requested`, `state.changed` (consumed by
+  analytics-worker to create the completed tournament's compute job, and by the discord bot to
+  refresh its watched channels), `standings.invalidated`, `encounter.challonge_push_requested`
+  (the Challonge push of a confirmed result, retried by the queue instead of swallowed in the
+  request) and `discord_channel.changed`; `cache.invalidation` fans `cache.invalidated.*` out to
+  one queue per caching service; `notifications` feeds app-service's Discord delivery;
+  `match.ingested` is stats → tournament's match layer; `workspace_member_changed` is
+  app → identity (drop the cached RBAC payload); `discord_member_changed` is the bot → stats
+  (re-resolve a Boosty entitlement). `backend/tests/test_messaging_config.py` fails on a queue
+  nobody consumes or a DLQ nobody declares.
 - **Long jobs.** Durable queues decouple minutes-long compute: `balancer_jobs`,
   `analytics_job` / `analytics_train` / `analytics_infer`. Status/results live in Redis
   (balancer) or the `AnalyticsJob` table (analytics).
@@ -145,8 +156,9 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   superuser no bypass — an operator's blanket read right over workspace data is not a licence
   to watch one person's inbox arrive.
 - **Discord ingest.** The bot uploads match-log attachments as base64 to
-  `UPLOAD_MATCH_LOG_QUEUE`; stats results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
-  (per-replica exclusive queue) correlated by `ResultWaiter`.
+  `UPLOAD_MATCH_LOG_QUEUE`, naming the Discord channel and message; stats answers on the
+  `match_log_result` work queue with those ids echoed, and whichever bot replica takes the
+  result reacts on that message. No in-memory waiter, nothing lost on a bot restart.
 
 ## 4. Components
 
@@ -155,7 +167,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | [`gateway`](../gateway/README.md) | Go, HTTP/WS | Sole API ingress: JWT, RPC dispatch, realtime hub, response cache, rate limit, docs, metrics |
 | [`app-service`](../backend/app-service/README.md) | RPC worker | Core read/data API (tournaments, players, teams, heroes, maps, matches, stats), workspace/user/metadata admin, binary assets, cache |
 | [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
-| [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, outbox sweeper |
+| [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, Challonge push consumer |
 | [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), OverFast rank fetch, achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `tournament_balancer`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
