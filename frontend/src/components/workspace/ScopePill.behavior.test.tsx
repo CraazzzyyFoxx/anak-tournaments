@@ -215,6 +215,13 @@ describe("the site scope pill", () => {
     useWorkspaceStore.setState({ hostLockedWorkspaceId: 2, currentWorkspaceId: 2 });
     await mount();
     expect(trigger()).toBeNull();
+
+    // An owner page locks a game, but a one-game tenant has no pill to lock it in.
+    await act(async () => root.unmount());
+    navigation.reset("/tournaments/spring-cup");
+    useWorkspaceStore.setState({ entityDiscipline: "overwatch" });
+    await mount();
+    expect(trigger()).toBeNull();
   });
 
   it("opens from a filter hint", async () => {

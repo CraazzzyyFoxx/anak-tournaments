@@ -106,7 +106,9 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
   const tenant = hostLockedWorkspaceId !== null;
   const workspaces = admin ? filterAccessibleWorkspaces(allWorkspaces, status, user ?? undefined) : allWorkspaces;
   const pill: PillGame = scope.resolution?.pill ?? { kind: "hidden" };
-  if (routeClass === "platform" || (!tenant && workspaces.length === 0) || (tenant && pill.kind === "hidden")) {
+  const enabledGames = (scope.games ?? []).filter((game) => game.enabled);
+  // A tenant's community is the brand: with one game (or none) there is nothing to pick, owner pages included.
+  if (routeClass === "platform" || (!tenant && workspaces.length === 0) || (tenant && enabledGames.length <= 1)) {
     return null;
   }
 
@@ -120,7 +122,6 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
   const showsGame = pill.kind !== "hidden";
   const gameLabel = checked ? markOf(checked).name : t("common.discipline.all");
   const outOfArea = !gamesDisabled && storedScope !== ALL_DISCIPLINES && scope.resolution?.scope === ALL_DISCIPLINES;
-  const enabledGames = (scope.games ?? []).filter((game) => game.enabled);
 
   const pageSlug = /^\/workspace\/([^/]+)/.exec(pathname)?.[1];
   const workspace = admin
