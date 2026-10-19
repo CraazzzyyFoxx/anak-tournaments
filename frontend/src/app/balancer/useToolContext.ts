@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 
 import { useBalancerTournamentId } from "@/app/balancer/components/useBalancerTournamentId";
 import { resolveToolState, type ToolContextStatus } from "@/app/balancer/tool-context";
@@ -23,7 +24,10 @@ export interface ToolContext {
  * runtime entity context, without overwriting the saved viewing preference.
  */
 export function useToolContext(): ToolContext {
-  const tournamentId = useBalancerTournamentId();
+  const requested = useBalancerTournamentId();
+  // A pickup mix is its own owner (its page registers the mix's community and game): a `?tournament=`
+  // carried onto a mix route names no tool tournament, so it neither reads nor claims the opened owner.
+  const tournamentId = usePathname().startsWith("/balancer/mix") ? null : requested;
   const query = useQuery({
     queryKey: balancerQueryKeys.tournamentSummary(tournamentId),
     queryFn: () => balancerAdminService.getTournamentSummary(tournamentId as number),
