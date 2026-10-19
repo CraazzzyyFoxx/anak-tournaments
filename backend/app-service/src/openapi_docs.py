@@ -137,7 +137,8 @@ DOCS: dict[str, dict] = {
             "optional identity may view it. Returns a per-character head-to-head comparison for the given user "
             "against others in the required `discipline`, resolved against the `workspace_id` workspace's division "
             "grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or "
-            "map id of another game is a 404."
+            "map id of another game is a 404; a `stats` code the game does not declare as a character stat is a 422 "
+            "`stat_not_declared`."
         ),
     },
     "rpc.app.users.by_name": {

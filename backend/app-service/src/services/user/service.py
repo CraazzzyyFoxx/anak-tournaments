@@ -7,6 +7,7 @@ from statistics import mean
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import (
@@ -997,10 +998,23 @@ class UserService(DisciplineQueries):
         grid: DivisionGrid,
         workspace_id: int | None = None,
     ) -> schemas.UserCharacterCompareResponse:
+        # A character comparison reads player facts: only the game's declared non-team stat codes are comparable.
+        declared = {d.code for d in DISCIPLINES[self.discipline].stat_defs if d.group != "team"}
+        unknown = sorted(set(params.stats) - declared)
+        if unknown:
+            raise errors.ApiHTTPException(
+                status_code=422,
+                detail=[
+                    errors.ApiExc(
+                        code="stat_not_declared",
+                        msg=f"{self.discipline} declares no comparable character stat {', '.join(unknown)}",
+                    )
+                ],
+            )
         requested_stats = {stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed}
         if not requested_stats:
             requested_stats = set(DEFAULT_HERO_COMPARE_STATS)
-        stats_key = ",".join(sorted(stat.value for stat in requested_stats))
+        stats_key = ",".join(sorted(requested_stats))
         is_cohort = params.baseline == "cohort"
         return await self._get_hero_compare_cached(
             session,

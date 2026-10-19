@@ -179,6 +179,28 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
 
         compute.assert_awaited_once()
 
+    async def test_wire_stat_codes_are_the_games_declared_character_stats(self) -> None:
+        """Codes arrive as plain strings: declared ones are read, a team stat or an undeclared code is a 422."""
+        compute = AsyncMock(return_value=object())
+        wire = schemas.UserCharacterCompareParams(baseline="global", stats=["eliminations", "deaths"])
+        with patch.object(users, "get_hero_compare", compute):
+            await users.get_hero_compare_cached(object(), 202, wire, grid=_grid())
+            self.assertEqual(
+                [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations],
+                sorted(compute.await_args.args[2].stats),
+            )
+            for service, stats in (
+                (users, ["score"]),
+                (users, ["eliminations", "nope"]),
+                (flows.UserService.of("lol"), ["eliminations"]),
+            ):
+                params = schemas.UserCharacterCompareParams(baseline="global", stats=stats)
+                with self.assertRaises(flows.errors.ApiHTTPException) as raised:
+                    await service.get_hero_compare_cached(object(), 202, params, grid=_grid())
+                self.assertEqual(422, raised.exception.status_code)
+                self.assertEqual("stat_not_declared", raised.exception.detail[0]["code"])
+        compute.assert_awaited_once()
+
     async def test_stampede_lock_computes_identical_request_once(self) -> None:
         entered = asyncio.Event()
         release = asyncio.Event()
