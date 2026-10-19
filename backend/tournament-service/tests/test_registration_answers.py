@@ -44,11 +44,14 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
+from src.schemas.admin.balancer import BalancerRegistrationUpdateRequest  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
 from src.schemas.registration_build import _public_rosters  # noqa: E402
 from src.services.registration.answers import answer_service  # noqa: E402
+from src.services.registration.lifecycle import lifecycle_service  # noqa: E402
 from src.services.registration.service import registration_service  # noqa: E402
 
 
@@ -875,6 +878,104 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
             await db_session.commit()
 
     assert asyncio.run(_run()) == [(slugs[0], 1), (slugs[1], 2)]
+
+
+def test_the_player_sheet_patch_round_trips_a_roles_character_picks(db_session) -> None:
+    """The balancer player sheet re-sends each role's saved picks as ``top_characters`` (the native spelling it
+    read them under). The organizer receiver rebuilds the pick list from that key after clearing it, so a patch
+    spelled ``top_heroes`` -- the persisted form-answer spelling -- would silently delete every saved pick."""
+    suffix = uuid.uuid4().hex[:8]
+    slugs = [f"hero-{suffix}-{index}" for index in range(2)]
+
+    async def _picks(registration_id: int) -> list[str]:
+        return list(
+            (
+                await db_session.scalars(
+                    sa.select(models.CatalogEntity.slug)
+                    .join(
+                        models.BalancerRegistrationRoleEntity,
+                        models.BalancerRegistrationRoleEntity.entity_id == models.CatalogEntity.id,
+                    )
+                    .join(
+                        models.BalancerRegistrationRole,
+                        models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
+                    )
+                    .where(models.BalancerRegistrationRole.registration_id == registration_id)
+                    .order_by(models.BalancerRegistrationRoleEntity.priority)
+                )
+            ).all()
+        )
+
+    def _patch(spelling: str) -> BalancerRegistrationUpdateRequest:
+        # The wire body `buildRegistrationUpdateFromPlayerPayload` emits for a rated tank that keeps its picks.
+        role = {
+            "role": {"dimension": "player_role", "role": "tank"},
+            "priority": 0,
+            "is_primary": True,
+            "rank_value": 3100,
+            "is_active": True,
+            spelling: list(reversed(slugs)),
+        }
+        return BalancerRegistrationUpdateRequest.model_validate({"roles": [role]})
+
+    async def _run() -> tuple[list[str], list[str], list[str]]:
+        await project_disciplines(db_session)
+        schema = _heroes_schema()
+        seeded = await _seed(db_session, schema=schema)
+        db_session.add_all(
+            models.CatalogEntity(
+                discipline="overwatch", kind="character", slug=slug, name=slug, image_path="x", attrs={"class": "tank"}
+            )
+            for slug in slugs
+        )
+        await db_session.commit()
+        try:
+            await registration_service.submit_public_registration(
+                db_session,
+                tournament_id=seeded["tournament_id"],
+                auth_user=seeded["auth_user"],
+                body=RegistrationSubmit(
+                    form_version_id=seeded["version_id"],
+                    answers={
+                        "identity_battlenet": [f"R{suffix}#1234"],
+                        "roles": [{"role": "tank", "is_primary": True, "top_heroes": slugs}],
+                    },
+                ),
+            )
+            registration = await registration_service.get_registration(
+                db_session, seeded["tournament_id"], seeded["auth_user"].id
+            )
+            before = await _picks(registration.id)
+
+            async def patch(body: BalancerRegistrationUpdateRequest) -> None:
+                await lifecycle_service.update_registration_profile(
+                    db_session,
+                    registration.id,
+                    display_name=body.display_name,
+                    admin_notes=body.admin_notes,
+                    answers=body.answers,
+                    status_value=body.status,
+                    balancer_status_value=body.balancer_status,
+                    roles=[role.model_dump() for role in body.roles or []],
+                )
+
+            await patch(_patch("top_characters"))
+            kept = await _picks(registration.id)
+            await patch(_patch("top_heroes"))
+            return before, kept, await _picks(registration.id)
+        finally:
+            await db_session.rollback()
+            await _drop(db_session, seeded["workspace_id"])
+            await db_session.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
+            await db_session.commit()
+
+    before, kept, stale_spelling = asyncio.run(_run())
+
+    assert before == slugs
+    # The native spelling persists the picks the sheet sent, in the order it sent them.
+    assert kept == list(reversed(slugs))
+    # The persisted-form spelling is not part of this receiver's contract: it carries no picks at all.
+    assert stale_spelling == []
 
 
 def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_session) -> None:
