@@ -41,8 +41,9 @@ SCAN_DIRS = ("backend", "frontend/src", "gateway")
 ENTRYPOINTS = re.compile(r"backend/shared/disciplines/__init__\.py|frontend/src/disciplines/registry/[^/]+\.ts")
 MODULE_DIR = re.compile(r"(?:backend/shared/disciplines|frontend/src/disciplines|frontend/public/disciplines)/([^/]+)/")
 SERVICE_ROOT = re.compile(r"backend/[^/]+-service/(?:src|scripts)/")
-#: Test files and their support: ``*.test.ts(x)``, ``*.behavior.test.tsx``, behaviour harnesses and fixtures.
-TS_TEST = re.compile(r"\.(?:test|spec|behavior|fixture)\.")
+#: Test files, exactly as the zone gate's exemption: ``*.test.ts(x)`` (``*.behavior.test.tsx`` included). Shared test
+#: support is the ``frontend/src/test/`` root; harnesses and fixtures elsewhere are runtime-scanned.
+TS_TEST = re.compile(r"\.test\.tsx?$")
 
 ROLE_STOP = frozenset({"top", "mid", "bot", "position", "Top", "Mid", "Bot", "Position"})
 STAT_STOP = frozenset({"score", "deaths", "assists", "kills", "kill", "kd", "kda", "performance"})
@@ -170,13 +171,37 @@ _REGEX_KEYWORDS = frozenset(
 _WORD = re.compile(r"[A-Za-z0-9_$]+")
 
 
+_ESCAPE = re.compile(r"\\(u\{[0-9A-Fa-f]+\}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|x[0-9A-Fa-f]{2}|[0-7]{1,3}|\r?\n|.)", re.S)
+_SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v"}
+
+
+def _escape_value(match: re.Match[str]) -> str:
+    body = match.group(1)
+    if body[0] in "uUx" and len(body) > 1:
+        point = int(body.strip("uUx{}"), 16)
+        return chr(point) if point <= 0x10FFFF else match.group()
+    if body[0] in "01234567":
+        return chr(int(body, 8))
+    if body[0] in "\r\n":
+        return ""  # a line continuation
+    return _SIMPLE_ESCAPES.get(body, body)
+
+
+def _unescape(raw: str) -> str:
+    """The string value of a TS/Go literal body: ``"\\u006fverwatch"`` is ``overwatch``, not a spelling that evades."""
+    text = _ESCAPE.sub(_escape_value, raw)
+    try:  # join UTF-16 surrogate pairs (``\\uD83D\\uDE00``) into their code point
+        return text.encode("utf-16", "surrogatepass").decode("utf-16")
+    except UnicodeDecodeError:
+        return text
+
+
 def _quoted(src: str, i: int) -> tuple[str, int]:
-    """The body of the ``'``/``"`` string opening at ``i`` and the index after it; ends at the line (JSX text)."""
-    quote, out, i = src[i], [], i + 1
+    """The value of the ``'``/``"`` string opening at ``i`` and the index after it; ends at the line (JSX text)."""
+    quote, start, i = src[i], i + 1, i + 1
     while i < len(src) and src[i] not in (quote, "\n"):
-        out.append(src[i : i + 2] if src[i] == "\\" else src[i])
         i += 2 if src[i] == "\\" else 1
-    return "".join(out), i + 1
+    return _unescape(src[start:i]), i + 1
 
 
 def _js_literals(source: str) -> Iterator[Literal]:
@@ -225,16 +250,16 @@ def _js_literals(source: str) -> Iterator[Literal]:
         start, chunks, buf, subs, i = i, [], [], False, i + 1
         while i < n and src[i] != "`":
             if src[i] == "\\":
-                buf.append(src[i + 1 : i + 2] if src[i + 1 : i + 2] in ("`", "$") else src[i : i + 2])
+                buf.append(src[i : i + 2])
                 i += 2
             elif src.startswith("${", i):
-                chunks.append("".join(buf))
+                chunks.append(_unescape("".join(buf)))
                 buf, subs = [], True
                 i = code(i + 2, True)
             else:
                 buf.append(src[i])
                 i += 1
-        chunks.append("".join(buf))
+        chunks.append(_unescape("".join(buf)))
         found.append(Literal(start, tuple(chunks), not subs))
         return i + 1
 
@@ -287,7 +312,7 @@ def language(path: str) -> str | None:
     if path.startswith("frontend/src/"):
         if path.startswith(("frontend/src/i18n/", "frontend/src/test/")) or ".generated." in name:
             return None
-        if "/__tests__/" in path or "/__fixtures__/" in path or TS_TEST.search(name):
+        if TS_TEST.search(name):
             return None
         if name.endswith((".ts", ".tsx")):
             return "ts"

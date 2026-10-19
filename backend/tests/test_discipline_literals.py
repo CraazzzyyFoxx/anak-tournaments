@@ -49,6 +49,19 @@ def test_template_and_f_string_chunks_do_not_evade_contains_and_prefix_rules() -
     assert found(CORE_TS, "const fixed = `tank`;") == [("role-vocabulary", "tank")]
 
 
+def test_escaped_spellings_are_decoded_before_matching() -> None:
+    assert found(CORE_TS, 'const game = requested ?? "\\u006fverwatch";') == [("discipline-code", "overwatch")]
+    assert found(CORE_TS, "const role = '\\u0064amage';") == [("role-vocabulary", "damage")]
+    assert found(CORE_TS, 'const role = "\\u{74}ank" + `\\x73upport`;') == [
+        ("role-vocabulary", "tank"),
+        ("role-vocabulary", "support"),
+    ]
+    assert found("gateway/internal/app/x.go", 'game := "\\x6fverwatch"') == [("discipline-code", "overwatch")]
+    # Offsets are the token's own: the finding still names the source line.
+    line = d99.scan_text(CORE_TS, 'const a = 1;\nconst b = "\\u006fverwatch";', RULES, d99.DISCIPLINES)[0].line
+    assert line == 2
+
+
 def test_comments_docstrings_and_regex_literals_are_not_literals() -> None:
     ts = '// overwatch default\n/* "damage" */\nconst re = /overwatch/;\nconst n = a / b / c;\n'
     assert found(CORE_TS, ts) == []
@@ -89,6 +102,14 @@ def test_tests_migrations_and_generated_artifacts_are_out_of_scope_by_root() -> 
     ):
         assert d99.language(path) is None, path
     assert d99.language(CORE_TS) == "ts"
+    # Exactly *.test.ts(x) and src/test/**: harnesses, fixtures and spec-named files are runtime code.
+    for path in (
+        "frontend/src/app/x/harness.behavior.tsx",
+        "frontend/src/app/x/owner.fixture.ts",
+        "frontend/src/lib/session.spec.ts",
+        "frontend/src/app/x/__fixtures__/ladder.ts",
+    ):
+        assert d99.language(path) == "ts", path
 
 
 def _finding(token: str = "overwatch", line: str = 'x = "overwatch"') -> d99.Finding:

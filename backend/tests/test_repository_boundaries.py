@@ -88,6 +88,20 @@ PENDING_REPOSITORY_MIGRATION = {
     "identity-service/src/services/sessions.py",
     "tournament-service/src/services/encounter/pick_ban_session.py",
     "tournament-service/src/services/scrim/service.py",
+    # Repository debt that predates P7 (all six were direct writers at its base 64456d7c7); owner: P9 repository
+    # migration. Each line goes when its repository method lands.
+    # A measurement script's fixture teardown: bulk sa.delete of the rows it seeded.
+    "balancer-service/scripts/measure_draft_snapshot.py",
+    # Admin reads load a tournament/match by id with session.get; owed TournamentRepository/StatsMatchRepository.get.
+    "stats-service/src/services/achievement/admin_reads.py",
+    # Standing pins are replaced wholesale (sa.delete + add_all); owed a StandingPinRepository.replace.
+    "tournament-service/src/services/admin/standing.py",
+    # Pick/ban entries and submissions are staged with session.add; owed PickBanEntry/Submission repository creates.
+    "tournament-service/src/services/encounter/pick_ban_action.py",
+    # The pre-game room journal stages one row per organizer action; owed a journal repository append.
+    "tournament-service/src/services/encounter/room_journal.py",
+    # Swiss byes and stopped scopes are toggled with add/sa.delete; owed SwissBye/SwissStoppedScope repositories.
+    "shared/services/bracket/swiss_state.py",
 }
 
 _EXEMPT = APPROVED_DIRECT_WRITE_FILES | PENDING_REPOSITORY_MIGRATION

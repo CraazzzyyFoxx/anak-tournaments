@@ -84,13 +84,15 @@ src/disciplines/<code>/<family>.ts   a module's entrypoint for that family (no <
 count; `import type` is erased like everywhere else in the gate.
 
 **Z7 — only `registry/<family>.ts` imports a module, and only its `<code>/<family>.ts` entrypoint.** A module
-never imports another module or anything under `src/app` (Z2/Z3 already forbid routes and
-`components/admin`; Z7 adds `app/api|actions|bff`). Shared non-route code (`lib`, `components/*`, `services`,
-`hooks`) is fine.
+never imports another module or anything under `src/app` — routes, `app/api|actions|bff` and root entries
+such as `app/not-found` alike (`components/admin` is Z3's). Shared non-route code (`lib`, `components/*`,
+`services`, `hooks`) is fine.
 
-Test code — `*.test.ts(x)`, behaviour tests and `src/test/**` — is exempt from "who may import a module":
-parity oracles reproduce a module's pure helpers (`src/test/native-ladder.ts`, the users parity readers).
-Runtime code never is. `src/disciplines/zone-boundaries.test.ts` runs the gate on a built tree.
+Test code — exactly `*.test.ts(x)` (so `*.behavior.test.tsx` too) and `src/test/**` — is exempt from "who may
+import a module": parity oracles reproduce a module's pure helpers (`src/test/native-ladder.ts`, the users
+parity readers). Runtime code never is, and neither are harnesses, fixtures or `*.spec`/`*.behavior.ts` files
+outside `src/test/`. The D99 literal gate excludes exactly the same files.
+`src/disciplines/zone-boundaries.test.ts` runs the gate on a built tree.
 
 The string side of the same boundary — a game code, role, catalog label, identity or stat token written
 outside its module — is the backend's D99 literal gate (`backend/scripts/check_discipline_literals.py`, run by
