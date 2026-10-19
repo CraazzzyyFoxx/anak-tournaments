@@ -37,8 +37,8 @@ export function useNativeRankCollector(
   const router = useRouter();
   const pathname = usePathname();
   const explicit = searchParams?.get(DISCIPLINE_PARAM) ?? null;
-  const stored = useWorkspaceStore((state) => state.browsingDiscipline);
-  const setBrowsingDiscipline = useWorkspaceStore((state) => state.setBrowsingDiscipline);
+  const stored = useWorkspaceStore((state) => state.gameScope);
+  const setGameScope = useWorkspaceStore((state) => state.setGameScope);
   const resolved = disciplines.data
     ? resolveDiscipline({
         ownerDiscipline: ownerDiscipline ?? null,
@@ -53,7 +53,7 @@ export function useNativeRankCollector(
       ? (disciplines.data?.find((entry) => entry.code === resolved.code) ?? null)
       : null;
   const select = (value: string) => {
-    setBrowsingDiscipline(value);
+    setGameScope(value);
     const next = new URLSearchParams(searchParams?.toString() ?? "");
     next.set(DISCIPLINE_PARAM, value);
     router.push(`${pathname}?${next.toString()}`, { scroll: false });

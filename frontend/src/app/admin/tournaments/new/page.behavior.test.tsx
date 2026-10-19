@@ -60,10 +60,10 @@ vi.mock("@/stores/workspace.store", () => ({
     selector: (state: {
       currentWorkspaceId: number;
       workspaces: unknown[];
-      browsingDiscipline: string | null;
-      setBrowsingDiscipline: () => void;
+      gameScope: string;
+      setGameScope: () => void;
     }) => unknown
-  ) => selector({ currentWorkspaceId: 1, workspaces: [], browsingDiscipline: null, setBrowsingDiscipline: () => {} })
+  ) => selector({ currentWorkspaceId: 1, workspaces: [], gameScope: "all", setGameScope: () => {} })
 }));
 vi.mock("@/services/workspace.service", () => ({
   default: { getDivisionGrids: vi.fn().mockResolvedValue([]) }

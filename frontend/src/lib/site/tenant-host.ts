@@ -2,9 +2,11 @@ import { cookies, headers } from "next/headers";
 import { STATS_SCOPE_COOKIE, type StatsScope } from "@/lib/site/stats-scope";
 import workspaceService from "@/services/workspace.service";
 import {
+  ALL_DISCIPLINES,
   DISCIPLINE_COOKIE,
+  LAST_GAME_COOKIE,
   resolveWorkspaceAxis,
-  type BrowsingDiscipline,
+  type GameScope,
   type WorkspaceAxis
 } from "@/lib/site/discipline-scope";
 import { LEGACY_WORKSPACE_COOKIE, WORKSPACE_COOKIE } from "@/stores/workspace.store";
@@ -39,14 +41,14 @@ export async function resolveStatsScope(): Promise<StatsScope> {
 }
 
 /**
- * The server half of the browsing-discipline inputs: the saved choice (cookie) and
- * the workspace axis its metadata is read for — the tenant host's workspace on a
- * tenant host, otherwise the visitor's viewing scope. Server loaders feed this to
- * the same `resolveDiscipline` the client runs, so hydration agrees with SSR.
- * Server-only.
+ * The server half of the game-scope inputs: the saved scope and last game (cookies) and the
+ * workspace axis the games are read for — the tenant host's workspace on a tenant host, otherwise
+ * the visitor's viewing scope. Server loaders feed this to the same resolver the client runs, so
+ * hydration agrees with SSR. Server-only.
  */
 export interface ServerDisciplineScope {
-  stored: BrowsingDiscipline;
+  stored: GameScope;
+  lastGame: string | null;
   axis: WorkspaceAxis;
   /** The tenant host's workspace, so a client that has not locked its store yet still reads that axis. */
   hostLockedWorkspaceId: number | null;
@@ -59,7 +61,8 @@ export async function resolveServerDisciplineScope(): Promise<ServerDisciplineSc
     const hostLockedWorkspaceId = h.get("x-owt-host-mode") === "tenant" && hostId > 0 ? hostId : null;
     const workspaceCookie = Number(store.get(WORKSPACE_COOKIE)?.value ?? store.get(LEGACY_WORKSPACE_COOKIE)?.value);
     return {
-      stored: store.get(DISCIPLINE_COOKIE)?.value ?? null,
+      stored: store.get(DISCIPLINE_COOKIE)?.value || ALL_DISCIPLINES,
+      lastGame: store.get(LAST_GAME_COOKIE)?.value || null,
       hostLockedWorkspaceId,
       axis: resolveWorkspaceAxis({
         hostLockedWorkspaceId,
@@ -69,7 +72,7 @@ export async function resolveServerDisciplineScope(): Promise<ServerDisciplineSc
       })
     };
   } catch {
-    return { stored: null, axis: "all", hostLockedWorkspaceId: null };
+    return { stored: ALL_DISCIPLINES, lastGame: null, axis: "all", hostLockedWorkspaceId: null };
   }
 }
 

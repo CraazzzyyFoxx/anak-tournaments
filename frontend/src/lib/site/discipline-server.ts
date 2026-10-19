@@ -14,9 +14,9 @@ import disciplineService from "@/services/discipline.service";
  * Server-only.
  */
 export async function loadBrowsingDisciplineInit(): Promise<BrowsingDisciplineInit> {
-  const scope = await resolveServerDisciplineScope();
-  const disciplines = await disciplineService.list(scope.axis).catch(() => null);
-  return { ...scope, disciplines };
+  const { stored, axis, hostLockedWorkspaceId } = await resolveServerDisciplineScope();
+  const disciplines = await disciplineService.list(axis).catch(() => null);
+  return { stored, axis, hostLockedWorkspaceId, disciplines };
 }
 
 /**

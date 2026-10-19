@@ -17,7 +17,7 @@ vi.mock("next/headers", () => ({
   }),
 }));
 
-const { isTenantHost, resolveStatsScope } = await import("./tenant-host");
+const { isTenantHost, resolveServerDisciplineScope, resolveStatsScope } = await import("./tenant-host");
 
 describe("isTenantHost", () => {
   beforeEach(() => {
@@ -55,5 +55,44 @@ describe("resolveStatsScope", () => {
     requestHeaders["x-owt-host-mode"] = "tenant";
     requestCookies["owt-stats-scope"] = "all";
     expect(await resolveStatsScope()).toBe("workspace");
+  });
+});
+
+describe("resolveServerDisciplineScope", () => {
+  beforeEach(() => {
+    requestHeaders = {};
+    requestCookies = {};
+  });
+
+  it("reads the saved scope and the last game from their cookies; absent is all games and no last game", async () => {
+    expect(await resolveServerDisciplineScope()).toEqual({
+      stored: "all",
+      lastGame: null,
+      axis: "all",
+      hostLockedWorkspaceId: null
+    });
+
+    requestCookies["owt-discipline"] = "lol";
+    requestCookies["owt-last-game"] = "overwatch";
+    requestCookies["owt-stats-scope"] = "workspace";
+    requestCookies["owt-workspace-id"] = "4";
+    expect(await resolveServerDisciplineScope()).toEqual({
+      stored: "lol",
+      lastGame: "overwatch",
+      axis: 4,
+      hostLockedWorkspaceId: null
+    });
+  });
+
+  it("reads a tenant host's own workspace and keeps the visitor's saved game there", async () => {
+    requestHeaders["x-owt-host-mode"] = "tenant";
+    requestHeaders["x-owt-workspace-id"] = "9";
+    requestCookies["owt-discipline"] = "lol";
+    expect(await resolveServerDisciplineScope()).toEqual({
+      stored: "lol",
+      lastGame: null,
+      axis: 9,
+      hostLockedWorkspaceId: 9
+    });
   });
 });

@@ -102,7 +102,7 @@ beforeEach(() => {
     removeListener: () => {},
     dispatchEvent: () => false
   })) as unknown as typeof window.matchMedia;
-  useWorkspaceStore.setState({ browsingDiscipline: null, hostLockedWorkspaceId: null, currentWorkspaceId: null });
+  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null });
   mocks.getEntity.mockReset();
   mocks.listEntities.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   mocks.heroCompare.mockReset().mockResolvedValue({ metrics: [], subject: { name: "A" }, baseline: { sample_size: 0 } });

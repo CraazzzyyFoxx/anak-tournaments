@@ -75,7 +75,7 @@ beforeEach(() => {
     currentWorkspaceId: 7,
     statsScope: "workspace",
     hostLockedWorkspaceId: null,
-    browsingDiscipline: null
+    gameScope: "all"
   });
 });
 
@@ -91,12 +91,12 @@ describe("the selected achievement game", () => {
   });
 
   it("lets a valid explicit URL win over the saved choice without rewriting the saved choice", async () => {
-    useWorkspaceStore.setState({ browsingDiscipline: "overwatch" });
+    useWorkspaceStore.setState({ gameScope: "overwatch" });
     navigation.reset("/admin/achievements?discipline=lol");
     await mount();
 
     expect(latest.resolved).toEqual({ kind: "concrete", code: "lol", source: "url" });
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("overwatch");
+    expect(useWorkspaceStore.getState().gameScope).toBe("overwatch");
     expect(navigation.replaces).toEqual([]);
   });
 
@@ -123,7 +123,7 @@ describe("the selected achievement game", () => {
     await act(async () => latest.select("lol"));
 
     expect(latest.discipline).toBe("lol");
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
     expect(navigation.pushes).toEqual(["/admin/achievements?discipline=lol"]);
     expect(document.cookie).toContain("owt-discipline=lol");
 
@@ -133,15 +133,15 @@ describe("the selected achievement game", () => {
     expect(navigation.current()).toBe("/admin/achievements?discipline=overwatch");
   });
 
-  it("resolves a saved choice from the preference and drops one the workspace does not enable", async () => {
-    useWorkspaceStore.setState({ browsingDiscipline: "lol" });
+  it("resolves a saved choice from the preference and keeps it when the workspace does not enable it", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol" });
     await mount();
     // Once the URL carries it (replace, not a new entry) the same choice reads as the URL's.
     expect(latest.resolved).toEqual({ kind: "concrete", code: "lol", source: "url" });
     expect(navigation.replaces).toEqual(["/admin/achievements?discipline=lol"]);
 
     await act(async () => useWorkspaceStore.getState().setCurrentWorkspace(8));
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
   });
 
   it("is empty, with no game to work on, when nothing is enabled", async () => {

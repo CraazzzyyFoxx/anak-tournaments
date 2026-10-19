@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { MAX_AVATAR_BYTES } from "@/lib/uploads";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -85,6 +86,7 @@ export default function AdminTeamWorkspacePage() {
 
   const team = teamQuery.data;
   const workspaceId = team?.tournament?.workspace_id ?? null;
+  useEntityWorkspace(workspaceId, team?.tournament?.discipline);
   const canUpdateTeam = canAccessPermission("team.update", workspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", workspaceId);
   const canCreatePlayer = canAccessPermission("player.create", workspaceId);

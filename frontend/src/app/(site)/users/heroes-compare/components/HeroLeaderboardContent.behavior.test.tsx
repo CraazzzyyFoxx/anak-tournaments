@@ -79,7 +79,7 @@ async function mount(url: string, keepClient = false) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ browsingDiscipline: null, hostLockedWorkspaceId: null, currentWorkspaceId: null });
+  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null });
   mocks.getEntity.mockReset();
   mocks.listEntities.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   mocks.leaderboard.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });

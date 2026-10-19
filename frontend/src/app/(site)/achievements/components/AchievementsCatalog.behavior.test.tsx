@@ -121,7 +121,7 @@ beforeEach(() => {
     currentWorkspaceId: 1,
     statsScope: "all",
     hostLockedWorkspaceId: null,
-    browsingDiscipline: null,
+    gameScope: "all",
   });
 });
 
@@ -152,7 +152,7 @@ describe("the public achievement catalogue is one game at a time", () => {
   });
 
   it("prefers the saved game when the URL names none, but never over the URL", async () => {
-    useWorkspaceStore.setState({ browsingDiscipline: "lol" });
+    useWorkspaceStore.setState({ gameScope: "lol" });
     await mount();
     expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "lol", expect.anything());
 
@@ -162,7 +162,7 @@ describe("the public achievement catalogue is one game at a time", () => {
     navigation.reset("/achievements?discipline=overwatch");
     await mount();
     expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "overwatch", expect.anything());
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
   });
 
   it("no longer reads the removed ?game= parameter", async () => {

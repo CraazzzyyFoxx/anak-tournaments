@@ -69,7 +69,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      <EntityWorkspace workspaceId={match.encounter?.tournament?.workspace_id} />
+      <EntityWorkspace workspaceId={match.encounter?.tournament?.workspace_id} discipline={match.encounter?.discipline} />
       <Card>
         <CardHeader>
           <div className="flex flex-row gap-8 items-center">

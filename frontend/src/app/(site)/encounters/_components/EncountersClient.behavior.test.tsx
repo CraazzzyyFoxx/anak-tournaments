@@ -159,7 +159,7 @@ beforeEach(() => {
     currentWorkspaceId: 1,
     statsScope: "all",
     hostLockedWorkspaceId: null,
-    browsingDiscipline: null
+    gameScope: "all"
   });
 });
 

@@ -241,7 +241,7 @@ const EncounterPage = async (props: {
 
   return (
     <div className={styles.surface}>
-      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} />
+      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} discipline={encounter.discipline} />
       <HydrationBoundary state={dehydrate(queryClient)}>
         <EncounterHeader
           encounter={encounter}
@@ -434,7 +434,7 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
 
   return (
     <div className={styles.surface}>
-      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} />
+      <EntityWorkspace workspaceId={encounter.tournament?.workspace_id} discipline={encounter.discipline} />
       <PageHero
         align="start"
         titleClassName="text-[clamp(1.35rem,2.4vw,2rem)]"

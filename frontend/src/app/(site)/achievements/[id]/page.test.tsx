@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import AchievementConditionsCard from "@/app/(site)/achievements/[id]/components/AchievementConditionsCard";
+import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 
 import AchievementPage from "./page";
 
@@ -17,7 +18,7 @@ vi.mock("@/app/(site)/achievements/[id]/components/AchievementDetailHeader", () 
 describe("achievement detail page", () => {
   it("names condition roles on the tenant host's own workspace axis, never `all`", async () => {
     host.resolveStatsScope.mockResolvedValue("all");
-    host.resolveServerDisciplineScope.mockResolvedValue({ axis: 9, hostLockedWorkspaceId: 9, stored: null });
+    host.resolveServerDisciplineScope.mockResolvedValue({ axis: 9, hostLockedWorkspaceId: 9, stored: "all", lastGame: null });
 
     const page = await AchievementPage({ params: Promise.resolve({ id: "3" }) });
     const card = (page.props.children as { type: unknown; props: { axis: unknown } }[]).find(
@@ -25,5 +26,17 @@ describe("achievement detail page", () => {
     );
 
     expect(card?.props.axis).toBe(9);
+  });
+
+  it("locks the scope pill to the achievement's own game", async () => {
+    host.resolveStatsScope.mockResolvedValue("all");
+    host.resolveServerDisciplineScope.mockResolvedValue({ axis: "all", hostLockedWorkspaceId: null, stored: "all", lastGame: null });
+
+    const page = await AchievementPage({ params: Promise.resolve({ id: "3" }) });
+    const owner = (page.props.children as { type: unknown; props: { discipline?: unknown } }[]).find(
+      (child) => child.type === EntityWorkspace
+    );
+
+    expect(owner?.props.discipline).toBe("overwatch");
   });
 });

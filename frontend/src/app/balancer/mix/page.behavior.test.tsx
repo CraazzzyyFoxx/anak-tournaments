@@ -108,7 +108,7 @@ beforeEach(() => {
     workspaces: [{ id: 1, name: "OWT", disciplines_enabled: ["overwatch", "lol"] }] as never,
     statsScope: "workspace",
     hostLockedWorkspaceId: null,
-    browsingDiscipline: null,
+    gameScope: "all",
     isLoading: false
   });
 });

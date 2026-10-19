@@ -129,7 +129,7 @@ beforeEach(() => {
     workspaces: [workspace(7, ["overwatch", "lol"]), workspace(8, ["lol"])],
     currentWorkspaceId: 7,
     statsScope: "workspace",
-    browsingDiscipline: null,
+    gameScope: "all",
     hostLockedWorkspaceId: null,
     entityWorkspaceId: null,
   });

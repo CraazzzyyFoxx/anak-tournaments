@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { activeGridVersionId } from "@/lib/divisions/grid";
 import workspaceService from "@/services/workspace.service";
@@ -72,6 +73,9 @@ export default function DivisionDraftEditorPage() {
   const activeVersionId = activeGridVersionId(workspace, discipline);
   const metadataQuery = useDisciplineMetadata(workspaceId ?? "all", discipline);
   const metadata = metadataQuery.data;
+  // The pinned grid fixes the game: the admin scope pill shows it locked (spec §5, R5). Until the
+  // version or grid loads `discipline` is null and nothing is locked.
+  useEntityWorkspace(workspaceId, discipline);
   // A declared native ladder that carries no ranks is invalid metadata, not "no ladder": the editor
   // would otherwise drop every stored native link on save.
   const ladder = useMemo(

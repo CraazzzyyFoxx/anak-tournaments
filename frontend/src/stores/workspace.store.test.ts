@@ -1,4 +1,5 @@
 /** @vitest-environment happy-dom */
+import Cookies from "js-cookie";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthProfile } from "@/stores/auth-profile.store";
@@ -121,9 +122,11 @@ describe("viewing scope and opened entity", () => {
 // after the aqt->owt rename, which would make the client scope disagree with
 // the server's (`getServerWorkspaceId` reads the same two names).
 describe("workspace store cookie hydration", () => {
+  // `Cookies.remove` writes an already-expired cookie; happy-dom keeps a `Max-Age=0` write as an
+  // empty cookie until the clock ticks, which would leak into the next test's cookie string.
   afterEach(() => {
-    document.cookie = "owt-workspace-id=; Max-Age=0; path=/";
-    document.cookie = "aqt-workspace-id=; Max-Age=0; path=/";
+    Cookies.remove("owt-workspace-id");
+    Cookies.remove("aqt-workspace-id");
   });
 
   // Dynamic on purpose: hydration happens at module evaluation, so each case
@@ -156,98 +159,94 @@ describe("workspace store cookie hydration", () => {
   });
 });
 
-describe("browsing discipline preference", () => {
+describe("game scope", () => {
   const withWorkspaces = (disciplines: string[][]) =>
     disciplines.map((enabled, index) => ({ ...createWorkspace(index + 1), disciplines_enabled: enabled }));
 
   afterEach(() => {
-    document.cookie = "owt-discipline=; Max-Age=0; path=/";
-    document.cookie = "owt-workspace-id=; Max-Age=0; path=/";
-    document.cookie = "owt-stats-scope=; Max-Age=0; path=/";
+    for (const name of ["owt-discipline", "owt-last-game", "owt-workspace-id", "owt-stats-scope"]) {
+      Cookies.remove(name);
+    }
     useWorkspaceStore.setState({
       workspaces: [],
       currentWorkspaceId: null,
       statsScope: "all",
-      browsingDiscipline: null,
+      gameScope: "all",
+      lastGame: null,
       entityWorkspaceId: null,
+      entityDiscipline: null,
       hostLockedWorkspaceId: null
     });
   });
 
-  it("writes and clears its own cookie without touching the workspace cookies", () => {
-    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
+  it("saves a game in its own cookie and forgets it for all games", () => {
+    useWorkspaceStore.getState().setGameScope("lol");
     expect(document.cookie).toContain("owt-discipline=lol");
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
 
-    useWorkspaceStore.getState().setBrowsingDiscipline(null);
-    expect(document.cookie).not.toContain("owt-discipline");
+    useWorkspaceStore.getState().setGameScope("all");
+    expect(document.cookie).not.toContain("owt-discipline=");
+    expect(useWorkspaceStore.getState().gameScope).toBe("all");
+    expect(document.cookie).not.toContain("owt-workspace-id");
   });
 
-  it("drops a saved game the newly viewed workspace does not run, and keeps one it does", () => {
+  it("remembers the last picked game in its own cookie, apart from the scope", () => {
+    useWorkspaceStore.getState().setLastGame("lol");
+    expect(document.cookie).toContain("owt-last-game=lol");
+    expect(useWorkspaceStore.getState()).toMatchObject({ lastGame: "lol", gameScope: "all" });
+    expect(document.cookie).not.toContain("owt-discipline=");
+  });
+
+  it("never drops the saved game on a community pick, a scope change or a host lock", () => {
     useWorkspaceStore.setState({
       workspaces: withWorkspaces([["overwatch", "lol"], ["overwatch"]]),
       currentWorkspaceId: 1,
       statsScope: "workspace"
     });
-    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
+    useWorkspaceStore.getState().setGameScope("lol");
 
     useWorkspaceStore.getState().setCurrentWorkspace(2);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
-    expect(document.cookie).not.toContain("owt-discipline");
-
-    useWorkspaceStore.getState().setBrowsingDiscipline("overwatch");
-    useWorkspaceStore.getState().setCurrentWorkspace(1);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("overwatch");
-  });
-
-  it("keeps a saved game across workspaces while the viewing scope is all communities", () => {
-    useWorkspaceStore.setState({
-      workspaces: withWorkspaces([["overwatch", "lol"], ["overwatch"]]),
-      currentWorkspaceId: 1,
-      statsScope: "all"
-    });
-    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
-
-    useWorkspaceStore.getState().setCurrentWorkspace(2);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
-
-    // Narrowing the scope to a workspace without that game is when it stops being valid.
+    useWorkspaceStore.getState().setStatsScope("all");
     useWorkspaceStore.getState().setStatsScope("workspace");
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
+    expect(document.cookie).toContain("owt-discipline=lol");
+
+    useWorkspaceStore.getState().setHostLock(2);
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
+    expect(document.cookie).toContain("owt-discipline=lol");
   });
 
-  it("keeps saved all, and is untouched by an opened owner", () => {
-    useWorkspaceStore.setState({
-      workspaces: withWorkspaces([["overwatch"]]),
-      currentWorkspaceId: 1,
-      statsScope: "workspace"
-    });
-    useWorkspaceStore.getState().setBrowsingDiscipline("all");
-    useWorkspaceStore.getState().setEntityWorkspace(1);
-    useWorkspaceStore.getState().setCurrentWorkspace(1);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("all");
-  });
+  it("holds an opened owner's game at runtime only, never in the scope or a cookie", () => {
+    useWorkspaceStore.getState().setEntityDiscipline("lol");
+    expect(useWorkspaceStore.getState()).toMatchObject({ entityDiscipline: "lol", gameScope: "all", lastGame: null });
+    expect(document.cookie).not.toContain("owt-discipline=");
+    expect(document.cookie).not.toContain("owt-last-game=");
 
-  it("is not host-locked: a tenant host keeps its own saved game, validated against the tenant workspace", () => {
-    useWorkspaceStore.setState({ workspaces: withWorkspaces([["overwatch"]]) });
-    useWorkspaceStore.getState().setBrowsingDiscipline("lol");
-
-    useWorkspaceStore.getState().setHostLock(1);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+    useWorkspaceStore.getState().setEntityDiscipline(null);
+    expect(useWorkspaceStore.getState().entityDiscipline).toBeNull();
   });
 });
 
-describe("browsing discipline hydration", () => {
+describe("game scope hydration", () => {
   afterEach(() => {
-    document.cookie = "owt-discipline=; Max-Age=0; path=/";
+    Cookies.remove("owt-discipline");
+    Cookies.remove("owt-last-game");
   });
 
-  it("hydrates the saved game from its cookie at module load, null without one", async () => {
+  it("hydrates the scope and the last game from their cookies; without them, all games and no last game", async () => {
     vi.resetModules();
-    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState()).toMatchObject({
+      gameScope: "all",
+      lastGame: null,
+      entityDiscipline: null
+    });
 
     document.cookie = "owt-discipline=lol; path=/";
+    document.cookie = "owt-last-game=overwatch; path=/";
     vi.resetModules();
-    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+    expect((await import("@/stores/workspace.store")).useWorkspaceStore.getState()).toMatchObject({
+      gameScope: "lol",
+      lastGame: "overwatch"
+    });
   });
 });

@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import {
-  ALL_DISCIPLINES,
   DISCIPLINE_PARAM,
   disciplineParamOf,
   resolveDiscipline,
@@ -64,8 +63,8 @@ export function useBrowsingDiscipline({
   const storeHostLock = useWorkspaceStore((s) => s.hostLockedWorkspaceId);
   const statsScope = useWorkspaceStore((s) => s.statsScope);
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const storeStored = useWorkspaceStore((s) => s.browsingDiscipline);
-  const setBrowsingDiscipline = useWorkspaceStore((s) => s.setBrowsingDiscipline);
+  const storeStored = useWorkspaceStore((s) => s.gameScope);
+  const setGameScope = useWorkspaceStore((s) => s.setGameScope);
 
   const stored = mounted || !initial ? storeStored : initial.stored;
   const viewed =
@@ -104,23 +103,16 @@ export function useBrowsingDiscipline({
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   }, [urlValue, pathname, router, searchParams]);
 
-  // A saved choice the installed/enabled set cannot honour is dropped, not kept dormant.
-  const storedUsable =
-    stored === null || stored === ALL_DISCIPLINES || disciplines?.some((d) => d.code === stored && d.enabled) !== false;
-  useEffect(() => {
-    if (!storedUsable && mounted) setBrowsingDiscipline(null);
-  }, [storedUsable, mounted, setBrowsingDiscipline]);
-
   const select = useCallback(
     (value: string, options?: { dropParams?: string[] }) => {
-      setBrowsingDiscipline(value);
+      setGameScope(value);
       const next = new URLSearchParams(searchParams.toString());
       next.set(DISCIPLINE_PARAM, value);
       next.delete("page");
       for (const param of options?.dropParams ?? []) next.delete(param);
       router.push(`${pathname}?${next.toString()}`);
     },
-    [pathname, router, searchParams, setBrowsingDiscipline]
+    [pathname, router, searchParams, setGameScope]
   );
 
   return { axis, disciplines, resolved, isError: list.isError, refetch: () => void list.refetch(), select };

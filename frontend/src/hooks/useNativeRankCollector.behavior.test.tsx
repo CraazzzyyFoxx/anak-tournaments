@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 let search = "";
-let preference: string | null = "overwatch";
+let preference = "overwatch";
 
 const caps = (collects: boolean) => ({
   catalog_sync: true,
@@ -43,11 +43,8 @@ vi.mock("@/hooks/useDisciplineMetadata", () => ({
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
-    selector: (state: {
-      browsingDiscipline: string | null;
-      setBrowsingDiscipline: (value: string) => void;
-    }) => unknown
-  ) => selector({ browsingDiscipline: preference, setBrowsingDiscipline: saveChoice })
+    selector: (state: { gameScope: string; setGameScope: (value: string) => void }) => unknown
+  ) => selector({ gameScope: preference, setGameScope: saveChoice })
 }));
 
 import { useNativeRankCollector, type NativeRankCollector } from "./useNativeRankCollector";

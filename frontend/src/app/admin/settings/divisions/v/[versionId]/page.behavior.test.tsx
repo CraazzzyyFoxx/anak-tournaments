@@ -32,6 +32,7 @@ import type {
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import { TEST_LADDER_TIERS } from "../../editor/__fixtures__/test-ladder";
 import DivisionDraftEditorPage from "./page";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -59,20 +60,21 @@ vi.mock("@/hooks/usePermissions", () => ({
   })
 }));
 
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (
-    selector: (state: { currentWorkspaceId: number; getCurrentWorkspace: () => unknown }) => unknown
-  ) =>
-    selector({
-      currentWorkspaceId: 1,
-      getCurrentWorkspace: () => ({
+vi.mock("@/stores/workspace.store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/workspace.store")>();
+  // The real store, seeded: the page's owner game lands where the scope pill reads it.
+  actual.useWorkspaceStore.setState({
+    currentWorkspaceId: 1,
+    getCurrentWorkspace: () =>
+      ({
         id: 1,
         disciplines_enabled: ["overwatch", "lol"],
         default_division_grid_versions: { overwatch: 22, lol: 99 },
         effective_division_grid_versions: {}
-      })
-    })
-}));
+      }) as never
+  });
+  return actual;
+});
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
@@ -360,6 +362,21 @@ describe("Divisions › draft editor", () => {
 
     expect(container.textContent).not.toContain("could not be loaded");
     expect(container.textContent).toContain("v4");
+  });
+
+  it("locks the scope pill to the grid's game while the version is open, and releases it after", async () => {
+    getDivisionGridVersion.mockImplementation(async (id: number) => ({
+      ...version(id, 4, "draft"),
+      discipline: "overwatch"
+    }));
+    await mount();
+    expect(useWorkspaceStore.getState()).toMatchObject({ entityWorkspaceId: 1, entityDiscipline: "overwatch" });
+
+    for (const entry of mounted.splice(0)) {
+      await act(async () => entry.root.unmount());
+      entry.container.remove();
+    }
+    expect(useWorkspaceStore.getState()).toMatchObject({ entityWorkspaceId: null, entityDiscipline: null });
   });
 
   it("opens a draft the caller may not update as read-only", async () => {

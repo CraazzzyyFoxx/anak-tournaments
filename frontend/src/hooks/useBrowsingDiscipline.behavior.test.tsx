@@ -46,7 +46,7 @@ const client = () => new QueryClient({ defaultOptions: { queries: { retry: false
 /** What the server renders for one request: its store never saw the visitor's cookies, only `initial` did. */
 function serverRender(initial: BrowsingDisciplineInit, allowsAll = false, url = "/x", axis?: number | "all") {
   navigation.reset(url);
-  useWorkspaceStore.setState({ browsingDiscipline: null, hostLockedWorkspaceId: null, currentWorkspaceId: null, statsScope: "all" });
+  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null, statsScope: "all" });
   return renderToString(
     <QueryClientProvider client={client()}>
       <Probe initial={initial} allowsAll={allowsAll} axis={axis} />
@@ -63,7 +63,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  useWorkspaceStore.setState({ browsingDiscipline: null });
+  useWorkspaceStore.setState({ gameScope: "all" });
 });
 
 describe("server render of the browsing discipline", () => {
@@ -124,7 +124,7 @@ describe("hydration", () => {
     const html = serverRender(initial);
     navigation.reset("/x");
     // On the client the store is hydrated from the same cookie at creation.
-    useWorkspaceStore.setState({ browsingDiscipline: "lol" });
+    useWorkspaceStore.setState({ gameScope: "lol" });
 
     const container = document.body.appendChild(document.createElement("div"));
     container.innerHTML = html;
@@ -165,12 +165,12 @@ describe("an opened owner's metadata", () => {
   }
 
   it("is read for the owner's workspace and game whatever the visitor browses, and never touches the preference", async () => {
-    useWorkspaceStore.setState({ browsingDiscipline: "lol", statsScope: "all", currentWorkspaceId: 3 });
+    useWorkspaceStore.setState({ gameScope: "lol", statsScope: "all", currentWorkspaceId: 3 });
     const { container } = await mountOwner(7, "overwatch", client());
 
     expect(mocks.metadata).toHaveBeenCalledWith(7, "overwatch", expect.anything());
     expect(container.textContent).toBe(JSON.stringify({ axis: 7, code: "overwatch" }));
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
   });
 
   it("keeps each workspace's metadata in its own cache entry, so a switch cannot show the other's", async () => {

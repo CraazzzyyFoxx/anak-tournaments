@@ -87,7 +87,7 @@ it("drops a workspace's cached installed games once its refreshed record changes
     currentWorkspaceId: 1,
     hostLockedWorkspaceId: null,
     statsScope: "workspace",
-    browsingDiscipline: "lol"
+    gameScope: "lol"
   });
   client = new QueryClient();
   for (const axis of [1, 2, "all"] as const) {
@@ -113,6 +113,6 @@ it("drops a workspace's cached installed games once its refreshed record changes
   expect(invalidated(1)).toBe(true);
   expect(invalidated("all")).toBe(true);
   expect(invalidated(2)).toBe(false);
-  // The saved preference the workspace can no longer honour is dropped with it.
-  expect(useWorkspaceStore.getState().browsingDiscipline).toBeNull();
+  // The saved game is never dropped: the resolver reads it as all games where it is not played (spec §4.2).
+  expect(useWorkspaceStore.getState().gameScope).toBe("lol");
 });

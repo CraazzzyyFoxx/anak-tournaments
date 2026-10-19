@@ -64,8 +64,8 @@ vi.mock("@/stores/workspace.store", () => ({
       workspaces: [{ id: 1, name: "OWT" }],
       statsScope: "workspace",
       hostLockedWorkspaceId: null,
-      browsingDiscipline: null,
-      setBrowsingDiscipline: () => {}
+      gameScope: "all",
+      setGameScope: () => {}
     })
 }));
 

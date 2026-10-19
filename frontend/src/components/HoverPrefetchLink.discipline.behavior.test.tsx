@@ -38,7 +38,7 @@ async function hrefsFrom(url: string, ...targets: string[]) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  useWorkspaceStore.setState({ browsingDiscipline: "overwatch" });
+  useWorkspaceStore.setState({ gameScope: "overwatch" });
 });
 
 describe("browsing links carry the surface's game", () => {
@@ -51,7 +51,7 @@ describe("browsing links carry the surface's game", () => {
       "/tournaments/spring-cup",
       "/privacy"
     ]);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("overwatch");
+    expect(useWorkspaceStore.getState().gameScope).toBe("overwatch");
   });
 
   it("all goes to a directory and is omitted for a concrete destination", async () => {

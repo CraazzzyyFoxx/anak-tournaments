@@ -93,7 +93,7 @@ export default function ScrimRoomPage() {
     queryFn: () => scrimService.getRoom(token),
     enabled: Boolean(token)
   });
-  useEntityWorkspace(roomQuery.data?.workspace_id ?? null);
+  useEntityWorkspace(roomQuery.data?.workspace_id ?? null, roomQuery.data?.discipline);
 
   // `PregameRoom` reads its exit target off the URL and has no prop for it, so
   // the param is planted here rather than passed. Without it the room would fall

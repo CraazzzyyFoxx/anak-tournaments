@@ -94,7 +94,7 @@ function tab(container: HTMLElement, key: string) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ browsingDiscipline: null, hostLockedWorkspaceId: null, currentWorkspaceId: null });
+  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null });
   getCatalogAliasMisses.mockReset().mockResolvedValue({ results: [], total: 12, page: 1, per_page: 1 });
 });
 

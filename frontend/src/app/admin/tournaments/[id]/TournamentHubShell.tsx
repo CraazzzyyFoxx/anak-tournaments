@@ -16,6 +16,7 @@ import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
+import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { TournamentStatusControl } from "./components/TournamentStatusControl";
 import { TOURNAMENT_STATUS_TONE } from "./components/tournamentWorkspace.helpers";
@@ -94,6 +95,8 @@ export function TournamentHubShell({
   // catalogs (custom statuses, sub-roles) on the registration tab read the store,
   // and apiFetch injects the store workspace into every call (D25/D29).
   useSyncActiveWorkspace(tournamentWorkspaceId);
+  // The tournament fixes the game: the admin scope pill shows it locked (spec §3.5).
+  useEntityWorkspace(tournamentWorkspaceId, tournamentQuery.data?.discipline);
   // NOTE: no division-grid query here. It used to run on every hub page load
   // purely to feed three header props that were never read. The Settings tab
   // owns that query, where the grid picker actually uses it.

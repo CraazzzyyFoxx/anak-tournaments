@@ -9,6 +9,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { BalancerTournamentSummary } from "@/types/balancer-admin.types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
+import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 
 export interface ToolContext {
   status: ToolContextStatus;
@@ -34,7 +35,12 @@ export function useToolContext(): ToolContext {
   });
   const summary = query.data ?? null;
 
-  useEntityWorkspace(summary?.workspace_id);
+  // The owner's game: the same cached public read the tool page makes for its roster shape.
+  const owner = useQuery({
+    ...tournamentOverviewQueryOptions(tournamentId as number),
+    enabled: tournamentId != null
+  });
+  useEntityWorkspace(summary?.workspace_id, owner.data?.discipline);
   const entityWorkspaceId = useWorkspaceStore((state) => state.entityWorkspaceId);
   const aligned = summary == null || entityWorkspaceId === summary.workspace_id;
 
