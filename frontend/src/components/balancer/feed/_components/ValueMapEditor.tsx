@@ -15,6 +15,9 @@ import {
 import type { ValueMapRow } from "@/types/balancer-admin.types";
 import type { SubroleCatalog, SubroleOption } from "@/types/registration.types";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { useTranslations } from "next-intl";
 
 type ValueEditorKind = "boolean" | "role" | "text" | "number" | "role_subrole" | "subrole";
@@ -27,6 +30,8 @@ interface ValueMapEditorProps {
   /** Whether catalog defaults are available to seed. */
   canSeed: boolean;
   subroleCatalog?: SubroleCatalog;
+  /** The tournament's game: the roles a sheet's text can map to. Only the role editors read it; `null` while it loads (no role is offered). */
+  ontology?: RoleOntology | null;
   onAdd: () => void;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   onRemove: (id: string) => void;
@@ -36,7 +41,7 @@ interface ValueMapEditorProps {
 const NONE = "__none__";
 
 function optionsForRole(catalog: SubroleCatalog | undefined, role: string): SubroleOption[] {
-  if (!role || role === "flex") return [];
+  if (!role || role === OPEN_SLOT_CODE) return [];
   return catalog?.[role] ?? [];
 }
 
@@ -58,19 +63,6 @@ function flattenSubroleOptions(catalog: SubroleCatalog | undefined): { value: st
 const BOOLEAN_OPTIONS = [
   { value: "true", label: "true" },
   { value: "false", label: "false" },
-] as const;
-
-const ROLE_OPTIONS = [
-  { value: "tank", labelKey: "tank" },
-  { value: "damage", labelKey: "damage" },
-  { value: "support", labelKey: "support" },
-] as const;
-
-const ROLE_SUBROLE_ROLE_OPTIONS = [
-  { value: "flex", labelKey: "flex" },
-  { value: "tank", labelKey: "tank" },
-  { value: "damage", labelKey: "damage" },
-  { value: "support", labelKey: "support" },
 ] as const;
 
 type RoleSubroleItem = { role: string; subrole: string | null };
@@ -105,12 +97,17 @@ function RoleSubroleSubForm({
   row,
   onUpdate,
   catalog,
+  ontology,
 }: Readonly<{
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   catalog: SubroleCatalog | undefined;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("sheetsFeed.valueMapping");
+  const slotLabel = useSlotLabel(ontology);
+  // The open slot ("any role") first, then the owner game's roles in declared order.
+  const roleCodes = [OPEN_SLOT_CODE, ...registrationRoles(ontology).map((role) => role.code)];
   const items = parseRoleSubroleItems(row.value);
 
   const commit = (next: RoleSubroleItem[]) => {
@@ -126,7 +123,7 @@ function RoleSubroleSubForm({
           const allowed = optionsForRole(catalog, nextRole).map((option) => option.slug);
           const keep =
             nextRole !== "" &&
-            nextRole !== "flex" &&
+            nextRole !== OPEN_SLOT_CODE &&
             item.subrole != null &&
             allowed.includes(item.subrole);
           return { role: nextRole, subrole: keep ? item.subrole : null };
@@ -147,7 +144,7 @@ function RoleSubroleSubForm({
     <div className="space-y-1.5">
       {items.map((item, index) => {
         const roleOptions = optionsForRole(catalog, item.role);
-        const subroleDisabled = item.role === "" || item.role === "flex" || roleOptions.length === 0;
+        const subroleDisabled = item.role === "" || item.role === OPEN_SLOT_CODE || roleOptions.length === 0;
         return (
           <div key={index} className="flex items-center gap-1.5">
             <Select value={item.role || undefined} onValueChange={(v) => updateItem(index, "role", v)}>
@@ -155,9 +152,9 @@ function RoleSubroleSubForm({
                 <SelectValue placeholder={t("role")} />
               </SelectTrigger>
               <SelectContent>
-                {ROLE_SUBROLE_ROLE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {t(`roles.${opt.labelKey}` as Parameters<typeof t>[0])}
+                {roleCodes.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {slotLabel(code)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -205,13 +202,16 @@ function ValueInput({
   row,
   onUpdate,
   catalog,
+  ontology,
 }: Readonly<{
   kind: ValueEditorKind;
   row: ValueMapRow;
   onUpdate: (id: string, updates: Partial<Pick<ValueMapRow, "key" | "value">>) => void;
   catalog: SubroleCatalog | undefined;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("sheetsFeed.valueMapping");
+  const slotLabel = useSlotLabel(ontology);
   if (kind === "number") {
     return (
       <Input
@@ -236,7 +236,7 @@ function ValueInput({
   }
 
   if (kind === "role_subrole") {
-    return <RoleSubroleSubForm row={row} onUpdate={onUpdate} catalog={catalog} />;
+    return <RoleSubroleSubForm row={row} onUpdate={onUpdate} catalog={catalog} ontology={ontology} />;
   }
 
   if (kind === "subrole") {
@@ -264,10 +264,7 @@ function ValueInput({
   const options =
     kind === "boolean"
       ? BOOLEAN_OPTIONS
-      : ROLE_OPTIONS.map((role) => ({
-          value: role.value,
-          label: t(`roles.${role.labelKey}` as Parameters<typeof t>[0])
-        }));
+      : registrationRoles(ontology).map((role) => ({ value: role.code, label: slotLabel(role.code) }));
   return (
     <Select value={row.value || undefined} onValueChange={(value) => onUpdate(row.id, { value })}>
       <SelectTrigger className="h-9">
@@ -292,6 +289,7 @@ export function ValueMapEditor({
   rows,
   canSeed,
   subroleCatalog,
+  ontology = null,
   onAdd,
   onUpdate,
   onRemove,
@@ -340,7 +338,7 @@ export function ValueMapEditor({
                 placeholder={t("textFromSheet")}
                 className="h-9"
               />
-              <ValueInput kind={kind} row={row} onUpdate={onUpdate} catalog={subroleCatalog} />
+              <ValueInput kind={kind} row={row} onUpdate={onUpdate} catalog={subroleCatalog} ontology={ontology} />
               <Button
                 variant="ghost"
                 size="icon"

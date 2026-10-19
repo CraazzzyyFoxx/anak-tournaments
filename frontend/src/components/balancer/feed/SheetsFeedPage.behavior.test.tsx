@@ -5,7 +5,9 @@
 //      tournament with no feed does not carry a permanently disabled button;
 //   2. the first edit of the URL is what makes "Create feed" appear — the same
 //      moment a save could first succeed;
-//   3. Discard puts the source fields back to the saved feed and hides the bar.
+//   3. Discard puts the source fields back to the saved feed and hides the bar;
+//   4. the roles targets are grouped, and the value maps speak, by the TOURNAMENT'S OWN roles — League's five
+//      positions, not a fixed tank/damage/support.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -23,6 +25,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getTournamentSheet = vi.fn();
+const getPublicOverview = vi.fn();
 const getTournamentSheetMappingCatalog = vi.fn();
 const upsertTournamentSheetWithValidation = vi.fn();
 
@@ -38,6 +41,12 @@ vi.mock("@/services/balancer-admin.service", () => ({
     previewTournamentSheetMappingRows: vi.fn()
   }
 }));
+
+vi.mock("@/services/tournament.service", () => ({
+  default: { getPublicOverview: (...args: unknown[]) => getPublicOverview(...args) }
+}));
+
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
@@ -151,6 +160,7 @@ beforeEach(() => {
   getTournamentSheet.mockReset();
   getTournamentSheetMappingCatalog.mockReset().mockResolvedValue(CATALOG);
   upsertTournamentSheetWithValidation.mockReset();
+  getPublicOverview.mockReset().mockResolvedValue({ id: 95, workspace_id: 3, discipline: "overwatch" });
 });
 
 afterEach(async () => {
@@ -209,5 +219,62 @@ describe("Sheets feed › save bar", () => {
       95,
       expect.objectContaining({ source_url: "https://docs.google.com/spreadsheets/d/moved" })
     );
+  });
+});
+
+describe("Sheets feed › the tournament's own roles", () => {
+  const LEAGUE_CATALOG: MappingCatalog = {
+    ...CATALOG,
+    targets: [
+      ...CATALOG.targets,
+      { key: "source_roles.primary", label: "Primary role", group: "roles", accepted_parsers: ["role_token"], default_parser: "role_token", default_mode: "columns", default_is_list: false, multi_column: false, required: false },
+      ...["top", "jungle", "mid"].flatMap((code) =>
+        ["rank_value", "subrole"].map((field) => ({
+          key: `roles.${code}.${field}`,
+          label: `${code} ${field}`,
+          group: "roles" as const,
+          accepted_parsers: ["integer"],
+          default_parser: "integer",
+          default_mode: "columns",
+          default_is_list: false,
+          multi_column: false,
+          required: false
+        }))
+      ),
+      { key: "is_flex", label: "Full flex", group: "roles", accepted_parsers: ["boolean"], default_parser: "boolean", default_mode: "columns", default_is_list: false, multi_column: false, required: false }
+    ],
+    subrole_catalog: { top: [], jungle: [], mid: [] }
+  };
+
+  it("groups the roles targets by the owner's roles, in the game's order, named by the game", async () => {
+    getPublicOverview.mockResolvedValue({ id: 95, workspace_id: 3, discipline: "lol" });
+    getTournamentSheetMappingCatalog.mockResolvedValue(LEAGUE_CATALOG);
+    getTournamentSheet.mockResolvedValue(FEED);
+    await render();
+
+    await act(async () => {
+      button("Roles")!.click();
+    });
+    await settle(2);
+
+    const headings = [...container.querySelectorAll("div")]
+      .filter((node) => node.className.includes("bg-muted/40"))
+      .map((node) => node.textContent);
+    expect(headings).toEqual(["Declared roles", "Top", "Jungle", "Mid", "Other"]);
+    expect(container.textContent).not.toMatch(/Tank|Damage/);
+  });
+
+  it("offers the owner's roles when a sheet's role text is mapped", async () => {
+    getPublicOverview.mockResolvedValue({ id: 95, workspace_id: 3, discipline: "lol" });
+    getTournamentSheetMappingCatalog.mockResolvedValue(CATALOG);
+    getTournamentSheet.mockResolvedValue({
+      ...FEED,
+      value_mapping_json: { roles: { "лес": "jungle" } }
+    });
+    await render();
+
+    // The saved row resolves its role against League's dictionary, by name.
+    expect(container.textContent).toContain("Jungle");
+    expect(container.textContent).not.toMatch(/Tank|Damage/);
   });
 });

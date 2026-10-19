@@ -94,45 +94,40 @@ export const GROUP_DESCRIPTIONS: Record<MappingTargetGroup, string> = {
 // Roles sub-grouping (driven by target key prefixes)
 // ---------------------------------------------------------------------------
 
+/**
+ * One card of the roles group. The two fixed groups carry a message key; a role group (`roles.<code>.*`, one per
+ * role of the owner game) carries the role code and is named by the owner's role name.
+ */
 export interface RoleSubgroup {
   id: string;
-  label: string;
+  role: string | null;
+  labelKey: "sourceRoles" | "other" | null;
 }
 
-const ROLE_SUBGROUP_LABELS: Record<string, string> = {
-  source_roles: "sourceRoles",
-  tank: "tank",
-  damage: "damage",
-  support: "support",
-};
-
-const ROLE_SUBGROUP_ORDER = ["source_roles", "tank", "damage", "support", "other"] as const;
-
-/** Resolve the sub-group id for a roles-group target from its key. */
-export function roleSubgroupId(targetKey: string): string {
+/** The sub-group a roles-group target belongs to, from its key. */
+export function roleSubgroupOf(targetKey: string): RoleSubgroup {
   if (targetKey.startsWith("source_roles")) {
-    return "source_roles";
+    return { id: "source_roles", role: null, labelKey: "sourceRoles" };
   }
-  if (targetKey.startsWith("roles.")) {
-    const role = targetKey.split(".")[1];
-    if (role && ROLE_SUBGROUP_LABELS[role]) {
-      return role;
-    }
+  const [prefix, role] = targetKey.split(".");
+  if (prefix === "roles" && role) {
+    return { id: `role:${role}`, role, labelKey: null };
   }
-  return "other";
+  return { id: "other", role: null, labelKey: "other" };
 }
 
-function roleSubgroupLabel(id: string): string {
-  return ROLE_SUBGROUP_LABELS[id] ?? "other";
-}
-
-/** Ordered, de-duplicated list of role sub-groups present in the targets. */
+/**
+ * The role sub-groups present in the targets: the declared-roles columns first, then one group per owner role in
+ * the catalog's own order (the game's declared role order), the rest last.
+ */
 export function orderedRoleSubgroups(targets: MappingTargetDef[]): RoleSubgroup[] {
-  const present = new Set(targets.map((target) => roleSubgroupId(target.key)));
-  return ROLE_SUBGROUP_ORDER.filter((id) => present.has(id)).map((id) => ({
-    id,
-    label: roleSubgroupLabel(id),
-  }));
+  const byId = new Map<string, RoleSubgroup>();
+  for (const target of targets) {
+    const subgroup = roleSubgroupOf(target.key);
+    if (!byId.has(subgroup.id)) byId.set(subgroup.id, subgroup);
+  }
+  const position = (subgroup: RoleSubgroup) => (subgroup.role !== null ? 1 : subgroup.id === "other" ? 2 : 0);
+  return [...byId.values()].sort((left, right) => position(left) - position(right));
 }
 
 /** Targets grouped by top-level group, preserving catalog order within a group. */

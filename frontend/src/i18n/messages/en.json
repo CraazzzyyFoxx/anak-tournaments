@@ -12963,16 +12963,13 @@
         "customFields": "Custom fields"
       },
       "groupDescriptions": {
-        "identity": "Who the player is — battle tag, smurfs, and source record key.",
+        "identity": "Who the player is — game handle, extra accounts, and source record key.",
         "profile": "Contact and stream details synced into the registration.",
         "roles": "How roles, ranks, and sub-roles are read from the sheet.",
         "customFields": "Extra registration-form fields populated from the sheet."
       },
       "roleGroups": {
         "sourceRoles": "Declared roles",
-        "tank": "Tank",
-        "damage": "Damage",
-        "support": "Support",
         "other": "Other"
       }
     },
@@ -13000,16 +12997,10 @@
       },
       "descriptions": {
         "booleans": "Map cell text (e.g. “yes”, “да”) to true/false (used by checkbox-style fields).",
-        "roles": "Map role text (e.g. “танк”, “heal”) to tank / damage / support.",
+        "roles": "Map role text from the sheet (e.g. “support”, “jungle”) to one of this game's roles.",
         "subroles": "Map sub-role text from the sheet to a workspace sub-role.",
         "divisions": "Map division text from the sheet directly to the numeric rank value used by the balancer.",
-        "roleSubroles": "Map a single cell value to one or more roles (e.g. \"Хитскан ДПС\" → Damage/Hitscan, or \"Флекс, Танк или Сап\" → Tank + Support). Use \"Add role\" to expand a value into multiple roles."
-      },
-      "roles": {
-        "flex": "Flex (all roles)",
-        "tank": "Tank",
-        "damage": "Damage",
-        "support": "Support"
+        "roleSubroles": "Map a single cell value to one or more roles with a sub-role (e.g. \"Support, heal\" → Support/Healer). Use \"Add role\" to expand a value into multiple roles."
       },
       "role": "Role",
       "subrole": "Sub-role",

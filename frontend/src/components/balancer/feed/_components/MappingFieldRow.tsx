@@ -46,8 +46,9 @@ interface MappingFieldRowProps {
   onIsListChange: (is_list: boolean) => void;
 }
 
+/** The role a `roles.<code>.subrole` target takes its sub-role options from, whatever game's role it is. */
 function subroleRoleFromTarget(key: string): string | null {
-  const match = /^roles\.(damage|support)\.subrole$/.exec(key);
+  const match = /^roles\.([^.]+)\.subrole$/.exec(key);
   return match?.[1] ?? null;
 }
 

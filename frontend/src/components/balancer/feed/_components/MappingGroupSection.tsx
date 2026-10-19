@@ -11,8 +11,10 @@ import type { SubroleCatalog } from "@/types/registration.types";
 import { useTranslations } from "next-intl";
 
 import { MappingFieldRow } from "./MappingFieldRow";
-import { orderedRoleSubgroups, roleSubgroupId } from "./mappingConfig";
+import { orderedRoleSubgroups, roleSubgroupOf } from "./mappingConfig";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 
 interface MappingRowHandlers {
@@ -33,6 +35,8 @@ interface MappingGroupSectionProps extends MappingRowHandlers {
   errorsByTarget: Record<string, string>;
   disabled?: boolean;
   subroleCatalog?: SubroleCatalog;
+  /** The tournament's game: names the role groups. `null` while it loads (groups then carry their role codes). */
+  ontology: RoleOntology | null;
 }
 
 export function MappingGroupSection({
@@ -45,6 +49,7 @@ export function MappingGroupSection({
   errorsByTarget,
   disabled,
   subroleCatalog,
+  ontology,
   onModeChange,
   onColumnsChange,
   onValueChange,
@@ -52,6 +57,7 @@ export function MappingGroupSection({
   onIsListChange,
 }: Readonly<MappingGroupSectionProps>) {
   const t = useTranslations("sheetsFeed.columnMapping");
+  const slotLabel = useSlotLabel(ontology);
   if (targets.length === 0) {
     return null;
   }
@@ -87,14 +93,16 @@ export function MappingGroupSection({
     return (
       <div className="space-y-4">
         {orderedRoleSubgroups(targets).map((subgroup) => {
-          const subTargets = targets.filter((target) => roleSubgroupId(target.key) === subgroup.id);
+          const subTargets = targets.filter((target) => roleSubgroupOf(target.key).id === subgroup.id);
           if (subTargets.length === 0) {
             return null;
           }
           return (
             <div key={subgroup.id} className="overflow-hidden rounded-lg border">
               <div className={cn(EYEBROW_CLASS, "border-b bg-muted/40 px-4 py-2")}>
-                {t(`roleGroups.${subgroup.label}` as Parameters<typeof t>[0])}
+                {subgroup.labelKey !== null
+                  ? t(`roleGroups.${subgroup.labelKey}`)
+                  : slotLabel(subgroup.role as string)}
               </div>
               <div className="divide-y">{subTargets.map(renderRow)}</div>
             </div>

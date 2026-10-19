@@ -13,6 +13,7 @@ import type {
   MappingTargetMode,
   MappingTargetState,
 } from "@/types/balancer-admin.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { MappingGroupSection } from "./MappingGroupSection";
 import { GROUP_DESCRIPTIONS, GROUP_LABELS, GROUP_ORDER, targetsByGroup } from "./mappingConfig";
@@ -26,6 +27,8 @@ interface ColumnMappingTabProps {
   headerKeys: string[];
   previewByTarget: Record<string, string>;
   errorsByTarget: Record<string, string>;
+  /** The tournament's game: names the role groups. `null` while it loads. */
+  ontology: RoleOntology | null;
   isSuggesting: boolean;
   onSuggest: () => void;
   onModeChange: (key: string, mode: MappingTargetMode) => void;
@@ -41,6 +44,7 @@ export function ColumnMappingTab({
   headerKeys,
   previewByTarget,
   errorsByTarget,
+  ontology,
   isSuggesting,
   onSuggest,
   onModeChange,
@@ -126,6 +130,7 @@ export function ColumnMappingTab({
               previewByTarget={previewByTarget}
               errorsByTarget={errorsByTarget}
               subroleCatalog={catalog.subrole_catalog}
+              ontology={ontology}
               onModeChange={onModeChange}
               onColumnsChange={onColumnsChange}
               onValueChange={onValueChange}
