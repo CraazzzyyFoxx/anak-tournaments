@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 from shared import models  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
+from shared.models.identity.rbac import Role, user_roles  # noqa: E402
 from shared.services import workspace_roster  # noqa: E402
 from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.services.social_identity import social_identity_service  # noqa: E402
@@ -79,7 +80,7 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
             self.session, user_id=player.id, provider=provider, username=handle, **fields
         )
 
-    async def _call(self, subject, *, host_only=False, query=None, path_id=None, **body):
+    async def _call(self, subject, *, host_only=False, member_manager=False, query=None, path_id=None, **body):
         broker = _Broker()
         logger = SimpleNamespace(exception=lambda *a, **k: None, warning=lambda *a, **k: None)
         players.register(broker, logger)
@@ -102,6 +103,7 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
                     "rbac_permissions": [
                         {"resource": "custom_game", "action": "create"},
                         *([] if host_only else [{"resource": "team", "action": "create"}]),
+                        *([{"resource": "workspace_member", "action": "create"}] if member_manager else []),
                     ],
                 }
             ],
@@ -162,6 +164,7 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
                     discipline=discipline,
                     provider=provider,
                     handle=entered,
+                    admit_account_holders=False,
                 )
             assert caught.exception.status_code == status
             assert caught.exception.detail[0]["code"] == code
@@ -189,7 +192,12 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
         rows, total = await workspace_roster.roster_page(self.session, workspace_id=self.workspace.id, provider="riot")
         assert not rows and total == 0
         admitted = await workspace_roster.ensure_member_for_identity(
-            self.session, workspace_id=self.workspace.id, discipline="lol", provider="riot", handle=handle.lower()
+            self.session,
+            workspace_id=self.workspace.id,
+            discipline="lol",
+            provider="riot",
+            handle=handle.lower(),
+            admit_account_holders=False,
         )
         assert admitted.id == member.id and admitted.observed_only is False
         assert account.username == handle and account.is_verified and account.provider_user_id == subject
@@ -267,6 +275,7 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
             discipline="lol",
             provider="riot",
             handle=handle,
+            admit_account_holders=False,
             display_name="Original",
         )
         response = await self._call(
@@ -296,7 +305,12 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
         self.session.add(unrelated)
         await self.session.flush()
         member = await workspace_roster.ensure_member_for_identity(
-            self.session, workspace_id=self.workspace.id, discipline="lol", provider="riot", handle=handle
+            self.session,
+            workspace_id=self.workspace.id,
+            discipline="lol",
+            provider="riot",
+            handle=handle,
+            admit_account_holders=False,
         )
         assert member.player_id != unrelated.id
         player = await self.session.get(models.User, member.player_id)
@@ -304,3 +318,83 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
         resolved = await find_users_by_handles(self.session, [handle, unrelated.name.split("#")[0]], provider="riot")
         assert resolved[handle].id == member.player_id
         assert unrelated.name.split("#")[0] not in resolved
+
+    # ── R5: a typed handle of an account holder is no admission ticket ──────────
+
+    async def _account_holder(self, label):
+        auth = models.AuthUser(username=f"{label}-{uuid4().hex}", email=f"{uuid4().hex}@example.test")
+        self.session.add(auth)
+        await self.session.flush()
+        player = await self._player(label, auth_user_id=auth.id)
+        handle = f"Holder {uuid4().hex[:6]}#EUW"
+        account = await self._account(player, "riot", handle, is_verified=True, provider_user_id=uuid4().hex)
+        return player, handle, account
+
+    async def _membership(self, player):
+        return await self.session.scalar(
+            sa.select(models.WorkspaceMember).where(
+                models.WorkspaceMember.workspace_id == self.workspace.id,
+                models.WorkspaceMember.player_id == player.id,
+            )
+        )
+
+    async def _workspace_roles(self, player):
+        joined = user_roles.join(Role, Role.id == user_roles.c.role_id)
+        query = sa.select(Role.name).select_from(joined)
+        return sorted(
+            await self.session.scalars(
+                query.where(user_roles.c.user_id == player.auth_user_id, Role.workspace_id == self.workspace.id)
+            )
+        )
+
+    async def _host_adds(self, handle, **kwargs):
+        return await self._call(
+            "rpc.balancer.players.upsert",
+            host_only=True,
+            discipline="lol",
+            identity={"provider": "riot", "handle": handle},
+            **kwargs,
+        )
+
+    def _assert_refused(self, response):
+        assert not response["ok"] and response["error"]["code"] == "forbidden", response
+        assert response["error"]["details"]["fields"][0]["field"] == "identity.handle"
+
+    async def test_a_mix_host_cannot_enrol_an_account_holder(self):
+        player, handle, account = await self._account_holder("holder")
+        before = (account.user_id, account.username, account.is_verified, account.provider_user_id)
+        self._assert_refused(await self._host_adds(handle))
+        assert await self._membership(player) is None
+        assert await self._workspace_roles(player) == []
+        await self.session.refresh(account)
+        assert (account.user_id, account.username, account.is_verified, account.provider_user_id) == before
+
+    async def test_a_member_manager_admits_an_account_holder_with_the_baseline_role(self):
+        player, handle, _account = await self._account_holder("admitted")
+        response = await self._host_adds(handle, member_manager=True)
+        assert response["ok"], response
+        member = await self._membership(player)
+        assert member.id == response["data"]["member_id"]
+        assert member.observed_only is False and member.removed_at is None
+        assert await self._workspace_roles(player) == ["player"]
+
+    async def test_a_mix_host_re_adding_an_admitted_account_holder_is_an_idempotent_hit(self):
+        player, handle, _account = await self._account_holder("member")
+        member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=player.id)
+        self.session.add(member)
+        await self.session.flush()
+        response = await self._host_adds(handle)
+        assert response["ok"], response
+        assert response["data"]["member_id"] == member.id
+        # An idempotent hit grants nothing: the row was role-less and stays so.
+        assert await self._workspace_roles(player) == []
+
+    async def test_a_mix_host_cannot_turn_an_account_holders_observation_anchor_into_a_membership(self):
+        player, handle, _account = await self._account_holder("observed")
+        anchor = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=player.id, observed_only=True)
+        self.session.add(anchor)
+        await self.session.flush()
+        self._assert_refused(await self._host_adds(handle))
+        await self.session.refresh(anchor)
+        assert anchor.observed_only is True
+        assert await self._workspace_roles(player) == []

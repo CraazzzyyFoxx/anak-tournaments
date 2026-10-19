@@ -31,6 +31,7 @@ from shared.disciplines import DISCIPLINES
 from shared.repository import (
     SocialAccountRepository,
     UserRepository,
+    WorkspaceMemberRepository,
     get_or_create_workspace_member,
 )
 from shared.schemas.identity import PlayerIdentityRead
@@ -369,6 +370,7 @@ async def ensure_member_for_identity(
     discipline: str,
     provider: str,
     handle: str,
+    admit_account_holders: bool,
     display_name: str | None = None,
 ) -> models.WorkspaceMember:
     """Find-or-admit the membership a game identity denotes in this workspace.
@@ -379,9 +381,11 @@ async def ensure_member_for_identity(
     never matched through a display name, and creating one confers no verification, provider subject or login.
 
     The player row is deliberately created without ``auth_user_id``: a handle typed into the roster is somebody
-    the host is ranking, not the host's own account, and ``get_or_create_workspace_member`` only hands out the
-    baseline RBAC role to auth-linked players -- so this never grants anybody workspace access. It is a real
-    admission (clears ``observed_only``). Flushes only; the caller commits.
+    the host is ranking, not the host's own account, so admitting a new or unlinked player grants no workspace
+    access. Admitting an existing auth-linked player does (``get_or_create_workspace_member`` hands them the
+    baseline RBAC role), so unless ``admit_account_holders`` (the caller may create workspace members) it is a
+    ``403 forbidden`` before anything is written; an account holder who already is an admitted member stays an
+    idempotent hit for anyone. It is a real admission (clears ``observed_only``). Flushes only; the caller commits.
     """
     await workspace_discipline(session, workspace_id=workspace_id, requested=discipline)
     declared = DISCIPLINES[discipline].identity_provider
@@ -419,6 +423,21 @@ async def ensure_member_for_identity(
         )
     if owners:
         user = owners[0]
+        if user.auth_user_id is not None and not admit_account_holders:
+            current = await WorkspaceMemberRepository().get_by_player(
+                session, workspace_id=workspace_id, player_id=user.id
+            )
+            if current is None or current.removed_at is not None or current.observed_only:
+                raise ApiHTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    [
+                        ApiExc(
+                            msg="This player has an account; only a member manager can add them to the workspace",
+                            code="forbidden",
+                            field="identity.handle",
+                        )
+                    ],
+                )
     else:
         user = await UserRepository().create(session, models.User(name=await _free_player_name(session, shown)))
         await social_identity_service.upsert(session, user_id=user.id, provider=provider, username=shown)

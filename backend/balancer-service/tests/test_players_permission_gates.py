@@ -139,11 +139,20 @@ class UpsertPermissionGateTests(_GateTests):
         assert self.ensure.await_args.kwargs["provider"] == "battlenet"
         assert self.ensure.await_args.kwargs["handle"] == "Newbie#1234"
         assert self.ensure.await_args.kwargs["discipline"] == "overwatch"
+        # A host may type identities but not admit an account holder: that is member admission.
+        assert self.ensure.await_args.kwargs["admit_account_holders"] is False
 
     async def test_organizer_adds_an_unknown_game_identity(self) -> None:
         response = await self._upsert(ORGANIZER)
 
         assert response["ok"] is True, response
+        assert self.ensure.await_args.kwargs["admit_account_holders"] is True
+
+    async def test_a_host_holding_member_creation_may_admit_account_holders(self) -> None:
+        response = await self._upsert(_identity("host", ("custom_game", "create"), ("workspace_member", "create")))
+
+        assert response["ok"] is True, response
+        assert self.ensure.await_args.kwargs["admit_account_holders"] is True
 
     async def test_plain_member_may_not_create_roster_rows(self) -> None:
         self.assert_forbidden(await self._upsert(MEMBER))

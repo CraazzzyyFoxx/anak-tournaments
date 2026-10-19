@@ -218,7 +218,8 @@ def register(broker: Any, logger: Any) -> None:
             discipline = await workspace_discipline(session, workspace_id=workspace_id, requested=body.discipline)
             # A mix host (``custom_game.create``) may add a game identity nobody
             # has registered yet: that is the add-players dialog's whole point.
-            # Renaming a shared roster row is still roster management.
+            # Renaming a shared roster row is still roster management, and
+            # enrolling somebody who has an account is member admission.
             can_manage_roster = user.has_workspace_permission(workspace_id, "team", "create")
             if not can_manage_roster:
                 ensure_workspace_permission(user, workspace_id, "custom_game", "create")
@@ -230,6 +231,7 @@ def register(broker: Any, logger: Any) -> None:
                 discipline=discipline,
                 provider=body.identity.provider,
                 handle=body.identity.handle,
+                admit_account_holders=user.has_workspace_permission(workspace_id, "workspace_member", "create"),
                 display_name=body.display_name,
             )
             # Workspace-wide: a renamed or newly enrolled member shows on every
