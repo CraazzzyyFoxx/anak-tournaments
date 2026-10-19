@@ -5407,7 +5407,7 @@
         "eyebrowRoster": "Реестр",
         "eyebrowCurrent": "Игроки",
         "title": "Игроки",
-        "lede": "Дивизионы по ролям, результаты турниров и герои каждого, кто сыграл хотя бы один турнир."
+        "lede": "Дивизионы по ролям, результаты турниров и персонажи каждого, кто сыграл хотя бы один турнир."
       },
       "stats": {
         "totalPlayers": "Всего игроков",
@@ -5429,7 +5429,7 @@
         "minEncountersHint": "Винрейт остаётся серым, пока игрок не сыграет указанное число встреч.",
         "withLogs": "С логами",
         "searchByName": "Поиск игроков",
-        "searchPlaceholder": "Никнейм или BattleTag",
+        "searchPlaceholder": "Никнейм или игровой аккаунт",
         "found": "Найдено {count}",
         "resetAll": "Сбросить всё"
       },
@@ -5441,7 +5441,7 @@
         "avgPlacement": "Ср. место",
         "bestPlacement": "Лучшее",
         "achievements": "Ачивки",
-        "topHeroes": "Герои",
+        "topHeroes": "Персонажи",
         "details": "Детали",
         "encounters": "{count, plural, one {# встреча} few {# встречи} many {# встреч} other {# встречи}}",
         "noLogs": "нет логов",
@@ -5460,8 +5460,8 @@
         "recentTournaments": "Последние турниры",
         "noTournaments": "Турниров нет.",
         "outOf": "из {count}",
-        "heroes": "Герои",
-        "noHeroData": "Нет данных по героям.",
+        "heroes": "Персонажи",
+        "noHeroData": "Нет данных по персонажам.",
         "openProfile": "Профиль игрока"
       },
       "compare": {
