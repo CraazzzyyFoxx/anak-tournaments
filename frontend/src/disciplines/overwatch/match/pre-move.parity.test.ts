@@ -13,14 +13,8 @@ import {
   getSeriesVerdict
 } from "@/lib/encounter/detail";
 import type { CatalogEntityRead } from "@/types/catalog.types";
-import type {
-  Encounter,
-  Match,
-  MatchParticipant,
-  MatchWithStats,
-  NativeFact
-} from "@/types/encounter.types";
-import type { MatchWithUserStats } from "@/types/user.types";
+import type { Encounter, Match, MatchWithStats, NativeFact } from "@/types/encounter.types";
+import type { EncounterWithUserStats } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
 
 import {
@@ -40,7 +34,6 @@ import {
   teamTotal
 } from "./stats";
 import {
-  BADGE_THRESHOLD,
   formatOverperformance,
   mvpRank,
   ordinal,
@@ -51,16 +44,29 @@ import { aggregateSeriesStats } from "./series";
 import { owMatchView, type OwPlayer } from "./view";
 
 /**
- * §10.2: the pre-move functions' captured outputs (real old-wire responses of the parity fixture, taken at
- * aff7943fc) against the same seed's NATIVE shape. The native input is the documented projection of the old
- * response (members = observed players, facts = their per-segment stats, `hero_time_played` entity facts above
- * the module's minute for their heroes, `score` team facts = the old two-sided score); outputs are compared with
- * exact `toEqual` and never edited. Fields the old wire carried that the native one does not (and the captured
- * output echoes: a seat's `seed`/`placement`/`team`, a slot's full old match/map objects) are projected to what
- * they identify on both sides.
+ * §10.2 parity: the pre-move functions' CAPTURED outputs (`__fixtures__/pre-move`, real old-wire responses of the
+ * §10.1 parity seed at aff7943fc, never edited) against the REAL native responses of the SAME seed at the
+ * post-cutover HEAD (`__fixtures__/post-move`, verbatim gateway bodies, no value derived from an output).
+ * Everything is exact `toEqual`.
+ *
+ * Output fields the native contract removes. They are not produced by any moved function (each is an echo of a
+ * removed wire field or an object the cutover replaced), so the captured side drops exactly these and nothing else:
+ *  - `Hero.color` (inside every captured hero): §4.1, `HeroRead` → `CatalogEntityRead`, which has no colour.
+ *    Every captured value is the same seed default (asserted below). `Hero.type` is compared as `attrs.class`.
+ *  - `slot.match.map.in_competitive`, `slot.match.map.gamemode.description`, `slot.game.map.in_competitive`:
+ *    §4.1, `MapRead{gamemode_id, gamemode}` / `GamemodeRead` → `CatalogEntityRead` (`parent_id`, `parent`).
+ *  - `slot.match.home_participation` / `away_participation`: §6.1 "Removed" (`home_/away_participation`); the
+ *    seats are `participants`, compared field by field through the §6.1 mapping below instead.
+ *  - the `seed`/`score`/`placement`/`team` of an aggregate participation that is a RETIRED seat (`active: false`):
+ *    §6.1 `MatchParticipantRead` carries no `seed`, no encounter tally and no team expansion; a live seat's are
+ *    compared against the native `encounter.teams` entry of the same participation, a retired seat has none.
+ *  - an aggregate participation's `team` beyond `name`/`image_url`: `OwTeam.team` (§6.5, C14 "no `team`
+ *    expansion") only carries what the header draws.
  */
-const DIR = path.join(__dirname, "..", "__fixtures__", "pre-move");
-const load = (name: string) => JSON.parse(fs.readFileSync(path.join(DIR, name), "utf8"));
+const FIXTURES = path.join(__dirname, "..", "__fixtures__");
+const PRE = path.join(FIXTURES, "pre-move");
+const POST = path.join(FIXTURES, "post-move");
+const read = (dir: string, name: string) => JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"));
 const fmt = {
   number: (value: number, options?: Intl.NumberFormatOptions) =>
     new Intl.NumberFormat("en-US", options).format(value)
@@ -74,164 +80,105 @@ const toJson = (value: unknown): string =>
   });
 const norm = (value: unknown): unknown => JSON.parse(toJson(value));
 
-interface OldHero {
-  id: number;
-  slug: string;
-  name: string;
-  image_path: string;
-  type: string;
-  color: string;
-  created_at: string;
-  updated_at: string | null;
+interface PostMatchFile {
+  provenance: { git_sha: string; fixture_db: string; seed_source_sha256: string };
+  input_native_wire: Record<string, MatchWithStats>;
 }
-interface OldPlayer {
-  workspace_member_id: number;
-  user_id: number;
-  name: string;
-  stats: Record<string, Record<string, number>>;
-  heroes: Record<string, OldHero[]>;
-}
-interface OldParticipation {
-  id: number;
-  slot: number;
-  team_id: number | null;
-  name: string;
-  players?: OldPlayer[];
-}
-interface OldMatch {
-  id: number;
-  workspace_id: number;
-  discipline: string;
-  score: { home: number; away: number };
-  time: number | null;
-  log_name: string | null;
-  raw_status: Match["raw_status"];
-  raw_available: boolean;
-  encounter_id: number;
-  map_id: number;
-  map_index: number | null;
-  home_participation: OldParticipation;
-  away_participation: OldParticipation;
+interface PostEncounterFile {
+  provenance: { git_sha: string };
+  input_native_wire: { encounter: Encounter; matches_with_stats: string[] };
 }
 
-const header = (old: OldMatch): Match => {
-  const participants: MatchParticipant[] = [old.home_participation, old.away_participation].map(
-    (seat, index) => ({
-      encounter_team_id: seat.id,
-      slot: seat.slot,
-      source_position: index,
-      tournament_team_id: seat.team_id,
-      name: seat.name,
-      result: null,
-      team_facts: { score: index === 0 ? old.score.home : old.score.away }
-    })
-  );
-  return {
-    id: old.id,
-    // The old wire carried no timestamps: fixed values, `played_at` NULL (upload time).
-    created_at: "2026-01-02T12:00:00Z",
-    updated_at: null,
-    played_at: null,
-    workspace_id: old.workspace_id,
-    discipline: old.discipline,
-    encounter_id: old.encounter_id,
-    encounter_game_id: null,
-    map_index: old.map_index,
-    map_id: old.map_id,
-    map: null,
-    encounter: null,
-    duration_s: old.time,
-    log_name: old.log_name,
-    raw_status: old.raw_status,
-    raw_available: old.raw_available,
-    participants
-  };
-};
+const postMatch = (label: string): MatchWithStats =>
+  (read(POST, `match-stats.${label}.json`) as PostMatchFile).input_native_wire[label];
 
-const nativeMatch = (old: OldMatch): MatchWithStats => {
-  const members: MatchWithStats["statistics"]["members"] = [];
-  const facts: NativeFact[] = [];
-  const entities = new Map<number, CatalogEntityRead>();
-  const segments = new Set<number>();
-  for (const seat of [old.home_participation, old.away_participation]) {
-    for (const player of seat.players ?? []) {
-      members.push({
-        encounter_team_id: seat.id,
-        workspace_member_id: player.workspace_member_id,
-        player_id: player.user_id,
-        handle_snapshot: player.name,
-        observed_role: null
-      });
-      const fact = (segment: number, stat_code: string, value: number, entity_id: number | null) =>
-        facts.push({
-          encounter_team_id: seat.id,
-          workspace_member_id: player.workspace_member_id,
-          entity_id,
-          segment,
-          stat_code,
-          value
-        });
-      for (const [segment, row] of Object.entries(player.stats)) {
-        if (Number(segment) > 0) segments.add(Number(segment));
-        for (const [code, value] of Object.entries(row)) fact(Number(segment), code, value, null);
-      }
-      for (const [segment, heroes] of Object.entries(player.heroes)) {
-        for (const hero of heroes) {
-          fact(Number(segment), "hero_time_played", 61, hero.id);
-          entities.set(hero.id, {
-            id: hero.id,
-            discipline: old.discipline,
-            kind: "character",
-            slug: hero.slug,
-            name: hero.name,
-            image_path: hero.image_path,
-            parent_id: null,
-            parent: null,
-            attrs: { class: hero.type, color: hero.color },
-            active: true,
-            aliases: [],
-            created_at: hero.created_at,
-            updated_at: hero.updated_at
-          });
-        }
-      }
-    }
+/**
+ * MISMATCH M1 (reported, awaiting a decision; not hidden): the old reader served every no-entity member stat as
+ * `sum(value)::numeric(10,2)` (`get_match_observed_players`, aff7943fc), i.e. quantized to 2 decimals half away
+ * from zero; the native wire serves the raw `NativeFact.value` (§6.1 `value: float`, "never recomputed"). The seed
+ * holds 3-decimal facts (e.g. 0.252, 1125.002), so the old output reads 0.25 / 1125 where the native one reads the
+ * stored value. This is the ONLY difference found: with exactly this quantization applied to the real native
+ * no-entity facts every captured match output below is reproduced exactly. The strict, unquantized comparison is
+ * pinned by the `it.fails` test, which turns red the moment the wire (or the decision) changes.
+ */
+const legacyQuantized = (match: MatchWithStats): MatchWithStats => ({
+  ...match,
+  statistics: {
+    ...match.statistics,
+    facts: match.statistics.facts.map((fact) =>
+      fact.entity_id == null
+        ? { ...fact, value: Math.sign(fact.value) * Math.round(Math.abs(fact.value) * 100 + 1e-9) / 100 }
+        : fact
+    )
   }
-  return {
-    ...header(old),
-    statistics: {
-      members,
-      segments: [...segments]
-        .sort((a, b) => a - b)
-        .map((segment) => ({ segment, kind: "round", attrs: {} })),
-      facts,
-      entities: [...entities.values()]
-    }
-  };
-};
+});
+const postMatchLegacyPrecision = (label: string): MatchWithStats => legacyQuantized(postMatch(label));
 
-/** A view player back in the old observed-player form (a character as the old `Hero`). */
-const legacyPlayer = (player: OwPlayer) => ({
+/** The pre-move capture's object order (its capture script's `MATCH_KEYS`), which fixes aggregation order. */
+const MATCH_LABELS = [
+  "match",
+  "match_reversed",
+  "match_no_raw",
+  "match_other",
+  "match_hidden",
+  "match_otp_1",
+  "match_otp_2",
+  "match_otp_3",
+  "match_otp_4",
+  "match_career_1",
+  "match_career_2",
+  "match_career_3"
+];
+const PLAYER_LABELS = [
+  "player",
+  "player_away",
+  "player_event_only",
+  "player_other",
+  "player_removed",
+  "player_no_member"
+];
+const SCOPES = ["workspace", "workspace_other", "all"];
+
+/** A character as the captured output spells it (`Hero`), from the native entity; `color` has no native source. */
+const oldHero = (entity: CatalogEntityRead) => ({
+  id: entity.id,
+  slug: entity.slug,
+  name: entity.name,
+  image_path: entity.image_path,
+  type: entity.attrs.class,
+  created_at: entity.created_at,
+  updated_at: entity.updated_at
+});
+
+/** A view player in the captured observed-player form. */
+const oldPlayer = (player: OwPlayer) => ({
   workspace_member_id: player.workspace_member_id,
   user_id: player.user_id,
   name: player.name,
   stats: player.stats,
   heroes: Object.fromEntries(
-    Object.entries(player.heroes).map(([segment, heroes]) => [
-      segment,
-      heroes.map((entity) => ({
-        id: entity.id,
-        slug: entity.slug,
-        name: entity.name,
-        image_path: entity.image_path ?? "",
-        type: entity.attrs.class,
-        color: entity.attrs.color || "#ffffff",
-        created_at: entity.created_at,
-        updated_at: entity.updated_at
-      }))
-    ])
+    Object.entries(player.heroes).map(([segment, heroes]) => [segment, heroes.map(oldHero)])
   )
 });
+
+const HERO_COLORS = new Set<unknown>();
+/** The captured side of the one removed hero field (see the header): every hero object loses `color`. */
+const withoutHeroColor = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutHeroColor);
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const isHero = "slug" in record && "image_path" in record && "color" in record;
+    return Object.fromEntries(
+      Object.entries(record)
+        .filter(([key]) => {
+          if (isHero && key === "color") HERO_COLORS.add(record[key]);
+          return !(isHero && key === "color");
+        })
+        .map(([key, item]) => [key, withoutHeroColor(item)])
+    );
+  }
+  return value;
+};
 
 describe("lib/match-stats.ts → disciplines/overwatch/match/stats", () => {
   const names = Object.keys(STAT_META) as LogStatsName[];
@@ -239,16 +186,23 @@ describe("lib/match-stats.ts → disciplines/overwatch/match/stats", () => {
   it("keeps the catalogue constants", () => {
     expect(
       norm({ STAT_META, GROUP_COLOR, PRESET_ORDER, COLUMN_PRESETS, COMPARISON_STATS, LEADER_STATS })
-    ).toEqual(load("match-stats.constants.json").output);
+    ).toEqual(read(PRE, "match-stats.constants.json").output);
   });
 
-  const files = fs.readdirSync(DIR).filter((name) => /^match-stats\.match.*\.json$/.test(name));
-  it("has the parity fixture's matches", () => expect(files.length).toBe(12));
+  it("has every parity-fixture match, with provenance of the same seed", () => {
+    const files = fs.readdirSync(POST).filter((name) => /^match-stats\.match.*\.json$/.test(name));
+    expect(files.length).toBe(12);
+    const pre = read(PRE, "match-stats.match.json").provenance;
+    for (const file of files) {
+      const { provenance } = read(POST, file) as PostMatchFile;
+      expect(provenance.seed_source_sha256).toBe(pre.seed_source_sha256);
+      expect(provenance.git_sha).toMatch(/^[0-9a-f]{40}$/);
+    }
+  });
 
-  it.each(files)("reproduces every captured match output from the native shape: %s", (file) => {
-    const fixture = load(file);
-    const [label, old] = Object.entries(fixture.input_old_wire)[0] as [string, OldMatch];
-    const view = owMatchView(nativeMatch(old));
+  const reproduce = (label: string, match: MatchWithStats) => {
+    const expected = read(PRE, `match-stats.${label}.json`).output;
+    const view = owMatchView(match);
     expect(view).not.toBeNull();
     const { home, away } = view!;
     const rounds = availableRounds(home, away);
@@ -283,11 +237,7 @@ describe("lib/match-stats.ts → disciplines/overwatch/match/stats", () => {
             const leader = findLeader(home, away, round, name);
             return [
               name,
-              leader && {
-                player: legacyPlayer(leader.player),
-                side: leader.side,
-                value: leader.value
-              }
+              leader && { player: oldPlayer(leader.player), side: leader.side, value: leader.value }
             ];
           })
         ),
@@ -298,81 +248,62 @@ describe("lib/match-stats.ts → disciplines/overwatch/match/stats", () => {
       };
     }
     expect(norm({ [label]: { available_rounds: rounds, by_round: byRound } })).toEqual(
-      fixture.output
+      withoutHeroColor(expected)
     );
+  };
+
+  it.each(MATCH_LABELS)(
+    "reproduces every captured match output from the real native wire (M1 quantization): %s",
+    (label) => reproduce(label, postMatchLegacyPrecision(label))
+  );
+
+  // M1 pinned: the same comparison on the raw native facts is expected to differ (match_no_raw has no stats).
+  it.fails("M1: the raw native facts are not the old 2-decimal values", () =>
+    reproduce("match", postMatch("match"))
+  );
+
+  it("drops only a hero colour that was the seed default on every captured hero", () => {
+    expect(HERO_COLORS.size === 0 || [...HERO_COLORS].every((color) => color === "#ffffff")).toBe(true);
   });
 });
 
 describe("components/match mvp-rank → disciplines/overwatch/match/mvp", () => {
-  it("reproduces every captured user-match placement, medal, formatting and badge from native facts", () => {
-    const fixture = load("mvp-rank.json");
-    type Row = {
-      source: string;
-      match_id: number;
-      performance: number | null;
-      impact_rank: number | null;
-      impact_points: number | null;
-      overperformance_score: number | null;
-      overperformance_badge: boolean;
-    };
-    const rows: Row[] = fixture.input_old_wire.user_encounter_matches;
-    expect(rows.length).toBe(76);
-
+  it("reproduces every captured user-match placement, medal, formatting and badge from the real native wire", () => {
+    const fixture = read(PRE, "mvp-rank.json");
     const placements = new Set<number>();
-    const actual = rows.map((row) => {
-      const facts: Record<string, number> = {};
-      for (const code of [
-        "performance",
-        "impact_rank",
-        "impact_points",
-        "overperformance_score"
-      ] as const) {
-        if (row[code] != null) facts[code] = row[code] as number;
-      }
-      // The old wire carried only the badge: whoever outranked the viewer is the member that makes it false.
-      const total = (member: number, value: number): NativeFact => ({
-        encounter_team_id: 1,
-        workspace_member_id: member,
-        entity_id: null,
-        segment: 0,
-        stat_code: "overperformance_score",
-        value
-      });
-      const score = row.overperformance_score;
-      const member_totals =
-        score == null
-          ? []
-          : [
-              total(1, score),
-              total(2, score - 1),
-              ...(!row.overperformance_badge && score >= BADGE_THRESHOLD
-                ? [total(3, score + 1)]
-                : [])
-            ];
-      const match = {
-        viewer: { encounter_team_id: 1, workspace_member_id: 1, facts, characters: [] },
-        member_totals
-      } as unknown as MatchWithUserStats;
-      const placement = resolveMvpPlacement(match.viewer?.facts);
-      if (placement != null) placements.add(placement);
-      return {
-        source: row.source,
-        match_id: row.match_id,
-        performance: facts.performance ?? null,
-        impact_rank: facts.impact_rank ?? null,
-        impact_points: facts.impact_points ?? null,
-        overperformance_score: facts.overperformance_score ?? null,
-        overperformance_badge: overperformanceBadge(match),
-        placement,
-        rank: mvpRank(facts.performance ?? null),
-        rank_of_placement: mvpRank(placement),
-        overperformance: formatOverperformance(facts.overperformance_score)
+    const rows = PLAYER_LABELS.flatMap((player) => {
+      const { input_native_wire } = read(POST, `mvp-rank.${player}.json`) as {
+        input_native_wire: Record<string, { status: number; body: { results: EncounterWithUserStats[] } }>;
       };
+      return SCOPES.flatMap((scope) => {
+        const source = `${player}:${scope}:encounters`;
+        return input_native_wire[source].body.results.flatMap((encounter) =>
+          encounter.matches.map((match) => {
+            const facts = match.viewer?.facts ?? {};
+            const placement = resolveMvpPlacement(match.viewer?.facts);
+            if (placement != null) placements.add(placement);
+            return {
+              source,
+              match_id: match.id,
+              performance: facts.performance ?? null,
+              impact_rank: facts.impact_rank ?? null,
+              impact_points: facts.impact_points ?? null,
+              overperformance_score: facts.overperformance_score ?? null,
+              overperformance_badge: overperformanceBadge(match),
+              placement,
+              rank: mvpRank(facts.performance ?? null),
+              rank_of_placement: mvpRank(placement),
+              overperformance: formatOverperformance(facts.overperformance_score)
+            };
+          })
+        );
+      });
     });
     const ordinals = Object.fromEntries(
       [...placements].sort((a, b) => a - b).map((n) => [n, ordinal(n)])
     );
-    expect(norm({ rows: actual, ordinals })).toEqual(fixture.output);
+    expect(rows.length).toBe(76);
+    expect(norm({ rows, ordinals })).toEqual(fixture.output);
   });
 
   it("ranks the badge over every member, not only the viewer", () => {
@@ -404,36 +335,82 @@ describe("components/match mvp-rank → disciplines/overwatch/match/mvp", () => 
   });
 });
 
+/** The captured `slot.match` echo of a native match header, through the §6.1 mapping. */
+const oldMatchHeader = (match: Match) => {
+  // The old `home`/`away` followed the observation's historical encounter slots 1 and 2, never the log's source order.
+  const [first, second] = [...match.participants].sort((a, b) => a.slot - b.slot);
+  const header = {
+    id: match.id,
+    workspace_id: match.workspace_id,
+    discipline: match.discipline,
+    home_team_id: first?.tournament_team_id ?? null,
+    away_team_id: second?.tournament_team_id ?? null,
+    score: { home: first?.team_facts.score, away: second?.team_facts.score },
+    time: match.duration_s,
+    log_name: match.log_name,
+    raw_status: match.raw_status,
+    raw_available: match.raw_available,
+    encounter_id: match.encounter_id,
+    map_id: match.map_id,
+    map_index: match.map_index
+  };
+  // The encounter wire omits null fields (as the old one did): an absent key, not an `undefined` value.
+  return Object.fromEntries(Object.entries(header).filter(([, value]) => value !== undefined));
+};
+
+/** A native map as the captured `MapRead` spells it, `gamemode_id`/`gamemode` being `parent_id`/`parent` (§4.1). */
+const oldMap = (map: CatalogEntityRead | null, withMode: boolean) =>
+  map && {
+    id: map.id,
+    gamemode_id: map.parent_id,
+    name: map.name,
+    image_path: map.image_path,
+    ...(withMode && map.parent
+      ? {
+          gamemode: {
+            id: map.parent.id,
+            slug: map.parent.slug,
+            name: map.parent.name,
+            image_path: map.parent.image_path
+          }
+        }
+      : {})
+  };
+
+const REMOVED_MAP_FIELDS = ["in_competitive"] as const;
+const dropKeys = (value: Record<string, unknown> | null, keys: readonly string[]) =>
+  value && Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+
 describe("lib/encounter/detail.ts → generic detail + overwatch series", () => {
-  const files = fs.readdirSync(DIR).filter((name) => /^encounter-detail\..*\.json$/.test(name));
+  const files = fs.readdirSync(POST).filter((name) => /^encounter-detail\..*\.json$/.test(name));
   it("has the parity fixture's encounters", () => expect(files.length).toBe(6));
 
-  it.each(files)("reproduces every captured encounter output from the native shape: %s", (file) => {
-    const fixture = load(file);
-    const [label, expected] = Object.entries(fixture.output)[0] as [
+  it.each(files)("reproduces every captured encounter output from the real native wire: %s", (file) => {
+    const input = (read(POST, file) as PostEncounterFile).input_native_wire;
+    const encounter = input.encounter;
+    const withStats = input.matches_with_stats.map(postMatchLegacyPrecision);
+    const [label, expected] = Object.entries(read(PRE, file).output)[0] as [
       string,
       Record<string, unknown>
     ];
-    const oldEncounter = fixture.input_old_wire.encounter as Encounter & { matches: unknown[] };
-    const encounter = {
-      ...oldEncounter,
-      matches: (oldEncounter.matches as OldMatch[]).map(header)
-    } as Encounter;
-    const withStats = (fixture.input_old_wire.matches_with_stats as OldMatch[]).map(nativeMatch);
+    expect(file).toBe(`encounter-detail.${label}.json`);
 
     const seconds = getSeriesSeconds(encounter);
     const aggregate = aggregateSeriesStats(withStats);
+    const seats = new Map(withStats.flatMap((m) => m.encounter?.teams ?? []).map((seat) => [seat.id, seat]));
+
     const actual = {
       encounter_id: encounter.id,
       match_ids_with_stats: withStats.map((m) => m.id),
-      seat_scores: encounter.matches.map((m) => ({
-        match: m.id,
-        ...(encounterSeatScore(m, encounter) ?? {})
-      })),
+      seat_scores: encounter.matches.map((m) => ({ match: m.id, ...(encounterSeatScore(m, encounter) ?? {}) })),
       series_slots: buildSeriesSlots(encounter).map((slot) => ({
         ...slot,
-        game: slot.game && { ...slot.game, map: slot.game.map?.id ?? null },
-        match: slot.match?.id ?? null
+        game:
+          slot.game && {
+            ...slot.game,
+            map: oldMap(slot.game.map, false)
+          },
+        match: slot.match && { ...oldMatchHeader(slot.match), map: oldMap(slot.match.map, true) }
       })),
       map_wins: countMapWins(encounter),
       verdict: getSeriesVerdict(encounter),
@@ -441,43 +418,73 @@ describe("lib/encounter/detail.ts → generic detail + overwatch series", () => 
       series_clock: formatSeriesClock(seconds, { h: "h", m: "m", s: "s" }),
       closeness: formatCloseness(encounter.closeness),
       aggregate_series_stats: aggregate && {
-        participations: aggregate.participations.map((p) => ({
-          id: p.id,
-          slot: p.slot,
-          team_id: p.team_id,
-          name: p.name,
-          players: p.players.map(legacyPlayer),
-          meta: p.meta
-        })),
+        participations: aggregate.participations.map((p) => {
+          const seat = seats.get(p.id);
+          return {
+            id: p.id,
+            slot: p.slot,
+            team_id: p.team_id,
+            name: p.name,
+            ...(seat ? { seed: seat.seed, score: seat.score, placement: seat.placement } : {}),
+            active: p.live,
+            ...(seat?.team ? { team: { name: p.team?.name, image_url: p.team?.image_url } } : {}),
+            players: p.players.map(oldPlayer),
+            meta: p.meta
+          };
+        }),
         mapsCounted: aggregate.mapsCounted,
         round: aggregate.round
       }
     };
 
-    type Slot = { game: { map: { id: number } | null } | null; match: { id: number } | null };
-    type Aggregate = { participations: Record<string, unknown>[] } | null;
+    type Slot = {
+      game: { map: Record<string, unknown> | null } | null;
+      match: Record<string, unknown> & { map: Record<string, unknown> | null } | null;
+    } & Record<string, unknown>;
+    type Aggregate = { participations: Record<string, unknown>[] } & Record<string, unknown>;
+    const capturedAggregate = expected.aggregate_series_stats as Aggregate | null;
     const captured = {
       ...expected,
       series_slots: (expected.series_slots as Slot[]).map((slot) => ({
         ...slot,
-        game: slot.game && { ...slot.game, map: slot.game.map?.id ?? null },
-        match: slot.match?.id ?? null
+        game:
+          slot.game && {
+            ...slot.game,
+            map: dropKeys(slot.game.map, REMOVED_MAP_FIELDS)
+          },
+        match:
+          slot.match &&
+          (() => {
+            const { home_participation, away_participation, ...match } = slot.match!;
+            void home_participation;
+            void away_participation;
+            const map = dropKeys(match.map, REMOVED_MAP_FIELDS) as
+              | (Record<string, unknown> & { gamemode?: Record<string, unknown> })
+              | null;
+            return {
+              ...match,
+              map: map && {
+                ...map,
+                ...(map.gamemode ? { gamemode: dropKeys(map.gamemode, ["description"]) } : {})
+              }
+            };
+          })()
       })),
-      aggregate_series_stats: (expected.aggregate_series_stats as Aggregate) && {
-        ...(expected.aggregate_series_stats as object),
-        participations: (
-          expected.aggregate_series_stats as NonNullable<Aggregate>
-        ).participations.map((p) => ({
-          id: p.id,
-          slot: p.slot,
-          team_id: p.team_id,
-          name: p.name,
-          players: p.players,
-          meta: p.meta
-        }))
+      aggregate_series_stats: capturedAggregate && {
+        ...capturedAggregate,
+        participations: capturedAggregate.participations.map((p) => {
+          const live = p.active === true;
+          const team = p.team as { name: string; image_url: string | null } | null;
+          const { seed, score, placement, team: _team, ...rest } = p;
+          void _team;
+          return {
+            ...rest,
+            ...(live ? { seed, score, placement } : {}),
+            ...(live && team ? { team: { name: team.name, image_url: team.image_url } } : {})
+          };
+        })
       }
     };
-    expect(label).toBeTruthy();
-    expect(norm(actual)).toEqual(norm(captured));
+    expect(norm(actual)).toEqual(withoutHeroColor(norm(captured)));
   });
 });
