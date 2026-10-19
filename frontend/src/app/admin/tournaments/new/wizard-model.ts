@@ -90,6 +90,23 @@ export function stepEntryRequiresDraft(step: WizardStep): boolean {
 }
 
 /** POST payload for the lazy draft: current form state, always hidden. */
+/**
+ * The form with a division-grid version of another game dropped. The wizard's game can change under the form
+ * (selector, URL, Back); a tournament is seeded on a grid of its own game and the server refuses a foreign one
+ * (`division_grid_discipline_mismatch`). `grids` are the workspace's grids of every game; a version none of them
+ * lists (still loading) is kept rather than guessed.
+ */
+export function formForGame<T extends { division_grid_version_id?: number | null }>(
+  form: T,
+  grids: readonly { discipline: string; versions: readonly { id: number }[] }[],
+  discipline: string | null
+): T {
+  const versionId = form.division_grid_version_id;
+  if (versionId == null) return form;
+  const owner = grids.find((grid) => grid.versions.some((version) => version.id === versionId));
+  return owner && owner.discipline !== discipline ? { ...form, division_grid_version_id: null } : form;
+}
+
 export function buildDraftCreateInput(
   workspaceId: number,
   discipline: string,

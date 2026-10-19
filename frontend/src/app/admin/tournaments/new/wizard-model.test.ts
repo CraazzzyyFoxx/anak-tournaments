@@ -6,6 +6,7 @@ import {
   buildDraftCreateInput,
   buildDraftUpdateInput,
   canCreateNow,
+  formForGame,
   findResumableDraft,
   isWizardStepRequired,
   nextWizardStep,
@@ -143,6 +144,22 @@ describe("lazy Unpublished draft (D4)", () => {
     expect(payload.name).toBe("Season 9");
     expect(payload.start_date).toBe("2026-08-01");
     expect(payload.division_grid_version_id).toBe(3);
+  });
+
+  it("an Overwatch grid picked before switching to League is not sent with a League tournament", () => {
+    // The workspace's grids of both games: version 3 belongs to the Overwatch grid.
+    const grids = [
+      { discipline: "overwatch", versions: [{ id: 3 }] },
+      { discipline: "lol", versions: [{ id: 8 }] }
+    ];
+    expect(formForGame(form, grids, "overwatch").division_grid_version_id).toBe(3);
+
+    const switched = formForGame(form, grids, "lol");
+    expect(switched.division_grid_version_id).toBeNull();
+    expect(buildDraftCreateInput(42, "lol", switched).division_grid_version_id).toBeNull();
+    // The game's own grid stays; a version the (still loading) grid list does not know is kept, not guessed.
+    expect(formForGame({ ...form, division_grid_version_id: 8 }, grids, "lol").division_grid_version_id).toBe(8);
+    expect(formForGame(form, [], "lol").division_grid_version_id).toBe(3);
   });
 
   it("draft update payload keeps the draft hidden unless publishing", () => {

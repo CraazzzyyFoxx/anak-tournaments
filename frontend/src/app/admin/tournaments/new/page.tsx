@@ -41,6 +41,7 @@ import { RulesStep } from "./steps/RulesStep";
 import { ScheduleStep } from "./steps/ScheduleStep";
 import {
   buildDraftCreateInput,
+  formForGame,
   buildDraftUpdateInput,
   findResumableDraft,
   nextWizardStep,
@@ -140,7 +141,7 @@ export default function NewTournamentPage() {
   const source: WizardSource = searchParams?.get("source") === "challonge" ? "challonge" : "manual";
 
   const [challongeSlug, setChallongeSlug] = useState("");
-  const [form, setForm] = useState<WizardFormData>(emptyForm);
+  const [rawForm, setForm] = useState<WizardFormData>(emptyForm);
   const [schedule, setSchedule] = useState<WizardScheduleState>(emptySchedule);
   const [registration, setRegistration] = useState<WizardRegistrationState>({
     auto_approve: false,
@@ -178,6 +179,9 @@ export default function NewTournamentPage() {
     .flatMap((grid) => grid.versions)
     .slice()
     .sort((left, right) => right.version - left.version);
+  // What every step, payload and review reads: a grid of another game never rides along when the resolved game
+  // changes (selector, URL, Back); the next edit writes the reconciled form back.
+  const form = formForGame(rawForm, divisionGridsQuery.data ?? [], discipline);
 
   // The subscription rule is a workspace property now, so the review step reads it
   // from the workspace rather than from the wizard state. Fetched here, next to the
