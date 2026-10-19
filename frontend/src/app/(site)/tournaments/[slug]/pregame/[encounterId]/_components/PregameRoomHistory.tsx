@@ -65,7 +65,7 @@ const ACTIONS = {
 /** Only these have a `history.action.*` message; anything else is unknown. */
 type RoomHistoryAction = keyof typeof ACTIONS;
 
-const VERBS = { ban: true, pick: true, protect: true } as const;
+const VERBS = { ban: true, pick: true, protect: true, side_pick: true } as const;
 
 /** The outcomes a stats-service receipt records; anything else renders as its raw code. */
 const INGEST_OUTCOMES = {
@@ -136,12 +136,15 @@ function itemIds(data: Record<string, unknown>): number[] {
 export function PregameRoomHistory({
   encounterId,
   seats,
-  itemsByKind
+  itemsByKind,
+  sideLabels
 }: Readonly<{
   encounterId: number;
   /** The room's participations: the journal names a team by its participation id. */
   seats: PickBanSeat[];
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
+  /** The game's side labels in `state.sides` order: a side pick journals the side's index, not an item. */
+  sideLabels: string[];
 }>) {
   const t = useTranslations("pickBan.room");
   const format = useFormatter();
@@ -173,7 +176,9 @@ export function PregameRoomHistory({
     const score = scoreLabel(data, seats);
     const verb = asText(data.action);
     const names = itemIds(data).map(
-      (id) => itemsByKind[entry.kind === "hero" ? "hero" : "map"][id]?.name ?? `#${id}`
+      verb === "side_pick"
+        ? (id) => sideLabels[id] ?? `#${id}`
+        : (id) => itemsByKind[entry.kind === "hero" ? "hero" : "map"][id]?.name ?? `#${id}`
     );
     const outcome = asText(data.outcome);
     return t(`history.action.${key}`, {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Ban, Pause, Play, RotateCcw, ShieldCheck, Timer, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +26,7 @@ import type {
 
 import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { Spinner } from "@/components/ui/spinner";
 
 import type { PickBanAdminSlot } from "./PickBanPanel";
@@ -38,6 +39,13 @@ interface PregameAdminControlsProps {
   selectedItemName: string | null;
   /** This kind's catalog, to name the tiles an organizer clicked. */
   itemsById: Record<number, PickBanItemLike | undefined>;
+  /** The game's side labels in `state.sides` order: what a `side_pick` step chooses between. */
+  sideLabels: string[];
+  /**
+   * The series' games, from the MAP state whatever kind these controls act on:
+   * a hero-only room's hero state carries none, and its games still need correcting.
+   */
+  games: PickBanGame[] | undefined;
   /**
    * The blind draft the board on screen is building for an absent captain —
    * null when no pool is on screen for this kind, or no blind step is open.
@@ -110,6 +118,8 @@ export function PregameAdminControls({
   selectedItemId,
   selectedItemName,
   itemsById,
+  sideLabels,
+  games,
   blind,
   seats,
   bestOf,
@@ -122,12 +132,16 @@ export function PregameAdminControls({
   // The step names the action; the override only chooses WHOSE turn is being
   // taken, and it is stored with the step it was made for so the next step
   // falls back to whoever is actually on the clock.
-  const action: PickBanAction =
-    step?.action === "pick" ? "pick" : step?.action === "protect" ? "protect" : "ban";
+  const action: PickBanAction = step != null && step.action !== "decider" ? step.action : "ban";
+  const sideStep = step?.action === "side_pick";
   const defaultTeamId = state.acting_team_ids[0] ?? seats[0]?.id ?? 0;
   const [resetOpen, setResetOpen] = useState(false);
   const [override, setOverride] = useState<{ step: number | null; teamId: number } | null>(null);
   const teamId = override?.step === (step?.index ?? null) ? override.teamId : defaultTeamId;
+  // The side an organizer chose for a `side_pick` step, by index — kept with its step like the team override.
+  const [sidePick, setSidePick] = useState<{ step: number | null; index: number } | null>(null);
+  const sideIndex = sidePick?.step === (step?.index ?? null) ? sidePick.index : null;
+  const sideChoiceId = useId();
   const [lockSubmission, setLockSubmission] = useState(true);
   const itemName = (itemId: number) =>
     itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
@@ -253,7 +267,7 @@ export function PregameAdminControls({
   // Only a settled position can be corrected: `planned`/`awaiting_result` have
   // no accepted score to overwrite, and a captain claim is the normal path
   // there. A dispute is here because it is the ONLY way one ever clears.
-  const correctable = (state.games ?? []).filter(
+  const correctable = (games ?? []).filter(
     (game) => game.state === "confirmed" || game.state === "disputed"
   );
 
@@ -352,6 +366,36 @@ export function PregameAdminControls({
                   >
                     {submitMutation.isPending ? <Spinner className="mr-2" /> : null}
                     {t("admin.submitConfirm")}
+                  </Button>
+                </>
+              ) : sideStep ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <span
+                      id={sideChoiceId}
+                      className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                    >
+                      {t("admin.sideChoiceLabel")}
+                    </span>
+                    <PickBanSideChoice
+                      labelledBy={sideChoiceId}
+                      labels={sideLabels}
+                      value={sideIndex}
+                      disabled={pending}
+                      onChange={(index) => setSidePick({ step: step?.index ?? null, index })}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={!active || sideIndex == null || pending}
+                    onClick={() => {
+                      if (sideIndex == null) return;
+                      actMutation.mutate({ encounter_team_id: teamId, item_id: sideIndex, action: "side_pick" });
+                    }}
+                  >
+                    {actMutation.isPending ? <Spinner className="mr-2" /> : null}
+                    {t("admin.confirm")}
+                    {sideIndex != null ? `: ${sideLabels[sideIndex] ?? `#${sideIndex}`}` : ""}
                   </Button>
                 </>
               ) : (
@@ -668,14 +712,15 @@ function GameCorrection({
       onMutated();
     },
     onError: (error) => {
-      // A later encounter of the bracket already started on the old result, so
-      // the correction would silently invalidate a match in progress. Naming it
-      // is the difference between "try again" and "go roll that back first".
+      // The next game's pick-ban already ran on the old result (its round
+      // opener came from it), so the correction would silently rewrite a
+      // round in progress. Naming it is the difference between "try again"
+      // and "undo that round first".
       if (
         error instanceof ApiError &&
-        error.details.some((detail) => detail.code === "downstream_started")
+        error.details.some((detail) => detail.code === "dependent_round_started")
       ) {
-        notify.error(t("admin.downstreamStarted"));
+        notify.error(t("admin.dependentRoundStarted"));
         return;
       }
       notify.apiError(error, { title: t("admin.correctFailed") });

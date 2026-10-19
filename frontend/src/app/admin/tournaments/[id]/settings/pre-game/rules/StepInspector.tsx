@@ -89,7 +89,11 @@ export function StepInspector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PICK_BAN_STEP_ACTIONS.map((action) => (
+              {/* A side step is shown as one, never offered: side steps come from a game's preset. */}
+              {(step.action === "side_pick"
+                ? [...PICK_BAN_STEP_ACTIONS, step.action]
+                : PICK_BAN_STEP_ACTIONS
+              ).map((action) => (
                 <SelectItem key={action} value={action}>
                   {t(`action.${action}`)}
                 </SelectItem>

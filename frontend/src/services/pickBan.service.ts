@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api/fetch";
 import type {
   MapVetoMode,
+  PickBanAction,
   PickBanConfig,
   PickBanConfigUpsertInput,
   PickBanGame,
@@ -15,9 +16,9 @@ import type {
 } from "@/types/tournament.types";
 
 export interface PickBanActionInput {
-  /** The catalog item (a hero or map). */
+  /** The catalog item (a hero or map) — or, on a `side_pick` step, the zero-based index into `state.sides` (0 is valid). */
   item_id: number;
-  action: "ban" | "pick" | "protect";
+  action: PickBanAction;
   /** Required on a step with a `target`: the opponent player the item is banned for. */
   target_player_id?: number | null;
 }
@@ -185,8 +186,8 @@ class PickBanService {
 
   /**
    * Admin correction of a confirmed or disputed game. `reason` is required —
-   * it is what the result audit records. 409 `downstream_started` when a later
-   * encounter of the bracket has already begun on the old result.
+   * it is what the result audit records. 409 `dependent_round_started` when the
+   * next game's pick-ban already ran on the old result.
    */
   async correctGameResult(
     encounterId: number,

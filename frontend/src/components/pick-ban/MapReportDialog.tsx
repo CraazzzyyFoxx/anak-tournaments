@@ -32,7 +32,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { acceptedScore, type PickBanSeat } from "./pick-ban-model";
 
 /** Server codes of a game claim a captain can act on (`map_report.submit_game_claim`, `games.select_map`). */
-const CLAIM_ERROR_CODES = ["stale_state", "result_locked", "map_locked", "side_pick_pending"] as const;
+const CLAIM_ERROR_CODES = [
+  "stale_state",
+  "result_locked",
+  "map_locked",
+  "side_pick_pending",
+  "side_pick_required"
+] as const;
 type ClaimErrorCode = (typeof CLAIM_ERROR_CODES)[number];
 
 function isClaimErrorCode(code: string | undefined): code is ClaimErrorCode {

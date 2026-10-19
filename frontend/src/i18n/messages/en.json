@@ -4074,25 +4074,35 @@
           "ban": "Both teams ban",
           "pick": "Both teams pick",
           "protect": "Both teams protect",
-          "decider": "Decider"
+          "decider": "Decider",
+          "side_pick": "Both teams choose sides"
         },
         "side": {
           "ban": "{team} bans",
           "pick": "{team} picks",
           "protect": "{team} protects",
-          "decider": "Decider"
+          "decider": "Decider",
+          "side_pick": "{team} chooses a side"
         },
         "system": {
           "ban": "Random ban",
           "pick": "Random pick",
           "protect": "Random protect",
-          "decider": "Decider"
+          "decider": "Decider",
+          "side_pick": "Side chosen at random"
         }
       },
       "carried": {
         "badge": "from map {n}",
         "tooltip": "Banned on map {n} and still in force here"
       },
+      "sides": {
+        "lol": {
+          "blue": "Blue side",
+          "red": "Red side"
+        }
+      },
+      "sideAssignment": "{side}: {team}",
       "timer": {
         "label": "Step timer",
         "expired": "Time expired"
@@ -4119,7 +4129,8 @@
         "ban": "ban",
         "pick": "pick",
         "protect": "protect",
-        "decider": "decide"
+        "decider": "decide",
+        "side_pick": "choose a side"
       },
       "deciderResolving": "Decider is being resolved",
       "completedBanner": "Sequence completed",
@@ -4134,7 +4145,9 @@
         "confirmProtect": "Protect {item}",
         "cancel": "Cancel",
         "sending": "Sending...",
-        "actionFailed": "Action failed"
+        "actionFailed": "Action failed",
+        "confirmSide": "Choose {side}",
+        "chooseSideHint": "Choose the side your team starts on"
       },
       "draft": {
         "title": "Your draft",
@@ -4220,7 +4233,8 @@
           "stale_state": "This map's result changed while you were reporting. The room has reloaded — report again.",
           "result_locked": "This map's result is already accepted. Only an organizer can change it now.",
           "map_locked": "A captain already reported this map, so it can no longer be changed.",
-          "side_pick_pending": "The side this map is played on is not decided yet."
+          "side_pick_pending": "The side this map is played on is not decided yet.",
+          "side_pick_required": "This map's sides are chosen in the pick-ban room first."
         }
       },
       "admin": {
@@ -4231,6 +4245,7 @@
         "actionLabel": "Action",
         "confirm": "Perform action",
         "selectItemFirst": "Select an item in the pool first",
+        "sideChoiceLabel": "Starting side",
         "actFailed": "Failed to act for side",
         "reset": "Reset session",
         "resetConfirmTitle": "Reset this pick-ban session?",
@@ -4254,7 +4269,7 @@
         "reopen": "Reopen step",
         "reopenSuccess": "Step reopened",
         "reopenFailed": "Failed to reopen the step",
-        "downstreamStarted": "A later match has already started on this result. Roll that one back first.",
+        "dependentRoundStarted": "The next game already started on the old result. Undo that game's pick-ban, or reset the room, before correcting.",
         "readinessTitle": "Readiness (admin)",
         "readinessSet": "Mark ready",
         "readinessClear": "Clear",
@@ -4300,7 +4315,8 @@
         "verb": {
           "ban": "banned",
           "pick": "picked",
-          "protect": "protected"
+          "protect": "protected",
+          "side_pick": "chose"
         },
         "action": {
           "ready_marked": "{team} marked ready",
@@ -4551,7 +4567,8 @@
         "ban": "Ban",
         "pick": "Pick",
         "protect": "Protect",
-        "decider": "Decider"
+        "decider": "Decider",
+        "side_pick": "Side pick"
       },
       "actors": {
         "first": "Opener",
@@ -4753,7 +4770,8 @@
         "hero_role_bans": "Three blind bans, one per role",
         "hero_anti_one_trick": "Anti-one-trick (tournament)",
         "map_bracket": "Standard map veto",
-        "map_slot_veto": "Veto per map group"
+        "map_slot_veto": "Veto per map group",
+        "lol_side_selection": "Side selection: higher seed, then previous loser"
       },
       "preview": {
         "title": "Over the series",
