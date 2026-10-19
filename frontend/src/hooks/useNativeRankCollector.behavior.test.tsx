@@ -2,7 +2,7 @@
 //
 // Rank features resolve their game first (owner > explicit ?discipline= > saved preference > first
 // enabled game) and only then check the capability. Capability never chooses the game.
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -55,9 +55,12 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-let result: NativeRankCollector;
+const seen: { result?: NativeRankCollector } = {};
 function Probe({ owner }: Readonly<{ owner?: string | null }>) {
-  result = useNativeRankCollector(1, owner);
+  const collector = useNativeRankCollector(1, owner);
+  useEffect(() => {
+    seen.result = collector;
+  });
   return null;
 }
 
@@ -66,7 +69,7 @@ function run(owner?: string | null) {
   const container = document.createElement("div");
   containers.push(container);
   act(() => createRoot(container).render(<Probe owner={owner} />));
-  return result;
+  return seen.result!;
 }
 
 beforeEach(() => {

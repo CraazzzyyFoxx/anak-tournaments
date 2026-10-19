@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,13 +18,17 @@ const ontology: RoleOntology = { discipline: { code: "native" }, workspace_id: 7
 const initial: TeamFormatWrite = { name: "Native", preset_code: null, starter_min: 3, starter_max: 5, substitute_max: 2, dimensions: [{ dimension: "position", mode: "preference", player_min_assignments: 0, player_max_assignments: null }, { dimension: "tags", mode: "informational" }], rules: [{ role: { dimension: "position", role: "support" }, hard_min: 0, hard_max: null, recommended_min: 1, include_descendants: false }] };
 let root: Root;
 let container: HTMLDivElement;
-let latest: TeamFormatWrite;
+const seen: { latest: TeamFormatWrite } = { latest: initial };
 afterEach(async () => { if (root) await act(async () => root.unmount()); container?.remove(); });
 async function mount(children: React.ReactNode) {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   await act(async () => root.render(<NextIntlClientProvider locale="en" messages={en}>{children}</NextIntlClientProvider>));
 }
-function Harness() { const [value, setValue] = useState(initial); latest = value; return <TeamFormatEditor value={value} ontology={ontology} presets={[]} onChange={setValue} />; }
+function Harness() {
+  const [value, setValue] = useState(initial);
+  useEffect(() => { seen.latest = value; });
+  return <TeamFormatEditor value={value} ontology={ontology} presets={[]} onChange={setValue} />;
+}
 async function change(label: string, value: string) {
   const input = [...container.querySelectorAll("input")].find(input => input.getAttribute("aria-label") === label)!;
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -34,20 +38,20 @@ describe("native team-format editor", () => {
   it("edits one bound without collapsing ranges, optional substitutes, dimension modes or null/zero quotas", async () => {
     await mount(<Harness />);
     await change(en.common.roleOntology.starterMax, "6");
-    expect(latest).toEqual({ ...initial, starter_max: 6 });
-    expect(latest).not.toHaveProperty("substitute_min");
+    expect(seen.latest).toEqual({ ...initial, starter_max: 6 });
+    expect(seen.latest).not.toHaveProperty("substitute_min");
     expect(container.textContent).toContain("Tags");
   });
   it("makes zero distinct from an empty/null quota, preserves descendants and recommended quotas", async () => {
     await mount(<Harness />);
     await change(`${en.common.roleOntology.hardMax}: Support`, "0");
-    expect(latest.rules[0]).toEqual({ ...initial.rules[0], hard_max: 0 });
+    expect(seen.latest.rules[0]).toEqual({ ...initial.rules[0], hard_max: 0 });
     await change(`${en.common.roleOntology.hardMax}: Support`, "");
-    expect(latest.rules[0].hard_max).toBeNull();
+    expect(seen.latest.rules[0].hard_max).toBeNull();
     const toggle = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     await act(async () => toggle.click());
-    expect(latest.rules[0].include_descendants).toBe(true);
-    expect(latest.rules[0].recommended_min).toBe(1);
+    expect(seen.latest.rules[0].include_descendants).toBe(true);
+    expect(seen.latest.rules[0].recommended_min).toBe(1);
   });
   it("shows invalid metadata instead of inventing a rated dimension", async () => {
     await mount(<TeamFormatEditor value={initial} ontology={{ ...ontology, dimensions: [] }} presets={[]} onChange={() => { throw new Error("must not rewrite"); }} />);
