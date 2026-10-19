@@ -186,7 +186,12 @@ class TeamFlowsService:
         team = await self.get(session, id, entities)
         return await self.to_pydantic(session, team, entities)
 
-    @cache(ttl=config.settings.teams_cache_ttl, key="teams_by_tournament:{tournament_id}:{entities}", prefix="fastapi:")
+    # `v2` (both team families): the cached `TeamRead` changed shape in the multi-game cutover (roles on
+    # the wire as `{dimension, role}`). Redis keeps values across a deploy and cashews returns them
+    # unvalidated, so the names changed; `cache_resources._teams` evicts old and new alike.
+    @cache(
+        ttl=config.settings.teams_cache_ttl, key="teams_by_tournament:v2:{tournament_id}:{entities}", prefix="fastapi:"
+    )
     async def get_by_tournament_read(
         self, session: AsyncSession, tournament_id: int, entities: list[str]
     ) -> list[schemas.TeamRead]:
@@ -318,7 +323,7 @@ class TeamFlowsService:
 
     @cache(
         ttl=config.settings.teams_cache_ttl,
-        key="teams:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}",
+        key="teams:v2:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}",
         prefix="fastapi:",
     )
     async def get_all(

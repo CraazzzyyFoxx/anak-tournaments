@@ -62,12 +62,12 @@ class InvalidateTournamentResourcesTests(IsolatedAsyncioTestCase):
 
     async def test_registrations_leaves_teams_standings_and_encounters_cached(self) -> None:
         # The tournament read embeds live participants_count/registrations_count
-        # and the public list is cached as `registration_list:{id}:`. Nothing
+        # and the public list is cached as `registration_list:v2:{id}:`. Nothing
         # else moves on a registration write.
         patterns = await self._dropped(Scope.tournament(42), frozenset({Resource.TOURNAMENT_REGISTRATIONS}))
 
         self.assertTrue(any("tournaments/42" in pattern for pattern in patterns))
-        self.assertTrue(any("registration_list:42:" in pattern for pattern in patterns))
+        self.assertTrue(any("registration_list*:42:" in pattern for pattern in patterns))
         self.assertFalse(any("teams" in pattern for pattern in patterns))
         self.assertFalse(any("standings" in pattern for pattern in patterns))
         self.assertFalse(any("encounters" in pattern for pattern in patterns))
@@ -122,7 +122,7 @@ class SchemaSaveInvalidationTests(IsolatedAsyncioTestCase):
         # Redacting a field to `organizers` must take effect for the rows whose
         # `form_version_id` is NULL — they are rendered against the CURRENT
         # schema, so the cached anonymous list is stale the moment it is saved.
-        key = "fastapi:registration_list:42:"
+        key = "fastapi:registration_list:v2:42:"
         await cache.set(key, ["stale payload"])
         redacted = default_schema("battlenet")
         redacted.sections[2].fields.append(FormField(key="vk", kind="url", label="VK", visibility="organizers"))

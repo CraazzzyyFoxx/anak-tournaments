@@ -212,9 +212,13 @@ def _optional_identity(data: dict[str, Any]) -> models.AuthUser | None:
 _reg_pub_list_inflight: dict[int, asyncio.Task[Any]] = {}
 
 
+# `v2`: the cached list changed shape (`top_characters` replaced `top_heroes`,
+# `TournamentHistoryEntry.discipline` is required). Values outlive a deploy in
+# Redis and come back unvalidated, so a shape change takes a new name; the
+# invalidation glob (`cache_resources.py`) matches both names.
 @cache(
     ttl=settings.tournaments_cache_ttl,
-    key="registration_list:{tournament_id}:",
+    key="registration_list:v2:{tournament_id}:",
     prefix="fastapi:",
 )
 async def _build_registration_list(tournament_id: int) -> Any:

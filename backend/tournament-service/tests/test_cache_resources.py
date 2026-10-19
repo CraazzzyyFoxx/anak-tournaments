@@ -66,7 +66,7 @@ class CacheResourceParityTests(TestCase):
         # that cached payload.
         patterns = tuple(cache_resources.patterns_for(Resource.TOURNAMENT_REGISTRATION_FORM, 42))
 
-        self.assertEqual(patterns, tuple(f"{prefix}*registration_list:42:*" for prefix in _CONFIGURED_PREFIXES))
+        self.assertEqual(patterns, tuple(f"{prefix}*registration_list*:42:*" for prefix in _CONFIGURED_PREFIXES))
 
     def test_unknown_resource_maps_to_nothing(self) -> None:
         # A workspace-scoped resource reaches this service's invalidator (the

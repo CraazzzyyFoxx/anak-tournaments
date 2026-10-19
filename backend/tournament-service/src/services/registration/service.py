@@ -1132,7 +1132,7 @@ class RegistrationService:
     ) -> RegistrationListResponse:
         """Anonymous participants-list read model.
 
-        The public RPC caches this payload (``registration_list:{id}:``, same
+        The public RPC caches this payload (``registration_list:v2:{id}:``, same
         TTL as other tournament reads). ``registration_changed`` invalidates it;
         TTL still bounds admin writes that only hit the balancer WS topic.
         In-process coalescing on the RPC builder still collapses miss herds.
@@ -1157,7 +1157,7 @@ class RegistrationService:
 
         # The organizer publishes the shape of the field, not the field. Enforced
         # HERE and not in the client because this payload is cached per tournament
-        # with no viewer in the key (``registration_list:{id}:``) -- a per-viewer
+        # with no viewer in the key (``registration_list:v2:{id}:``) -- a per-viewer
         # branch would serve one reader's answer to the next. Organizers read the
         # full roster through the admin registrations table.
         if form is not None and form.hide_registrations:

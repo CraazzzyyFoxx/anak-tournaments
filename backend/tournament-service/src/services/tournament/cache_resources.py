@@ -52,7 +52,15 @@ def _standings(tournament_id: int) -> tuple[str, ...]:
 
 
 def _teams(tournament_id: int) -> tuple[str, ...]:
+    # `teams:v2:` and `teams_by_tournament:v2:` (``services.team.flows``); the glob
+    # also matches the unversioned names, so a leftover entry is dropped, not stranded.
     return _with_prefixes(f"*teams*:{tournament_id}:*")
+
+
+def _registration_list(tournament_id: int) -> tuple[str, ...]:
+    # `registration_list:v2:{id}:` (``rpc.public_rpc._build_registration_list``); the
+    # glob also matches the unversioned `registration_list:{id}:` leftovers.
+    return _with_prefixes(f"*registration_list*:{tournament_id}:*")
 
 
 RESOURCE_CACHE_PATTERNS: dict[str, Callable[[int], Sequence[str]]] = {
@@ -70,10 +78,10 @@ RESOURCE_CACHE_PATTERNS: dict[str, Callable[[int], Sequence[str]]] = {
         *_standings(tid),
     ),
     # The public participants list is cached on the RPC builder
-    # (`registration_list:{id}:`); the tournament read embeds the live
+    # (`registration_list:v2:{id}:`); the tournament read embeds the live
     # participants_count / registrations_count.
     Resource.TOURNAMENT_REGISTRATIONS: lambda tid: (
-        *_with_prefixes(f"*registration_list:{tid}:*"),
+        *_registration_list(tid),
         *_detail(tid),
     ),
     # The form itself is uncached (one reader, and a stale form is either a false
@@ -82,7 +90,7 @@ RESOURCE_CACHE_PATTERNS: dict[str, Callable[[int], Sequence[str]]] = {
     # the manual/sheet rows of a tournament that had no form yet — falls back to
     # the CURRENT schema's public keys (`registration_public_keys`), so
     # redacting a field to `organizers` changes that payload and must drop it.
-    Resource.TOURNAMENT_REGISTRATION_FORM: lambda tid: _with_prefixes(f"*registration_list:{tid}:*"),
+    Resource.TOURNAMENT_REGISTRATION_FORM: _registration_list,
     # Stream reads live in stream-service; nothing of them is cached here.
     Resource.TOURNAMENT_STREAMS: lambda _tid: (),
 }
