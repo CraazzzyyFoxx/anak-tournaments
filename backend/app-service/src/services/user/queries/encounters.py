@@ -1,8 +1,6 @@
 """Encounter / roster queries for the user Matches and Tournaments tabs.
 
-These queries used to live in ``services._internal.encounter.service`` and
-``services._internal.team.service``. After P3-A they are private to
-``services/user/`` — the only consumer.
+Private to ``services/user/`` — the only consumer.
 """
 
 from __future__ import annotations
@@ -23,9 +21,9 @@ from shared.schemas.role import RoleRef
 from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
-from src.domain.encounter_seats import Seat
 from src.schemas.user import UserMatchViewer
 from src.services.discipline_queries import DisciplineQueries
+from src.services.encounter_seats import Seat
 from src.services.user import _mappers
 
 # An encounter's matches are all of its own game, so its last upload needs no discipline scope.
@@ -202,7 +200,7 @@ class UserEncounterQueries(DisciplineQueries):
                 models.Tournament, models.Encounter.tournament_id == models.Tournament.id
             ).where(*workspace_filter(workspace_id))
         if params.sort == "round" or stage in ("group", "playoffs", "finals"):
-            # The bracket position moved to ``tournament.bracket_encounter``; an
+            # The bracket position lives on ``tournament.bracket_encounter``; an
             # encounter outside any bracket has no round or stage and sorts last.
             total_query = total_query.outerjoin(
                 models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id

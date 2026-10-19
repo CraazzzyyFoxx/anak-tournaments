@@ -1,4 +1,4 @@
-"""Public discipline metadata (P7 §1): the installed descriptors and one discipline's scoped native metadata.
+"""Public discipline metadata: the installed descriptors and one discipline's scoped native metadata.
 
 Both subjects are ``AuthOptional`` at the gateway: an anonymous request carries no ``identity`` key, an authenticated
 one lets a hidden workspace's own members read its child ontology.

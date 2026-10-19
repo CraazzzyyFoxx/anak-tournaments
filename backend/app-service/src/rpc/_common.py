@@ -2,16 +2,14 @@
 
 Re-exports ``shared.rpc.common`` — the gateway envelope/param-decoding
 plumbing is identical across every typed-RPC service and lives there as the
-single source of truth. Only ``gate_tournament`` is genuinely app-service
-local (it wraps ``shared.services.tournament.visibility``).
+single source of truth. ``require_discipline`` and ``gate_tournament`` (which
+wraps ``shared.services.tournament.visibility``) are app-service local.
 """
 
 from __future__ import annotations
 
 from functools import partial
 from typing import Any
-
-import sqlalchemy as sa
 
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
@@ -38,7 +36,6 @@ from shared.rpc.common import (
     envelope as _envelope,
 )
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models
 
 __all__ = (
     "identity_user_id",
@@ -58,7 +55,6 @@ __all__ = (
     "require_query_int",
     "dump",
     "require_discipline",
-    "tournament_discipline",
     "envelope",
 )
 
@@ -82,18 +78,8 @@ def require_discipline(data: dict[str, Any], *, in_path: bool = False) -> str:
     return raw
 
 
-async def tournament_discipline(session: Any, tournament_id: int) -> str:
-    """The game a tournament belongs to: its owner discipline overrides any browsing choice."""
-    discipline = await session.scalar(
-        sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id)
-    )
-    if discipline is None:
-        raise HTTPException(status_code=404, detail="Tournament not found")
-    return discipline
-
-
 async def gate_tournament(session: Any, data: dict[str, Any], tournament_id: int | None) -> None:
-    """404 a hidden tournament for an ineligible viewer (issue #115).
+    """404 a hidden tournament for an ineligible viewer.
 
     No-op when ``tournament_id`` is None (a cross-tournament read with no single
     tournament to gate). The route must be AuthOptional so identity reaches here.

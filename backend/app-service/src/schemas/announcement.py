@@ -3,11 +3,9 @@
 Deliberately thin: the announcement's own shape -- which locales are required,
 which ``default_locale`` is legal, what an ``href`` may point at -- lives in
 ``shared.services.notifications.AnnouncementPayload`` and is enforced by
-``validate_notification_payload``, because ``notify()`` enforces the same rules
-for every other writer. Re-declaring the fields here with their own constraints
-would be a second copy that drifts, so these models only carry what the RPC
-boundary itself decides: which audience is reachable through this surface, and
-which fields an edit is allowed to touch.
+``validate_notification_payload`` for every writer, so these models only carry
+what the RPC boundary itself decides: which audience is reachable through this
+surface, and which fields an edit is allowed to touch.
 
 The read side is ``schemas.NotificationItem`` -- an announcement is a
 notification row, and the operator list shows exactly what the inbox stores.
@@ -23,7 +21,7 @@ __all__ = ("AnnouncementCreate", "AnnouncementUpdate")
 # ``user`` is missing on purpose: personal notifications are written by the
 # domain flows that cause them, from server-resolved recipients. Accepting it
 # here would mean a client-supplied recipient id -- the one thing the audience
-# rules exist to prevent (Global Constraint 3).
+# rules exist to prevent.
 AnnouncementAudience = Literal["workspace", "global"]
 
 

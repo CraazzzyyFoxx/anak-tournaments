@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import sqlalchemy as sa
 from cashews import cache
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,10 +35,10 @@ from shared.repository import SocialAccountRepository, UserMergeAuditRepository,
 from shared.repository.stats import StatsMatchRepository
 from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.schemas.user_merge_auth import AuthMergeResult
-from shared.services.auth_merge import apply_auth_merge, preview_auth_merge
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src import models, schemas
 from src.services import user_cache
+from src.services.admin.auth_merge import apply_auth_merge, preview_auth_merge
 
 __all__ = ("UserMergeService", "merges")
 
@@ -47,14 +47,9 @@ EVALUATION_RESULT_MEMBER_REFERENCE_KEY = "achievements.evaluation_result.workspa
 OVERRIDE_MEMBER_REFERENCE_KEY = "achievements.override.workspace_member_id"
 REGISTRATION_MEMBER_REFERENCE_KEY = "balancer.registration.workspace_member_id"
 
-# achievements.evaluation_result / achievements.override moved to
-# workspace_member_id (P6), and balancer.registration followed (dbarch02
-# dropped its user_id column): none of them are generic user_id columns
-# anymore, so they are handled by dedicated workspace_member-aware
-# counters/mergers (mirroring PLAYER_WORKSPACE_MEMBER_REFERENCE_KEY) instead
-# of living in this table. The legacy achievements.user.user_id row was
-# dropped too — its table was removed by l2g4h6i0j1k2, so it no longer needs
-# a generic reassign here.
+# Generic player-id columns, one set-based UPDATE each. References keyed by
+# ``workspace_member_id`` (roster, evaluation_result, override, registration)
+# have dedicated workspace_member-aware counters/mergers instead.
 REFERENCE_CONFIG: tuple[tuple[str, type, str], ...] = (
     ("tournament.team.captain_id", models.Team, "captain_id"),
     ("stats.ingest_job.uploader_user_id", models.IngestJob, "uploader_user_id"),
@@ -343,7 +338,7 @@ class UserMergeService:
             # Remove only now-unreferenced duplicate memberships before sealing
             # their transition; source-user cascades cannot erase unaudited history.
             await session.execute(
-                delete(models.WorkspaceMember).where(
+                sa.delete(models.WorkspaceMember).where(
                     models.WorkspaceMember.player_id == context.source.id,
                 )
             )
@@ -656,7 +651,7 @@ class UserMergeService:
         if model is models.IngestJob:
             # Uploader identity is a hint change, not a lifecycle transition.
             values["updated_at"] = model.updated_at
-        result = await session.execute(update(model).where(column == source_user_id).values(values))
+        result = await session.execute(sa.update(model).where(column == source_user_id).values(values))
         return int(result.rowcount or 0)
 
     async def _repoint_player_workspace_members(
@@ -698,7 +693,7 @@ class UserMergeService:
         for workspace_id, player_ids in _group_by_workspace(rows).items():
             member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=target_user_id)
             result = await session.execute(
-                update(models.Player).where(models.Player.id.in_(player_ids)).values(workspace_member_id=member.id)
+                sa.update(models.Player).where(models.Player.id.in_(player_ids)).values(workspace_member_id=member.id)
             )
             moved += int(result.rowcount or 0)
 
@@ -854,7 +849,7 @@ class UserMergeService:
             target_member_id = target_members.get(workspace_id)
             if target_member_id is None:
                 await session.execute(
-                    update(models.WorkspaceMember)
+                    sa.update(models.WorkspaceMember)
                     .where(models.WorkspaceMember.id == source_member_id)
                     .values(player_id=target_user_id)
                     .execution_options(synchronize_session=False)
@@ -881,23 +876,23 @@ class UserMergeService:
                 .correlate(seat)
             )
             await session.execute(
-                delete(seat)
+                sa.delete(seat)
                 .where(seat.workspace_member_id == source_member_id, duplicate)
                 .execution_options(synchronize_session=False)
             )
             await session.execute(
-                update(seat)
+                sa.update(seat)
                 .where(seat.workspace_member_id == source_member_id)
                 .values(workspace_member_id=target_member_id)
                 .execution_options(synchronize_session=False)
             )
-            # Mix-round rows hang on the member the same way (D74): one per (round, member). On a collision
+            # Mix-round rows hang on the member the same way: one per (round, member). On a collision
             # the seated (non-busy) row wins, so the seat the survivor keeps never pairs with a busy row; on
             # a tie (both busy or both seated) the survivor's row wins.
             round_member = CustomGameRoundMember
             other_round = sa.orm.aliased(CustomGameRoundMember)
             await session.execute(
-                delete(round_member)
+                sa.delete(round_member)
                 .where(
                     round_member.workspace_member_id == target_member_id,
                     round_member.busy.is_(True),
@@ -912,7 +907,7 @@ class UserMergeService:
                 .execution_options(synchronize_session=False)
             )
             await session.execute(
-                delete(round_member)
+                sa.delete(round_member)
                 .where(
                     round_member.workspace_member_id == source_member_id,
                     sa.exists()
@@ -925,7 +920,7 @@ class UserMergeService:
                 .execution_options(synchronize_session=False)
             )
             await session.execute(
-                update(round_member)
+                sa.update(round_member)
                 .where(round_member.workspace_member_id == source_member_id)
                 .values(workspace_member_id=target_member_id)
                 .execution_options(synchronize_session=False)
@@ -935,7 +930,7 @@ class UserMergeService:
         # A set-based DELETE rather than an ORM instance delete: the row's dependents
         # are removed by the database's own ON DELETE rules, whereas an ORM cascade
         # would load and delete every loaded collection one row at a time.
-        await session.execute(delete(models.User).where(models.User.id == source_user_id))
+        await session.execute(sa.delete(models.User).where(models.User.id == source_user_id))
 
     async def _merge_achievement_evaluation_results(
         self,
@@ -1021,11 +1016,11 @@ class UserMergeService:
             to_repoint = [row_id for row_id in row_ids if row_id not in colliding]
 
             if to_drop:
-                result = await session.execute(delete(result_model).where(result_model.id.in_(to_drop)))
+                result = await session.execute(sa.delete(result_model).where(result_model.id.in_(to_drop)))
                 moved += int(result.rowcount or 0)
             if to_repoint:
                 result = await session.execute(
-                    update(result_model)
+                    sa.update(result_model)
                     .where(result_model.id.in_(to_repoint))
                     .values(workspace_member_id=target_member_id)
                 )
@@ -1071,7 +1066,7 @@ class UserMergeService:
         for workspace_id, row_ids in _group_by_workspace(rows).items():
             member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=target_user_id)
             result = await session.execute(
-                update(models.AchievementOverride)
+                sa.update(models.AchievementOverride)
                 .where(models.AchievementOverride.id.in_(row_ids))
                 .values(workspace_member_id=member.id)
             )
@@ -1163,7 +1158,9 @@ class UserMergeService:
                 continue
 
             result = await session.execute(
-                update(registration).where(registration.id.in_(to_repoint)).values(workspace_member_id=target_member_id)
+                sa.update(registration)
+                .where(registration.id.in_(to_repoint))
+                .values(workspace_member_id=target_member_id)
             )
             moved += int(result.rowcount or 0)
 

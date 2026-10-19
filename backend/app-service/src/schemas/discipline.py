@@ -1,4 +1,4 @@
-"""Public native metadata of an installed discipline (P7 §1): descriptor, scoped ontology, vocabularies, ladder."""
+"""Public native metadata of an installed discipline: descriptor, scoped ontology, vocabularies, ladder."""
 
 from __future__ import annotations
 

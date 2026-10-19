@@ -15,13 +15,11 @@ from src.schemas.division_grid import DivisionGridVersionRead
 # the branding derive util consumes.
 _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 
-# A Discord snowflake: 17-19 digits. 19 already reaches ~2084, and the column this
-# used to live in was BigInteger, which tops out at 19 digits -- so 20 was never
-# storable, and permitting it would let through a value the migration's downgrade
-# cannot cast back. Kept as a string end to end because it exceeds 2**53 and a float
-# round-trip would corrupt it. No `max_length` accompanies this pattern: it caps the
-# value at 19 characters already, so the `String(32)` column width could never bind,
-# and shipping both into the public schema would advertise contradictory bounds.
+# A Discord snowflake: 17-19 digits (19 already reaches ~2084). 20 digits would
+# not fit the BigInteger the migration's downgrade casts back to. Kept as a string
+# end to end because it exceeds 2**53 and a float round-trip would corrupt it. No
+# `max_length`: the pattern already caps the value at 19 characters, and both in
+# the public schema would advertise contradictory bounds.
 _DISCORD_SNOWFLAKE = r"^\d{17,19}$"
 
 # Which hosts each community link may point at (``www.`` stripped before the
@@ -86,7 +84,7 @@ class WorkspaceRead(BaseRead):
     subdomain: str | None = None
     seo_title: str | None = None
     seo_description: str | None = None
-    # White-label custom domains (Phase 2). ``custom_domain_verification_token``
+    # Custom domains. ``custom_domain_verification_token``
     # is exposed so the admin UI can render the required DNS TXT record without
     # a second round-trip; it is not a secret (the TXT record IS public DNS).
     custom_domain: str | None = None
@@ -98,13 +96,12 @@ class WorkspaceRead(BaseRead):
     # A genuinely secret integration value must NOT follow this path; it needs an
     # authenticated admin read model.
     discord_guild_id: str | None = None
-    # Who proved ownership and when (self-service design §4.1) -- same
-    # public-exposure precedent as custom_domain_verified_at just above.
-    # discord_guild_verified_by_auth_user_id stays off this model: unlike a
-    # guild id or a DNS token, an arbitrary internal auth_user_id is not
-    # something this design chooses to publish.
+    # Who proved ownership and when -- same public-exposure precedent as
+    # custom_domain_verified_at just above. discord_guild_verified_by_auth_user_id
+    # stays off this model: unlike a guild id or a DNS token, an internal
+    # auth_user_id is not published.
     discord_guild_verified_at: datetime | None = None
-    # Self-service trust tier (design §4.2). Public because the frontend renders
+    # Self-service trust tier. Public because the frontend renders
     # it as a badge and derives the "not listed on the home page yet" notice
     # from it; ``trusted`` is also exactly what the public directory filters on,
     # so it is already observable from the outside.
@@ -235,10 +232,9 @@ class WorkspaceUpdate(BaseModel):
 
 
 class WorkspaceCustomDomainSet(BaseModel):
-    """Body for ``set_custom_domain``. Normalization/validation of the domain
-    itself (FQDN shape, platform-zone rejection) happens in the service layer
-    via ``normalize_custom_domain`` so both this RPC and any future caller share
-    one source of truth for what counts as a valid custom domain."""
+    """Body for ``set_custom_domain``. The domain itself (FQDN shape,
+    platform-zone rejection) is validated in the service layer by
+    ``normalize_custom_domain``."""
 
     custom_domain: str = Field(..., min_length=1, max_length=255)
 
@@ -255,8 +251,7 @@ class WorkspaceDiscordGuildVerify(BaseModel):
 class WorkspaceDiscordGuildOption(BaseModel):
     """One guild the caller administers, as reported by
     ``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so
-    ``discord_guild_verify`` can be handed a snowflake the caller can actually
-    prove — instead of a free-text field that only fails after the fact."""
+    ``discord_guild_verify`` is handed a snowflake the caller can actually prove."""
 
     guild_id: str
     name: str

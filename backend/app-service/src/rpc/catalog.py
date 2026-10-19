@@ -1,4 +1,4 @@
-"""Public native catalog reads (P7 §3.2): ``GET /api/v1/catalog/{discipline}/{kind}[/{id}]``.
+"""Public native catalog reads: ``GET /api/v1/catalog/{discipline}/{kind}[/{id}]``.
 
 ``AuthNone`` at the gateway: the catalog is global per discipline, so there is no actor and no workspace. Pure
 transport: decode, one service call. Mutations stay on the superuser surface in ``rpc/metadata_admin.py``.

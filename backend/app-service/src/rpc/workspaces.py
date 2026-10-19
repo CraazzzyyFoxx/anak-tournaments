@@ -6,19 +6,19 @@ platform's reserved slugs; the tier RPC that lifts a new workspace out of
 ``unverified`` (``verification_set``) is the superuser-only half. Member ops are
 workspace-scoped (workspace_member.{read,create,update,delete}). workspace
 update/delete go through the shared CRUD engine (see services/workspace/registry.py
-+ rpc/admin_crud.py). The custom-domain set/verify/clear trio (white-label Phase
-2) is bespoke too — like member ops, gated on the workspace-scoped
-``workspace.update`` permission — since verification has a side effect (a DNS
-lookup) the generic CRUD engine has no hook for.
++ rpc/admin_crud.py). The custom-domain set/verify/clear trio is bespoke too —
+like member ops, gated on the workspace-scoped ``workspace.update`` permission —
+since verification has a side effect (a DNS lookup) the generic CRUD engine has
+no hook for.
 
-This module is pure transport: it decodes params, runs the permission gate and
-calls one ``WorkspaceService`` operation. The service owns the transaction and
-the ``audit_log`` row for each bespoke mutation, so the trail lives or dies with
-the write. The workspace's own field updates are NOT audited from here at all:
-they go through the shared CRUD engine, which records them at its single hook.
+Each handler decodes params, runs the permission gate and calls one service
+operation. A bespoke mutation's ``audit_log`` row is staged on the session the
+service commits, so the trail lives or dies with the write (``create`` records
+it in a second transaction, once the new id exists). The workspace's own field
+updates are NOT audited from here at all: they go through the shared CRUD
+engine, which records them at its single hook.
 
-The member-payload helpers stay here so the headless worker never depends on
-route internals. Role resolution lives on ``WorkspaceService``, and so does the
+Role resolution lives on ``WorkspaceService``, and so does the
 ``WorkspaceMemberChangedEvent`` every membership write stages for identity's
 RBAC cache.
 """
@@ -29,19 +29,14 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import Paginated
 from shared.disciplines import DISCIPLINES
-from shared.models import QuotaWorkspaceLimit
-from shared.quota import admin as quota_admin
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.rpc.query import parse_id_list
-from shared.schemas.quota import QuotaPlanLimitRead
 from shared.schemas.team_format import TeamFormatWrite
 from shared.services.audit import record_admin_audit
 from shared.services.discord_client import DiscordClient
@@ -52,6 +47,7 @@ from src import models, schemas
 from src.core import config, db
 from src.rpc import _common as c
 from src.services import notification_config
+from src.services.admin.quota import quota_admin_service
 from src.services.workspace.service import MEMBERS_SORT_FIELDS, reject_reserved_slug
 from src.services.workspace.service import workspaces as workspace_service
 
@@ -67,31 +63,6 @@ def _path_int(data: dict[str, Any], key: str) -> int:
         return int(data[key])
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"{key} is required") from exc
-
-
-def _quota_values(row: Any, scope: str) -> dict[str, Any] | None:
-    """One override row as plain numbers, ``None`` when there is no row.
-
-    The two states the journal has to tell apart: "this workspace runs on its
-    plan" is what a deleted override restores, and five explicit nulls would
-    read as the same thing while meaning something else.
-    """
-    if row is None:
-        return None
-    return {"scope": scope, **{name: getattr(row, name) for name in quota_admin.DIMENSIONS}}
-
-
-async def _quota_override(session: AsyncSession, workspace_id: int, scope: str) -> dict[str, Any] | None:
-    """The stored override before a write, for the audit row's before side."""
-    row = (
-        await session.execute(
-            select(QuotaWorkspaceLimit).where(
-                QuotaWorkspaceLimit.workspace_id == workspace_id,
-                QuotaWorkspaceLimit.scope == scope,
-            )
-        )
-    ).scalar_one_or_none()
-    return _quota_values(row, scope)
 
 
 async def _member_payload(session: AsyncSession, member: models.WorkspaceMember) -> schemas.WorkspaceMemberRead:
@@ -518,7 +489,7 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.member_remove", op, session_factory=_SF)
 
-    # --- custom domain (white-label Phase 2) --------------------------------
+    # --- custom domain --------------------------------------------------------
     @broker.subscriber("rpc.app.workspaces.set_custom_domain")
     async def _set_custom_domain(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -664,39 +635,11 @@ def register(broker: Any, logger: Any) -> None:
         """
 
         async def op(session: Any) -> Any:
-            workspace_id = _path_int(data, "workspace_id")
-            user = c.actor(data)
-            c.require_active(user)
-            ensure_workspace_permission(user, workspace_id, "workspace", "update")
-            workspace = await workspace_service.get_by_id(session, workspace_id)
-            if not workspace:
-                raise HTTPException(status_code=404, detail="Workspace not found")
+            workspace = await _gate_workspace(session, data)
             body = schemas.WorkspaceQuotaSet.model_validate(c.payload(data))
-            before = await _quota_override(session, workspace_id, body.scope)
-            row = await quota_admin.apply_workspace_limits(
-                session,
-                workspace_id=workspace_id,
-                scope=body.scope,
-                values=body.limits.as_dict(),
-                updated_by=user.id,
-                allow_raise=user.is_superuser,
+            return await quota_admin_service.set_workspace_limits(
+                session, workspace, actor=c.actor(data), data=data, body=body
             )
-            await record_admin_audit(
-                session,
-                action="workspace.quota_update",
-                actor=user,
-                data=data,
-                workspace_id=workspace_id,
-                entity_type="workspace",
-                entity_id=workspace_id,
-                entity_label=workspace.name,
-                before=before,
-                after=_quota_values(row, body.scope),
-            )
-            await session.commit()
-            quota.invalidate_policy()
-            effective = await quota_admin.inherited_limits(session, workspace_id=workspace_id, scope=body.scope)
-            return QuotaPlanLimitRead(scope=body.scope, **effective)
 
         return await c.envelope(logger, "workspaces.quota_set", op, session_factory=_SF)
 
@@ -876,7 +819,7 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.notification_config_update", op, session_factory=_SF)
 
-    # --- team format default per discipline (D35, D88) ----------------------
+    # --- team format default per discipline ---------------------------------
     @broker.subscriber("rpc.app.workspaces.team_format_get")
     async def _team_format_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

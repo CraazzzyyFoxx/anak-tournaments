@@ -1,9 +1,8 @@
 """Headless RPC worker for app-service (app-svc).
 
-Hosts every ``rpc.app.*`` subscriber (public reads via the shared CRUD read
-engine + bespoke reads, workspace writes, binary base64 endpoints) plus the
-``cache.invalidated`` invalidation consumer. Replaces the HTTP app-service
-(compose ``backend``) behind the Go gateway.
+Hosts every ``rpc.app.*`` subscriber the Go gateway calls (public reads via
+the shared CRUD read engine + bespoke reads, workspace writes, binary base64
+endpoints) plus the ``cache.invalidated`` invalidation consumer.
 
 Run with: ``faststream run serve:app``.
 """
@@ -99,15 +98,14 @@ async def _refresh_hero_stats(event: CacheInvalidatedEvent) -> None:
     """Debounced refresh of the global hero-stats materialized view.
 
     Gated on ``tournament.standings`` — the resource that carries "match data
-    moved". The old consumer said the same thing as "any reason except
-    bracket_changed", which nobody could read as a statement about hero stats.
+    moved".
     """
     if Resource.TOURNAMENT_STANDINGS in event.resources:
         hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
 
 
-# Single owner of CACHE_INVALIDATION_APP_QUEUE (the app-worker). The HTTP
-# service must not host it too — two consumers would round-robin the messages.
+# Single owner of CACHE_INVALIDATION_APP_QUEUE: a second process consuming it
+# would round-robin the messages.
 register_invalidation_consumer(
     broker,
     logger,
@@ -118,7 +116,7 @@ register_invalidation_consumer(
     on_event=_refresh_hero_stats,
 )
 
-# Phase 1 — public reads.
+# Public reads.
 # achievement get+list via the shared CRUD read engine:
 reads_generic.register(broker, logger)
 # bespoke reads (aggregations, users/*) + workspace reads/writes/members:
@@ -128,16 +126,16 @@ catalog.register(broker, logger)
 catalog_legacy.register(broker, logger)
 disciplines.register(broker, logger)
 
-# Phase 2 — workspace update/delete via the shared CRUD engine.
+# Workspace update/delete via the shared CRUD engine.
 admin_crud.register(broker, logger)
 
-# Game-metadata admin CRUD (hero/map/gamemode), relocated from parser-service.
+# Game-metadata admin CRUD (hero/map/gamemode).
 metadata_admin.register(broker, logger)
 
 # Alias-miss queue: unresolved log names + one-click attach (superuser only).
 catalog_aliases.register(broker, logger)
 
-# User + identity admin CRUD, profile merge, avatar, CSV import (from parser-service).
+# User + identity admin CRUD, profile merge, avatar, CSV import.
 users_admin.register(broker, logger)
 
 # Platform audit log (read-only feed + per-entity trail), gated by audit.read.
@@ -158,7 +156,7 @@ notifications_admin.register(broker, logger)
 # ``broadcast()`` queues -- its own queue, its own channel, its own DLQ.
 notification_delivery_consumer.register(broker, logger)
 
-# Phase 3 — binary/multipart endpoints (icons, assets, match-log) over base64.
+# Binary/multipart endpoints (icons, assets, match-log) over base64.
 binary.register(broker, logger)
 
 # Quota policy: the superuser-only plan/operation catalogue every metered
@@ -203,10 +201,10 @@ async def start_worker() -> None:
     )
     if config.settings.worker_metrics_port is not None:
         start_worker_metrics_server(config.settings.worker_metrics_port)
-    # Drop stale cache on (re)deploy, mirroring the HTTP service lifespan.
+    # Drop stale cache on (re)deploy.
     await cache.delete_match("fastapi:*")
     await cache.delete_match("backend:*")
-    # D31: the modules' role ontologies are projected before the first message is served.
+    # The modules' role ontologies are projected before the first message is served.
     async with db.async_session_maker() as session:
         await project_disciplines(session)
         await session.commit()

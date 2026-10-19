@@ -137,7 +137,7 @@ _MAP_SCOPE = {"ru": "карта {position}", "en": "map {position}"}
 #: ``kind -> (heading, sentence, detail lines)`` per locale. The heading is the
 #: kind's label from the workspace admin screen; every kind in
 #: ``NOTIFICATION_KINDS`` except ``announcement.published`` (operator text that
-#: already carries its own copy, and never leaves the app in v1) appears in
+#: already carries its own copy, and never leaves the app) appears in
 #: both locales -- the parity test is what keeps that true.
 TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
     "ru": {
@@ -272,7 +272,7 @@ _ANSWER_EMOJI = {"accepted": "ok", "declined": "error"}
 _NO_TIME_HEADINGS = {"ru": "Следующий матч", "en": "Next match"}
 
 #: Link captions, one per destination. ``encounter.scheduled`` names its own
-#: three (D8): the room the readers play in, and the public match page.
+#: three: the room the readers play in, and the public match page.
 _LINK_LABELS: dict[str, dict[str, str]] = {
     "ru": {
         "participants": "Перейти к участникам",
@@ -455,7 +455,7 @@ def _action_row(kind: str, payload: Mapping[str, Any], labels: Mapping[str, str]
 def _scheduled_links(
     payload: Mapping[str, Any], base: str, labels: Mapping[str, str], *, personal: bool
 ) -> list[DiscordButton]:
-    """Where an ``encounter.scheduled`` card points (D8).
+    """Where an ``encounter.scheduled`` card points.
 
     A DM leads with the room its reader acts in -- the pick-ban when the match
     has one, the captains' lobby-code chat otherwise -- and offers the public

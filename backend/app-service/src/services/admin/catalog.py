@@ -1,4 +1,4 @@
-"""Admin CRUD for ``catalog.entity`` by discipline and kind (D85).
+"""Admin CRUD for ``catalog.entity`` by discipline and kind.
 
 The discipline module decides which kinds a game has and which classes a character may carry; the database decides
 the rest (slug/name unique per discipline and kind, a parent of the same discipline). Commits: the admin request is the
@@ -28,7 +28,7 @@ _WITH_PARENT = [selectinload(models.CatalogEntity.parent)]
 
 
 def kind_spec(discipline: str, kind: str) -> DisciplineSpec:
-    """The module behind ``discipline`` when it declares ``kind``; 404 (with the P7 error code) otherwise."""
+    """The module behind ``discipline`` when it declares ``kind``; a coded 404 otherwise."""
     spec = DISCIPLINES.get(discipline)
     if spec is None:
         raise ApiHTTPException(

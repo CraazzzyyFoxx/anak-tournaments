@@ -1,4 +1,4 @@
-"""Achievement service v2 based on rules + effective achievement rows."""
+"""Achievement reads over rules + effective achievement rows."""
 
 from __future__ import annotations
 
@@ -144,13 +144,7 @@ def rule_entity(in_entities: list[str], child: typing.Any | None = None) -> list
 
 class AchievementQueries:
     """Achievement-rule reads: rarity aggregates, per-user effective rows, and the
-    tournament/match hydration the flows need to render links.
-
-    The two bulk hydration reads used to live in a separate
-    ``achievements/_repositories.py``; they are plain ``IN (...)`` selects over
-    tournament-flow tables that only this domain reads, so they sit here rather
-    than becoming a shared CRUD repository.
-    """
+    tournament/match hydration the flows need to render links."""
 
     async def get(
         self,

@@ -1,4 +1,4 @@
-"""Admin CRUD for the game catalog (``catalog.entity``): one surface for every discipline and kind (D85).
+"""Admin CRUD for the game catalog (``catalog.entity``): one surface for every discipline and kind.
 
 Superuser-only for every mutation and for the platform-wide list — the catalog is global game content. The one read
 open to workspace organizers is ``rpc.app.catalog.workspace_characters``. Pure transport: gate, decode, one service

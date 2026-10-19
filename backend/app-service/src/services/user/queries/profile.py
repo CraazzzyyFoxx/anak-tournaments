@@ -15,8 +15,8 @@ from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import enums, pagination
-from src.domain.encounter_seats import Seat
 from src.services.discipline_queries import DisciplineQueries
+from src.services.encounter_seats import Seat
 
 from ._scope import (
     _build_eligible_hero_stats_cte,
@@ -236,10 +236,9 @@ class UserProfileQueries(DisciplineQueries):
 
         Scoped exactly like ``get_tournaments_with_stats`` (which powers the
         Tournaments tab): a tournament belongs to a user's history as soon as the
-        user has played an encounter in it, not once ``is_finished`` flips. Gating on
-        ``is_finished`` left the profile of a player whose only event is the live one
-        completely empty even though every other read (maps, heroes, roles,
-        encounters) already counted it. Hidden tournaments (issue #115) never appear.
+        user has played an encounter in it, not once ``is_finished`` flips, so a
+        player whose only event is the live one agrees with every other read (maps,
+        heroes, roles, encounters). Hidden tournaments never appear.
         """
         played_encounter = team_has_played_encounter()
         scope = (
@@ -396,7 +395,7 @@ class UserProfileQueries(DisciplineQueries):
             .where(
                 models.WorkspaceMember.player_id == user_id,
                 models.Player.is_substitution.is_(False),
-                # Hidden tournaments (issue #115) never appear in a user's public
+                # Hidden tournaments never appear in a user's public
                 # tournament list. This read is cashews-cached without the viewer,
                 # so exclude unconditionally; admins/allowlisted view hidden
                 # tournaments through the gated tournament pages instead.
@@ -763,7 +762,7 @@ class UserProfileQueries(DisciplineQueries):
         # services.user.queries.encounters.get_roster_avg_mvp_bulk. First collapse each
         # match's rows into one (impact_rank, performance, kda) tuple via an
         # outer join (keeps a teammate with zero stat rows in the result with
-        # NULLs, matching the prior behaviour), THEN average per teammate.
+        # NULLs), THEN average per teammate.
         stats_per_match = (
             sa.select(
                 shared_teams.c.teammate_id.label("user_id"),

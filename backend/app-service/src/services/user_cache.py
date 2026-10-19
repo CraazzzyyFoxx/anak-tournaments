@@ -26,8 +26,8 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     "user_draft_card",
     "user_tournaments",
     # Versioned in the prefix, like the compare namespaces: these embed ``MatchReadWithUserStats`` (native match
-    # header + viewer facts) of one discipline, or (tournament stats) gained the owner workspace/game, and a
-    # pre-change pickle must sit under a name no reader asks for. The version stays a part of the prefix so the
+    # header + viewer facts) of one discipline, or (tournament stats) the owner workspace/game, and a pickle of an
+    # older shape must sit under a name no reader asks for. The version stays a part of the prefix so the
     # subject's id is still the first component after it (``{prefix}:{user_id}:*``).
     "user_tournament_stats:v2",
     "user_tournament_encounters:v5",
@@ -67,7 +67,7 @@ def user_cache_patterns(user_id: int) -> tuple[str, ...]:
     the shared compare namespaces broadly (a global/cohort baseline can shift
     when any user changes). Cross-user cosmetic staleness — this user's name or
     avatar embedded in *other* users' cached teammate/opponent lists — is left to
-    the TTL, matching the pre-existing merge behaviour.
+    the TTL.
     """
     return (
         *(f"backend:{prefix}:{user_id}:*" for prefix in USER_CACHE_KEY_PREFIXES),

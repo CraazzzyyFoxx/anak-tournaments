@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.core import enums, pagination
-from src.domain.encounter_seats import Seat
 from src.services.discipline_queries import DisciplineQueries
+from src.services.encounter_seats import Seat
 
 __all__ = ("StatisticsQueries", "encounter_query")
 
@@ -72,8 +72,8 @@ class StatisticsQueries(DisciplineQueries):
         """Fetch one page AND its grand total in a single round trip.
 
         ``count(*) OVER ()`` is evaluated after GROUP BY/HAVING but before
-        LIMIT/OFFSET, so every returned row carries the full group count — the
-        separate ``SELECT count(*) FROM (<page query>)`` round trip is gone.
+        LIMIT/OFFSET, so every returned row carries the full group count and no
+        separate ``SELECT count(*) FROM (<page query>)`` round trip is needed.
         ``only_count`` requests are the one exception: they paginate to
         ``LIMIT 0``, which would starve the window of rows, so they ask for the
         count alone (still one round trip).
@@ -103,7 +103,7 @@ class StatisticsQueries(DisciplineQueries):
         ``ImpactRank`` (the newer impact-scoring rank) when the impact pipeline
         computed it for a match, the legacy ``Performance`` rank otherwise — same
         ``COALESCE(ImpactRank, Performance)`` per-match average as
-        ``services.user._repositories.get_roster_avg_mvp_bulk``.
+        ``services.user.queries.encounters.get_roster_avg_mvp_bulk``.
         """
         tournament_matches = self._tournament_match_ids_cte(tournament_id, cte_name=f"{cte_prefix}matches")
         per_match = (

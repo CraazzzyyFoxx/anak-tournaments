@@ -1,4 +1,4 @@
-"""Tournament readiness aggregate for the hub living checklist (D13, §7.1).
+"""Tournament readiness aggregate for the hub living checklist.
 
 Two round-trips of count/exists scalar subqueries over the shared models
 (same pattern as ``service.get_counts``) on top of the tournament fetch. Field
@@ -8,7 +8,7 @@ draft fields — a missing group yields ``None`` so the checklist renders
 "no-access" instead of zeros.
 
 ``registrations_ranked`` counts SAVED rank data on registration roles
-(``BalancerRegistrationRole.rank_value``), never an autofill preview (SK-O12).
+(``BalancerRegistrationRole.rank_value``), never an autofill preview.
 """
 
 from __future__ import annotations
@@ -158,17 +158,16 @@ class ReadinessService:
     async def team_row(self, session: AsyncSession, tournament_id: int) -> sa.Row:
         """Registration/pool/balance/draft state — the ``team.read`` group.
 
-        Every value rides in one statement: the four questions that used to be
-        their own round trips (form row exists, registration window open, saved
-        balance, latest draft status) are scalar subqueries here like the
-        counters, so this group costs one round trip instead of five.
+        Every value rides in one statement: form row exists, registration window
+        open, saved balance and latest draft status are scalar subqueries here like
+        the counters, so this group costs one round trip.
         """
         reg = models.BalancerRegistration
         active = (reg.tournament_id == tournament_id, reg.deleted_at.is_(None))
         reg_pending = sa.select(sa.func.count(reg.id)).where(*active, reg.status == "pending")
         reg_approved = sa.select(sa.func.count(reg.id)).where(*active, reg.status == "approved")
         reg_checked_in = sa.select(sa.func.count(reg.id)).where(*active, reg.checked_in.is_(True))
-        # Saved rank data only (SK-O12): >=1 role row with a stored rank_value.
+        # Saved rank data only: >=1 role row with a stored rank_value.
         role = models.BalancerRegistrationRole
         reg_ranked = sa.select(sa.func.count(sa.distinct(role.registration_id))).where(
             role.rank_value.is_not(None),
@@ -176,11 +175,10 @@ class ReadinessService:
         )
         pool_ready = sa.select(sa.func.count(reg.id)).where(*active, reg.balancer_status == "ready")
         pool_need_fix = sa.select(sa.func.count(reg.id)).where(*active, reg.balancer_status == "incomplete")
-        # Two DISTINCT questions that used to share one nullable scalar
-        # (``form_open is not None`` vs ``bool(form_open)``). Registration
-        # openness moved to the phase schedule, so "a form row exists" must be
-        # asked separately — otherwise every tournament whose window merely
-        # ENDED would report its registration form as unconfigured.
+        # Two DISTINCT questions: registration openness comes from the phase
+        # schedule, so "a form row exists" is asked separately — otherwise every
+        # tournament whose window merely ENDED would report its registration form
+        # as unconfigured.
         form_configured = (
             sa.select(sa.literal(1))
             .select_from(models.BalancerRegistrationForm)

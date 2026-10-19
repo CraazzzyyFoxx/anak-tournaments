@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import typing
 from collections import Counter
@@ -9,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid
+from shared.repository import TournamentRepository
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
@@ -26,7 +26,6 @@ from shared.services.division_grid.resolution import (
 )
 from src import models, schemas
 from src.core import config, enums, errors, pagination
-from src.core.db import async_session_maker
 from src.core.workspace import get_division_grid_version
 from src.services.discipline_queries import DisciplineQueries
 from src.services.hero.service import heroes as hero_service
@@ -52,8 +51,6 @@ tournament_stats = [
 ]
 
 
-# Computed once at import — COMPARE_METRIC_DEFINITIONS is module-level
-# constant; rebuilding these dicts per request was pure waste.
 _METRIC_DIRECTION_MAP: dict[str, bool] = {
     key: higher_is_better for key, _label, higher_is_better in COMPARE_METRIC_DEFINITIONS
 }
@@ -204,14 +201,21 @@ class UserService(DisciplineQueries):
         self.encounters = UserEncounterQueries.of(discipline)
         self.statistics_queries = StatisticsQueries.of(discipline)
 
+    @classmethod
+    async def for_tournament(cls, session: AsyncSession, tournament_id: int) -> typing.Self:
+        """The instance of the tournament's own game: its owner discipline overrides any browsing choice."""
+        owner = await TournamentRepository().get_owner(session, tournament_id)
+        if owner is None:
+            raise errors.BaseAPIException(status_code=404, detail="Tournament not found")
+        return cls.of(owner[1])
+
     @staticmethod
     def to_read(user: models.User, entities: list[str], *, visible_only: bool = False) -> schemas.UserRead:
         """Convert a `User` to ``UserRead``. Identities come from the unified
         ``user.social_accounts`` relationship and are only accessed (and serialized)
         when an identity entity was requested — and therefore eager-loaded — so this
-        never triggers a lazy load outside the async greenlet. The legacy entity
-        tokens (``battle_tag``/``discord``/``twitch``) are still honored as triggers
-        for backward compatibility with existing callers.
+        never triggers a lazy load outside the async greenlet. The ``battle_tag``/
+        ``discord``/``twitch`` entity tokens count as identity requests too.
 
         ``visible_only`` is set by public-facing reads (profile, list): accounts the
         owner has hidden from the public profile (no global visibility row) are
@@ -252,8 +256,8 @@ class UserService(DisciplineQueries):
         that name wins over everything else -- a game handle may collide with another player's name. Only when no
         canonical name matches does an old shared link resolve through a game provider handle, then Discord.
         Canonical candidates invert ``getPlayerSlug``: the ``#`` readings first (suffix hyphen, then every hyphen),
-        the literal slug last. ``Name-EUW`` and ``Name#EUW`` share one slug; the ``#`` name keeps its pre-P7
-        precedence and the hyphen twin is a known limit until slugs are made injective.
+        the literal slug last. ``Name-EUW`` and ``Name#EUW`` share one slug; the ``#`` name takes precedence and
+        the hyphen twin is a known limit until slugs are made injective.
         """
         candidates = [slug]
         if "#" not in slug and "-" in slug:
@@ -291,6 +295,7 @@ class UserService(DisciplineQueries):
 
     async def _gather_overview_enrichment(
         self,
+        session: AsyncSession,
         user_ids: list[int],
         *,
         workspace_id: int | None,
@@ -304,28 +309,18 @@ class UserService(DisciplineQueries):
         dict[int, tuple[int, int, int]],
         dict[int, datetime.datetime | None],
     ]:
-        """Fan out the independent per-page aggregates.
-
-        AsyncSession is not concurrency-safe, so each parallel query gets
-        its own session (same pattern as DashboardService._gather).
-        """
-
-        async def _isolated(fn):
-            async with async_session_maker() as isolated:
-                return await fn(isolated)
-
-        return await asyncio.gather(
-            _isolated(lambda s: self.overview.get_overview_role_divisions(s, user_ids, workspace_id=workspace_id)),
-            _isolated(lambda s: self.overview.get_overview_tournaments_count(s, user_ids, workspace_id=workspace_id)),
-            _isolated(lambda s: self.overview.get_overview_achievements_count(s, user_ids, workspace_id=workspace_id)),
-            _isolated(lambda s: self.overview.get_overview_averages(s, user_ids, workspace_id=workspace_id)),
-            _isolated(
-                lambda s: self.overview.get_overview_top_heroes(
-                    s, user_ids, limit=top_heroes_limit, workspace_id=workspace_id
-                )
+        """The independent per-page aggregates of the overview/catalog rows."""
+        overview = self.overview
+        return (
+            await overview.get_overview_role_divisions(session, user_ids, workspace_id=workspace_id),
+            await overview.get_overview_tournaments_count(session, user_ids, workspace_id=workspace_id),
+            await overview.get_overview_achievements_count(session, user_ids, workspace_id=workspace_id),
+            await overview.get_overview_averages(session, user_ids, workspace_id=workspace_id),
+            await overview.get_overview_top_heroes(
+                session, user_ids, limit=top_heroes_limit, workspace_id=workspace_id
             ),
-            _isolated(lambda s: self.overview.get_overview_map_records(s, user_ids, workspace_id=workspace_id)),
-            _isolated(lambda s: self.overview.get_overview_last_active(s, user_ids, workspace_id=workspace_id)),
+            await overview.get_overview_map_records(session, user_ids, workspace_id=workspace_id),
+            await overview.get_overview_last_active(session, user_ids, workspace_id=workspace_id),
         )
 
     async def get_overview(
@@ -355,7 +350,7 @@ class UserService(DisciplineQueries):
             top_heroes_map,
             map_records_map,
             last_active_map,
-        ) = await self._gather_overview_enrichment(user_ids, workspace_id=workspace_id)
+        ) = await self._gather_overview_enrichment(session, user_ids, workspace_id=workspace_id)
 
         roles_by_user, division_grids = await _overview_role_divisions(
             session,
@@ -473,6 +468,7 @@ class UserService(DisciplineQueries):
             map_records_map,
             last_active_map,
         ) = await self._gather_overview_enrichment(
+            session,
             user_ids,
             workspace_id=workspace_id,
             top_heroes_limit=3,
@@ -1112,7 +1108,8 @@ class UserService(DisciplineQueries):
     # Cache key intentionally omits `session`, `grid`, `normalizer` — they're
     # either non-hashable runtime fixtures (session) or derivable from workspace_id
     # (grid/normalizer are loaded fresh for the workspace). Workspace-level grid
-    # changes are rare; a TournamentChangedEvent invalidates all user_* keys.
+    # changes are rare; any tournament-resource ``CacheInvalidatedEvent`` drops every
+    # ``user_*`` key (``user_cache.tournament_user_cache_patterns``).
     @cache(
         ttl=config.settings.user_profile_cache_ttl,
         key="backend:user_profile:{id}:{self.discipline}:{workspace_id}:native",
@@ -1198,9 +1195,7 @@ class UserService(DisciplineQueries):
                 continue
 
             # Participation, not scoring: a live tournament has no final placement
-            # yet, but the player is already in it — counting only scored events
-            # reported 0 tournaments and collapsed the whole profile into the
-            # empty-career panel.
+            # yet, but the player is already in it.
             tournaments_count += 1
 
             placement = _mappers.resolve_team_placement(team)
@@ -1352,12 +1347,11 @@ class UserService(DisciplineQueries):
         Retrieves a user's tournament history with per-event stats (record,
         placement, roster, avg MVP, signature heroes).
 
-        Deliberately does NOT populate `UserTournament.encounters` — that used to
-        make this endpoint ship every tournament's full encounter/match history
-        (a veteran player's response ran past 1 MB) even though the Tournaments
-        tab only ever renders one selected tournament's encounters at a time
-        (master-detail dossier). Callers that need the per-match run for one
-        tournament call `get_tournament_encounters` lazily instead.
+        Deliberately does NOT populate `UserTournament.encounters`: the Tournaments
+        tab renders one selected tournament's encounters at a time (master-detail
+        dossier), and every tournament's full encounter/match history runs a
+        veteran player's response past 1 MB. Callers that need the per-match run
+        for one tournament call `get_tournament_encounters` lazily instead.
         """
         user = await self.get(session, id, [])
         output: list[schemas.UserTournament] = []
@@ -1470,9 +1464,8 @@ class UserService(DisciplineQueries):
     ) -> list[schemas.EncounterReadWithUserStats]:
         """
         Retrieves one user's encounters (with their per-match stats) within a
-        single tournament — the lazy detail behind the Tournaments-tab dossier,
-        split out of `get_tournaments` so the list endpoint doesn't have to ship
-        every tournament's encounters up front (see that function's docstring).
+        single tournament — the lazy detail behind the Tournaments-tab dossier, so
+        `get_tournaments` doesn't have to ship every tournament's encounters up front.
 
         Covers every team the user played on in that tournament, if there was more
         than one — e.g. a mid-tournament substitution.
@@ -1531,8 +1524,9 @@ class UserService(DisciplineQueries):
         ]
 
     # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
-    # division_grid_version), so it stays out of the key; a grid change fires a
-    # TournamentChangedEvent that broadly drops ``user_tournament_stats:v2:*``.
+    # division_grid_version), so it stays out of the key; a tournament-resource
+    # ``CacheInvalidatedEvent`` broadly drops ``user_tournament_stats:v2:*``
+    # (``user_cache.tournament_user_cache_patterns``).
     @cache(
         ttl=config.settings.users_cache_ttl,
         key="backend:user_tournament_stats:v2:{id}:{self.discipline}:{tournament_id}:native",
@@ -1756,8 +1750,7 @@ class UserService(DisciplineQueries):
                 stats_by_hero[hero_id][name].avg_10_all = round(value_avg_10, 2)
 
         for hero_id, stats in stats_by_hero.items():
-            # Filter out heroes without meaningful playtime. Previously we used
-            # eliminations == 0 which could hide valid support picks.
+            # Gate on playtime, not eliminations: zero eliminations is a valid support pick.
             playtime_stat = stats.get(enums.LogStatsName.HeroTimePlayed)
             if not playtime_stat or playtime_stat.overall <= 0:
                 continue
@@ -1887,8 +1880,7 @@ class UserService(DisciplineQueries):
         opponents_limit: int = 8,
     ) -> schemas.UserMatchesSummary:
         """Most-fought opponents + per-stage win/loss record for the Matches-tab
-        sidebars, aggregated over ALL of the user's encounters (not the current
-        page, which is what the old client-side computation was limited to)."""
+        sidebars, aggregated over ALL of the user's encounters, not the current page."""
         user = await self.get(session, user_id, [])
         opponent_rows = await self.encounters.get_user_opponents(session, user.id, workspace_id, limit=opponents_limit)
         stage_rows = await self.encounters.get_user_stage_breakdown(session, user.id, workspace_id)

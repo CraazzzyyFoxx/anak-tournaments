@@ -2,8 +2,8 @@
 
 The global per-(hero, stat) comparison on ``GET /users/{id}/heroes`` is
 precomputed into a materialized view (see migration ``stats01``). The heavy
-aggregation that used to run inside the web request (and blew past
-``statement_timeout`` on a cache miss) now happens here, off the request path.
+aggregation runs here, off the request path: inside a web request it blows past
+``statement_timeout`` on a cache miss.
 
 Trigger model — debounced, event-driven:
   * app-worker startup fires a best-effort initial populate;
@@ -60,16 +60,13 @@ class HeroStatsRefresher:
         # text() bind-parser and ``to_regclass`` returns NULL (not an error) when the
         # view has not been created yet.
         await session.execute(sa.text("SET LOCAL statement_timeout = 0"))
-        # Two plan nodes over the ~4.3M-row ``eligible`` CTE spilled at the server-wide
-        # 64 MB ``work_mem``: its sort (245 MB temp file) and its materialization
-        # (216 MB). ``work_mem`` caps each node separately and measured in-memory need
-        # is well above the on-disk size — EXPLAIN ANALYZE on prod: 403 MB quicksort +
-        # 321 MB tuplestore. 768 MB keeps both resident with room to grow; only one
-        # such transaction runs at a time (advisory lock below), so it cannot multiply
-        # across sessions the way a global bump would.
+        # ``work_mem`` caps each plan node separately, and the sort and the
+        # materialization over the ~4.3M-row ``eligible`` CTE each need ~300-400 MB
+        # in memory; 768 MB keeps both resident. Only one such transaction runs at a
+        # time (advisory lock below), so it cannot multiply across sessions the way a
+        # global bump would.
         await session.execute(sa.text("SET LOCAL work_mem = '768MB'"))
         # Keep the offline aggregation's hash-join policy local to this transaction.
-        # Qualification and eligible rows now both come from native stats.fact.
         await session.execute(sa.text("SET LOCAL enable_nestloop = off"))
         got_lock = (await session.execute(sa.text(f"SELECT pg_try_advisory_xact_lock({_ADVISORY_LOCK_KEY})"))).scalar()
         if not got_lock:

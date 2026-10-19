@@ -12,8 +12,8 @@ from shared import models
 from shared.core.errors import BaseAPIException
 from shared.repository import CatalogRoleRepository
 from shared.schemas.user_merge_auth import AuthMergeMembershipAction, AuthMergeOAuthDestination, AuthMergePolicy
-from shared.services.auth_merge import apply_auth_merge, preview_auth_merge
 from shared.testing.db import create_test_async_engine
+from src.services.admin.auth_merge import apply_auth_merge, preview_auth_merge
 
 
 class AuthMergeTests(IsolatedAsyncioTestCase):

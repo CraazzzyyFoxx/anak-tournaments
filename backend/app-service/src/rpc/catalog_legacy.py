@@ -1,5 +1,5 @@
-"""Public lookup of an old catalog id (D84): what the site's proxy redirects old links through. Removed with
-``catalog.entity_legacy`` (``discipline02``, P9)."""
+"""Public lookup of an old catalog id in ``catalog.entity_legacy``: what the site's proxy redirects old links
+through."""
 
 from __future__ import annotations
 

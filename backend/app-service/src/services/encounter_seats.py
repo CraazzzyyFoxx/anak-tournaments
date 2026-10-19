@@ -5,9 +5,6 @@ sides. "The team played the encounter" is an ACTIVE participation carrying that
 ``team_id``; whether it won comes from ``placement`` (a shared first place is a
 draw, not a win) and the series score it earned from ``score`` -- under the
 ``wins`` preset the number of maps it won.
-
-Pure SQLAlchemy builders: every read model that used to join an encounter on
-``home_team_id`` / ``away_team_id`` joins its seat instead.
 """
 
 from __future__ import annotations
