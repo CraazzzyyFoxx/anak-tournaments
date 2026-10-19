@@ -21568,10 +21568,6 @@
           "title": "Avg Tournaments Per Player",
           "type": "number"
         },
-        "damage_count": {
-          "title": "Damage Count",
-          "type": "integer"
-        },
         "division_counts": {
           "items": {
             "$ref": "#/components/schemas/app.UserOverviewDivisionCount"
@@ -21591,13 +21587,12 @@
           "title": "Median Tournaments Per Player",
           "type": "number"
         },
-        "support_count": {
-          "title": "Support Count",
-          "type": "integer"
-        },
-        "tank_count": {
-          "title": "Tank Count",
-          "type": "integer"
+        "role_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Role Counts",
+          "type": "object"
         },
         "total_players": {
           "title": "Total Players",
@@ -21620,9 +21615,6 @@
         "median_tournaments_per_player",
         "active_last_30d",
         "active_last_30d_pct",
-        "tank_count",
-        "damage_count",
-        "support_count",
         "flex_count",
         "flex_declared_count"
       ],

@@ -13834,8 +13834,6 @@ export interface components {
             active_last_30d_pct: number;
             /** Avg Tournaments Per Player */
             avg_tournaments_per_player: number;
-            /** Damage Count */
-            damage_count: number;
             /** Division Counts */
             division_counts?: components["schemas"]["app.UserOverviewDivisionCount"][];
             /** Flex Count */
@@ -13844,10 +13842,10 @@ export interface components {
             flex_declared_count: number;
             /** Median Tournaments Per Player */
             median_tournaments_per_player: number;
-            /** Support Count */
-            support_count: number;
-            /** Tank Count */
-            tank_count: number;
+            /** Role Counts */
+            role_counts?: {
+                [key: string]: number;
+            };
             /** Total Players */
             total_players: number;
             /** With Logs Count */
