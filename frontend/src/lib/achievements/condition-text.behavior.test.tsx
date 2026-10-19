@@ -11,12 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "@/i18n/messages/en.json";
 import { disciplineServiceMock } from "@/test/discipline-metadata";
 import type { ConditionNode } from "@/types/achievement.types";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 import { useConditionText } from "./condition-text";
 
 const catalog = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock("@/services/catalog.service", () => ({ default: catalog }));
-vi.mock("@/services/discipline.service", () => disciplineServiceMock);
+// Metadata per axis: workspace 5 is a community with its own child role under Overwatch's tank.
+const WORKSPACE = 5;
+const metadata = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock("@/services/discipline.service", () => ({
+  default: { list: disciplineServiceMock.default.list, metadata: metadata.read }
+}));
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -29,12 +35,17 @@ const TREE: ConditionNode = { type: "hero_kd_best", params: { hero_slug: "ana", 
 let root: Root | null = null;
 let container: HTMLElement;
 
-function Line({ tree, discipline, id }: Readonly<{ tree: ConditionNode; discipline: string; id?: string }>) {
-  const { describe } = useConditionText(tree, discipline);
+function Line({
+  tree,
+  discipline,
+  id,
+  axis = "all"
+}: Readonly<{ tree: ConditionNode; discipline: string; id?: string; axis?: WorkspaceAxis }>) {
+  const { describe } = useConditionText(tree, discipline, axis);
   return <p data-game={id ?? discipline}>{describe(tree).text}</p>;
 }
 
-async function render(nodes: Array<{ tree: ConditionNode; discipline: string; id?: string }>) {
+async function render(nodes: Array<{ tree: ConditionNode; discipline: string; id?: string; axis?: WorkspaceAxis }>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root = createRoot(container);
@@ -68,6 +79,12 @@ beforeEach(() => {
     page: 1,
     per_page: -1
   }));
+  metadata.read.mockReset().mockImplementation(async (axis: WorkspaceAxis, code: string) => {
+    const game = await disciplineServiceMock.default.metadata(axis, code);
+    if (axis !== WORKSPACE || code !== "overwatch") return game;
+    const child = { ...game.roles[0], id: 99, code: "main_tank", name: "Main tank", parent_id: 1, workspace_id: WORKSPACE };
+    return { ...game, workspace_id: WORKSPACE, roles: [...game.roles, child] };
+  });
 });
 
 afterEach(() => {
@@ -114,5 +131,21 @@ describe("useConditionText", () => {
     expect(text("ow-jungle")).toBe("Plays jungle");
     expect(text("lol-jungle")).toBe("Plays Jungle");
     expect(text("lol-tank")).toBe("Plays TANK");
+  });
+
+  it("resolves a workspace's child role in the caller's axis, and reads metadata on that axis only", async () => {
+    const tree: ConditionNode = { type: "player_role", params: { role: "main_tank" } };
+    await render([
+      { id: "tenant", tree, discipline: "overwatch", axis: WORKSPACE },
+      { id: "global", tree, discipline: "overwatch", axis: "all" }
+    ]);
+
+    expect(text("tenant")).toBe("Plays Main tank");
+    // The global module ontology has no such child: it stays as written.
+    expect(text("global")).toBe("Plays main_tank");
+    expect(metadata.read.mock.calls.map(([axis, code]) => [axis, code]).sort()).toEqual([
+      [WORKSPACE, "overwatch"],
+      ["all", "overwatch"]
+    ]);
   });
 });

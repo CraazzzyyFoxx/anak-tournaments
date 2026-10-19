@@ -2,6 +2,7 @@
 
 import { useConditionText, type ConditionSentence } from "@/lib/achievements/condition-text";
 import type { ConditionNode } from "@/types/achievement.types";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 /** Group rows are the only coloured thing here: the operator is the one piece
  *  of structure a reader has to keep in their head. */
@@ -52,9 +53,10 @@ function SentenceItem({ sentence }: Readonly<{ sentence: ConditionSentence }>) {
  */
 export default function ConditionTreeView({
   tree,
-  discipline
-}: Readonly<{ tree: ConditionNode; discipline: string }>) {
-  const { describe } = useConditionText(tree, discipline);
+  discipline,
+  axis
+}: Readonly<{ tree: ConditionNode; discipline: string; axis: WorkspaceAxis }>) {
+  const { describe } = useConditionText(tree, discipline, axis);
 
   return (
     <ul className="flex flex-col gap-1.5">

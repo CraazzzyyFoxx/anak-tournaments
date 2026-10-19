@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import type { TreeNode } from "@/components/rule-builder";
 import { DEFAULT_CONDITION_TYPE, useConditionText } from "@/lib/achievements/condition-text";
 import type { ConditionNode } from "@/types/achievement.types";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 // @xyflow/react and its stylesheet are the heaviest thing this page pulls, so
 // the canvas is a client-only chunk loaded after the page (and the sentences
@@ -28,10 +29,11 @@ const RuleBuilder = dynamic(
  */
 export default function AchievementConditionFlow({
   tree,
-  discipline
-}: Readonly<{ tree: ConditionNode; discipline: string }>) {
+  discipline,
+  axis
+}: Readonly<{ tree: ConditionNode; discipline: string; axis: WorkspaceAxis }>) {
   const t = useTranslations();
-  const { leafLabel, leafLine } = useConditionText(tree, discipline);
+  const { leafLabel, leafLine } = useConditionText(tree, discipline, axis);
 
   const labels = useMemo(
     () => ({

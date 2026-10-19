@@ -20,6 +20,7 @@ import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, ratedDimension } from "@/lib/roster/ontology";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { ConditionNode } from "@/types/achievement.types";
 
 /**
@@ -626,12 +627,14 @@ function mentions(node: unknown, param: string): boolean {
 
 /**
  * The describer bound to the current locale and to the rule's own game: its character catalogue (hero names) and
- * its role ontology (role names: the game's module roles on the global axis, localized like every role label).
+ * its role ontology (role names, localized like every role label) read on the caller's resolved workspace `axis`
+ * — the viewing workspace (a tenant host's own), the rule's workspace in the editor — so a workspace's child roles
+ * resolve; the metadata key carries that axis.
  *
  * `tree` is only used to decide whether the catalogue / ontology is worth fetching;
  * the returned functions work on any node.
  */
-export function useConditionText(tree: unknown, discipline: string) {
+export function useConditionText(tree: unknown, discipline: string, axis: WorkspaceAxis) {
   const translate = useTranslations();
   const t = translate as unknown as ConditionTranslator;
   const nameOfRole = useRoleName();
@@ -639,7 +642,7 @@ export function useConditionText(tree: unknown, discipline: string) {
   const needsHeroes = useMemo(() => mentions(tree, "hero_slug"), [tree]);
   const { data: heroes } = useCatalogEntities(discipline, "character", { enabled: needsHeroes });
   const needsRoles = useMemo(() => mentions(tree, "role"), [tree]);
-  const { data: ontology } = useDisciplineMetadata("all", needsRoles ? discipline : null);
+  const { data: ontology } = useDisciplineMetadata(axis, needsRoles ? discipline : null);
 
   const heroName = useCallback(
     (slug: string) => heroes?.find((hero) => hero.slug === slug)?.name ?? humanize(slug),

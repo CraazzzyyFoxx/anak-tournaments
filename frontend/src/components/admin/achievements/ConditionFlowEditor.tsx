@@ -42,7 +42,9 @@ interface ConditionFlowEditorProps {
 export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: Readonly<ConditionFlowEditorProps>) {
   const t = useTranslations("adminAchievements");
   const tPalette = useTranslations("adminAchievements.palette");
-  const { leafLabel, leafLine } = useConditionText(value, discipline);
+  // Role names resolve in the rule's own workspace (the admin's current one), so its child roles are named.
+  const ruleWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { leafLabel, leafLine } = useConditionText(value, discipline, ruleWorkspaceId ?? "all");
   const labels = useMemo(() => ({
     outlineTitle: t("condition.treeOutline"),
     outlineGroup: (path: string, op: string) =>
