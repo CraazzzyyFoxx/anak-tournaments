@@ -81,7 +81,7 @@ export default function AdminAuditPage() {
   const format = useFormatter();
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row sits on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const [pageRows, setPageRows] = useState<AuditLogRead[]>([]);
@@ -463,8 +463,8 @@ export default function AdminAuditPage() {
               sortField,
               sortDir,
             ]}
-            queryFn={async (page, search, pageSize, sortField, sortDir) => {
-              const result = await adminService.listAudit({
+            queryFn={(page, search, pageSize, sortField, sortDir) =>
+              adminService.listAudit({
                 page,
                 per_page: pageSize,
                 // An unsortable column id would 422; the whitelist gate keeps the
@@ -478,12 +478,9 @@ export default function AdminAuditPage() {
                 action,
                 workspace_id: scopeWorkspaceId,
                 allWorkspaces,
-              });
-              // The inspector pages through the rows currently on screen, and the
-              // table owns the fetch, so this is where that page is observed.
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
           />
         </div>
 

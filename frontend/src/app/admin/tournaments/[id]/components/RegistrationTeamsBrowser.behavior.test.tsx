@@ -37,12 +37,17 @@ const PATH = `/admin/tournaments/${TOURNAMENT_ID}/registration/teams`;
 let currentSearch = "";
 let rerender: (() => void) | null = null;
 
-const replace = vi.fn((url: string) => {
-  const query = url.includes("?") ? url.slice(url.indexOf("?")) : "";
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  const query = String(url).includes("?") ? String(url).slice(String(url).indexOf("?")) : "";
   currentSearch = query;
-  window.history.replaceState(null, "", `${PATH}${query}`);
+  nativeReplaceState(data, unused, `${PATH}${query}`);
   rerender?.();
-});
+};
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: vi.fn(), prefetch: vi.fn() }),
@@ -503,7 +508,7 @@ describe("RegistrationTeamsBrowser", () => {
     await click(row(scope, "Team Alpha"));
 
     // Row detail is the inspector, and it is addressable.
-    expect(new URL(replace.mock.calls.at(-1)![0], "http://x").searchParams.get("id")).toBe("1");
+    expect(new URLSearchParams(window.location.search).get("id")).toBe("1");
 
     const inspector = document.body.querySelector("aside[aria-label='Row inspector']");
     expect(inspector?.textContent).toContain("Pending");

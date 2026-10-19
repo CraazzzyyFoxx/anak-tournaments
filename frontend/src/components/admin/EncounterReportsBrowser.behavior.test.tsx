@@ -41,16 +41,21 @@ vi.mock("@/services/report-form.service", () => ({
 }));
 
 /**
- * `router.replace` in the app writes the URL and re-renders from the new
- * `useSearchParams`; here it writes `window.history` and pokes the harness, so
- * a chip really does travel through the query string.
+ * In the app every URL write re-renders the tree from the new
+ * `useSearchParams`: `router.replace` through the router, a native
+ * `history.replaceState` (the inspector's `shallow` write) through Next's
+ * History patch. Both land here as "write `window.history`, poke the harness",
+ * so a chip or an open row really does travel through the query string.
  */
-const replace = vi.fn((url: string) => {
-  window.history.replaceState(null, "", url);
-  rerender?.();
-});
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
 
 let rerender: (() => void) | null = null;
+
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  nativeReplaceState(data, unused, url);
+  rerender?.();
+};
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/matches",

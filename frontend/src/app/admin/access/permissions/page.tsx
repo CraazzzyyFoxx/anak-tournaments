@@ -32,7 +32,7 @@ const PAGE_SIZE = 20;
 export default function AccessAdminPermissionsPage() {
   const t = useTranslations("adminAccess.common");
   const tp = useTranslations("adminAccess.permissionsUi");
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const permissionsQuery = useQuery({

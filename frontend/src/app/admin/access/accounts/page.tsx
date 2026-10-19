@@ -52,7 +52,7 @@ export default function AccessAdminAccountsPage() {
   const currentUserId = useAuthProfileStore((state) => state.user?.id);
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row is on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const canReadRoles = hasPermission("role.read");
@@ -256,8 +256,8 @@ export default function AccessAdminAccountsPage() {
             sortDir,
             { role: roleFilter, excludeRole: excludeRoleIds, status: statusFilter, superuser: superuserFilter }
           ]}
-          queryFn={async (page, search, pageSize, sortField, sortDir) => {
-            const result = await rbacService.listUsers({
+          queryFn={(page, search, pageSize, sortField, sortDir) =>
+            rbacService.listUsers({
               page,
               per_page: pageSize,
               sort: sortField ?? undefined,
@@ -267,12 +267,9 @@ export default function AccessAdminAccountsPage() {
               exclude_role_id: excludeRoleIds.length ? excludeRoleIds : undefined,
               is_active: statusFilter ? statusFilter === "active" : undefined,
               is_superuser: superuserFilter ? true : undefined
-            });
-            // The inspector steps through the rows currently on screen, and the
-            // table owns the fetch, so this is where that page is observed.
-            setPageRows(result.results);
-            return result;
-          }}
+            })
+          }
+          onPageRowsChange={setPageRows}
         />
       </div>
 

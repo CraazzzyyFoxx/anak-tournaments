@@ -87,7 +87,7 @@ export default function AccessAdminSessionsPage() {
   const t = useTranslations("adminAccess.common");
   const ts = useTranslations("adminAccess.sessionsUi");
   const format = useFormatter();
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const [pageRows, setPageRows] = useState<AdminAuthSession[]>([]);
@@ -229,18 +229,17 @@ export default function AccessAdminSessionsPage() {
             sortDir,
             statusFilter
           ]}
-          queryFn={async (page, search, pageSize, sortField, sortDir) => {
-            const result = await rbacService.listSessions({
+          queryFn={(page, search, pageSize, sortField, sortDir) =>
+            rbacService.listSessions({
               page,
               per_page: pageSize,
               sort: sortField ?? undefined,
               order: sortDir,
               search: search || undefined,
               status: (statusFilter || undefined) as AdminSessionStatus | undefined
-            });
-            setPageRows(result.results);
-            return result;
-          }}
+            })
+          }
+          onPageRowsChange={setPageRows}
         />
       </div>
 

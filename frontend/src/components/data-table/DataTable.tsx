@@ -75,6 +75,7 @@ export function DataTable<TData>({
   cellAlign = "middle",
   toolbar,
   inspectorId,
+  onPageRowsChange,
   renderMobileCard,
 }: Readonly<DataTableProps<TData>>) {
   const t = useTranslations("kitTable.dataTableExtra");
@@ -137,6 +138,15 @@ export function DataTable<TData>({
     sortDir,
     filters
   });
+  // Reported from the query's result, not from inside `queryFn`: a page served
+  // from the cache never runs the fetch, and the screen's inspector would be
+  // left holding the rows of whatever page was fetched last.
+  const onPageRowsChangeRef = useRef(onPageRowsChange);
+  onPageRowsChangeRef.current = onPageRowsChange;
+  const pageResults = data.results;
+  useEffect(() => {
+    if (!isClientMode) onPageRowsChangeRef.current?.(pageResults);
+  }, [isClientMode, pageResults]);
 
   const pickerColumns = columns
     .map((column) => {

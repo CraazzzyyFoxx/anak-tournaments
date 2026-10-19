@@ -68,7 +68,7 @@ export function EncountersBrowser({
   const { canAccessPermission } = usePermissions();
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row is on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   // A pre-game room opened from here hands the organizer back to this exact
   // list — chips, page and open row included, since they all live in the URL.
@@ -261,8 +261,8 @@ export function EncountersBrowser({
             sortDir,
             { stage: stageFilter, group: groupFilter, status: statusFilter, has_logs: logsFilter }
           ]}
-          queryFn={async (page, search, pageSize, sortField, sortDir) => {
-            const result = await encounterService.getAll(
+          queryFn={(page, search, pageSize, sortField, sortDir) =>
+            encounterService.getAll(
               page,
               search,
               scopeTournamentId,
@@ -276,12 +276,9 @@ export function EncountersBrowser({
                 status: statusFilter || null,
                 has_logs: logsFilter ? logsFilter === "true" : null
               }
-            );
-            // The inspector pages through the rows currently on screen, and the
-            // table owns the fetch, so this is where that page is observed.
-            setPageRows(result.results);
-            return result;
-          }}
+            )
+          }
+          onPageRowsChange={setPageRows}
         />
       </div>
 

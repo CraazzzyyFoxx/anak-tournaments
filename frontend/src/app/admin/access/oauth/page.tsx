@@ -61,7 +61,7 @@ export default function OAuthConnectionsAdminPage() {
   const format = useFormatter();
   const queryClient = useQueryClient();
   const { hasPermission } = usePermissions();
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   const providerLabel = useCallback(
     (provider: OAuthProvider): string => t(PROVIDER_META[provider]?.labelKey ?? "provider"),
@@ -248,18 +248,17 @@ export default function OAuthConnectionsAdminPage() {
             sortDir,
             providerFilter
           ]}
-          queryFn={async (page, search, pageSize, sortField, sortDir) => {
-            const result = await rbacService.listOAuthConnections({
+          queryFn={(page, search, pageSize, sortField, sortDir) =>
+            rbacService.listOAuthConnections({
               page,
               per_page: pageSize,
               sort: sortField ?? undefined,
               order: sortDir,
               search: search || undefined,
               provider: providerFilter || undefined
-            });
-            setPageRows(result.results);
-            return result;
-          }}
+            })
+          }
+          onPageRowsChange={setPageRows}
         />
       </div>
 

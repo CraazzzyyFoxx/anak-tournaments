@@ -35,13 +35,18 @@ let rerender: (() => void) | null = null;
 let canTeamRead = true;
 let teamFormation = "balancer";
 
-const replace = vi.fn((url: string) => {
-  const parsed = new URL(url, "http://localhost");
-  window.history.replaceState(null, "", url);
+// Every URL write re-renders from the new `useSearchParams` in the app — the
+// router's `replace` and, through Next's History patch, the inspector's native
+// `replaceState`. Both land here as "write `window.history`, poke the harness".
+const replace = vi.fn((url: string) => window.history.replaceState(null, "", url));
+const nativeReplaceState = window.history.replaceState.bind(window.history);
+window.history.replaceState = (data, unused, url) => {
+  const parsed = new URL(String(url), "http://localhost");
+  nativeReplaceState(data, unused, url);
   currentSearch = parsed.search;
   currentPath = parsed.pathname;
   rerender?.();
-});
+};
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "80" }),
@@ -385,7 +390,7 @@ describe("Registration entries", () => {
 
     await click(scope.querySelector("tbody tr"));
 
-    expect(new URL(replace.mock.calls.at(-1)![0], "http://x").searchParams.get("id")).toBe("1");
+    expect(new URLSearchParams(window.location.search).get("id")).toBe("1");
 
     const withInspector = await mount("?id=1");
     const inspector = withInspector.querySelector("aside[aria-label='Row inspector']");

@@ -62,7 +62,7 @@ export default function RegistrationsTable({
   const tRegistrations = useTranslations("registrationsAdmin");
   // `id` (the inspector) is navigation, not narrowing: it must not drop the
   // filters the way a narrowing change does.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const { canAccessPermission } = usePermissions();
   const { open: openAuditTrail } = useAuditTrail();
   // Catalogs follow the opened tournament, not the public viewing filter.

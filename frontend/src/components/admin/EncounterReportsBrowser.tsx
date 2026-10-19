@@ -64,7 +64,7 @@ export function EncounterReportsBrowser({
   const t = useTranslations("adminMatches.reports");
   const queryClient = useQueryClient();
   // `id` is the inspector, not a filter: opening a row must not drop its page.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   const [pageRows, setPageRows] = useState<EncounterReportsRow[]>([]);
   const [resolving, setResolving] = useState<EncounterReportsRow | null>(null);
@@ -206,8 +206,8 @@ export function EncounterReportsBrowser({
                 }
               }
             ]}
-            queryFn={async (page, search, pageSize) => {
-              const result = await adminService.listEncounterReports({
+            queryFn={(page, search, pageSize) =>
+              adminService.listEncounterReports({
                 workspace_id: workspaceId,
                 tournament_id: scopeTournamentId ?? undefined,
                 stage_id: stageFilter ? Number(stageFilter) : undefined,
@@ -219,12 +219,9 @@ export function EncounterReportsBrowser({
                 mismatch_only: mismatchOnly || undefined,
                 page,
                 per_page: pageSize
-              });
-              // The inspector pages through the rows on screen, and the table
-              // owns the fetch, so this is where that page is observed.
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
           />
         </div>
 

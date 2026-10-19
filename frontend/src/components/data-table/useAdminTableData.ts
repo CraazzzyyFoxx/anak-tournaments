@@ -19,6 +19,9 @@ export interface AdminTableDataOptions<TData>
   filters: AdminTableFilters;
 }
 
+/** One instance, so a loading table's "no rows yet" keeps its identity across renders. */
+const EMPTY_RESULTS: never[] = [];
+
 /**
  * The two data modes behind one shape: server mode runs the caller's query for
  * the current page, client mode narrows the rows it was handed.
@@ -64,7 +67,7 @@ export function useAdminTableData<TData>({
     );
   }, [rows, search, columns]);
 
-  const data: PaginatedResponse<TData> = dataQuery.data ?? { results: [], total: 0, page: 1, per_page: pageSize };
+  const data: PaginatedResponse<TData> = dataQuery.data ?? { results: EMPTY_RESULTS, total: 0, page: 1, per_page: pageSize };
 
   return {
     data,

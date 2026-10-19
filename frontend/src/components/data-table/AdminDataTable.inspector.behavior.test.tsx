@@ -7,7 +7,10 @@
 //     search box, so a screen never ships two search fields over one table;
 //  3. passing both keeps the built-in box, for a chips-only toolbar;
 //  4. below `md` the rows become cards, using `renderMobileCard` when given
-//     and the first three visible columns otherwise.
+//     and the first three visible columns otherwise;
+//  5. `onPageRowsChange` reports the page on screen even when it came from the
+//     query cache — the inspector of the screen above was going stale on
+//     exactly that path, until a reload emptied the cache.
 // The kebab's own visibility rules live in `kit/kebab-column.behavior.test.tsx`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -71,11 +74,13 @@ function setViewportWidth(width: number) {
   })) as unknown as typeof window.matchMedia;
 }
 
-async function render(props: Partial<React.ComponentProps<typeof DataTable<Row>>> = {}) {
+async function render(
+  props: Partial<React.ComponentProps<typeof DataTable<Row>>> = {},
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -180,5 +185,46 @@ describe("DataTable row actions and inspector", () => {
     const cards = container.querySelectorAll("ul[aria-label='Rows'] > li");
     expect(cards[1].textContent).toContain("#8812 · pending");
     expect(cards[1].textContent).not.toContain("Groups · R3");
+  });
+
+  it("reports the rows of a page served from the query cache, where queryFn never runs", async () => {
+    const pages: Record<number, Row[]> = { 1: [ROWS[0]], 2: [ROWS[1]] };
+    const queryFn = vi.fn((page: number) =>
+      Promise.resolve({ results: pages[page], total: 2, page, per_page: 1 })
+    );
+    const onPageRowsChange = vi.fn();
+    await render(
+      {
+        rows: undefined,
+        initialPageSize: 1,
+        queryKey: (page) => ["cached-pages", page],
+        queryFn,
+        onPageRowsChange
+      },
+      new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+    );
+    /** Lets a resolved query land in the tree. */
+    const flush = () =>
+      act(async () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 0);
+        await promise;
+      });
+    await flush();
+    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[0]]);
+
+    await act(async () => {
+      [...container.querySelectorAll("button")].find((b) => /next/i.test(b.getAttribute("aria-label") ?? ""))!.click();
+    });
+    await flush();
+    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[1]]);
+
+    await act(async () => {
+      [...container.querySelectorAll("button")].find((b) => /prev/i.test(b.getAttribute("aria-label") ?? ""))!.click();
+    });
+    await flush();
+    // Page 1 is a cache hit: no third fetch, yet the screen still learns which rows it shows.
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[0]]);
   });
 });

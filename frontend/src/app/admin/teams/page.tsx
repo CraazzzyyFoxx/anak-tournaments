@@ -136,7 +136,7 @@ export default function TeamsPage() {
   const queryClient = useQueryClient();
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row sits on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const canReadTeam = canAccessPermission("team.read", workspaceId);
@@ -349,18 +349,17 @@ export default function TeamsPage() {
               sortField,
               sortDir
             ]}
-            queryFn={async (page, search, pageSize, sortField, sortDir) => {
-              const result = await teamService.getAll({
+            queryFn={(page, search, pageSize, sortField, sortDir) =>
+              teamService.getAll({
                 tournamentId: selectedTournamentId,
                 page,
                 perPage: pageSize,
                 search: search || undefined,
                 sort: sortField ?? "avg_sr",
                 order: sortField ? sortDir : "asc"
-              });
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
           />
         </div>
 

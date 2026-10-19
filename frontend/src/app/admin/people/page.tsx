@@ -78,7 +78,7 @@ export default function PeoplePage() {
 
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row is on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -351,8 +351,8 @@ export default function PeoplePage() {
               hasAccountFilter,
               unlinkedFilter
             ]}
-            queryFn={async (page, search, pageSize, sortField, sortDir) => {
-              const result = await adminService.getUsers({
+            queryFn={(page, search, pageSize, sortField, sortDir) =>
+              adminService.getUsers({
                 page,
                 per_page: pageSize,
                 search: search || undefined,
@@ -361,10 +361,9 @@ export default function PeoplePage() {
                 tournament_id: tournamentFilter ? Number(tournamentFilter) : undefined,
                 has_account: hasAccountFilter || undefined,
                 unlinked: unlinkedFilter || undefined
-              });
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
             columns={columns}
             initialPageSize={PAGE_SIZE}
             filterKey={filters.filterKey}

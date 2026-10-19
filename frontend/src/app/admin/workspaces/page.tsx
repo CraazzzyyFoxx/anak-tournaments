@@ -84,7 +84,7 @@ export default function WorkspacesPage() {
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row sits on, so nothing resets here.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
   const [pageRows, setPageRows] = useState<Workspace[]>([]);
@@ -283,16 +283,13 @@ export default function WorkspacesPage() {
                       ws.slug.toLowerCase().includes(needle)
                   )
                 : visible;
-              const result = paginateResults(
+              return paginateResults(
                 sortArray(matching, sortField, sortDir),
                 page,
                 pageSize
               );
-              // The inspector pages through the rows currently on screen, and
-              // the table owns the fetch, so this is where that page is seen.
-              setPageRows(result.results);
-              return result;
             }}
+            onPageRowsChange={setPageRows}
           />
         </div>
 

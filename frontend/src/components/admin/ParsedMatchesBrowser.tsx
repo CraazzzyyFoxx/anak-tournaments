@@ -79,7 +79,7 @@ export function ParsedMatchesBrowser({
   const t = useTranslations("adminMatches.parsed");
   // `id` is the inspector, not a filter: opening a map must not drop the page
   // it sits on.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
   const [pageRows, setPageRows] = useState<AdminMatchRow[]>([]);
   const showTournament = tournamentId == null;
@@ -288,8 +288,8 @@ export function ParsedMatchesBrowser({
                 filters: { map_id: mapFilter, log_status: statusFilter }
               }
             ]}
-            queryFn={async (page, search, pageSize) => {
-              const result = await adminService.listAdminMatches({
+            queryFn={(page, search, pageSize) =>
+              adminService.listAdminMatches({
                 workspace_id: workspaceId,
                 tournament_id: scopeTournamentId ?? undefined,
                 query: search || undefined,
@@ -298,12 +298,9 @@ export function ParsedMatchesBrowser({
                 ...(unlinkedOnly && { unlinked_only: true }),
                 page,
                 per_page: pageSize
-              });
-              // The inspector pages through the rows on screen, and the table
-              // owns the fetch, so this is where that page is observed.
-              setPageRows(result.results);
-              return result;
-            }}
+              })
+            }
+            onPageRowsChange={setPageRows}
           />
         </div>
 

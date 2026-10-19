@@ -71,7 +71,7 @@ export function RegistrationTeamsBrowser({
   const { canAccessPermission } = usePermissions();
   // `id` (the inspector) is navigation, not narrowing: it must not drop `page`
   // the way a filter change does.
-  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
 
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [placeTarget, setPlaceTarget] = useState<RegistrationTeam | null>(null);
