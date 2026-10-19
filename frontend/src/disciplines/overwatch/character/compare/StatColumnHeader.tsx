@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { StatColumnDef, StatKey } from "../config/stat-columns";
+import { StatColumnDef, StatKey } from "./stat-columns";
 
 interface StatColumnHeaderProps {
   def: StatColumnDef;

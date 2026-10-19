@@ -113,7 +113,9 @@ export default class statisticsService {
   ): Promise<PaginatedResponse<CharacterPlaytime>> {
     return apiFetch(`/api/v1/statistics/${encodeURIComponent(discipline)}/characters/playtime`, {
       signal,
-      skipAuth: true,
+      // A tournament-scoped read is gated on the viewer (a hidden tournament 404s anonymously), so it carries identity;
+      // the unscoped community read is the same for everyone and stays anonymous (one Data Cache entry per URL).
+      skipAuth: tournamentId == null,
       query: {
         page,
         per_page: perPage,

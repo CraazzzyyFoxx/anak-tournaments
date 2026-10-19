@@ -13,6 +13,7 @@ import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar"
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import {
   encounterPerspective,
   USER_ENCOUNTER_ENTITIES
@@ -23,6 +24,8 @@ interface UserHeaderProps {
   user: User;
   scope: StatsScope;
   discipline: string;
+  /** The workspace axis the profile is viewed on: its ontology names the primary role (sub-roles included). */
+  axis: WorkspaceAxis;
 }
 
 const formatPlace = (value: number | null | undefined) => {
@@ -59,7 +62,7 @@ const primaryRoleOf = (profile: UserProfile) => {
   return profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best));
 };
 
-const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps) => {
+const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeaderProps) => {
   const [t, tRoles] = await Promise.all([getTranslations(), getTranslations("common.roles")]);
   const [name, tag] = user.name.split("#");
   const primaryRole = primaryRoleOf(profile);
@@ -79,14 +82,14 @@ const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps)
     lastSummary
       ? userService.getUserTournament(user.id, lastSummary.id).catch(() => null)
       : Promise.resolve(null),
-    disciplineService.metadata("all", discipline).catch(() => null)
+    disciplineService.metadata(axis, discipline).catch(() => null)
   ]);
   const lastWinrate =
     lastTournament && lastTournament.maps > 0 ? (lastTournament.maps_won / lastTournament.maps) * 100 : null;
   const winrateDelta = lastWinrate !== null && winrate !== null ? lastWinrate - winrate : null;
 
-  // The profile's game names and tints its primary role (the global ontology every profile widget reads);
-  // a role it does not know keeps its code and no tint.
+  // The profile's game names and tints its primary role in the viewed workspace's ontology (so a workspace
+  // sub-role resolves; a tenant host reads its own); a role it does not know keeps its code and no tint.
   const roleNode = metadata && primaryRole?.role ? findRole(metadata, primaryRole.role) : null;
   const roleColor = metadata && roleNode ? rolePresentation(metadata.roles, roleNode.id).color : null;
   const roleLabel = primaryRole?.role

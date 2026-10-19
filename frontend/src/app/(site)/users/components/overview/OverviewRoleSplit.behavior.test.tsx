@@ -22,13 +22,16 @@ const profile = {
   ]
 } as UserProfile;
 
+const AXIS = 7;
+
 function render() {
   const client = new QueryClient();
-  client.setQueryData(disciplineQueryKeys.metadata("all", "overwatch"), OW_METADATA);
+  // Only the viewed workspace's axis is seeded: names and hues found here were read on that axis, not the global one.
+  client.setQueryData(disciplineQueryKeys.metadata(AXIS, "overwatch"), { ...OW_METADATA, workspace_id: AXIS });
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <NextIntlClientProvider locale="en" messages={messages}>
-        <OverviewRoleSplit profile={profile} discipline="overwatch" characters={[]} games={null} />
+        <OverviewRoleSplit profile={profile} discipline="overwatch" axis={AXIS} characters={[]} games={null} />
       </NextIntlClientProvider>
     </QueryClientProvider>
   );

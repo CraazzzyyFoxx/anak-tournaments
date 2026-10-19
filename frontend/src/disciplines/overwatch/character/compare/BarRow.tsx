@@ -4,8 +4,8 @@ import Link from "next/link";
 import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { getPlayerSlug } from "@/lib/player";
 
-import { StatColumnDef } from "../config/stat-columns";
-import { teamDotBackground } from "../utils/teamColor";
+import { StatColumnDef } from "./stat-columns";
+import { teamDotBackground } from "./teamColor";
 import RankBadge from "./RankBadge";
 
 /**

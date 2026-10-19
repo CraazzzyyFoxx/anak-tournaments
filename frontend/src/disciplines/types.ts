@@ -68,6 +68,16 @@ export interface PregameCharacterRound extends PregameCharacterBoard {
   mapItem: PickBanItemLike | undefined;
 }
 
+/** What the character-comparison slots are given (the host's checked selection and read scope). */
+export interface CharacterCompareProps {
+  character: CatalogEntityRead | undefined;
+  tournamentId: number | undefined;
+  /** The tournament's display name, when the host's picker knows it. */
+  tournamentName: string | undefined;
+  axis: WorkspaceAxis;
+  metadata: DisciplineMetadata;
+}
+
 export type SlotProps = {
   /**
    * A character's hover card on a profile (8b amendment: the host passes the figures it already read — the maps
@@ -103,6 +113,15 @@ export type SlotProps = {
   };
   /** An extra cell of a tournament (or league) dossier's summary strip, over the player's entries (8b addition). */
   tournamentSummary: { entries: UserTournament[]; metadata: DisciplineMetadata };
+  /**
+   * The character comparison (`/users/heroes-compare`), 8b fix amendment: the host owns the browsed game, the
+   * checked character (`undefined` until one is picked and found in that game) and the tournament scope; the module
+   * reads that character's leaderboard itself — its wire and column catalog are the module's — and draws the
+   * board. A game without a renderer gets the host's explicit "not available" state and no read.
+   */
+  characterCompare: CharacterCompareProps;
+  /** The same comparison's headline figures beside the page title (8b fix amendment); nothing for a game without one. */
+  characterCompareSummary: CharacterCompareProps;
   matchStats: { match: MatchWithStats; metadata: DisciplineMetadata };
   /** `view`: `overview` compares the observed sides; `players` is the totals grouped by participation (8a amendment). */
   seriesStats: { matches: MatchWithStats[]; metadata: DisciplineMetadata; view: "overview" | "players" };
@@ -148,7 +167,14 @@ export type DisciplineSlot = keyof SlotProps;
  * catch-all one.
  */
 export type RankSlot = "rankHistory";
-export type ProfileSlot = "characterPopover" | "characterStats" | "topCharacters" | "roleSignatures" | "tournamentSummary";
+export type ProfileSlot =
+  | "characterPopover"
+  | "characterStats"
+  | "topCharacters"
+  | "roleSignatures"
+  | "tournamentSummary"
+  | "characterCompare"
+  | "characterCompareSummary";
 export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";
 export type PregameSlot = "pregameCharacterBans";
 export type AdminSlot = "nativeRankEditor" | "rankMapping";

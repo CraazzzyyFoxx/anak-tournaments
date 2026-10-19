@@ -10,8 +10,8 @@ import type { CatalogEntityRead } from "@/types/catalog.types";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { COL, StatKey, ALL_STAT_OPTIONS } from "../config/stat-columns";
-import { teamDotBackground } from "../utils/teamColor";
+import { COL, StatKey, ALL_STAT_OPTIONS } from "./stat-columns";
+import { teamDotBackground } from "./teamColor";
 import BarRow, { type StatCellSpec } from "./BarRow";
 import StatColumnHeader from "./StatColumnHeader";
 

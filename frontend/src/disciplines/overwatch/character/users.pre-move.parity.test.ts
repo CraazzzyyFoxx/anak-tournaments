@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import * as compareUtils from "@/app/(site)/users/compare/utils";
 import { getComparePageHeroModel } from "@/app/(site)/users/compare/components/compare-page-hero.model";
-import * as statColumns from "@/app/(site)/users/heroes-compare/config/stat-columns";
+import * as statColumns from "./compare/stat-columns";
 import * as perspective from "@/app/(site)/users/components/shared/encounter-perspective";
 import * as history from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 import type { CatalogEntityRead } from "@/types/catalog.types";

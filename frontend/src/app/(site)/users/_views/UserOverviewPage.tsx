@@ -13,6 +13,7 @@ import ProfileWidget from "@/components/profile/ProfileWidget";
 import OverviewAchievementsPreview from "@/app/(site)/users/components/overview/OverviewAchievementsPreview";
 import { tournamentMapPips } from "@/app/(site)/users/components/overview/map-results";
 import { getPlayerSlug } from "@/lib/player";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 interface OverviewPageProps {
@@ -22,6 +23,8 @@ interface OverviewPageProps {
   scope: StatsScope;
   /** The one game the profile shows; every stats read below names it. */
   discipline: string;
+  /** The workspace axis the profile is viewed on: role names and hues read that axis's ontology. */
+  axis: WorkspaceAxis;
 }
 
 /** What a section reads with. */
@@ -65,12 +68,10 @@ export const UserOverviewPageSkeleton = () => {
 const LastTournamentSection = async ({
   user,
   profile,
-  discipline,
   tournamentId
 }: {
   user: User;
   profile: UserProfile;
-  discipline: string;
   tournamentId?: number;
 }) => {
   const resolvedTournamentId = tournamentId ?? profile.tournaments[0]?.id;
@@ -85,7 +86,6 @@ const LastTournamentSection = async ({
   return (
     <OverviewLastTournamentCard
       tournament={tournament}
-      discipline={discipline}
       tournaments={profile.tournaments}
       userId={user.id}
       mapPips={tournamentMapPips(tournamentEncounters, user.id)}
@@ -160,13 +160,21 @@ const RecentEncountersSection = async ({ user, scope, discipline }: SectionProps
   );
 };
 
-const RoleSplitSection = async ({ user, profile, scope, discipline }: SectionProps & { profile: UserProfile }) => {
+const RoleSplitSection = async ({
+  user,
+  profile,
+  scope,
+  discipline,
+  axis
+}: SectionProps & { profile: UserProfile; axis: WorkspaceAxis }) => {
   const [charactersRes, mapsRes] = await Promise.all([
     getCharacters(user.id, scope, discipline),
     getMaps(user.id, scope, discipline)
   ]);
   const { characters, games } = characterCards(charactersRes?.results ?? [], mapsRes?.results ?? []);
-  return <OverviewRoleSplit profile={profile} discipline={discipline} characters={characters} games={games} />;
+  return (
+    <OverviewRoleSplit profile={profile} discipline={discipline} axis={axis} characters={characters} games={games} />
+  );
 };
 
 const AchievementsSection = async ({ user, userSlug, scope }: Omit<SectionProps, "discipline"> & { userSlug: string }) => {
@@ -197,7 +205,7 @@ const TeammatesSection = async ({ user, scope, discipline }: SectionProps) => {
  * career-wide teammates and maps reads are unbounded and used to gate the
  * whole grid.
  */
-const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline }: OverviewPageProps) => {
+const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline, axis }: OverviewPageProps) => {
   const userSlug = getPlayerSlug(user.name);
   const section = { user, scope, discipline };
 
@@ -205,7 +213,7 @@ const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline }: Ov
     <div className="aqt-player grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_380px] xl:items-start">
       <div className="flex min-w-0 flex-col gap-3.5">
         <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
-          <LastTournamentSection user={user} profile={profile} discipline={section.discipline} tournamentId={tournamentId} />
+          <LastTournamentSection user={user} profile={profile} tournamentId={tournamentId} />
         </Suspense>
         <Suspense fallback={<Skeleton className="h-[26rem] w-full rounded-xl" />}>
           <CareerListSection {...section} profile={profile} />
@@ -220,7 +228,7 @@ const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline }: Ov
       {/* Below the tab strip's z-40 so it scrolls under the bar, not through it. */}
       <aside className="z-30 flex min-w-0 flex-col gap-3.5 xl:sticky xl:top-[var(--aqt-sticky-top)]">
         <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
-          <RoleSplitSection {...section} profile={profile} />
+          <RoleSplitSection {...section} profile={profile} axis={axis} />
         </Suspense>
         <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
           <AchievementsSection user={user} userSlug={userSlug} scope={scope} />

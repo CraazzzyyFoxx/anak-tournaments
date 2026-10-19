@@ -5,12 +5,13 @@ import { useTranslations } from "next-intl";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { CardSurface } from "@/components/profile/atoms";
-import ProfileWidget, { PROFILE_METADATA_AXIS } from "@/components/profile/ProfileWidget";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import { winrateColor } from "@/lib/colors";
 import { findRole, ratedDimension, roleTint, rosterRoleRank } from "@/lib/roster/ontology";
 import { aggregateRoleStats } from "@/lib/roster/role-ref";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { CharacterSummary, UserProfile, UserRole } from "@/types/user.types";
 
 /** The unassigned bucket's hue: the open roster slot's, never a role's. */
@@ -34,6 +35,8 @@ interface Props {
   profile: UserProfile;
   /** The profile's game: its ontology names and paints the roles, its module may add signature characters. */
   discipline: string;
+  /** The workspace axis the profile is viewed on: its ontology carries that workspace's sub-roles (tenant host: its own). */
+  axis: WorkspaceAxis;
   /** The player's characters in that game (no per-stat best records) — the signature source. */
   characters: CharacterSummary[];
   /** Per-character game counts over the player's maps; `null` without map data. */
@@ -45,10 +48,10 @@ interface Props {
  * unassigned bucket, by maps played and won. The roles' names, glyphs and hues come from the game's ontology; the
  * game's module may add a signature character per role (`roleSignatures` slot).
  */
-const OverviewRoleSplit = ({ profile, discipline, characters, games }: Props) => {
+const OverviewRoleSplit = ({ profile, discipline, axis, characters, games }: Props) => {
   const t = useTranslations();
   const nameOf = useRoleName();
-  const ontology = useDisciplineMetadata(PROFILE_METADATA_AXIS, discipline).data ?? null;
+  const ontology = useDisciplineMetadata(axis, discipline).data ?? null;
   if (!profile.roles.length) return null;
 
   const totalMaps = profile.maps_total;
@@ -150,7 +153,7 @@ const OverviewRoleSplit = ({ profile, discipline, characters, games }: Props) =>
         </div>
         {ratedRoles.length > 0 ? (
           <ProfileWidget
-            axis={PROFILE_METADATA_AXIS}
+            axis={axis}
             discipline={discipline}
             slot="roleSignatures"
             props={{ characters, games, roles: ratedRoles }}

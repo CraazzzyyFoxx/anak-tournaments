@@ -24,10 +24,14 @@ vi.mock("@/app/(site)/users/components/overview/LobbyLeaderboardModal", () => ({
 
 import OverviewLastTournamentCard from "./OverviewLastTournamentCard";
 
+const WORKSPACE_ID = 7;
+
 function tournament(over: Partial<UserTournamentWithStats> = {}): UserTournamentWithStats {
   return {
     id: 5,
     name: "Spring Cup #5",
+    workspace_id: WORKSPACE_ID,
+    discipline: "overwatch",
     division: 5,
     division_grid_version: null,
     role: { dimension: "player_role", role: "damage" },
@@ -41,14 +45,34 @@ function tournament(over: Partial<UserTournamentWithStats> = {}): UserTournament
   };
 }
 
-function render(t: UserTournamentWithStats, discipline = "overwatch") {
+/** The tournament's workspace runs a Hitscan sub-role under Damage; the global ontology has no children. */
+const OW_WORKSPACE_METADATA = {
+  ...OW_METADATA,
+  workspace_id: WORKSPACE_ID,
+  roles: [
+    ...OW_METADATA.roles,
+    {
+      ...OW_METADATA.roles[1],
+      id: 21,
+      code: "damage_hitscan",
+      name: "Hitscan",
+      parent_id: OW_METADATA.roles[1].id,
+      workspace_id: WORKSPACE_ID,
+      sort_order: 21,
+      attrs: {}
+    }
+  ]
+};
+
+function render(t: UserTournamentWithStats) {
   const client = new QueryClient();
-  client.setQueryData(disciplineQueryKeys.metadata("all", "overwatch"), OW_METADATA);
-  client.setQueryData(disciplineQueryKeys.metadata("all", "lol"), LOL_METADATA);
+  // Only the tournament's own workspace axis is seeded: a read on any other axis would find nothing.
+  client.setQueryData(disciplineQueryKeys.metadata(WORKSPACE_ID, "overwatch"), OW_WORKSPACE_METADATA);
+  client.setQueryData(disciplineQueryKeys.metadata(WORKSPACE_ID, "lol"), { ...LOL_METADATA, workspace_id: WORKSPACE_ID });
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <NextIntlClientProvider locale="en" messages={en}>
-        <OverviewLastTournamentCard tournament={t} discipline={discipline} tournaments={[]} userId={1} mapPips={[]} />
+        <OverviewLastTournamentCard tournament={t} tournaments={[]} userId={1} mapPips={[]} />
       </NextIntlClientProvider>
     </QueryClientProvider>
   );
@@ -73,15 +97,22 @@ describe("OverviewLastTournamentCard without recorded maps", () => {
 });
 
 describe("OverviewLastTournamentCard role", () => {
-  it("names and tints the role played from the profile game's ontology", () => {
+  it("names and tints the role played from the tournament's own ontology", () => {
     const html = render(tournament());
 
     expect(html).toContain(">Damage<");
     expect(html).toContain("/test-roles/damage.svg");
   });
 
+  it("names a sub-role of the tournament's workspace, drawn with its parent's glyph", () => {
+    const html = render(tournament({ role: { dimension: "player_role", role: "damage_hitscan", parent: "damage" } }));
+
+    expect(html).toContain(">Hitscan<");
+    expect(html).toContain("/test-roles/damage.svg");
+  });
+
   it("draws a League position in League's ontology, not an Overwatch role", () => {
-    const html = render(tournament({ role: { dimension: "position", role: "jungle" } }), "lol");
+    const html = render(tournament({ discipline: "lol", role: { dimension: "position", role: "jungle" } }));
 
     expect(html).toContain(">Jungle<");
     expect(html).toContain("/test-roles/jungle.svg");

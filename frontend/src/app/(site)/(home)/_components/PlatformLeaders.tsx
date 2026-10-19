@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import { LeadersContent, LeadersSkeleton, type KpiKey } from "@/components/site/leaders";
 import { MoreLink, Section, SectionHead } from "@/components/site/open-layout";
+import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
 import statisticsService from "@/services/statistics.service";
 import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 
@@ -23,11 +24,14 @@ const SECONDARY_KEYS = [
   "champions"
 ] as const satisfies readonly KpiKey[];
 
-/** Platform scale first, followed by the two all-time player leaderboards of the browsing game (§2.3 composite). */
-export async function PlatformLeaders() {
-  const { resolved } = await resolveServerBrowsingDiscipline(undefined);
+/**
+ * Platform scale first, followed by the two all-time player leaderboards of the browsing game (§2.3 composite): the
+ * raw `?discipline=` decides it like any concrete surface, and an invalid one is named, never replaced by a fallback.
+ */
+export async function PlatformLeaders({ discipline }: Readonly<{ discipline: string | string[] | undefined }>) {
+  const browsing = await resolveServerBrowsingDiscipline(discipline);
   // The leaderboards are one game's; with no game to read there are none (the totals are game-neutral).
-  const game = resolved?.kind === "concrete" ? resolved.code : null;
+  const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
   const [t, overall, champions, winrate, workspaces] = await Promise.all([
     getTranslations("home.leaders"),
     statisticsService.getOverallStatistics({ skipWorkspace: true }).catch(() => null),
@@ -51,6 +55,9 @@ export async function PlatformLeaders() {
           </MoreLink>
         }
       />
+      <div className="flex justify-end">
+        <ServerBrowsingDiscipline initial={browsing.init} />
+      </div>
       {await LeadersContent({
         totals,
         primaryKeys: PRIMARY_KEYS,

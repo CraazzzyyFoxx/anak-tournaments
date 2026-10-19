@@ -11,7 +11,6 @@ import { UserTournamentStat } from "@/types/statistics.types";
 import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { PROFILE_METADATA_AXIS } from "@/components/profile/ProfileWidget";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole } from "@/lib/roster/ontology";
@@ -20,9 +19,8 @@ import { TournamentCombobox } from "@/app/(site)/users/components/shared/Tournam
 import LobbyLeaderboardModal from "@/app/(site)/users/components/overview/LobbyLeaderboardModal";
 
 interface Props {
+  /** Its owner workspace and game name and draw the role played (that workspace's sub-roles included). */
   tournament: UserTournamentWithStats;
-  /** The profile's game: its ontology names and draws the role played. */
-  discipline: string;
   tournaments: UserTournamentSummary[];
   /** Profile owner's user id — the row highlighted in the lobby leaderboard. */
   userId: number;
@@ -119,10 +117,10 @@ const LobbyStat = ({
   </button>
 );
 
-const OverviewLastTournamentCard = ({ tournament, discipline, tournaments, userId, mapPips }: Props) => {
+const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }: Props) => {
   const t = useTranslations();
   const nameOf = useRoleName();
-  const ontology = useDisciplineMetadata(PROFILE_METADATA_AXIS, discipline).data ?? null;
+  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
   const roleNode = ontology ? findRole(ontology, tournament.role) : null;
   // The exact role played, in the game's dictionary; one it does not know keeps its own code.
   const roleLabel = tournament.role === null ? t("common.roles.flex") : roleNode ? nameOf(roleNode) : tournament.role.role;
@@ -234,7 +232,7 @@ const OverviewLastTournamentCard = ({ tournament, discipline, tournaments, userI
           <DivisionIcon
             division={tournament.division}
             tournamentGrid={tournament.division_grid_version}
-            discipline={discipline}
+            discipline={tournament.discipline}
             width={52}
             height={52}
           />

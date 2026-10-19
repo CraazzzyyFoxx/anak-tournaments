@@ -50,9 +50,10 @@ async function tenantWorkspace() {
 export default async function Home({
   searchParams
 }: Readonly<{ searchParams: Promise<{ discipline?: string | string[] }> }>) {
+  const { discipline } = await searchParams;
   const workspace = await tenantWorkspace();
   if (workspace) {
-    return <CommunityPage workspace={workspace} ownHost discipline={(await searchParams).discipline} />;
+    return <CommunityPage workspace={workspace} ownHost discipline={discipline} />;
   }
 
   return (
@@ -65,7 +66,7 @@ export default async function Home({
         <Directory />
       </Suspense>
       <Suspense fallback={<PlatformLeadersSkeleton />}>
-        <PlatformLeaders />
+        <PlatformLeaders discipline={discipline} />
       </Suspense>
       <HomeShowcase />
       <OrganizerBanner />

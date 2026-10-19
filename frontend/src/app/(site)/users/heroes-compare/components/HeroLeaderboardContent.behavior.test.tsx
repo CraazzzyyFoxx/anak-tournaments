@@ -28,14 +28,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
-vi.mock("@/services/discipline.service", () => ({
-  default: {
-    list: async () => [
-      { code: "overwatch", name: "Overwatch", enabled: true, kinds: { character: "Hero", map: "Map", mode: "Mode" } },
-      { code: "lol", name: "League of Legends", enabled: true, kinds: { character: "Champion", map: "Map" } }
-    ]
-  }
-}));
+// Real installed-game fixtures (descriptors + metadata): the comparison slots resolve the browsed game's module.
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 vi.mock("@/services/catalog.service", () => ({
   default: {
     get: (...args: unknown[]) => mocks.getEntity(...args),
@@ -60,6 +54,11 @@ async function settle(turns = 8) {
       await promise;
     });
   }
+}
+
+/** Lets the browsed game's lazily loaded comparison module mount: settles until `done` holds (bounded). */
+async function settleUntil(done: () => boolean, deadline = Date.now() + 4000) {
+  while (!done() && Date.now() < deadline) await settle(1);
 }
 
 let client: QueryClient;
@@ -110,11 +109,28 @@ describe("hero leaderboard selection", () => {
     mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
 
     await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
+    await settleUntil(
+      () =>
+        container.textContent!.includes(messages.users.heroesCompare.hero.bestKd) &&
+        container.textContent!.includes(messages.users.heroesCompare.allTournaments)
+    );
 
     expect(mocks.leaderboard).toHaveBeenCalledTimes(1);
     // The scoped game's statistics route, for the checked entity.
     expect(mocks.leaderboard.mock.calls[0]?.slice(0, 2)).toEqual(["overwatch", 7]);
     expect(container.textContent).not.toContain("That hero is not in this game");
+    // Overwatch's module draws the board and its headline figures.
+    expect(container.textContent).toContain(messages.users.heroesCompare.hero.bestKd);
+  });
+
+  it("tells a game without a comparison renderer so, with no Overwatch figures and no read", async () => {
+    mocks.getEntity.mockResolvedValue(catalogEntity({ id: 9, discipline: "lol", name: "Ahri", attrs: { class: "support" } }));
+
+    await mount("/users/heroes-compare?hero_id=9&discipline=lol");
+
+    expect(container.textContent).toContain(messages.common.discipline.widgetUnsupported);
+    expect(container.textContent).not.toContain(messages.users.heroesCompare.hero.bestKd);
+    expect(mocks.leaderboard).not.toHaveBeenCalled();
   });
 
   it("asks for nothing while the id has not been checked yet", async () => {
@@ -139,6 +155,7 @@ describe("hero leaderboard selection", () => {
       mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
       mocks.leaderboard.mockResolvedValue({ results: [OW_ROW], total: 1, page: 1, per_page: -1 });
       await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
+      await settleUntil(() => container.textContent!.includes("ow-ranked"));
       expect(container.textContent).toContain("ow-ranked");
     }
 

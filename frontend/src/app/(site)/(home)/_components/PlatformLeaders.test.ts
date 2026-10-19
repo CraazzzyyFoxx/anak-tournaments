@@ -16,11 +16,19 @@ vi.mock("@/lib/datetime/server", () => ({
   getFormatter: async () => formatterFor("en", "UTC")
 }));
 const browsing = vi.hoisted(() => ({
-  resolved: { kind: "concrete", code: "overwatch", source: "default" } as { kind: string; code?: string; source?: string } | null,
+  resolved: { kind: "concrete", code: "overwatch", source: "default" } as Record<string, string> | null,
+  explicit: [] as unknown[],
   champions: [] as unknown[][]
 }));
 vi.mock("@/lib/site/discipline-server", () => ({
-  resolveServerBrowsingDiscipline: async () => ({ init: null, resolved: browsing.resolved })
+  resolveServerBrowsingDiscipline: async (explicit: unknown) => {
+    browsing.explicit.push(explicit);
+    return { init: null, resolved: browsing.resolved };
+  }
+}));
+// The client game control (selector, or the named invalid value) is the shared component's own concern.
+vi.mock("@/components/workspace/ServerBrowsingDiscipline", () => ({
+  ServerBrowsingDiscipline: () => "[game control]"
 }));
 vi.mock("./home-data", () => ({
   getPublicWorkspaces: async () => [{ id: 1 }, { id: 2 }]
@@ -64,18 +72,24 @@ vi.mock("@/services/statistics.service", () => ({
 
 beforeEach(() => {
   browsing.resolved = { kind: "concrete", code: "overwatch", source: "default" };
+  browsing.explicit = [];
   browsing.champions = [];
 });
 
-it("preserves zero counts and leaderboard boundaries with incomplete API totals", async () => {
+async function renderLeaders(discipline?: string) {
   const root = document.createElement("div");
   root.innerHTML = renderToStaticMarkup(
     createElement(
       NextIntlClientProvider,
       { locale: "en", messages, timeZone: "UTC", now: new Date("2026-01-01T00:00:00Z") },
-      await PlatformLeaders()
+      await PlatformLeaders({ discipline })
     )
   );
+  return root;
+}
+
+it("preserves zero counts and leaderboard boundaries with incomplete API totals", async () => {
+  const root = await renderLeaders();
   const metric = (key: keyof typeof messages.site.kpi) =>
     Array.from(root.querySelectorAll("dl > div"))
       .find((row) => row.querySelector("dt")?.textContent === messages.site.kpi[key])
@@ -95,16 +109,28 @@ it("preserves zero counts and leaderboard boundaries with incomplete API totals"
 
 it("reads no leaderboard without a resolved game, keeping the game-neutral totals", async () => {
   browsing.resolved = null;
-  const root = document.createElement("div");
-  root.innerHTML = renderToStaticMarkup(
-    createElement(
-      NextIntlClientProvider,
-      { locale: "en", messages, timeZone: "UTC", now: new Date("2026-01-01T00:00:00Z") },
-      await PlatformLeaders()
-    )
-  );
+  const root = await renderLeaders();
 
   expect(browsing.champions).toEqual([]);
   expect(root.querySelector('a[href="/users/Askhay-21578"]')).toBeNull();
+  expect(root.textContent).toContain(messages.site.kpi.players);
+});
+
+it("reads the explicitly requested game's leaderboards", async () => {
+  browsing.resolved = { kind: "concrete", code: "lol", source: "url" };
+  const root = await renderLeaders("lol");
+
+  expect(browsing.explicit).toEqual(["lol"]);
+  expect(browsing.champions[0]?.[0]).toBe("lol");
+  expect(root.textContent).toContain("[game control]");
+});
+
+it("shows the game control for an invalid explicit game and reads no leaderboard", async () => {
+  browsing.resolved = { kind: "invalid", requested: "chess", reason: "unknown" };
+  const root = await renderLeaders("chess");
+
+  expect(browsing.explicit).toEqual(["chess"]);
+  expect(browsing.champions).toEqual([]);
+  expect(root.textContent).toContain("[game control]");
   expect(root.textContent).toContain(messages.site.kpi.players);
 });

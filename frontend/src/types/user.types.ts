@@ -72,6 +72,9 @@ export interface UserRole {
 export interface UserTournamentWithStats {
   id: number;
   name: string;
+  /** The tournament's owner workspace and game: its role and division are drawn in that scope. */
+  workspace_id: number;
+  discipline: string;
   division: number;
   /** Grid the `division` was resolved against — render its icon on this grid,
    * not the workspace default. */

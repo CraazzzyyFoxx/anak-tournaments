@@ -29,6 +29,7 @@ import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEm
 import { resolveStatsScope } from "@/lib/site/tenant-host";
 import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
 
 // The route still renders dynamically (api-fetch reads the workspace cookie),
@@ -54,8 +55,11 @@ type UserPageSearchParams = {
   mOpp?: string;
 };
 
-/** What every tab reads with: the viewing scope and the one game the profile shows (§2.3 concrete browsing). */
-type ProfileScope = { scope: StatsScope; discipline: string };
+/**
+ * What every tab reads with: the viewing scope, the one game the profile shows (§2.3 concrete browsing) and the
+ * workspace axis it is viewed on (host lock first) — the ontology role consumers name and draw roles from.
+ */
+type ProfileScope = { scope: StatsScope; discipline: string; axis: WorkspaceAxis };
 
 const isUserTab = (value: string): value is UserTab => {
   return USER_TABS.includes(value as UserTab);
@@ -364,7 +368,7 @@ export default async function UserPage({
     // Invalid/empty: the named value and the selector stand in for the profile; no game request is made.
     return <ServerBrowsingDiscipline initial={browsing.init} />;
   }
-  const profileScope: ProfileScope = { scope, discipline: browsing.resolved.code };
+  const profileScope: ProfileScope = { scope, discipline: browsing.resolved.code, axis: browsing.init.axis };
   const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, profileScope.discipline);
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";

@@ -6,30 +6,29 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import statisticsService from "@/services/statistics.service";
 import tournamentService from "@/services/tournament.service";
 import { type SearchableImageOption } from "@/components/ui/searchable-image-select";
 
-import {
-  COL,
-  StatKey,
-  NUM_COLUMNS,
-  getDefaultColumnKeys,
-} from "../config/stat-columns";
 import HeroCompareHero from "./HeroCompareHero";
 import HeroLeaderboardFiltersCard from "./HeroLeaderboardFiltersCard";
-import HeroLeaderboardTable from "./HeroLeaderboardTable";
-import { characterStatsQueryKeys } from "@/lib/characters/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { characterClass } from "@/lib/catalog/attrs";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
+/** The URL params the page itself owns; everything else (a module's board state) is the board's. */
+const PAGE_PARAMS = ["discipline", "hero_id", "tournament_id"];
+
+/**
+ * Character comparison: the host resolves the browsed game, checks the picked character against that game's
+ * catalog and owns the tournament scope; the game's module reads and draws the comparison (`characterCompare`,
+ * `characterCompareSummary` profile slots). A game without a renderer is told so, and nothing is read for it.
+ */
 const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const t = useTranslations();
   const searchParams = useSearchParams();
@@ -69,17 +68,6 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   });
 
   const { axis } = browsing;
-  const leaderboardQuery = useQuery({
-    queryKey: characterStatsQueryKeys.leaderboard(axis, discipline ?? "", heroId, { stat: null, tournamentId }),
-    enabled: discipline !== null && heroId !== undefined && heroSelection.status === "valid",
-    queryFn: ({ signal }) =>
-      statisticsService.getCharacterLeaderboard(discipline!, heroId!, {
-        axis,
-        tournamentId,
-        perPage: -1,
-        signal,
-      }),
-  });
 
   const heroOptions: SearchableImageOption[] = useMemo(
     () =>
@@ -98,67 +86,22 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     [tournamentsQuery.data, tournamentId]
   );
 
-  const heroRole = characterClass(selectedHero);
-  const defaultKeys = useMemo(() => getDefaultColumnKeys(heroRole), [heroRole]);
-
-  // Memoized so the table's per-column bar scales and its memoized rows stay
-  // stable across renders that only change hover state.
-  const columnKeys = useMemo<StatKey[]>(
-    () =>
-      Array.from({ length: NUM_COLUMNS }, (_, i) => {
-        const v = searchParams.get(`col${i}`);
-        return v && COL[v] ? v : defaultKeys[i] ?? defaultKeys[0];
-      }),
-    [searchParams, defaultKeys]
-  );
-
-  // A single active column drives the shared row order of the whole table.
-  const rawSortIndex = Number(searchParams.get("sort"));
-  const sortIndex =
-    Number.isInteger(rawSortIndex) && rawSortIndex >= 0 && rawSortIndex < NUM_COLUMNS
-      ? rawSortIndex
-      : 0;
-
-  const dirParam = searchParams.get("dir");
-  const sortDir: "asc" | "desc" =
-    dirParam === "asc" || dirParam === "desc"
-      ? dirParam
-      : (COL[columnKeys[sortIndex]]?.ascending ?? false)
-        ? "asc"
-        : "desc";
-
-  const handleColumnSelect = (colIndex: number, key: StatKey) => {
-    const updates: Record<string, string | number | undefined> = { [`col${colIndex}`]: key };
-    // Swapping the stat the sorted column shows resets to that stat's natural direction.
-    if (colIndex === sortIndex) {
-      updates.dir = (COL[key]?.ascending ?? false) ? "asc" : "desc";
-    }
-    updateParams(updates);
-  };
-
-  const handleSortChange = (colIndex: number) => {
-    if (colIndex === sortIndex) {
-      updateParams({ dir: sortDir === "asc" ? "desc" : "asc" });
-      return;
-    }
-    updateParams({
-      sort: colIndex,
-      dir: (COL[columnKeys[colIndex]]?.ascending ?? false) ? "asc" : "desc",
-    });
-  };
-
+  // The board's own view state (columns, sort) lives in params the page does not own: a reset drops them all.
   const handleResetColumns = () => {
-    const updates: Record<string, undefined> = { sort: undefined, dir: undefined };
-    for (let i = 0; i < NUM_COLUMNS; i++) {
-      updates[`col${i}`] = undefined;
-    }
-    updateParams(updates);
+    const params = new URLSearchParams(
+      [...searchParams.entries()].filter(([key]) => PAGE_PARAMS.includes(key))
+    );
+    router.replace(`${pathname}?${params.toString()}`);
   };
 
-  // Only a hero CHECKED valid in this game has results: the key carries no game, so a cached row set of the same id
-  // from another scope would otherwise stand in while the scoped lookup is pending, failed or refused.
+  // Only a hero CHECKED valid in this game is handed to the board: an id of another game is never read.
   const heroChecked = heroSelection.status === "valid";
-  const rows = heroChecked ? (leaderboardQuery.data?.results ?? []) : [];
+  const compareProps = {
+    character: heroChecked ? selectedHero : undefined,
+    tournamentId,
+    tournamentName: selectedTournamentName,
+    axis
+  };
 
   if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
     return (
@@ -183,7 +126,19 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           />
         </div>
       ) : null}
-      <HeroCompareHero selectedHero={heroChecked ? selectedHero : undefined} rows={rows} />
+      <HeroCompareHero
+        aside={
+          discipline ? (
+            <ProfileWidget
+              axis={axis}
+              discipline={discipline}
+              slot="characterCompareSummary"
+              props={compareProps}
+              fallback={null}
+            />
+          ) : null
+        }
+      />
 
       <HeroLeaderboardFiltersCard
         heroId={heroId}
@@ -226,20 +181,21 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
             {t("users.heroesCompare.selectHeroPrompt")}
           </p>
         </div>
-      ) : (
-        <HeroLeaderboardTable
-          selectedHero={selectedHero}
-          selectedTournamentName={selectedTournamentName}
-          tournamentId={tournamentId}
-          rows={rows}
-          isLoading={heroSelection.status === "loading" || leaderboardQuery.isLoading}
-          columnKeys={columnKeys}
-          sortIndex={sortIndex}
-          sortDir={sortDir}
-          onColumnSelect={handleColumnSelect}
-          onSortChange={handleSortChange}
+      ) : discipline ? (
+        <ProfileWidget
+          axis={axis}
+          discipline={discipline}
+          slot="characterCompare"
+          props={compareProps}
+          fallback={
+            <PageStateCard
+              state="empty"
+              title={browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline}
+              description={t("common.discipline.widgetUnsupported")}
+            />
+          }
         />
-      )}
+      ) : null}
     </div>
   );
 };
