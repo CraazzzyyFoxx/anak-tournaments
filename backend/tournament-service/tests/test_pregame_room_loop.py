@@ -29,9 +29,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from shared.core import enums
 from shared.core.errors import BaseAPIException
 from shared.disciplines import DISCIPLINES, DisciplineSpec
+from shared.domain import pick_ban_rules as pbr
 from shared.models.encounter import Encounter, EncounterTeam, ScoringRule
 from shared.models.encounter.game import EncounterGame, EncounterGameTeam
-from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession, PickBanSubmission
 from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigItem
@@ -46,7 +47,7 @@ from src.services.encounter.map_report import ClaimResultIn, map_report_service
 from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service, resolved_steps
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
-from src.services.encounter.veto_session import side_pick_pending
+from src.services.encounter.veto_session import side_pick_pending, side_pick_required
 from tests.test_pregame_participations import FIRST_HERO, HEROES, SIDED
 
 #: A second game with its own character classes: nothing about its pool is Overwatch's.
@@ -197,7 +198,8 @@ class LoopCase(IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     # -- helpers -----------------------------------------------------------
-    async def start(self, ruleset: dict | None = None) -> PickBanSession:
+    async def save_config(self, ruleset: dict | None = None) -> None:
+        """The organizer's saved hero config, nobody ready yet."""
         async with self.Session() as s:
             config = PickBanConfig(
                 tournament_id=self.tournament_id,
@@ -211,6 +213,9 @@ class LoopCase(IsolatedAsyncioTestCase):
             ]
             s.add(config)
             await s.commit()
+
+    async def start(self, ruleset: dict | None = None) -> PickBanSession:
+        await self.save_config(ruleset)
         async with self.Session() as s:
             encounter = await s.get_one(Encounter, self.encounter_id)
             for seat in self.seats:
@@ -808,6 +813,320 @@ class DeferredSideActorTests(LoopCase):
         self.assertEqual({"attack", "defence"}, {row.starting_side for row in rows})
         # And the step the flip settled bound the one that names its side.
         self.assertEqual(1, len((await self.state())["acting_team_ids"]))
+
+
+# ── positions: the helpers the side and correction cases share ──────────────
+
+
+def _map_index(op: str, value: int) -> dict:
+    return {"type": "map_index", "params": {"op": op, "value": value}}
+
+
+def phased_ruleset() -> dict:
+    """Map 1 plays a side pick before its bans; map 2 on bans only."""
+    first = {**ban_ruleset(with_side_pick=True)["phases"][0], "id": "first", "when": _map_index("==", 1)}
+    later = {**ban_ruleset()["phases"][0], "id": "later", "when": _map_index(">=", 2)}
+    return {**ban_ruleset(), "phases": [first, later]}
+
+
+def _code(exc: BaseAPIException) -> str:
+    return exc.detail[0].code
+
+
+class PositionCase(LoopCase):
+    async def game_id(self, position: int) -> int:
+        async with self.Session() as s:
+            games = await encounter_game_service.list_games(s, self.encounter_id)
+        return next(game.id for game in games if game.position == position)
+
+    async def open_position(self, position: int) -> int:
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            game = await encounter_game_service.open_game(s, encounter, position=position)
+            await s.commit()
+            return game.id
+
+    def lines(self, winner: int, score: int = 3) -> list[GameResultIn]:
+        return [GameResultIn(encounter_team_id=seat, score=score if seat == winner else 1) for seat in self.seats]
+
+    async def record(self, game_id: int, *, winner: int) -> None:
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            game = await s.get_one(EncounterGame, game_id)
+            await encounter_game_service.record_result(
+                s,
+                encounter,
+                game,
+                results=self.lines(winner),
+                source=enums.EncounterGameResultSource.ADMIN,
+                actor_user_id=None,
+            )
+            await s.commit()
+
+    async def claim(self, game_id: int, *, claimant: int, winner: int) -> dict:
+        async with self.Session() as s:
+            return await map_report_service.submit_game_claim(
+                s,
+                game_id,
+                claimant_team_id=claimant,
+                reporter_user_id=None,
+                results=[
+                    ClaimResultIn(encounter_team_id=seat, score=3 if seat == winner else 1) for seat in self.seats
+                ],
+                basis_version=0,
+            )
+
+    async def select_map(self, game_id: int) -> None:
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            game = await s.get_one(EncounterGame, game_id)
+            await encounter_game_service.select_map(s, encounter, game, map_id=1)
+            await s.commit()
+
+    async def refused(self, call) -> str:
+        """The 409 ``call`` answers with, by code."""
+        with self.assertRaises(BaseAPIException) as caught:
+            await call
+        self.assertEqual(409, caught.exception.status_code)
+        return _code(caught.exception)
+
+    async def sides(self, game_id: int) -> dict[int, str | None]:
+        async with self.Session() as s:
+            rows = (
+                (await s.execute(sa.select(EncounterGameTeam).where(EncounterGameTeam.game_id == game_id)))
+                .scalars()
+                .all()
+            )
+        return {row.encounter_team_id: row.starting_side for row in rows}
+
+    async def game_row(self, game_id: int) -> tuple:
+        async with self.Session() as s:
+            game = await s.get_one(EncounterGame, game_id)
+            claims = (await encounter_game_service.claims_by_game(s, [game]))[game.id]
+            return game.state, game.map_id, game.result_version, len(claims)
+
+    async def required(self, position: int) -> bool:
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            return await side_pick_required(s, encounter, position)
+
+    async def undo(self, seat: int) -> dict:
+        async with self.Session() as s:
+            return await pick_ban_undo_service.perform_undo(s, self.encounter_id, enums.PickBanKind.HERO, seat)
+
+    async def admin_reopen(self) -> dict:
+        async with self.Session() as s:
+            return await pick_ban_action_service.admin_reopen_step(s, self.encounter_id, enums.PickBanKind.HERO)
+
+    async def reset(self, kind: enums.PickBanKind) -> None:
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            await pick_ban_session_service.reset_pick_ban_session(s, encounter, kind)
+
+    async def hero_session(self) -> PickBanSession:
+        async with self.Session() as s:
+            return await pick_ban_session_service.get_pick_ban_session(s, self.encounter_id, enums.PickBanKind.HERO)
+
+    async def steps(self) -> list[pbr.ResolvedStep]:
+        async with self.Session() as s:
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(s, self.encounter_id, enums.PickBanKind.HERO)
+            return resolved_steps(pick_ban, await pick_ban_session_service.teams_of(s, self.encounter_id))
+
+    async def submissions(self) -> list[tuple]:
+        async with self.Session() as s:
+            rows = await s.execute(
+                sa.select(
+                    PickBanSubmission.id,
+                    PickBanSubmission.step_index,
+                    PickBanSubmission.encounter_team_id,
+                    PickBanSubmission.state,
+                    PickBanSubmission.items_json,
+                )
+                .where(PickBanSubmission.encounter_id == self.encounter_id)
+                .order_by(PickBanSubmission.id)
+            )
+            return [tuple(row) for row in rows]
+
+    async def events(self) -> int:
+        async with self.Session() as s:
+            return await s.scalar(
+                sa.select(sa.func.count())
+                .select_from(EncounterRoomEvent)
+                .where(EncounterRoomEvent.encounter_id == self.encounter_id)
+            )
+
+
+# ── sides are required where the room picks them, and only there ────────────
+
+
+class SideRequiredTests(PositionCase):
+    discipline = SIDED.code
+
+    async def test_a_saved_side_config_refuses_a_game_before_its_room_opens(self) -> None:
+        """Captains not ready yet: no session, but the saved config picks this
+        game's sides, so the game cannot start around the room."""
+        await self.save_config(ban_ruleset(with_side_pick=True))
+        game_id = await self.open_position(1)
+        before = await self.game_row(game_id)
+        self.assertTrue(await self.required(1))
+        self.assertEqual("side_pick_required", await self.refused(self.select_map(game_id)))
+        self.assertEqual(
+            "side_pick_required", await self.refused(self.claim(game_id, claimant=self.slot1, winner=self.slot1))
+        )
+        self.assertEqual("side_pick_required", await self.refused(self.record(game_id, winner=self.slot1)))
+        self.assertEqual(before, await self.game_row(game_id))
+
+        # The room opens: its side step is PENDING first, and the pick settles it.
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            for seat in self.seats:
+                await pick_ban_session_service.mark_ready(s, encounter, seat, None)
+            await pick_ban_session_service.ensure_pick_ban_session(s, encounter, enums.PickBanKind.HERO)
+        self.assertEqual("side_pick_pending", await self.refused(self.record(game_id, winner=self.slot1)))
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.record(game_id, winner=self.slot1)
+        self.assertEqual(enums.EncounterGameState.CONFIRMED, (await self.game_row(game_id))[0])
+
+    async def test_a_game_no_room_picks_sides_for_records_like_a_side_less_one(self) -> None:
+        first = await self.open_position(1)
+        self.assertFalse(await self.required(1))
+        await self.record(first, winner=self.slot1)
+
+        # A custom ruleset that never picks a side is the same answer.
+        await self.save_config(ban_ruleset())
+        second = await self.open_position(2)
+        self.assertEqual((False, False), (await self.required(1), await self.required(2)))
+        await self.record(second, winner=self.slot2)
+
+    async def test_a_cancelled_room_owes_no_side(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        async with self.Session() as s:
+            self.assertTrue(await side_pick_pending(s, self.encounter_id, 1))
+        async with self.Session() as s:
+            await room_control.cancel_session(
+                s, self.encounter_id, enums.PickBanKind.HERO, reason="played elsewhere", actor_auth_user_id=None
+            )
+        async with self.Session() as s:
+            self.assertFalse(await side_pick_pending(s, self.encounter_id, 1))
+        self.assertFalse(await self.required(1))
+        await self.record(await self.open_position(1), winner=self.slot1)
+
+    async def test_a_side_row_left_empty_is_still_required(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        game_id = await self.game_id(1)
+        async with self.Session() as s:
+            row = (
+                await s.execute(
+                    sa.select(EncounterGameTeam).where(
+                        EncounterGameTeam.game_id == game_id, EncounterGameTeam.encounter_team_id == self.slot2
+                    )
+                )
+            ).scalar_one()
+            row.starting_side = None
+            await s.commit()
+        self.assertEqual("side_pick_required", await self.refused(self.record(game_id, winner=self.slot1)))
+
+    async def test_a_phased_config_requires_sides_only_for_the_game_its_phase_picks_them_for(self) -> None:
+        await self.save_config(phased_ruleset())
+        first, second = await self.open_position(1), await self.open_position(2)
+        self.assertEqual((True, False), (await self.required(1), await self.required(2)))
+        self.assertEqual("side_pick_required", await self.refused(self.record(first, winner=self.slot1)))
+        await self.record(second, winner=self.slot2)
+
+    async def test_a_phased_room_takes_the_second_games_result_without_sides(self) -> None:
+        await self.start(phased_ruleset())
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        state = await self.state()
+        self.assertEqual((2, "ban"), (state["current_round"], state["expected_action"]))
+        self.assertEqual((True, False), (await self.required(1), await self.required(2)))
+        second = await self.game_id(2)
+        self.assertFalse((await self.claim(second, claimant=self.slot1, winner=self.slot2))["disputed"])
+        await self.record(second, winner=self.slot2)
+
+
+class StartingSidesTests(PositionCase):
+    discipline = SIDED.code
+
+    async def test_a_hero_room_reports_each_games_sides_with_its_position(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        self.assertEqual([], (await self.state())["starting_sides"])
+        await self.act(self.slot1, 1, action="side_pick")
+        self.assertEqual(
+            [
+                {
+                    "game_id": await self.game_id(1),
+                    "position": 1,
+                    "sides": {str(self.slot1): "defence", str(self.slot2): "attack"},
+                }
+            ],
+            (await self.state())["starting_sides"],
+        )
+
+
+class SideLessStateTests(PositionCase):
+    async def test_an_overwatch_hero_room_reports_no_sides(self) -> None:
+        await self.start()
+        state = await self.state()
+        self.assertEqual(([], []), (state["sides"], state["starting_sides"]))
+
+    async def test_reopening_a_ban_keeps_its_draft(self) -> None:
+        await self.start()
+        await self.act(self.slot1, FIRST_HERO)
+        await self.admin_reopen()
+        drafts = [(team, items) for _id, _index, team, state, items in await self.submissions() if state == pbr.DRAFT]
+        self.assertEqual([(self.slot1, [{"item_id": FIRST_HERO, "target_player_id": None}])], drafts)
+
+
+# ── League of Legends: the real side-selection preset ───────────────────────
+
+LOL_CHAMPION_ID_BASE = 1_920_000_000
+LOL_CHAMPIONS = {
+    LOL_CHAMPION_ID_BASE + n: cls for n, cls in enumerate(("fighter", "mage", "marksman", "support"), start=1)
+}
+
+
+class LolSideSelectionLoopTests(PositionCase):
+    discipline = "lol"
+    hero_discipline = "lol"
+
+    def pool_rows(self) -> dict[int, str]:
+        return dict(LOL_CHAMPIONS)
+
+    async def test_each_game_opens_on_a_side_its_opener_picks_and_the_loser_opens_the_next(self) -> None:
+        preset = {preset.id: preset for preset in pbr.presets_for("lol")}["lol_side_selection"]
+        self.rotation = enums.FirstBanRotation(preset.first_ban_rotation)
+        self.assertEqual(enums.FirstBanRotation.RESULT_LOSER_FIRST, self.rotation)
+
+        pick_ban = await self.start(preset.ruleset.to_json())
+        self.assertEqual("result_loser_first", pick_ban.pool_json["rotation"])
+        # G1's opener is the seed resolution's: no bracket position, so the first slot.
+        self.assertEqual(
+            (self.slot1, enums.VetoSeedSource.FALLBACK_FIRST_SLOT), (pick_ban.first_team_id, pick_ban.seed_source)
+        )
+        state = await self.state(viewer=self.slot1)
+        self.assertEqual((["blue", "red"], ["side_pick"]), (state["sides"], state["allowed_actions"]))
+
+        await self.act(self.slot1, 0, action="side_pick")
+        self.assertEqual({self.slot1: "blue", self.slot2: "red"}, await self.sides(await self.game_id(1)))
+        # Game 2 does not exist before game 1 has a result.
+        await self.reconcile()
+        async with self.Session() as s:
+            self.assertEqual(
+                [1], [game.position for game in await encounter_game_service.list_games(s, self.encounter_id)]
+            )
+
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        state = await self.state()
+        self.assertEqual((2, [self.slot2]), (state["current_round"], state["acting_team_ids"]))
+        await self.act(self.slot2, 1, action="side_pick")
+        self.assertEqual({self.slot2: "red", self.slot1: "blue"}, await self.sides(await self.game_id(2)))
+        # A side-only round spends no champion.
+        self.assertEqual({"available"}, {str(entry["status"]) for entry in (await self.state())["pool"]})
 
 
 def _unused() -> None:

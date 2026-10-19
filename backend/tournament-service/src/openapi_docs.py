@@ -1208,7 +1208,9 @@ DOCS: dict[str, dict] = {
             "`{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, "
             "409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 "
             "`map_not_selected` while the position still has no map (choose it first, through "
-            "captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's "
+            "captain_select_game_map or the map pick-ban), 409 `side_pick_pending` while the position's side "
+            "step is open, 409 `side_pick_required` while a room that picks this game's sides left them "
+            "incomplete, 409 on a `basis_version` behind the game's "
             "current one, and 409 while the stage bracket is still a preview the organizer has not "
             "activated."
         ),
@@ -1220,7 +1222,9 @@ DOCS: dict[str, dict] = {
             "Freeplay's half of what the map pick-ban does automatically: names the map an open position is "
             "played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game "
             "belongs to another encounter, 409 `result_locked` when the position's result is already "
-            "settled, and 409 `map_locked` once a captain has claimed a score against the current map."
+            "settled, 409 `side_pick_pending` / `side_pick_required` while the position's sides are not "
+            "decided where the room picks them, and 409 `map_locked` once a captain has claimed a score "
+            "against the current map."
         ),
     },
     "rpc.tournament.captain_ready": {

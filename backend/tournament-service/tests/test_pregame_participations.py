@@ -44,6 +44,7 @@ from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service, resolved_steps
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
 from src.services.encounter.pregame_rooms import pregame_rooms_service
+from src.services.encounter.veto_session import side_codes
 
 _TAG = itertools.count()
 
@@ -442,7 +443,7 @@ class SideTests(RoomCase):
     async def test_a_side_pick_writes_both_participations_starting_side(self) -> None:
         async with self.Session() as s:
             encounter = await self.encounter(s)
-            self.assertEqual(("attack", "defence"), pick_ban_action_service.side_codes(encounter))
+            self.assertEqual(("attack", "defence"), side_codes(encounter))
 
         async with self.Session() as s:
             encounter = await self.encounter(s)
@@ -489,8 +490,8 @@ class SideTests(RoomCase):
     def test_a_side_pick_is_refused_for_a_discipline_without_sides(self) -> None:
         """Overwatch declares no sides, so a room of it hands none out -- and a
         card wider than the discipline's side count hands none out either."""
-        self.assertEqual((), pick_ban_action_service.side_codes(SimpleNamespace(discipline="overwatch", slot_count=2)))
-        self.assertEqual((), pick_ban_action_service.side_codes(SimpleNamespace(discipline=SIDED.code, slot_count=3)))
+        self.assertEqual((), side_codes(SimpleNamespace(discipline="overwatch", slot_count=2)))
+        self.assertEqual((), side_codes(SimpleNamespace(discipline=SIDED.code, slot_count=3)))
 
     async def _runtime(self, s, encounter):
         """A `_Runtime` whose single step is a side pick taken by slot 1."""

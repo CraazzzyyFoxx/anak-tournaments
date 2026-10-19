@@ -1441,6 +1441,31 @@ class PresetRotationRoundTrip(_SubjectCase):
         self.assertEqual("result_loser_first", pick_ban_config.serialize_pick_ban_config(config)["first_ban_rotation"])
 
 
+class PresetLolSideSelectionRoundTrip(_SubjectCase):
+    async def test_leagues_side_selection_preset_saves_with_its_rotation_and_reads_back(self) -> None:
+        offered = {row["id"]: row for row in pbr.catalog(discipline="lol")["presets"]}["lol_side_selection"]
+        body = {
+            "kind": "hero",
+            "mode": "pool",
+            "ruleset": offered["ruleset"],
+            "first_ban_rotation": offered["first_ban_rotation"],
+            "item_ids": [1, 2, 3],
+        }
+        envelope, session = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+
+        self.assertTrue(envelope["ok"], envelope)
+        (config,) = [obj for obj in session.added if isinstance(obj, pick_ban_models.PickBanConfig)]
+        self.assertEqual(enums.FirstBanRotation.RESULT_LOSER_FIRST, config.first_ban_rotation)
+        read_back = pick_ban_config.serialize_pick_ban_config(config)
+        self.assertEqual("result_loser_first", read_back["first_ban_rotation"])
+        steps = [step for phase in read_back["ruleset"]["phases"] for step in phase["steps"]]
+        self.assertEqual([("side_pick", "first")], [(step["action"], step["actors"]) for step in steps])
+
+
 class UpsertValidatesInTheTournamentsDiscipline(_SubjectCase):
     async def _upsert(self, discipline: str, group: str) -> dict:
         ruleset = deepcopy(HERO_RULESET)

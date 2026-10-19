@@ -80,6 +80,7 @@ from src.services.encounter.veto_session import (
     ROOM_SLOT_COUNT,
     SLOT_CANDIDATE_FLOOR,
     resolve_seeds,
+    rounds_are_progressive,
 )
 
 _encounters = EncounterRepository()
@@ -182,18 +183,6 @@ def round_candidates(pool: dict[str, Any], round_number: int | None) -> list[int
         index = (round_number or 1) - 1
         return list(slots[index]) if 0 <= index < len(slots) else None
     return list(pool.get("items") or [])
-
-
-def rounds_are_progressive(config: PickBanConfig, kind: PickBanKind) -> bool:
-    """Whether this config's rounds are created one map at a time.
-
-    Slot mode says so structurally -- one slot IS one map of the series -- and
-    every hero config says so by domain: heroes are banned per map, never once
-    per series (design §4). A flat ``kind=map`` config is the legacy classic
-    veto, one sequence that settles the whole series' map order up front, and
-    stays single-round (``PickBanEntry.round IS NULL``).
-    """
-    return config.mode == MapVetoMode.SLOTS or kind == PickBanKind.HERO
 
 
 def parse_ruleset(data: object) -> pbr.Ruleset:

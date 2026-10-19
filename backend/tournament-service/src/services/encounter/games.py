@@ -58,7 +58,7 @@ from shared.services.encounter.game_audit import cancel_games as _cancel_games
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import refresh_from_games
 from src.services.encounter.settle import settle_confirmed
-from src.services.encounter.veto_session import side_pick_pending
+from src.services.encounter.veto_session import side_codes, side_pick_pending, side_pick_required
 from src.services.tournament.events import enqueue_encounter_completed
 
 __all__ = ("GameResultIn", "EncounterGameService", "OPEN_STATES", "encounter_game_service", "require_filled_seats")
@@ -357,14 +357,20 @@ class EncounterGameService:
 
     # -- commands ----------------------------------------------------------
     async def assert_side_settled(self, session: AsyncSession, encounter: Encounter, game: EncounterGame) -> None:
-        """409 while the position still owes a ``side_pick`` an answer.
+        """409 unless the position's sides are decided, wherever the room decides them.
 
         A game cannot START before the side it is played on is decided (spec §6
         row 9), and "started" is exactly what a map selection, a claim or an
         accepted result make of it. Leaving the row ``planned`` was never the
-        gate -- nothing reads that state as a refusal -- so the three write
-        paths ask the room directly.
+        gate -- nothing reads that state as a refusal -- so the write paths ask
+        the room directly: ``side_pick_pending`` while its side step is open,
+        then ``side_pick_required`` while a room that picks this game's sides
+        left them incomplete. A game nobody picks sides for (no such room, or
+        the organizer cancelled it) is recorded the way a side-less one is.
         """
+        sides = side_codes(encounter)
+        if not sides:
+            return
         if await side_pick_pending(session, encounter.id, game.position):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -372,6 +378,23 @@ class EncounterGameService:
                     ApiExc(
                         code="side_pick_pending",
                         msg="This map's sides have not been picked yet; finish the pick-ban first",
+                    )
+                ],
+            )
+        if not await side_pick_required(session, encounter, game.position):
+            return
+        seats = await active_teams(session, encounter.id)
+        held = {
+            row.encounter_team_id: row.starting_side for row in await self.line_repo.list_for_games(session, [game.id])
+        }
+        picked = [held.get(seat.id) for seat in seats]
+        if None in picked or len(set(picked)) != len(seats) or not set(picked) <= set(sides):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=[
+                    ApiExc(
+                        code="side_pick_required",
+                        msg="This game's sides are not set; the room's side pick has to be played first",
                     )
                 ],
             )
