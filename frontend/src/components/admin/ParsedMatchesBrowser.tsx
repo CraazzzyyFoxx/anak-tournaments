@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { DataTable } from "@/components/data-table";
+import { DataTable, columnMeta } from "@/components/data-table";
 import { ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
@@ -206,6 +206,7 @@ export function ParsedMatchesBrowser({
         header: t("provenance"),
         size: 148,
         enableSorting: false,
+        meta: columnMeta<AdminMatchRow>({ align: "center" }),
         cell: ({ row }) =>
           row.original.log_record ? (
             <StatusPill tone={STATUS_TONE[row.original.log_record.status]}>

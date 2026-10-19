@@ -69,6 +69,7 @@ export function StreamTaskHistory() {
       {
         accessorKey: "status",
         header: tCommon("status"),
+        meta: columnMeta<StreamPollTick>({ align: "center" }),
         // The raw token stays in the cell: the tick log is read next to the
         // service's own logs, which name the same token. The wording is the
         // tooltip.

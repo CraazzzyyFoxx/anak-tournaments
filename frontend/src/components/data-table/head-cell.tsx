@@ -1,6 +1,7 @@
 import { flexRender, type Header, type SortingState } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Info } from "lucide-react";
 
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/components/data-table/host";
 import { ariaSortValue } from "@/components/data-table/types";
 import { ADMIN_ACTION_COLUMN_ID, ALIGN_CLASS, ALIGN_FLEX_CLASS, RESPONSIVE_CLASS, readColumnMeta } from "@/components/data-table/columns";
@@ -52,6 +53,7 @@ export function renderHeadCell<TData>(
         ALIGN_CLASS[align],
         RESPONSIVE_CLASS[columnMeta.responsive ?? "always"],
         columnMeta.className,
+        columnMeta.headerClassName,
       )}
       style={sticky.style}
     >
@@ -82,6 +84,22 @@ export function renderHeadCell<TData>(
           ) : (
             flexRender(header.column.columnDef.header, header.getContext())
           )}
+          {columnMeta.headerTooltip ? (
+            // Beside the sort button, not in it: opening the hint must not sort.
+            // Brings its own provider so the table works outside the admin shell's.
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-flex shrink-0 cursor-help rounded text-muted-foreground hover:text-foreground">
+                    <Info aria-hidden className="size-3" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  {columnMeta.headerTooltip}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
         </span>
       )}
     </HeadCell>

@@ -93,8 +93,12 @@ export function renderBodyCell<TData>(
   const isFirstColumn = index === 0 && !hasLeadingColumn;
   const isLastColumn = index === count - 1;
   const columnMeta = readColumnMeta<TData>(cell.column.columnDef.meta);
-  const align = columnMeta.align ?? (isActionColumn ? "right" : "left");
+  const cellProps = columnMeta.onCell?.(cell.row.original);
+  const align = cellProps?.align ?? columnMeta.align ?? (isActionColumn ? "right" : "left");
   const sticky = layout.stickyCell(cell.column.id, layout.getColumnStyle(cell.column));
+  const value = columnMeta.ellipsis ? cell.getValue() : undefined;
+  // Only a primitive reads the same as a tooltip; anything else would say "[object Object]".
+  const title = typeof value === "string" || typeof value === "number" ? String(value) : undefined;
   const content =
     search && !isActionColumn && !customCellIds.has(cell.column.id) ? (
       <HighlightMatch text={String(cell.getValue() ?? "")} query={search} />
@@ -108,18 +112,20 @@ export function renderBodyCell<TData>(
       className={cn(
         "text-sm",
         cellPadding,
-        cellAlign === "top" ? "align-top" : "align-middle",
+        (columnMeta.valign ?? cellAlign) === "top" ? "align-top" : "align-middle",
         isFirstColumn && "pl-4 text-muted-foreground",
         isLastColumn && "pr-4",
         layout.edgePadding(cell.column.id),
-        isActionColumn && "whitespace-nowrap",
+        (isActionColumn || columnMeta.nowrap) && "whitespace-nowrap",
         columnMeta.numeric && "tabular-nums",
         ALIGN_CLASS[align],
         RESPONSIVE_CLASS[columnMeta.responsive ?? "always"],
         columnMeta.className,
         sticky.className,
+        cellProps?.className,
       )}
-      style={sticky.style}
+      style={cellProps?.style ? { ...sticky.style, ...cellProps.style } : sticky.style}
+      title={cellProps?.title}
     >
       {isActionColumn ? (
         // The kebab gates its own visibility (hover, focus-within, touch);
@@ -131,11 +137,23 @@ export function renderBodyCell<TData>(
         // paints straight over the next column unless something hides it.
         // `truncate` also buys the ellipsis; stacked cells keep stacking (their
         // rows are block/flex children, which `nowrap` does not join up).
-        <div className="min-w-0 truncate">{content}</div>
+        <div className={cn("min-w-0", columnMeta.ellipsis === false ? "whitespace-normal break-words" : "truncate")} title={title}>
+          {content}
+        </div>
       ) : (
         // `text-center` on the <td> does not centre a Tooltip/icon
         // (inline-flex trigger inside a full-width cell). Match the header flex.
-        <div className={cn("flex w-full items-center overflow-hidden", ALIGN_FLEX_CLASS[align])}>{content}</div>
+        <div
+          className={cn(
+            "flex w-full items-center overflow-hidden",
+            ALIGN_FLEX_CLASS[align],
+            columnMeta.ellipsis === false && "whitespace-normal break-words",
+          )}
+          title={title}
+        >
+          {/* A flex box does not ellipsise its text; a block child does. */}
+          {columnMeta.ellipsis ? <span className="min-w-0 truncate">{content}</span> : content}
+        </div>
       )}
     </TableCell>
   );

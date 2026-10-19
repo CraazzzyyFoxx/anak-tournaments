@@ -110,6 +110,7 @@ export function RankTaskHistory() {
       {
         accessorKey: "status",
         header: tCommon("status"),
+        meta: columnMeta<RankFetchLogRow>({ align: "center" }),
         cell: ({ row }) => <StatusBadge status={row.original.status} />
       },
       {

@@ -10,9 +10,11 @@
    OPAQUE background — the table's own `bg-card/50` is see-through and would
    show two rows of text at once. --admin-sticky-bg is that translucent card
    layer flattened over the page background; the rules below flatten the
-   header / hover / selected tints over the same base.
+   header / hover / selected tints over the same base. `-right` is the same
+   surface for the right-edge block (`sticky: "right"`).
    ═══════════════════════════════════════════════════════════════════════ */
-.admin-sticky-col {
+.admin-sticky-col,
+.admin-sticky-col-right {
   --admin-sticky-bg: color-mix(in srgb, hsl(var(--card)) 50%, hsl(var(--background)));
   position: sticky;
   z-index: 2;
@@ -26,7 +28,8 @@
 }
 
 /* Headers outrank body cells: they hold both axes at the corner. */
-th.admin-sticky-col {
+th.admin-sticky-col,
+th.admin-sticky-col-right {
   z-index: 3;
   background-color: color-mix(in srgb, hsl(var(--muted)) 20%, var(--admin-sticky-bg));
 }
@@ -85,4 +88,9 @@ tbody tr.admin-row[data-selected]:hover {
 /* Right edge of the pinned block — the only cue that the rest scrolls under. */
 .admin-sticky-col-edge {
   box-shadow: inset -1px 0 0 hsl(var(--border));
+}
+
+/* Left edge of the right-pinned block, mirrored. */
+.admin-sticky-col-right-edge {
+  box-shadow: inset 1px 0 0 hsl(var(--border));
 }

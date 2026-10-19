@@ -203,7 +203,7 @@ export function useRoomColumns({
         accessorKey: "phase",
         header: t("phaseColumn"),
         size: 128,
-        meta: columnMeta<PregameRoomRow>({ category: "core" }),
+        meta: columnMeta<PregameRoomRow>({ category: "core", align: "center" }),
         cell: ({ row }) => (
           <StatusPill tone={PHASE_TONE[row.original.phase]}>
             {t(PHASE_LABEL[row.original.phase] as Parameters<PregameTranslator>[0])}

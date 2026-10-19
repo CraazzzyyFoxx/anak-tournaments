@@ -361,6 +361,7 @@ export function buildBalancerRegistrationColumns(
         category: "admin",
         defaultHidden: true,
         responsive: "md",
+        align: "center",
         filter: {
           param: "source",
           mode: "single",
@@ -420,6 +421,7 @@ export function buildBalancerRegistrationColumns(
         category: "admin",
         defaultHidden: true,
         responsive: "lg",
+        align: "center",
         className: "min-w-[180px]",
         searchValue: (registration) =>
           registration.balancer_status === "excluded"

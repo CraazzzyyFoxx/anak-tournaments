@@ -31,6 +31,8 @@ export interface ColumnLayout<TData> {
   getColumnStyle: (column: Column<TData, unknown>) => React.CSSProperties | undefined;
   /** `left` offset per pinned column, in visible order; empty when nothing is pinned. */
   stickyLeft: Map<string, number>;
+  /** `right` offset per right-pinned column (the actions column included), from the edge inward; empty when nothing pins right. */
+  stickyRight: Map<string, number>;
   stickyCell: (columnId: string, style?: React.CSSProperties) => { className: string | undefined; style: React.CSSProperties | undefined };
   edgePadding: (columnId: string) => string;
 }
@@ -87,8 +89,6 @@ export function buildColumnLayout<TData>({
   // packed at their content width instead of stretched proportionally.
   const bodyColumnCount = visibleColumns.length + (hasLeadingColumn ? 1 : 0) + 1;
   const hasActionColumn = visibleColumns.some((column) => column.id === ADMIN_ACTION_COLUMN_ID);
-  /** Filler goes in front of the actions column, or at the very end without one. */
-  const fillerIndex = hasActionColumn ? visibleColumns.length - 1 : visibleColumns.length;
 
   // Sticky pins a left-edge PREFIX of the visible columns: a pinned column with
   // scrolling ones in front of it would park itself over the wrong neighbours.
@@ -97,26 +97,57 @@ export function buildColumnLayout<TData>({
   const stickyLeft = new Map<string, number>();
   let stickyOffset = hasLeadingColumn ? ADMIN_LEADING_COLUMN_WIDTH : 0;
   for (const column of visibleColumns) {
-    if (!readColumnMeta<TData>(column.columnDef.meta).sticky) break;
+    const { sticky } = readColumnMeta<TData>(column.columnDef.meta);
+    if (!sticky || sticky === "right") break;
     stickyLeft.set(column.id, stickyOffset);
     const width = getColumnStyle(column)?.width;
     stickyOffset += typeof width === "number" ? width : 0;
   }
   const lastStickyId = [...stickyLeft.keys()].pop() ?? null;
-  // The pinned block ends in a hard edge that scrolling content slides under;
-  // the default 8px on either side of it reads as none, so both neighbours of
-  // the edge get the same inset the table's outer edges have.
-  const firstScrollingId = lastStickyId ? (visibleColumns[stickyLeft.size]?.id ?? null) : null;
-  const edgePadding = (columnId: string) =>
-    cn(columnId === lastStickyId && "pr-4", columnId === firstScrollingId && "pl-4");
 
-  /** Sticky class + `left` for a data cell, or nothing when it is not pinned. */
+  // `sticky: "right"` mirrors that on a right-edge SUFFIX. The actions column
+  // always sits last, so it pins at `right: 0` under any right-pinned column —
+  // otherwise that column would park over it.
+  const stickyRight = new Map<string, number>();
+  let stickyRightOffset = 0;
+  for (const column of [...visibleColumns].reverse()) {
+    if (column.id !== ADMIN_ACTION_COLUMN_ID && readColumnMeta<TData>(column.columnDef.meta).sticky !== "right") break;
+    stickyRight.set(column.id, stickyRightOffset);
+    const width = getColumnStyle(column)?.width;
+    stickyRightOffset += typeof width === "number" ? width : 0;
+  }
+  // The actions column on its own is not a pinned block.
+  if (hasActionColumn && stickyRight.size === 1) stickyRight.clear();
+  const firstStickyRightId = [...stickyRight.keys()].pop() ?? null;
+
+  /** Filler goes in front of the right-pinned block, else of the actions column, else at the very end. */
+  const fillerIndex = visibleColumns.length - (stickyRight.size > 0 ? stickyRight.size : Number(hasActionColumn));
+
+  // A pinned block ends in a hard edge that scrolling content slides under;
+  // the default 8px on either side of it reads as none, so both neighbours of
+  // each edge get the same inset the table's outer edges have.
+  const firstScrollingId = lastStickyId ? (visibleColumns[stickyLeft.size]?.id ?? null) : null;
+  const lastScrollingId = firstStickyRightId ? (visibleColumns[fillerIndex - 1]?.id ?? null) : null;
+  const edgePadding = (columnId: string) =>
+    cn(
+      (columnId === lastStickyId || columnId === lastScrollingId) && "pr-4",
+      (columnId === firstScrollingId || columnId === firstStickyRightId) && "pl-4"
+    );
+
+  /** Sticky class + `left`/`right` for a data cell, or nothing when it is not pinned. */
   const stickyCell = (columnId: string, style?: React.CSSProperties) => {
     const left = stickyLeft.get(columnId);
-    if (left === undefined) return { className: undefined, style };
+    if (left !== undefined) {
+      return {
+        className: cn("admin-sticky-col", columnId === lastStickyId && "admin-sticky-col-edge"),
+        style: { ...style, left }
+      };
+    }
+    const right = stickyRight.get(columnId);
+    if (right === undefined) return { className: undefined, style };
     return {
-      className: cn("admin-sticky-col", columnId === lastStickyId && "admin-sticky-col-edge"),
-      style: { ...style, left }
+      className: cn("admin-sticky-col-right", columnId === firstStickyRightId && "admin-sticky-col-right-edge"),
+      style: { ...style, right }
     };
   };
 
@@ -145,6 +176,7 @@ export function buildColumnLayout<TData>({
     fillerCell,
     getColumnStyle,
     stickyLeft,
+    stickyRight,
     stickyCell,
     edgePadding
   };

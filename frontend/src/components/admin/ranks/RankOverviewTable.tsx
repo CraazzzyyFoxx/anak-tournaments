@@ -278,6 +278,7 @@ function RankOverviewRows({
       {
         accessorKey: "role",
         header: t("columns.role"),
+        meta: columnMeta<RankOverviewRow>({ align: "center" }),
         cell: ({ row }) => {
           const role = row.original.role;
           if (!role) return <span className="text-muted-foreground">—</span>;

@@ -142,6 +142,7 @@ export function SubscriptionTaskHistory() {
       {
         accessorKey: "state",
         header: t("history.state"),
+        meta: columnMeta<SubscriptionCheckLogRow>({ align: "center" }),
         cell: ({ row }) => <StateBadge state={row.original.state} />
       },
       {

@@ -48,6 +48,7 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
       {
         accessorKey: "category",
         header: t("category"),
+        meta: columnMeta<AchievementRarity>({ align: "center" }),
         cell: ({ row }) =>
           row.original.category ? (
             <Badge variant="outline" className="font-normal capitalize">

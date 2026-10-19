@@ -108,6 +108,7 @@ export function useEncounterColumns({
         header: t("result"),
         size: 132,
         enableSorting: false,
+        meta: columnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) => (
           <StatusPill tone={row.original.result_status === "disputed" ? "danger" : "neutral"}>
             {t(`resultStatus.${row.original.result_status}`)}

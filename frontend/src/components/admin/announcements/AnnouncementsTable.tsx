@@ -68,6 +68,7 @@ export function AnnouncementsTable({
         accessorKey: "audience",
         header: t("notifications.admin.columns.audience"),
         size: 140,
+        meta: columnMeta({ align: "center" }),
         // Two values, spelled out: `user` is a member of the wire type but not
         // of this feed (the RPC scopes it to `workspace`/`global`), and an
         // interpolated key would claim a message that does not exist.
