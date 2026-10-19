@@ -16,7 +16,7 @@ import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatAdmissionReason, type AdmissionTranslator } from "@/lib/registration/admission";
 import { getSubroleLabel } from "@/lib/roster/roles";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { FormField } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -50,11 +50,13 @@ function RolesCell({
         .slice()
         .sort((left, right) => left.priority - right.priority)
         .map((role) => ({
-          role: roleOf(role.role),
+          role: role.role,
           rank: role.rank_value,
-          subrole: subRoleSlugOf(role.role)
-            ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!)
-            : null,
+          // A leaf the dictionary knows is named by `RoleRankList` itself; the catalog label only covers one it does not.
+          subrole:
+            subRoleSlugOf(role.role) && !(ontology && findRole(ontology, role.role))
+              ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!)
+              : null,
           dimmed: !role.is_active
         }))}
     />

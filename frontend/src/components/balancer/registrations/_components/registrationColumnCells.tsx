@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { formatAdmissionReason, primaryAdmissionReason } from "@/lib/registration/admission";
 import { cn } from "@/lib/utils";
 import { getSubroleLabel } from "@/lib/roster/roles";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+import { useRoleName } from "@/hooks/useRoleName";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { answerList } from "@/lib/forms/answers";
 import type { AdminRegistration, AdminRegistrationRole } from "@/types/balancer-admin.types";
@@ -164,6 +165,7 @@ export function RolesCell({
 }>) {
   const t = useTranslations("registrationsAdmin.columns");
   const slotLabel = useSlotLabel(ontology);
+  const nameOf = useRoleName();
   if (!roles || roles.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -183,14 +185,18 @@ export function RolesCell({
   return (
     <div className="flex flex-wrap items-start justify-center gap-x-1 gap-y-2">
       {sortedRoles.map((role) => {
-        const subroleLabel = subRoleSlugOf(role.role) ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!) : null;
+        const subroleSlug = subRoleSlugOf(role.role);
+        const subroleLabel = subroleSlug ? getSubroleLabel(catalog, roleOf(role.role), subroleSlug) : null;
+        // The exact leaf the registration stored (`damage_hitscan`, not its parent `damage`): the dictionary names it
+        // and carries its presentation overrides; a leaf it does not know keeps the label the catalog gave it.
+        const leaf = ontology ? findRole(ontology, role.role) : null;
         return (
           <div
-            key={`${roleOf(role.role)}-${subRoleSlugOf(role.role) ?? "base"}-${role.priority}`}
+            key={`${roleOf(role.role)}-${subroleSlug ?? "base"}-${role.priority}`}
             className={cn("inline-flex min-w-8 flex-col items-center gap-0.5", !role.is_active && "opacity-50")}
             title={[
               slotLabel(roleOf(role.role)),
-              subroleLabel,
+              subroleSlug ? (leaf ? nameOf(leaf) : subroleLabel) : null,
               role.rank_value != null ? `${role.rank_value}` : t("noRank"),
               role.is_primary ? t("primary") : null,
             ]
@@ -205,7 +211,7 @@ export function RolesCell({
                   : "text-[color:var(--aqt-fg-muted)]",
               )}
             >
-              <PlayerRoleIcon role={roleOf(role.role)} ontology={ontology} size={20} />
+              <PlayerRoleIcon role={role.role} ontology={ontology} size={20} />
             </span>
             <span className="text-center text-label font-semibold uppercase leading-none tracking-label text-[color:var(--aqt-fg-dim)]">
               {subroleLabel ?? role.rank_value ?? ""}

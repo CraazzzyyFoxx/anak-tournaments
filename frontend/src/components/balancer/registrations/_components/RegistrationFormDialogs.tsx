@@ -67,7 +67,7 @@ export default function RegistrationFormDialogs({
             <DialogDescription className={DESCRIPTION_CLASS}>
               Registers a player on your behalf: every field stays available regardless of the
               public form config, and verified-account requirements are not enforced. Link a site
-              account to prefill BattleTag, Discord and Twitch from its verified logins.
+              account to prefill the game handle, Discord and Twitch from its verified logins.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3.5 sm:px-5">

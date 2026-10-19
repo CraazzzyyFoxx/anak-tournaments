@@ -5825,12 +5825,6 @@
     "missingAccounts": "No linked account",
     "excludedPlayers": "Excluded / not approved",
     "roleCoverage": "Declared role coverage",
-    "roles": {
-      "tank": "Tank",
-      "damage": "Damage",
-      "support": "Support",
-      "flex": "Flex"
-    },
     "blocker": "Blocker",
     "blocked": "Blocked",
     "ready": "Ready",
@@ -6096,12 +6090,6 @@
     "yourTurn": "Your turn",
     "unknownTeam": "Unknown team",
     "myTeam": "My team",
-    "roles": {
-      "tank": "Tank",
-      "damage": "Damage",
-      "support": "Support",
-      "flex": "Flex"
-    },
     "flex": "Flex",
     "resetFilters": "Reset filters",
     "heroFilter": "Heroes",

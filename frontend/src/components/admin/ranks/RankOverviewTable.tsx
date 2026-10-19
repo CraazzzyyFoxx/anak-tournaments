@@ -258,7 +258,7 @@ function RankOverviewRows({
           return (
             <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs">
               <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              {t(`layers.${row.original.layer}`)}
+              {t(`layers.${row.original.layer}`, { game: ontology.discipline.name })}
             </span>
           );
         },

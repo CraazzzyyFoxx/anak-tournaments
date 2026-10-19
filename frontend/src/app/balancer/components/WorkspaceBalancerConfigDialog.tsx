@@ -88,7 +88,7 @@ export function WorkspaceBalancerConfigDialog({
             Workspace balancer settings
           </DialogTitle>
           <DialogDescription>
-            How players with a large gap between their system rank and OW rank appear in the pool,
+            How players with a large gap between their system rank and the game&apos;s own ladder rank appear in the pool,
             and where every mix in this workspace posts its matchup.
           </DialogDescription>
         </DialogHeader>

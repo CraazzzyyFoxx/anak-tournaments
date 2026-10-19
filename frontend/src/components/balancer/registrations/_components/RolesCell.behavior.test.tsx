@@ -55,4 +55,48 @@ describe("RolesCell", () => {
     expect(glyphNames(scope)).toEqual(["Jungle", "Mid"]);
     expect(scope.innerHTML).toContain("Jungle");
   });
+
+  describe("the stored leaf", () => {
+    // The workspace's own child of Damage, with its own name and art.
+    const WITH_CHILD = {
+      ...OW_METADATA,
+      workspace_id: 3,
+      roles: [
+        ...OW_METADATA.roles,
+        {
+          id: 40,
+          dimension: "player_role",
+          code: "damage_hitscan",
+          name: "Hitscan",
+          parent_id: 2,
+          workspace_id: 3,
+          active: true,
+          selectable: true,
+          sort_order: 40,
+          attrs: { icon: "/test-roles/hitscan.svg" },
+        },
+      ],
+    } as RoleOntology;
+    const leaf = (code: string, priority: number): AdminRegistrationRole =>
+      ({
+        ...declared("player_role", code, priority, 900),
+        role: { dimension: "player_role", role: code, parent: "damage" },
+      }) as AdminRegistrationRole;
+
+    it("shows a workspace child with its own name and art, not its parent's", async () => {
+      const scope = await mount([leaf("damage_hitscan", 0)], WITH_CHILD);
+
+      expect(glyphNames(scope)).toEqual(["Hitscan"]);
+      expect(scope.innerHTML).toContain("/test-roles/hitscan.svg");
+      expect(scope.innerHTML).not.toContain("/test-roles/damage.svg");
+    });
+
+    it("keeps a leaf the dictionary does not know visibly unknown instead of showing its parent", async () => {
+      const scope = await mount([leaf("damage_ghost", 0)], WITH_CHILD);
+
+      expect(glyphNames(scope)).not.toContain("Damage");
+      expect(scope.innerHTML).not.toContain("/test-roles/damage.svg");
+      expect(scope.textContent).toContain("?");
+    });
+  });
 });

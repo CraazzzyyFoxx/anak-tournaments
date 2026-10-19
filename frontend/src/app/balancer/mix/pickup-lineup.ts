@@ -398,6 +398,18 @@ export function teamNamesByIndex(
   return out;
 }
 
+/**
+ * A role-keyed player map (`ratings`, `open_ratings`, `sub_roles`) read at the seat's normalized slot code, so a
+ * legacy-capitalised key (`Top`) matches its lower-case seat exactly as the bucket itself does.
+ */
+function slotValue(map: Record<string, unknown> | null, role: string): unknown {
+  if (map == null) return undefined;
+  if (role in map) return map[role];
+  for (const [key, value] of Object.entries(map)) {
+    if (solverSlotCode(key) === role) return value;
+  }
+  return undefined;
+}
 
 function parseSeats(
   roster: Record<string, unknown>,
@@ -420,16 +432,16 @@ function parseSeats(
       }
       const preferences = Array.isArray(player.role_preferences) ? player.role_preferences : [];
       const isFlex = player.is_flex === true;
-      const subRole = asRecord(player.sub_roles)?.[name];
+      const subRole = slotValue(asRecord(player.sub_roles), role);
       const first = typeof preferences[0] === "string" ? solverSlotCode(preferences[0]) : null;
       seats.push({
         uuid,
         name: typeof player.name === "string" ? player.name : uuid,
         role,
         // The server's `seat_rating`: the rating for the bucket they sit in, 0 without one.
-        rating: asNumber(asRecord(player.ratings)?.[name]) ?? 0,
+        rating: asNumber(slotValue(asRecord(player.ratings), role)) ?? 0,
         // Only written by the server when the host balanced in ranker mode.
-        openRating: asNumber(asRecord(player.open_ratings)?.[name]),
+        openRating: asNumber(slotValue(asRecord(player.open_ratings), role)),
         // A flex player is never off-role: any seat is their first choice -- and an open seat names no role.
         offRole: !isFlex && role !== OPEN_SLOT_CODE && first != null && first !== role,
         isFlex,

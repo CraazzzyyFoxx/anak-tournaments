@@ -599,7 +599,39 @@ describe("parseVariants for a League mix", () => {
       ["flex", "Open"],
       ["coach", "Sub"],
     ]);
+    // The rank follows the bucket: Zed's `ratings.top` is read for the `Top` bucket, not lost as 0.
+    expect(seats.find((seat) => seat.name === "Zed")?.rating).toBe(2100);
     // An open seat names no role: nobody is off-role on it.
     expect(seats.find((seat) => seat.role === "flex")?.offRole).toBe(false);
+  });
+
+  it("reads ratings, open ratings and sub-roles under any casing of the bucket's key", () => {
+    const [variant] = parseVariantsOrdered(
+      {
+        players: {
+          "8": {
+            name: "Cap",
+            ratings: { Top: 2150 },
+            open_ratings: { TOP: 2050 },
+            sub_roles: { Top: "roamer" },
+            role_preferences: ["Top"],
+          },
+          "9": {
+            name: "Low",
+            ratings: { top: 1900 },
+            open_ratings: { top: 1800 },
+            sub_roles: { top: "split" },
+            role_preferences: ["top"],
+          },
+        },
+        variants: [{ teams: [{ roster: { Top: ["8"] } }, { roster: { top: ["9"] } }] }],
+      },
+      {},
+      LOL_ORDER,
+    );
+    const [capitalised] = variant.teams[0].seats;
+    const [plain] = variant.teams[1].seats;
+    expect(capitalised).toMatchObject({ role: "top", rating: 2150, openRating: 2050, subRole: "roamer", offRole: false });
+    expect(plain).toMatchObject({ role: "top", rating: 1900, openRating: 1800, subRole: "split", offRole: false });
   });
 });
