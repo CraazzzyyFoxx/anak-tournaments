@@ -203,6 +203,41 @@ class CacheKeyRoutabilityTests(_CacheTestBase):
             )
         self.assertEqual(2, opponents.await_count, "invalidation did not force a recompute")
 
+    async def test_the_versioned_encounter_families_are_dropped_by_both_invalidation_shapes(self) -> None:
+        """``user_encounters`` and ``user_tournament_encounters`` embed the native match header, so their keys are
+        versioned (``:v4:``). The version belongs to the prefix: a subject's precise pattern is
+        ``{prefix}:{user_id}:*`` and must still reach the key the decorator wrote, and so must the broad one."""
+        user = SimpleNamespace(id=404, name="Player")
+        page = AsyncMock(return_value=([], 0))
+        dossier = AsyncMock(return_value=[])
+        params = pagination.PaginationSortParams(page=1, per_page=10, sort="played_at")
+        with (
+            patch.object(flows.users, "get", AsyncMock(return_value=user)),
+            patch.object(flows.users.encounters, "get_user_encounters_paginated", page),
+            patch.object(flows.users.encounters, "get_user_encounter_matches_unpaginated", dossier),
+        ):
+            for drop in ("subject", "tournament"):
+                await flows.users.get_encounters_by_user(object(), 404, params, workspace_id=1)
+                await flows.users.get_tournament_encounters(object(), 404, 7)
+                stored = sorted([key async for key in cache.scan("backend:*")])
+                self.assertEqual(
+                    [
+                        "backend:user_encounters:v4:404:",
+                        "backend:user_tournament_encounters:v4:404:",
+                    ],
+                    [key[: key.index("404:") + 4] for key in stored],
+                )
+                patterns = (
+                    user_cache.user_cache_patterns(404)
+                    if drop == "subject"
+                    else user_cache.tournament_user_cache_patterns()
+                )
+                for pattern in patterns:
+                    await cache.delete_match(pattern)
+                self.assertEqual([], [key async for key in cache.scan("backend:*")], f"{drop} invalidation missed")
+        self.assertEqual(2, page.await_count)
+        self.assertEqual(2, dossier.await_count)
+
     def test_no_cache_decorator_reintroduces_the_prefix_kwarg(self) -> None:
         """``prefix=`` is what produced the double colon. The prefix belongs in
         the key template, which is also where ``user_cache`` looks for it."""

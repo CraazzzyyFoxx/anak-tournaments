@@ -30,6 +30,21 @@ from src.services.team.flows import flows_service as team_flows_service
 from src.services.tournament.flows import TournamentFlowsService
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
+# Both families embed ``MatchRead`` (and ``EncounterGameRead.map``), whose wire the native match cutover replaced.
+# Their values are pickled in a persistent Redis that outlives a deploy and cashews returns an unpickled value as it is,
+# without re-validating its nested models, so the cutover renamed the namespaces (``native_``) instead of relying on
+# the TTL: a pre-cutover entry sits under a name no reader asks for any more. ``cache_resources._encounters`` evicts
+# both through ``*encounters*:{tournament_id}:*``; ``tests/test_encounter_cache_namespaces.py`` pins that against the
+# keys cashews renders from these templates.
+_ENCOUNTER_QUERY_KEY = (
+    "{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:"
+    "{params.entities}:{params.only_count}:{params.query}:{params.fields}:{params.stage_id}:{params.stage_item_id}:"
+    "{params.best_of}:{params.status}:{params.has_logs}:{params.closeness_min}:{params.closeness_max}:"
+    "{params.scope}:{viewer_auth_user_id}"
+)
+ENCOUNTERS_CACHE_KEY = f"native_encounters:{_ENCOUNTER_QUERY_KEY}"
+ENCOUNTERS_OVERVIEW_CACHE_KEY = f"native_encounters_overview:{_ENCOUNTER_QUERY_KEY}"
+
 
 def _seats(encounter: models.Encounter) -> list[models.EncounterTeam]:
     """The live seats in slot order. Eager-loaded by ``encounter_entities``."""
@@ -398,7 +413,7 @@ class EncounterFlowsService:
 
     @cache(
         ttl=config.settings.encounters_cache_ttl,
-        key="encounters:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.only_count}:{params.query}:{params.fields}:{params.stage_id}:{params.stage_item_id}:{params.best_of}:{params.status}:{params.has_logs}:{params.closeness_min}:{params.closeness_max}:{params.scope}:{viewer_auth_user_id}",
+        key=ENCOUNTERS_CACHE_KEY,
         prefix="fastapi:",
     )
     async def get_all_encounters(
@@ -495,7 +510,7 @@ class EncounterFlowsService:
 
     @cache(
         ttl=config.settings.encounters_cache_ttl,
-        key="encounters_overview:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.only_count}:{params.query}:{params.fields}:{params.stage_id}:{params.stage_item_id}:{params.best_of}:{params.status}:{params.has_logs}:{params.closeness_min}:{params.closeness_max}:{params.scope}:{viewer_auth_user_id}",
+        key=ENCOUNTERS_OVERVIEW_CACHE_KEY,
         prefix="fastapi:",
         # NB: no ``lock=True`` — cashews builds the herd-lock key WITHOUT the
         # ``prefix``, and this codebase routes backends purely by key prefix (no

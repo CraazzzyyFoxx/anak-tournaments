@@ -39,9 +39,11 @@ def _detail(tournament_id: int) -> tuple[str, ...]:
 
 
 def _encounters(tournament_id: int) -> tuple[str, ...]:
-    # Cross-tournament encounter keys (`encounters:{workspace}:None:...`) are
-    # left to TTL: a per-tournament write must not SCAN every workspace's
-    # unscoped list.
+    # `native_encounters:` and `native_encounters_overview:` (`{workspace}:{tournament}:...`, see
+    # ``services.encounter.flows.ENCOUNTERS_CACHE_KEY``). Cross-tournament keys
+    # (`...:{workspace}:None:...`) are left to TTL: a per-tournament write must
+    # not SCAN every workspace's unscoped list. The glob also matches the
+    # pre-native `encounters*` names, so a leftover entry is dropped, not stranded.
     return _with_prefixes(f"*encounters*:{tournament_id}:*")
 
 
