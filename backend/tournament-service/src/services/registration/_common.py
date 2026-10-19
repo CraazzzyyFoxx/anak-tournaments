@@ -135,8 +135,9 @@ def build_registration_roles(
     (:meth:`RegistrationAnswerService.apply` does the latter, so an organizer's
     ``rank_value`` survives a player editing their roles).
 
-    When ``hero_catalog`` is provided (the top-heroes ask is enabled), the ordered
-    ``top_heroes`` slugs on each role are attached as ``registration_role_entity`` rows.
+    When ``hero_catalog`` is provided (the top-characters ask is enabled), the ordered
+    ``top_heroes`` slugs of each answer row -- the persisted form-answer spelling -- are attached
+    as ``registration_role_entity`` rows.
     """
     resolved_max = max_heroes if max_heroes and max_heroes > 0 else DEFAULT_MAX_TOP_HEROES
     entries: list[models.BalancerRegistrationRole] = []
@@ -195,12 +196,10 @@ def replace_registration_roles(
         registration_role.is_active = bool(role.get("is_active", role.get("rank_value") is not None))
 
         if hero_catalog is not None:
-            top_heroes = role.get("top_heroes")
-            if top_heroes is not None:
-                from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, build_hero_entries
-
+            top_characters = role.get("top_characters")
+            if top_characters is not None:
                 registration_role.hero_entries = build_hero_entries(
-                    top_heroes,
+                    top_characters,
                     hero_catalog=hero_catalog,
                     max_heroes=max_heroes or DEFAULT_MAX_TOP_HEROES,
                 )

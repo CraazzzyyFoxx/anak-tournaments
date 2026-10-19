@@ -35,7 +35,7 @@ import pytest  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
-from shared.hero_catalog import HeroCatalogEntry  # noqa: E402
+from shared.hero_catalog import HeroCatalogEntry, resolve_hero_catalog  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.social import SocialAccount  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
@@ -389,7 +389,7 @@ def test_a_role_edit_does_not_leave_a_parentless_role_row_in_the_session() -> No
             )
         ]
     )
-    catalog = {"ana": HeroCatalogEntry(id=11, slug="ana", hero_class=enums.HeroClass.support)}
+    catalog = {"ana": HeroCatalogEntry(id=11, slug="ana")}
     registration = _registration()
     registration.roles = [registration_role(role="tank", is_primary=True, priority=0)]
     session = sa.orm.Session()
@@ -718,6 +718,52 @@ def _heroes_schema() -> FormSchema:
     )
 
 
+def test_the_character_catalog_is_the_owning_disciplines_and_carries_no_role_vocabulary(db_session) -> None:
+    """A pick is validated against the OWNING tournament's game only, and a character's class plays no
+    part in it: League champions resolve for a League tournament, Overwatch heroes do not."""
+    suffix = uuid.uuid4().hex[:8]
+    ow_slug, lol_slug = f"hero-{suffix}-ow", f"hero-{suffix}-lol"
+
+    async def _run() -> tuple[set[str], set[str]]:
+        db_session.add_all(
+            [
+                models.CatalogEntity(
+                    discipline="overwatch",
+                    kind="character",
+                    slug=ow_slug,
+                    name=ow_slug,
+                    image_path="x",
+                    attrs={"class": "tank"},
+                ),
+                models.CatalogEntity(
+                    discipline="lol",
+                    kind="character",
+                    slug=lol_slug,
+                    name=lol_slug,
+                    image_path="x",
+                    attrs={"class": "mage"},
+                ),
+            ]
+        )
+        await db_session.commit()
+        try:
+            ow = await resolve_hero_catalog(db_session, discipline="overwatch")
+            lol = await resolve_hero_catalog(db_session, discipline="lol")
+            return {slug for slug in ow if slug in (ow_slug, lol_slug)}, {
+                slug for slug in lol if slug in (ow_slug, lol_slug)
+            }
+        finally:
+            await db_session.execute(
+                sa.delete(models.CatalogEntity).where(models.CatalogEntity.slug.in_([ow_slug, lol_slug]))
+            )
+            await db_session.commit()
+
+    ow, lol = asyncio.run(_run())
+
+    assert ow == {ow_slug}
+    assert lol == {lol_slug}
+
+
 def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> None:
     """A self-edit replaces the role's whole pick list, so a registrant resaving
     picks they never touched asks the database to hold a row and its replacement
@@ -741,7 +787,7 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
         )
         await db_session.commit()
         catalog = {
-            row.slug: HeroCatalogEntry(id=row.id, slug=row.slug, hero_class=enums.HeroClass.tank)
+            row.slug: HeroCatalogEntry(id=row.id, slug=row.slug)
             for row in (
                 await db_session.scalars(sa.select(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
             ).all()
@@ -869,7 +915,7 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
         )
         await db_session.commit()
         catalog = {
-            row.slug: HeroCatalogEntry(id=row.id, slug=row.slug, hero_class=classes[row.slug])
+            row.slug: HeroCatalogEntry(id=row.id, slug=row.slug)
             for row in (
                 await db_session.scalars(sa.select(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
             ).all()
@@ -914,7 +960,7 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
             assert roster is not None
             roster_roles = [entry.role for entry in roster.roles]
             roster_damage_heroes = [
-                hero.slug for entry in roster.roles if entry.role == "damage" for hero in entry.top_heroes
+                hero.slug for entry in roster.roles if entry.role == "damage" for hero in entry.top_characters
             ]
             rows = [
                 (role, priority, slug)

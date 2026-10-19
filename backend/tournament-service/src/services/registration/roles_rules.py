@@ -1,8 +1,8 @@
-"""Role composition, sub-role and top-hero rules for the ``roles`` builtin.
+"""Role composition, sub-role and top-character rules for the ``roles`` builtin.
 
 The schema pipeline (``shared/domain/forms/validate.py``) can coerce a roles
 answer structurally, but not judge it: the rules need the workspace sub-role
-catalog and the hero catalog, both of which come from the database. So they
+catalog and the discipline's character catalog, both of which come from the database. So they
 live here, as the tournament-service plugin the pipeline calls after
 normalisation.
 
@@ -137,18 +137,18 @@ def _hero_errors(
     params: RolesParams,
     hero_catalog: HeroCatalog,
 ) -> list[FieldError]:
-    """The optional ``top_heroes`` slugs submitted for each role.
+    """The optional ``top_heroes`` slugs (the persisted answer spelling) submitted for each role.
 
-    Enforces (per role): the configured max, no duplicates, existence in the
-    hero catalog, and — for non-flex registrations — that the hero's class
-    matches the role. Flex registrations accept heroes of any class.
+    Enforces (per role): the configured max, no duplicates and existence in the
+    owning discipline's character catalog. A character's class is display metadata
+    only -- no role is inferred from it, so any catalog character may be a pick for
+    any declared role.
     """
     if not params.top_heroes.enabled:
         return []
 
     errors: list[FieldError] = []
     max_heroes = _resolve_max_heroes(params)
-    is_flex = is_flex_submission(roles)
     any_selected = False
 
     for role in roles:
@@ -176,22 +176,9 @@ def _hero_errors(
                 )
             )
 
-        expected_class = role_code if not is_flex else None
-
         for slug in slugs:
-            entry = hero_catalog.get(slug)
-            if entry is None:
+            if hero_catalog.get(slug) is None:
                 errors.append(_err(ErrorCode.INVALID_OPTION.value, f"Unknown hero: {slug}.", hero=slug))
-                continue
-            if expected_class is not None and entry.hero_class.name != expected_class:
-                errors.append(
-                    _err(
-                        "roles.hero_wrong_class",
-                        f"Hero '{slug}' is not a {role_code} hero.",
-                        role=role_code,
-                        hero=slug,
-                    )
-                )
 
     if params.top_heroes.required and not any_selected:
         errors.append(_err(ErrorCode.REQUIRED.value, "Select at least one top hero."))

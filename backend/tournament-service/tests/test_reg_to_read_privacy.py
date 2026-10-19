@@ -20,6 +20,7 @@ from types import SimpleNamespace
 # to rely on whichever sibling test module happened to be collected first.
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from shared.models.registration.registration import BalancerRegistration  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
 
 #: What a form that asks the four public questions publishes. ``organizer_notes``
@@ -32,7 +33,7 @@ def _roster(rank: int | None, source: str = "registration", *extra: RosterRole) 
     """A one-role roster plus any ``extra`` entries, as the engine hands it over."""
     return PlayerRoster(
         registration_id=1,
-        battle_tag="Player#1234",
+        identity=PlayerIdentityRead(provider="battlenet", handle="Player#1234"),
         display_name=None,
         player_id=42,
         auth_user_id=None,

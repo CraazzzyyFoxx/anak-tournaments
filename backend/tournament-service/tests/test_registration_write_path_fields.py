@@ -36,6 +36,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
@@ -160,7 +161,11 @@ def _roster_of(registration: models.BalancerRegistration) -> PlayerRoster:
     registration's own layer only, over the roles it declares active."""
     return PlayerRoster(
         registration_id=registration.id,
-        battle_tag=registration.primary_handle(SocialProvider.BATTLENET),
+        identity=(
+            PlayerIdentityRead(provider=SocialProvider.BATTLENET, handle=handle)
+            if (handle := registration.primary_handle(SocialProvider.BATTLENET))
+            else None
+        ),
         display_name=registration.display_name,
         player_id=None,
         auth_user_id=None,

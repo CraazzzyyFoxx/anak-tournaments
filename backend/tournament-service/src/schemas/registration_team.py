@@ -280,6 +280,8 @@ class RegistrationTeamInvitePreview(BaseModel):
     tournament_id: int
     tournament_name: str
     workspace_id: int
+    #: The tournament's discipline: the game whose roles name ``slot_code``.
+    discipline: str
     team_id: int
     team_name: str
     slot_code: str

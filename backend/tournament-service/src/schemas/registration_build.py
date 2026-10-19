@@ -153,11 +153,14 @@ async def _resolve_tournament_workspace(session: AsyncSession, tournament_id: in
 async def _resolve_top_heroes_config(
     session: AsyncSession,
     form: models.BalancerRegistrationForm,
+    *,
+    discipline: str,
 ) -> tuple[HeroCatalog | None, int | None]:
-    """Resolve ``(hero_catalog, max_heroes)`` when the top-heroes ask is enabled.
+    """Resolve ``(character_catalog, max_characters)`` when the top-characters ask is enabled.
 
-    Returns ``(None, None)`` when the ``roles`` builtin is absent or its
-    ``top_heroes`` params are off, so heroes are neither validated nor persisted
+    The catalog is the OWNING tournament's ``discipline``: a pick is validated against that game's
+    characters only. Returns ``(None, None)`` when the ``roles`` builtin is absent or its
+    persisted ``top_heroes`` params are off, so characters are neither validated nor persisted
     for that tournament.
     """
     schema = schema_from_form(form)
@@ -167,7 +170,7 @@ async def _resolve_top_heroes_config(
     top_heroes = RolesParams.model_validate(roles.params).top_heroes
     if not top_heroes.enabled:
         return None, None
-    return await resolve_hero_catalog(session), top_heroes.max
+    return await resolve_hero_catalog(session, discipline=discipline), top_heroes.max
 
 
 #: Answer keys every reader may see regardless of the version a row answered.
@@ -297,7 +300,7 @@ def _reg_to_read(
                 # the player cannot be picked on, and printing the raw column there
                 # advertised a rating the balancer would never honour.
                 rank_value=roster.rank_on(entry.role) if show_ranks else None,
-                top_heroes=[hero.slug for hero in entry.top_heroes],
+                top_characters=[character.slug for character in entry.top_characters],
             )
             for entry in sorted(roster.roles, key=lambda entry: (not entry.is_primary, entry.priority))
         ]
@@ -308,7 +311,7 @@ def _reg_to_read(
                 is_primary=r.is_primary,
                 priority=r.priority,
                 rank_value=None,
-                top_heroes=[he.entity.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
+                top_characters=[he.entity.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
             )
             for r in sorted(reg.roles or [], key=lambda r: (not r.is_primary, r.priority))
         ]

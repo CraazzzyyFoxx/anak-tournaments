@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
+import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
@@ -157,6 +158,13 @@ async def _registration_ctx(session: Any, data: dict[str, Any], action: str, res
     ws_id = await auth.get_registration_workspace_id(session, registration_id)
     ensure_workspace_permission(user, ws_id, resource, action)
     return _Ctx(user, registration_id, ws_id)
+
+
+async def _tournament_discipline(session: Any, tournament_id: int) -> str:
+    """The owning tournament's discipline, for the form read's owner scope."""
+    return str(
+        await session.scalar(sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id))
+    )
 
 
 async def _tournament_ctx(session: Any, data: dict[str, Any], action: str, resource: str = "team") -> _Ctx:
@@ -303,6 +311,7 @@ def register(broker: Any, logger: Any) -> None:
             return _dump(
                 serialize_registration_form(
                     form,
+                    discipline=await _tournament_discipline(session, ctx.id),
                     is_open=is_open,
                     subscription_requirement=requirement,
                     stale_registrations=await form_service.stale_count(session, form),
@@ -333,6 +342,7 @@ def register(broker: Any, logger: Any) -> None:
             return _dump(
                 serialize_registration_form(
                     form,
+                    discipline=await _tournament_discipline(session, ctx.id),
                     is_open=is_open,
                     subscription_requirement=requirement,
                     stale_registrations=await form_service.stale_count(session, form),
@@ -440,6 +450,7 @@ def register(broker: Any, logger: Any) -> None:
             return _dump(
                 serialize_registration_form(
                     form,
+                    discipline=await _tournament_discipline(session, ctx.id),
                     is_open=is_open,
                     subscription_requirement=requirement,
                     stale_registrations=await form_service.stale_count(session, form),

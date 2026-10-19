@@ -938,6 +938,7 @@ class RegistrationTeamService:
             tournament_id=team.tournament_id,
             tournament_name=team.tournament.name,
             workspace_id=team.workspace_id,
+            discipline=team.tournament.discipline,
             team_id=team.id,
             team_name=team.name,
             slot_code=invite.slot_code,

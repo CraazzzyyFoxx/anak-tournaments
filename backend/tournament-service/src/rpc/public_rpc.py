@@ -633,6 +633,7 @@ def register(broker: Any, logger: Any) -> None:
             return _dump(
                 serialize_registration_form(
                     form,
+                    discipline=discipline,
                     is_open=is_open,
                     registration_late=registration_late,
                     subrole_catalog=subrole_catalog,
@@ -745,7 +746,7 @@ def register(broker: Any, logger: Any) -> None:
 
             provider = identity_provider(reg.tournament.discipline)
             schema = reg_service._require_current_schema(form, body.form_version_id)
-            hero_catalog, _ = await _resolve_top_heroes_config(session, form)
+            hero_catalog, _ = await _resolve_top_heroes_config(session, form, discipline=reg.tournament.discipline)
             values = await answer_service.validate(
                 session,
                 schema=schema,

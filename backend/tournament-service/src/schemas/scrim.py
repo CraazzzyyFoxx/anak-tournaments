@@ -122,6 +122,9 @@ ScrimPoolInput = Annotated[ScrimPoolCopy | ScrimPoolCustom, Field(discriminator=
 
 class ScrimCreateRequest(BaseModel):
     workspace_id: int
+    #: The game the room is played in; it must be enabled for the workspace (D89). Never defaulted:
+    #: a room's pool, maps and rosters are all read in this discipline.
+    discipline: str = Field(min_length=1)
     label: str = Field(min_length=1, max_length=255)
     #: Upper bound comes from ``Settings["tournament.scrim"].max_best_of``, not
     #: from here: it is an operational limit, raisable without a deploy.

@@ -230,8 +230,10 @@ class RegistrationLifecycleService:
         """
         schema = schema_from_form(form) or default_schema(identity_provider(discipline))
         # ``_resolve_top_heroes_config`` reads a real form; no form means no
-        # top-heroes ask to resolve, which is also what the default schema says.
-        hero_catalog, max_heroes = await _resolve_top_heroes_config(session, form) if form is not None else (None, None)
+        # top-characters ask to resolve, which is also what the default schema says.
+        hero_catalog, max_heroes = (
+            await _resolve_top_heroes_config(session, form, discipline=discipline) if form is not None else (None, None)
+        )
         values = await answer_service.validate(
             session,
             schema=schema,

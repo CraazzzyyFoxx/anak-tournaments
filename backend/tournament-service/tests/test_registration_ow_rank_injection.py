@@ -18,6 +18,7 @@ serializers = importlib.import_module("src.services.registration.serializers")
 player_sub_roles = importlib.import_module("shared.domain.player_sub_roles")
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.testing.roles import registration_role  # noqa: E402
 
 
@@ -99,7 +100,7 @@ def test_single_role_registration_is_not_flex() -> None:
     )
     roster = PlayerRoster(
         registration_id=1,
-        battle_tag="Player#1234",
+        identity=PlayerIdentityRead(provider="battlenet", handle="Player#1234"),
         display_name="Player",
         player_id=None,
         auth_user_id=None,

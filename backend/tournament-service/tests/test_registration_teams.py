@@ -506,6 +506,7 @@ class FreeAgentPredicateTests(TestCase):
 @dataclass
 class _PreviewTournament:
     name: str = "Autumn Cup"
+    discipline: str = "lol"
 
 
 @dataclass
@@ -574,6 +575,8 @@ class InvitePreviewTests(IsolatedAsyncioTestCase):
         # landing page nothing about where to register.
         self.assertEqual(3, preview.tournament_id)
         self.assertEqual("Autumn Cup", preview.tournament_name)
+        # The offered slot is named in the tournament's own game, so the page needs it with the offer.
+        self.assertEqual("lol", preview.discipline)
 
     async def test_an_expired_invite_still_resolves_but_is_not_redeemable(self) -> None:
         """The state stays `pending` — that IS the row's state — while redeemability

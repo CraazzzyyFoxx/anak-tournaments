@@ -943,7 +943,7 @@ class RegistrationService:
 
         workspace_id = form.workspace_id
         schema = _require_current_schema(form, body.form_version_id)
-        hero_catalog, _ = await _resolve_top_heroes_config(session, form)
+        hero_catalog, _ = await _resolve_top_heroes_config(session, form, discipline=tournament.discipline)
 
         # Resolved before validation, not after: the ``require_verified`` gate
         # matches the submitted handles against THIS player's OAuth rows.

@@ -40,6 +40,7 @@ from shared.core.enums import (
     StageType,
     TournamentStatus,
 )
+from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.pick_ban_config import has_pool
@@ -341,12 +342,14 @@ class ScrimService:
 
     # ── container ────────────────────────────────────────────────────────────
 
-    async def _ensure_container(self, session: AsyncSession, workspace_id: int) -> models.Tournament:
-        """The workspace's single hidden scrim container, created on first use.
+    async def _ensure_container(self, session: AsyncSession, workspace_id: int, discipline: str) -> models.Tournament:
+        """The workspace's single hidden scrim container FOR ``discipline``, created on first use.
 
-        One per workspace, never one per room: ``Tournament.id`` is read as an
+        One per workspace and game, never one per room: ``Tournament.id`` is read as an
         ordinal season timeline by the ML layer (see the ``ScrimRoom`` docstring), so
-        a container per room would inject data-less rows into it.
+        a container per room would inject data-less rows into it. The game is part of
+        the identity because the container is the room's owner tournament: its pool,
+        maps and rosters are all read in the container's discipline.
 
         Serialized on an advisory lock — two members creating their first room at the
         same moment would otherwise each see "no container" and make one. A duplicate
@@ -354,7 +357,9 @@ class ScrimService:
         and the lock costs one statement, so it is not worth tolerating. Same pattern
         as ``shared/services/tournament/computation.py``.
         """
-        await session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"scrim:{workspace_id}"))))
+        await session.execute(
+            sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"scrim:{workspace_id}:{discipline}")))
+        )
         # Stays in the service: no repository read filters a hidden tournament by
         # name, and the ``order_by(id).limit(1)`` is what makes a duplicate
         # container -- harmless but permanent -- resolve to the same row every time.
@@ -362,6 +367,7 @@ class ScrimService:
             self.tournament_repo.select()
             .where(
                 models.Tournament.workspace_id == workspace_id,
+                models.Tournament.discipline == discipline,
                 models.Tournament.is_hidden.is_(True),
                 models.Tournament.name == CONTAINER_NAME,
             )
@@ -373,18 +379,18 @@ class ScrimService:
         workspace = await self.workspace_repo.get(session, workspace_id)
         if workspace is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
-        assert_discipline_enabled(workspace, "overwatch")
+        assert_discipline_enabled(workspace, discipline)
         now = datetime.now(UTC)
         container = models.Tournament(
             workspace_id=workspace_id,
-            discipline="overwatch",
+            discipline=discipline,
             name=CONTAINER_NAME,
-            # Deterministic, not generated: one container per workspace (see the
-            # lookup above), so workspace_id alone already guarantees uniqueness
-            # without the collision-checking path real tournaments go through.
-            # Never surfaced (is_hidden, not a real tournament), so a stable
+            # Deterministic, not generated: one container per workspace and game (see
+            # the lookup above), so ``(workspace_id, discipline)`` already guarantees
+            # uniqueness without the collision-checking path real tournaments go
+            # through. Never surfaced (is_hidden, not a real tournament), so a stable
             # internal value is all the public-URL slug column needs here.
-            slug=f"scrims-{workspace_id}",
+            slug=f"scrims-{workspace_id}-{discipline}",
             description="Container for ad-hoc scrim rooms. Not a real tournament.",
             is_hidden=True,
             status=TournamentStatus.LIVE,
@@ -427,6 +433,21 @@ class ScrimService:
             # exactly as any other read would, or copying a pool becomes a way to
             # read a tournament the caller cannot see.
             await ensure_tournament_viewable(session, user, int(origin_id))
+            # A pool is a list of one game's catalog ids: another game's tournament is not a
+            # source for this room, whatever the caller may see of it.
+            pick_ban = _pick_ban()
+            origin_discipline = await pick_ban.config.tournament_discipline(session, int(origin_id))
+            room_discipline = await pick_ban.config.tournament_discipline(session, tournament_id)
+            if origin_discipline != room_discipline:
+                raise HTTPException(
+                    status_code=422,
+                    detail=[
+                        ApiExc(
+                            code="pool_wrong_discipline",
+                            msg=f"That tournament plays {origin_discipline!r}; this room plays {room_discipline!r}",
+                        )
+                    ],
+                )
             configs: list[PickBanConfig] = []
             for kind in (PickBanKind.MAP, PickBanKind.HERO):
                 resolved = await _pick_ban().sessions.resolve_config_at_level(
@@ -699,6 +720,7 @@ class ScrimService:
         user: models.AuthUser,
         *,
         workspace_id: int,
+        discipline: str,
         label: str,
         best_of: int,
         team_names: Sequence[str],
@@ -717,7 +739,7 @@ class ScrimService:
         if best_of < 1 or best_of > config.max_best_of:
             raise HTTPException(status_code=422, detail=f"best_of must be between 1 and {config.max_best_of}")
 
-        container = await self._ensure_container(session, workspace_id)
+        container = await self._ensure_container(session, workspace_id, discipline)
 
         # ``get_next_order`` answers 0 for a container with no stages yet, where a
         # room's stage starts at 1 -- which is what the ``or 1`` below preserves.

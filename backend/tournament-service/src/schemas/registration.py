@@ -56,7 +56,7 @@ class RegistrationRoleRead(BaseModel):
     is_primary: bool = False
     priority: int = 0
     rank_value: int | None = None
-    top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs
+    top_characters: list[str] = Field(default_factory=list)  # ordered character slugs
 
 
 class RegistrationTeamBrief(BaseModel):
@@ -81,8 +81,9 @@ class RegistrationRead(BaseModel):
     tournament_id: int
     workspace_id: int
     user_id: int | None = None
-    #: Primary handle of the registration's first GAME identity (battlenet
-    #: today), the name every surface renders this row by.
+    #: Primary handle of the registration's first GAME identity -- the owning
+    #: tournament's identity provider, position zero -- the name every surface renders
+    #: this row by.
     primary_handle: str | None = None
     #: Every answer this registration carries that the READER may see: the
     #: public participants list passes the form version's ``public_keys()``, an

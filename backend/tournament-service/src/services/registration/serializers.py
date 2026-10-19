@@ -27,11 +27,11 @@ def loaded_relationship_or_none(instance: object, attribute: str):
     return loaded_value
 
 
-def _role_top_heroes(role: models.BalancerRegistrationRole) -> list[str]:
-    """Ordered hero slugs for a role, without triggering a lazy load.
+def _role_top_characters(role: models.BalancerRegistrationRole) -> list[str]:
+    """Ordered character slugs for a role, without triggering a lazy load.
 
     Returns ``[]`` when ``hero_entries`` was not eagerly loaded, so callers that
-    don't need heroes need not eager-load them.
+    don't need characters need not eager-load them.
     """
     hero_entries = loaded_relationship_or_none(role, "hero_entries")
     if not hero_entries:
@@ -61,7 +61,7 @@ def serialize_registration_role(
         rank_source=entry.source if entry is not None else "none",
         is_active=entry is not None and entry.is_playable,
         is_declared_active=bool(role.is_active),
-        top_heroes=_role_top_heroes(role),
+        top_characters=_role_top_characters(role),
         ow_rank_value=ow_rank_value,
     )
 
@@ -151,6 +151,7 @@ def serialize_registration(
 def serialize_registration_form(
     form: models.BalancerRegistrationForm,
     *,
+    discipline: str,
     is_open: bool,
     registration_late: bool = False,
     subscription_requirement: dict[str, Any] | None = None,
@@ -182,6 +183,7 @@ def serialize_registration_form(
         id=form.id,
         tournament_id=form.tournament_id,
         workspace_id=form.workspace_id,
+        discipline=discipline,
         is_open=is_open,
         registration_late=registration_late,
         auto_approve=form.auto_approve,

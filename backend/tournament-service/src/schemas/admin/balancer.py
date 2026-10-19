@@ -260,7 +260,7 @@ class BalancerRegistrationRoleRead(BaseModel):
     #: The raw ``registration_role.is_active`` column: what the registrant (or
     #: the sheet, or the editor) declared. The role editor toggles THIS.
     is_declared_active: bool = True
-    top_heroes: list[str] = Field(default_factory=list)  # ordered hero slugs (read-only display)
+    top_characters: list[str] = Field(default_factory=list)  # ordered character slugs (read-only display)
     # Latest OW2 rank for this role, normalised to the workspace grid. Injected from
     # UserRankSnapshot at list time; None when no snapshot maps to a grid tier.
     ow_rank_value: int | None = None
@@ -272,7 +272,7 @@ class BalancerRegistrationRoleInput(BaseModel):
     is_primary: bool = False
     rank_value: int | None = None
     is_active: bool = True
-    top_heroes: list[str] | None = None
+    top_characters: list[str] | None = None
 
 
 class BalancerRankAutofillStage(BaseModel):
@@ -430,9 +430,9 @@ class BalancerRegistrationRead(BaseRead):
     workspace_id: int
     user_id: int | None = None
     display_name: str | None = None
-    #: Primary handle of the registration's first GAME identity (battlenet
-    #: today). Every battlenet handle, smurfs included, is in
-    #: ``answers["identity_battlenet"]``.
+    #: Primary handle of the registration's first GAME identity: the owning
+    #: tournament's identity provider, position zero. Every handle of that provider,
+    #: extra accounts included, is in ``answers["identity_<provider>"]``.
     primary_handle: str | None = None
     source: RegistrationSource
     source_record_key: str | None = None

@@ -27,7 +27,6 @@ os.environ["DEBUG"] = "true"
 roles_rules = importlib.import_module("src.services.registration.roles_rules")
 reg_common = importlib.import_module("src.services.registration._common")
 
-from shared.core import enums  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.domain.forms.schema import FormField  # noqa: E402
 from shared.domain.player_sub_roles import (  # noqa: E402
@@ -63,12 +62,8 @@ def _codes(
 
 
 HERO_CATALOG = {
-    "ana": HeroCatalogEntry(id=1, slug="ana", hero_class=enums.HeroClass.support),
-    "kiriko": HeroCatalogEntry(id=2, slug="kiriko", hero_class=enums.HeroClass.support),
-    "ashe": HeroCatalogEntry(id=3, slug="ashe", hero_class=enums.HeroClass.damage),
-    "genji": HeroCatalogEntry(id=4, slug="genji", hero_class=enums.HeroClass.damage),
-    "reinhardt": HeroCatalogEntry(id=5, slug="reinhardt", hero_class=enums.HeroClass.tank),
-    "dva": HeroCatalogEntry(id=6, slug="dva", hero_class=enums.HeroClass.tank),
+    slug: HeroCatalogEntry(id=entity_id, slug=slug)
+    for entity_id, slug in enumerate(("ana", "kiriko", "ashe", "genji", "reinhardt", "dva"), start=1)
 }
 
 TOP_HEROES_ON = {"enabled": True}
@@ -243,15 +238,13 @@ class TopHeroValidationTests(TestCase):
         return _codes(_field(**params), roles, hero_catalog=HERO_CATALOG)
 
     def test_disabled_field_skips_hero_validation(self) -> None:
-        # No top_heroes config -> heroes are ignored even when class would mismatch.
-        assert self._codes(None, [{"role": "damage", "is_primary": True, "top_heroes": ["ana"]}]) == []
+        # No top_heroes config -> characters are ignored, even unknown ones.
+        assert self._codes(None, [{"role": "damage", "is_primary": True, "top_heroes": ["nobody"]}]) == []
 
-    def test_hero_class_must_match_non_flex_role(self) -> None:
-        roles = [{"role": "damage", "is_primary": True, "top_heroes": ["ana"]}]
-        assert self._codes(TOP_HEROES_ON, roles) == ["roles.hero_wrong_class"]
-
-    def test_matching_class_accepted(self) -> None:
-        roles = [{"role": "damage", "is_primary": True, "top_heroes": ["ashe", "genji"]}]
+    def test_no_role_is_inferred_from_a_characters_class(self) -> None:
+        # A support-class character is a legal pick for a declared damage role: the
+        # catalog entry carries no class at all, so nothing can compare it with the role.
+        roles = [{"role": "damage", "is_primary": True, "top_heroes": ["ana", "ashe", "reinhardt"]}]
         assert self._codes(TOP_HEROES_ON, roles) == []
 
     def test_unknown_hero_rejected(self) -> None:
@@ -272,8 +265,7 @@ class TopHeroValidationTests(TestCase):
         # Collect-every-error: the old validator stopped at the count.
         assert self._codes(TOP_HEROES_ON, roles) == ["roles.too_many_heroes", "invalid_option"]
 
-    def test_flex_accepts_any_class(self) -> None:
-        # All-primary submission (flex) attaches any-class heroes -> class check skipped.
+    def test_flex_submission_accepts_picks_on_every_role(self) -> None:
         assert (
             self._codes(
                 TOP_HEROES_ON,
@@ -407,6 +399,31 @@ class BuildRegistrationRoleHeroesTests(TestCase):
             role_codes=ROLE_CODES,
         )
         assert list(entries[0].hero_entries) == []
+
+
+class ReplaceRegistrationRoleCharactersTests(TestCase):
+    """The typed (admin) role rows carry ``top_characters``; the persisted answer rows keep ``top_heroes``."""
+
+    def _replace(self, roles: list[dict], *, hero_catalog=HERO_CATALOG):
+        registration = SimpleNamespace(roles=[])
+        reg_common.replace_registration_roles(
+            registration, roles, catalog_roles=CATALOG_ROLES, hero_catalog=hero_catalog, max_heroes=2
+        )
+        return registration.roles
+
+    def test_top_characters_are_validated_against_the_catalog_and_persisted(self) -> None:
+        roles = self._replace(
+            [{"role": "damage", "is_primary": True, "top_characters": ["ashe", "nobody", "genji", "dva"]}]
+        )
+        assert [(h.entity_id, h.priority) for h in roles[0].hero_entries] == [(3, 1), (4, 2)]
+
+    def test_the_answer_spelling_is_not_a_second_input_on_the_typed_row(self) -> None:
+        roles = self._replace([{"role": "damage", "is_primary": True, "top_heroes": ["ashe"]}])
+        assert list(roles[0].hero_entries) == []
+
+    def test_no_catalog_means_nothing_is_persisted(self) -> None:
+        roles = self._replace([{"role": "damage", "is_primary": True, "top_characters": ["ashe"]}], hero_catalog=None)
+        assert list(roles[0].hero_entries) == []
 
 
 class SharedCatalogMappingTests(TestCase):

@@ -22,6 +22,10 @@ class RegistrationFormRead(BaseModel):
     id: int
     tournament_id: int
     workspace_id: int
+    #: The tournament's discipline: the owner scope of the form's roles, characters and identity
+    #: provider. Carried here so every form consumer (wizard, invite, edit dialog) scopes its
+    #: metadata reads from the loaded owner DTO instead of a second tournament read.
+    discipline: str
     # DERIVED, read-only: "is registration open right now", computed from the
     # tournament's REGISTRATION phase-schedule window. No longer a column on the
     # form -- see shared.services.registration_window.

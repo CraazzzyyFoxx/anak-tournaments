@@ -52,6 +52,7 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 user,
                 workspace_id=body.workspace_id,
+                discipline=body.discipline,
                 label=body.label,
                 best_of=body.best_of,
                 team_names=body.team_names,
