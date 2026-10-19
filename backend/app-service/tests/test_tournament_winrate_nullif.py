@@ -13,7 +13,7 @@ from unittest import IsolatedAsyncioTestCase
 
 from sqlalchemy.dialects import postgresql
 
-from src.services.statistics.queries import StatisticsQueries, queries
+from src.services.statistics.queries import StatisticsQueries
 
 
 class _Capture:
@@ -33,7 +33,7 @@ class _Session:
 class TournamentWinrateNullifTests(IsolatedAsyncioTestCase):
     async def test_winrate_sql_nullif_protects_zero_maps(self) -> None:
         session = _Session()
-        await queries.get_tournament_winrate(session, SimpleNamespace(id=1), user_id=1)
+        await StatisticsQueries.of("overwatch").get_tournament_winrate(session, SimpleNamespace(id=1), user_id=1)
         sql = str(session.statement.compile(dialect=postgresql.dialect())).lower()
         self.assertIn("nullif", sql)
 
