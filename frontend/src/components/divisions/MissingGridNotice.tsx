@@ -23,14 +23,23 @@ export function isDivisionGridRequired(error: unknown): boolean {
 /**
  * The state behind a missing-grid refusal: an organizer gets the way out (create or select a grid of
  * THIS game in THIS workspace, with the game preselected); anyone else gets a plain message — never a link
- * that would bypass the permission it needs.
+ * that would bypass the permission it needs. Across communities no workspace grid applies, so that view
+ * says so and points at choosing a community instead of at an organizer.
  */
 export function MissingGridNotice({
   discipline,
   gameName,
-  canManage
-}: Readonly<{ discipline: string; gameName: string; canManage: boolean }>) {
+  canManage,
+  acrossCommunities = false
+}: Readonly<{ discipline: string; gameName: string; canManage: boolean; acrossCommunities?: boolean }>) {
   const t = useTranslations("common.discipline");
+  if (acrossCommunities) {
+    return (
+      <div role="alert" className="rounded-xl border border-border bg-card p-3 text-sm">
+        <p className="text-muted-foreground">{t("gridMissingAcross", { game: gameName })}</p>
+      </div>
+    );
+  }
   return (
     <div role="alert" className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 text-sm">
       <p className="text-muted-foreground">{t("gridMissing")}</p>

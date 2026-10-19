@@ -229,7 +229,8 @@
       "widgetLoadFailed": "This game's interface could not be loaded.",
       "gridMissing": "This game has no usable division grid in this workspace, so ranks cannot be resolved.",
       "gridMissingAction": "Create or select a {game} division grid",
-      "gridMissingOrganizer": "Ask a workspace organizer to publish and activate a {game} division grid."
+      "gridMissingOrganizer": "Ask a workspace organizer to publish and activate a {game} division grid.",
+      "gridMissingAcross": "{game} has no usable division grid across communities, so ranks cannot be resolved here. Choose a community to see its {game} ranks."
     },
     "divisionWithId": "Division {id}",
     "anyDivision": "Any division",

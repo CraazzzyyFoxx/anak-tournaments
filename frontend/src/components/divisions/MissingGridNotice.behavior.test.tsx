@@ -49,6 +49,18 @@ describe("MissingGridNotice", () => {
     expect(container.querySelector("a")).toBeNull();
     expect(container.textContent).toContain("Ask a workspace organizer");
   });
+
+  it("says across communities that no workspace grid applies, with no organizer way out", () => {
+    const container = render(
+      <MissingGridNotice discipline="lol" gameName="League of Legends" canManage acrossCommunities />
+    );
+
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.textContent).toContain("League of Legends has no usable division grid across communities");
+    expect(container.textContent).toContain("Choose a community");
+    expect(container.textContent).not.toContain("in this workspace");
+    expect(container.textContent).not.toContain("Ask a workspace organizer");
+  });
 });
 
 describe("isDivisionGridRequired", () => {
