@@ -93,13 +93,15 @@ const postMatch = (label: string): MatchWithStats =>
   (read(POST, `match-stats.${label}.json`) as PostMatchFile).input_native_wire[label];
 
 /**
- * MISMATCH M1 (reported, awaiting a decision; not hidden): the old reader served every no-entity member stat as
- * `sum(value)::numeric(10,2)` (`get_match_observed_players`, aff7943fc), i.e. quantized to 2 decimals half away
- * from zero; the native wire serves the raw `NativeFact.value` (§6.1 `value: float`, "never recomputed"). The seed
- * holds 3-decimal facts (e.g. 0.252, 1125.002), so the old output reads 0.25 / 1125 where the native one reads the
- * stored value. This is the ONLY difference found: with exactly this quantization applied to the real native
- * no-entity facts every captured match output below is reproduced exactly. The strict, unquantized comparison is
- * pinned by the `it.fails` test, which turns red the moment the wire (or the decision) changes.
+ * RULING M1 (controller): the raw native facts ARE the contract (§6.1 `NativeFact.value: float`, "never
+ * recomputed"); formatting happens only at display (`lib/stats/format`). The old reader served every no-entity
+ * member stat as `sum(value)::numeric(10,2)` (`get_match_observed_players`, aff7943fc) — a reader artifact that
+ * also truncated percent fractions (25.2% displayed as 25.0%). The seed holds 3-decimal facts (e.g. 0.252,
+ * 1125.002), so the captured outputs read the 2-decimal values. `legacyQuantized` re-applies exactly that old cast
+ * to the REAL native no-entity facts (input-only, no output used) and is the equivalence gate: with it every
+ * captured match and encounter output is reproduced exactly, proving everything else is identical modulo the old
+ * rounding. The new raw behavior itself is asserted positively by the "serves raw native fact values" test. The
+ * captured outputs are never edited.
  */
 const legacyQuantized = (match: MatchWithStats): MatchWithStats => ({
   ...match,
@@ -257,10 +259,26 @@ describe("lib/match-stats.ts → disciplines/overwatch/match/stats", () => {
     (label) => reproduce(label, postMatchLegacyPrecision(label))
   );
 
-  // M1 pinned: the same comparison on the raw native facts is expected to differ (match_no_raw has no stats).
-  it.fails("M1: the raw native facts are not the old 2-decimal values", () =>
-    reproduce("match", postMatch("match"))
-  );
+  // Ruling M1: raw native facts are the contract, formatting happens only at display (`lib/stats/format`). These
+  // are the cells where the old reader's `numeric(10,2)` cast changed what the page read (the seed holds 3-decimal
+  // facts for away-seat member 910001 of `match`); the raw values and their display are asserted positively.
+  it("serves raw native fact values and formats them only at display (ruling M1)", () => {
+    const view = owMatchView(postMatch("match"));
+    const player = view!.away.players.find((candidate) => candidate.workspace_member_id === 910001)!;
+    const cell = (name: LogStatsName) => {
+      const value = playerStat(player, 0, name);
+      return { value, formatted: formatStat(name, value, fmt) };
+    };
+    expect(cell(LogStatsName.CriticalHitAccuracy)).toEqual({ value: 0.252, formatted: "25.2%" }); // old: 0.25 / "25.0%"
+    expect(cell(LogStatsName.WeaponAccuracy)).toEqual({ value: 0.502, formatted: "50.2%" }); // old: 0.5 / "50.0%"
+    expect(cell(LogStatsName.ScopedAccuracy)).toEqual({ value: 0.502, formatted: "50.2%" });
+    expect(cell(LogStatsName.KD)).toEqual({ value: 3.002, formatted: "3" }); // old: 3
+    expect(cell(LogStatsName.KDA)).toEqual({ value: 4.002, formatted: "4" }); // old: 4
+    expect(cell(LogStatsName.DamageFB)).toEqual({ value: 1125.002, formatted: "1,125" }); // old: 1125
+    // The cast is gone from the wire: no stored no-entity fact is quantized by the reader.
+    const raw = postMatch("match").statistics.facts.filter((fact) => fact.entity_id == null);
+    expect(raw.some((fact) => Math.round(fact.value * 100) / 100 !== fact.value)).toBe(true);
+  });
 
   it("drops only a hero colour that was the seed default on every captured hero", () => {
     expect(HERO_COLORS.size === 0 || [...HERO_COLORS].every((color) => color === "#ffffff")).toBe(true);
