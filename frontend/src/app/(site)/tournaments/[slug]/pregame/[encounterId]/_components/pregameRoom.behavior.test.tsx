@@ -2445,11 +2445,6 @@ describe("captain actions", () => {
   });
 });
 
-describe("admin controls", () => {
-  it("names the step's own action instead of offering the organizer a choice of three", async () => {
-    // A v2 step names what it accepts, so "ban / pick / protect" next to a
-    // protect step was three buttons of which two produced a 400.
-    usePermissionsMock.mockReturnValue({
 describe("side selection", () => {
   const SIDE = en.pickBan.room.sides.lol;
 
@@ -2778,6 +2773,11 @@ describe("side selection", () => {
   });
 });
 
+describe("admin controls", () => {
+  it("names the step's own action instead of offering the organizer a choice of three", async () => {
+    // A v2 step names what it accepts, so "ban / pick / protect" next to a
+    // protect step was three buttons of which two produced a 400.
+    usePermissionsMock.mockReturnValue({
       isSuperuser: true,
       isWorkspaceAdmin: () => true,
       hasWorkspacePermission: () => true
