@@ -41,6 +41,21 @@ def test_overwatch_declares_no_sides():
     assert (spec.code, spec.name, spec.sides) == ("overwatch", "Overwatch", ())
 
 
+def test_lol_declares_blue_red_sides_and_only_its_minimal_vocabulary():
+    spec = DISCIPLINES["lol"]
+    # Index 0 = blue, 1 = red: the ``side_pick`` wire index.
+    assert spec.sides == ("blue", "red")
+    assert [(stat.code, stat.value_format, stat.aggregation, stat.group) for stat in spec.stat_defs] == [
+        ("kills", "integer", "sum", None),
+        ("dragons", "integer", "sum", None),
+    ]
+    assert [event.code for event in spec.event_types] == ["kill"]
+    # Truthful absence: neutral balancer weights, no achievement conditions, no analytics module.
+    assert spec.balancer_role_settings == {}
+    assert spec.achievement_conditions is None
+    assert spec.analytics is None
+
+
 def test_an_unknown_code_resolves_to_a_side_less_stand_in():
     """``catalog.discipline`` is the authority on which codes exist; a code
     nobody has written behaviour for simply has none."""
