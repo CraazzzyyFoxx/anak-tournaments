@@ -28,9 +28,9 @@ serve = importlib.import_module("serve_worker")
 
 
 class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
-    async def test_every_native_job_gets_a_message_without_inline_parsing(self):
-        publish = AsyncMock()
+    async def test_requeue_runs_in_the_consumer_without_inline_parsing_or_direct_publishes(self):
         session = SimpleNamespace()
+        required = AsyncMock()
         with (
             patch.object(serve.db, "async_session_maker", session_factory(session)),
             patch.object(
@@ -38,58 +38,33 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
                 "requeue_tournament",
                 AsyncMock(return_value=TournamentRequeue(discipline="overwatch", queue=[501, 502], replay={})),
             ) as requeue,
-            patch.object(serve, "publish_message", publish),
+            patch.object(serve, "publish_required", required),
             patch.object(serve, "process_ingest_job", AsyncMock()) as parse,
         ):
             await serve.process_tournament_log(
                 {"tournament_id": 42}, SimpleNamespace(headers={}, message_id=None, raw_message=None)
             )
+        # The queued jobs' requests were committed by requeue_tournament itself (the outbox); nothing is sent here.
         requeue.assert_awaited_once_with(session, 42)
         parse.assert_not_awaited()
-        self.assertEqual([501, 502], [call.args[1]["ingest_job_id"] for call in publish.await_args_list])
-        self.assertEqual({"stats.ingest.overwatch"}, {call.args[2].name for call in publish.await_args_list})
-        self.assertTrue(
-            all(
-                "filename" not in call.args[1] and "tournament_id" not in call.args[1]
-                for call in publish.await_args_list
-            )
-        )
+        required.assert_not_awaited()
 
-    async def test_unknown_tournament_publishes_nothing(self):
-        publish = AsyncMock()
+    async def test_unknown_tournament_fails_the_request(self):
         with (
             patch.object(serve.db, "async_session_maker", session_factory(SimpleNamespace())),
             patch.object(
                 serve.log_records_service, "requeue_tournament", AsyncMock(side_effect=RuntimeError("not found"))
             ),
-            patch.object(serve, "publish_message", publish),
             self.assertRaises(RuntimeError),
         ):
             await serve.process_tournament_log(
                 {"tournament_id": 42}, SimpleNamespace(headers={}, message_id=None, raw_message=None)
             )
-        publish.assert_not_awaited()
-
-    async def test_tournament_without_jobs_publishes_nothing(self):
-        publish = AsyncMock()
-        with (
-            patch.object(serve.db, "async_session_maker", session_factory(SimpleNamespace())),
-            patch.object(
-                serve.log_records_service,
-                "requeue_tournament",
-                AsyncMock(return_value=TournamentRequeue(discipline="overwatch", queue=[], replay={})),
-            ),
-            patch.object(serve, "publish_message", publish),
-        ):
-            await serve.process_tournament_log(
-                {"tournament_id": 42}, SimpleNamespace(headers={}, message_id=None, raw_message=None)
-            )
-        publish.assert_not_awaited()
 
     async def test_done_job_replays_go_to_the_ttl_less_replay_queue_with_their_revision_and_are_never_decoded_here(
         self,
     ):
-        publish, declare, required = AsyncMock(), AsyncMock(), AsyncMock()
+        declare, required = AsyncMock(), AsyncMock()
         reparse = AsyncMock()
         with (
             patch.object(serve.db, "async_session_maker", session_factory(SimpleNamespace())),
@@ -98,7 +73,6 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
                 "requeue_tournament",
                 AsyncMock(return_value=TournamentRequeue(discipline="overwatch", queue=[501], replay={601: 3})),
             ),
-            patch.object(serve, "publish_message", publish),
             patch.object(serve, "declare_replay_queues", declare),
             patch.object(serve, "publish_required", required),
             patch.object(serve, "reparse_authorized_job", reparse),
@@ -107,12 +81,6 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
                 {"tournament_id": 42}, SimpleNamespace(headers={}, message_id=None, raw_message=None)
             )
         reparse.assert_not_awaited()
-        # The ordinary retry keeps the TTL ingest queue; the replay goes to the declared, TTL-less replay queue.
-        self.assertEqual(
-            [(501, "stats.ingest.overwatch")],
-            [(c.args[1]["ingest_job_id"], c.args[2].name) for c in publish.await_args_list],
-        )
-        self.assertIn("x-message-ttl", publish.await_args_list[0].args[2].arguments)
         declare.assert_awaited_once_with(serve.broker, "overwatch")  # before any replay publish, no consumer needed
         ((_, replay_queue, body),) = [c.args for c in required.await_args_list]
         self.assertEqual("stats.ingest.overwatch.replay", replay_queue.name)

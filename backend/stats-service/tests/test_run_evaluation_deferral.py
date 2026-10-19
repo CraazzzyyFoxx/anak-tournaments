@@ -100,12 +100,12 @@ class _RunnerTestCase(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.runs_repo = _FakeRunsRepo()
         self.service = runner.AchievementEvaluationRunnerService(runs_repo=self.runs_repo)
-        self.published: list[tuple[dict, object]] = []
+        self.published: list[tuple[dict, str]] = []
         self.evaluated: list[str] = []
         self.diffed: list[str] = []
 
-        async def _publish(_broker, message, queue, **_kwargs):  # noqa: ANN001, ANN003, ANN202
-            self.published.append((message, queue))
+        async def _enqueue(_session, event, *, exchange, routing_key):  # noqa: ANN001, ANN202
+            self.published.append((event.model_dump(), routing_key))
 
         async def _select_rules(_session, _workspace_id, _discipline, _rule_ids, _changed_tables):  # noqa: ANN001, ANN202
             return [_rule()]
@@ -122,12 +122,11 @@ class _RunnerTestCase(IsolatedAsyncioTestCase):
             return None
 
         for target, replacement in (
-            ("publish_message", _publish),
+            ("enqueue_outbox_event", _enqueue),
             ("_select_rules", _select_rules),
             ("evaluate", _evaluate),
             ("diff_and_apply", _diff_and_apply),
             ("get_effective_division_grid", _grid),
-            ("require_broker", lambda *_a, **_kw: object()),
         ):
             patcher = patch.object(runner, target, replacement)
             patcher.start()
@@ -144,8 +143,8 @@ class _RunnerTestCase(IsolatedAsyncioTestCase):
         self.assertEqual([], self.evaluated)
         self.assertEqual([], self.diffed)
         self.assertEqual(1, len(self.published))
-        message, queue = self.published[0]
-        self.assertIs(messaging_config.ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE, queue)
+        message, routing_key = self.published[0]
+        self.assertEqual(messaging_config.ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE.name, routing_key)
         self.assertEqual(run.id, message["run_id"])
         self.assertEqual(WORKSPACE_ID, message["workspace_id"])
 

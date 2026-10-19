@@ -19,6 +19,7 @@ from shared.domain.achievements.registry import get_specs
 from shared.domain.achievements.validation import GRAIN_ARITY, requires_normalized_divisions
 from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.messaging.config import ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.achievements.achievement import (
     AchievementGrain,
     AchievementRule,
@@ -27,7 +28,6 @@ from shared.models.achievements.achievement import (
     EvaluationRunTrigger,
 )
 from shared.models.tenancy.workspace import Workspace
-from shared.observability import publish_message
 from shared.repository.support import EvaluationRunRepository
 from shared.repository.tournament import TournamentRepository
 from shared.schemas.events import AchievementEvaluateEvent
@@ -40,7 +40,6 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizer,
 )
 from src import models
-from src.core.broker import require_broker
 
 from .differ import diff_and_apply, load_existing_results, persist_slice_for_grain
 
@@ -166,9 +165,9 @@ class AchievementEvaluationRunnerService:
             # create that lands before the queued message is consumed cannot widen what the caller asked for.
             trigger = await self._resolve_trigger(session, run.workspace_id, run.tournament_id, match_id)
             rules = await _select_rules(session, run.workspace_id, trigger.discipline, rule_ids, changed_tables)
-            await session.commit()
-            await publish_message(
-                require_broker(),
+            # Committed with the queued row, so there is never a queued run without its message.
+            await enqueue_outbox_event(
+                session,
                 AchievementEvaluateEvent(
                     workspace_id=run.workspace_id,
                     tournament_id=run.tournament_id,
@@ -176,10 +175,12 @@ class AchievementEvaluationRunnerService:
                     run_id=run.id,
                     match_id=match_id,
                     rule_ids=[rule.id for rule in rules],
-                ).model_dump(),
-                ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
-                logger=logger.bind(workspace_id=run.workspace_id, run_id=run.id),
+                    source_service="stats-service",
+                ),
+                exchange="",
+                routing_key=ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE.name,
             )
+            await session.commit()
         except Exception as exc:
             # A queued row nobody will ever pick up is worse than a visible
             # failure: record why and let the caller see it.

@@ -9,12 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.errors import BaseAPIException
-from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE
+from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE, ingest_queue
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.repository.encounter import EncounterGameRepository
 from shared.repository.stats import IngestJobRepository
 from shared.repository.tournament import EncounterRepository, TournamentRepository
-from shared.schemas.events import AchievementEvaluateEvent
+from shared.schemas.events import AchievementEvaluateEvent, ProcessIngestJobEvent
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src.services.match_logs.realtime import emit_logs_updated
 
@@ -57,6 +57,30 @@ async def reparse_observation(session: AsyncSession, job: models.IngestJob) -> m
     elif job.source_kind == "historical_reference":
         raise BaseAPIException(status_code=409, detail="stats_reparse_unbound_observation")
     return observation
+
+
+async def enqueue_ingest_request(
+    session: AsyncSession,
+    job_id: int,
+    *,
+    discipline: str,
+    correlation_id: str | None = None,
+    channel_id: int | None = None,
+    message_id: int | None = None,
+) -> None:
+    """Stage the work request on the transaction that made the job (or reset it) pending, on its discipline's queue."""
+    await enqueue_outbox_event(
+        session,
+        ProcessIngestJobEvent(
+            ingest_job_id=job_id,
+            correlation_id=correlation_id,
+            channel_id=channel_id,
+            message_id=message_id,
+            source_service="stats-service",
+        ),
+        exchange="",
+        routing_key=ingest_queue(discipline).name,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,17 +137,28 @@ class LogRecordsService:
             entity_id=job.id,
         )
         await emit_logs_updated(session, job.workspace_id, change=status.value)
-        await enqueue_outbox_event(
-            session,
-            AchievementEvaluateEvent(
-                workspace_id=job.workspace_id,
-                tournament_id=job.hint_tournament_id,
-                changed_tables=["stats.ingest_job"],
-                source_service="stats-service",
-            ),
-            exchange="",
-            routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
-        )
+        if status == models.IngestJobStatus.PENDING:
+            # Every re-pend (retry, tournament requeue, reaper) asks for the work in its own transaction.
+            await enqueue_ingest_request(session, job.id, discipline=job.discipline)
+        elif status != models.IngestJobStatus.PROCESSING:
+            # Only a terminal status moves what ``log_upload_count`` counts. The moment keeps the id unique per
+            # transition (``event_outbox.event_id`` is UNIQUE): a retried log reaches the same status again.
+            # ponytail: varchar(64) leaves 18 digits for workspace+tournament+job ids; drop the status from the key
+            # if ids ever grow past that.
+            tournament_id = job.hint_tournament_id or 0
+            await enqueue_outbox_event(
+                session,
+                AchievementEvaluateEvent(
+                    event_id=f"achievement:{job.workspace_id}:{tournament_id}:job:{job.id}:{status.value}:"
+                    f"{int(moment.timestamp() * 1000)}",
+                    workspace_id=job.workspace_id,
+                    tournament_id=job.hint_tournament_id,
+                    changed_tables=["stats.ingest_job"],
+                    source_service="stats-service",
+                ),
+                exchange="",
+                routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
+            )
 
     async def retry(
         self,
@@ -237,7 +272,8 @@ class LogRecordsService:
     async def requeue_tournament(self, session: AsyncSession, tournament_id: int) -> TournamentRequeue:
         """Sort the tournament's jobs into queue retries and revision-checked replays; nothing done is re-pended.
 
-        ``queue``: pending/failed/awaiting-link jobs reset to pending (ordinary retry, queue + claim fencing).
+        ``queue``: pending/failed/awaiting-link jobs reset to pending, each committed with its work request in the outbox
+        (ordinary retry, queue + claim fencing).
         ``replay``: done jobs that are still the current provenance of their game, with the revision seen *here*; the
         caller replays each through the explicit reparse branch and reports stale/busy individually. A done job that
         was superseded (or has no observation to replace) is left alone, as is anything processing.

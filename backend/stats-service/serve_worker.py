@@ -1,12 +1,13 @@
 """The stats worker process: every consumer and schedule, and no RPC handler.
 
 Consumes ``stats.ingest.<discipline>`` for the disciplines ``STATS_DISCIPLINES`` selects (every installed one when
-unset), the upload/tournament fanout, achievement evaluation, ``tournament.encounter.completed`` and each selected
-discipline module's own jobs (the OverFast rank collector), and runs the reaper, failed-log retention and subscription
-schedules. Run: ``faststream run serve_worker:app``.
+unset), the upload/tournament fanout, achievement evaluation, ``tournament.encounter.completed``, Discord member changes
+and each selected discipline module's own jobs (the OverFast rank collector), and runs the reaper, failed-log retention,
+subscription and outbox-drain schedules. Run: ``faststream run serve_worker:app``.
 """
 
 import base64
+import time
 from collections.abc import Awaitable
 
 import sqlalchemy as sa
@@ -21,6 +22,7 @@ from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
     ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_QUEUE,
+    DISCORD_MEMBER_CHANGED_DLQ,
     PROCESS_TOURNAMENT_LOGS_DLQ,
     PROCESS_TOURNAMENT_LOGS_QUEUE,
     TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
@@ -33,9 +35,9 @@ from shared.messaging.config import (
     ingest_replay_dlq,
     ingest_replay_queue,
 )
-from shared.messaging.outbox import enqueue_outbox_event
+from shared.messaging.outbox import drain_outbox, enqueue_outbox_event
 from shared.messaging.topology import declare_dead_letter_queue, declare_replay_queues, publish_required
-from shared.observability import metrics, observe_message_processing, publish_message
+from shared.observability import metrics, observe_message_processing
 from shared.schemas.events import (
     AchievementEvaluateEvent,
     EncounterCompletedEvent,
@@ -43,6 +45,7 @@ from shared.schemas.events import (
     ProcessTournamentLogsEvent,
     UploadMatchLogEvent,
 )
+from shared.services.scheduler import IntervalScheduler
 from src import models
 from src.core import config, db
 from src.core.clients import realtime_redis, s3_client
@@ -60,6 +63,7 @@ from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.log_records import log_records_service
 from src.services.match_logs.objectiveless import load_producers, resolve_encounter_maps
 from src.services.match_logs.result_events import publish_match_log_result
+from src.services.subscription_collection import member_events
 from src.services.subscription_collection import scheduler as subscription_scheduler
 
 SERVICE_NAME = "stats-worker"
@@ -95,6 +99,7 @@ _OWNED_DLQS = (
     ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_DEFERRED_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
+    DISCORD_MEMBER_CHANGED_DLQ,
 )
 
 # stop_jobs() awaitables handed back at shutdown start, awaited once the consumers have drained.
@@ -102,6 +107,9 @@ _pending_closes: list[Awaitable[None]] = []
 discipline_jobs.register_jobs(
     SELECTED, broker, session_factory=db.async_session_maker, redis=realtime_redis, logger=logger
 )
+member_events.register(broker, logger)
+# Publishes every committed event_outbox row (this worker's ingest requests, achievement runs, ...) once a second.
+_outbox_scheduler = IntervalScheduler(job_id="event_outbox_drain", label="Outbox drain", logger=logger)
 
 
 @app.on_startup
@@ -122,6 +130,7 @@ async def start_worker() -> None:
     # Drop failed match logs (S3 object + record) past their retention window.
     logs_retention.start_scheduler(redis=realtime_redis, s3=s3_client)
     subscription_scheduler.start_scheduler()
+    _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     readiness.bind()
 
 
@@ -138,6 +147,7 @@ async def stop_worker() -> None:
     logs_reaper.shutdown_scheduler()
     logs_retention.shutdown_scheduler()
     subscription_scheduler.shutdown_scheduler()
+    _outbox_scheduler.shutdown()
 
 
 @app.after_shutdown
@@ -148,7 +158,7 @@ async def close_worker_resources() -> None:
 
 @broker.subscriber(UPLOAD_MATCH_LOG_QUEUE, channel=_JOBS_CHANNEL)
 async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
-    """Hash/store actual bytes, create or reuse a native job, preserve the upload correlation."""
+    """Hash/store actual bytes, create or reuse a native job and commit its ingest request carrying the upload's ids."""
     async with observe_message_processing(
         queue=UPLOAD_MATCH_LOG_QUEUE,
         handler="process_upload_match_log",
@@ -157,7 +167,6 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
     ):
         event = UploadMatchLogEvent.model_validate(data)
         log = logger.bind(tournament_id=event.tournament_id, filename=event.filename)
-        job_id = None
         try:
             max_bytes = config.settings.max_match_log_bytes
             if len(event.content_b64) > (max_bytes // 3 + 1) * 4:
@@ -175,7 +184,7 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
                         )
                         .limit(1)
                     )
-                job = await upload_service.store_uploaded_log_bytes(
+                await upload_service.store_uploaded_log_bytes(
                     session,
                     s3=s3_client,
                     tournament_id=event.tournament_id,
@@ -183,31 +192,21 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
                     content=content,
                     source="discord" if event.uploader_discord_name else "manual",
                     uploader_id=uploader_user_id,
-                )
-                job_id, discipline = job.id, job.discipline
-            await publish_message(
-                broker,
-                ProcessIngestJobEvent(
-                    ingest_job_id=job_id,
                     correlation_id=event.correlation_id,
-                ).model_dump(),
-                ingest_queue(discipline),
-                logger=log,
-                correlation_id=event.correlation_id,
-            )
+                    channel_id=event.channel_id,
+                    message_id=event.message_id,
+                )
         except Exception as exc:
-            if job_id is not None:
-                # Keep the durable pending job recoverable. Redelivery/reaper
-                # retries dispatch; a queue outage is not a persisted parse failure.
-                raise
+            # No job was committed: this is the uploader's only answer.
             await publish_match_log_result(
                 broker,
                 event.tournament_id,
                 event.filename,
                 "failed",
-                ingest_job_id=job_id,
                 correlation_id=event.correlation_id,
                 error_message=str(exc),
+                channel_id=event.channel_id,
+                message_id=event.message_id,
                 logger=log,
             )
             log.exception("Failed to upload or queue match log")
@@ -257,6 +256,8 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
                     ingest_job_id=job.id,
                     correlation_id=event.correlation_id,
                     error_message=error.message if error else None,
+                    channel_id=event.channel_id,
+                    message_id=event.message_id,
                     logger=log,
                 )
         metrics.count("stats.ingest.processed", 1, attributes={"status": status.value, "discipline": discipline})
@@ -341,15 +342,9 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
         event = ProcessTournamentLogsEvent.model_validate(data)
         logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")
         try:
+            # Re-pended jobs are committed with their ingest requests in the outbox (the PENDING transition stages them).
             async with db.async_session_maker() as session:
                 requeued = await log_records_service.requeue_tournament(session, event.tournament_id)
-            for job_id in requeued.queue:
-                await publish_message(
-                    broker,
-                    ProcessIngestJobEvent(ingest_job_id=job_id).model_dump(),
-                    ingest_queue(requeued.discipline),
-                    logger=logger.bind(ingest_job_id=job_id),
-                )
             # Done jobs are never re-pended: each is replayed through the discipline's TTL-less replay queue with the revision
             # seen at selection, so a log superseded or re-replaced in the meantime reports stale instead of winning.
             # This consumer never decodes: only a worker serving the job's discipline can.
@@ -419,9 +414,14 @@ async def process_tournament_encounter_completed(data: dict, msg: RabbitMessage)
             await enqueue_outbox_event(
                 session,
                 AchievementEvaluateEvent(
+                    # Unique per delivery, not per completion: a redelivered completion must not hit
+                    # event_outbox.event_id's UNIQUE and dead-letter a message whose work is already committed.
+                    event_id=f"achievement:{workspace_id}:{event.tournament_id}:encounter:{event.encounter_id}:"
+                    f"{int(time.time() * 1000)}",
                     workspace_id=workspace_id,
                     tournament_id=event.tournament_id,
                     changed_tables=["tournament.encounter", "stats.fact"],
+                    source_service="stats-service",
                 ),
                 exchange="",
                 routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,

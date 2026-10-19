@@ -305,6 +305,7 @@ async def write_observations(
         await enqueue_outbox_event(
             session,
             AchievementEvaluateEvent(
+                event_id=f"achievement:{binding.workspace_id}:{encounter.tournament_id}:match:{match.id}:{match.revision}",
                 workspace_id=binding.workspace_id,
                 tournament_id=encounter.tournament_id,
                 changed_tables=["stats.match", "stats.fact", "stats.event"],

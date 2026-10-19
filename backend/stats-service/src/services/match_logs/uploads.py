@@ -17,7 +17,7 @@ from src.core.config import settings
 from src.services.ingest.jobs import provenance_classifier
 from src.services.match_logs.admin_reads import _validate_attached_encounter
 from src.services.match_logs.limits import MATCH_NOT_FINISHED_MESSAGE, match_log_finished, match_log_oversize_message
-from src.services.match_logs.log_records import compute_content_hash
+from src.services.match_logs.log_records import compute_content_hash, enqueue_ingest_request
 from src.services.match_logs.realtime import emit_logs_updated
 
 
@@ -57,6 +57,9 @@ class UploadService:
         source: str,
         uploader_id: int | None = None,
         attached_encounter_id: int | None = None,
+        correlation_id: str | None = None,
+        channel_id: int | None = None,
+        message_id: int | None = None,
     ) -> models.IngestJob:
         filename = self.validate_log_filename(filename)
         oversize = match_log_oversize_message(len(content), settings.max_match_log_bytes, filename=filename)
@@ -99,6 +102,7 @@ class UploadService:
                 await enqueue_outbox_event(
                     session,
                     AchievementEvaluateEvent(
+                        event_id=f"achievement:{job.workspace_id}:{job.hint_tournament_id or 0}:upload:{job.id}",
                         workspace_id=job.workspace_id,
                         tournament_id=job.hint_tournament_id,
                         changed_tables=["stats.ingest_job"],
@@ -107,6 +111,16 @@ class UploadService:
                     exchange="",
                     routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
                 )
+            # A reused job is requested too: its uploader still gets the job's result (claim fencing makes the extra
+            # delivery of a live job a no-op).
+            await enqueue_ingest_request(
+                session,
+                job.id,
+                discipline=job.discipline,
+                correlation_id=correlation_id,
+                channel_id=channel_id,
+                message_id=message_id,
+            )
             await session.commit()
             return job
         except Exception:

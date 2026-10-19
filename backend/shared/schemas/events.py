@@ -267,6 +267,9 @@ class ProcessIngestJobEvent(BaseEvent):
         ge=1,
         description="Set for a revision-fenced replay of a done job: the observation revision seen when it was selected",
     )
+    # A Discord upload's message, threaded from ``UploadMatchLogEvent`` to the job's ``MatchLogProcessedEvent``.
+    channel_id: int | None = Field(default=None, description="Discord channel of the upload, echoed on the result")
+    message_id: int | None = Field(default=None, description="Discord message of the upload, echoed on the result")
 
 
 class UploadMatchLogEvent(BaseEvent):

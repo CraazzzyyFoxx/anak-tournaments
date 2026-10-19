@@ -795,13 +795,10 @@ class RunnerScopeTests(_DbCase):
         await self.session.flush()
         published: list[dict] = []
 
-        async def publish(_broker, message, _queue, **_kwargs):  # noqa: ANN001, ANN003, ANN202
-            published.append(message)
+        async def enqueue(_session, event, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+            published.append(event.model_dump())
 
-        with (
-            patch.object(runner, "publish_message", publish),
-            patch.object(runner, "require_broker", lambda: object()),
-        ):
+        with patch.object(runner, "enqueue_outbox_event", enqueue):
             await self.session.commit()
             service = runner.AchievementEvaluationRunnerService()
             for rule_ids in (None, [], [self.ow_rule.id]):

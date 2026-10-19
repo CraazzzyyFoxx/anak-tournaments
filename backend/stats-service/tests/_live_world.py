@@ -90,12 +90,14 @@ async def main() -> dict:
         await session.commit()
         # The plan's default per-key limit (60/min) is smaller than a status-polling smoke: a superuser (as an operator
         # would) raises it for every key, through the same service call the admin API uses.
+        root_email = f"p5-root-{tag}@example.com"
         root = await auth.register(
             session,
-            schemas.UserRegister(email=f"p5-root-{tag}@example.com", username=f"p5_root_{tag}", password=PASSWORD),
+            schemas.UserRegister(email=root_email, username=f"p5_root_{tag}", password=PASSWORD),
         )
         root.is_superuser = True
         await session.flush()
+        root_id = root.id
         for label, (_raw, key_id, _workspace) in keys.items():
             if label == "off_revoked":
                 continue
@@ -108,6 +110,8 @@ async def main() -> dict:
     return {
         "workspaces": ws_ids,
         "owner": {"auth_user_id": owner_id, "email": email, "password": PASSWORD},
+        # The superuser login (additive for P8: enabling a game, the catalog seed and the source sync are superuser's).
+        "root": {"auth_user_id": root_id, "email": root_email, "password": PASSWORD},
         "keys": {
             label: {"key": raw, "api_key_id": key_id, "workspace": ws} for label, (raw, key_id, ws) in keys.items()
         },

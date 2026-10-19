@@ -25,239 +25,42 @@ import pytest
 
 from shared.messaging.config import (
     MATCH_INGESTED_TOURNAMENT_DLQ,
-    MATCH_INGESTED_TOURNAMENT_QUEUE,
     ingest_dlq,
     ingest_queue,
     ingest_replay_dlq,
     ingest_replay_queue,
 )
 from shared.schemas.events import AchievementEvaluateEvent, ProcessIngestJobEvent
-from tests.ingest_seed import IngestCase, add_game, shuffled
-from tests.live_smoke_support import LiveStack, Response, free_port, http, wait_until
-from tests.live_smoke_world import async_session_factory, document, project_catalog, seed_world, with_unknown_identities
+from tests.ingest_seed import add_game, shuffled
+from tests.live_smoke_support import (
+    JSON_HEADERS,
+    TERMINAL,
+    Live,
+    LiveStack,
+    Response,
+    bring_up,
+    canonical,
+    err,
+    free_port,
+    http,
+    wait_until,
+)
+from tests.live_smoke_world import async_session_factory, document, with_unknown_identities
 from tests.test_ow_decoder_reference_capture import DIRECTORY, observe
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_P5_LIVE_SMOKE") != "1", reason="live smoke: set RUN_P5_LIVE_SMOKE=1"
 )
 
-TERMINAL = {"done", "awaiting_link", "failed"}
-JSON_HEADERS = {"Content-Type": "application/json"}
-
-
-def canonical(doc: dict) -> bytes:
-    return json.dumps(doc, sort_keys=True, separators=(",", ":")).encode()
-
-
-class Live:
-    """The running stack plus everything seeded for it."""
-
-    def __init__(self, stack: LiveStack, world: dict, grids: dict, cases: dict[str, IngestCase], workshop) -> None:
-        self.stack, self.world, self.grids, self.cases, self.workshop = stack, world, grids, cases, workshop
-
-    # -- HTTP ---------------------------------------------------------------------------------------------------
-    def key(self, label: str) -> str:
-        return self.world["keys"][label]["key"]
-
-    def post(self, label: str | None, body: bytes, *, content_type: str = "application/json") -> Response:
-        headers = {"Content-Type": content_type}
-        if label:
-            headers["Authorization"] = f"Bearer {self.key(label)}"
-        return http("POST", f"{self.stack.gateway}/api/v1/stats/matches", body=body, headers=headers)
-
-    def get_job(self, label: str, job_id: int) -> Response:
-        return http(
-            "GET",
-            f"{self.stack.gateway}/api/v1/stats/ingest-jobs/{job_id}",
-            headers={"Authorization": f"Bearer {self.key(label)}"},
-        )
-
-    def admin_token(self) -> str:
-        owner = self.world["owner"]
-        response = http(
-            "POST",
-            f"{self.stack.gateway}/api/v1/auth/login",
-            body=json.dumps({"email": owner["email"], "password": owner["password"]}).encode(),
-            headers=JSON_HEADERS,
-        )
-        assert response.status == 200, response.raw[:300]
-        return response.json()["access_token"]
-
-    def admin(self, method: str, path: str, payload: dict | None = None) -> Response:
-        headers = {"Authorization": f"Bearer {self.admin_token()}", **JSON_HEADERS}
-        return http(
-            method,
-            f"{self.stack.gateway}{path}",
-            body=None if payload is None else json.dumps(payload).encode(),
-            headers=headers,
-        )
-
-    def settle(self, label: str, job_id: int, *, timeout: float = 90, until=TERMINAL) -> tuple[dict, list[str]]:
-        """Poll the real status endpoint until the job reaches one of ``until``; every observed status is evidence."""
-        seen: list[str] = []
-
-        def poll():
-            response = self.get_job(label, job_id)
-            assert response.status == 200, (response.status, response.raw[:300])
-            job = response.json()
-            if not seen or seen[-1] != job["status"]:
-                seen.append(job["status"])
-            return job if job["status"] in until else None
-
-        job = wait_until(poll, f"ingest job {job_id} to reach {sorted(until)}", timeout=timeout, interval=0.2)
-        self.stack.evidence.record("status_transitions", f"{label}:{job_id}", seen)
-        return job, seen
-
-    # -- SQL ----------------------------------------------------------------------------------------------------
-    def q(self, statement: str, *params):
-        return self.stack.query(statement, params or None)
-
-    def s(self, statement: str, *params):
-        return self.stack.scalar(statement, params or None)
-
-    def job(self, job_id: int) -> dict:
-        row = self.q(
-            "SELECT status, attempts, discipline, external_id, error_message, started_at FROM stats.ingest_job WHERE id=%s",
-            job_id,
-        )[0]
-        return dict(
-            zip(("status", "attempts", "discipline", "external_id", "error_message", "started_at"), row, strict=True)
-        )
-
-    def match(self, game_id: int) -> dict | None:
-        rows = self.q("SELECT id, revision, ingest_job_id FROM stats.match WHERE encounter_game_id=%s", game_id)
-        return dict(zip(("id", "revision", "ingest_job_id"), rows[0], strict=True)) if rows else None
-
-    def children(self, match_id: int) -> dict[str, int]:
-        return {
-            table: self.s(f"SELECT count(*) FROM stats.{table} WHERE match_id=%s", match_id)
-            for table in ("match_team", "match_player", "segment", "fact", "event")
-        }
-
-    def drain(self, *, timeout: float = 60) -> None:
-        """The tournament process publishes outbox rows once a second: wait until none is left unpublished."""
-        wait_until(
-            lambda: self.s("SELECT count(*) FROM public.event_outbox WHERE status IN ('pending','failed')") == 0,
-            "outbox drained",
-            timeout=timeout,
-        )
-
-    def receipts(self, encounter_id: int) -> list[dict]:
-        rows = self.q(
-            "SELECT data FROM encounter.room_event WHERE encounter_id=%s AND action='match_ingested' ORDER BY id",
-            encounter_id,
-        )
-        return [row[0] for row in rows]
-
-    def wait_receipts(self, encounter_id: int, count: int) -> list[dict]:
-        self.drain()
-        wait_until(
-            lambda: len(self.receipts(encounter_id)) >= count,
-            f"{count} receipt(s) on encounter {encounter_id}",
-            timeout=60,
-        )
-        return self.receipts(encounter_id)
-
-    def game(self, game_id: int) -> dict:
-        state, version, source = self.q(
-            "SELECT state, result_version, result_source FROM encounter.game WHERE id=%s", game_id
-        )[0]
-        return {"state": state, "result_version": version, "result_source": source}
-
-    def baseline(self) -> dict[str, int]:
-        return {
-            "jobs": self.s("SELECT count(*) FROM stats.ingest_job"),
-            "outbox": self.s("SELECT count(*) FROM public.event_outbox"),
-            "matches": self.s("SELECT count(*) FROM stats.match"),
-        }
-
-    def submit_ok(self, label: str, doc: dict, *, expect: int | tuple[int, ...] = (200, 202)) -> dict:
-        response = self.post(label, canonical(doc))
-        assert response.status in ((expect,) if isinstance(expect, int) else expect), (
-            response.status,
-            response.raw[:500],
-        )
-        return response.json()
-
-
-def err(response: Response) -> str | None:
-    """The stable machine code of an error body: the field-level code when present, else the flat ``code``."""
-    body = response.json() or {}
-    fields = body.get("fields") or []
-    return fields[0]["code"] if fields else body.get("code")
-
 
 @pytest.fixture(scope="module")
 def live():
     stack = LiveStack(Path(os.environ["P5_SMOKE_EVIDENCE_DIR"]) if os.environ.get("P5_SMOKE_EVIDENCE_DIR") else None)
     try:
-        stack.build_gateway()
-        stack.provision()
-        asyncio.run(project_catalog(stack.db_url))
-        world = stack.run_script("_live_world.py", "identity-service", "__WORLD__")
-        grids = stack.run_script(
-            "_live_grids.py", "app-service", "__GRIDS__", stdin={"workspaces": world["workspaces"]}
-        )
-        cases, workshop = asyncio.run(seed_world(stack.db_url, world["workspaces"], grids))
-        result = Live(stack, world, grids, cases, workshop)
-        start_processes(result)
-        yield result
+        yield bring_up(stack)
     finally:
         path = stack.close()
         print(f"\nP5 live smoke evidence: {path}")
-
-
-def start_processes(live: Live) -> None:
-    stack = live.stack
-    identity = stack.faststream("identity", "identity-service", "serve", port=free_port())
-    stack.faststream("tournament", "tournament-service", "serve", port=free_port())
-    stack.faststream("stats_rpc", "stats-service", "serve_rpc", port=free_port())
-    stack.faststream(
-        "worker_overwatch", "stats-service", "serve_worker", port=free_port(), **stack.worker_env("overwatch")
-    )
-    stack.faststream("worker_lol", "stats-service", "serve_worker", port=free_port(), **stack.worker_env("lol"))
-    stack.ready(
-        "identity",
-        "rpc.identity.validate_token has a consumer",
-        lambda: stack.consumers("rpc.identity.validate_token") >= 1,
-    )
-    answer = stack.ready(
-        "identity",
-        "validate_token answers for a real API key",
-        lambda: (r := stack.rpc("rpc.identity.validate_token", {"token": live.key("off_ok")}, timeout=10))
-        and r.get("ok")
-        and r,
-    )
-    assert (
-        answer["data"]["api_key_workspace_id"] == live.world["workspaces"]["OFF"]
-        if "api_key_workspace_id" in answer["data"]
-        else True
-    )
-    del identity
-    stack.ready(
-        "tournament",
-        "match.ingested evidence consumer",
-        lambda: stack.consumers(MATCH_INGESTED_TOURNAMENT_QUEUE.name) >= 1,
-    )
-    stack.ready("stats_rpc", "/health 200", lambda: stack.health("stats_rpc")[0] == 200)
-    stack.ready(
-        "stats_rpc", "rpc.stats.ingest.submit has a consumer", lambda: stack.consumers("rpc.stats.ingest.submit") >= 1
-    )
-    stack.ready(
-        "stats_rpc",
-        "RPC answered (rpc.stats.rank.user_current)",
-        lambda: stack.rpc("rpc.stats.rank.user_current", {"id": "1"}, timeout=10).get("ok") is True,
-    )
-    for name, slug in (("worker_overwatch", "overwatch"), ("worker_lol", "lol")):
-        stack.ready(name, "/health 200", lambda name=name: stack.health(name)[0] == 200)
-        stack.ready(
-            name,
-            f"consuming {ingest_queue(slug).name}",
-            lambda slug=slug: stack.consumers(ingest_queue(slug).name) >= 1,
-        )
-    stack.start_gateway()
-    stack.ready("gateway", "/health 200", lambda: stack.health("gateway")[0] == 200)
-    stack.ready("gateway", "login through identity RPC", lambda: live.admin_token())
 
 
 # =====================================================================================================================

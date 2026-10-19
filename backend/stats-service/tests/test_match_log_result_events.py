@@ -1,7 +1,7 @@
 """Tests for publishing match-log processing results back to discord-service.
 
-The result rides a fanout RabbitMQ exchange (replacing pg LISTEN/NOTIFY, which
-pgBouncer transaction pooling breaks). Publishing must never fail the worker.
+The result goes to one durable work queue and names the Discord message it answers. Publishing must never fail
+the worker.
 """
 
 from __future__ import annotations
@@ -47,11 +47,11 @@ class PublishMatchLogResultTests(IsolatedAsyncioTestCase):
         )
         self.assertIsNone(event.ingest_job_id)
 
-    async def test_publishes_done_event_to_result_exchange(self) -> None:
+    async def test_publishes_done_event_to_the_result_queue_with_the_upload_message(self) -> None:
         broker = SimpleNamespace()
         with patch.object(result_events, "publish_message", AsyncMock()) as publish:
             await result_events.publish_match_log_result(
-                broker, 73, "log.txt", "done", ingest_job_id=91, correlation_id="upload-1"
+                broker, 73, "log.txt", "done", ingest_job_id=91, correlation_id="upload-1", channel_id=5, message_id=6
             )
 
         self.assertEqual(1, publish.await_count)
@@ -64,8 +64,9 @@ class PublishMatchLogResultTests(IsolatedAsyncioTestCase):
         self.assertEqual("done", payload["status"])
         self.assertEqual(91, payload["ingest_job_id"])
         self.assertEqual("upload-1", payload["correlation_id"])
+        self.assertEqual((5, 6), (payload["channel_id"], payload["message_id"]))
         self.assertEqual("upload-1", kwargs["correlation_id"])
-        self.assertIs(result_events.MATCH_LOG_RESULT_EXCHANGE, kwargs["exchange"])
+        self.assertIs(result_events.MATCH_LOG_RESULT_QUEUE, args[2])
 
     async def test_publishes_failed_status(self) -> None:
         with patch.object(result_events, "publish_message", AsyncMock()) as publish:

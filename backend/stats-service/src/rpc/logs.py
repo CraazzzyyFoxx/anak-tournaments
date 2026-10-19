@@ -24,10 +24,10 @@ from sqlalchemy import desc, func, select
 
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.messaging.config import PROCESS_TOURNAMENT_LOGS_QUEUE, ingest_queue
+from shared.messaging.config import PROCESS_TOURNAMENT_LOGS_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.models import IngestJobStatus
-from shared.observability import publish_message
-from shared.schemas.events import ProcessIngestJobEvent, ProcessTournamentLogsEvent
+from shared.schemas.events import ProcessTournamentLogsEvent
 from shared.services.audit import record_admin_audit
 from src import models, schemas
 from src.core import auth, db
@@ -267,9 +267,6 @@ def register(broker: Any, logger: Any) -> None:
                 encounter_id=body.encounter_id,
                 encounter_game_id=body.encounter_game_id,
             )
-            event = ProcessIngestJobEvent(ingest_job_id=record.id)
-            await publish_message(broker, event.model_dump(), ingest_queue(record.discipline), logger=logger)
-
             row = (await session.execute(history_query().where(models.IngestJob.id == record.id))).one()
             return schemas.LogRecordRead.model_validate(_record_to_dict(*row))
 
@@ -357,8 +354,6 @@ def register(broker: Any, logger: Any) -> None:
                         uploader_id=uploader_id,
                         attached_encounter_id=attached_encounter_id,
                     )
-                    event = ProcessIngestJobEvent(ingest_job_id=record.id)
-                    await publish_message(broker, event.model_dump(), ingest_queue(record.discipline), logger=logger)
                     uploaded.append(
                         schemas.LogUploadItem(
                             record_id=record.id,
@@ -403,11 +398,13 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=tournament.id,
                 entity_label=tournament.name,
             )
-            # Nothing else in this handler writes, so the row needs its own commit
-            # before the event goes out.
+            await enqueue_outbox_event(
+                session,
+                ProcessTournamentLogsEvent(tournament_id=tournament.id, source_service="stats-service"),
+                exchange="",
+                routing_key=PROCESS_TOURNAMENT_LOGS_QUEUE.name,
+            )
             await session.commit()
-            event = ProcessTournamentLogsEvent(tournament_id=tournament.id)
-            await publish_message(broker, event.model_dump(), PROCESS_TOURNAMENT_LOGS_QUEUE, logger=logger)
             return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
         return await c.envelope(logger, "logs.process_tournament", op, session_factory=_SF)

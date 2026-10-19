@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.messaging.config import TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY, TOURNAMENT_EVENTS_EXCHANGE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.repository import DiscordChannelRepository
+from shared.schemas.events import DiscordChannelChangedEvent
 from src import models
 
 __all__ = ("DiscordChannelService", "discord_channel_service")
@@ -44,6 +47,7 @@ class DiscordChannelService:
             )
         else:
             channel = await self.repo.update_fields(session, channel, fields)
+        await _enqueue_changed(session, tournament_id)
         await session.commit()
         await session.refresh(channel)
         return channel
@@ -53,8 +57,19 @@ class DiscordChannelService:
         if channel is None:
             return False
         await self.repo.delete(session, channel)
+        await _enqueue_changed(session, tournament_id)
         await session.commit()
         return True
+
+
+async def _enqueue_changed(session: AsyncSession, tournament_id: int) -> None:
+    # The bot's channel registry reloads its watched-channel set on this, committed with the binding itself.
+    await enqueue_outbox_event(
+        session,
+        DiscordChannelChangedEvent(tournament_id=tournament_id, source_service="stats-service"),
+        exchange=TOURNAMENT_EVENTS_EXCHANGE,
+        routing_key=TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY,
+    )
 
 
 discord_channel_service = DiscordChannelService()

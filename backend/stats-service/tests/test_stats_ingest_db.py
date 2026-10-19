@@ -1152,6 +1152,13 @@ def test_history_and_bulk_requeue_use_native_scope_and_exact_raw_refs(stats_pari
                 )
                 ids = (await log_records_service.requeue_tournament(session, env.tournament)).queue
                 assert set(ids) == {job.id, imported.id}
+                # The imported job never had a request: the requeue committed one with its reset.
+                requested = await session.scalars(
+                    sa.select(models.EventOutbox.payload_json["ingest_job_id"].as_integer()).where(
+                        models.EventOutbox.event_type == "process_ingest_job"
+                    )
+                )
+                assert imported.id in set(requested)
                 assert imported.raw_ref == "historic/preserved/path.log"
                 assert imported.status == STATUS.PENDING and imported.attempts == 0 and imported.error_message is None
 
@@ -1339,7 +1346,8 @@ def test_reaper_requeues_through_the_outbox_and_retains_the_last_claim_timestamp
                         )
                     )
                 ).all()
-                assert [r.status for r in requests].count("pending") == 1
+                # One from the upload's own commit, one from the reaper's reset.
+                assert [r.status for r in requests].count("pending") == 2
             release.assert_awaited_once()
             # A disabled worker performs no claim/dispatch at all.
             monkeypatch.setattr(reaper.settings, "log_reaper_enabled", False)
@@ -1347,6 +1355,37 @@ def test_reaper_requeues_through_the_outbox_and_retains_the_last_claim_timestamp
             monkeypatch.setattr(reaper, "acquire_distributed_lock", acquire)
             assert (await reaper.reclaim_stalled_logs(redis=object(), session_factory=env.sf)).touched == 0
             acquire.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_only_terminal_transitions_ask_for_achievements_and_a_repeated_status_gets_its_own_id(
+    stats_parity_database, monkeypatch
+):
+    async def run():
+        async with environment(stats_parity_database, monkeypatch) as env:
+            job = await upload(env)
+            first = datetime.now(UTC)
+            async with env.sf() as session:
+                row = await session.get(models.IngestJob, job.id)
+                # A retried log fails twice: event_outbox.event_id is UNIQUE, so the second id must differ.
+                for status, now in (
+                    (STATUS.PROCESSING, None),
+                    (STATUS.FAILED, first),
+                    (STATUS.PENDING, None),
+                    (STATUS.PROCESSING, None),
+                    (STATUS.FAILED, first + timedelta(seconds=1)),
+                ):
+                    await log_records_service.transition(session, row, status, now=now)
+                    await session.commit()
+                ids = (
+                    await session.scalars(
+                        sa.select(models.EventOutbox.event_id).where(
+                            models.EventOutbox.event_id.like(f"achievement:%:job:{job.id}:%")
+                        )
+                    )
+                ).all()
+            assert len(set(ids)) == len(ids) == 2 and all(f":job:{job.id}:failed:" in event_id for event_id in ids)
 
     asyncio.run(run())
 

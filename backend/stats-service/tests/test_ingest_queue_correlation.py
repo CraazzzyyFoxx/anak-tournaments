@@ -30,24 +30,29 @@ def _event(content_b64=None):
         "tournament_id": 42,
         "filename": "same.log",
         "correlation_id": "upload-before-publish",
+        "channel_id": 7001,
+        "message_id": 7002,
         "content_b64": content_b64 if content_b64 is not None else base64.b64encode(b"actual bytes").decode(),
     }
 
 
-def test_upload_queues_native_job_and_preserves_original_correlation(monkeypatch):
+def test_upload_stores_the_job_with_its_request_carrying_the_upload_ids(monkeypatch):
     async def run():
         session = SimpleNamespace(scalar=AsyncMock(return_value=None))
         monkeypatch.setattr(serve.db, "async_session_maker", session_factory(session))
         store = AsyncMock(return_value=SimpleNamespace(id=66, discipline="overwatch"))
-        publish = AsyncMock()
+        result = AsyncMock()
         monkeypatch.setattr(serve.upload_service, "store_uploaded_log_bytes", store)
-        monkeypatch.setattr(serve, "publish_message", publish)
+        monkeypatch.setattr(serve, "publish_match_log_result", result)
         await serve.process_upload_match_log(_event(), MESSAGE)
-        payload = publish.await_args.args[1]
-        assert payload["ingest_job_id"] == 66 and payload["correlation_id"] == "upload-before-publish"
-        assert publish.await_args.args[2].name == "stats.ingest.overwatch"
-        assert "filename" not in payload and "tournament_id" not in payload
-        assert store.await_args.kwargs["content"] == b"actual bytes"
+        kwargs = store.await_args.kwargs
+        assert kwargs["content"] == b"actual bytes"
+        assert (kwargs["correlation_id"], kwargs["channel_id"], kwargs["message_id"]) == (
+            "upload-before-publish",
+            7001,
+            7002,
+        )
+        result.assert_not_awaited()
 
     asyncio.run(run())
 
@@ -60,27 +65,10 @@ def test_invalid_base64_reports_failed_upload_before_a_job_exists(monkeypatch):
         await serve.process_upload_match_log(_event("!not-base64!"), MESSAGE)
         store.assert_not_awaited()
         assert result.await_args.args[3] == "failed"
-        assert result.await_args.kwargs["ingest_job_id"] is None
+        assert "ingest_job_id" not in result.await_args.kwargs
         assert result.await_args.kwargs["correlation_id"] == "upload-before-publish"
+        assert (result.await_args.kwargs["channel_id"], result.await_args.kwargs["message_id"]) == (7001, 7002)
         assert result.await_args.kwargs["error_message"]
-
-    asyncio.run(run())
-
-
-def test_dispatch_outage_does_not_forge_a_failed_parse_for_a_pending_job(monkeypatch):
-    async def run():
-        monkeypatch.setattr(serve.db, "async_session_maker", session_factory(SimpleNamespace()))
-        monkeypatch.setattr(
-            serve.upload_service,
-            "store_uploaded_log_bytes",
-            AsyncMock(return_value=SimpleNamespace(id=66, discipline="overwatch")),
-        )
-        monkeypatch.setattr(serve, "publish_message", AsyncMock(side_effect=RuntimeError("queue down")))
-        result = AsyncMock()
-        monkeypatch.setattr(serve, "publish_match_log_result", result)
-        with pytest.raises(RuntimeError, match="queue down"):
-            await serve.process_upload_match_log(_event(), MESSAGE)
-        result.assert_not_awaited()
 
     asyncio.run(run())
 
@@ -98,13 +86,16 @@ def test_processing_result_uses_committed_native_status_and_job_error(monkeypatc
         monkeypatch.setattr(serve, "process_ingest_job", process)
         monkeypatch.setattr(serve, "publish_match_log_result", result)
         await serve.process_ingest_message(
-            "overwatch", {"ingest_job_id": 66, "correlation_id": "original-upload"}, MESSAGE
+            "overwatch",
+            {"ingest_job_id": 66, "correlation_id": "original-upload", "channel_id": 7001, "message_id": 7002},
+            MESSAGE,
         )
         process.assert_awaited_once_with(session, 66, serve.s3_client, is_raise=False)
         assert result.await_args.args[1:4] == (42, "canonical.log", status.value)
         assert result.await_args.kwargs["ingest_job_id"] == 66
         assert result.await_args.kwargs["correlation_id"] == "original-upload"
         assert result.await_args.kwargs["error_message"] == "native-job-error"
+        assert (result.await_args.kwargs["channel_id"], result.await_args.kwargs["message_id"]) == (7001, 7002)
 
     asyncio.run(run())
 

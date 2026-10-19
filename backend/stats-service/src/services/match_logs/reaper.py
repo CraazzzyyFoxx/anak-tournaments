@@ -46,7 +46,6 @@ from shared.services.distributed_lock import (
 from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.config import settings
-from src.services.ingest.jobs import enqueue_ingest_request
 from src.services.match_logs.log_records import log_records_service
 
 __all__ = ("ReaperResult", "reclaim_stalled_logs", "stalled_conditions")
@@ -124,8 +123,8 @@ async def _claim_stalled(
             exhausted.append(record.id)
             continue
 
+        # The PENDING transition stages the ingest request on this same commit.
         await log_records_service.transition(session, record, IngestJobStatus.PENDING, now=now)
-        await enqueue_ingest_request(session, record.id, discipline=record.discipline)
         requeue.append(
             _Stalled(
                 record_id=record.id,

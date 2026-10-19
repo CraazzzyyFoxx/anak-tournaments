@@ -24,18 +24,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.clients.s3 import S3Client
 from shared.core.errors import BaseAPIException
-from shared.messaging.config import ingest_queue
-from shared.messaging.outbox import enqueue_outbox_event
 from shared.models import AuthUser
 from shared.repository.catalog import CatalogAliasMissRepository
 from shared.repository.stats import IngestJobRepository
 from shared.rpc.identity import credential_type
-from shared.schemas.events import ProcessIngestJobEvent
 from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES, IngestIssue, MatchDoc, MatchDocError, parse_match_doc
 from src.schemas.ingest import IngestBinding, IngestError, IngestJobRead
 from src.services.ingest.validation import DocumentRejected, validate_document
 from src.services.match_logs.limits import match_log_oversize_message
-from src.services.match_logs.log_records import ERROR_MESSAGE_LIMIT, log_records_service
+from src.services.match_logs.log_records import ERROR_MESSAGE_LIMIT, enqueue_ingest_request, log_records_service
 from src.services.match_logs.realtime import emit_logs_updated
 
 __all__ = (
@@ -47,7 +44,6 @@ __all__ = (
     "claim_job",
     "decode_error",
     "encode_error",
-    "enqueue_ingest_request",
     "finish_claim",
     "get_ingest_job",
     "is_current_claim",
@@ -302,18 +298,6 @@ def _parse_rejection(exc: MatchDocError) -> IngestRejected:
 
 
 SEMANTIC_CODES = {"unresolved_references": "unknown_code", "unknown_identity_provider": "document_invalid"}
-
-
-async def enqueue_ingest_request(
-    session: AsyncSession, job_id: int, *, discipline: str, correlation_id: str | None = None
-) -> None:
-    """Stage the work request on the transaction that made the job (or reset it) pending, on its discipline's queue."""
-    await enqueue_outbox_event(
-        session,
-        ProcessIngestJobEvent(ingest_job_id=job_id, correlation_id=correlation_id, source_service="stats-service"),
-        exchange="",
-        routing_key=ingest_queue(discipline).name,
-    )
 
 
 async def _uploader_id(session: AsyncSession, user: AuthUser) -> int | None:

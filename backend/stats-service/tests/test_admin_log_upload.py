@@ -113,7 +113,6 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
                 AsyncMock(side_effect=store_uploaded_log_bytes),
             ) as store_mock,
             patch.object(rpc_logs, "quota", SimpleNamespace(charge=AsyncMock())) as quota_mock,
-            patch.object(rpc_logs, "publish_message", AsyncMock()) as publish_mock,
         ):
             envelope = await self.broker.handlers["rpc.stats.logs.upload"](
                 {
@@ -139,12 +138,6 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             self.assertEqual(777, call.kwargs["uploader_id"])
             self.assertEqual(9, call.kwargs["attached_encounter_id"])
             self.assertEqual("upload", call.kwargs["source"])
-
-        self.assertEqual(2, publish_mock.await_count)
-        payloads = [call.args[1] for call in publish_mock.await_args_list]
-        self.assertEqual([100, 100], [payload["ingest_job_id"] for payload in payloads])
-        self.assertEqual({"stats.ingest.overwatch"}, {call.args[2].name for call in publish_mock.await_args_list})
-        self.assertTrue(all("filename" not in payload and "tournament_id" not in payload for payload in payloads))
 
         # One audit row for the call — file names only, never the uploaded bytes.
         self.assertEqual(1, len(audit_rows))
@@ -187,7 +180,6 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
                 ),
             ) as store_mock,
             patch.object(rpc_logs, "quota", SimpleNamespace(charge=AsyncMock())),
-            patch.object(rpc_logs, "publish_message", AsyncMock()) as publish_mock,
         ):
             envelope = await self.broker.handlers["rpc.stats.logs.upload"](
                 {
@@ -209,7 +201,6 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             data["errors"],
         )
         self.assertEqual(["done.log"], [call.kwargs["filename"] for call in store_mock.await_args_list])
-        self.assertEqual(1, publish_mock.await_count)
 
     async def test_history_rejects_unknown_status(self) -> None:
         rpc_logs._SF = _session_factory(SimpleNamespace())
