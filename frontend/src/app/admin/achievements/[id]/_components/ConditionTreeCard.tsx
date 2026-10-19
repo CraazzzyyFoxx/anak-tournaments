@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 
 // @xyflow/react (plus its stylesheet) is the heaviest thing this route can
 // pull, and the tree is one card on a page that is mostly forms and tables —
@@ -49,7 +50,12 @@ export function ConditionTreeCard({
   saveError?: string;
 }>) {
   const t = useTranslations("adminAchievements");
+  const tCommon = useTranslations("common");
   const [draft, setDraft] = useState<Record<string, unknown>>({});
+  // The condition vocabulary is the game module's; a game that declares none has nothing to edit with. Unknown
+  // until its metadata loads, so the editor waits for an explicit yes.
+  const metadata = useDisciplineMetadata("all", discipline);
+  const conditions = metadata.data?.discipline.capabilities.achievement_conditions;
 
   return (
     <Card>
@@ -57,7 +63,7 @@ export function ConditionTreeCard({
         <CardTitle asChild>
           <h2>{t("detail.conditionTree")}</h2>
         </CardTitle>
-        {canUpdate && !editing && (
+        {canUpdate && !editing && conditions === true && (
           <Button
             variant="outline"
             size="sm"
@@ -70,7 +76,10 @@ export function ConditionTreeCard({
           </Button>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {conditions === false ? (
+          <p className="text-sm text-muted-foreground">{tCommon("discipline.widgetUnsupported")}</p>
+        ) : null}
         {editing ? (
           <div className="space-y-4">
             <ConditionFlowEditor value={draft} onChange={setDraft} discipline={discipline} />
