@@ -500,31 +500,46 @@ function RegistrationSchemaFormBody({
 
     const payload: RegistrationFormSubmit = { form_version_id: form.version_id, answers: sent };
     if (isAdmin) {
-      const selections = toRoleSelections(
-        roleCodes,
-        Array.isArray(answers.roles) ? (answers.roles as RoleInput[]) : []
-      );
       const dimension = ratedDimension(metadata)?.code ?? null;
-      // Admin rows carry ranks and activity, which `answers.roles` cannot —
-      // the server takes these over the answer when both are sent. Left out
-      // whole when the viewer lacks `registration.roles`.
+      // Admin rows carry ranks and activity, which `answers.roles` cannot — the server takes these over the
+      // answer when both are sent, and a send REPLACES the registration's whole role set (assignments, ranks,
+      // picks). Hence `adminRoles` below.
+      const adminRolesFrom = (answered: readonly RoleInput[], typedRanks: Record<string, string>) =>
+        fromRoleSelections(roleCodes, toRoleSelections(roleCodes, answered), lockedRole).map((role, index) => {
+          const typed = typedRanks[role.role]?.trim();
+          const rank = typed ? Number(typed) : null;
+          return {
+            role: toRoleRef(role.role, role.subrole ? `${role.role}_${role.subrole}` : null, dimension ?? ""),
+            is_primary: role.is_primary,
+            priority: index + 1,
+            rank_value: rank != null && Number.isFinite(rank) ? rank : null,
+            is_active: true,
+            // The persisted answer spells the picks `top_heroes`; the typed row is the native
+            // `top_characters`.
+            ...(role.top_heroes?.length ? { top_characters: role.top_heroes } : {})
+          } satisfies AdminRegistrationRoleInput;
+        });
+      // The role state is the stored row's unless the form edited it: a schema without a `roles` question (a
+      // tournament with no questionnaire, or one that never asks) leaves `answers.roles` unset, and an unset
+      // answer is not an empty role set.
+      const answeredRoles: readonly RoleInput[] = Array.isArray(answers.roles)
+        ? (answers.roles as RoleInput[])
+        : initial
+          ? roleInputsFrom(initial.roles)
+          : [];
+      const nextRoles =
+        rolesReadOnly || dimension === null ? null : adminRolesFrom(answeredRoles, ranks);
+      // Editing: what the form would send for the stored state untouched. Equal means nothing about roles or
+      // ranks changed, so nothing about them is sent (a roles-less save of a name or a note must not rewrite —
+      // or, for an empty set, wipe — the registration's roles). Creating has nothing stored to compare with.
+      const storedRoles =
+        initial && nextRoles
+          ? adminRolesFrom(roleInputsFrom(initial.roles), initialRanks(roleCodes, initial.roles))
+          : null;
       const adminRoles =
-        rolesReadOnly || dimension === null
+        nextRoles && storedRoles && JSON.stringify(nextRoles) === JSON.stringify(storedRoles)
           ? null
-          : fromRoleSelections(roleCodes, selections, lockedRole).map((role, index) => {
-              const typed = ranks[role.role]?.trim();
-              const rank = typed ? Number(typed) : null;
-              return {
-                role: toRoleRef(role.role, role.subrole ? `${role.role}_${role.subrole}` : null, dimension),
-                is_primary: role.is_primary,
-                priority: index + 1,
-                rank_value: rank != null && Number.isFinite(rank) ? rank : null,
-                is_active: true,
-                // The persisted answer spells the picks `top_heroes`; the typed row is the native
-                // `top_characters`.
-                ...(role.top_heroes?.length ? { top_characters: role.top_heroes } : {})
-              } satisfies AdminRegistrationRoleInput;
-            });
+          : nextRoles;
       payload.admin = {
         display_name: displayName || null,
         admin_notes: adminNotes || null,

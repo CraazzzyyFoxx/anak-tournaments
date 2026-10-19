@@ -5,6 +5,8 @@ import { act, type ReactNode } from "react";
 import type { FormField, FormSchema } from "@/types/forms.types";
 import type { Registration, RegistrationForm } from "@/types/registration.types";
 
+import type { RegistrationFormSubmit } from "./RegistrationSchemaForm";
+import type { AdminRegistration } from "@/types/balancer-admin.types";
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 const testWindow = new Window({ url: "http://localhost:3000/", width: 900, height: 900 });
@@ -395,6 +397,111 @@ describe("RegistrationSchemaForm on a late sign-up", () => {
     await mountForm({ form: { ...LATE_FORM, registration_late: false } as unknown as RegistrationForm });
 
     expect(container.textContent).not.toContain("registration.reserve.lateNotice");
+  });
+});
+
+describe("RegistrationSchemaForm organizer edit without a questionnaire", () => {
+  /** The empty-schema form an organizer edits against when the tournament has no questionnaire. */
+  const NO_QUESTIONNAIRE = { ...FORM, form_schema: { schema_version: 1, sections: [] } } as unknown as RegistrationForm;
+  const STORED_ADMIN = {
+    id: 55,
+    primary_handle: "Anak#2100",
+    display_name: "Anak",
+    admin_notes: null,
+    status: "approved",
+    balancer_status: "ready",
+    answers: {},
+    roles: [
+      {
+        role: { dimension: "player_role", role: "tank" },
+        is_primary: true,
+        priority: 0,
+        rank_value: 3000,
+        is_active: true,
+        is_declared_active: true,
+        top_characters: ["rein"]
+      },
+      {
+        role: { dimension: "player_role", role: "damage" },
+        is_primary: false,
+        priority: 1,
+        rank_value: 2800,
+        is_active: true,
+        is_declared_active: true,
+        top_characters: ["genji", "tracer"]
+      }
+    ]
+  } as unknown as AdminRegistration;
+
+  function setInput(element: Element, value: string) {
+    const proto =
+      element.tagName === "TEXTAREA" ? testWindow.HTMLTextAreaElement.prototype : testWindow.HTMLInputElement.prototype;
+    act(() => {
+      Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(element, value);
+      element.dispatchEvent(new testWindow.Event("input", { bubbles: true }) as unknown as Event);
+      // The numeric input commits on blur.
+      element.dispatchEvent(new testWindow.FocusEvent("focusout", { bubbles: true }) as unknown as Event);
+    });
+  }
+
+  /** Mounts the organizer's edit of the stored registration and returns what its save sends. */
+  async function mountEdit(): Promise<() => RegistrationFormSubmit> {
+    testWindow.localStorage.clear();
+    let submitted: RegistrationFormSubmit | null = null;
+    await mountForm({
+      mode: "admin",
+      form: NO_QUESTIONNAIRE,
+      initial: STORED_ADMIN,
+      onSubmit: async (input: RegistrationFormSubmit) => {
+        submitted = input;
+      }
+    });
+    return () => submitted as unknown as RegistrationFormSubmit;
+  }
+
+  async function save() {
+    const buttons = container.querySelectorAll("button");
+    await act(async () => {
+      buttons[buttons.length - 1].dispatchEvent(
+        new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event
+      );
+    });
+  }
+
+  it("saves a changed name and note without sending a roles replacement", async () => {
+    const sent = await mountEdit();
+    setInput(container.querySelector('input[placeholder="registrationOrganizer.form.displayNamePlaceholder"]')!, "Anak R.");
+    setInput(container.querySelector('textarea[placeholder="registrationOrganizer.form.adminNotesPlaceholder"]')!, "seen twice");
+    await save();
+
+    const admin = sent().admin!;
+    expect(admin.display_name).toBe("Anak R.");
+    expect(admin.admin_notes).toBe("seen twice");
+    // `roles` on the organizer receiver REPLACES the whole role set, so an untouched one is never sent: an empty
+    // set here would delete the assignments, ranks and picks the form never showed.
+    expect(admin).not.toHaveProperty("roles");
+  });
+
+  it("sends the stored assignments, ranks and picks along with a rank the organizer did change", async () => {
+    const sent = await mountEdit();
+    // Ranks render in role order: tank, damage, support.
+    const ranks = [...container.querySelectorAll('input[placeholder="—"]')];
+    expect(ranks.map((input) => (input as HTMLInputElement).value)).toEqual(["3000", "2800", ""]);
+    setInput(ranks[0], "3100");
+    await save();
+
+    expect(sent().admin!.roles).toEqual([
+      expect.objectContaining({
+        role: { dimension: "player_role", role: "tank" },
+        rank_value: 3100,
+        top_characters: ["rein"]
+      }),
+      expect.objectContaining({
+        role: { dimension: "player_role", role: "damage" },
+        rank_value: 2800,
+        top_characters: ["genji", "tracer"]
+      })
+    ]);
   });
 });
 
