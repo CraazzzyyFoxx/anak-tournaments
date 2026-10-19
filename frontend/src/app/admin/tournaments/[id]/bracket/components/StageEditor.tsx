@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
-import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ import {
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import type { Stage, StageItem, Tournament } from "@/types/tournament.types";
+import type { Stage, Tournament } from "@/types/tournament.types";
 import type { Team } from "@/types/team.types";
 
 import {
@@ -59,13 +59,12 @@ import { BracketLayoutSection } from "./BracketLayoutSection";
 import { FfaScoringSection } from "./FfaScoringSection";
 import { RoundScheduleSection } from "./RoundScheduleSection";
 import { StageItemsSection } from "./StageItemsSection";
-import {
-  BestOfSection,
-  GeneralSection,
-  SeedingSection,
-  TiebreakersSection
-} from "./StageSettingsSections";
+import { BestOfSection } from "./stage-settings/BestOfSection";
+import { GeneralSection } from "./stage-settings/GeneralSection";
+import { SeedingSection } from "./stage-settings/SeedingSection";
+import { TiebreakersSection } from "./stage-settings/TiebreakersSection";
 import { tabFallback } from "../../hubQueries";
+import { useStageOperations } from "./stage-editor/useStageOperations";
 import { MatchesView } from "../../matches/MatchesView";
 
 // The standings table is the heaviest thing the editor can show and only one
@@ -103,17 +102,6 @@ const BRACKET_SECTION_MESSAGE_KEYS = {
   standings: "standings",
   items: "items"
 } as const satisfies Record<BracketSection, string>;
-
-/** Every confirm-guarded stage operation, and what the dialog says about it. */
-type PendingOp =
-  | { kind: "delete-stage" }
-  | { kind: "delete-item"; item: StageItem }
-  | { kind: "remove-input"; inputId: number; label: string }
-  | { kind: "seed" }
-  | { kind: "merge" }
-  | { kind: "force-activate" }
-  | { kind: "deactivate" }
-  | { kind: "regenerate" };
 
 interface StageEditorProps {
   stage: Stage;
@@ -157,13 +145,10 @@ export function StageEditor({
   const t = useTranslations("adminBracket.editor");
   const tRoot = useTranslations("adminBracket");
   const formatRound = useBracketRoundLabel();
-  const intentT = t as unknown as (key: string, values?: Record<string, unknown>) => string;
-  const intentRootT = tRoot as unknown as (key: string, values?: Record<string, unknown>) => string;
   const tr = (key: string, values?: Record<string, unknown>) => tRoot(key as never, values as never);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [form, setForm] = useState<StageForm>(() => stageFormFromStage(stage));
-  const [pendingOp, setPendingOp] = useState<PendingOp | null>(null);
   // The last refusal of a save. The FFA rules are the one part of this form the
   // server rejects by position inside a field, and a toast cannot point at one.
   const [saveError, setSaveError] = useState<unknown>(null);
@@ -208,6 +193,18 @@ export function StageEditor({
       )
     : [];
   const mergedName = getDefaultMergedStageName(stage);
+  const {
+    pendingOp,
+    setPendingOp,
+    intent,
+    opPending,
+    runPendingOp,
+    activateMutation,
+    generateMutation,
+    applyBestOfMutation,
+    autoWireMutation,
+    activateAndGenerateMutation
+  } = useStageOperations({ stage, teams, mergeCandidates, mergedName, onChanged, onSelect });
 
   const sectionAllowed: Record<BracketSection, boolean> = {
     general: true,
@@ -250,167 +247,11 @@ export function StageEditor({
     }
   });
 
-  const activateMutation = useMutation({
-    mutationFn: () => adminService.activateStage(stage.id),
-    onSuccess: () => onChanged()
-  });
-
-  const deactivateMutation = useMutation({
-    mutationFn: () => adminService.deactivateStage(stage.id),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-      notify.success(t("reverted"));
-    },
-    onError: (error) => notify.apiError(error, { title: t("revertError") })
-  });
-
-  const generateMutation = useMutation({
-    mutationFn: () => adminService.generateBracket(stage.id),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("generateError") })
-  });
-
-  const applyBestOfMutation = useMutation({
-    mutationFn: () => adminService.applyStageBestOf(stage.id),
-    onSuccess: ({ updated }) => {
-      notify.success(t("updatedBestOf", { count: updated }));
-      onChanged();
-    },
-    onError: (error) =>
-      notify.apiError(error, { title: t("applyBestOfError") })
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => adminService.deleteStage(stage.id),
-    onSuccess: () => {
-      setPendingOp(null);
-      onSelect(null);
-      onChanged();
-    }
-  });
-
-  const mergeMutation = useMutation({
-    mutationFn: () =>
-      adminService.mergeGroupStages(stage.id, {
-        source_stage_ids: mergeCandidates.map((candidate) => candidate.id),
-        target_name: mergedName
-      }),
-    onSuccess: (merged) => {
-      setPendingOp(null);
-      onSelect(merged.id);
-      onChanged();
-    }
-  });
-
-  const autoWireMutation = useMutation({
-    mutationFn: () => adminService.autoWireStage(stage.id),
-    onSuccess: () => {
-      onChanged();
-      notify.success(t("autoWired"));
-    },
-    onError: (error) =>
-      notify.apiError(error, { title: t("autoWireError") })
-  });
-
-  const activateAndGenerateMutation = useMutation({
-    mutationFn: (force?: boolean) =>
-      adminService.activateAndGenerateStage(stage.id, force ? { force: true } : undefined),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error, force) => {
-      // The server refuses while an upstream stage is unfinished; that refusal
-      // is the prompt for the force confirmation, not an error toast.
-      const detail =
-        error && typeof error === "object" && "detail" in error ? error.detail : null;
-      const upstreamPending =
-        typeof detail === "object" &&
-        detail !== null &&
-        "code" in detail &&
-        typeof detail.code === "string" &&
-        detail.code === "upstream_stages_not_completed";
-      if (upstreamPending && !force) {
-        setPendingOp({ kind: "force-activate" });
-        return;
-      }
-      setPendingOp(null);
-      notify.apiError(error, { title: t("activateError") });
-    }
-  });
-
-  const seedMutation = useMutation({
-    mutationFn: () =>
-      adminService.seedTeams(stage.id, {
-        team_ids: teams.map((team) => team.id),
-        mode: "snake_sr"
-      }),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("seedError") })
-  });
-
-  const deleteItemMutation = useMutation({
-    mutationFn: (stageItemId: number) => adminService.deleteStageItem(stageItemId),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("deleteItemError") })
-  });
-
-  const removeInputMutation = useMutation({
-    mutationFn: (inputId: number) => adminService.deleteStageItemInput(inputId),
-    onSuccess: () => {
-      setPendingOp(null);
-      onChanged();
-    },
-    onError: (error) => notify.apiError(error, { title: t("removeSlotError") })
-  });
-
   const isBracket = BRACKET_STAGE_TYPES.includes(stage.stage_type);
   // A lobby is seated the same way a group is filled: teams into the stage's
   // items. Only a bracket takes its slots from a preceding stage instead.
   const canSeed = !isBracket && teams.length > 0 && stage.items.length > 0;
   const canDeactivate = (stage.is_active || stage.is_published) && !stage.is_completed;
-
-  const intent = pendingOp
-    ? INTENTS(intentT, intentRootT)[pendingOp.kind](stage, pendingOp, {
-        teamCount: teams.length,
-        mergedName,
-        mergeCandidates
-      })
-    : NEUTRAL_INTENT;
-
-  const pendingByOp: Record<PendingOp["kind"], boolean> = {
-    "delete-stage": deleteMutation.isPending,
-    "delete-item": deleteItemMutation.isPending,
-    "remove-input": removeInputMutation.isPending,
-    seed: seedMutation.isPending,
-    merge: mergeMutation.isPending,
-    "force-activate": activateAndGenerateMutation.isPending,
-    deactivate: deactivateMutation.isPending,
-    regenerate: generateMutation.isPending
-  };
-  const opPending = pendingOp ? pendingByOp[pendingOp.kind] : false;
-
-  const runPendingOp = () => {
-    if (!pendingOp) return;
-    if (pendingOp.kind === "delete-stage") deleteMutation.mutate();
-    else if (pendingOp.kind === "delete-item") deleteItemMutation.mutate(pendingOp.item.id);
-    else if (pendingOp.kind === "remove-input") removeInputMutation.mutate(pendingOp.inputId);
-    else if (pendingOp.kind === "seed") seedMutation.mutate();
-    else if (pendingOp.kind === "merge") mergeMutation.mutate();
-    else if (pendingOp.kind === "force-activate") activateAndGenerateMutation.mutate(true);
-    else if (pendingOp.kind === "deactivate") deactivateMutation.mutate();
-    else generateMutation.mutate();
-  };
 
   const tabs: LinkTabItem[] = BRACKET_SECTIONS.map((key) => ({
     key,
@@ -675,85 +516,3 @@ export function StageEditor({
     </div>
   );
 }
-
-const NEUTRAL_INTENT: ConfirmIntent = {
-  title: "",
-  description: "",
-  confirmLabel: "",
-  tone: "neutral"
-};
-
-/**
- * The seven confirmations of the old screen, as intents of one dialog. The
- * copy is carried over verbatim: it is the only place that explains what each
- * operation does to already-generated matches.
- */
-const INTENTS = (t: (key: string, values?: Record<string, unknown>) => string, tRoot: (key: string, values?: Record<string, unknown>) => string): Record<
-  PendingOp["kind"],
-  (
-    stage: Stage,
-    op: PendingOp,
-    context: { teamCount: number; mergedName: string; mergeCandidates: Stage[] }
-  ) => ConfirmIntent
-> => ({
-  "delete-stage": (stage) => ({
-    title: t("deleteStageTitle"),
-    description: t("deleteStageDescription", { name: stage.name }),
-    confirmLabel: t("deleteStageConfirm"),
-    tone: "danger",
-    cascade: [tRoot("extra.cascadeStageItems"), tRoot("extra.cascadeTeamSlots"), tRoot("extra.cascadeMatches")]
-  }),
-  "delete-item": (_stage, op) => {
-    const item = op.kind === "delete-item" ? op.item : null;
-    return {
-      title: t("deleteItemTitle"),
-      description: t("deleteItemDescription", { name: item?.name ?? "" }),
-      confirmLabel: t("deleteItemConfirm"),
-      tone: "danger",
-      cascade: [
-        tRoot("extra.cascadeTeamSlots"),
-        tRoot("extra.cascadeItemMatches"),
-        tRoot("extra.cascadeItemStandings")
-      ]
-    };
-  },
-  "remove-input": (_stage, op) => ({
-    title: t("removeSlotTitle"),
-    description: t("removeSlotDescription", { label: op.kind === "remove-input" ? op.label : t("slot") }),
-    confirmLabel: t("removeSlotConfirm"),
-    tone: "danger",
-    cascade: [tRoot("extra.cascadeSeedSlot"), tRoot("extra.cascadeBracketPlace")]
-  }),
-  seed: (stage, _op, { teamCount }) => ({
-    title: t("reseedTitle"),
-    description: t("reseedDescription", { teams: teamCount, groups: stage.items.length, name: stage.name }),
-    confirmLabel: t("reseedConfirm"),
-    tone: "warning",
-    cascade: [tRoot("extra.cascadeManualAssignments")]
-  }),
-  merge: (_stage, _op, { mergedName, mergeCandidates }) => ({
-    title: t("mergeTitle"),
-    description: t("mergeDescription", { count: mergeCandidates.length, name: mergedName }),
-    confirmLabel: t("mergeConfirm"),
-    tone: "warning",
-    cascade: mergeCandidates.map((candidate) => tRoot("extra.cascadeStage", { name: candidate.name }))
-  }),
-  "force-activate": (stage) => ({
-    title: t("forceActivateTitle"),
-    description: t("forceActivateDescription", { name: stage.name }),
-    confirmLabel: t("forceActivateConfirm"),
-    tone: "warning"
-  }),
-  deactivate: (stage) => ({
-    title: t("revertTitle"),
-    description: t("revertDescription", { name: stage.name }),
-    confirmLabel: t("revertConfirm"),
-    tone: "warning"
-  }),
-  regenerate: (stage) => ({
-    title: t("regenerateTitle"),
-    description: t("regenerateDescription", { name: stage.name }),
-    confirmLabel: t("regenerateConfirm"),
-    tone: "warning"
-  })
-});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRightLeft } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +12,6 @@ import type {
   UserMergeExecuteRequest,
   UserMergeFieldChoice,
   UserMergeFieldPolicy,
-  UserMergeIdentityOption,
   UserMergeIdentitySelection,
   UserMergePreviewRequest,
   UserMergePreviewResponse
@@ -30,162 +29,19 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import { SocialIcon } from "@/components/social/SocialIcon";
-import { getSocialProviderConfig } from "@/lib/social/providers";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { UserMergeAuthSection } from "./UserMergeAuthSection";
+import { AffectedRecordsSummary } from "./user-merge/AffectedRecordsSummary";
+import { FieldChoiceButtons, type FieldKey } from "./user-merge/FieldChoiceButtons";
+import { IdentitySelectionSection } from "./user-merge/IdentitySelectionSection";
+import { authPolicyDiverged } from "./user-merge/model";
 
 interface UserMergeDialogProps {
   sourceUser: User;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onMerged?: (targetUserId: number) => void;
-}
-
-type FieldKey = keyof UserMergeFieldPolicy;
-
-// The backend reports affected-record counts under raw FK-path keys
-// (e.g. "tournament.player.workspace_member_id"). Map them to human-readable
-// labels for the admin preview; unknown keys fall back to the raw key.
-type AffectedRecordLabel =
-  | "tournamentRosterEntries"
-  | "balancerRegistrations"
-  | "achievementResults"
-  | "achievementOverrides"
-  | "linkedAccount";
-const AFFECTED_RECORD_LABELS: Record<string, AffectedRecordLabel> = {
-  "tournament.player.workspace_member_id": "tournamentRosterEntries",
-  "balancer.registration.workspace_member_id": "balancerRegistrations",
-  "achievements.evaluation_result.workspace_member_id": "achievementResults",
-  "achievements.override.workspace_member_id": "achievementOverrides",
-  "players.user.auth_user_id": "linkedAccount"
-};
-
-function FieldChoiceButtons({
-  label,
-  fieldKey,
-  preview,
-  value,
-  sourceName,
-  targetName,
-  onChange
-}: Readonly<{
-  label: string;
-  fieldKey: FieldKey;
-  preview: UserMergePreviewResponse;
-  value: UserMergeFieldChoice;
-  sourceName: string;
-  targetName: string;
-  onChange: (value: UserMergeFieldChoice) => void;
-}>) {
-  const t = useTranslations("adminPeople.merge");
-  const groupId = useId();
-  const options = [
-    ["source", sourceName, preview.field_options[fieldKey].source],
-    ["target", targetName, preview.field_options[fieldKey].target]
-  ] as const;
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium" id={groupId}>{label}</p>
-      <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby={groupId}>
-        {options.map(([choice, caption, raw]) => {
-          const selected = value === choice;
-          const photo = fieldKey === "avatar_url" && raw && /^https?:\/\//.test(raw);
-          return (
-            <button
-              key={choice}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(choice)}
-              className={cn(
-                "rounded-md border px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                selected ? "border-foreground bg-foreground/5" : "border-border text-muted-foreground hover:bg-muted/40"
-              )}
-            >
-              <span className="block truncate text-xs">{caption}</span>
-              {photo ? (
-                <img src={raw} alt="" className="mt-1 h-8 w-8 rounded-full object-cover" />
-              ) : (
-                <span className={cn("mt-0.5 block truncate text-sm", selected && "text-foreground")}>
-                  {raw || t("none")}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function IdentitySelectionSection({
-  label,
-  items,
-  selectedIds,
-  onToggle
-}: Readonly<{
-  label: string;
-  items: UserMergeIdentityOption[];
-  selectedIds: number[];
-  onToggle: (identityId: number, checked: boolean) => void;
-}>) {
-  const t = useTranslations("adminPeople.merge");
-  const groupId = useId();
-
-  if (items.length === 0) {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-medium">{label}</p>
-        <EmptyNote>
-          {t("noSocial")}
-        </EmptyNote>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium" id={groupId}>
-        {label}
-      </p>
-      <div className="space-y-2" role="group" aria-labelledby={groupId}>
-        {items.map((item) => {
-          const checked = selectedIds.includes(item.id);
-          const providerLabel = getSocialProviderConfig(item.provider).label;
-          return (
-            <div
-              key={item.id}
-              className="flex items-start gap-3 rounded-md border px-3 py-2"
-            >
-              <Checkbox
-                checked={checked}
-                onCheckedChange={(state) => onToggle(item.id, state === true)}
-                className="mt-0.5"
-                aria-label={t("move", { provider: providerLabel, value: item.value })}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <SocialIcon provider={item.provider} size={14} />
-                  <span className="truncate text-sm font-medium">{item.value}</span>
-                  <span className="text-xs text-muted-foreground">{providerLabel}</span>
-                  {item.duplicate_on_target ? (
-                    <Badge variant="outline" className="text-xs">
-                      {t("duplicate")}
-                    </Badge>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 export function UserMergeDialog(props: Readonly<UserMergeDialogProps>) {
@@ -266,21 +122,7 @@ function UserMergeDialogSession({
       }
       const normalizedPolicy = result.auth_merge?.policy;
       const submittedPolicy = submittedRequest.auth_policy;
-      if (submittedPolicy && (
-        !normalizedPolicy ||
-        normalizedPolicy.surviving_auth_user_id !== submittedPolicy.surviving_auth_user_id ||
-        normalizedPolicy.other_account_action !== submittedPolicy.other_account_action ||
-        submittedPolicy.oauth_destinations.some((destination) =>
-          normalizedPolicy.oauth_destinations.find((item) => item.connection_id === destination.connection_id)?.auth_user_id !== destination.auth_user_id
-        ) ||
-        Object.entries(submittedPolicy.conflict_choices).some(([key, value]) =>
-          normalizedPolicy.conflict_choices[key] !== value
-        ) ||
-        (submittedPolicy.membership_actions ?? []).length !== (normalizedPolicy.membership_actions ?? []).length ||
-        (submittedPolicy.membership_actions ?? []).some((action) =>
-          normalizedPolicy.membership_actions?.find((item) => item.workspace_id === action.workspace_id)?.action !== action.action
-        )
-      )) {
+      if (submittedPolicy && authPolicyDiverged(submittedPolicy, normalizedPolicy)) {
         setPreviewError(t("previewMismatchSubmitted"));
         return;
       }
@@ -328,14 +170,6 @@ function UserMergeDialogSession({
       executePending.current = false;
     }
   });
-
-  const affectedEntries = useMemo(
-    () =>
-      Object.entries(preview?.affected_counts ?? {})
-        .filter(([, count]) => count > 0)
-        .sort((a, b) => b[1] - a[1]),
-    [preview]
-  );
 
   const handleTargetSelect = (user: MinimizedUser | undefined) => {
     if (executePending.current) return;
@@ -540,25 +374,7 @@ function UserMergeDialogSession({
                   />
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-medium" id="merge-affected-records">
-                    {t("moving")} {targetUser?.name ?? t("target")}
-                  </p>
-                  <div aria-labelledby="merge-affected-records">
-                    {affectedEntries.length > 0 ? (
-                      <div className="space-y-1.5 text-sm">
-                        {affectedEntries.map(([key, count]) => (
-                          <div key={key} className="flex items-baseline justify-between gap-3">
-                            <span className="text-muted-foreground">{AFFECTED_RECORD_LABELS[key] ? t(AFFECTED_RECORD_LABELS[key]) : key}</span>
-                            <span className="tabular-nums">{count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">{t("nothing")}</p>
-                    )}
-                  </div>
-                </div>
+                <AffectedRecordsSummary preview={preview} targetName={targetUser?.name ?? t("target")} />
               </div>
 
               <IdentitySelectionSection

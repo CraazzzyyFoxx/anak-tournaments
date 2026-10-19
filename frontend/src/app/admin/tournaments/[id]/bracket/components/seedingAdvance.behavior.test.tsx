@@ -19,7 +19,7 @@ import type { Stage, StageItem } from "@/types/tournament.types";
 import en from "@/i18n/messages/en.json";
 
 import { buildStageUpdatePayload, stageFormFromStage, type StageForm } from "../stageForm";
-import { SeedingSection } from "./StageSettingsSections";
+import { SeedingSection } from "./stage-settings/SeedingSection";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;

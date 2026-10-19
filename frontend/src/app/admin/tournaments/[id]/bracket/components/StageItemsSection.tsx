@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -8,26 +8,17 @@ import {
   closestCenter,
   DndContext,
   DragOverlay,
-  useDroppable,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent
 } from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { ArrowUpRight, CheckCircle2, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { arrayMove } from "@dnd-kit/sortable";
+import { ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -37,151 +28,21 @@ import {
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { useDragSensors } from "@/hooks/useDragSensors";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { Stage, StageItem, StageItemInput, StageItemType } from "@/types/tournament.types";
 import type { Team } from "@/types/team.types";
 
 import {
   getAssignedTeamIds,
-  getDefaultStageItemType,
   getInputDisplayLabelInfo,
   STAGE_ITEM_TYPE_LABELS,
-  type InputDisplayLabelInfo,
   type StageProgress
 } from "@/lib/bracket/projection";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Spinner } from "@/components/ui/spinner";
 
-/** What a seed slot shows: the team, the group placement feeding it, or nothing yet. */
-function inputLabel(
-  info: InputDisplayLabelInfo,
-  t: ReturnType<typeof useTranslations<"adminBracket">>
-): string {
-  if (info.key === "team") return info.label;
-  if (info.key === "winnerOf") {
-    return t("labels.winnerOf", { groupName: info.groupName, position: info.position });
-  }
-  return t("labels.emptySlot");
-}
-
-/** One item's inputs in seed order. */
-function seedOrder(item: StageItem): StageItemInput[] {
-  return [...item.inputs].sort((left, right) => left.slot - right.slot);
-}
-
-/** Every item's inputs in seed order, keyed by item id: what a drag rearranges. */
-type SeedLists = Record<number, StageItemInput[]>;
-
-function listOf(lists: SeedLists, inputId: number): number | undefined {
-  const entry = Object.entries(lists).find(([, inputs]) =>
-    inputs.some((input) => input.id === inputId)
-  );
-  return entry ? Number(entry[0]) : undefined;
-}
-
-/**
- * One team slot: a sortable row that shifts aside as a team is dragged past it,
- * and a drag source once it holds a team. The grip is the only handle, so the
- * row's buttons stay clickable.
- */
-function SeedSlotRow({
-  input,
-  label,
-  dragDisabled,
-  children
-}: Readonly<{
-  input: StageItemInput;
-  label: string;
-  dragDisabled: boolean;
-  children: ReactNode;
-}>) {
-  const t = useTranslations("adminBracket.items");
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-    index,
-    activeIndex,
-    overIndex
-  } = useSortable({
-    id: `input-${input.id}`,
-    data: { input },
-    disabled: { draggable: dragDisabled || input.team_id == null, droppable: false }
-  });
-  // The seed the row will hold if the drag drops now: the position it is drawn
-  // at, which `arrayMove(activeIndex → overIndex)` is about to make real.
-  const position =
-    activeIndex < 0 || overIndex < 0
-      ? index
-      : index === activeIndex
-        ? overIndex
-        : activeIndex < index && index <= overIndex
-          ? index - 1
-          : overIndex <= index && index < activeIndex
-            ? index + 1
-            : index;
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={cn(
-        "flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs",
-        isDragging && "opacity-50"
-      )}
-    >
-      {input.team_id != null ? (
-        <button
-          type="button"
-          ref={setActivatorNodeRef}
-          {...attributes}
-          {...listeners}
-          disabled={dragDisabled}
-          aria-label={t("drag", { label })}
-          className="shrink-0 cursor-grab rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
-        >
-          <GripVertical className="size-3.5" aria-hidden />
-        </button>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate">
-        #{position + 1} {label}
-      </span>
-      {children}
-    </li>
-  );
-}
-
-/**
- * One item's slot list. While it holds no slots the list itself is the drop
- * target, so a team can be dragged into an empty group; after that its rows are.
- */
-function SeedList({
-  itemId,
-  inputs,
-  children
-}: Readonly<{ itemId: number; inputs: StageItemInput[]; children: ReactNode }>) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `item-${itemId}`,
-    data: { itemId },
-    disabled: inputs.length > 0
-  });
-
-  return (
-    <SortableContext
-      items={inputs.map((input) => `input-${input.id}`)}
-      strategy={verticalListSortingStrategy}
-    >
-      <div ref={setNodeRef} className={cn("rounded-md", isOver && "ring-2 ring-ring")}>
-        {children}
-      </div>
-    </SortableContext>
-  );
-}
+import { AddStageItemForm } from "./stage-items/AddStageItemForm";
+import { inputLabel, listOf, seedOrder, SeedList, SeedSlotRow, type SeedLists } from "./stage-items/SeedSlots";
 
 interface StageItemsSectionProps {
   stage: Stage;
@@ -217,10 +78,6 @@ export function StageItemsSection({
 }: Readonly<StageItemsSectionProps>) {
   const t = useTranslations("adminBracket.items");
   const tRoot = useTranslations("adminBracket");
-  const [draftName, setDraftName] = useState("");
-  const [draftType, setDraftType] = useState<StageItemType>(
-    getDefaultStageItemType(stage.stage_type)
-  );
   const [teamDrafts, setTeamDrafts] = useState<Record<number, string>>({});
   const [editingItemTypeId, setEditingItemTypeId] = useState<number | null>(null);
   const [editingInputId, setEditingInputId] = useState<number | null>(null);
@@ -238,21 +95,6 @@ export function StageItemsSection({
 
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const assignedTeamIds = getAssignedTeamIds(stage);
-  const nextItemName =
-    draftType === "group" ? t("group", { number: stage.items.length + 1 }) : t("bracket");
-
-  const createItemMutation = useMutation({
-    mutationFn: () =>
-      adminService.createStageItem(stage.id, {
-        name: draftName.trim() || nextItemName,
-        type: draftType,
-        order: stage.items.length
-      }),
-    onSuccess: () => {
-      setDraftName("");
-      onChanged();
-    }
-  });
 
   const updateItemTypeMutation = useMutation({
     mutationFn: ({ stageItemId, type }: { stageItemId: number; type: StageItemType }) =>
@@ -710,52 +552,7 @@ export function StageItemsSection({
         </EmptyNote>
       )}
 
-      <div className="grid gap-2 border-t border-border pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="stage-item-name" className="text-xs">
-            {t("itemName")}
-          </Label>
-          <Input
-            id="stage-item-name"
-            className="h-9"
-            placeholder={nextItemName}
-            value={draftName}
-            onChange={(event) => setDraftName(event.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="stage-item-type" className="text-xs">
-            {t("typeLabel")}
-          </Label>
-          <Select value={draftType} onValueChange={(value) => setDraftType(value as StageItemType)}>
-            <SelectTrigger id="stage-item-type" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value]) => (
-                <SelectItem key={value} value={value}>
-                  {tRoot(`labels.itemTypes.${value}` as never)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={createItemMutation.isPending}
-          onClick={() => createItemMutation.mutate()}
-        >
-          {createItemMutation.isPending ? (
-            <Spinner />
-          ) : (
-            <Plus className="size-4" aria-hidden />
-          )}
-          {createItemMutation.isPending ? t("adding") : t("addStructure")}
-        </Button>
-      </div>
+      <AddStageItemForm stage={stage} onChanged={onChanged} />
     </section>
   );
 }

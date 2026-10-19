@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import { RotateCcw, Star, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
@@ -12,23 +9,21 @@ import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Button } from "@/components/ui/button";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineCapabilities } from "@/types/discipline.types";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import workspaceService from "@/services/workspace.service";
 import type {
   DivisionGridActivationReadiness,
   DivisionGridVersion
 } from "@/types/workspace.types";
 
 import { VERSION_STATE_TONE, versionState } from "../versionStatus";
-import { autoMap, mappingRules, unresolvedRows, type MappingChoice, type MappingChoices } from "./autoMap";
+import { autoMap, unresolvedRows, type MappingChoices } from "./autoMap";
 import { ChangesView } from "./ChangesView";
 import { DivisionsTable } from "./DivisionsTable";
 import { ImpactColumn } from "./ImpactColumn";
 import { LadderColumn } from "./LadderColumn";
-import { MappingsView, type MappingSource } from "./MappingsView";
+import { MappingsView } from "./MappingsView";
 import { publishChecks, readyToPublish } from "./publishChecks";
 import {
   bandsCoverLadder,
@@ -40,12 +35,13 @@ import {
   draftReducer,
   initDraftState,
   scaleOf,
-  tiersFromBands,
   type Band,
   type Ladder,
   type Scale
 } from "./draftReducer";
-import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
+import { DraftEditorActions } from "./draft-editor/DraftEditorActions";
+import { useDraftMutations } from "./draft-editor/useDraftMutations";
+import { useMappingSources } from "./draft-editor/useMappingSources";
 
 /** The right rail becomes a sub-tab below this width (F12 ·8). */
 const RAIL_MEDIA_QUERY = "(min-width: 1280px)";
@@ -88,7 +84,7 @@ export interface DraftEditorProps {
  *
  * Everything structural goes through `draftReducer`, so this component owns no
  * band arithmetic — only which view is open, what has been chosen in Mappings,
- * and the four requests (save, publish, activate, delete).
+ * and the four requests (save, publish, activate, delete — `useDraftMutations`).
  *
  * A published or active version opens here read-only: a version another
  * tournament may already have been played on is immutable by design, and the
@@ -111,14 +107,7 @@ export function DraftEditor({
   onReload
 }: Readonly<DraftEditorProps>) {
   const t = useTranslations("adminSettings.divisions");
-  const failureDescription = (error: unknown) =>
-    t("failureDescription", {
-      reason: error instanceof Error ? error.message : t("operationFailed")
-    });
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const { searchParams, setParams } = useQueryParams();
-  const fetchWorkspaces = useWorkspaceStore((store) => store.fetchWorkspaces);
   const [state, dispatch] = useReducer(
     draftReducer,
     { ladder, tiers: version.tiers, base },
@@ -158,51 +147,11 @@ export function DraftEditor({
   // Mapping rules key on target tier ids, so an unsaved band cannot be a target.
   const mappable = state.bands.every((band) => band.id !== undefined);
 
-  const sourceQueries = useQueries({
-    queries: sources.map((source) => ({
-      queryKey: divisionGridQueryKeys.version(source.version_id),
-      queryFn: () => workspaceService.getDivisionGridVersion(source.version_id)
-    }))
-  });
-  const mappingQueries = useQueries({
-    queries: sources.map((source) => ({
-      queryKey: divisionGridQueryKeys.mapping(source.version_id, version.id),
-      queryFn: () => workspaceService.getDivisionGridMapping(source.version_id, version.id),
-      // A version pair with no mapping yet is the normal starting state, not a
-      // failure to retry.
-      retry: false
-    }))
-  });
-
-  const mappingSources = useMemo<MappingSource[]>(
-    () =>
-      sources.flatMap((source, index) => {
-        const tiers = sourceQueries[index]?.data?.tiers;
-        return tiers ? [{ readiness: source, tiers }] : [];
-      }),
-    [sources, sourceQueries]
+  const { mappingSources, chosen, loading: sourcesLoading } = useMappingSources(
+    sources,
+    version.id,
+    manualChoice
   );
-
-  /**
-   * The mapping already stored server-side — each source tier's targets and
-   * primary — overlaid with this session's choices. Derived rather than copied
-   * into state on load, so a refetch can never silently drop a decision the
-   * user just made.
-   */
-  const chosen = useMemo(() => {
-    const stored: Record<number, MappingChoice> = {};
-    for (const query of mappingQueries) {
-      for (const rule of query.data?.rules ?? []) {
-        const entry = (stored[rule.source_tier_id] ??= {
-          targets: [],
-          primary: rule.target_tier_id
-        });
-        entry.targets.push(rule.target_tier_id);
-        if (rule.is_primary) entry.primary = rule.target_tier_id;
-      }
-    }
-    return { ...stored, ...manualChoice };
-  }, [mappingQueries, manualChoice]);
 
   const unresolvedMappings = useMemo(
     () =>
@@ -231,127 +180,21 @@ export function DraftEditor({
     return diff.added.length + diff.removed.length + diff.moved.length + diff.renamed.length;
   }, [state.base, state.bands]);
 
-  // Only this game's keys: another discipline's cached versions and readiness are not affected by an
-  // edit, publish or activation here.
-  const invalidate = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: divisionGridQueryKeys.readinessByDiscipline(workspaceId, discipline)
-      }),
-      queryClient.invalidateQueries({
-        queryKey: divisionGridQueryKeys.versionsByDiscipline(workspaceId, discipline)
-      }),
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(workspaceId) }),
-      ...sources.map((source) =>
-        queryClient.invalidateQueries({
-          queryKey: divisionGridQueryKeys.mapping(source.version_id, version.id)
-        })
-      )
-    ]);
-  }, [discipline, queryClient, sources, version.id, workspaceId]);
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const updated = tiersDirty
-        ? await workspaceService.updateDivisionGridVersion(version.id, {
-            tiers: tiersFromBands(ladder, state.bands)
-          })
-        : version;
-      // Mappings are written against the SAVED tiers: the rules point at tier
-      // ids, and a band created in this session only gets one here.
-      const savedBands = tiersDirty ? bandsFromTiers(ladder, updated.tiers) : state.bands;
-      // The backend stores a mapping only when it covers every source tier, so
-      // a source with an open row keeps its server state and its picks carry over.
-      const pending: MappingSource[] = [];
-      for (const source of mappingSources) {
-        const rows = autoMap(ladder, source.tiers, savedBands);
-        if (unresolvedRows(rows, chosen, savedBands).length > 0) {
-          pending.push(source);
-          continue;
-        }
-        const rules = mappingRules(rows, chosen, savedBands);
-        if (rules.length === 0) continue;
-        await workspaceService.putDivisionGridMapping(source.readiness.version_id, version.id, {
-          name: `${source.readiness.version_label} \u2192 ${updated.label}`,
-          rules
-        });
-      }
-      return { updated, pending };
-    },
-    onSuccess: async ({ updated, pending }) => {
-      // Seed the cache before remounting, so the fresh editor reads the tiers
-      // that were just saved rather than the ones it sent.
-      queryClient.setQueryData(divisionGridQueryKeys.version(version.id), updated);
-      await invalidate();
-      if (pending.length === 0) {
-        notify.success(t("toast.draftSaved", { version: updated.version }));
-      } else {
-        notify.warning(t("toast.draftSavedMappingsOpen", { version: updated.version }), {
-          description: t("toast.mappingPending", {
-            sources: pending.map((source) => source.readiness.version_label).join(", ")
-          })
-        });
-      }
-      const pendingTierIds = new Set(
-        pending.flatMap((source) => source.tiers.map((tier) => tier.id))
-      );
-      const carry: MappingChoices = {};
-      for (const [sourceTierId, choice] of Object.entries(manualChoice)) {
-        if (choice !== undefined && pendingTierIds.has(Number(sourceTierId))) {
-          carry[Number(sourceTierId)] = choice;
-        }
-      }
-      onReload(carry);
-    },
-    onError: reportFailure(t("errors.draftSave"), failureDescription)
-  });
-
-  const publishMutation = useMutation({
-    mutationFn: () => workspaceService.publishDivisionGridVersion(version.id),
-    onSuccess: async (published) => {
-      queryClient.setQueryData(divisionGridQueryKeys.version(version.id), published);
-      await invalidate();
-      notify.success(t("toast.published", { version: published.version }));
-      onReload();
-    },
-    onError: reportFailure(t("errors.publish"), failureDescription)
-  });
-
-  const activateMutation = useMutation({
-    mutationFn: () => workspaceService.activateDivisionGridVersion(workspaceId, version.id),
-    onSuccess: async () => {
-      // The workspace's per-discipline default map changed: refresh it with this game's keys.
-      await Promise.all([invalidate(), fetchWorkspaces()]);
-      notify.success(t("toast.activated", { version: version.version }));
-      onReload();
-    },
-    onError: reportFailure(t("errors.activate"), failureDescription)
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => workspaceService.deleteDivisionGridVersion(version.id),
-    onSuccess: async () => {
-      await invalidate();
-      notify.success(t("toast.draftDiscarded"));
-      router.push("/admin/settings/divisions");
-    },
-    onError: reportFailure(t("errors.discard"), failureDescription)
-  });
-
-  const iconMutation = useMutation({
-    mutationFn: async ({ bandIndex, file }: { bandIndex: number; file: File }) => {
-      const band = state.bands[bandIndex];
-      const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-      const upload = await workspaceService.uploadDivisionIcon(
-        `${band.slug}-${suffix}`,
-        file,
-        workspaceId
-      );
-      return { bandIndex, url: upload.public_url };
-    },
-    onSuccess: ({ bandIndex, url }) => dispatch({ type: "setIcon", bandIndex, iconUrl: url }),
-    onError: reportFailure(t("errors.crestUpload"), failureDescription)
-  });
+  const { saveMutation, publishMutation, activateMutation, deleteMutation, iconMutation, cloneToDraft } =
+    useDraftMutations({
+      workspaceId,
+      discipline,
+      ladder,
+      version,
+      bands: state.bands,
+      tiersDirty,
+      sources,
+      mappingSources,
+      chosen,
+      manualChoice,
+      dispatch,
+      onReload
+    });
 
   const onPickIcon = useCallback((bandIndex: number) => {
     setIconTarget(bandIndex);
@@ -441,54 +284,22 @@ export function DraftEditor({
           state.scale === "ladder" ? t("editorDetails.followRanges") : t("editorDetails.customScale")
         ]}
         actions={
-          <>
-            {editable ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!tiersDirty}
-                onClick={() => dispatch({ type: "undo" })}
-              >
-                <RotateCcw aria-hidden className="size-4" />
-                {t("editor.undo")}
-              </Button>
-            ) : null}
-            {editable && canDelete ? (
-              <Button variant="ghost" size="sm" onClick={() => setConfirming("delete")}>
-                <Trash2 aria-hidden className="size-4" />
-                {t("editor.discardDraft")}
-              </Button>
-            ) : null}
-            {canPublish && version.status === "draft" ? (
-              <Button
-                size="sm"
-                disabled={!publishable || publishMutation.isPending}
-                title={
-                  publishable
-                    ? undefined
-                    : t("editorDetails.publishBlocked")
-                }
-                onClick={() => setConfirming("publish")}
-              >
-                {t("editor.publishVersion", { version: version.version })}
-              </Button>
-            ) : null}
-            {canPublish && version.status !== "draft" && version.id !== activeVersionId ? (
-              <Button
-                size="sm"
-                disabled={readiness?.is_ready !== true || activateMutation.isPending}
-                title={
-                  readiness?.is_ready === true
-                    ? undefined
-                    : t("editorDetails.mappingBlocked")
-                }
-                onClick={() => activateMutation.mutate()}
-              >
-                <Star aria-hidden className="size-4" />
-                {t("activateVersion", { version: version.version })}
-              </Button>
-            ) : null}
-          </>
+          <DraftEditorActions
+            version={version}
+            activeVersionId={activeVersionId}
+            editable={editable}
+            canPublish={canPublish}
+            canDelete={canDelete}
+            canUndo={tiersDirty}
+            publishable={publishable}
+            publishing={publishMutation.isPending}
+            activationReady={readiness?.is_ready === true}
+            activating={activateMutation.isPending}
+            onUndo={() => dispatch({ type: "undo" })}
+            onDiscard={() => setConfirming("delete")}
+            onPublish={() => setConfirming("publish")}
+            onActivate={() => activateMutation.mutate()}
+          />
         }
       />
 
@@ -503,15 +314,7 @@ export function DraftEditor({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                void workspaceService
-                  .cloneDivisionGridVersion(version.id)
-                  .then(async (draft) => {
-                    await invalidate();
-                    router.push(`/admin/settings/divisions/v/${draft.id}`);
-                  })
-                  .catch(reportFailure(t("errors.draftCreate"), failureDescription));
-              }}
+              onClick={cloneToDraft}
             >
               {t("editor.createDraft")}
             </Button>
@@ -594,7 +397,7 @@ export function DraftEditor({
               }
               editable={editable}
               mappable={mappable}
-              loading={sourceQueries.some((query) => query.isLoading)}
+              loading={sourcesLoading}
             />
           ) : null}
 
@@ -660,9 +463,4 @@ export function DraftEditor({
       />
     </div>
   );
-}
-
-function reportFailure(title: string, description: (error: unknown) => string) {
-  return (error: unknown) =>
-    notify.error(title, { description: description(error) });
 }

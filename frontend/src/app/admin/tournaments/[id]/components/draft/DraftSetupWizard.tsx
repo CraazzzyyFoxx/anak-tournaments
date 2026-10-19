@@ -21,7 +21,6 @@ import draftService from "@/services/draft.service";
 import type {
   DraftBoard,
   DraftRole,
-  DraftFormatSettings,
   DraftSeedRequest,
   DraftSeedResponse,
   DraftSession
@@ -35,6 +34,7 @@ import { DraftConfigStep } from "./DraftConfigStep";
 import { DraftOrderStep } from "./DraftOrderStep";
 import { DraftPoolStep } from "./DraftPoolStep";
 import { DraftReadyStep } from "./DraftReadyStep";
+import { DraftReseedDiff } from "./DraftReseedDiff";
 import { DraftReviewStep } from "./DraftReviewStep";
 import {
   canCancelDraftSetup,
@@ -50,6 +50,7 @@ import {
   type DraftSetupStep,
   validateSetupStep
 } from "./setup-model";
+import { configFromSession, createEmptyCaptainSetup, formatFromSession } from "./setup-session";
 import type { DraftCaptainSetup, DraftSetupConfig } from "./setup-types";
 import { captainSeat, isInDraftPool, poolRegistrationSummary } from "./setup-types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
@@ -61,37 +62,6 @@ interface DraftSetupWizardProps {
   rosterShape: RosterShape;
   /** Rail slot (F5 ·4): past sessions, secondary to the session being set up. */
   aside?: ReactNode;
-}
-
-function configFromSession(session: DraftSession | null): DraftSetupConfig {
-  const teamCount = session?.settings_json?.team_count;
-  return {
-    teamCount: typeof teamCount === "number" ? teamCount : null,
-    pickTimeSeconds: session?.pick_time_seconds ?? 45,
-    overtimeSeconds: session?.overtime_seconds ?? 0,
-    autopickStrategy: session?.autopick_strategy ?? "best_fit",
-    allowAdminOverride: session?.allow_admin_override ?? true
-  };
-}
-
-/** The snapshot a created session drafts with — the server copied it from the tournament. */
-function formatFromSession(session: DraftSession): DraftFormatSettings {
-  const roundRules = session.settings_json?.round_rules;
-  return {
-    format: session.format,
-    round_rules: Array.isArray(roundRules) ? roundRules.map(String) : [],
-    avg_tie_seed_reverse: session.settings_json?.avg_tie_seed_reverse === true
-  };
-}
-
-function createEmptyCaptainSetup(): DraftCaptainSetup {
-  return {
-    ids: [],
-    teamNames: {},
-    roles: {},
-    order: "weakest_first",
-    randomSeed: Math.floor(Math.random() * 2_147_483_647)
-  };
 }
 
 export function DraftSetupWizard({
@@ -368,31 +338,7 @@ export function DraftSetupWizard({
           description: (
             <>
               {t("reseedConfirmDescription")}
-              {preview && (
-                <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
-                  <div>
-                    {tAdmin("diff", {
-                      label: t("teams"),
-                      before: preview.diff.teams_before,
-                      after: preview.diff.teams_after
-                    })}
-                  </div>
-                  <div>
-                    {tAdmin("diff", {
-                      label: t("players"),
-                      before: preview.diff.players_before,
-                      after: preview.diff.players_after
-                    })}
-                  </div>
-                  <div>
-                    {tAdmin("diff", {
-                      label: t("picks"),
-                      before: preview.diff.picks_before,
-                      after: preview.diff.picks_after
-                    })}
-                  </div>
-                </div>
-              )}
+              {preview && <DraftReseedDiff diff={preview.diff} />}
             </>
           ),
           confirmLabel: t("seedDraft"),
