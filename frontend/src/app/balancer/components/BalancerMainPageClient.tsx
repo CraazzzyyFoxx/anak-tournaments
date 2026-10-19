@@ -25,8 +25,9 @@ import {
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { mergeStatusOptions } from "@/lib/registration/balancer-statuses";
-import { orderSlotCodes } from "@/lib/roster/shape";
+import { slotCodesOf } from "@/lib/roster/shape";
 import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 import { notify } from "@/lib/notify";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -178,8 +179,12 @@ export function BalancerMainPageClient() {
     enabled: tournamentId !== null
   });
   const divisionGrid = useDivisionGrid(tournamentQuery.data?.discipline);
+  const ontology = useDisciplineMetadata(
+    tournamentQuery.data?.workspace_id ?? "all",
+    tournamentQuery.data?.discipline ?? null
+  ).data ?? null;
   const roleCodes = tournamentQuery.data?.roster_shape
-    ? orderSlotCodes(tournamentQuery.data.roster_shape.slots)
+    ? slotCodesOf(tournamentQuery.data.roster_shape.slots)
     : null;
 
   const customStatusesQuery = useQuery({
@@ -833,6 +838,7 @@ export function BalancerMainPageClient() {
         onSave={() => saveConfigMutation.mutate()}
         onReset={handleResetConfig}
         roleCodes={roleCodes}
+        ontology={ontology}
       />
 
       <BalanceImageExportDialog

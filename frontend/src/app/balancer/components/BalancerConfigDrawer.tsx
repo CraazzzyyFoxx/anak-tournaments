@@ -15,8 +15,8 @@ import {
 } from "@/components/ui/sheet";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
-import { isRosterSlotCode } from "@/lib/roster/shape";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type {
   BalancerConfig,
   BalancerConfigField,
@@ -46,6 +46,8 @@ type BalancerConfigDrawerProps = {
    *  offers a row for. `null` until the shape is known -- then every role the
    *  backend declares gets a row, which is also what a shapeless run uses. */
   roleCodes?: string[] | null;
+  /** The tournament owner's role dictionary: the names the role rows are labelled with. */
+  ontology?: RoleOntology | null;
 };
 
 function formatValue(value: unknown): string {
@@ -99,13 +101,16 @@ function ConfigRolesTable({
   field,
   value,
   roleCodes,
+  ontology,
   onChange,
 }: Readonly<{
   field: BalancerConfigField;
   value: BalancerConfigValue;
   roleCodes?: string[] | null;
+  ontology?: RoleOntology | null;
   onChange: (value: BalancerConfigValue) => void;
 }>) {
+  const slotLabel = useSlotLabel(ontology);
   const defaults = (field.default ?? {}) as BalancerRoleSettings;
   const overrides = (value ?? {}) as BalancerRoleSettings;
   const columns = field.columns ?? [];
@@ -137,7 +142,7 @@ function ConfigRolesTable({
       {roles.map((role) => (
         <Fragment key={role}>
           <div className="self-center text-sm text-[color:var(--aqt-fg)]">
-            {isRosterSlotCode(role) ? normalizePlayerRole(role) : role}
+            {slotLabel(role)}
           </div>
           {columns.map((column) => (
             <NumberInput
@@ -161,11 +166,13 @@ function ConfigFieldControl({
   field,
   value,
   roleCodes,
+  ontology,
   onChange,
 }: Readonly<{
   field: BalancerConfigField;
   value: BalancerConfigValue;
   roleCodes?: string[] | null;
+  ontology?: RoleOntology | null;
   onChange: (value: BalancerConfigValue) => void;
 }>) {
   if (field.type === "boolean") {
@@ -174,7 +181,7 @@ function ConfigFieldControl({
 
   if (field.type === "roles") {
     return (
-      <ConfigRolesTable field={field} value={value} roleCodes={roleCodes} onChange={onChange} />
+      <ConfigRolesTable field={field} value={value} roleCodes={roleCodes} ontology={ontology} onChange={onChange} />
     );
   }
 
@@ -184,6 +191,7 @@ function ConfigFieldControl({
         field={{ ...field, default: { flex: field.default as Record<string, number> } }}
         value={value == null ? null : ({ flex: value } as BalancerConfigValue)}
         roleCodes={null}
+        ontology={ontology}
         onChange={(next) => onChange((next as BalancerRoleSettings | undefined)?.flex ?? null)}
       />
     );
@@ -248,6 +256,7 @@ export function BalancerConfigDrawer({
   onSave,
   onReset,
   roleCodes,
+  ontology,
 }: Readonly<BalancerConfigDrawerProps>) {
   const fieldsByGroup = GROUP_ORDER.map((group) => ({
     group,
@@ -316,6 +325,7 @@ export function BalancerConfigDrawer({
                               field={field}
                               value={value}
                               roleCodes={roleCodes}
+                              ontology={ontology}
                               onChange={(nextValue) => onChange(field.key, nextValue)}
                             />
                           </div>

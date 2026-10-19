@@ -15,16 +15,16 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from pydantic import ValidationError  # noqa: E402
 
-from src import schemas  # noqa: E402
+from src.schemas.custom_game import CustomGameCreate  # noqa: E402
 
 
 def test_a_mix_create_request_must_name_its_game() -> None:
     # No game is implied: a body without `discipline` used to open an Overwatch mix.
     with pytest.raises(ValidationError) as excinfo:
-        schemas.CustomGameCreate.model_validate({"name": "Friday mix"})
+        CustomGameCreate.model_validate({"name": "Friday mix"})
     assert [error["loc"] for error in excinfo.value.errors()] == [("discipline",)]
 
 
 def test_a_mix_create_request_carries_the_requested_game() -> None:
-    body = schemas.CustomGameCreate.model_validate({"name": "Friday mix", "discipline": "lol"})
+    body = CustomGameCreate.model_validate({"name": "Friday mix", "discipline": "lol"})
     assert body.discipline == "lol"

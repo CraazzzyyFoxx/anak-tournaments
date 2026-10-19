@@ -45,32 +45,11 @@ export function slotCodesOf(slots: RosterSlotMap): SlotCode[] {
   return Object.keys(slots).filter((code) => (slots[code] ?? 0) > 0);
 }
 
-// ponytail: the draft room still types slots as the legacy Overwatch union; `orderSlotCodes` keeps that
-// typing for it (UI-bal moves the draft onto `slotCodesOf` + the ontology and deletes this with it).
-export function orderSlotCodes(slots: RosterSlotMap): RosterSlotCode[] {
-  return slotCodesOf(slots) as RosterSlotCode[];
-}
-
 /** Every slot code except the open slot asks for a specific role. */
 export function isRoleSlot(code: string): boolean {
   return code !== OPEN_SLOT_CODE;
 }
 
-// ponytail: legacy Overwatch role union, kept only for the draft room's role-keyed translations (UI-bal
-// deletes it with `isRoleSlotCode` when it moves those onto the ontology); registration reads `isRoleSlot`.
+// ponytail: legacy Overwatch role union, kept only for `roles.ts::RoleCode` (the mix tree's remaining fixed role
+// vocabulary; UI-bal's mix migration deletes both); everything else speaks {@link SlotCode}.
 export type RosterRoleSlotCode = "tank" | "damage" | "support";
-
-/** Legacy Overwatch slot union (draft room only); registration speaks {@link SlotCode}. */
-export type RosterSlotCode = RosterRoleSlotCode | "flex";
-
-export function isRoleSlotCode(code: string): code is RosterRoleSlotCode {
-  return isRoleSlot(code);
-}
-
-// ponytail: legacy Overwatch vocabulary, kept only for BalancerConfigDrawer's role label (UI-bal
-// deletes both with that caller); nothing in registration reads it.
-const LEGACY_SLOT_CODES: readonly string[] = ["tank", "damage", "support", "flex"];
-
-export function isRosterSlotCode(code: string): boolean {
-  return LEGACY_SLOT_CODES.includes(code);
-}
