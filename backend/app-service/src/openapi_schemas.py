@@ -160,6 +160,9 @@ OPERATIONS: dict[str, Op] = {
             _ENTITIES,
             _WS,
             QueryParam("include_locked", "boolean"),
+            QueryParam(
+                "discipline", description="Installed discipline code: only that game's rules (earned and locked)"
+            ),
         ),
     ),
     "rpc.app.achievements.users": Op(response=Paginated[schemas.AchievementEarned], query=PaginationQueryParams),

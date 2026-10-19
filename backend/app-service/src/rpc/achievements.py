@@ -50,6 +50,9 @@ def register(broker: Any, logger: Any) -> None:
                     ],
                 )
             await c.gate_tournament(session, data, tournament_id)
+            # Optional: a profile reads one game's rules (earned AND locked); absent keeps every game (admin hub).
+            # A code no module declares is 404 `discipline_not_installed`, never an empty list.
+            discipline = c.require_discipline(data) if c.q1(data, "discipline", str) is not None else None
             return await achievement_service.get_user_achievements(
                 session,
                 c.require_id(data),
@@ -58,6 +61,7 @@ def register(broker: Any, logger: Any) -> None:
                 without_tournament=without_tournament,
                 workspace_id=c.q_workspace_id(data),
                 include_locked=c.q1(data, "include_locked", c.qbool, False),
+                discipline=discipline,
             )
 
         return await c.envelope(logger, "achievements.user", op, session_factory=_SF)

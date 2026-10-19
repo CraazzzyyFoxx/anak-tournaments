@@ -257,6 +257,7 @@ class AchievementQueries:
         self,
         session: AsyncSession,
         workspace_id: int | None = None,
+        discipline: str | None = None,
     ) -> typing.Sequence[tuple[AchievementRule, float | None]]:
         """All enabled rules with rarity, unpaginated — used to derive locked achievements.
 
@@ -268,6 +269,8 @@ class AchievementQueries:
         query = sa.select(AchievementRule).where(AchievementRule.enabled.is_(True)).order_by(AchievementRule.id)
         if workspace_id:
             query = query.where(AchievementRule.workspace_id == workspace_id)
+        if discipline is not None:
+            query = query.where(AchievementRule.discipline == discipline)
 
         rules = (await session.execute(query)).scalars().all()
         return [(rule, rarity_map.get(rule.id)) for rule in rules]
@@ -386,6 +389,7 @@ class AchievementQueries:
         workspace_id: int | None = None,
         tournament_id: int | None = None,
         without_tournament: bool = False,
+        discipline: str | None = None,
     ) -> list[UserAchievementRow]:
         """Retrieve all effective achievement results for a user, with rarity."""
         effective_rows = _effective_rows_subq(
@@ -418,6 +422,9 @@ class AchievementQueries:
 
         if without_tournament:
             query = query.where(effective_rows.c.tournament_id.is_(None))
+
+        if discipline is not None:
+            query = query.where(AchievementRule.discipline == discipline)
 
         results = await session.execute(query)
         return [

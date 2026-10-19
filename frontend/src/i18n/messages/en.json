@@ -2823,11 +2823,6 @@
           "signup": "Minutes from registration opening to the sign-up",
           "check_in": "Minutes from check-in opening to the check-in"
         },
-        "role": {
-          "Tank": "Tank",
-          "Damage": "Damage",
-          "Support": "Support"
-        },
         "flagTrue": {
           "substitute": "Entered the tournament as a substitute",
           "team_manager": "Entered the tournament as a team manager",

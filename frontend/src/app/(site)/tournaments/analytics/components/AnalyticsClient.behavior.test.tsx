@@ -46,7 +46,11 @@ const ALL = [LOL_CUP, OW_CUP, OW_OPEN];
 
 const tournaments = vi.hoisted(() => ({ getAll: vi.fn(), getPublicOverview: vi.fn() }));
 vi.mock("@/services/tournament.service", () => ({ default: tournaments }));
-vi.mock("@/services/discipline.service", () => disciplineServiceMock);
+// The scope's game list can be overridden per case (e.g. Overwatch disabled); metadata stays the shared fixture.
+const games = vi.hoisted(() => ({ list: vi.fn() }));
+vi.mock("@/services/discipline.service", () => ({
+  default: { list: games.list, metadata: disciplineServiceMock.default.metadata }
+}));
 const analytics = vi.hoisted(() => ({ getAlgorithms: vi.fn(), getAnalytics: vi.fn() }));
 vi.mock("@/services/analytics.service", () => ({ default: analytics }));
 vi.mock("@/hooks/usePermissions", () => ({
@@ -117,6 +121,7 @@ beforeEach(() => {
   for (const fn of [nav.replace, nav.push, ...Object.values(tournaments), ...Object.values(analytics)]) fn.mockReset();
   registry.loadAnalyticsUI.mockReset().mockImplementation(async (code: string) => (code === "overwatch" ? BOARD : null));
   seen.props = null;
+  games.list.mockReset().mockImplementation(disciplineServiceMock.default.list);
   tournaments.getAll.mockResolvedValue({ results: ALL, total: ALL.length, page: 1, per_page: -1 });
   tournaments.getPublicOverview.mockImplementation(async (id: number) => ALL.find((item) => item.id === id));
 });
@@ -133,6 +138,24 @@ describe("tournament analytics host", () => {
 
     expect(nav.replace).toHaveBeenCalledWith("/tournaments/analytics?tournamentId=20");
     expect(tournaments.getAll).toHaveBeenCalledWith(null, "all");
+  });
+
+  it("offers no tournament of a disabled game: a League-only workspace keeps its old Overwatch events unopened", async () => {
+    const installed = await disciplineServiceMock.default.list();
+    games.list.mockResolvedValue(
+      installed.map((game) => (game.code === "overwatch" ? { ...game, enabled: false } : game))
+    );
+
+    await render("");
+
+    expect(nav.replace).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Choose parameters");
+    expect(registry.loadAnalyticsUI).not.toHaveBeenCalled();
+
+    // An explicitly opened historical owner is still that tournament's analytics.
+    act(() => root?.unmount());
+    await render("tournamentId=20");
+    expect(container.querySelector("[data-testid=board]")?.textContent).toBe("board of 20");
   });
 
   it("says a League tournament has no analytics, loads no module and reads nothing from analytics", async () => {

@@ -6,7 +6,7 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TeamName from "@/components/TeamName";
 import { useTranslations, useLocale } from "next-intl";
-import { useTeamOntology } from "@/hooks/useTeamOntology";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { sortTeamPlayers } from "@/lib/player";
 import { StandingsDistribution } from "@/types/analytics.types";
 import { formatPlace } from "@/disciplines/overwatch/analytics/analytics.helpers";
@@ -21,6 +21,8 @@ interface TeamDetailProps {
   team: TeamVM;
   /** Monte-Carlo distribution for this team (organizer-only; woven into detail). */
   distribution?: StandingsDistribution;
+  /** The tournament's own role dictionary (its game's metadata): roster order and role glyphs. */
+  ontology: RoleOntology;
   onSelectPlayer: (playerId: number) => void;
   onExplain?: (term: GlossaryTerm) => void;
 }
@@ -84,13 +86,13 @@ function MonteCarlo({ distribution }: Readonly<{ distribution: StandingsDistribu
 export default function TeamDetail({
   team,
   distribution,
+  ontology,
   onSelectPlayer,
   onExplain,
 }: Readonly<TeamDetailProps>) {
   const t = useTranslations();
   const locale = useLocale();
   const tournamentGrid = team.tournament?.division_grid_version;
-  const ontology = useTeamOntology(team);
   const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
   const groupName = team.group?.name ?? "—";
   const hasForecast = team.predicted_place != null;

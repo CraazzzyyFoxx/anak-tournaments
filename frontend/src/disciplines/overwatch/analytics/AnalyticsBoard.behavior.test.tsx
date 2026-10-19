@@ -134,6 +134,10 @@ describe("Overwatch analytics board", () => {
     expect(hero()?.dataset.rankedBy).toBe("Linear");
     expect(hero()?.dataset.teams).toBe(String(MAIN.input_old_wire.analytics.body.summary.total_teams));
     expect(api.getPerformanceV2).not.toHaveBeenCalled();
+    // Roles come from the owner metadata the host handed in (the analytics DTO's nested tournament has no owner
+    // scope): roster glyphs are the known Overwatch roles, named — never the neutral unknown mark.
+    expect(container.querySelector('[role="img"][aria-label="Support"]')).not.toBeNull();
+    expect(container.querySelector('[role="img"][aria-label^="Unknown"]')).toBeNull();
   });
 
   it("drops the previous tournament's board and waits for the new one's own rankings before reading its result", async () => {

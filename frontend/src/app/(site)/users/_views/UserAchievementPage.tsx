@@ -10,6 +10,8 @@ interface UserAchievementPageProps {
   tournaments: UserTournamentSummary[];
   selectedTournamentId?: string;
   scope: StatsScope;
+  /** The profile's game: only its rules are listed (earned and locked). */
+  discipline: string;
 }
 
 const parseAchievementFilter = (selectedTournamentId?: string) => {
@@ -31,7 +33,8 @@ const UserAchievementPage = async ({
   user,
   tournaments,
   selectedTournamentId,
-  scope
+  scope,
+  discipline
 }: UserAchievementPageProps) => {
   const { tournamentId, withoutTournament } = parseAchievementFilter(selectedTournamentId);
   const achievements = await userService
@@ -40,7 +43,8 @@ const UserAchievementPage = async ({
       withoutTournament,
       // Locked achievements only make sense for the global (all-tournaments) view.
       includeLocked: tournamentId === undefined && !withoutTournament,
-      scope
+      scope,
+      discipline
     })
     .catch(() => [] as AchievementRarity[]);
 

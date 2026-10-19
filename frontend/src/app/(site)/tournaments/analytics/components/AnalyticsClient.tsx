@@ -66,11 +66,15 @@ const AnalyticsPage = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     queryFn: () => tournamentService.getAll(null, pickerWorkspaceId)
   });
   const gamesQuery = useDisciplines(pickerWorkspaceId ?? "all");
+  // Offered (and opened by default): tournaments of the scope's ENABLED games that have an analytics board. A
+  // disabled game's historical tournaments stay reachable only as an explicitly opened owner (by URL).
   const analyticsGames = useMemo(
-    () => new Set((gamesQuery.data ?? []).filter((game) => game.capabilities.analytics).map((game) => game.code)),
+    () =>
+      new Set(
+        (gamesQuery.data ?? []).filter((game) => game.enabled && game.capabilities.analytics).map((game) => game.code)
+      ),
     [gamesQuery.data]
   );
-  // Only tournaments whose game has an analytics board are offered; one opened by URL is listed whatever its game.
   const offered = useMemo(
     () => (tournamentsQuery.data?.results ?? []).filter((tournament) => analyticsGames.has(tournament.discipline)),
     [tournamentsQuery.data?.results, analyticsGames]

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// `useConditionText` names a condition's character from the catalog of the rule's OWN game: the same slug in two
-// games reads each game's own name, from that game's catalog read, and a tree naming no character reads nothing.
+// `useConditionText` names a condition's character and role from the rule's OWN game: the same slug or role param in
+// two games reads each game's own catalog / ontology name, and a tree naming neither reads nothing.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -9,12 +9,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "@/i18n/messages/en.json";
+import { disciplineServiceMock } from "@/test/discipline-metadata";
 import type { ConditionNode } from "@/types/achievement.types";
 
 import { useConditionText } from "./condition-text";
 
 const catalog = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock("@/services/catalog.service", () => ({ default: catalog }));
+vi.mock("@/services/discipline.service", () => disciplineServiceMock);
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -27,12 +29,12 @@ const TREE: ConditionNode = { type: "hero_kd_best", params: { hero_slug: "ana", 
 let root: Root | null = null;
 let container: HTMLElement;
 
-function Line({ tree, discipline }: Readonly<{ tree: ConditionNode; discipline: string }>) {
+function Line({ tree, discipline, id }: Readonly<{ tree: ConditionNode; discipline: string; id?: string }>) {
   const { describe } = useConditionText(tree, discipline);
-  return <p data-game={discipline}>{describe(tree).text}</p>;
+  return <p data-game={id ?? discipline}>{describe(tree).text}</p>;
 }
 
-async function render(nodes: Array<{ tree: ConditionNode; discipline: string }>) {
+async function render(nodes: Array<{ tree: ConditionNode; discipline: string; id?: string }>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root = createRoot(container);
@@ -40,7 +42,7 @@ async function render(nodes: Array<{ tree: ConditionNode; discipline: string }>)
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={messages}>
           {nodes.map((node) => (
-            <Line key={node.discipline} {...node} />
+            <Line key={node.id ?? node.discipline} {...node} />
           ))}
         </NextIntlClientProvider>
       </QueryClientProvider>
@@ -95,5 +97,22 @@ describe("useConditionText", () => {
 
     expect(text("overwatch")).not.toBe("");
     expect(catalog.list).not.toHaveBeenCalled();
+  });
+
+  it("names a role from the rule's own game ontology, compared lower-cased as the engine does", async () => {
+    // Overwatch knows `tank`, League knows `jungle`: each game reads its own name, and a role the game does not
+    // have stays as written — never another game's name, never a humanized guess.
+    const role = (value: string): ConditionNode => ({ type: "player_role", params: { role: value } });
+    await render([
+      { id: "ow-tank", tree: role("TANK"), discipline: "overwatch" },
+      { id: "ow-jungle", tree: role("jungle"), discipline: "overwatch" },
+      { id: "lol-jungle", tree: role("jungle"), discipline: "lol" },
+      { id: "lol-tank", tree: role("TANK"), discipline: "lol" }
+    ]);
+
+    expect(text("ow-tank")).toBe("Plays Tank");
+    expect(text("ow-jungle")).toBe("Plays jungle");
+    expect(text("lol-jungle")).toBe("Plays Jungle");
+    expect(text("lol-tank")).toBe("Plays TANK");
   });
 });

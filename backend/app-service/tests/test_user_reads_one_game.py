@@ -27,6 +27,7 @@ from shared.models.achievements.achievement import AchievementEvaluationResult, 
 from shared.testing import create_test_async_engine, ensure_test_postgres
 from src import schemas
 from src.core import pagination
+from src.services.achievements.service import achievements as achievement_service
 from src.services.user.queries.overview import UserOverviewQueries
 from src.services.user.queries.profile import UserProfileQueries
 from src.services.user.service import UserService
@@ -201,3 +202,25 @@ class UserReadsOneGameTest(IsolatedAsyncioTestCase):
             self.session, self.users["a"].id, self.tournaments["l1"].id, grid=DEFAULT_GRID
         )
         self.assertEqual((read.workspace_id, read.discipline), (self.ws.id, LOL))
+
+    async def test_profile_achievements_list_only_the_games_rules_earned_and_locked(self) -> None:
+        async def slugs(key: str, discipline: str | None) -> dict[str, int]:
+            rows = await achievement_service.get_user_achievements(
+                self.session,
+                self.users[key].id,
+                [],
+                workspace_id=self.ws.id,
+                include_locked=True,
+                discipline=discipline,
+            )
+            return {row.slug: row.count for row in rows}
+
+        ow_rule, lol_rule = f"r-{OW}-{self.tag}", f"r-{LOL}-{self.tag}"
+        # b earned the Overwatch rule: its League profile shows only League's (locked) rule, never the OW one.
+        self.assertEqual(await slugs("b", LOL), {lol_rule: 0})
+        self.assertEqual(await slugs("b", OW), {ow_rule: 1})
+        # c earned the League rule; its Overwatch profile lists Overwatch's rule locked.
+        self.assertEqual(await slugs("c", OW), {ow_rule: 0})
+        self.assertEqual(await slugs("c", LOL), {lol_rule: 1})
+        # Without a game (the admin person hub) every game's rules are listed, as before.
+        self.assertEqual(await slugs("b", None), {ow_rule: 1, lol_rule: 0})

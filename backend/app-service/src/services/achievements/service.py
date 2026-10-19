@@ -111,6 +111,7 @@ class AchievementService:
         without_tournament: bool = False,
         workspace_id: int | None = None,
         include_locked: bool = False,
+        discipline: str | None = None,
     ) -> list[schemas.UserAchievementRead]:
         user = await user_service.get(session, user_id, [])
         results = await self.queries.get_user_results(
@@ -119,6 +120,7 @@ class AchievementService:
             workspace_id=workspace_id,
             tournament_id=tournament_id,
             without_tournament=without_tournament,
+            discipline=discipline,
         )
 
         # Keyed by (discipline, slug): slug is unique within a workspace but a game's copy
@@ -157,7 +159,9 @@ class AchievementService:
         # Append not-yet-earned rules as locked entries (count=0). Only meaningful for
         # the global view — a per-tournament filter scopes to what was earned there.
         if include_locked and tournament_id is None and not without_tournament:
-            all_rules = await self.queries.get_all_rules_with_rarity(session, workspace_id=workspace_id)
+            all_rules = await self.queries.get_all_rules_with_rarity(
+                session, workspace_id=workspace_id, discipline=discipline
+            )
             for rule, rarity in all_rules:
                 key = (rule.discipline, rule.slug)
                 if key in cache:

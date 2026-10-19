@@ -188,7 +188,7 @@ DOCS: dict[str, dict] = {
     # ── achievements (bespoke) ─────────────────────────────────────────────────────
     "rpc.app.achievements.user": {
         "summary": "User achievements",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace; rejects combining tournament_id with without_tournament=true.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.",
     },
     "rpc.app.achievements.users": {
         "summary": "Achievement earners",

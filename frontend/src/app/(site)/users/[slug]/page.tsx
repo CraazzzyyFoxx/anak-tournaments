@@ -228,6 +228,7 @@ const UserAchievementsTab = async ({
       tournaments={profile.tournaments}
       selectedTournamentId={selectedTournamentId}
       scope={profileScope.scope}
+      discipline={profileScope.discipline}
     />
   );
 };

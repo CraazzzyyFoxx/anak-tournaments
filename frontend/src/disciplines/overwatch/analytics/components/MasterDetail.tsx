@@ -104,6 +104,7 @@ export default function MasterDetail({
           teams={teams}
           performanceByPlayer={performanceByPlayer}
           distributionByTeam={distributionByTeam}
+          ontology={ontology}
           headerEnd={viewToggle}
         />
         {canReadV2 ? <MatchQualityCard tournamentId={tournamentId} /> : null}
@@ -127,6 +128,7 @@ export default function MasterDetail({
       key={`team-${team.id}`}
       team={team}
       distribution={canReadV2 ? distributionByTeam?.get(team.id) : undefined}
+      ontology={ontology}
       onSelectPlayer={(playerId) => selection.selectPlayer(team.id, playerId)}
       onExplain={onExplain}
     />

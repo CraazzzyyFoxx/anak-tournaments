@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronRight, Minus } from "lucide-react";
 import { roleOf } from "@/lib/roster/role-ref";
-import { findRole } from "@/lib/roster/ontology";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 import {
   AnalyticsAnomaly,
   PerformanceV2,
@@ -23,7 +23,6 @@ import ForecastChip from "@/disciplines/overwatch/analytics/components/ForecastC
 import MetricTooltip from "@/disciplines/overwatch/analytics/components/MetricTooltip";
 import TeamName from "@/components/TeamName";
 import { useTranslations } from "next-intl";
-import { useTeamOntology } from "@/hooks/useTeamOntology";
 import { useRoleName } from "@/hooks/useRoleName";
 import { sortTeamPlayers } from "@/lib/player";
 import { groupDisplayName } from "@/lib/tournament/group";
@@ -54,6 +53,8 @@ interface AnalyticsStandingsProps {
   distributionByTeam?: Map<number, StandingsDistribution>;
   /** Trailing control on the sort-tab row (the list/table view toggle). */
   headerEnd?: React.ReactNode;
+  /** The tournament's own role dictionary (its game's metadata): role glyphs, names and roster order. */
+  ontology: RoleOntology;
 }
 
 const anomalyHue: Record<string, string> = {
@@ -203,17 +204,18 @@ const ChangeDivisionModal = ({
 
 const TeamDetail = ({
   team,
-  performanceByPlayer
+  performanceByPlayer,
+  ontology
 }: {
   team: TeamAnalytics;
   performanceByPlayer: Map<number, PerformanceV2>;
+  ontology: RoleOntology;
 }) => {
   const [editingPlayer, setEditingPlayer] = useState<PlayerAnalytics | null>(null);
   const { hasPermission } = usePermissions();
   const t = useTranslations();
   const canEdit = hasPermission("analytics.update");
   const tournamentGrid = team.tournament?.division_grid_version;
-  const ontology = useTeamOntology(team);
   const nameOf = useRoleName();
   const roleText = (ref: PlayerAnalytics["role"]) => {
     const node = ontology ? findRole(ontology, ref) : null;
@@ -397,9 +399,8 @@ const TeamDetail = ({
   );
 };
 
-const RoleLane = ({ team }: { team: TeamAnalytics }) => {
+const RoleLane = ({ team, ontology }: { team: TeamAnalytics; ontology: RoleOntology }) => {
   const tournamentGrid = team.tournament?.division_grid_version;
-  const ontology = useTeamOntology(team);
   const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
 
   return (
@@ -443,13 +444,15 @@ const TeamRow = ({
   open,
   onToggle,
   performanceByPlayer,
-  distribution
+  distribution,
+  ontology
 }: {
   team: TeamAnalytics;
   open: boolean;
   onToggle: () => void;
   performanceByPlayer: Map<number, PerformanceV2>;
   distribution?: StandingsDistribution;
+  ontology: RoleOntology;
 }) => {
   const t = useTranslations();
   const groupName = team.group?.name ?? "-";
@@ -507,7 +510,7 @@ const TeamRow = ({
             )}
           </div>
         </div>
-        <RoleLane team={team} />
+        <RoleLane team={team} ontology={ontology} />
         <div className={styles.record}>
           <span className={styles.wins}>{team.wins}</span>
           <span className="mx-1 text-muted-foreground">/</span>
@@ -553,7 +556,7 @@ const TeamRow = ({
           aria-hidden="true"
         />
       </button>
-      {open ? <TeamDetail team={team} performanceByPlayer={performanceByPlayer} /> : null}
+      {open ? <TeamDetail team={team} performanceByPlayer={performanceByPlayer} ontology={ontology} /> : null}
     </div>
   );
 };
@@ -583,7 +586,8 @@ const AnalyticsStandings = ({
   teams,
   performanceByPlayer,
   distributionByTeam,
-  headerEnd
+  headerEnd,
+  ontology
 }: AnalyticsStandingsProps) => {
   const t = useTranslations();
   const [mode, setMode] = useState<SortMode>("standings");
@@ -640,6 +644,7 @@ const AnalyticsStandings = ({
             onToggle={() => setExpandedId((current) => current === team.id ? null : team.id)}
             performanceByPlayer={performanceByPlayer}
             distribution={distributionByTeam?.get(team.id)}
+            ontology={ontology}
           />
         ))}
       </div>

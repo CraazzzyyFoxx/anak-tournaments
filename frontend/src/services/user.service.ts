@@ -270,12 +270,15 @@ export default class userService {
       tournamentId,
       withoutTournament,
       includeLocked,
-      scope
+      scope,
+      discipline
     }: {
       tournamentId?: number;
       withoutTournament?: boolean;
       includeLocked?: boolean;
       scope?: StatsScope;
+      /** One game's rules only (earned and locked); omitted = every game's (the admin person hub). */
+      discipline?: string;
     } = {}
   ): Promise<AchievementRarity[]> {
     return apiFetch(`/api/v1/achievements/user/${id}`, {
@@ -284,6 +287,7 @@ export default class userService {
         tournament_id: tournamentId,
         without_tournament: withoutTournament,
         include_locked: includeLocked,
+        discipline,
         ...scopeQuery(scope)
       }
     }).then((res) => res.json());

@@ -180,9 +180,14 @@ const RoleSplitSection = async ({
   );
 };
 
-const AchievementsSection = async ({ user, userSlug, scope }: Pick<SectionProps, "user" | "scope"> & { userSlug: string }) => {
+const AchievementsSection = async ({
+  user,
+  userSlug,
+  scope,
+  discipline
+}: Pick<SectionProps, "user" | "scope" | "discipline"> & { userSlug: string }) => {
   const achievements = await userService
-    .getUserAchievements(user.id, { scope })
+    .getUserAchievements(user.id, { scope, discipline })
     .catch(() => [] as AchievementRarity[]);
   return <OverviewAchievementsPreview achievements={achievements} userSlug={userSlug} />;
 };
@@ -234,7 +239,7 @@ const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline, axis
           <RoleSplitSection {...section} profile={profile} />
         </Suspense>
         <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
-          <AchievementsSection user={user} userSlug={userSlug} scope={scope} />
+          <AchievementsSection user={user} userSlug={userSlug} scope={scope} discipline={discipline} />
         </Suspense>
         <Suspense fallback={<Skeleton className="h-80 w-full rounded-xl" />}>
           <TeammatesSection {...section} />
