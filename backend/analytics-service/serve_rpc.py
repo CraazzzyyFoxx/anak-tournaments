@@ -11,6 +11,7 @@ Run with: ``faststream run serve_rpc:app``.
 
 from faststream import FastStream
 
+from shared.messaging.outbox import drain_outbox
 from shared.observability import (
     make_rabbit_broker,
     setup_logging,
@@ -20,6 +21,7 @@ from shared.observability import (
 )
 from shared.quota import configure as configure_quota
 from shared.services.realtime import configure_realtime
+from shared.services.scheduler import IntervalScheduler
 from src.core import config, db
 from src.rpc import jobs_control, mutations
 from src.rpc import reads as rpc_reads
@@ -57,6 +59,9 @@ rpc_reads.register(broker, logger)
 mutations.register(broker, logger)
 jobs_control.register(broker, logger)
 
+# Job-control writes the dispatch events as outbox rows; this process relays them.
+_outbox_drain = IntervalScheduler(job_id="event_outbox_drain", label="Outbox drain", logger=logger)
+
 
 @app.on_startup
 async def start_worker() -> None:
@@ -86,4 +91,10 @@ async def start_worker() -> None:
     )
     if config.settings.worker_metrics_port is not None:
         start_worker_metrics_server(config.settings.worker_metrics_port)
+    _outbox_drain.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     logger.info("Analytics RPC service (analytics-svc) started")
+
+
+@app.on_shutdown
+async def stop_worker() -> None:
+    _outbox_drain.shutdown()

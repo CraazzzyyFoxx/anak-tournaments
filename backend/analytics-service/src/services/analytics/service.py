@@ -12,7 +12,7 @@ from shared.repository import AnalyticsAlgorithmRepository, AnalyticsPlayerRepos
 from shared.repository.stats_queries import player_facts
 from src import models
 from src.core.workspace import workspace_scope_filter
-from src.domain.encounter_maps import seat_maps
+from src.services.analytics.encounter_maps import seat_maps
 
 
 class AnalyticsService:

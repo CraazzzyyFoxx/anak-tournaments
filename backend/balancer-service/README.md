@@ -123,12 +123,12 @@ carries the `custom.*`, `players.*` or `teams.*` subjects, so those groups are a
 generated documentation; the subject list above is the complete one.
 
 **Queues consumed.** `balancer_jobs` (durable, `x-message-ttl` 15 min, dead-lettered to `dlx` →
-`balancer_jobs.dlq`), on its own channel with `prefetch_count=2` so a multi-minute solve cannot
-stall the RPC channel. And `pickup_mix_changed` (dead-lettered to `pickup_mix_changed.dlq`, declared
-on startup), on its own channel with `prefetch_count=4`: the Discord-card projector, below. The bot
-reports nothing back here — every Discord message this service sends is a `discord_message` row
-claimed in the transaction that decides to send it, and discord-service writes the outcome (the ids,
-or Discord's refusal) onto that same row.
+`balancer_jobs.dlq`, declared on startup), on its own channel with `prefetch_count=2` so a
+multi-minute solve cannot stall the RPC channel. And `pickup_mix_changed` (dead-lettered to
+`pickup_mix_changed.dlq`, declared on startup), on its own channel with `prefetch_count=4`: the
+Discord-card projector, below. The bot reports nothing back here — every Discord message this
+service sends is a `discord_message` row claimed in the transaction that decides to send it, and
+discord-service writes the outcome (the ids, or Discord's refusal) onto that same row.
 
 **Discord messages.** A mix's messages are filed under subject `mix:<id>`: the signup card in slot
 `signup`, one row per posted lineup in slot `lineup:<lobby>:<match>`. The single-mix read returns
@@ -141,8 +141,9 @@ signup card refreshes into its finished state and the lineups stay as history.
 
 **Events published to the broker.** `BalancerJobEvent` onto `balancer_jobs`, which this same
 worker consumes — job creation and job execution are one process, split by a queue rather than by a
-service. Everything else leaves through the outbox (`event_outbox`, drained by tournament-service),
-written in the mutation's own transaction, so a rolled-back write announces nothing:
+service. Everything else leaves through the outbox (`event_outbox`, drained every second by this
+worker's own `drain_outbox` tick), written in the mutation's own transaction, so a rolled-back write
+announces nothing:
 
 - `PickupMixChangedEvent` onto `pickup_mix_changed`, from `emit_pickup_mix_changed` — every mix
   mutation emits it (`custom.*`, the `self_*` seat actions, and `players.upsert`/`players.set_ranks`

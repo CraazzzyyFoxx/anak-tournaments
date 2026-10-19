@@ -8,6 +8,7 @@ import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.jobs import Status
 from src.core.jobs import JOB_KIND_COMPUTE, JOB_KIND_TRAIN_ML, job_runtime, update_progress
 from src.services.analytics.flows import flows_service
 from src.services.ml.inference.runner import run_for_tournament
@@ -167,6 +168,11 @@ class AnalyticsJobRunner:
             logger.warning("Analytics job not found: %d", job_id)
             return
         job_id = int(job.id)
+        # At-least-once dispatch (outbox replay): a finished job is not run again. A ``running`` one is: on this
+        # single-replica worker its redelivery means the attempt that marked it died with the connection.
+        if str(job.status) in Status.TERMINAL:
+            logger.info("Analytics job %d is already %s; skipping redelivery", job_id, job.status)
+            return
 
         # Every _emit is staged on the transaction its status change belongs to,
         # so a mark_* that fails to commit announces nothing.

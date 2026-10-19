@@ -68,7 +68,7 @@ derives numbers from what is already in the database.
 The full method list with request/response schemas is published at `/api/docs`, generated
 from `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 
-**Durable queues consumed** — by `analytics-worker` only, all three declared in
+**Durable queues consumed** — by `analytics-worker` only, all declared in
 `shared/messaging/config.py` with a `dlx` dead-letter exchange and a per-queue message TTL:
 
 | Queue | Payload | Runs | TTL |
@@ -76,8 +76,14 @@ from `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 | `analytics_job` | `AnalyticsJobRequested` (job id only) | The unified pipeline: dispatch by `AnalyticsJob.kind` to ratings recompute + ML inference (`compute`) or training (`train_ml`) | 1 h |
 | `analytics_train` | `AnalyticsTrainRequest` | `train_all_models` for a cutoff tournament | 1 h |
 | `analytics_infer` | `AnalyticsInferRequest` | `run_for_tournament` | 30 min |
+| `tournament_state_changed` (bound to `tournament.events`, key `tournament.state.changed`) | `TournamentStateChangedEvent` | A tournament that becomes `completed` gets a `compute` job (`src/worker/tournament_events.py`): the `create_job` gates minus the actor, skipped and acked for an unverified workspace or an active job | 5 min |
 
-Each has a matching `<queue>.dlq`.
+Each has a matching `<queue>.dlq`, declared by `analytics-worker` at startup.
+
+**Dispatch** — every request event above that analytics sends (`AnalyticsJobRequested`,
+`AnalyticsTrainRequest`, `AnalyticsInferRequest`) is an outbox row written in the request's own
+transaction (for a job, the same one that creates the row), relayed by the
+`event_outbox_drain` tick that both processes run every second.
 
 **Realtime** — `analytics-worker` publishes job lifecycle events (`analytics_job.<status>`,
 carrying staged progress and any error) to the `workspace:{id}:analytics_jobs` topic. Each
@@ -89,6 +95,7 @@ events", not to a failed job.
 **Scheduled work** — `analytics-worker` runs one APScheduler cron job, `nightly_drift_check`
 at 03:30 UTC: it builds a feature frame over the last 10 tournaments, computes per-feature
 Wasserstein drift, and emits a Sentry breadcrumb when any feature crosses the threshold.
+Both processes also run the 1 s `event_outbox_drain` (safe on any number of replicas).
 
 The service publishes no domain events of its own.
 
@@ -98,7 +105,8 @@ Writes the whole `analytics` schema: `algorithms`, `player_shift`, `shifts`, `pe
 `standings_distribution`, `match_quality`, `player_anomaly`, `anomaly_feedback`,
 `ml_model_artifact`, and `job`. Every derived row is keyed on `algorithm_id`, so two
 algorithms can hold different opinions about the same `(tournament, player)` without
-overwriting each other. It also writes `realtime.workspace_event` rows for job progress.
+overwriting each other. It also writes `realtime.workspace_event` rows for job progress and
+`event_outbox` rows for its queue dispatches.
 
 Reads, never writes: `tournament` (the `tournament.player` roster slot that every number is
 anchored on, plus teams and standings), native `stats` observations through their bound
@@ -237,14 +245,17 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile workers
   `pending` or `running` and raises `JobConflict`, which job-control returns as `409`.
   Before answering "is a job active", the service reconciles rows whose progress contains a
   failed stage but whose status is still active.
-- **Dispatch is fail-closed.** If RabbitMQ is unconfigured or the publish fails, the job
-  row is marked failed and the caller gets `503` / `502` — no job is left `pending` with
-  nothing to consume it.
+- **Dispatch rides the outbox.** A job row and its `AnalyticsJobRequested` commit together, so
+  no crash leaves a `pending` job with nothing to run it; with the broker down the event waits
+  in `event_outbox` and the job stays `pending` until the drain relays it.
 - **Failure is recorded, not retried.** `run_job` catches, rolls back, writes the stage
   detail plus a truncated traceback onto the row, emits a `failed` realtime event, and
-  returns — the message is acked. Redelivery would restart a job the row already reports as
-  failed. Recovery means creating a new job. Messages that do dead-letter (TTL expiry,
-  broker-side nack) land on `<queue>.dlq`.
+  returns — the message is acked. Delivery is at-least-once, so `run_job` skips (acks and
+  logs) a replayed event for a job that already `succeeded` or `failed`; a redelivered
+  `running` job is run again, since on the single worker that means the attempt that marked
+  it died with its connection. Recovery means creating a new job. Messages that do
+  dead-letter (TTL expiry, broker-side nack, a
+  `tournament_state_changed` handler error) land on `<queue>.dlq`.
 - **Do not scale `analytics-worker`.** APScheduler runs in-process with no leader lock, so
   a second replica multi-fires the nightly drift check. Replicating `analytics-svc` is
   fine.

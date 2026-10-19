@@ -1,5 +1,5 @@
 """Watches monitored tournament channels for match-log attachments: live
-messages, edits that add attachments, and periodic history rescans.
+messages, edits that add attachments, and history rescans on connect.
 """
 
 from __future__ import annotations
@@ -15,7 +15,10 @@ if TYPE_CHECKING:
     from src.bot import LogCollectorBot
 
 _HISTORY_RESCAN_LIMIT = 500
-_CHANNEL_RELOAD_INTERVAL_MINUTES = 5
+# Tournament/channel changes reload the registry as events (DiscordRabbitGateway);
+# this loop only catches what no event announces -- a finished tournament
+# leaving its grace period -- and an event that was lost.
+_CHANNEL_RELOAD_FALLBACK_MINUTES = 60
 
 
 class LogIngestionCog(commands.Cog):
@@ -48,10 +51,9 @@ class LogIngestionCog(commands.Cog):
         if not self.channel_monitor.is_running():
             self.channel_monitor.start()
 
-    @tasks.loop(minutes=_CHANNEL_RELOAD_INTERVAL_MINUTES)
+    @tasks.loop(minutes=_CHANNEL_RELOAD_FALLBACK_MINUTES)
     async def channel_monitor(self) -> None:
-        """Periodically reload active channels so tournament additions/removals
-        take effect without a bot restart."""
+        """Slow fallback reload of the active channels (see ``_CHANNEL_RELOAD_FALLBACK_MINUTES``)."""
         try:
             await self._registry.reload()
         except Exception as e:

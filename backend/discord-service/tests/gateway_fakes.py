@@ -107,7 +107,6 @@ def gateway(
         registry=MagicMock(),
         directory=MagicMock(),
         voice=MagicMock(),
-        result_waiter=MagicMock(),
         bot=bot or MagicMock(wait_until_ready=AsyncMock()),
         session_maker=maker or session_maker(),
         messages=messages or FakeMessages(),

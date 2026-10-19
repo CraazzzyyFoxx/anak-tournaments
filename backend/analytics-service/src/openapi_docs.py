@@ -87,10 +87,10 @@ DOCS: dict[str, dict] = {
     },
     "rpc.analytics.train": {
         "summary": "Train model",
-        "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue; requires configured RabbitMQ (503 otherwise). Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.",
+        "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue. Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.",
     },
     "rpc.analytics.infer": {
         "summary": "Run inference",
-        "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue; requires configured RabbitMQ (503 otherwise). Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
+        "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue. Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
     },
 }

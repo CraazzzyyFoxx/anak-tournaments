@@ -11,14 +11,15 @@ worker.
 namespace, the Go gateway never routes an HTTP request to it, and no REST route resolves here. It is
 reached in two ways only: by Discord itself over the gateway WebSocket, and by sibling services over
 named RabbitMQ queues (`discord_commands`, `discord_member_roles`, `discord_guild_*`, `upload_match_log`,
-`match_log.result`). It runs no HTTP server. See
-[`../../docs/architecture.md`](../../docs/architecture.md) for how it sits in the wider platform.
+`match_log_result`, `discord_member_changed`) and the `tournament.events` exchange. It runs no HTTP
+server. See [`../../docs/architecture.md`](../../docs/architecture.md) for how it sits in the wider
+platform.
 
 - **Compose service:** `discord-worker` — dev profile `workers`, unconditional in production
 - **Entry point:** `main.py` (`LogCollectorBot` in `src/bot.py`)
 - **Run command:** `python main.py`
-- **Transport:** Discord gateway WebSocket inbound; RabbitMQ named queues and one fanout exchange for
-  service-to-service traffic; no HTTP, no `rpc.discord.*`
+- **Transport:** Discord gateway WebSocket inbound; RabbitMQ named queues plus one per-replica queue on
+  the `tournament.events` topic exchange for service-to-service traffic; no HTTP, no `rpc.discord.*`
 - **Metrics:** Prometheus on `WORKER_METRICS_PORT` (dev 9100, prod 9100) — the shared worker metrics
   plus `discord_gateway_ready` and `discord_gateway_latency_seconds`
 
@@ -27,13 +28,14 @@ named RabbitMQ queues (`discord_commands`, `discord_member_roles`, `discord_guil
 - **Match-log intake from Discord.** Turns qualifying attachments in watched tournament channels
   into upload requests. It downloads the actual bytes; stats-service owns workspace/content-hash
   deduplication, so a reused filename never hides changed content.
-- **Upload feedback.** Displays the matching result's `done`, `failed` or `awaiting_link` state
-  and error text. It never queries a latest-by-filename record to invent a verdict.
+- **Upload feedback.** Marks the hand-off on the message at once, then adds each file's verdict
+  (`done`, `failed` or `awaiting_link`, with its error text) when stats-service's result names that
+  message. It never queries a latest-by-filename record to invent a verdict.
 - **Discord directory.** The only process holding a live guild cache, so it answers guild info, guild
   roles, guild channels, and per-member role sets on behalf of every other service.
-- **Membership-driven subscription resync.** A member joining, leaving, or having roles changed
-  triggers an immediate re-resolve of that user's Boosty subscription instead of waiting for the
-  scheduled sweep.
+- **Member changes as events.** A member joining, leaving, or having roles changed is published as
+  `DiscordMemberChangedEvent`; stats-service re-resolves that user's Boosty subscription instead of
+  waiting for its scheduled sweep.
 
 ## Interface
 
@@ -52,45 +54,44 @@ the only outbound RPCs are the ones a card button makes (see *User-facing surfac
 | `discord_guild_roles` | consumes, replies | The guild's role list. |
 | `discord_guild_channels` | consumes, replies | The guild's text channels. |
 | `discord_guild_info` | consumes, replies | Guild name, icon, member count, connectivity. |
-| `upload_match_log` | publishes | `UploadMatchLogEvent` carrying the log bytes base64-encoded, consumed by stats-service. |
-| `match_log.result` (fanout exchange) | consumes | `MatchLogProcessedEvent`, the parse verdict for one uploaded file. |
+| `upload_match_log` | publishes | `UploadMatchLogEvent` carrying the log bytes base64-encoded plus the `channel_id`/`message_id` it came from, consumed by stats-service. |
+| `match_log_result` | consumes | `MatchLogProcessedEvent`, the parse verdict for one uploaded file, naming the message to put it on. |
+| `discord_member_changed` | publishes | `DiscordMemberChangedEvent` (guild, user, `role_update` / `member_join` / `member_remove`), straight from the gateway event — there is no transaction for an outbox row to join. Consumed by stats-service. |
+| `tournament.events` (topic exchange) | consumes | `tournament.state.changed` and `tournament.discord_channel.changed`, on a server-named, exclusive, auto-deleted queue per replica: each replica reloads its own watched-channel map. |
 
-The four `discord_*` request/reply queues are durable, dead-letter to `dlx` with a `<name>.dlq`
-routing key, and carry a message TTL (60 s for the directory lookups, 5 min for `discord_commands`) —
-a lookup no live bot answers expires rather than piling up. Every handler awaits
-`bot.wait_until_ready()` first, so a request arriving during startup blocks until the gateway session
-is up instead of answering from an empty cache. Directory lookups fall back to a REST call when the
-gateway cache has not yet seen the guild.
+The durable queues it consumes (`discord_commands`, the five `discord_*` request/reply queues and
+`match_log_result`) dead-letter to `dlx` with a `<name>.dlq` routing key — the bot declares all seven
+DLQs before it starts consuming — and carry a message TTL (60 s for the directory lookups, 5 min for
+`discord_commands` and `match_log_result`) — a lookup no live bot answers expires rather than piling
+up. Every handler awaits `bot.wait_until_ready()` first, so a request arriving during startup blocks
+until the gateway session is up instead of answering from an empty cache. Directory lookups fall back
+to a REST call when the gateway cache has not yet seen the guild.
 
-### Match-log upload and the result rendezvous
+### Match-log upload and its verdict
 
-`AttachmentProcessor` downloads the attachment through the egress proxy and creates an upload
-event with `correlation_id = event_id`. When waiting for feedback it registers that correlation
-with `ResultWaiter` **before** publishing the base64 bytes to `upload_match_log`, then waits for
-up to 120 s. stats-service preserves the id through its job-id processing event and the result body
-and broker metadata. A result arriving during publish is retained until the wait consumes it.
-Publish failure, timeout and cancellation clean up the registration.
+`AttachmentProcessor` downloads the attachment through the egress proxy and publishes the base64
+bytes to `upload_match_log` as `UploadMatchLogEvent`, naming the message it came from
+(`channel_id`, `message_id`). Nothing waits: once a message's files are out its reactions are
+reconciled to `ok` (all went out), `ok` + `warn` (some did) or `error` (none did; the reason is
+logged).
 
-`MatchLogProcessedEvent` carries the persisted `ingest_job_id`, status and error text;
-only upload failure before job creation has a null job id. `awaiting_link` means the bytes were
-accepted but no unique eligible live game was found: the uploader is told to ask an administrator
-to select the encounter/game and retry. It is not reported as parse success, failure or timeout.
-Results go to the **fanout** exchange `match_log.result`; each bot replica binds its **own
-server-named, exclusive, auto-deleted** queue to it.
-
-The shape is deliberate. A single durable shared queue would round-robin results across replicas, so a
-result would usually land on a replica that holds no pending future for it and the replica that is
-actually waiting would time out. Fanout plus a per-replica exclusive queue makes every replica see
-every result; the one holding the matching future in `ResultWaiter._pending` resolves it and the rest
-no-op. This mirrors the broadcast semantics of the pg `LISTEN`/`NOTIFY` channel it replaces — pgBouncer
-transaction pooling silently drops `LISTEN` registrations, so under pooling every upload waited out the
-full timeout. The queue is exclusive and auto-deleted so a dead replica leaves nothing behind.
+stats-service echoes the two ids onto `MatchLogProcessedEvent`, which carries the persisted
+`ingest_job_id`, status and error text; only upload failure before job creation has a null job id.
+`awaiting_link` means the bytes were accepted but no unique eligible live game was found: the
+uploader is told to ask an administrator to select the encounter/game and retry. Results land on the
+one durable `match_log_result` work queue; any replica can consume one, because the event says which
+message it answers. The handler fetches that message (a message deleted or hidden since is acked and
+logged) and **adds** the verdict: `ok` for a processed file; `ok` + `warn` and a reply naming the
+file and its error for anything else — `ok` stays, since the upload itself went through. It never
+removes a reaction, so on a message with several logs a later success cannot take back an earlier
+file's `warn`, and adding a reaction the bot already has is a no-op.
 
 ### Discord gateway events
 
-`LogIngestionCog` — `on_ready` (load channels, rescan history, start the reload loop), `on_message`
-and `on_message_edit` in monitored channels. `MembershipEventsCog` — `on_guild_join`/`on_guild_remove`
-(logging only) and `on_member_join`/`on_member_remove`/`on_member_update` (subscription resync).
+`LogIngestionCog` — `on_ready` (load channels, rescan history, start the fallback reload loop),
+`on_message` and `on_message_edit` in monitored channels. `MembershipEventsCog` —
+`on_guild_join`/`on_guild_remove` (logging only) and `on_member_join`/`on_member_remove`/`on_member_update`
+(publish `DiscordMemberChangedEvent`; with `RABBITMQ_URL` unset the change is logged and dropped).
 
 ### User-facing surface
 
@@ -209,25 +210,28 @@ Run from `backend/discord-service` with the service env (REST only, safe beside 
 
 ### Scheduled work
 
-- `channel_monitor` (`discord.ext.tasks.loop`, every 5 minutes) reloads the active
-  `channel_id -> tournament_id` map, so adding or removing a tournament channel takes effect without a
-  restart. A finished tournament stays watched for 24 hours so a late upload still lands.
+- The watched `channel_id -> tournament_id` map reloads on every `tournament.state.changed` and
+  `tournament.discord_channel.changed` (see *RabbitMQ*); reloads run one at a time, a burst queueing
+  behind the one in flight. `channel_monitor` (`discord.ext.tasks.loop`, every 60 minutes) is only the
+  fallback: no event announces a finished tournament leaving its 24-hour grace (kept so a late upload
+  still lands), and it also repairs an event that was lost.
 - Application emoji are re-read from Discord every 10 minutes (and once in `setup_hook`), so an
   upload by the `discord-emoji` job shows up without a restart.
 - On `on_ready`, the last 500 messages of every monitored channel are rescanned concurrently and
-  qualifying attachments are uploaded fire-and-forget; stats-service deduplicates their actual bytes.
+  qualifying attachments are uploaded; stats-service deduplicates their actual bytes.
 - `GatewayWatchdog` (`discord.ext.tasks.loop`, every 30 s) proves the gateway session is alive — see
   *Operational notes*.
 
 ### Redis realtime
 
-Indirectly, through the shared subscription resolver: a membership-triggered resync publishes the thin
-`subscription.updated` signal on `workspace:{id}:subscriptions`. The bot publishes nothing else to
-Redis and consumes no realtime topic.
+Every `discord_message` status change the bot writes stages the realtime signal of the row's subject
+(see *Data owned*). The bot consumes no realtime topic.
 
 ### Domain events
 
-None. This service does not write to the transactional outbox.
+`DiscordMemberChangedEvent` onto `discord_member_changed`, published straight from the gateway event:
+there is no transaction for an outbox row to join, and a lost one is caught up by stats-service's
+scheduled subscription sweep. This service does not write to the transactional outbox.
 
 ## Data owned
 
@@ -236,11 +240,11 @@ migrations here — the single Alembic project lives at `backend/migrations/`.
 
 Reads `stats.discord_channel` for the watched-channel map, written by stats-service's admin
 `rpc.discord_channel.*` methods. Match-log jobs and failure details are not read by the bot:
-upload outcomes arrive through the correlated result event. See
+upload outcomes arrive on the result event that names their message. See
 [`../../docs/database_erd.md`](../../docs/database_erd.md).
 
-Reads elsewhere: `workspace.discord_guild_id` (guild → workspace ids), `auth.oauth_connections`
-(Discord user id → platform user) and `discord_message` (below).
+Reads elsewhere: `workspace.discord_guild_id` (guild → workspace ids, for `/mix`) and
+`discord_message` (below).
 
 Writes `discord_message` — the one state of every message the platform sends on its own behalf
 (notification DMs, workspace broadcasts, mix signup and lineup posts). Ownership is split on purpose
@@ -256,21 +260,15 @@ from Discord, was already, or had just been sent when the delete landed and was 
 out). Every one of them stages the realtime signal of the row's subject on the same transaction, so
 the page showing a mix refetches when its post lands, fails or disappears.
 
-Writes, only through the shared subscription resolver during a membership resync:
-`subscriptions.entitlement` (upsert of the verdict) and `subscriptions.check_log` (append-only attempt
-log). Same rows tournament-service and stats-service write; this service is an extra writer, not the
-owner.
-
 ## Dependencies
 
-- **Discord** — gateway WebSocket plus REST, through the `proxy` egress container. The bot token also
-  reaches Discord directly from the shared subscription resolver during a resync.
+- **Discord** — gateway WebSocket plus REST, through the `proxy` egress container.
 - **RabbitMQ** — every inbound request and the log-upload/result path. Optional: with `RABBITMQ_URL`
   unset the bot still starts and still watches channels, but uploads fail with "RabbitMQ unavailable"
   and no directory lookup is served.
 - **PostgreSQL** — the tables above, always through `shared.repository`; no ad hoc SQLAlchemy in this
   service.
-- **Redis** — the `subscription.updated` realtime signal and the subscription-resolver caches.
+- **Redis** — the realtime signal of every `discord_message` change.
 - **stats-service** — over the broker only. It is never called over HTTP.
 - **identity-service** — over the broker for `rpc.identity.discord_identity` when a card button is pressed.
 - **tournament-service, app-service, balancer-service** — over the broker only, for the card actions
@@ -281,10 +279,10 @@ owner.
 `backend/env/discord.env`, layered over `backend/env/common.env` (see the `.example` files). What
 actually changes behaviour:
 
-- `DISCORD_TOKEN` — bot token. Also passed to the subscription resolver for its own Discord calls.
-- `RABBITMQ_URL` — optional. Unset disables every broker subscriber and the upload path.
-- `REDIS_URL` — required. Without it, membership events resolve subscriptions but never invalidate the
-  realtime cache.
+- `DISCORD_TOKEN` — bot token.
+- `RABBITMQ_URL` — optional. Unset disables every broker subscriber, the upload path and the
+  member-change events.
+- `REDIS_URL` — required. Without it, a `discord_message` change never reaches the page showing it.
 - `PROXY_TYPE` / `PROXY_IP` / `PROXY_PORT` / `PROXY_USERNAME` / `PROXY_PASSWORD` — egress proxy for all
   Discord traffic, both the gateway connection and attachment downloads.
 - `PUBLIC_SITE_URL` — from `common.env`; where button replies link back to (link Discord, notification
@@ -345,10 +343,10 @@ nothing outside the standard library, so it cannot report a configuration proble
 - **Single replica.** Every replica opens its own Discord gateway session under the same token and
   therefore receives the *same* `on_message` events, so N replicas do N uploads of the same
   attachment. The `_processing_messages` guard is per-process and the `exists_done` check is a racy
-  read, neither is a cross-replica lock. The broker side is replica-ready — request/reply queues
-  round-robin and the exclusive result queue exists precisely so results reach the right replica — but
-  the gateway side is not. Do not scale this service; it is absent from the default `PROD_SCALE` set
-  for that reason.
+  read, neither is a cross-replica lock. The broker side is replica-ready — request/reply queues and
+  `match_log_result` round-robin (a verdict names its message, so any replica can place it), and each
+  replica's own channel-registry queue hears every tournament change — but the gateway side is not.
+  Do not scale this service; it is absent from the default `PROD_SCALE` set for that reason.
 - **Failure handling on `discord_commands`.** A malformed payload, a command naming a
   `discord_message` row that no longer exists, a missing channel, a deleted message, or a
   permissions error is `reject`ed straight to `discord_commands.dlq`; an unexpected exception is
@@ -392,12 +390,14 @@ nothing outside the standard library, so it cannot report a configuration proble
   drops the edit still owed by its message. The window is process memory, which the single-replica
   rule above makes enough; a crash loses one ping until the next change re-projects the card. A row
   whose `card_json` is empty (posted before the column existed) or unreadable is logged and skipped.
-- **Upload timeout.** A parse result that does not arrive within 120 s leaves the message marked as
-  timed out even if the parse later succeeds. The upload itself is not retried.
+- **A verdict has five minutes to land.** `match_log_result` carries a 5-minute TTL; a result that
+  expires dead-letters to `match_log_result.dlq` and the message keeps its hand-off reaction only. A
+  verdict whose message was deleted (or the bot can no longer see) is acked and logged, never retried.
 - **Idempotency belongs to stats-service.** Identical bytes deduplicate within their workspace;
   different bytes under the same filename create different jobs. Reuploading identical bytes
   preserves the existing job's outcome and retry budget; an administrator explicitly retries
-  failed or awaiting-link jobs. Filenames and tournament ids are never result rendezvous keys.
+  failed or awaiting-link jobs. Filenames and tournament ids never identify a result; the message ids
+  it echoes do.
 - **History rescan cost.** Startup and every `process_all` walk up to 500 messages per channel, all
   channels concurrently, each attachment costing one Discord CDN download through the proxy.
 - **Attachment download is the only HTTP client.** `AttachmentClientFactory` (`services/attachment_client.py`)

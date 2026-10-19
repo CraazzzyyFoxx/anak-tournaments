@@ -9,7 +9,8 @@ from faststream.rabbit.annotations import RabbitMessage
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
-from shared.messaging.config import BALANCER_JOBS_QUEUE, PICKUP_MIX_CHANGED_DLQ
+from shared.messaging.config import BALANCER_JOBS_DLQ, BALANCER_JOBS_QUEUE, PICKUP_MIX_CHANGED_DLQ
+from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
@@ -22,6 +23,7 @@ from shared.quota import close as close_quota
 from shared.quota import configure as configure_quota
 from shared.schemas.events import BalancerJobEvent
 from shared.services.realtime import configure_realtime
+from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.caching import configure_cache
 from src.core.config import config
@@ -93,6 +95,11 @@ register_mix_card_projector(broker, logger)
 # Balance jobs run for minutes (MOO solver); isolate them from the RPC channel.
 _JOBS_CHANNEL = Channel(prefetch_count=2)
 
+# The relay for this service's own outbox rows (pickup_mix_changed, discord
+# commands, cache invalidations): written in the mutation's transaction,
+# published from here.
+_outbox_scheduler = IntervalScheduler(job_id="event_outbox_drain", label="Outbox drain", logger=logger)
+
 
 def _decode_balancer_message(message: Any) -> Any:
     body = getattr(message, "body", None)
@@ -109,9 +116,10 @@ def _decode_balancer_message(message: Any) -> Any:
 @app.on_startup
 async def setup_worker_observability() -> None:
     await broker.connect()
-    # The projection queue dead-letters here; without the declaration a poison
-    # message routes to a non-existent queue and vanishes.
-    await declare_dead_letter_queue(broker, PICKUP_MIX_CHANGED_DLQ)
+    # The job and projection queues dead-letter here; without the declaration a
+    # poison or expired message routes to a non-existent queue and vanishes.
+    for dlq in (BALANCER_JOBS_DLQ, PICKUP_MIX_CHANGED_DLQ):
+        await declare_dead_letter_queue(broker, dlq)
     setup_sentry(
         dsn=config.sentry_dsn,
         traces_sample_rate=config.sentry_traces_sample_rate,
@@ -136,6 +144,7 @@ async def setup_worker_observability() -> None:
         engine=db.async_engine,
     )
     start_worker_metrics_server(config.worker_metrics_port)
+    _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     logger.info("Balancer worker started")
 
 
@@ -162,6 +171,7 @@ async def start_draft_clock() -> None:
 
 @app.on_shutdown
 async def close_rpc_clients() -> None:
+    _outbox_scheduler.shutdown()
     # Gracefully close the draft realtime Redis client (worker-lifetime singleton).
     await rpc_draft.close()
 

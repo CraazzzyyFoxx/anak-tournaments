@@ -1,4 +1,4 @@
-"""Process-global wiring: settings, database engine, worker broker accessor.
+"""Process-global wiring: settings and database engine.
 
 Deliberately does NOT re-export ``shared.core.errors``/``utils``/``pagination``
 the way the older services' ``src.core`` packages do — that alias exists there
