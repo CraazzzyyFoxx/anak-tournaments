@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { ParsedCompareParams, CompareBaselineState } from "@/app/(site)/users/compare/types";
 import { UserCompareBaselineMode } from "@/types/user.types";
-import { parseOptionalInt, parseRole, parseScope } from "@/app/(site)/users/compare/utils";
+import { parseOptionalInt, parseScope } from "@/app/(site)/users/compare/utils";
 
 type CompareParamUpdates = Record<string, string | number | undefined>;
 
@@ -22,7 +22,7 @@ export const useUserCompareSearchParams = (): UseUserCompareSearchParamsResult =
 
   const subjectUserId = parseOptionalInt(searchParams.get("user_id"));
   const targetUserId = parseOptionalInt(searchParams.get("target_user_id"));
-  const role = parseRole(searchParams.get("role"));
+  const role = searchParams.get("role") || undefined;
   const divMin = parseOptionalInt(searchParams.get("div_min"));
   const divMax = parseOptionalInt(searchParams.get("div_max"));
   const tournamentId = parseOptionalInt(searchParams.get("tournament_id"));

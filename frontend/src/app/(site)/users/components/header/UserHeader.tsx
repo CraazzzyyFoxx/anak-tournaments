@@ -3,8 +3,8 @@ import { getTranslations } from "next-intl/server";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";
 import { getSocialProviderConfig, socialProfileUrl, sortSocialAccounts } from "@/lib/social/providers";
-import { playerRoleTint } from "@/lib/roster/player-role";
-import { roleOf } from "@/lib/roster/role-ref";
+import { findRole, registrationRoles, roleName, rolePresentation } from "@/lib/roster/ontology";
+import disciplineService from "@/services/discipline.service";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getPlayerImage } from "@/lib/player";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -60,7 +60,7 @@ const primaryRoleOf = (profile: UserProfile) => {
 };
 
 const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps) => {
-  const t = await getTranslations();
+  const [t, tRoles] = await Promise.all([getTranslations(), getTranslations("common.roles")]);
   const [name, tag] = user.name.split("#");
   const primaryRole = primaryRoleOf(profile);
   const avatarSrc = getPlayerImage(profile, user);
@@ -72,22 +72,37 @@ const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps)
   const lastSummary = profile.tournaments.length
     ? [...profile.tournaments].sort((a, b) => b.id - a.id)[0]
     : null;
-  // The form streak and the last-tournament fetch are independent — run them
+  // The form streak, the last-tournament fetch and the game's metadata are independent — run them
   // in parallel instead of awaiting sequentially.
-  const [formStreak, lastTournament] = await Promise.all([
+  const [formStreak, lastTournament, metadata] = await Promise.all([
     deriveFormStreak(user.id, discipline, scope),
     lastSummary
       ? userService.getUserTournament(user.id, lastSummary.id).catch(() => null)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    disciplineService.metadata("all", discipline).catch(() => null)
   ]);
   const lastWinrate =
     lastTournament && lastTournament.maps > 0 ? (lastTournament.maps_won / lastTournament.maps) * 100 : null;
   const winrateDelta = lastWinrate !== null && winrate !== null ? lastWinrate - winrate : null;
 
-  const roleTint = playerRoleTint(roleOf(primaryRole?.role));
+  // The profile's game names and tints its primary role (the global ontology every profile widget reads);
+  // a role it does not know keeps its code and no tint.
+  const roleNode = metadata && primaryRole?.role ? findRole(metadata, primaryRole.role) : null;
+  const roleColor = metadata && roleNode ? rolePresentation(metadata.roles, roleNode.id).color : null;
+  const roleLabel = primaryRole?.role
+    ? roleNode
+      ? roleName(roleNode, (code) => (tRoles.has(code as never) ? tRoles(code as never) : null))
+      : primaryRole.role.role
+    : null;
+  // The share card's spectrum is the game's own role colours in declared order.
+  const spectrum = metadata
+    ? registrationRoles(metadata)
+        .map((role) => rolePresentation(metadata.roles, role.id).color)
+        .filter((color): color is string => color !== null)
+    : [];
 
   return (
-    <HeroFrame className="aqt-player" variant="profile" tint={roleTint ? `var(--aqt-${roleTint})` : undefined}>
+    <HeroFrame className="aqt-player" variant="profile" tint={roleColor ?? undefined}>
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-6 px-5 py-5 md:gap-x-6 md:px-8 md:py-7 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-10">
         <div className="relative size-[72px] shrink-0 md:size-[104px]">
           <div className="relative h-full w-full overflow-hidden rounded-[14px] border border-[color:var(--aqt-border-2)] md:rounded-[18px]">
@@ -97,13 +112,14 @@ const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps)
             <div
               className="absolute -bottom-2 -right-2"
               title={t("users.profile.header.divisionTitle", {
-                role: roleOf(primaryRole.role) ?? "",
+                role: roleLabel ?? "",
                 division: String(primaryRole.division)
               })}
             >
               <DivisionIcon
                 division={primaryRole.division}
                 tournamentGrid={primaryRole.division_grid_version}
+                discipline={discipline}
                 width={44}
                 height={44}
                 className="size-9 md:size-11"
@@ -165,8 +181,9 @@ const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps)
             card={{
               name,
               tag: tag ?? null,
-              role: roleOf(primaryRole?.role),
-              roleTint,
+              role: roleLabel,
+              roleColor,
+              spectrum,
               division: primaryRole?.division ?? null,
               winrate,
               avgPlacement: profile.avg_placement,

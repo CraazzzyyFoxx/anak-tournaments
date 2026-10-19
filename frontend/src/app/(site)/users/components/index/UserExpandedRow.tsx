@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { roleOf } from "@/lib/roster/role-ref";
+import { useRoleName } from "@/hooks/useRoleName";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
@@ -12,7 +13,6 @@ import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { getPlayerSlug } from "@/lib/player";
-import { PLAYER_ROLE_LABEL_KEY, normalizePlayerRole } from "@/lib/roster/player-role";
 import { formatOptional } from "@/app/(site)/users/components/shared/list-utils";
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
@@ -47,6 +47,7 @@ export function UserExpandedRow({
   user,
   workspaceId,
   discipline,
+  ontology,
   compareSelected,
   compareDisabled,
   onToggleCompare
@@ -55,11 +56,14 @@ export function UserExpandedRow({
   workspaceId: number | "all" | null;
   /** The index's game: the drawer's career is that game's. */
   discipline: string;
+  /** That game's role dictionary; `null` while it loads (roles then read by code). */
+  ontology: RoleOntology | null;
   compareSelected: boolean;
   compareDisabled: boolean;
   onToggleCompare: () => void;
 }>) {
   const t = useTranslations();
+  const nameOf = useRoleName();
   const { data, isPending, isError } = useQuery({
     queryKey: userQueryKeys.draftCard(user.id, workspaceId, discipline),
     queryFn: () => userService.getDraftCard(user.id, discipline, workspaceId),
@@ -103,12 +107,13 @@ export function UserExpandedRow({
           ) : (
             <ul className="space-y-1.5">
               {data.roles.map((role) => {
-                const roleOption = (role.role ? normalizePlayerRole(roleOf(role.role)) : "Flex");
+                const node = ontology ? findRole(ontology, role.role) : null;
+                const label = role.role === null ? t("common.roles.flex") : node ? nameOf(node) : role.role.role;
                 return (
                 <li key={`${role.role?.dimension}-${role.role?.role}`} className="flex items-center gap-2 text-caption">
-                  <PlayerRoleIcon role={roleOption} size={16} decorative />
+                  <PlayerRoleIcon role={role.role} ontology={ontology} size={16} decorative />
                   <span className="text-[color:var(--aqt-fg-muted)]">
-                    {t(PLAYER_ROLE_LABEL_KEY[roleOption])}
+                    {label}
                   </span>
                   <span className="ml-auto flex items-center gap-3">
                     <Winrate won={role.maps_won} total={role.maps} />

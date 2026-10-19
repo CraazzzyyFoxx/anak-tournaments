@@ -4,11 +4,10 @@ import { useMemo, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import { CompareScope } from "@/app/(site)/users/compare/types";
-import { ROLE_FILTER_OPTIONS } from "@/app/(site)/users/compare/constants";
 import { parseOptionalInt, getMapIconSrc } from "@/app/(site)/users/compare/utils";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import type { RoleOntology } from "@/lib/roster/ontology";
-import { ratedDimension } from "@/lib/roster/ontology";
+import { useRoleName } from "@/hooks/useRoleName";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGridLike } from "@/lib/divisions/grid";
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
@@ -19,13 +18,13 @@ import { DivisionCombobox } from "@/components/DivisionCombobox";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Tournament } from "@/types/tournament.types";
-import { UserRoleType } from "@/types/user.types";
 
 interface CompareFiltersPanelProps {
   subjectUserId?: number;
   targetUserId?: number;
   scope: CompareScope;
-  role?: UserRoleType;
+  /** A rated role code of the browsed game. */
+  role?: string;
   ontology?: RoleOntology | null;
   divMin?: number;
   divMax?: number;
@@ -92,6 +91,7 @@ const CompareFiltersPanel = ({
   updateParams
 }: CompareFiltersPanelProps) => {
   const t = useTranslations();
+  const nameOf = useRoleName();
   const heroOptions: SearchableImageOption[] = useMemo(
     () =>
       heroes.map((hero) => ({
@@ -112,10 +112,11 @@ const CompareFiltersPanel = ({
     [maps]
   );
 
-  const roleOptions: SearchableImageOption[] = ROLE_FILTER_OPTIONS.map((option) => ({
-    value: option.value,
-    label: t(option.labelKey),
-    icon: <PlayerRoleIcon role={{ dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role: option.value.toLowerCase() }} ontology={ontology} size={20} decorative />
+  // The browsed game's own rated roles; the cohort never filters on the open slot.
+  const roleOptions: SearchableImageOption[] = registrationRoles(ontology).map((node) => ({
+    value: node.code,
+    label: nameOf(node),
+    icon: <PlayerRoleIcon role={{ dimension: node.dimension, role: node.code }} ontology={ontology} size={20} decorative />
   }));
 
   const isHeroScope = scope === "hero";

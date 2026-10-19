@@ -143,6 +143,10 @@ def _legacy_catalog(value: Any, *, roster: bool = False) -> Any:
         else _legacy_catalog(item, roster=roster or key == "players")
         for key, item in value.items()
     }
+    if "role_counts" in value:
+        # Users index chip counts are per rated role code now; the frozen read named Overwatch's three.
+        counts = result.pop("role_counts")
+        result.update({f"{code}_count": counts.get(code, 0) for code in ("tank", "damage", "support")})
     if "character" in value and {"maps", "maps_won"} <= value.keys():
         result["role"] = enums.HeroClass[value["character"]["attrs"]["class"]].slot_code
     return result

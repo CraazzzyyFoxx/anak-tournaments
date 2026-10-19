@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
+import userService from "@/services/user.service";
 import UsersClient from "./UsersClient";
 import { DEFAULT_MIN_ENCOUNTERS, parseMinEncounters } from "./users-index.model";
 
@@ -15,14 +15,16 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const { search } = vi.hoisted(() => ({ search: { current: new URLSearchParams() } }));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/users",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => search.current,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
-  useDivisionGrid: () => OW_REFERENCE_GRID
+  useDivisionGrid: () => ({ tiers: [] })
 }));
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
@@ -78,9 +80,7 @@ vi.mock("@/services/user.service", () => ({
     })),
     getUsersOverviewStats: vi.fn(async () => ({
       total_players: 100,
-      tank_count: 30,
-      damage_count: 40,
-      support_count: 30,
+      role_counts: { tank: 30, damage: 40, support: 30 },
       flex_count: 12,
       flex_declared_count: 8,
       division_counts: [{ division: 5, count: 11 }],
@@ -115,6 +115,8 @@ const settle = async () => {
 };
 
 beforeEach(() => {
+  search.current = new URLSearchParams();
+  vi.mocked(userService.getUsersOverview).mockClear();
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -151,6 +153,32 @@ it("renders a player row with its winrate and sample size", async () => {
   expect(container.textContent).toContain("30 encounters");
   // Role chips read their counts from the stats endpoint.
   expect(container.textContent).toContain("100");
+});
+
+it("offers the browsed game's own roles as chips, counted per role code", async () => {
+  await renderIndex();
+
+  const chips = [...container.querySelectorAll("button")].map((button) => button.textContent ?? "");
+  // The first installed game here is Overwatch: its three roles, then the open slot.
+  expect(chips).toEqual(expect.arrayContaining(["Tank30", "Damage40", "Support30", "Flex8"]));
+});
+
+it("filters the reads on a role chip in the game's rated dimension", async () => {
+  search.current = new URLSearchParams("role=support");
+  await renderIndex();
+
+  expect(vi.mocked(userService.getUsersOverview)).toHaveBeenLastCalledWith(
+    expect.objectContaining({ discipline: "overwatch", role: { dimension: "player_role", role: "support" } })
+  );
+});
+
+it("reads every player for a role the game does not have", async () => {
+  search.current = new URLSearchParams("role=Tank");
+  await renderIndex();
+
+  expect(vi.mocked(userService.getUsersOverview)).toHaveBeenLastCalledWith(
+    expect.objectContaining({ discipline: "overwatch", role: undefined })
+  );
 });
 
 it("loads the draft card only once a row is expanded", async () => {

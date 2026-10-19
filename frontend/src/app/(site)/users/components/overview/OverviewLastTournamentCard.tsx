@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { roleOf } from "@/lib/roster/role-ref";
 import { ArrowUpRight, Hourglass } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -12,13 +11,18 @@ import { UserTournamentStat } from "@/types/statistics.types";
 import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY, playerRoleTint } from "@/lib/roster/player-role";
+import { PROFILE_METADATA_AXIS } from "@/components/profile/ProfileWidget";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
+import { findRole } from "@/lib/roster/ontology";
 import { tournamentHref } from "@/lib/tournament/url";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
 import LobbyLeaderboardModal from "@/app/(site)/users/components/overview/LobbyLeaderboardModal";
 
 interface Props {
   tournament: UserTournamentWithStats;
+  /** The profile's game: its ontology names and draws the role played. */
+  discipline: string;
   tournaments: UserTournamentSummary[];
   /** Profile owner's user id — the row highlighted in the lobby leaderboard. */
   userId: number;
@@ -37,9 +41,6 @@ const formatPercent = (value: number | null | undefined, digits = 0) => {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return `${(value * 100).toFixed(digits)}%`;
 };
-
-// OW-shaped presentation until P7; absent assignments have no role color.
-const roleColor = (role: string | null) => `var(--aqt-${playerRoleTint(role) ?? "fg-muted"})`;
 
 // The card title IS the tournament switcher: heading type, no box. Focus is
 // shown by colour + underline because the title row clips outside rings.
@@ -118,8 +119,13 @@ const LobbyStat = ({
   </button>
 );
 
-const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }: Props) => {
+const OverviewLastTournamentCard = ({ tournament, discipline, tournaments, userId, mapPips }: Props) => {
   const t = useTranslations();
+  const nameOf = useRoleName();
+  const ontology = useDisciplineMetadata(PROFILE_METADATA_AXIS, discipline).data ?? null;
+  const roleNode = ontology ? findRole(ontology, tournament.role) : null;
+  // The exact role played, in the game's dictionary; one it does not know keeps its own code.
+  const roleLabel = tournament.role === null ? t("common.roles.flex") : roleNode ? nameOf(roleNode) : tournament.role.role;
   const [lb, setLb] = useState<{ stat: string; label: string } | null>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -228,13 +234,14 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
           <DivisionIcon
             division={tournament.division}
             tournamentGrid={tournament.division_grid_version}
+            discipline={discipline}
             width={52}
             height={52}
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 font-onest text-[20px] font-bold leading-none text-[color:var(--aqt-fg)]">
-              <PlayerRoleIcon role={roleOf(tournament.role)} size={18} color={roleColor(roleOf(tournament.role))} decorative />
-              {t(PLAYER_ROLE_LABEL_KEY[(tournament.role ? normalizePlayerRole(roleOf(tournament.role)) : "Flex")] as Parameters<typeof t>[0])}
+              <PlayerRoleIcon role={tournament.role} ontology={ontology} size={18} decorative />
+              {roleLabel}
             </div>
             {hasData ? (
               <div className="aqt-tnum mt-1 text-caption text-[color:var(--aqt-fg-muted)]">

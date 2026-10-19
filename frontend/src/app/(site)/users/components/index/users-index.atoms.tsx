@@ -1,8 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { roleOf } from "@/lib/roster/role-ref";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -82,10 +81,15 @@ export function LastActive({ at, className }: Readonly<{ at: string | null; clas
 export function RolesCrests({
   roles,
   grids,
+  discipline,
+  ontology,
   size = 30
 }: Readonly<{
   roles: UserOverviewRoleDivision[];
   grids: DivisionGridVersion[] | undefined;
+  /** The index's game and its role dictionary (`null` while either resolves). */
+  discipline: string | null;
+  ontology: RoleOntology | null;
   size?: number;
 }>) {
   const t = useTranslations();
@@ -101,7 +105,9 @@ export function RolesCrests({
       {roles.map((role) => (
         <DivisionHex
           key={`${role.role?.dimension}-${role.role?.role}-${role.division}`}
-          role={role.role ? normalizePlayerRole(roleOf(role.role)) : "Flex"}
+          role={role.role}
+          discipline={discipline}
+          ontology={ontology}
           division={role.division}
           roleGrid={gridForRole(role, grids)}
           size={size}

@@ -6,10 +6,10 @@ import { useTranslations } from "next-intl";
 
 import tournamentService from "@/services/tournament.service";
 import userService from "@/services/user.service";
-import { UserRoleType, UserCompareBaselineMode } from "@/types/user.types";
+import { UserCompareBaselineMode } from "@/types/user.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import { CompareRow } from "@/app/(site)/users/compare/types";
-import { getMapIconSrc, normalizeNumber, roleLabelKey } from "@/app/(site)/users/compare/utils";
+import { compareRoleFilter, getMapIconSrc, normalizeNumber } from "@/app/(site)/users/compare/utils";
 import {
   buildHeroCompareQueryOptions,
   buildOverallCompareQueryOptions,
@@ -20,6 +20,8 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
+import { useRoleName } from "@/hooks/useRoleName";
+import { findRole } from "@/lib/roster/ontology";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 interface UseUserCompareDataParams {
@@ -27,7 +29,8 @@ interface UseUserCompareDataParams {
   subjectUserId?: number;
   effectiveBaseline: UserCompareBaselineMode;
   targetUserId?: number;
-  role?: UserRoleType;
+  /** A rated role code of the browsed game (`?role=`). */
+  role?: string;
   divMin?: number;
   divMax?: number;
   tournamentId?: number;
@@ -77,21 +80,25 @@ export const useUserCompareData = ({
     [metadata]
   );
 
-  const compareQuery = useQuery(
-    buildOverallCompareQueryOptions({
-      isHeroScope,
-      subjectUserId,
-      discipline,
-      baseline: effectiveBaseline,
-      targetUserId,
-      role,
-      divMin,
-      divMax,
-      tournamentId,
-      workspaceId,
-      fetchCompare: userService.getUserCompare
-    })
-  );
+  // A cohort role resolves against the game's own ontology; a read naming one waits for it rather than running wide.
+  const roleFilter = useMemo(() => compareRoleFilter(metadata, role), [metadata, role]);
+  const roleReady = role === undefined || metadata !== null;
+  const nameOf = useRoleName();
+
+  const overallOptions = buildOverallCompareQueryOptions({
+    isHeroScope,
+    subjectUserId,
+    discipline,
+    baseline: effectiveBaseline,
+    targetUserId,
+    role: roleFilter,
+    divMin,
+    divMax,
+    tournamentId,
+    workspaceId,
+    fetchCompare: userService.getUserCompare
+  });
+  const compareQuery = useQuery({ ...overallOptions, enabled: overallOptions.enabled && roleReady });
 
   const heroesQuery = useCatalogEntities(discipline, "character", {
     enabled: shouldLoadHeroCatalogs(isHeroScope)
@@ -126,7 +133,7 @@ export const useUserCompareData = ({
       discipline,
       baseline: effectiveBaseline,
       targetUserId,
-      role,
+      role: roleFilter,
       divMin,
       divMax,
       tournamentId,
@@ -139,7 +146,7 @@ export const useUserCompareData = ({
     });
   const heroCompareQuery = useQuery({
     ...heroCompareOptions,
-    enabled: heroCompareOptions.enabled && selectionsSettled && stats.length > 0
+    enabled: heroCompareOptions.enabled && selectionsSettled && stats.length > 0 && roleReady
   });
 
   const heroes = heroesQuery.data ?? [];
@@ -162,7 +169,8 @@ export const useUserCompareData = ({
     }
 
     if (effectiveBaseline === "cohort") {
-      const roleText = role ? t(roleLabelKey(role)) : t("users.compare.allRoles");
+      const roleNode = roleFilter && metadata ? findRole(metadata, roleFilter) : null;
+      const roleText = roleNode ? nameOf(roleNode) : t("users.compare.allRoles");
       const rangeText = `${getDivisionLabel(divisionGrid, divMin) ?? t("common.any")} - ${
         getDivisionLabel(divisionGrid, divMax) ?? t("common.any")
       }`;
@@ -170,7 +178,7 @@ export const useUserCompareData = ({
     }
 
     return t("users.compare.comparingAgainstGlobal");
-  }, [effectiveBaseline, selectedTargetName, role, divMin, divMax, divisionGrid, t]);
+  }, [effectiveBaseline, selectedTargetName, roleFilter, metadata, nameOf, divMin, divMax, divisionGrid, t]);
 
   const rows = useMemo<CompareRow[]>(() => {
     if (isHeroScope) {

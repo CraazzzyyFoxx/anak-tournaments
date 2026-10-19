@@ -1,4 +1,3 @@
-import type { PlayerRoleOption } from "@/lib/roster/player-role";
 import type { RoleRef } from "@/lib/roster/role-ref";
 import type { Schema } from "@/types/api";
 import type { CatalogEntityRead } from "@/types/catalog.types";
@@ -371,9 +370,6 @@ export interface MinimizedUser {
   name: string;
 }
 
-/** The canonical player role — re-exported from `@/lib/roster/player-role` (single source of truth). */
-export type UserRoleType = PlayerRoleOption;
-
 export interface UserOverviewRoleDivision {
   role: RoleRef | null;
   division: number;
@@ -433,12 +429,11 @@ export interface UserOverviewStats {
   median_tournaments_per_player: number;
   active_last_30d: number;
   active_last_30d_pct: number;
-  tank_count: number;
-  damage_count: number;
-  support_count: number;
+  /** Distinct players per role code of the game's rated dimension (codes nobody played are absent). */
+  role_counts: Record<string, number>;
   /** "Plays anything": multi-role or explicit flex — wider than the chip below. */
   flex_count: number;
-  /** Users the `role=Flex` chip itself matches, under the other filters. */
+  /** Users the open-slot (`role=flex`) chip itself matches, under the other filters. */
   flex_declared_count: number;
   /** Per division, ignoring the `divisions` filter so the facet stays usable. */
   division_counts: UserOverviewDivisionCount[];

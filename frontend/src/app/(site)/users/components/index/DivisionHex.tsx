@@ -5,37 +5,42 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useRoleName } from "@/hooks/useRoleName";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
-import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { ratedDimension } from "@/lib/roster/ontology";
-import { ROLE_LABEL_KEY } from "@/app/(site)/users/components/shared/list-utils";
-import type { UserRoleType } from "@/types/user.types";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 /**
  * A player's division crest for one role, titled with the tier name from the
  * grid the number actually belongs to — `roleGrid` in all-workspaces mode
- * (each row's own tournament grid), the workspace's own grid otherwise.
+ * (each row's own tournament grid), the workspace's grid of the game otherwise.
  */
 export const DivisionHex = ({
   role,
   division,
   roleGrid,
+  discipline,
+  ontology,
   size = 30
 }: Readonly<{
-  role: UserRoleType;
+  /** `null`: no rated assignment (the open slot). */
+  role: RoleRef | null;
   division: number;
   roleGrid?: DivisionGridVersion | null;
+  /** The index's game: its workspace grid and crests (`null` only before it resolves; no row exists then). */
+  discipline: string | null;
+  /** Its role dictionary; `null` while it loads (the role then reads by code). */
+  ontology: RoleOntology | null;
   size?: number;
 }>) => {
   const t = useTranslations();
-  const browsing = useBrowsingDiscipline({ allowsAll: false });
-  const code = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
-  const metadata = useDisciplineMetadata(browsing.axis, code);
-  const workspaceGrid = useDivisionGrid("overwatch");
+  const nameOf = useRoleName();
+  const workspaceGrid = useDivisionGrid(discipline ?? undefined);
+  const node = ontology ? findRole(ontology, role) : null;
+  const roleName = role === null ? t("common.roles.flex") : node ? nameOf(node) : role.role;
   const title = t("users.list.division.badgeTitle", {
-    role: t(ROLE_LABEL_KEY[role]),
+    role: roleName,
     tier:
       getDivisionLabel(roleGrid ?? workspaceGrid, division) ??
       t("common.divisionWithId", { id: String(division) })
@@ -50,14 +55,13 @@ export const DivisionHex = ({
       <DivisionIcon
         division={division}
         tournamentGrid={roleGrid}
-        discipline="overwatch"
+        discipline={discipline ?? undefined}
         width={size}
         height={size}
         className="h-full w-full"
       />
       <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center overflow-hidden rounded-full border-2 border-[color:var(--aqt-card)] bg-[color:var(--aqt-card-2)] p-px">
-        <PlayerRoleIcon role={role === "Flex" ? null : { dimension: metadata.data ? ratedDimension(metadata.data)?.code ?? "" : "", role: role.toLowerCase() }}
-          ontology={metadata.data} size={12} label={t("users.list.a11y.roleAlt", { role: t(ROLE_LABEL_KEY[role]) })} />
+        <PlayerRoleIcon role={role} ontology={ontology} size={12} label={t("users.list.a11y.roleAlt", { role: roleName })} />
       </span>
     </span>
   );

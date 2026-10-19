@@ -6,8 +6,11 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { UserCatalogResponse, UserOverviewResponse, UserOverviewStats } from "@/types/user.types";
 
+import { roleFilterOf } from "./users-index.model";
 import type { UsersIndexParams } from "./useUsersIndexParams";
 
 export interface UsersIndexData {
@@ -22,6 +25,8 @@ export interface UsersIndexData {
   workspaceId: number | "all" | null;
   /** The game every read is in; `null` while unresolved or invalid. */
   discipline: string | null;
+  /** That game's role dictionary (names and glyphs); `null` while it loads. */
+  ontology: RoleOntology | null;
 }
 
 /**
@@ -29,7 +34,11 @@ export interface UsersIndexData {
  * nothing is read then). Only the view on screen pays for its own list — the stats strip is shared by both, so
  * it always runs. A previous result is kept on screen while a filter changes, never across games.
  */
-export function useUsersIndexData(params: UsersIndexParams, discipline: string | null): UsersIndexData {
+export function useUsersIndexData(
+  params: UsersIndexParams,
+  discipline: string | null,
+  metadata: DisciplineMetadata | null
+): UsersIndexData {
   const currentWorkspaceId = useCurrentWorkspaceId();
   const { page, perPage, query, sort, order, role, divisions, hasLogs, minEncounters, letter, view, scope } =
     params;
@@ -42,6 +51,9 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
   // Every index key carries the game at position 2.
   const sameGame = <T,>(previous: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
     previousQuery?.queryKey[2] === discipline ? previous : undefined;
+  // A role chip needs the game's rated dimension: such a read waits for the metadata rather than running unfiltered.
+  const roleFilter = roleFilterOf(metadata, role);
+  const ready = discipline !== null && (role === undefined || roleFilter !== undefined);
 
   const overviewQuery = useQuery({
     queryKey: userQueryKeys.overview(
@@ -65,7 +77,7 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
         sort,
         order,
         query: query || undefined,
-        role,
+        role: roleFilter,
         divisions,
         hasLogs,
         minEncounters,
@@ -74,7 +86,7 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
       }),
     placeholderData: sameGame,
     staleTime: 30_000,
-    enabled: view === "table" && discipline !== null
+    enabled: view === "table" && ready
   });
 
   const statsQuery = useQuery({
@@ -83,7 +95,7 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
       userService.getUsersOverviewStats({
         discipline: game,
         query: query || undefined,
-        role,
+        role: roleFilter,
         divisions,
         hasLogs,
         workspaceId,
@@ -91,7 +103,7 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
       }),
     placeholderData: sameGame,
     staleTime: 30_000,
-    enabled: discipline !== null
+    enabled: ready
   });
 
   const catalogQuery = useQuery({
@@ -100,7 +112,7 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
       userService.getUsersCatalog({
         discipline: game,
         query: query || undefined,
-        role,
+        role: roleFilter,
         // A pinned letter is the "show more" affordance: one bucket, deeper.
         perLetter: letter ? 48 : 12,
         hasLogs,
@@ -111,7 +123,7 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
       }),
     placeholderData: sameGame,
     staleTime: 30_000,
-    enabled: view === "catalog" && discipline !== null
+    enabled: view === "catalog" && ready
   });
 
   const data = overviewQuery.data;
@@ -131,5 +143,15 @@ export function useUsersIndexData(params: UsersIndexParams, discipline: string |
     [catalogQuery.data]
   );
 
-  return { overviewQuery, statsQuery, catalogQuery, maxPage, range, availableLetters, workspaceId, discipline };
+  return {
+    overviewQuery,
+    statsQuery,
+    catalogQuery,
+    maxPage,
+    range,
+    availableLetters,
+    workspaceId,
+    discipline,
+    ontology: metadata
+  };
 }

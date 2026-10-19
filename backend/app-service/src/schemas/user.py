@@ -616,9 +616,8 @@ class UserOverviewStats(BaseModel):
     median_tournaments_per_player: float
     active_last_30d: int
     active_last_30d_pct: float
-    tank_count: int
-    damage_count: int
-    support_count: int
+    #: Distinct players per top-level role code of the game's rated dimension (only codes somebody played).
+    role_counts: dict[str, int] = Field(default_factory=dict)
     flex_count: int
     #: Players with no rated-role assignment, unlike ``flex_count`` which also counts multi-role players.
     flex_declared_count: int

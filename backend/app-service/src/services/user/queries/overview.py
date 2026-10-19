@@ -2,7 +2,7 @@
 
 import datetime
 import typing
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import sqlalchemy as sa
 from cashews import cache
@@ -1143,7 +1143,7 @@ class UserOverviewQueries(DisciplineQueries):
           - avg_tournaments_per_player / median_tournaments_per_player
           - active_last_30d / active_last_30d_pct: distinct players in tournaments
             whose start_date or end_date falls within the last 30 days
-          - tank / damage / support / flex counts (distinct roles per user)
+          - role_counts: distinct players per top-level rated role code of the game
           - flex_declared_count: what the Flex chip itself selects
           - division_counts: per-division chip counts, ignoring the division chips
         """
@@ -1202,9 +1202,7 @@ class UserOverviewQueries(DisciplineQueries):
                 "median_tournaments_per_player": 0.0,
                 "active_last_30d": 0,
                 "active_last_30d_pct": 0.0,
-                "tank_count": 0,
-                "damage_count": 0,
-                "support_count": 0,
+                "role_counts": {},
                 "flex_count": 0,
                 "flex_declared_count": 0,
                 "division_counts": [],
@@ -1279,36 +1277,28 @@ class UserOverviewQueries(DisciplineQueries):
             sa.select(models.WorkspaceMember.player_id.label("user_id"), models.Player.role)
             .select_from(models.Player)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .where(
                 models.WorkspaceMember.player_id.in_(candidate_ids),
                 models.Player.is_substitution.is_(False),
+                models.Tournament.discipline == self.discipline,
+                *ws_filter,
             )
             .distinct()
         )
-        if workspace_id is not None:
-            roles_query = (
-                roles_query.join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-                .where(models.Tournament.discipline == self.discipline)
-                .where(models.Tournament.workspace_id == workspace_id)
-            )
         user_roles: dict[int, set[str | None]] = defaultdict(set)
         for user_id, player_role in (await session.execute(roles_query)).all():
             user_roles[user_id].add(player_role)
 
-        tank_count = damage_count = support_count = flex_count = flex_declared_count = 0
+        role_counts: Counter[str] = Counter()
+        flex_count = flex_declared_count = 0
         for roles_set in user_roles.values():
-            # OW-shaped read (wire fields name these roles); P7 makes it data-driven.
             # An open slot has no assignment; multi-role players also count as flex.
             if len(roles_set) > 1 or None in roles_set:
                 flex_count += 1
             if None in roles_set:
                 flex_declared_count += 1
-            if "tank" in roles_set:
-                tank_count += 1
-            if "damage" in roles_set:
-                damage_count += 1
-            if "support" in roles_set:
-                support_count += 1
+            role_counts.update(code for code in roles_set if code is not None)
 
         # Per-division chip counts, over the candidate set *before* the division
         # chips were applied: picking division 5 must not zero every other chip.
@@ -1345,9 +1335,7 @@ class UserOverviewQueries(DisciplineQueries):
             "median_tournaments_per_player": round(median_tournaments, 1),
             "active_last_30d": int(active_last_30d),
             "active_last_30d_pct": round(active_last_30d / total_players * 100, 1) if total_players else 0.0,
-            "tank_count": tank_count,
-            "damage_count": damage_count,
-            "support_count": support_count,
+            "role_counts": dict(role_counts),
             "flex_count": flex_count,
             "flex_declared_count": flex_declared_count,
             "division_counts": division_counts,

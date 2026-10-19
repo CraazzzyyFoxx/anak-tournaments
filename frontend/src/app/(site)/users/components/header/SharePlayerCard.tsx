@@ -12,7 +12,6 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import type { PlayerRoleTint } from "@/lib/roster/player-role";
 import { initials } from "@/lib/utils";
 import type { FormResult } from "@/components/profile/atoms";
 import type { Translate } from "@/app/(site)/users/components/shared/list-utils";
@@ -21,8 +20,12 @@ import type { Translate } from "@/app/(site)/users/components/shared/list-utils"
 export interface ShareCardData {
   name: string;
   tag: string | null;
+  /** The primary role's name in the profile's game, or `null` with no assigned role. */
   role: string | null;
-  roleTint: PlayerRoleTint | null;
+  /** That role's presentation colour (a CSS colour from the game's ontology), or `null`: no role tint. */
+  roleColor: string | null;
+  /** The game's role colours in declared order (the top bar); empty → the brand accent. */
+  spectrum: string[];
   division: number | null;
   winrate: number | null;
   avgPlacement: number | null;
@@ -98,10 +101,6 @@ interface Palette {
   fgMuted: string;
   fgFaint: string;
   teal: string;
-  tank: string;
-  damage: string;
-  support: string;
-  flex: string;
   emerald: string;
   rose: string;
   amber: string;
@@ -116,7 +115,7 @@ function drawCard(
   profileUrl: string,
   t: Translate
 ) {
-  const roleColor = card.roleTint ? C[card.roleTint] : C.teal;
+  const roleColor = card.roleColor ?? C.teal;
   // The card is rasterised for public sharing, so every glyph on it has to be
   // in the viewer's locale. Canvas has no text transform — uppercase here.
   const roleLabel = (card.role ?? t("users.profile.share.rolePlayer")).toUpperCase();
@@ -145,7 +144,7 @@ function drawCard(
   ctx.restore();
 
   // role-tinted corner wash (only when the player has an assigned role)
-  if (card.roleTint) {
+  if (card.roleColor) {
     const wash = ctx.createRadialGradient(150, -40, 40, 150, -40, 720);
     wash.addColorStop(0, roleColor);
     wash.addColorStop(1, "transparent");
@@ -158,9 +157,8 @@ function drawCard(
 
   // spectrum top bar
   const spectrum = ctx.createLinearGradient(0, 0, CARD_W, 0);
-  spectrum.addColorStop(0, C.tank);
-  spectrum.addColorStop(0.5, C.damage);
-  spectrum.addColorStop(1, C.support);
+  const stops = card.spectrum.length > 0 ? card.spectrum : [C.teal];
+  stops.forEach((color, index) => spectrum.addColorStop(stops.length > 1 ? index / (stops.length - 1) : 0, color));
   ctx.fillStyle = spectrum;
   ctx.fillRect(0, 0, CARD_W, 6);
 
@@ -361,10 +359,6 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
         fgMuted: token("--aqt-fg-muted"),
         fgFaint: token("--aqt-fg-faint"),
         teal: token("--aqt-teal"),
-        tank: token("--aqt-tank"),
-        damage: token("--aqt-damage"),
-        support: token("--aqt-support"),
-        flex: token("--aqt-flex"),
         emerald: token("--aqt-emerald"),
         rose: token("--aqt-rose"),
         amber: token("--aqt-amber")

@@ -8,7 +8,6 @@ import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { characterClass } from "@/lib/catalog/attrs";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
-import { heroVariantFromRole } from "@/lib/roster/player-role";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { COL, StatKey, ALL_STAT_OPTIONS } from "../config/stat-columns";
@@ -52,7 +51,8 @@ const HeroLeaderboardTable = ({
 }: HeroLeaderboardTableProps) => {
   const t = useTranslations();
   const [hoveredUserId, setHoveredUserId] = useState<number | null>(null);
-  const variant = heroVariantFromRole(characterClass(selectedHero));
+  // The class badge wears the character's own catalog colour (neutral without one) — never a role hue.
+  const badgeColor = typeof selectedHero?.attrs.color === "string" ? selectedHero.attrs.color : "var(--aqt-fg-muted)";
 
   // One bar scale per column, computed over the whole roster (not per row), so
   // the scale is independent of the shared sort order.
@@ -105,8 +105,8 @@ const HeroLeaderboardTable = ({
               <span
                 className="rounded-[5px] px-1.5 py-0.5 text-label font-bold uppercase leading-none tracking-label"
                 style={{
-                  color: `var(--aqt-${variant})`,
-                  background: `color-mix(in srgb, var(--aqt-${variant}) 15%, transparent)`,
+                  color: badgeColor,
+                  background: `color-mix(in srgb, ${badgeColor} 15%, transparent)`,
                 }}
               >
                 {characterClass(selectedHero)}

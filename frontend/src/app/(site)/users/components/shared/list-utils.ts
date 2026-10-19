@@ -11,13 +11,6 @@ import type { useTranslations } from "next-intl";
  */
 export type Translate = ReturnType<typeof useTranslations<never>>;
 
-/**
- * Maps a role type to its shared `common.roles.*` message key.
- * Re-exported under this tree's historical name so there is exactly one role
- * label map in the codebase — the canonical one in `@/lib/roster/player-role`.
- */
-export { PLAYER_ROLE_LABEL_KEY as ROLE_LABEL_KEY } from "@/lib/roster/player-role";
-
 export const parsePositiveInt = (value: string | null, fallback: number): number => {
   if (!value) return fallback;
   const parsed = Number(value);

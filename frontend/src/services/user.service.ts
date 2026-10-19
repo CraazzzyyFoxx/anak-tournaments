@@ -16,7 +16,6 @@ import {
   UserDraftCard,
   UserProfile,
   MinimizedUser,
-  UserRoleType,
   UserTournament,
   UserTournamentWithStats
 } from "@/types/user.types";
@@ -24,11 +23,11 @@ import { PaginatedResponse, SearchPaginationParams } from "@/types/pagination.ty
 import { AchievementRarity } from "@/types/achievement.types";
 import { apiFetch } from "@/lib/api/fetch";
 import { scopeQuery, type StatsScope } from "@/lib/site/stats-scope";
-import { toRoleRef } from "@/lib/roster/role-ref";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
-// OW-shaped controls until P7. Omission means no filter; JSON null selects no assignment.
-function roleQuery(role: UserRoleType | undefined): string | undefined {
-  return role === undefined ? undefined : JSON.stringify(toRoleRef(role === "Flex" ? null : role.toLowerCase(), null, "player_role"));
+// A rated role of the read's game; `null` selects players with no rated assignment; omission means no filter.
+function roleQuery(role: RoleRef | null | undefined): string | undefined {
+  return role === undefined ? undefined : JSON.stringify(role);
 }
 
 // Public, workspace-scoped profile reads are cached in the Next Data Cache for
@@ -356,7 +355,7 @@ export default class userService {
       | "best_placement";
     order?: "asc" | "desc";
     query?: string;
-    role?: UserRoleType;
+    role?: RoleRef | null;
     /** Division numbers; a player matches when any (filtered) role sits in the set. */
     divisions?: number[];
     /** Only players with parsed match logs. */
@@ -397,7 +396,7 @@ export default class userService {
   }: {
     discipline: string;
     query?: string;
-    role?: UserRoleType;
+    role?: RoleRef | null;
     divisions?: number[];
     hasLogs?: boolean;
     workspaceId?: number | "all" | null;
@@ -430,7 +429,7 @@ export default class userService {
   }: {
     discipline: string;
     query?: string;
-    role?: UserRoleType;
+    role?: RoleRef | null;
     divisions?: number[];
     hasLogs?: boolean;
     letter?: string;
@@ -471,7 +470,7 @@ export default class userService {
       discipline: string;
       baseline?: UserCompareBaselineMode;
       targetUserId?: number;
-      role?: UserRoleType;
+      role?: RoleRef;
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
@@ -517,7 +516,7 @@ export default class userService {
       leftEntityId?: number;
       rightEntityId?: number;
       mapId?: number;
-      role?: UserRoleType;
+      role?: RoleRef;
       divMin?: number;
       divMax?: number;
       tournamentId?: number;

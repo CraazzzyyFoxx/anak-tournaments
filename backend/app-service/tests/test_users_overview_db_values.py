@@ -427,7 +427,7 @@ async def _assertions(session: Any, seed: _Seed) -> None:
     )
     assert stats.total_players == 5
     assert stats.with_logs_count == 1
-    assert (stats.tank_count, stats.damage_count, stats.support_count) == (1, 1, 1)
+    assert stats.role_counts == {"tank": 1, "damage": 1, "support": 1}
     # flex_count counts "plays anything"; flex_declared_count is what the chip
     # selects — here both are delta alone.
     assert stats.flex_count == 1

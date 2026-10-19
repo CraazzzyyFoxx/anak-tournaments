@@ -12,35 +12,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SearchField } from "@/components/ui/search-field";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
-import type { UserOverviewStats, UserRoleType } from "@/types/user.types";
+import { useRoleName } from "@/hooks/useRoleName";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
+import type { UserOverviewStats } from "@/types/user.types";
 
-import {
-  DEFAULT_MIN_ENCOUNTERS,
-  MIN_ENCOUNTERS_OPTIONS,
-  ROLE_FILTERS,
-  type ViewMode
-} from "./users-index.model";
+import { DEFAULT_MIN_ENCOUNTERS, MIN_ENCOUNTERS_OPTIONS, type ViewMode } from "./users-index.model";
 import type { UsersIndexParamControls } from "./useUsersIndexParams";
 
-/** Count beside a role chip; `undefined` while the stats read is in flight. */
-function roleChipCount(
-  value: "all" | UserRoleType,
-  stats: UserOverviewStats | undefined
-): number | undefined {
-  if (!stats) return undefined;
-  switch (value) {
-    case "all":
-      return stats.total_players;
-    case "Tank":
-      return stats.tank_count;
-    case "Damage":
-      return stats.damage_count;
-    case "Support":
-      return stats.support_count;
-    case "Flex":
-      return stats.flex_declared_count;
-  }
+interface RoleChip {
+  /** The `?role=` value; `undefined` is "every player". */
+  value: string | undefined;
+  label: string;
+  /** `undefined` while the stats read is in flight. */
+  count: number | undefined;
 }
 
 /**
@@ -51,16 +36,29 @@ function roleChipCount(
 export function UsersIndexFilters({
   controls,
   stats,
+  ontology,
   foundCount
 }: Readonly<{
   controls: UsersIndexParamControls;
   stats: UserOverviewStats | undefined;
+  /** The browsed game's role dictionary: its rated roles are the chips (none while it loads). */
+  ontology: RoleOntology | null;
   /** `undefined` while loading, `null` when the list read failed. */
   foundCount: number | null | undefined;
 }>) {
   const t = useTranslations();
   const format = useFormatter();
-  const { role, divisions, hasLogs, minEncounters, view, scope } = controls.params;
+  const nameOf = useRoleName();
+  const { role, divisions, hasLogs, minEncounters, view } = controls.params;
+  const roleChips: RoleChip[] = [
+    { value: undefined, label: t("common.all"), count: stats?.total_players },
+    ...registrationRoles(ontology).map((node) => ({
+      value: node.code,
+      label: nameOf(node),
+      count: stats ? (stats.role_counts[node.code] ?? 0) : undefined
+    })),
+    { value: OPEN_SLOT_CODE, label: t("common.roles.flex"), count: stats?.flex_declared_count }
+  ];
 
   const divisionCounts = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -82,15 +80,15 @@ export function UsersIndexFilters({
           label={t("users.list.filters.roleGroup")}
           className="-mx-2.5 flex items-center gap-2 overflow-x-auto px-2.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0"
         >
-          {ROLE_FILTERS.map((option) => (
+          {roleChips.map((chip) => (
             <FilterChip
-              key={option.value}
-              active={option.value === "all" ? role === undefined : role === option.value}
-              count={roleChipCount(option.value, stats)}
-              onClick={() => controls.setRole(option.value)}
+              key={chip.value ?? "all"}
+              active={role === chip.value}
+              count={chip.count}
+              onClick={() => controls.setRole(chip.value)}
               className="shrink-0"
             >
-              {t(option.labelKey)}
+              {chip.label}
             </FilterChip>
           ))}
         </FilterChipGroup>
@@ -102,7 +100,7 @@ export function UsersIndexFilters({
             multiple
             values={divisions}
             onValuesChange={controls.setDivisions}
-            grid={scope === "all" ? OW_REFERENCE_GRID : undefined}
+            grid={controls.divisionGrid}
             counts={divisionCounts}
             placeholder={t("users.list.filters.divisions")}
             ariaLabel={t("users.list.filters.divisions")}

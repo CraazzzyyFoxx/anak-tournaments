@@ -8,7 +8,6 @@ import { useTranslations } from "next-intl";
 import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { characterClass } from "@/lib/catalog/attrs";
 import type { CatalogEntityRead } from "@/types/catalog.types";
-import { heroVariantFromRole } from "@/lib/roster/player-role";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { cn } from "@/lib/utils";
 
@@ -29,24 +28,24 @@ interface HeroCompareHeroProps {
   rows: CharacterLeaderboardEntry[];
 }
 
+/**
+ * The leaderboard's headline stat per character class (`attrs.class`) — the columns this page reads are the
+ * fixed per-10 leaderboard wire; a class without its own headline reads damage.
+ */
+const SIGNATURE = {
+  support: { key: "per10_healing", label: "users.heroesCompare.hero.healing" },
+  tank: { key: "per10_damage_blocked", label: "users.heroesCompare.hero.blocked" }
+} as const;
+const DEFAULT_SIGNATURE = { key: "per10_damage", label: "users.heroesCompare.hero.damage" } as const;
+
 const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {
   const t = useTranslations();
 
   const stats = useMemo<SummaryStat[]>(() => {
-    const variant = heroVariantFromRole(characterClass(selectedHero));
-    const sigKey =
-      variant === "support"
-        ? "per10_healing"
-        : variant === "tank"
-          ? "per10_damage_blocked"
-          : "per10_damage";
-    const sigShort =
-      variant === "support"
-        ? t("users.heroesCompare.hero.healing")
-        : variant === "tank"
-          ? t("users.heroesCompare.hero.blocked")
-          : t("users.heroesCompare.hero.damage");
-    const sigDef = COL[sigKey];
+    const classCode = characterClass(selectedHero)?.toLowerCase() ?? "";
+    const signature = SIGNATURE[classCode as keyof typeof SIGNATURE] ?? DEFAULT_SIGNATURE;
+    const sigShort = t(signature.label);
+    const sigDef = COL[signature.key];
     const kdDef = COL.kd;
     const roleLabel = characterClass(selectedHero) ?? "—";
 

@@ -31,11 +31,14 @@ import type { UsersIndexParamControls } from "./useUsersIndexParams";
 export function PlayerCard({
   user,
   grids,
+  game,
   minEncounters,
   compare
 }: Readonly<{
   user: UserCatalogEntry | UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
+  /** The index's game and its role dictionary. */
+  game: Pick<UsersIndexData, "discipline" | "ontology">;
   minEncounters: number;
   compare: CompareSelection;
 }>) {
@@ -59,7 +62,7 @@ export function PlayerCard({
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <RolesCrests roles={user.roles} grids={grids} size={26} />
+        <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} size={26} />
         <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
       </div>
 
@@ -160,6 +163,7 @@ export function UsersCatalogView({
                     key={entry.id}
                     user={entry}
                     grids={catalogQuery.data?.division_grids}
+                    game={data}
                     minEncounters={minEncounters}
                     compare={compare}
                   />

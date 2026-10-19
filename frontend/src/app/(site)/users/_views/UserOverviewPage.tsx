@@ -65,10 +65,12 @@ export const UserOverviewPageSkeleton = () => {
 const LastTournamentSection = async ({
   user,
   profile,
+  discipline,
   tournamentId
 }: {
   user: User;
   profile: UserProfile;
+  discipline: string;
   tournamentId?: number;
 }) => {
   const resolvedTournamentId = tournamentId ?? profile.tournaments[0]?.id;
@@ -83,6 +85,7 @@ const LastTournamentSection = async ({
   return (
     <OverviewLastTournamentCard
       tournament={tournament}
+      discipline={discipline}
       tournaments={profile.tournaments}
       userId={user.id}
       mapPips={tournamentMapPips(tournamentEncounters, user.id)}
@@ -202,7 +205,7 @@ const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline }: Ov
     <div className="aqt-player grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_380px] xl:items-start">
       <div className="flex min-w-0 flex-col gap-3.5">
         <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
-          <LastTournamentSection user={user} profile={profile} tournamentId={tournamentId} />
+          <LastTournamentSection user={user} profile={profile} discipline={section.discipline} tournamentId={tournamentId} />
         </Suspense>
         <Suspense fallback={<Skeleton className="h-[26rem] w-full rounded-xl" />}>
           <CareerListSection {...section} profile={profile} />

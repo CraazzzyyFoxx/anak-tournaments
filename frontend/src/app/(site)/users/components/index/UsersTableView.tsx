@@ -144,6 +144,7 @@ export function UsersTableView({
             key={user.id}
             user={user}
             grids={response.division_grids}
+            game={data}
             minEncounters={minEncounters}
             compare={compare}
           />
@@ -195,6 +196,7 @@ export function UsersTableView({
                 <PlayerRow
                   user={user}
                   grids={response.division_grids}
+                  game={data}
                   rank={firstRank + index}
                   minEncounters={minEncounters}
                   compare={compare}
@@ -208,6 +210,7 @@ export function UsersTableView({
                         user={user}
                         workspaceId={workspaceId}
                         discipline={discipline}
+                        ontology={data.ontology}
                         compareSelected={compare.isSelected(user.id)}
                         compareDisabled={compare.isFull}
                         onToggleCompare={() => compare.toggle(user)}
@@ -262,6 +265,7 @@ export function UsersTableView({
 function PlayerRow({
   user,
   grids,
+  game,
   rank,
   minEncounters,
   compare,
@@ -270,6 +274,7 @@ function PlayerRow({
 }: Readonly<{
   user: UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
+  game: Pick<UsersIndexData, "discipline" | "ontology">;
   rank: number;
   minEncounters: number;
   compare: CompareSelection;
@@ -302,7 +307,7 @@ function PlayerRow({
         </div>
       </td>
       <td className="px-2 py-2 text-center">
-        <RolesCrests roles={user.roles} grids={grids} />
+        <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} />
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.tournaments_count}</td>
       <td className="px-2 py-2 text-center">

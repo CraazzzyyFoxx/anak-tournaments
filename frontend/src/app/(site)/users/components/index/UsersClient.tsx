@@ -2,6 +2,7 @@
 
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
@@ -21,11 +22,13 @@ import { UsersCompareBar, useCompareSelection } from "./UsersCompareBar";
  * on a tenant host).
  */
 const UsersClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: BrowsingDisciplineInit }>) => {
-  const controls = useUsersIndexParams(scope);
   const browsing = useBrowsingDiscipline({ allowsAll: false, initial });
   const { resolved, disciplines } = browsing;
   const discipline = resolved?.kind === "concrete" ? resolved.code : null;
-  const data = useUsersIndexData(controls.params, discipline);
+  // The game's roles name the role chips and its native ladder is the all-communities division facet.
+  const metadata = useDisciplineMetadata(browsing.axis, discipline).data ?? null;
+  const controls = useUsersIndexParams(scope, discipline, metadata);
+  const data = useUsersIndexData(controls.params, discipline, metadata);
   const compare = useCompareSelection();
   const { view } = controls.params;
 
@@ -45,6 +48,7 @@ const UsersClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
       <UsersIndexFilters
         controls={controls}
         stats={data.statsQuery.data}
+        ontology={data.ontology}
         // `null` means "we could not load it", which is not a count of zero and
         // not a load that is still running.
         foundCount={

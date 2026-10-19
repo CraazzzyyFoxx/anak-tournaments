@@ -1,4 +1,5 @@
-import type { UserCompareBaselineMode, UserRoleType } from "@/types/user.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
+import type { UserCompareBaselineMode } from "@/types/user.types";
 import { userQueryKeys } from "@/lib/users/query-keys";
 
 interface QueryContext {
@@ -8,7 +9,7 @@ interface QueryContext {
 interface CompareFilters {
   baseline: UserCompareBaselineMode;
   targetUserId?: number;
-  role?: UserRoleType;
+  role?: RoleRef;
   divMin?: number;
   divMax?: number;
   tournamentId?: number;
