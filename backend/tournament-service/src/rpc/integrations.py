@@ -357,6 +357,8 @@ def register(broker: Any, logger: Any) -> None:
             start_date = _require_q1(data, "start_date", date.fromisoformat)
             end_date = _require_q1(data, "end_date", date.fromisoformat)
             challonge_slug = _require_q1(data, "challonge_slug")
+            # The game the imported tournament is played in: the caller's explicit choice, never a default.
+            discipline = _require_q1(data, "discipline")
             division_grid_version_id = _q1(data, "division_grid_version_id", int)
             # create_tournament_from_challonge commits, so the row is staged before
             # it: the tournament id does not exist yet, the request is the story.
@@ -370,6 +372,7 @@ def register(broker: Any, logger: Any) -> None:
                 entity_label=challonge_slug,
                 after={
                     "challonge_slug": challonge_slug,
+                    "discipline": discipline,
                     "is_league": is_league,
                     "start_date": start_date,
                     "end_date": end_date,
@@ -380,6 +383,7 @@ def register(broker: Any, logger: Any) -> None:
             tournament = await tournament_admin_service.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=workspace_id,
+                discipline=discipline,
                 is_league=is_league,
                 start_date=start_date,
                 end_date=end_date,

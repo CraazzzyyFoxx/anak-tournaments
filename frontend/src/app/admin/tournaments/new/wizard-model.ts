@@ -92,10 +92,12 @@ export function stepEntryRequiresDraft(step: WizardStep): boolean {
 /** POST payload for the lazy draft: current form state, always hidden. */
 export function buildDraftCreateInput(
   workspaceId: number,
+  discipline: string,
   form: WizardFormData
 ): TournamentCreateInput {
   return {
     workspace_id: workspaceId,
+    discipline,
     name: form.name.trim(),
     description: form.description.trim() || undefined,
     is_league: form.is_league,

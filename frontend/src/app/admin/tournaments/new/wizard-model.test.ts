@@ -135,10 +135,11 @@ describe("lazy Unpublished draft (D4)", () => {
     expect(WIZARD_STEPS.filter(stepEntryRequiresDraft)).toEqual(["registration", "review"]);
   });
 
-  it("draft create payload is hidden and carries the current form", () => {
-    const payload = buildDraftCreateInput(42, form);
+  it("draft create payload is hidden and carries the current form and the chosen game", () => {
+    const payload = buildDraftCreateInput(42, "lol", form);
     expect(payload.is_hidden).toBe(true);
     expect(payload.workspace_id).toBe(42);
+    expect(payload.discipline).toBe("lol");
     expect(payload.name).toBe("Season 9");
     expect(payload.start_date).toBe("2026-08-01");
     expect(payload.division_grid_version_id).toBe(3);

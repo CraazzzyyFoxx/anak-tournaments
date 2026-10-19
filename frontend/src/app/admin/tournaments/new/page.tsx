@@ -15,8 +15,11 @@ import {
 } from "@/components/kit/WizardShell";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { normalizeChallongeSlug } from "@/lib/tournament/challonge";
@@ -150,6 +153,14 @@ export default function NewTournamentPage() {
   // the promise ref collapses concurrent triggers into one POST.
   const [draft, setDraft] = useState<Tournament | null>(null);
   const draftRef = useRef<Tournament | null>(null);
+  // The game the tournament is played in: the browsed choice among this workspace's enabled games, never a
+  // default; a resumed draft owns its game and the choice locks once the draft exists.
+  const browsing = useBrowsingDiscipline({
+    allowsAll: false,
+    axis: currentWorkspaceId ?? "all",
+    ownerDiscipline: draft?.discipline ?? null
+  });
+  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
   const draftPromiseRef = useRef<Promise<Tournament> | null>(null);
   const [resumeDismissed, setResumeDismissed] = useState(false);
 
@@ -161,7 +172,9 @@ export default function NewTournamentPage() {
     },
     enabled: Boolean(currentWorkspaceId)
   });
+  // Only the chosen game's grids: a tournament is seeded on a grid of its own game.
   const divisionGridVersions: DivisionGridVersion[] = (divisionGridsQuery.data ?? [])
+    .filter((grid) => grid.discipline === discipline)
     .flatMap((grid) => grid.versions)
     .slice()
     .sort((left, right) => right.version - left.version);
@@ -220,11 +233,13 @@ export default function NewTournamentPage() {
     if (!draftPromiseRef.current) {
       const workspaceId = currentWorkspaceId;
       draftPromiseRef.current = (async () => {
-        if (!workspaceId) throw new Error(t("selectWorkspace"));
+        // The wizard renders only once a concrete game is resolved (below), so `discipline` is set here.
+        if (!workspaceId || !discipline) throw new Error(t("selectWorkspace"));
         let created: Tournament;
         if (source === "challonge") {
           const imported = await adminService.createTournamentWithGroups({
             workspace_id: workspaceId,
+            discipline,
             challonge_slug: normalizeChallongeSlug(challongeSlug),
             is_league: form.is_league,
             start_date: form.start_date,
@@ -245,7 +260,7 @@ export default function NewTournamentPage() {
             }
           }
         } else {
-          created = await adminService.createTournament(buildDraftCreateInput(workspaceId, form));
+          created = await adminService.createTournament(buildDraftCreateInput(workspaceId, discipline, form));
         }
         adoptDraft(created);
         void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.list() });
@@ -346,6 +361,19 @@ export default function NewTournamentPage() {
     );
   }
 
+  // Nothing is created before its game is known; no enabled game (or an invalid `?discipline=`) says so.
+  if (!browsing.resolved) return <Skeleton className="h-64" />;
+  if (browsing.resolved.kind === "invalid" || browsing.resolved.kind === "empty") {
+    return (
+      <DisciplineUnavailable
+        resolved={browsing.resolved}
+        disciplines={browsing.disciplines ?? []}
+        allowsAll={false}
+        onSelect={browsing.select}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5">
       <AdminPageHeader
@@ -368,6 +396,16 @@ export default function NewTournamentPage() {
           if (resumable) resumeDraft(resumable);
         }}
       />
+
+      {(browsing.disciplines?.length ?? 0) > 1 ? (
+        <DisciplineSelector
+          disciplines={browsing.disciplines ?? []}
+          value={discipline ?? undefined}
+          allowsAll={false}
+          onSelect={browsing.select}
+          disabled={draft !== null}
+        />
+      ) : null}
 
       <WizardShell
         steps={rail}

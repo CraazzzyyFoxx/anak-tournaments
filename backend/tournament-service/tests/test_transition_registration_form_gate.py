@@ -123,6 +123,7 @@ def test_a_tournament_cannot_be_created_with_registration_already_open() -> None
 
     payload = schemas.TournamentCreate(
         workspace_id=1,
+        discipline="overwatch",
         name="Cup",
         start_date="2026-01-01",
         end_date="2026-01-02",

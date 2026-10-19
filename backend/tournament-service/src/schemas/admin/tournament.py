@@ -26,7 +26,8 @@ class TournamentCreate(BaseModel):
     """Schema for creating a tournament"""
 
     workspace_id: int
-    discipline: str = "overwatch"
+    #: The game the tournament is played in; always the caller's explicit choice (enabled in the workspace).
+    discipline: str
     name: str
     # Public-URL slug. Slugified and uniqueness-checked server-side; left
     # blank, one is generated from `name` (see shared.services.tournament.slug).

@@ -886,7 +886,11 @@ class TournamentFlagTests(EvidenceCase):
             await s.flush()
             self.assertIs(False, row.logs_official)
             create = schemas.TournamentCreate(
-                workspace_id=self.ids["ws"], name="n", start_date="2026-01-01", end_date="2026-01-02"
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                name="n",
+                start_date="2026-01-01",
+                end_date="2026-01-02",
             )
             self.assertIs(False, create.logs_official)
             await s.rollback()

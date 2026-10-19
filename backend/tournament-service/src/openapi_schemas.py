@@ -220,6 +220,7 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("start_date", required=True),
             QueryParam("end_date", required=True),
             QueryParam("challonge_slug", required=True),
+            QueryParam("discipline", required=True),
             QueryParam("is_league", "boolean"),
             QueryParam("division_grid_version_id", "integer"),
         ),

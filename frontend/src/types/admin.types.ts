@@ -294,6 +294,8 @@ import type {
 
 export interface TournamentCreateInput {
   workspace_id: number;
+  /** The game the tournament is played in: always the creator's explicit choice. */
+  discipline: string;
   name: string;
   description?: string;
   is_league: boolean;

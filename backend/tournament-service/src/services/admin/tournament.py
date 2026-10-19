@@ -393,6 +393,7 @@ class AdminTournamentService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         is_league: bool,
         start_date: date,
         end_date: date,
@@ -416,6 +417,7 @@ class AdminTournamentService:
             session,
             schemas.TournamentCreate(
                 workspace_id=workspace_id,
+                discipline=discipline,
                 name=challonge_tournament.name,
                 description=challonge_tournament.description,
                 is_league=is_league,

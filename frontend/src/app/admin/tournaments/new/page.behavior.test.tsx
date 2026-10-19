@@ -57,8 +57,13 @@ vi.mock("@/hooks/usePermissions", () => ({
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
-    selector: (state: { currentWorkspaceId: number; workspaces: unknown[] }) => unknown
-  ) => selector({ currentWorkspaceId: 1, workspaces: [] })
+    selector: (state: {
+      currentWorkspaceId: number;
+      workspaces: unknown[];
+      browsingDiscipline: string | null;
+      setBrowsingDiscipline: () => void;
+    }) => unknown
+  ) => selector({ currentWorkspaceId: 1, workspaces: [], browsingDiscipline: null, setBrowsingDiscipline: () => {} })
 }));
 vi.mock("@/services/workspace.service", () => ({
   default: { getDivisionGrids: vi.fn().mockResolvedValue([]) }
@@ -66,6 +71,7 @@ vi.mock("@/services/workspace.service", () => ({
 vi.mock("@/services/balancer-admin.service", () => ({
   default: { getSubscriptionRequirement: vi.fn().mockResolvedValue({ requirement: null }) }
 }));
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 vi.mock("@/services/tournament.service", () => ({
   default: { getAll: vi.fn().mockResolvedValue({ results: [] }) }
 }));
@@ -199,17 +205,18 @@ describe("NewTournamentPage", () => {
   });
 
   it("Continue writes the next step to the URL", async () => {
-    await render("?step=schedule");
+    // The URL already names the resolved game, so nothing canonicalizes it and every step keeps it.
+    await render("?step=schedule&discipline=overwatch");
 
     await click(button("Continue"));
 
-    expect(navigate).toHaveBeenCalledWith("/admin/tournaments/new?step=rules");
+    expect(navigate).toHaveBeenCalledWith("/admin/tournaments/new?step=rules&discipline=overwatch");
     expect(heading()).toBe("Rules");
     expect(currentRailStep()).toContain("Rules");
   });
 
   it("Continue on step 1 warns instead of advancing an empty form", async () => {
-    await render();
+    await render("?discipline=overwatch");
 
     await click(button("Continue"));
 
@@ -219,10 +226,16 @@ describe("NewTournamentPage", () => {
   });
 
   it("offers the Challonge import as a link that keeps the step", async () => {
-    await render("?step=basics");
+    await render("?step=basics&discipline=overwatch");
 
     const link = container.querySelector<HTMLAnchorElement>('a[href*="source=challonge"]');
     expect(link?.textContent).toContain("Import from Challonge instead");
-    expect(link?.getAttribute("href")).toBe("/admin/tournaments/new?step=basics&source=challonge");
+    expect(link?.getAttribute("href")).toBe("/admin/tournaments/new?step=basics&discipline=overwatch&source=challonge");
+  });
+
+  it("names the game the tournament is created in, canonicalized into the URL", async () => {
+    await render("?step=basics");
+
+    expect(navigate).toHaveBeenCalledWith("/admin/tournaments/new?step=basics&discipline=overwatch", { scroll: false });
   });
 });

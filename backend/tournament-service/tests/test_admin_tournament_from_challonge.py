@@ -56,6 +56,7 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
             result = await admin_tournament.tournament_service.create_tournament_from_challonge(
                 session,
                 workspace_id=9,
+                discipline="lol",
                 is_league=False,
                 start_date=date(2026, 1, 1),
                 end_date=date(2026, 2, 1),
@@ -69,6 +70,7 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
         self.assertEqual("Winter Cup", create_data.name)
         self.assertEqual("desc", create_data.description)
         self.assertEqual(9, create_data.workspace_id)
+        self.assertEqual("lol", create_data.discipline)
 
         link.assert_awaited_once_with(session, created, challonge_id=777, slug="winter-cup")
         session.commit.assert_awaited_once()
