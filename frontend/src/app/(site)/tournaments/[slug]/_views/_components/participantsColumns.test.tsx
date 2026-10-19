@@ -72,6 +72,21 @@ describe("participant column model", () => {
     expect(ids).toContain("identity_boosty");
   });
 
+  it("builds no generic answer column for a game account while the owner's metadata is pending or failed", () => {
+    // Pending and failed metadata both reach the builder as an owner without a provider. The generic answer
+    // renderer prints a whole handle list, alternates included, and the public roster filter only removes
+    // `_identity_extras`: so a game account must have NO column at all until the owner resolves.
+    const asked = form([field("identity_battlenet"), field("identity_riot"), field("identity_discord")]);
+    const unresolved = { discipline: "overwatch", identityProvider: null, ontology: null };
+    const ids = buildParticipantColumns(asked, t, unresolved).map((column) => column.id);
+
+    for (const leaked of ["identity_battlenet", "identity_riot", "_identity", "_identity_extras"]) {
+      expect(ids).not.toContain(leaked);
+    }
+    // A social handle is not a game account: it keeps its ordinary column.
+    expect(ids).toContain("identity_discord");
+  });
+
   it("splits the Battle.net answer into the primary handle and the extra handles", () => {
     const columns = buildParticipantColumns(form([field("identity_battlenet")]), t, OWNER);
     const identity = columns.find((column) => column.id === "_identity");

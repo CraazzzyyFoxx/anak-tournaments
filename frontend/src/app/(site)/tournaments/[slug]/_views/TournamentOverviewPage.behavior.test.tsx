@@ -333,7 +333,7 @@ function makeRegistration(id: number, role: string, battleTag: string): Registra
     workspace_id: WORKSPACE_ID,
     user_id: id,
     primary_handle: battleTag,
-    roles: [{ role: { dimension: "player_role", role }, is_primary: true, priority: 0, top_heroes: [] }],
+    roles: [{ role: { dimension: "player_role", role }, is_primary: true, priority: 0, top_characters: [] }],
     answers: { stream_pov: false, identity_battlenet: [battleTag] },
     form_version_id: 1,
     form_version_stale: false,

@@ -4,7 +4,7 @@ import { Crown } from "lucide-react";
 
 import type { RegistrationForm } from "@/types/registration.types";
 import { answerSearchText } from "@/lib/forms/answers";
-import { identityKey, identityMaxCount, isBuiltinKey } from "@/lib/forms/builtin-keys";
+import { identityKey, identityMaxCount, isBuiltinKey, isGameIdentityKey } from "@/lib/forms/builtin-keys";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import type { CatalogEntityChip } from "@/types/catalog.types";
 
@@ -198,6 +198,9 @@ export function buildParticipantColumns(
   if (schema) {
     for (const field of publicFields) {
       const def = builtInDef(field.key);
+      // While the owner's provider is unknown (metadata pending or failed) a game account gets no column: the
+      // generic answer renderer would print every alternate handle, which a public read must not.
+      if (!def && provider === null && isGameIdentityKey(field.key)) continue;
       if (def) {
         pushBuiltIn(field.key, field.label || def.label, def.defaultVisible);
         if (field.key === "roles" && asksTopHeroes(field)) {

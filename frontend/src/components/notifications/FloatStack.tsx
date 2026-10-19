@@ -24,7 +24,9 @@ import {
 } from "@/lib/notifications/announcement-dismissed";
 import { announcementHref, announcementText } from "@/lib/notifications/announcement-text";
 import { notificationQueryKeys } from "@/lib/notifications/query-keys";
-import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { useTournamentQuery } from "@/hooks/useTournamentClientData";
 import { cn } from "@/lib/utils";
 import notificationService from "@/services/notification.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -215,7 +217,6 @@ function UrgentCard({
   tenantWorkspaceId
 }: Readonly<{ authUserId: number; tenantWorkspaceId: number | null }>) {
   const t = useTranslations("notifications");
-  const tSlot = useTranslations("rosterShape.slotCodes");
   const format = useFormatter();
   const pathname = usePathname();
   const setBellOpen = useBellSignal((state) => state.setOpen);
@@ -270,6 +271,20 @@ function UrgentCard({
     })
     .sort((a, b) => ACTIONABLE_RANK[a.kind] - ACTIONABLE_RANK[b.kind]);
 
+  // The invite names a slot of the TOURNAMENT's own game: its scoped ontology localizes it (the notification
+  // carries no game of its own), and a code that dictionary does not know renders as itself.
+  const offered = pending[0];
+  const offerTournamentId =
+    typeof offered?.payload.slot_code === "string" && typeof offered.payload.tournament_id === "number"
+      ? offered.payload.tournament_id
+      : null;
+  const offerTournament = useTournamentQuery(offerTournamentId === null ? "" : String(offerTournamentId)).data;
+  const offerOntology = useDisciplineMetadata(
+    offerTournament?.workspace_id ?? "all",
+    offerTournament?.discipline ?? null
+  ).data;
+  const slotLabel = useSlotLabel(offerOntology ?? null);
+
   const doneItem = resolved ? items.find((item) => item.id === resolved.id) : undefined;
   if (resolved) {
     const name = doneItem?.payload.tournament_name;
@@ -321,7 +336,7 @@ function UrgentCard({
   } else if (typeof slotCode === "string") {
     // An unknown code from a newer server renders as itself: the label is
     // decoration, the slot is the offer.
-    meta.push(t("urgent.slot", { slot: slotCode === OPEN_SLOT_CODE ? tSlot("flex") : slotCode }));
+    meta.push(t("urgent.slot", { slot: slotLabel(slotCode) }));
   }
 
   const onHide = () => {

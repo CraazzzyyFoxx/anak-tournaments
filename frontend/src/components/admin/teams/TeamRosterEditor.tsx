@@ -82,7 +82,7 @@ function emptyDraft(parentId: number | null, role: string = OPEN_SLOT_CODE): Ros
  * nesting depth each row renders at. Walks `related_player_id` upwards with a
  * seen-set so a corrupt cycle degrades to depth 0 instead of hanging.
  */
-function buildRosterRows(players: Player[]): Array<{ player: Player; depth: number }> {
+function buildRosterRows(players: Player[], ontology: RoleOntology | null): Array<{ player: Player; depth: number }> {
   const byId = new Map(players.map((player) => [player.id, player]));
 
   const depthOf = (player: Player) => {
@@ -101,7 +101,7 @@ function buildRosterRows(players: Player[]): Array<{ player: Player; depth: numb
     return depth;
   };
 
-  return sortTeamPlayers(players).map((player) => ({ player, depth: depthOf(player) }));
+  return sortTeamPlayers(players, ontology).map((player) => ({ player, depth: depthOf(player) }));
 }
 
 /**
@@ -332,7 +332,7 @@ export function TeamRosterEditor({
   });
   const playerSubRoles = subRolesQuery.data;
 
-  const rows = useMemo(() => buildRosterRows(players), [players]);
+  const rows = useMemo(() => buildRosterRows(players, ontology), [players, ontology]);
 
   const refresh = () =>
     Promise.all([

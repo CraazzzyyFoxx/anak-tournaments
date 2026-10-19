@@ -38,9 +38,9 @@ const relatedPlayerId = (player: SortableRosterPlayer) =>
  * (the substitution chain `sortTeamPlayers` already orders that way). A sub
  * whose original is not in the list starts a slot of its own.
  */
-export function rosterSlots<P extends SortableRosterPlayer>(players: P[]): P[][] {
+export function rosterSlots<P extends SortableRosterPlayer>(players: P[], ontology: RoleOntology | null): P[][] {
   const slots: P[][] = [];
-  for (const player of sortTeamPlayers(players)) {
+  for (const player of sortTeamPlayers(players, ontology)) {
     const slot = slots.at(-1);
     const related = relatedPlayerId(player);
     if (player.is_substitution && slot?.some((member) => member.id === related)) {
@@ -297,7 +297,7 @@ export const TournamentTeamTable = ({
         </thead>
         {/* One <tbody> per slot: hover lights a player together with their
             subs, so the highlight never cuts the branch line in half. */}
-        {rosterSlots(players).map((slot) => (
+        {rosterSlots(players, ontology ?? null).map((slot) => (
           <tbody key={slot[0].id}>
             {slot.map((player, index) => {
               const position = { slot, index };

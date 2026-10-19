@@ -114,6 +114,16 @@ export function builtinFixedVisibility(key: string): Visibility | null {
   return FIXED_VISIBILITY[key] ?? null;
 }
 
+/**
+ * Whether an identity key is a GAME account (`identity_battlenet`, `identity_riot`): the catalog pins exactly
+ * these public, because the owner game's primary handle is the roster's face. Only the owner game's own key has a
+ * roster column; every other game's answer (and every one while the owner is unresolved) lists alternate accounts
+ * a generic answer column would print in full, so no generic column is ever built for one.
+ */
+export function isGameIdentityKey(key: string): boolean {
+  return identityProvider(key) !== null && builtinFixedVisibility(key) === "public";
+}
+
 /** Which params editor a builtin needs, or `null` when it takes no params. */
 export type BuiltinParamsKind = "identity" | "roles";
 

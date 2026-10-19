@@ -109,6 +109,17 @@ export function ScrimCreateDialog({
   const [copyStageId, setCopyStageId] = useState<number | null>(null);
   const [copyRound, setCopyRound] = useState<number | null>(null);
   const [pool, setPool] = useState<ScrimPoolDraft>(emptyScrimPoolDraft);
+  // A pool and a copied tournament's scope are one game's catalog ids. The game changes through the dropdown AND
+  // by itself (a community with other games enabled, a catalog still loading), so what is dropped is keyed to the
+  // effective game, not to the control that happened to be touched: nothing chosen for another game carries over.
+  const [draftDiscipline, setDraftDiscipline] = useState<string | null>(discipline);
+  if (draftDiscipline !== discipline) {
+    setDraftDiscipline(discipline);
+    setPool(emptyScrimPoolDraft);
+    setCopyTournamentId(null);
+    setCopyStageId(null);
+    setCopyRound(null);
+  }
 
   const tournamentsQuery = useQuery({
     queryKey: scrimQueryKeys.tournamentsLookup(workspaceId),
@@ -257,14 +268,7 @@ export function ScrimCreateDialog({
                   id={`${ids}-game`}
                   className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
                   value={discipline ?? ""}
-                  onChange={(event) => {
-                    setChosenDiscipline(event.target.value);
-                    // A pool is one game's catalog ids: nothing chosen for the other game carries over.
-                    setPool(emptyScrimPoolDraft);
-                    setCopyTournamentId(null);
-                    setCopyStageId(null);
-                    setCopyRound(null);
-                  }}
+                  onChange={(event) => setChosenDiscipline(event.target.value)}
                 >
                   {enabledDisciplines.map((entry) => (
                     <option key={entry.code} value={entry.code}>{entry.name}</option>

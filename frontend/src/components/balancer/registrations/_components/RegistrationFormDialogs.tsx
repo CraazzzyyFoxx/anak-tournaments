@@ -25,8 +25,8 @@ const DESCRIPTION_CLASS =
 
 interface RegistrationFormDialogsProps {
   tournamentId: number;
-  /** The tournament's real form, or the empty admin fallback while it loads. */
-  form: RegistrationForm;
+  /** The tournament's real form, or its owner-scoped empty fallback; `null` until the tournament is known. */
+  form: RegistrationForm | null;
   createOpen: boolean;
   onCreateOpenChange: (open: boolean) => void;
   onCreate: (payload: AdminRegistrationCreateInput) => Promise<unknown>;
@@ -71,16 +71,18 @@ export default function RegistrationFormDialogs({
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3.5 sm:px-5">
-            <RegistrationSchemaForm
-              mode="admin"
-              tournamentId={tournamentId}
-              form={form}
-              onSubmit={async ({ answers, admin }) => {
-                await onCreate({ ...admin, answers });
-              }}
-              onCancel={() => onCreateOpenChange(false)}
-              submitPending={createPending}
-            />
+            {form && (
+              <RegistrationSchemaForm
+                mode="admin"
+                tournamentId={tournamentId}
+                form={form}
+                onSubmit={async ({ answers, admin }) => {
+                  await onCreate({ ...admin, answers });
+                }}
+                onCancel={() => onCreateOpenChange(false)}
+                submitPending={createPending}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -102,7 +104,7 @@ export default function RegistrationFormDialogs({
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[calc(100vh-12rem)] space-y-4 overflow-y-auto px-4 py-3.5 sm:px-5">
-            {editingRegistration && (
+            {editingRegistration && form && (
               // The change history used to sit here, inside this already-scrolling
               // dialog. It now lives in the row's "Change history" action, which
               // opens the shared drawer: a Radix sheet inside a Radix dialog

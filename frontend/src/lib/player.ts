@@ -1,7 +1,8 @@
 import type { CatalogEntityChip } from "@/types/catalog.types";
 import { Hero } from "@/types/hero.types";
 import { User, UserProfile } from "@/types/user.types";
-import { roleOf, subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
+import { rosterRoleRank, type RoleOntology } from "@/lib/roster/ontology";
+import { subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /**
  * Fields `sortTeamPlayers` actually reads. Display-only roster fields
@@ -54,17 +55,12 @@ export const getPlayerType = (player: PlayerRoleInfo) => {
   return "ㅤ";
 };
 
-export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P[] => {
-  // OW's presentation order remains stable; other discipline codes sort last.
-  const getRolePriority = (role: RoleRef | null) => {
-    switch (roleOf(role)) {
-      case "tank": return 1;
-      case "damage": return 2;
-      case "support": return 3;
-      default: return 4;
-    }
-  };
-
+/**
+ * The roster in reading order: each starter, then everyone who replaced them; starters ordered by the OWNER game's
+ * declared role order (`ontology`), then by rank. Without a dictionary every role ranks equally, so the order is by
+ * rank alone -- never a fixed role vocabulary.
+ */
+export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[], ontology: RoleOntology | null): P[] => {
   const playerById = new Map(players.map((p) => [p.id, p]));
 
   // Build substitution graph: parent -> children (who replaced them)
@@ -99,9 +95,10 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P
     return result;
   };
 
-  // Sort roots by role priority, then by rank within same role
+  // Sort roots by the owner game's declared role order, then by rank within the same role
+  const roleRank = rosterRoleRank(ontology);
   roots.sort((a, b) => {
-    const rp = getRolePriority(a.role) - getRolePriority(b.role);
+    const rp = roleRank(a.role) - roleRank(b.role);
     if (rp !== 0) return rp;
     return b.rank - a.rank;
   });

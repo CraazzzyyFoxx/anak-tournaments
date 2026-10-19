@@ -31,6 +31,14 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
+// The rank-history host resolves its game through the URL (`useNativeRankCollector`), so the sheet needs an
+// app router even though none of these cases navigates.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/balancer"
+}));
+
 // Rank interaction stays real; drag transport is unrelated and can load a second React copy.
 vi.mock("@/components/kit/SortableRows", () => ({
   SortableRows: ({
@@ -313,6 +321,9 @@ describe("owner-grid receiving controls", () => {
       {
         id: 10,
         name: "Past pinned tournament",
+        // The wire names the tournament's workspace and game; history of any other game is never read as LoL ranks.
+        workspace_id: 1,
+        discipline: "lol",
         role: { dimension: "position", role: "support" },
         division_grid_version: pinned,
         players: [{ user_id: 42, rank: 250 }]

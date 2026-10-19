@@ -149,7 +149,7 @@ function makeRegistration(overrides: Partial<Registration> = {}): Registration {
     workspace_id: 3,
     user_id: 5,
     primary_handle: "Anak#2100",
-    roles: [{ role: {dimension: "player_role", role: "damage"}, is_primary: true, priority: 0, top_heroes: [] }],
+    roles: [{ role: {dimension: "player_role", role: "damage"}, is_primary: true, priority: 0, top_characters: [] }],
     answers: { stream_pov: false, identity_battlenet: ["Anak#2100"] },
     form_version_id: 4,
     form_version_stale: false,

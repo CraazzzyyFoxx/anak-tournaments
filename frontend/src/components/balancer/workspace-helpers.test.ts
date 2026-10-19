@@ -621,6 +621,30 @@ describe("registration rank pin save", () => {
     });
   });
 
+  it("carries a role's saved character picks as `top_characters`, never the persisted-form spelling", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "position", role: "mid" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          top_characters: ["ahri", "syndra"],
+          ow_rank_value: null
+        }
+      ]
+    });
+    const player = createSyntheticPlayerFromRegistration(registration);
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      { role_entries_json: player.role_entries_json, is_flex: player.is_flex },
+      registration.roles
+    );
+    expect(patch.roles?.[0]).toMatchObject({ top_characters: ["ahri", "syndra"] });
+    expect(patch.roles?.[0]).not.toHaveProperty("top_heroes");
+  });
+
   it("does not send pin:true when the editor pin is off", () => {
     const patch = buildRegistrationUpdateFromPlayerPayload({
       role_entries_json: roleEntries,

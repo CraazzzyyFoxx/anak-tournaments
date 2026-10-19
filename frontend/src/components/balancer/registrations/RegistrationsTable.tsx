@@ -47,7 +47,7 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import adminService from "@/services/admin.service";
 
-import { ADMIN_ROLE_FORM, ADMISSION_LABELS } from "./registrationsTable.model";
+import { ADMISSION_LABELS, adminRoleForm } from "./registrationsTable.model";
 
 export default function RegistrationsTable({
   tournamentId
@@ -106,8 +106,14 @@ export default function RegistrationsTable({
 
   // Adapt the admin form into the public RegistrationForm shape used by the
   // shared RoleStep / sub-role catalog, so admin role editing is data-driven.
-  const roleForm: RegistrationForm = publicFormQuery.data ?? ADMIN_ROLE_FORM;
-  const subroleCatalog = roleForm.subrole_catalog;
+  // Without a questionnaire the organizer still edits against the opened tournament's own owner scope; with
+  // neither loaded there is no form to offer (the dialogs wait rather than ask for another game's roles).
+  const tournament = tournamentQuery.data;
+  const roleForm = useMemo<RegistrationForm | null>(
+    () => publicFormQuery.data ?? (tournament ? adminRoleForm(tournament) : null),
+    [publicFormQuery.data, tournament]
+  );
+  const subroleCatalog = roleForm?.subrole_catalog;
 
   // `require_open_profile` is deliberately NOT read here any more: admission is
   // resolved server-side and travels on each row. This flag survives only
@@ -118,7 +124,7 @@ export default function RegistrationsTable({
   // keyed, not positional. What the current schema no longer asks has no column
   // — the inspector shows those beside the row's stale-version notice.
   const schemaFields = useMemo(
-    () => roleForm.form_schema.sections.flatMap((section) => section.fields),
+    () => roleForm?.form_schema.sections.flatMap((section) => section.fields) ?? [],
     [roleForm]
   );
 

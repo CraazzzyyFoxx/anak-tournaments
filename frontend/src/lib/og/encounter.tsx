@@ -252,7 +252,7 @@ function TeamColumn({
 
   // Eight rows is the tallest roster the band fits; a deeper bench is cut
   // rather than pushed off the bottom edge.
-  const players = sortTeamPlayers(team.players ?? []).slice(0, 8);
+  const players = sortTeamPlayers(team.players ?? [], ontology).slice(0, 8);
 
   return (
     <div

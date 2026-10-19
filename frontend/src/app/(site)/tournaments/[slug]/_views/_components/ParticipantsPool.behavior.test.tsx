@@ -202,7 +202,7 @@ function role(
   return { role: {dimension: "player_role", role: name}, is_primary: isPrimary,
   priority: 0,
   rank_value: rank,
-  top_heroes: heroes };
+  top_characters: heroes };
 }
 
 function makeRegistration(

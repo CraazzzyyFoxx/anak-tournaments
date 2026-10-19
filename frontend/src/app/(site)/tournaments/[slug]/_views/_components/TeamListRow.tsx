@@ -55,7 +55,7 @@ export const TeamListRow = ({
   const format = useFormatter();
   // A live leader is not on the podium yet: `placement` moves with every result.
   const medal = overviewVariant(tournament.status) === "completed";
-  const players = sortTeamPlayers(team.players);
+  const players = sortTeamPlayers(team.players, ontology);
   const roster = team.players.map((player) => ({
     ...player,
     heroes: declaredHeroes(player, registrationsByUser.get(player.user_id), heroesMap)

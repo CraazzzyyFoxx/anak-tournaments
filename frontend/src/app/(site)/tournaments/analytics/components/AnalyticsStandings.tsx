@@ -22,6 +22,7 @@ import ForecastChip from "@/app/(site)/tournaments/analytics/components/Forecast
 import MetricTooltip from "@/app/(site)/tournaments/analytics/components/MetricTooltip";
 import TeamName from "@/components/TeamName";
 import { useTranslations } from "next-intl";
+import { useTeamOntology } from "@/hooks/useTeamOntology";
 import { sortTeamPlayers } from "@/lib/player";
 import { groupDisplayName } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
@@ -210,7 +211,8 @@ const TeamDetail = ({
   const t = useTranslations();
   const canEdit = hasPermission("analytics.update");
   const tournamentGrid = team.tournament?.division_grid_version;
-  const players = useMemo(() => sortTeamPlayers(team.players), [team.players]);
+  const ontology = useTeamOntology(team);
+  const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
 
   return (
     <div className={styles.teamDetail}>
@@ -390,7 +392,8 @@ const TeamDetail = ({
 
 const RoleLane = ({ team }: { team: TeamAnalytics }) => {
   const tournamentGrid = team.tournament?.division_grid_version;
-  const players = useMemo(() => sortTeamPlayers(team.players), [team.players]);
+  const ontology = useTeamOntology(team);
+  const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
 
   return (
     <div className={styles.roleLane}>

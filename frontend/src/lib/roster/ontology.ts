@@ -72,6 +72,18 @@ export function slotRank(order: readonly string[], code: string | null | undefin
   return index === -1 ? order.length : index;
 }
 
+/**
+ * A roster's role order for ONE game: the position of a participation's role (its root, so a workspace child sits
+ * with its parent) in the dictionary's declared `sort_order`. A role of another dimension or game, an unknown role,
+ * an unassigned player and a missing dictionary all rank equally, after every declared role -- so nothing is
+ * ordered by a fixed vocabulary, and a League `support` never inherits an Overwatch `support`'s place.
+ */
+export function rosterRoleRank(ontology: RoleOntology | null | undefined): (role: RoleRef | null | undefined) => number {
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const order = slotCodeOrder(ontology);
+  return (role) => (rated && role && role.dimension === rated.code ? slotRank(order, role.parent ?? role.role) : order.length);
+}
+
 /** Maps a module-declared role code to its localized name, or `null` when the bundle has none. */
 export type RoleNameLocalizer = (code: string) => string | null;
 

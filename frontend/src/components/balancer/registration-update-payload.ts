@@ -26,7 +26,7 @@ export function buildRegistrationUpdateFromPlayerPayload(
       (left, right) => left.priority - right.priority
     );
     registrationPatch.roles = sortedEntries.map((entry, index) => {
-      const topHeroes = existingRolesMap.get(entry.role) ?? [];
+      const topCharacters = existingRolesMap.get(entry.role) ?? [];
       return {
         role: toRoleRef(
           entry.role,
@@ -39,7 +39,7 @@ export function buildRegistrationUpdateFromPlayerPayload(
         // The raw column is what a write sets: `is_active` on the entry is the
         // resolver's verdict, so sending it would echo a computed value back.
         is_active: entry.is_declared_active,
-        ...(topHeroes.length > 0 ? { top_heroes: topHeroes } : {})
+        ...(topCharacters.length > 0 ? { top_characters: topCharacters } : {})
       };
     });
   }

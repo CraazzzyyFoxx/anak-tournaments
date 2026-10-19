@@ -6,6 +6,7 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TeamName from "@/components/TeamName";
 import { useTranslations, useLocale } from "next-intl";
+import { useTeamOntology } from "@/hooks/useTeamOntology";
 import { sortTeamPlayers } from "@/lib/player";
 import { StandingsDistribution } from "@/types/analytics.types";
 import { formatPlace } from "@/app/(site)/tournaments/analytics/analytics.helpers";
@@ -89,7 +90,8 @@ export default function TeamDetail({
   const t = useTranslations();
   const locale = useLocale();
   const tournamentGrid = team.tournament?.division_grid_version;
-  const players = useMemo(() => sortTeamPlayers(team.players), [team.players]);
+  const ontology = useTeamOntology(team);
+  const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
   const groupName = team.group?.name ?? "—";
   const hasForecast = team.predicted_place != null;
   const color = moveColor(team.placement_delta);
