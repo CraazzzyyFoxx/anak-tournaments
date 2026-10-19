@@ -3,16 +3,16 @@ import { Check, CornerDownLeft, Plus } from "lucide-react";
 import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 
 import type { RosterRow } from "../_hooks/useRosterPicker";
+import type { MixOwner } from "../pickup-lineup";
 
 /**
  * One roster row: membership indicator on the left, identity in the middle,
- * this host's three effective ranks read-only on the right.
+ * this host's effective rank per role of the mix's game, read-only, on the right.
  *
  * The whole row is the membership toggle -- there is no picker on it to miss
  * by four pixels anymore, ranks here are read-only. The keyboard path is
@@ -22,19 +22,23 @@ import type { RosterRow } from "../_hooks/useRosterPicker";
  */
 export function RosterRowItem({
   row,
+  owner,
   isInMix,
   isCursor,
   canWrite,
   onToggle
 }: Readonly<{
   row: RosterRow;
+  owner: MixOwner;
   isInMix: boolean;
   isCursor: boolean;
   canWrite: boolean;
   onToggle: () => void;
 }>) {
+  const slotLabel = useSlotLabel(owner.ontology);
   const label = row.displayName || row.handle || `#${row.memberId}`;
   const { name, suffix } = splitBattleTag(label);
+  const { grid } = owner;
 
   return (
     <li data-roster-row>
@@ -89,26 +93,26 @@ export function RosterRowItem({
         </span>
 
         <span className="flex shrink-0 items-center gap-1.5">
-          {ROLES.map((role) => {
-            const own = row.authorRanks[role.code] ?? null;
-            const inherited = own == null ? (row.ranks[role.code] ?? null) : null;
-            // The global OW grid: a mix's ranks resolve against it
-            // (`workspace_id=None`), so a workspace's tiers here would show
-            // the wrong crest for the same number.
-            const division = resolveDivisionFromRank(OW_REFERENCE_GRID, own ?? inherited);
+          {owner.roles.map((role) => {
+            const own = row.authorRanks[role] ?? null;
+            const inherited = own == null ? (row.ranks[role] ?? null) : null;
+            // The owner game's grid in this mix's workspace: the same scale the server
+            // resolved these ranks on, so the crest names the number the balance will use.
+            const division = resolveDivisionFromRank(grid, own ?? inherited);
             const rank = own ?? inherited;
+            const roleName = slotLabel(role);
             return (
               <IconTooltip
-                key={role.code}
+                key={role}
                 label={
                   inherited == null
-                    ? `${ROLE_LABELS[role.code]} rank for ${label}`
-                    : `${ROLE_LABELS[role.code]} rank for ${label}, inherited ${inherited} from the workspace`
+                    ? `${roleName} rank for ${label}`
+                    : `${roleName} rank for ${label}, inherited ${inherited} from the workspace`
                 }
                 hint={
                   rank == null
                     ? "No rank"
-                    : `${getDivisionLabel(OW_REFERENCE_GRID, division) ?? ""} \u00B7 ${rank}`
+                    : `${getDivisionLabel(grid, division) ?? ""} \u00B7 ${rank}`
                 }
                 // Dimmed means "not yours": painting an inherited number the
                 // same as the host's own made "set" and "leave alone" look
@@ -126,7 +130,7 @@ export function RosterRowItem({
                 ) : (
                   <DivisionIcon
                     division={division}
-                    tournamentGrid={OW_REFERENCE_GRID}
+                    tournamentGrid={grid}
                     width={22}
                     height={22}
                   />

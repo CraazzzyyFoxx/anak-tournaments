@@ -10,18 +10,21 @@ import { InlineEditText } from "@/components/kit/InlineEditText";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { cn } from "@/lib/utils";
 
-import type { PickupTeam, PickupVariant } from "../pickup-lineup";
+import type { MixOwner, PickupTeam, PickupVariant } from "../pickup-lineup";
 import { SeatDragPreview, SeatRow, type ActiveSeatDrag } from "./SeatRow";
 import { VariantMetrics } from "./VariantMetrics";
 
 export function VariantView({
   variant,
+  owner,
   canWrite,
   capturing,
   onRenameTeam,
   onSwapSeats
 }: Readonly<{
   variant: PickupVariant;
+  /** The mix owner's game: names, glyphs and the grid of every seat. */
+  owner: MixOwner;
   canWrite: boolean;
   /** A screenshot is being taken: the rename pencils drop out so the card exports as a plain matchup. */
   capturing: boolean;
@@ -71,6 +74,7 @@ export function VariantView({
             <TeamColumnAndDivider
               key={team.id}
               team={team}
+              owner={owner}
               teamIndex={teamIndex}
               showDivider={twoTeams && teamIndex === 0}
               canWrite={canWrite}
@@ -85,7 +89,7 @@ export function VariantView({
         {/* Follows the pointer instead of the seat teleporting under it --
               without this dnd-kit still swaps correctly, it just looks broken
               mid-drag (the dragged row snaps back until drop). */}
-        <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} /> : null}</DragOverlay>
+        <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} owner={owner} /> : null}</DragOverlay>
       </DndContext>
     </div>
   );
@@ -93,6 +97,7 @@ export function VariantView({
 
 function TeamColumnAndDivider({
   team,
+  owner,
   teamIndex,
   showDivider,
   canWrite,
@@ -101,6 +106,7 @@ function TeamColumnAndDivider({
   activeDrag
 }: Readonly<{
   team: PickupTeam;
+  owner: MixOwner;
   teamIndex: number;
   showDivider: boolean;
   canWrite: boolean;
@@ -112,6 +118,7 @@ function TeamColumnAndDivider({
     <>
       <TeamColumn
         team={team}
+        owner={owner}
         teamIndex={teamIndex}
         canWrite={canWrite}
         onRenameTeam={onRenameTeam}
@@ -134,6 +141,7 @@ function TeamColumnAndDivider({
 
 function TeamColumn({
   team,
+  owner,
   teamIndex,
   canWrite,
   onRenameTeam,
@@ -141,6 +149,7 @@ function TeamColumn({
   activeDrag
 }: Readonly<{
   team: PickupTeam;
+  owner: MixOwner;
   teamIndex: number;
   canWrite: boolean;
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
@@ -177,6 +186,7 @@ function TeamColumn({
           <SeatRow
             key={`${seat.uuid}:${seat.role}`}
             seat={seat}
+            owner={owner}
             teamIndex={teamIndex}
             canDrag={canDrag}
             activeDrag={activeDrag}

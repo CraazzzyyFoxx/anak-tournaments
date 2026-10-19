@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useDragSensors } from "@/hooks/useDragSensors";
-import { ROLE_LABELS, ROLES } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,
@@ -33,7 +33,8 @@ import {
   computeRotationHintPatches,
   sortLineup,
   summarizeLineup,
-  summarizeRoleSupply
+  summarizeRoleSupply,
+  type MixOwner
 } from "./pickup-lineup";
 
 type PickupLobbyPanelProps = {
@@ -42,6 +43,8 @@ type PickupLobbyPanelProps = {
   rows: CustomGamePlayer[];
   /** How many lobbies this mix runs: role demand scales with it, and rows gain a lobby badge. */
   lobbyCount?: number;
+  /** The mix owner's game: the roles the supply strip counts, their names and the grid the ranks are on. */
+  owner: MixOwner;
   /**
    * Rotation-fairness verdict per roster member, from `usePickupMix`'s
    * `rotationQuery`. Optional, and defaulted to empty, so an older caller (or
@@ -108,6 +111,7 @@ export function PickupLobbyPanel({
   hasMix,
   rows,
   lobbyCount = 1,
+  owner,
   rotation = [],
   savingPlayerId,
   clearing,
@@ -119,8 +123,9 @@ export function PickupLobbyPanel({
   applyingHints,
 }: Readonly<PickupLobbyPanelProps>) {
   const lineup = sortLineup(rows);
-  const summary = summarizeLineup(rows);
-  const supply = summarizeRoleSupply(rows, lobbyCount);
+  const summary = summarizeLineup(rows, owner.roles);
+  const supply = summarizeRoleSupply(rows, owner, lobbyCount);
+  const slotLabel = useSlotLabel(owner.ontology);
   const rotationByMember = new Map(rotation.map((r) => [r.workspace_member_id, r]));
   const pendingHintCount = computeRotationHintPatches(rows, rotation).length;
   const columns = COLUMNS.map((def) => ({
@@ -226,49 +231,46 @@ export function PickupLobbyPanel({
         </div>
       </div>
 
-      {rows.length > 0 ? (
-        <div className="flex border-b border-[color:var(--aqt-border)]">
-          {supply.map((entry) => {
-            const icon = ROLES.find((role) => role.code === entry.role)?.icon ?? "Support";
-            return (
-              <div
-                key={entry.role}
-                className="flex-1 border-r border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-r-0"
-              >
-                <div className="flex items-center gap-1.5">
-                  <PlayerRoleIcon role={icon} size={16} decorative />
-                  <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                    {ROLE_LABELS[entry.role]}
-                  </span>
-                  <span
-                    className={cn(
-                      "ml-auto text-caption font-semibold tabular-nums",
-                      entry.short > 0
-                        ? "text-[color:var(--aqt-amber)]"
-                        : "text-[color:var(--aqt-emerald)]",
-                    )}
-                  >
-                    {entry.short > 0
-                      ? `${entry.supply} of ${entry.need} \u00B7 short ${entry.short}`
-                      : `${entry.supply} of ${entry.need}`}
-                  </span>
-                </div>
-                <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-3)]">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      entry.short > 0
-                        ? "bg-[color:var(--aqt-amber)]"
-                        : "bg-[color:var(--aqt-emerald)]",
-                    )}
-                    style={{
-                      width: `${Math.min(100, Math.round((entry.supply / entry.need) * 100))}%`,
-                    }}
-                  />
-                </div>
+      {rows.length > 0 && supply.length > 0 ? (
+        <div className="flex flex-wrap border-b border-[color:var(--aqt-border)]">
+          {supply.map((entry) => (
+            <div
+              key={entry.role}
+              className="min-w-[7.5rem] flex-1 border-r border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-r-0"
+            >
+              <div className="flex items-center gap-1.5">
+                <PlayerRoleIcon role={entry.role} ontology={owner.ontology} size={16} decorative />
+                <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                  {slotLabel(entry.role)}
+                </span>
+                <span
+                  className={cn(
+                    "ml-auto text-caption font-semibold tabular-nums",
+                    entry.short > 0
+                      ? "text-[color:var(--aqt-amber)]"
+                      : "text-[color:var(--aqt-emerald)]",
+                  )}
+                >
+                  {entry.short > 0
+                    ? `${entry.supply} of ${entry.need} \u00B7 short ${entry.short}`
+                    : `${entry.supply} of ${entry.need}`}
+                </span>
               </div>
-            );
-          })}
+              <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-3)]">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    entry.short > 0
+                      ? "bg-[color:var(--aqt-amber)]"
+                      : "bg-[color:var(--aqt-emerald)]",
+                  )}
+                  style={{
+                    width: `${Math.min(100, Math.round((entry.supply / entry.need) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       ) : null}
 
@@ -320,6 +322,7 @@ export function PickupLobbyPanel({
                   rows={column.rows}
                   lobbyCount={lobbyCount}
                   rotationByMember={rotationByMember}
+                  owner={owner}
                   canWrite={canWrite}
                   savingPlayerId={savingPlayerId}
                   onPatchPlayer={onPatchPlayer}
@@ -331,7 +334,7 @@ export function PickupLobbyPanel({
             {/* Follows the pointer instead of the row teleporting under it --
                 without this dnd-kit still moves it correctly, it just looks
                 broken mid-drag (the dragged row snaps back until drop). */}
-            <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} /> : null}</DragOverlay>
+            <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} owner={owner} /> : null}</DragOverlay>
           </DndContext>
         )}
       </div>

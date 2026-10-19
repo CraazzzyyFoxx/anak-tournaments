@@ -7,10 +7,11 @@ import type { PlayerIdentity } from "@/types/identity.types";
 /** Where an effective rank came from, strongest first. */
 export type RankSource = "author" | "workspace" | "native";
 
+/** The labels of the layers every game has; the native ladder is named after the game (`rankSourceLabel`). */
 export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
   author: "Mine",
   workspace: "Workspace",
-  native: "Overwatch",
+  native: "Game",
 };
 
 /**
@@ -418,7 +419,7 @@ export type MixMemberStats = {
   streak: number;
   last_played_at: string | null;
   /** Only roles with games played -- a seat with no role counts in the totals and in no bucket. */
-  by_role: Partial<Record<"tank" | "damage" | "support", MixRoleTally>>;
+  by_role: Record<string, MixRoleTally>;
 };
 
 /** `since` echoes back the window the server parsed, so a reader can tell it from all time. */

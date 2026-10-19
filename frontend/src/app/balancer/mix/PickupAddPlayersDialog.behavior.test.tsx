@@ -25,6 +25,8 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import type { RosterMember } from "@/services/workspace-player.service";
 
 import { PickupAddPlayersDialog } from "./PickupAddPlayersDialog";
+import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
   useDisciplineMetadata: (_axis: number, code: string) => ({
@@ -92,7 +94,9 @@ vi.mock("@/services/custom-game.service", () => ({
   },
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({
+  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
+}));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
@@ -148,6 +152,7 @@ async function mount(
     canEdit?: boolean;
     canEditRanks?: boolean;
     canWrite?: boolean;
+    owner?: MixOwner;
     hostUserId?: number | null;
   } = {},
 ) {
@@ -162,6 +167,7 @@ async function mount(
           onOpenChange={vi.fn()}
           workspaceId={WORKSPACE_ID}
           discipline={props.discipline ?? "overwatch"}
+          owner={props.owner ?? OW_OWNER}
           canEdit={props.canEdit ?? true}
           canEditRanks={props.canEditRanks ?? true}
           canWrite={props.canWrite ?? true}
@@ -284,6 +290,23 @@ describe("PickupAddPlayersDialog", () => {
     const scope = await mount({ rows: [seated(1, "Aria#1111")] });
 
     expect(scope.textContent).toContain("9 more for a full lobby");
+  });
+
+  it("counts a League lobby against its five-position shape: ten seats, two per position", async () => {
+    const rows = Array.from({ length: 11 }, (_unused, index) =>
+      seated(100 + index, `P${index}#1000`, {
+        roles: [{ dimension: "position", role: "top" }],
+        ranks: { top: 2400 },
+        rank_sources: { top: "workspace" as const },
+      }),
+    );
+    const scope = await mount({ rows, owner: LOL_OWNER, discipline: "lol" });
+
+    expect(scope.textContent).toContain("1 over a full lobby");
+    // Eleven tops against a demand of two, and five entries because League has five positions.
+    expect(scope.textContent).toContain("11/2");
+    expect(scope.textContent?.match(/\d+\/2/g)).toHaveLength(5);
+    expect(scope.textContent).not.toContain("0/4");
   });
 
   it("offers Remove for somebody already in the mix and Add for everyone else", async () => {

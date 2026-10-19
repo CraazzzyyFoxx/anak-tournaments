@@ -10,10 +10,11 @@ import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
 import type { CustomGamePlayer } from "@/services/custom-game.service";
 
+import type { MixOwner } from "./pickup-lineup";
 import { MixLineupAside } from "./_components/MixLineupAside";
 import { RosterFilterBar } from "./_components/RosterFilterBar";
 import { RosterRowItem } from "./_components/RosterRowItem";
@@ -24,6 +25,8 @@ type PickupAddPlayersDialogProps = {
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
   discipline: string;
+  /** The mix owner's game: the rank columns, the full-lobby size and the grid the ranks are on. */
+  owner: MixOwner;
   /** Workspace right: whether a new BattleTag can be added to the roster. */
   canEdit: boolean;
   /**
@@ -67,6 +70,7 @@ export function PickupAddPlayersDialog({
   onOpenChange,
   workspaceId,
   discipline,
+  owner,
   canEdit,
   canEditRanks,
   canWrite,
@@ -74,6 +78,7 @@ export function PickupAddPlayersDialog({
   rows,
   onTogglePlayer
 }: Readonly<PickupAddPlayersDialogProps>) {
+  const slotLabel = useSlotLabel(owner.ontology);
   const picker = useRosterPicker({
     workspaceId,
     discipline,
@@ -162,14 +167,14 @@ export function PickupAddPlayersDialog({
               <span aria-hidden="true" className="size-6 shrink-0" />
               <span className={cn(EYEBROW_CLASS, "min-w-0 flex-1")}>Player</span>
               <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
-                {ROLES.map((role) => (
+                {owner.roles.map((role) => (
                   <IconTooltip
-                    key={role.code}
-                    label={ROLE_LABELS[role.code]}
+                    key={role}
+                    label={slotLabel(role)}
                     hint="This host's rank for the role"
                     className="size-8 items-center justify-center opacity-70"
                   >
-                    <PlayerRoleIcon role={role.icon} size={14} decorative />
+                    <PlayerRoleIcon role={role} ontology={owner.ontology} size={14} decorative />
                   </IconTooltip>
                 ))}
               </div>
@@ -218,6 +223,7 @@ export function PickupAddPlayersDialog({
                     <RosterRowItem
                       key={row.memberId}
                       row={row}
+                      owner={owner}
                       isInMix={picker.inMix.has(row.memberId)}
                       isCursor={index === cursor}
                       canWrite={canWrite}
@@ -250,6 +256,7 @@ export function PickupAddPlayersDialog({
           {/* ── The lineup ───────────────────────────────────────────────── */}
           <MixLineupAside
             rows={rows}
+            owner={owner}
             canWrite={canWrite}
             onTogglePlayer={onTogglePlayer}
             onDone={() => onOpenChange(false)}

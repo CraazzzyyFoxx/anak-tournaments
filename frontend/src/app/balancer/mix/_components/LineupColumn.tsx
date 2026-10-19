@@ -12,6 +12,7 @@ import type {
   RotationRecommendation
 } from "@/services/custom-game.service";
 
+import type { MixOwner } from "../pickup-lineup";
 import { LineupRow } from "./LineupRow";
 
 /**
@@ -26,6 +27,7 @@ export function LineupColumn({
   rows,
   lobbyCount,
   rotationByMember,
+  owner,
   canWrite,
   savingPlayerId,
   onPatchPlayer,
@@ -39,6 +41,7 @@ export function LineupColumn({
   rows: CustomGamePlayer[];
   lobbyCount: number;
   rotationByMember: Map<number, RotationRecommendation>;
+  owner: MixOwner;
   canWrite: boolean;
   savingPlayerId: number | null;
   onPatchPlayer: (workspaceMemberId: number, patch: CustomGamePlayerPatch) => void;
@@ -99,6 +102,7 @@ export function LineupColumn({
               key={row.workspace_member_id}
               row={row}
               rotationHint={rotationByMember.get(row.workspace_member_id)}
+              owner={owner}
               canWrite={canWrite}
               lobbyCount={lobbyCount}
               saving={savingPlayerId === row.workspace_member_id}

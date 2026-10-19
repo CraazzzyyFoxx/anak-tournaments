@@ -20,11 +20,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { toRoleRef } from "@/lib/roster/role-ref";
-import { type RoleCode } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import {
-  RANK_SOURCE_LABELS,
   type CustomGamePlayer,
   type CustomGamePlayerPatch,
   type MixParticipation,
@@ -35,8 +32,11 @@ import {
   LINEUP_ISSUE_MESSAGES,
   getLineupIssue,
   playerLabel,
+  rankSourceLabel,
   resolveRoleOrder,
+  roleRefsOf,
   toggleRole,
+  type MixOwner,
 } from "./pickup-lineup";
 import { formatRecord, formatStreak } from "./pickup-stats";
 
@@ -52,6 +52,8 @@ type PickupPlayerSheetProps = {
   onRemove: () => void;
   /** The mix's game: rank history is resolved for it. */
   discipline: string;
+  /** The mix owner's game: the roles on offer, their names/tints, the rank labels and the grid. */
+  owner: MixOwner;
   /** This player's all-time mix record, or `null` where the page does not read one. */
   mixStats?: MixMemberStats | null;
   /** How many lobbies the mix runs. The pin only exists, and is only sent, past 1. */
@@ -62,9 +64,9 @@ type PickupPlayerSheetProps = {
 type RoleDraft = {
   participation: MixParticipation;
   /** Priority order of the roles that are on — position is what the balancer reads. */
-  order: RoleCode[];
+  order: string[];
   /** Staged writes to the host's own book. A `null` value is a staged Clear. */
-  rankEdits: Partial<Record<RoleCode, number | null>>;
+  rankEdits: Partial<Record<string, number | null>>;
   /** Every role this row has a rank for is treated as equally preferred, so
    * `order`'s position stops mattering as a priority hint. */
   isFlex: boolean;
@@ -72,10 +74,10 @@ type RoleDraft = {
   lobbyPin: number | null;
 };
 
-function buildDraft(row: CustomGamePlayer | null): RoleDraft {
+function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): RoleDraft {
   return {
     participation: row?.participation ?? "pool",
-    order: row ? resolveRoleOrder(row) : [],
+    order: row ? resolveRoleOrder(row, roles) : [],
     rankEdits: {},
     isFlex: row?.is_flex ?? false,
     lobbyPin: row?.lobby_pin ?? null,
@@ -129,6 +131,7 @@ export function PickupPlayerSheet({
   onSave,
   onRemove,
   discipline,
+  owner,
   mixStats = null,
   lobbyCount = 1,
 }: Readonly<PickupPlayerSheetProps>) {
@@ -142,7 +145,7 @@ export function PickupPlayerSheet({
     mixStats != null && mixStats.games > 0
       ? `Mixes: ${formatRecord(mixStats)} · ${Math.round(mixStats.win_rate * 100)}%${mixStreak ? ` · ${mixStreak}` : ""}`
       : null;
-  const [draft, setDraft] = useState<RoleDraft>(() => buildDraft(row));
+  const [draft, setDraft] = useState<RoleDraft>(() => buildDraft(row, owner.roles));
   // Keyed on the member id rather than the whole row: a background refetch of
   // this same player (another host's edit landing mid-session) must not wipe
   // out an edit still in progress. Resetting during render (not an effect) on
@@ -151,26 +154,27 @@ export function PickupPlayerSheet({
   const [draftedMemberId, setDraftedMemberId] = useState(row?.workspace_member_id);
   if (row?.workspace_member_id !== draftedMemberId) {
     setDraftedMemberId(row?.workspace_member_id);
-    setDraft(buildDraft(row));
+    setDraft(buildDraft(row, owner.roles));
   }
 
   // Reads the draft, not the server row: a role turned on (or a rank typed
   // for one) must clear this warning immediately, not once Save round-trips.
-  const issue = row ? getLineupIssue(draftRow(row, draft)) : null;
+  const issue = row ? getLineupIssue(draftRow(row, draft), owner.roles) : null;
   const disabled = !canEdit || saving;
 
-  const toggle = (role: RoleCode) =>
+  const toggle = (role: string) =>
     setDraft((current) => ({ ...current, order: toggleRole(current.order, role) }));
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      setDraft(buildDraft(row));
+      setDraft(buildDraft(row, owner.roles));
     }
     onOpenChange(open);
   };
 
   const handleSave = () => {
-    if (!row) return;
+    // Role references are written in the owner's rated dimension; without it nothing is written.
+    if (!row || owner.dimension == null) return;
     const ranks: Record<string, number> = {};
     const clear: string[] = [];
     for (const [role, value] of Object.entries(draft.rankEdits)) {
@@ -183,7 +187,7 @@ export function PickupPlayerSheet({
     onSave(
       {
         participation: draft.participation,
-        roles: draft.order.map((code) => toRoleRef(code, null, "player_role")),
+        roles: roleRefsOf(draft.order, owner.dimension),
         is_flex: draft.isFlex,
         // A one-lobby mix 422s this field, and there is no control to set it.
         ...(lobbyCount > 1 ? { lobby_pin: draft.lobbyPin } : {}),
@@ -325,6 +329,7 @@ export function PickupPlayerSheet({
               </h3>
 
               <PickupRoleOrderEditor
+                owner={owner}
                 order={draft.order}
                 isFlex={draft.isFlex}
                 disabled={disabled}
@@ -333,7 +338,7 @@ export function PickupPlayerSheet({
                 onToggle={toggle}
                 onFlexChange={(checked) => setDraft((current) => ({ ...current, isFlex: checked }))}
                 rankFor={(role) => {
-                  const field = stagedRankFor(row, draft, role);
+                  const field = stagedRankFor(row, draft, role, owner.gameName);
                   return {
                     rankValue: field.rankValue,
                     sourceLabel: field.sourceLabel,
@@ -399,7 +404,7 @@ export function PickupPlayerSheet({
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || owner.dimension == null}
                 className="h-8 bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90"
               >
                 <Save className="mr-1 h-3.5 w-3.5" />
@@ -426,7 +431,8 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
   return {
     ...row,
     participation: draft.participation,
-    roles: draft.order.map((code) => toRoleRef(code, null, "player_role")),
+    // Only the codes are read back (`resolveRoleOrder`), so the dimension is irrelevant here.
+    roles: roleRefsOf(draft.order, ""),
     ranks,
   };
 }
@@ -435,20 +441,21 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
 function stagedRankFor(
   row: CustomGamePlayer,
   draft: RoleDraft,
-  role: RoleCode,
+  role: string,
+  gameName: string | null,
 ): { rankValue: number | null; sourceLabel: string | null; hasOwnEntry: boolean } {
   const staged = draft.rankEdits[role];
   if (staged !== undefined) {
     return {
       rankValue: staged,
-      sourceLabel: staged == null ? null : RANK_SOURCE_LABELS.author,
+      sourceLabel: staged == null ? null : rankSourceLabel("author", gameName),
       hasOwnEntry: staged != null,
     };
   }
   const source = row.rank_sources[role] ?? null;
   return {
     rankValue: row.ranks[role] ?? null,
-    sourceLabel: source ? RANK_SOURCE_LABELS[source] : null,
+    sourceLabel: source ? rankSourceLabel(source, gameName) : null,
     hasOwnEntry: row.author_ranks[role] != null,
   };
 }

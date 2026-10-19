@@ -15,7 +15,6 @@ import {
 import {
   ICON_BUTTON_CLASS,
   PANEL_CLASS,
-  ROLE_TEXT_ACCENTS,
   splitBattleTag,
 } from "@/components/balancer/balancer-page-helpers";
 import {
@@ -39,10 +38,11 @@ import {
 } from "@/components/ui/context-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { notify } from "@/lib/notify";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
-import { ROLE_LABELS, ROLES, type RoleCode } from "@/lib/roster/roles";
+import { registrationRoles, roleTint, type RoleOntology } from "@/lib/roster/ontology";
 import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
 import {
@@ -50,6 +50,7 @@ import {
   workspacePlayerService,
   type RosterMember,
 } from "@/services/workspace-player.service";
+import type { DivisionGrid } from "@/types/workspace.types";
 import { Spinner } from "@/components/ui/spinner";
 
 const PER_PAGE = 30;
@@ -82,6 +83,10 @@ function rangeSummary(page: number, perPage: number, shown: number, total: numbe
 
 type RosterMemberRowProps = {
   member: RosterMember;
+  /** The owner game's role dictionary (names, glyphs, tints); `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The grid the member's ranks are on: the owner game's grid in the workspace. */
+  grid: DivisionGrid;
   /** Opens the rank sheet — the row shows ranks, it no longer edits them. */
   onOpen: (member: RosterMember) => void;
 };
@@ -109,18 +114,21 @@ type RosterMemberRowProps = {
  * menu root, and the search field is deferred, so an unmemoized list re-rendered
  * every row on every keystroke.
  */
-const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: RosterMemberRowProps) {
-  const grid = OW_REFERENCE_GRID;
+const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, onOpen }: RosterMemberRowProps) {
+  const slotLabel = useSlotLabel(ontology);
   const label = memberLabel(member);
   const { name, suffix } = splitBattleTag(label);
   const effective = member.ranks;
 
-  const rankedRoles = ROLES.filter((role) => typeof effective[role.code] === "number");
+  // The owner game's rated roles, in declared order, that the member has a rank for.
+  const rankedRoles = registrationRoles(ontology)
+    .map((role) => role.code)
+    .filter((code) => typeof effective[code] === "number");
   // The strongest role is what a pool decision is made on, and the glyph alone
   // hides the value — same reasoning as the pool row's primary entry.
-  const topRank = rankedRoles.reduce<{ role: RoleCode; rank: number } | null>((best, role) => {
-    const rank = effective[role.code] as number;
-    return best && best.rank >= rank ? best : { role: role.code, rank };
+  const topRank = rankedRoles.reduce<{ role: string; rank: number } | null>((best, role) => {
+    const rank = effective[role] as number;
+    return best && best.rank >= rank ? best : { role, rank };
   }, null);
   const division = topRank ? resolveDivisionFromRank(grid, topRank.rank) : null;
 
@@ -148,8 +156,8 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
                 {rankedRoles.length > 0 ? (
                   <div className="flex shrink-0 items-center gap-1">
                     {rankedRoles.map((role) => (
-                      <span key={role.code} title={ROLE_LABELS[role.code]}>
-                        <PlayerRoleIcon role={role.icon} size={15} label={ROLE_LABELS[role.code]} />
+                      <span key={role} title={slotLabel(role)}>
+                        <PlayerRoleIcon role={role} ontology={ontology} size={15} label={slotLabel(role)} />
                       </span>
                     ))}
                   </div>
@@ -176,16 +184,14 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, onOpen }: Roster
               <div className="flex shrink-0 items-center gap-1.5" data-card-action>
                 {division == null ? null : (
                   <span title={`Division ${division}`}>
-                    <DivisionIcon division={division} width={20} height={20} />
+                    <DivisionIcon division={division} tournamentGrid={grid} width={20} height={20} />
                   </span>
                 )}
                 {topRank ? (
                   <span
-                    title={`Highest rank: ${ROLE_LABELS[topRank.role]} ${topRank.rank}`}
-                    className={cn(
-                      "min-w-10 text-right text-caption font-semibold tabular-nums",
-                      ROLE_TEXT_ACCENTS[topRank.role],
-                    )}
+                    title={`Highest rank: ${slotLabel(topRank.role)} ${topRank.rank}`}
+                    className="min-w-10 text-right text-caption font-semibold tabular-nums"
+                    style={{ color: roleTint(ontology, topRank.role) }}
                   >
                     {topRank.rank}
                   </span>
@@ -219,6 +225,8 @@ export function WorkspacePlayersSidebar({
 }: Readonly<WorkspacePlayersSidebarProps>) {
   const queryClient = useQueryClient();
   const metadata = useDisciplineMetadata(workspaceId, discipline);
+  const ontology = metadata.data ?? null;
+  const grid = useDivisionGrid(discipline);
   const provider = metadata.data?.discipline.identity_provider;
   const identityConfig = provider ? getSocialProviderConfig(provider) : null;
   const [search, setSearch] = useState("");
@@ -559,6 +567,8 @@ export function WorkspacePlayersSidebar({
             {members.map((member) => (
               <RosterMemberRow
                 key={member.member_id}
+                ontology={ontology}
+                grid={grid}
                 member={member}
                 onOpen={(row) => setEditingMemberId(row.member_id)}
               />
@@ -585,6 +595,8 @@ export function WorkspacePlayersSidebar({
       <WorkspacePlayerSheet
         member={editingMember}
         discipline={discipline}
+        ontology={ontology}
+        grid={grid}
         canEdit={canEdit}
         // Scoped to the member being written: the sheet is the only surface that
         // edits, so a save anywhere else has no control to disable.

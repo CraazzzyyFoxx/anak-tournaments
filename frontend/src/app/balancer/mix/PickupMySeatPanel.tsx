@@ -8,8 +8,8 @@ import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor"
 import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { Button } from "@/components/ui/button";
-import { roleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
-import { ROLE_LABELS, type RoleCode } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
 import {
   type MixSelfBlocker,
@@ -18,7 +18,7 @@ import {
 } from "@/services/custom-game.service";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 
-import { resolveRoleOrder, toggleRole } from "./pickup-lineup";
+import { resolveRoleOrder, roleRefsOf, toggleRole, type MixOwner } from "./pickup-lineup";
 
 /**
  * Blockers an account link fixes, and only those. Linking happens in account
@@ -34,6 +34,8 @@ const LINKABLE_BLOCKERS: Record<string, true> = {
 
 type PickupMySeatPanelProps = {
   state: MixSelfState;
+  /** The mix owner's game: the roles on offer, their names/tints and the grid. */
+  owner: MixOwner;
   saving: boolean;
   onJoin: () => void;
   onLeave: () => void;
@@ -41,7 +43,7 @@ type PickupMySeatPanelProps = {
 };
 
 /** Everything the panel edits before Save, kept apart from the server seat. */
-type SeatDraft = { order: RoleCode[]; isFlex: boolean };
+type SeatDraft = { order: string[]; isFlex: boolean };
 
 /** Ranks with no layer behind them are absent, which is what `resolveRoleOrder` reads. */
 function rankedRoles(seat: MixSelfSeat): Record<string, number> {
@@ -52,10 +54,10 @@ function rankedRoles(seat: MixSelfSeat): Record<string, number> {
   return out;
 }
 
-function buildDraft(seat: MixSelfSeat | null): SeatDraft {
+function buildDraft(seat: MixSelfSeat | null, roles: readonly string[]): SeatDraft {
   if (seat == null) return { order: [], isFlex: false };
   return {
-    order: resolveRoleOrder({ roles: seat.roles, ranks: rankedRoles(seat) }),
+    order: resolveRoleOrder({ roles: seat.roles, ranks: rankedRoles(seat) }, roles),
     isFlex: seat.is_flex,
   };
 }
@@ -88,6 +90,7 @@ function signatureOf(seat: MixSelfSeat | null): string {
  */
 export function PickupMySeatPanel({
   state,
+  owner,
   saving,
   onJoin,
   onLeave,
@@ -95,9 +98,10 @@ export function PickupMySeatPanel({
 }: Readonly<PickupMySeatPanelProps>) {
   const t = useTranslations("mixes.self");
   const openAccountSettings = useAccountSettingsModalStore((store) => store.open);
+  const slotLabel = useSlotLabel(owner.ontology);
 
   const signature = signatureOf(state.seat);
-  const [draft, setDraft] = useState<SeatDraft>(() => buildDraft(state.seat));
+  const [draft, setDraft] = useState<SeatDraft>(() => buildDraft(state.seat, owner.roles));
   // Reset during render (not in an effect) when the server's own seat changes:
   // React's pattern for state derived from a prop that should reset when the
   // prop's identity changes. A background refetch that changed nothing leaves
@@ -105,14 +109,14 @@ export function PickupMySeatPanel({
   const [seenSignature, setSeenSignature] = useState(signature);
   if (signature !== seenSignature) {
     setSeenSignature(signature);
-    setDraft(buildDraft(state.seat));
+    setDraft(buildDraft(state.seat, owner.roles));
   }
   // A write that just settled: success already seeded the new seat, failure
   // left the old one -- either way the server's seat is the truth again.
   const [wasSaving, setWasSaving] = useState(saving);
   if (saving !== wasSaving) {
     setWasSaving(saving);
-    if (!saving) setDraft(buildDraft(state.seat));
+    if (!saving) setDraft(buildDraft(state.seat, owner.roles));
   }
 
   const { policy, seat } = state;
@@ -123,11 +127,12 @@ export function PickupMySeatPanel({
   // `already_joined` is not a refusal, it is the state the panel already shows.
   const shownBlocker = blocker === "already_joined" ? null : blocker;
   const canLink = shownBlocker != null && LINKABLE_BLOCKERS[shownBlocker] === true;
-  const editable = policy.can_edit_roles && seat != null;
+  const editable = policy.can_edit_roles && seat != null && owner.dimension != null;
   const commit = (next: SeatDraft) => {
+    if (owner.dimension == null) return;
     setDraft(next);
     onSave({
-      roles: next.order.map((code) => toRoleRef(code, null, "player_role")),
+      roles: roleRefsOf(next.order, owner.dimension),
       is_flex: next.isFlex,
     });
   };
@@ -192,7 +197,7 @@ export function PickupMySeatPanel({
       {state.unranked_roles.length > 0 ? (
         <p className="text-caption text-amber-200">
           {t("unranked", {
-            roles: state.unranked_roles.map((role) => ROLE_LABELS[role] ?? role).join(", "),
+            roles: state.unranked_roles.map((role) => slotLabel(role)).join(", "),
           })}
         </p>
       ) : null}
@@ -201,6 +206,7 @@ export function PickupMySeatPanel({
         <div className="space-y-2">
           {seat.roles == null ? <p className={CAPTION_CLASS}>{t("rolesAllRanked")}</p> : null}
           <PickupRoleOrderEditor
+            owner={owner}
             order={draft.order}
             isFlex={draft.isFlex}
             disabled={!editable || saving}

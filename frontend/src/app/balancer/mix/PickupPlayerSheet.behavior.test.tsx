@@ -22,6 +22,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomGamePlayer, MixMemberStats } from "@/services/custom-game.service";
 
 import { PickupPlayerSheet } from "./PickupPlayerSheet";
+import { OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -35,7 +37,9 @@ globalThis.ResizeObserver ??= class {
 
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/RankHistory", () => ({ default: () => null }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({
+  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
+}));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
 // under pnpm, so the sortable wrapper and its hook render inertly here.
 vi.mock("@/components/kit/SortableRows", () => ({
@@ -49,15 +53,17 @@ vi.mock("@/components/kit/SortableRows", () => ({
   useSortableRow: () => ({ ref: () => {}, style: {}, handleProps: {}, isDragging: false }),
   SortableGrip: () => null,
 }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({
-  useDivisionGrid: () => ({
+// The mix owner with a three-tier grid: the rank fields label and slide against `owner.grid`.
+const OWNER: MixOwner = {
+  ...OW_OWNER,
+  grid: {
     tiers: [
       { number: 1, name: "Bronze", rank_min: 1000, rank_max: 1999, icon_url: "" },
       { number: 2, name: "Silver", rank_min: 2000, rank_max: 2999, icon_url: "" },
       { number: 3, name: "Gold", rank_min: 3000, rank_max: 3999, icon_url: "" },
     ],
-  }),
-}));
+  } as MixOwner["grid"],
+};
 
 const onSave = vi.fn();
 const onOpenChange = vi.fn();
@@ -89,6 +95,7 @@ async function mount(
   value: CustomGamePlayer | null = row(),
   mixStats: MixMemberStats | null = null,
   lobbyCount = 1,
+  owner: MixOwner = OWNER,
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -96,6 +103,7 @@ async function mount(
     createRoot(container).render(
       <PickupPlayerSheet
         discipline="overwatch"
+        owner={owner}
         row={value}
         mixStats={mixStats}
         lobbyCount={lobbyCount}
@@ -222,23 +230,24 @@ describe("PickupPlayerSheet ranks", () => {
     expect(scope.textContent).not.toContain("Rank for this mix");
   });
 
-  // balancer-service resolves a mix's ranks against the GLOBAL, OW-synced grid
-  // (`get_effective_division_grid(session, None)` -> the grid with
-  // `workspace_id IS NULL`), never the host workspace's. The mocked workspace
-  // grid above deliberately disagrees: it calls 3300 "Gold" where the OW ladder
-  // calls it "Diamond 2". Reading the workspace grid here renamed a number the
-  // backend had already fixed, so the crest and label disagreed with the mix
-  // the solver actually balanced.
-  it("labels ranks with the global OW ladder, not the workspace's grid", async () => {
+  // balancer-service resolves a mix's ranks against the effective grid of the MIX'S OWN game in the mix's
+  // workspace (`get_effective_division_grid(session, game.workspace_id, discipline=game.discipline)`), so the
+  // sheet labels them on `owner.grid` -- never a fixed Overwatch ladder, and never another game's tiers.
+  it("labels ranks with the mix owner's grid", async () => {
     const scope = await mount();
 
-    expect(scope.textContent).toContain("Diamond 2");
+    // 3300 is "Gold" on the owner's three-tier grid, 2700 and 2900 are "Silver".
+    expect(scope.textContent).toContain("Gold");
+    expect(scope.textContent).toContain("Silver");
+    expect(scope.textContent).not.toContain("Diamond 2");
+  });
+
+  it("has no labels at all while the owner's grid is missing, instead of another game's", async () => {
+    const scope = await mount(row(), null, 1, { ...OWNER, grid: { tiers: [] } });
+
     expect(scope.textContent).not.toContain("Gold");
-    // The crest has to come off the same ladder as the label beside it; it used
-    // to fall back to the workspace grid and show Gold's icon under "Diamond 2".
-    const crests = [...scope.querySelectorAll("img")].map((img) => img.alt);
-    expect(crests).toContain("Diamond 2");
-    expect(crests).not.toContain("Gold");
+    expect(scope.textContent).not.toContain("Silver");
+    expect(scope.textContent).toContain("No rank yet");
   });
 });
 

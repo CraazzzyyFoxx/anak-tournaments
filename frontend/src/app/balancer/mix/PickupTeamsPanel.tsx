@@ -29,10 +29,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { MatchHistoryList } from "./_components/MatchHistoryList";
 import { NextMapStrip } from "./_components/NextMapStrip";
 import { VariantView } from "./_components/VariantView";
+import { slotCodeOrder } from "@/lib/roster/ontology";
 import {
-  LOBBY_SIZE,
   parseVariants,
   teamNamesByIndex,
+  type MixOwner,
   type PickupRecordOutcomeInput
 } from "./pickup-lineup";
 
@@ -49,6 +50,8 @@ type PickupTeamsPanelProps = {
   lobby: CustomGameLobby | undefined;
   /** Its index, which is also the offset of its team names (`lobbyIndex * 2 + team`). */
   lobbyIndex: number;
+  /** The mix owner's game: seat names and glyphs, the full-lobby size and the grid the seats' ranks are on. */
+  owner: MixOwner;
   gameLoading: boolean;
   hasMix: boolean;
   balancing: boolean;
@@ -116,6 +119,7 @@ export function PickupTeamsPanel({
   game,
   lobby,
   lobbyIndex,
+  owner,
   gameLoading,
   hasMix,
   balancing,
@@ -144,7 +148,7 @@ export function PickupTeamsPanel({
 }: Readonly<PickupTeamsPanelProps>) {
   const t = useTranslations("mixes.lobbies");
   const teamNames = teamNamesByIndex(game?.settings, lobbyIndex);
-  const variants = parseVariants(lobby?.balance_result, teamNames);
+  const variants = parseVariants(lobby?.balance_result, teamNames, slotCodeOrder(owner.ontology));
   // Clamped rather than reset in an effect: a shorter result must not leave the
   // pager pointing past the end.
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
@@ -228,6 +232,7 @@ export function PickupTeamsPanel({
             ) : (
               <VariantView
                 variant={variant}
+                owner={owner}
                 canWrite={canWrite}
                 capturing={capturing}
                 onRenameTeam={
@@ -277,8 +282,8 @@ export function PickupTeamsPanel({
                 disabled={balancing || activeCount === 0}
                 onClick={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
                 title={
-                  activeCount > LOBBY_SIZE
-                    ? `${activeCount - LOBBY_SIZE} extra player${activeCount - LOBBY_SIZE === 1 ? "" : "s"} will be benched automatically -- rotation fairness picks who`
+                  owner.lobbySize != null && activeCount > owner.lobbySize
+                    ? `${activeCount - owner.lobbySize} extra player${activeCount - owner.lobbySize === 1 ? "" : "s"} will be benched automatically -- rotation fairness picks who`
                     : undefined
                 }
               >

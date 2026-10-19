@@ -19,15 +19,18 @@ import type { PlayerRankHistoryPreviewEntry } from "@/components/balancer/worksp
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { BalancerPlayerRoleEntry } from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
-import { ROLE_DISPLAY, buildHistoryChangeText } from "./playerEditSheet.model";
-import { ROLE_RANK_ACCENTS } from "./RoleRankControls";
+import { buildHistoryChangeText } from "./playerEditSheet.model";
+import { accentChipStyle, accentRowStyle, accentTextStyle, roleRankAccent } from "./RoleRankControls";
 import type { PlayerRankHistoryState } from "./usePlayerEditForm";
 
 type HistoryPreviewCardProps = {
   entry: PlayerRankHistoryPreviewEntry;
   currentEntry: BalancerPlayerRoleEntry | undefined;
   workspaceGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   getDivisionName: (divisionNumber: number | null) => string | null;
   getOriginalDivisionName: (
     divisionNumber: number | null,
@@ -38,11 +41,13 @@ type HistoryPreviewCardProps = {
 function HistoryPreviewCard({
   entry,
   currentEntry,
+  ontology,
   workspaceGrid,
   getDivisionName,
   getOriginalDivisionName
 }: Readonly<HistoryPreviewCardProps>) {
-  const accent = ROLE_RANK_ACCENTS[entry.role];
+  const slotLabel = useSlotLabel(ontology);
+  const accent = roleRankAccent(ontology, entry.role);
   // Normalised name (target/workspace grid)
   const divisionName =
     getDivisionName(entry.division_number) ??
@@ -58,21 +63,18 @@ function HistoryPreviewCard({
 
   return (
     <div
-      className={cn(
-        "grid gap-2.5 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_auto]",
-        "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]",
-        accent.row
-      )}
+      style={accentRowStyle(accent)}
+      className="grid gap-2.5 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
     >
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2">
-            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={18} decorative />
-            <span className={cn("text-sm font-semibold", accent.text)}>
-              {ROLE_DISPLAY[entry.role]}
+            <PlayerRoleIcon role={entry.role} ontology={ontology} size={18} decorative />
+            <span className="text-sm font-semibold" style={accentTextStyle(accent)}>
+              {slotLabel(entry.role)}
             </span>
           </div>
-          <Badge className={cn("h-5 border px-2 text-label", accent.chip)}>
+          <Badge className="h-5 border px-2 text-label" style={accentChipStyle(accent)}>
             {entry.rank_value} SR
           </Badge>
           {/* Original division (source tournament grid) */}
@@ -136,6 +138,7 @@ interface PlayerEditHistoryPanelProps {
   /** The roles being edited, so each preview card can say what it would change. */
   roleEntries: BalancerPlayerRoleEntry[];
   workspaceGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   getDivisionName: (divisionNumber: number | null) => string | null;
   getOriginalDivisionName: (
     divisionNumber: number | null,
@@ -148,6 +151,7 @@ interface PlayerEditHistoryPanelProps {
 export function PlayerEditHistoryPanel({
   history,
   roleEntries,
+  ontology,
   workspaceGrid,
   getDivisionName,
   getOriginalDivisionName
@@ -210,6 +214,7 @@ export function PlayerEditHistoryPanel({
             entry={entry}
             currentEntry={roleEntries.find((roleEntry) => roleEntry.role === entry.role)}
             workspaceGrid={workspaceGrid}
+            ontology={ontology}
             getDivisionName={getDivisionName}
             getOriginalDivisionName={getOriginalDivisionName}
           />

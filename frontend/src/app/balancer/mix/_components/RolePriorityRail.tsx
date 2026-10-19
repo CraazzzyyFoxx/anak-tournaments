@@ -1,80 +1,79 @@
 "use client";
 
-import { ROLE_ICON_COLOR } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { toRoleRef } from "@/lib/roster/role-ref";
-import { ROLE_LABELS, ROLES } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
 import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
 
-import { LINEUP_ROLES, resolveRoleOrder, toggleRole } from "../pickup-lineup";
+import { roleRefsOf, resolveRoleOrder, toggleRole, type MixOwner } from "../pickup-lineup";
 
 /**
  * The roles a player can be seated in, in the order the host set them.
  *
- * Three facts in one 102px rail, none of them a number: **which** roles the
- * balancer may use (a tinted tile vs a flat dim glyph), **which one comes
- * first** (the role-coloured underline, and leftmost position), and **which
- * selection will fail** (the amber ring — a role switched on with no rank
- * behind it, which rejects the whole run server-side).
+ * Three facts in one rail, none of them a number: **which** roles the
+ * balancer may use (a lit glyph vs a dimmed one), **which one comes first**
+ * (leftmost position, "first choice" in the name), and **which selection
+ * will fail** (the amber ring — a role switched on with no rank behind it,
+ * which rejects the whole run server-side).
  *
  * The order is the balancer's stored priority (see `resolveRoleOrder`), so a
  * click here only ever turns a role on or off — reordering belongs to the
- * player sheet, which has room for a drag list.
+ * player sheet, which has room for a drag list. The roles are the mix owner's
+ * game's own, so the rail is as wide as that game's role count.
  */
 export function RolePriorityRail({
   row,
   label,
+  owner,
   canWrite,
   saving,
   onPatch
 }: Readonly<{
   row: CustomGamePlayer;
   label: string;
+  owner: MixOwner;
   canWrite: boolean;
   saving: boolean;
   onPatch: (patch: CustomGamePlayerPatch) => void;
 }>) {
-  const order = resolveRoleOrder(row);
-  // Off roles trail the selected ones in canonical order: an unselected role
+  const slotLabel = useSlotLabel(owner.ontology);
+  const order = resolveRoleOrder(row, owner.roles);
+  // Off roles trail the selected ones in the game's declared order: an unselected role
   // has no priority, so placing them at all would imply one.
-  const off = LINEUP_ROLES.filter((role) => !order.includes(role));
+  const off = owner.roles.filter((role) => !order.includes(role));
+  const dimension = owner.dimension;
 
   return (
     <div
       role="group"
       aria-label={`Roles for ${label}`}
-      className="flex w-[102px] shrink-0 items-center justify-end gap-1.5"
+      className="flex shrink-0 items-center justify-end gap-1.5"
     >
       {[...order, ...off].map((role) => {
         const position = order.indexOf(role);
         const isOn = position !== -1;
         const isPrimary = position === 0;
         const roleRank = row.ranks[role];
-        const icon = ROLES.find((item) => item.code === role)?.icon ?? "Support";
+        const name = slotLabel(role);
         return (
           <IconTooltip
             key={role}
             control
             className="shrink-0"
-            label={
-              roleRank == null
-                ? `${ROLE_LABELS[role]}: no rank`
-                : `${ROLE_LABELS[role]}: ${roleRank} pts`
-            }
+            label={roleRank == null ? `${name}: no rank` : `${name}: ${roleRank} pts`}
             hint={isOn ? (isPrimary ? "First choice" : "Also plays") : "Off"}
           >
             <button
               type="button"
-              disabled={!canWrite || saving}
+              disabled={!canWrite || saving || dimension == null}
               aria-pressed={isOn}
-              aria-label={`${ROLE_LABELS[role]} for ${label}, ${
+              aria-label={`${name} for ${label}, ${
                 isOn ? (isPrimary ? "first choice" : "also plays") : "off"
               }${roleRank == null ? ", no rank" : `, ${roleRank} points`}`}
-              onClick={() => onPatch({
-                roles: toggleRole(order, role).map((code) => toRoleRef(code, null, "player_role")),
-              })}
+              onClick={() => {
+                if (dimension != null) onPatch({ roles: roleRefsOf(toggleRole(order, role), dimension) });
+              }}
               className={cn(
                 "relative flex size-[30px] items-center justify-center rounded-lg transition-opacity",
                 isOn ? "opacity-100" : "opacity-30",
@@ -82,12 +81,7 @@ export function RolePriorityRail({
                 "disabled:cursor-default"
               )}
             >
-              <PlayerRoleIcon
-                role={icon}
-                size={19}
-                decorative
-                color={isOn ? ROLE_ICON_COLOR[role] : undefined}
-              />
+              <PlayerRoleIcon role={role} ontology={owner.ontology} size={19} decorative />
             </button>
           </IconTooltip>
         );

@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MixSelfSeat, MixSelfState } from "@/services/custom-game.service";
 
 import { PickupMySeatPanel } from "./PickupMySeatPanel";
+import { OW_OWNER } from "./mix-owner.fixture";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -34,8 +35,12 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${Object.values(values).join(",")}` : key,
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) =>
+        values ? `${key}:${Object.values(values).join(",")}` : key,
+      { has: () => false },
+    ),
 }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
@@ -112,6 +117,7 @@ async function mount(value: MixSelfState) {
     root.render(
       <PickupMySeatPanel
         state={value}
+        owner={OW_OWNER}
         saving={saving}
         onJoin={onJoin}
         onLeave={onLeave}

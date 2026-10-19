@@ -23,8 +23,15 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
-import { ROLE_DISPLAY } from "./playerEditSheet.model";
-import { ROLE_RANK_ACCENTS, RoleRankControls } from "./RoleRankControls";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import {
+  RoleRankControls,
+  accentChipStyle,
+  accentRowStyle,
+  accentTextStyle,
+  roleRankAccent
+} from "./RoleRankControls";
 
 type SortableRoleEntryProps = {
   id: string;
@@ -36,6 +43,8 @@ type SortableRoleEntryProps = {
   onUpdate: (index: number, next: BalancerPlayerRoleEntry) => void;
   onRemove: (index: number) => void;
   subtypeOptions: Record<BalancerRoleCode, Array<{ value: string; label: string }>>;
+  /** The owner game's role dictionary: role names, glyphs and tints. `null` while it loads. */
+  ontology: RoleOntology | null;
 };
 
 export function SortableRoleEntry({
@@ -47,11 +56,14 @@ export function SortableRoleEntry({
   getDivisionName,
   onUpdate,
   onRemove,
-  subtypeOptions
+  subtypeOptions,
+  ontology
 }: Readonly<SortableRoleEntryProps>) {
   const { ref, style, handleProps } = useSortableRow(id);
 
-  const accent = ROLE_RANK_ACCENTS[entry.role];
+  const slotLabel = useSlotLabel(ontology);
+  const roleName = slotLabel(entry.role);
+  const accent = roleRankAccent(ontology, entry.role);
   // This card is the organizer's EDITING view, so every visual here follows the
   // declared flag. `is_active` is the resolver's "in play" verdict and belongs
   // to the pool/validation views: dimming a declared-on role because its rank is
@@ -76,16 +88,16 @@ export function SortableRoleEntry({
   return (
     <div
       ref={ref}
-      style={style}
+      style={{ ...style, ...(declaredActive ? accentRowStyle(accent) : undefined) }}
       className={cn(
         "grid gap-2 rounded-xl border p-2.5 transition-colors md:grid-cols-[32px_minmax(0,1fr)]",
         declaredActive
-          ? cn("border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]", accent.row)
+          ? "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
           : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] opacity-80"
       )}
     >
       <div className="flex items-center justify-between md:flex-col md:items-center md:justify-center md:gap-1">
-        <SortableGrip handleProps={handleProps} label={`Reorder ${ROLE_DISPLAY[entry.role]}`} />
+        <SortableGrip handleProps={handleProps} label={`Reorder ${roleName}`} />
         <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">
           #{index + 1}
         </span>
@@ -94,17 +106,15 @@ export function SortableRoleEntry({
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <PlayerRoleIcon role={ROLE_DISPLAY[entry.role]} size={15} decorative />
+            <PlayerRoleIcon role={entry.role} ontology={ontology} size={15} decorative />
             <span
-              className={cn(
-                "text-xs font-semibold",
-                declaredActive ? accent.text : "text-[color:var(--aqt-fg-muted)]"
-              )}
+              className="text-xs font-semibold"
+              style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-muted)" }}
             >
-              {ROLE_DISPLAY[entry.role]}
+              {roleName}
             </span>
             {subtypeLabel ? (
-              <Badge className={cn("h-4 border px-1.5 text-label", accent.chip)}>
+              <Badge className="h-4 border px-1.5 text-label" style={accentChipStyle(accent)}>
                 {subtypeLabel}
               </Badge>
             ) : null}
@@ -121,10 +131,8 @@ export function SortableRoleEntry({
                 aria-label={declaredActive ? "Disable role" : "Enable role"}
               />
               <span
-                className={cn(
-                  "text-label font-semibold uppercase tracking-label",
-                  declaredActive ? accent.text : "text-[color:var(--aqt-fg-dim)]"
-                )}
+                className="text-label font-semibold uppercase tracking-label"
+                style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
               >
                 {declaredActive ? "Active" : "Off"}
               </span>
@@ -134,7 +142,7 @@ export function SortableRoleEntry({
               variant="ghost"
               size="icon"
               className="h-6 w-6 shrink-0 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-              aria-label={`Remove ${ROLE_DISPLAY[entry.role]}`}
+              aria-label={`Remove ${roleName}`}
               onClick={() => onRemove(index)}
             >
               <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -227,10 +235,8 @@ export function SortableRoleEntry({
               ({owRankValue})
             </span>
             <span
-              className={cn(
-                "ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-label font-semibold",
-                accent.chip
-              )}
+              className="ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-label font-semibold"
+              style={accentChipStyle(accent)}
             >
               {owActionLabel}
             </span>

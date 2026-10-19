@@ -32,6 +32,8 @@ import type {
 } from "@/services/custom-game.service";
 
 import { PickupLobbyPanel } from "./PickupLobbyPanel";
+import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -43,7 +45,9 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({
+  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
+}));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
@@ -117,6 +121,7 @@ async function mount(
     rotation?: RotationRecommendation[];
     applyingHints?: boolean;
     lobbyCount?: number;
+    owner?: MixOwner;
   } = {},
 ) {
   const container = document.createElement("div");
@@ -128,6 +133,7 @@ async function mount(
         hasMix={props.hasMix ?? true}
         rows={rows}
         lobbyCount={props.lobbyCount ?? 1}
+        owner={props.owner ?? OW_OWNER}
         rotation={props.rotation}
         savingPlayerId={null}
         clearing={false}
@@ -464,6 +470,27 @@ describe("PickupLobbyPanel", () => {
 
     expect(scope.textContent).toContain("0 of 2 · short 2");
     expect(scope.textContent).toContain("2 of 4");
+  });
+
+  it("reads League's five positions and their two-seat demand from the mix's own roster shape", async () => {
+    const scope = await mount(
+      [
+        row({
+          roles: [{ dimension: "position", role: "jungle" }],
+          ranks: { jungle: 2200 },
+        }),
+      ],
+      { owner: LOL_OWNER },
+    );
+
+    // One entry per position of the game, in its declared order, each wanting two seats.
+    expect(scope.textContent).toContain("1 of 2 · short 1");
+    expect(scope.textContent?.match(/ of 2/g)).toHaveLength(5);
+    expect(scope.textContent).toContain("Jungle");
+    expect(scope.textContent).not.toContain("Tank");
+    // The rail toggles League's positions, written in League's own dimension.
+    expect(byLabel(scope, "Jungle for Aria#1111, first choice, 2200 points")).not.toBeNull();
+    expect(byLabel(scope, "Top for Aria#1111, off, no rank")).not.toBeNull();
   });
 
   it("warns once every selected role of an active player is unranked", async () => {

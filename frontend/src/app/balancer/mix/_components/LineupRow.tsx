@@ -11,7 +11,6 @@ import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,
@@ -19,7 +18,7 @@ import type {
   RotationRecommendation
 } from "@/services/custom-game.service";
 
-import { averageRank, getLineupIssue, playerLabel } from "../pickup-lineup";
+import { averageRank, getLineupIssue, playerLabel, type MixOwner } from "../pickup-lineup";
 import { RolePriorityRail } from "./RolePriorityRail";
 
 /**
@@ -78,6 +77,8 @@ type LineupRowProps = {
   row: CustomGamePlayer;
   /** This member's rotation-fairness verdict, if the fetch has one. */
   rotationHint: RotationRecommendation | undefined;
+  /** The mix owner's game: its roles, tints and the grid the row's ranks are on. */
+  owner: MixOwner;
   canWrite: boolean;
   /** More than one lobby: the row says which one seated this player, or that nobody did. */
   lobbyCount: number;
@@ -131,6 +132,7 @@ function LineupLobbyBadge({ currentLobby }: Readonly<{ currentLobby: number | nu
 export function LineupRow({
   row,
   rotationHint,
+  owner,
   canWrite,
   lobbyCount,
   saving,
@@ -139,14 +141,11 @@ export function LineupRow({
   onOpen,
   onRemove
 }: Readonly<LineupRowProps>) {
-  // The global OW grid, not the workspace's: balancer-service resolves a mix's
-  // ranks against the grid with `workspace_id=None`, so these ranks are on the
-  // OW scale. Labelling them with a workspace's tiers renames the same number.
-  const grid = OW_REFERENCE_GRID;
+  const { grid } = owner;
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
-  const issue = getLineupIssue(row);
-  const rank = averageRank(row);
+  const issue = getLineupIssue(row, owner.roles);
+  const rank = averageRank(row, owner.roles);
   const division = resolveDivisionFromRank(grid, rank);
   const canDrag = canWrite && !saving;
   const draggable = useDraggable({
@@ -203,6 +202,7 @@ export function LineupRow({
       <RowAction>
         <RolePriorityRail
           row={row}
+          owner={owner}
           label={label}
           canWrite={canWrite && !dimmed}
           saving={saving}
@@ -258,10 +258,10 @@ export function LineupRow({
 }
 
 /** The dragged row's own card, detached from its column, following the pointer. */
-export function LineupDragPreview({ row }: Readonly<{ row: CustomGamePlayer }>) {
+export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlayer; owner: MixOwner }>) {
   const label = playerLabel(row);
   const { name, suffix } = splitBattleTag(label);
-  const rank = averageRank(row);
+  const rank = averageRank(row, owner.roles);
 
   return (
     <div

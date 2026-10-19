@@ -7,12 +7,11 @@ import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 
-import type { PickupSeat } from "../pickup-lineup";
+import type { MixOwner, PickupSeat } from "../pickup-lineup";
 
 export type ActiveSeatDrag = { uuid: string; role: string; teamIndex: number; seat: PickupSeat };
 
@@ -26,11 +25,13 @@ export type ActiveSeatDrag = { uuid: string; role: string; teamIndex: number; se
  */
 export function SeatRow({
   seat,
+  owner,
   teamIndex,
   canDrag,
   activeDrag
 }: Readonly<{
   seat: PickupSeat;
+  owner: MixOwner;
   teamIndex: number;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
@@ -38,9 +39,9 @@ export function SeatRow({
   const dragData: ActiveSeatDrag = { uuid: seat.uuid, role: seat.role, teamIndex, seat };
   const draggable = useDraggable({ id: seat.uuid, data: dragData, disabled: !canDrag });
   const droppable = useDroppable({ id: seat.uuid, data: dragData, disabled: !canDrag });
-  const grid = OW_REFERENCE_GRID;
+  const { grid } = owner;
+  const slotLabel = useSlotLabel(owner.ontology);
   const division = resolveDivisionFromRank(grid, seat.rating);
-  const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
   const isValidTarget =
     activeDrag != null &&
     activeDrag.uuid !== seat.uuid &&
@@ -67,10 +68,10 @@ export function SeatRow({
       )}
     >
       <IconTooltip
-        label={`${ROLE_LABELS[seat.role]}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
+        label={`${slotLabel(seat.role)}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
         className="size-6 shrink-0 items-center justify-center opacity-90"
       >
-        <PlayerRoleIcon role={icon} size={24} decorative />
+        <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
       </IconTooltip>
       {division == null ? null : (
         <IconTooltip
@@ -101,8 +102,8 @@ export function SeatRow({
 }
 
 /** The dragged seat's own row, detached from the list, following the pointer. */
-export function SeatDragPreview({ seat }: Readonly<{ seat: PickupSeat }>) {
-  const icon = ROLES.find((item) => item.code === seat.role)?.icon ?? "Support";
+export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; owner: MixOwner }>) {
+  const slotLabel = useSlotLabel(owner.ontology);
   return (
     <div
       className={cn(
@@ -111,7 +112,7 @@ export function SeatDragPreview({ seat }: Readonly<{ seat: PickupSeat }>) {
       )}
     >
       <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
-        <PlayerRoleIcon role={icon} size={24} label={ROLE_LABELS[seat.role]} decorative />
+        <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} label={slotLabel(seat.role)} decorative />
       </span>
       <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]">
         {seat.name}

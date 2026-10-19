@@ -31,6 +31,7 @@ import type {
   BalancerPlayerUpdateInput
 } from "@/types/balancer-admin.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { getRegistrationBattleTags } from "@/components/balancer/balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import RankHistory from "@/components/RankHistory";
@@ -45,6 +46,8 @@ type PlayerEditModalProps = {
   player: BalancerPlayerRecord;
   registration?: AdminRegistration | null;
   discipline: string | undefined;
+  /** The owner game's role dictionary (role names, glyphs, tints); `null` while it loads. */
+  ontology?: RoleOntology | null;
   divisionGridVersionId: number | null | undefined;
   divisionGridVersion?: DivisionGridVersion | null;
   statusOptions?: {
@@ -68,6 +71,7 @@ export function PlayerEditModal({
   player,
   registration = null,
   discipline,
+  ontology = null,
   divisionGridVersionId,
   divisionGridVersion,
   statusOptions,
@@ -215,6 +219,7 @@ export function PlayerEditModal({
                 history={history}
                 roleEntries={roleEntries}
                 workspaceGrid={form.workspaceGrid}
+                ontology={ontology}
                 getDivisionName={form.getHistoryDivisionName}
                 getOriginalDivisionName={form.getOriginalDivisionName}
               />
@@ -267,6 +272,7 @@ export function PlayerEditModal({
                   onUpdate={form.updateEntry}
                   onRemove={form.removeEntry}
                   subtypeOptions={form.subtypeOptions}
+                  ontology={ontology}
                 />
               )}
             </SortableRows>

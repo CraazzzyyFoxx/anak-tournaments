@@ -23,11 +23,10 @@ import type { RosterMember } from "@/services/workspace-player.service";
 
 import { WorkspacePlayersSidebar } from "./WorkspacePlayersSidebar";
 
-vi.mock("@/hooks/useDisciplineMetadata", () => ({
-  useDisciplineMetadata: () => ({
-    data: { discipline: { identity_provider: "battlenet", enabled: true } }
-  })
-}));
+vi.mock("@/hooks/useDisciplineMetadata", async () => {
+  const { OW_METADATA } = await import("@/test/discipline-metadata");
+  return { useDisciplineMetadata: () => ({ data: OW_METADATA }) };
+});
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -60,7 +59,9 @@ vi.mock("@/services/workspace-player.service", () => ({
   },
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({
+  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
+}));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));

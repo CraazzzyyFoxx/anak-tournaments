@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -21,6 +21,7 @@ import { PickupVoicePanel } from "@/app/balancer/mix/PickupVoicePanel";
 import {
   PICKUP_TERMINAL_STATUSES,
   playerLabel,
+  buildMixOwner,
   summarizeLineup,
 } from "@/app/balancer/mix/pickup-lineup";
 import { usePickupMix } from "@/app/balancer/mix/usePickupMix";
@@ -30,6 +31,8 @@ import { customGameKeys, customGameService } from "@/services/custom-game.servic
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 
 /**
  * One mix in two columns: the **lineup** a host curates, and the **matchup** the
@@ -150,6 +153,15 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
   });
 
   const game = gameQuery.data;
+  // The owner game's roles, names, tints and grid, and what one lobby asks of each role from the mix's own roster
+  // shape. All of it is empty until the game's metadata loads: nothing falls back to another game's vocabulary.
+  const discipline = game?.discipline ?? initialGame.discipline;
+  const metadataQuery = useDisciplineMetadata(workspaceId, discipline);
+  const grid = useDivisionGrid(discipline);
+  const owner = useMemo(
+    () => buildMixOwner(metadataQuery.data, game?.roster_shape, grid),
+    [metadataQuery.data, game?.roster_shape, grid],
+  );
   // The mix's own game's maps with their modes: the roll pool for the next map and the manual picker. Which map is
   // *chosen* is the lobby's own `next_map_id`, so a co-host in another tab sees the same roll.
   const mapsQuery = useCatalogEntities(game?.discipline, "map");
@@ -243,6 +255,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
               hasMix={selectedGameId != null}
               rows={rows}
               lobbyCount={game?.lobby_count ?? 1}
+              owner={owner}
               rotation={rotationQuery.data ?? []}
               savingPlayerId={savingPlayerId}
               clearing={setRoster.isPending}
@@ -295,10 +308,11 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
               game={game}
               lobby={lobby}
               lobbyIndex={activeLobby}
+              owner={owner}
               gameLoading={gameQuery.isLoading}
               hasMix={selectedGameId != null}
               balancing={balance.isPending}
-              activeCount={summarizeLineup(rows).active}
+              activeCount={summarizeLineup(rows, owner.roles).active}
               onBalance={() => balance.mutate({ scope: "lobby", lobbyIndex: activeLobby })}
               shufflingAll={balance.isPending && balance.variables?.scope === "all"}
               onShuffleAll={() => balance.mutate({ scope: "all" })}
@@ -372,6 +386,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
             (mySeatQuery.data.self_signup !== "closed" || mySeatQuery.data.seat != null) ? (
               <PickupMySeatPanel
                 state={mySeatQuery.data}
+                owner={owner}
                 saving={joinMix.isPending || leaveMix.isPending || updateMySeat.isPending}
                 onJoin={() => joinMix.mutate()}
                 onLeave={() => leaveMix.mutate()}
@@ -388,6 +403,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
         onOpenChange={setIsPoolOpen}
         workspaceId={workspaceId}
         discipline={game.discipline}
+        owner={owner}
         canEdit={canEdit}
         canEditRanks={canEditRanks}
         canWrite={canWrite}
@@ -413,6 +429,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
       <PickupPlayerSheet
         row={openRow}
         discipline={game?.discipline ?? ""}
+        owner={owner}
         lobbyCount={game?.lobby_count ?? 1}
         mixStats={
           statsQuery.data?.members.find(

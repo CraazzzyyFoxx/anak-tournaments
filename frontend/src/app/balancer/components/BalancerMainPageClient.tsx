@@ -812,6 +812,7 @@ export function BalancerMainPageClient() {
           registration={quickEditRegistration}
           discipline={tournamentQuery.data?.discipline}
           divisionGridVersionId={tournamentQuery.data?.division_grid_version_id}
+          ontology={ontology}
           divisionGridVersion={tournamentQuery.data?.division_grid_version}
           statusOptions={playerStatusOptions}
           open={editingPlayerId !== null}

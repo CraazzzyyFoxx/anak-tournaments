@@ -50,6 +50,14 @@ export function isRoleSlot(code: string): boolean {
   return code !== OPEN_SLOT_CODE;
 }
 
+/**
+ * A solver/config role spelling as a slot code. A game's role codes are lower-case; the solver echoes the spelling of
+ * the mask it was given, so a saved or legacy payload may say `Tank` for the code `tank`.
+ */
+export function solverSlotCode(role: string): SlotCode {
+  return role.trim().toLowerCase();
+}
+
 // ponytail: legacy Overwatch role union, kept only for `roles.ts::RoleCode` (the mix tree's remaining fixed role
 // vocabulary; UI-bal's mix migration deletes both); everything else speaks {@link SlotCode}.
 export type RosterRoleSlotCode = "tank" | "damage" | "support";

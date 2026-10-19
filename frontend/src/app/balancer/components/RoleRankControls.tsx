@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { NumberInput } from "@/components/ui/number-input";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import {
   getDivisionLabel,
   resolveDivisionFromRank,
   resolveRankFromDivision,
   sortTiersAscending
 } from "@/lib/divisions/grid";
+import { roleColor, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
 
@@ -18,44 +18,49 @@ import type { DivisionGrid } from "@/types/workspace.types";
  * Role tinting for a rank card. Shared rather than per-sheet because the
  * tournament sheet and the mix sheet edit the same thing and had already
  * drifted into two different colour vocabularies for it.
+ *
+ * The tint is the role's own presentation colour from the owner game's ontology (`roleRankAccent`); a role
+ * without one, or a rank that belongs to no single role, reads neutral. Nothing here knows a game's roles.
  */
 export interface RoleRankAccent {
-  /** Card frame for the active state. */
-  row: string;
-  text: string;
-  chip: string;
-  /** `accent-color` plus the slider's gradient stop, so it lands in `style`. */
-  sliderColor: string;
+  /** A CSS colour, or `null` for the neutral tone. */
+  color: string | null;
 }
 
-export const ROLE_RANK_ACCENTS: Record<string, RoleRankAccent> = {
-  tank: {
-    row: "border-sky-400/40 bg-sky-500/[0.07] shadow-[0_0_0_1px_rgba(56,189,248,0.08)]",
-    text: "text-sky-200",
-    chip: "border-sky-300/30 bg-sky-500/12 text-sky-200",
-    sliderColor: "var(--aqt-tank)"
-  },
-  damage: {
-    row: "border-orange-400/40 bg-orange-500/[0.07] shadow-[0_0_0_1px_rgba(251,146,60,0.08)]",
-    text: "text-orange-200",
-    chip: "border-orange-300/30 bg-orange-500/12 text-orange-200",
-    sliderColor: "var(--aqt-damage)"
-  },
-  support: {
-    row: "border-emerald-400/40 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]",
-    text: "text-emerald-200",
-    chip: "border-emerald-300/30 bg-emerald-500/12 text-emerald-200",
-    sliderColor: "var(--aqt-support)"
-  }
-};
+export function roleRankAccent(ontology: RoleOntology | null | undefined, code: string): RoleRankAccent {
+  return { color: roleColor(ontology, code) };
+}
 
 /** For a rank that belongs to no single role — a whole-player override, say. */
-export const NEUTRAL_RANK_ACCENT: RoleRankAccent = {
-  row: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]",
-  text: "text-[color:var(--aqt-fg-muted)]",
-  chip: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]",
-  sliderColor: "var(--aqt-teal)"
-};
+export const NEUTRAL_RANK_ACCENT: RoleRankAccent = { color: null };
+
+const tint = (color: string, percent: number) =>
+  `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+
+/** Card frame for the active state. */
+export function accentRowStyle({ color }: RoleRankAccent): CSSProperties {
+  return color
+    ? {
+        borderColor: tint(color, 40),
+        backgroundColor: tint(color, 7),
+        boxShadow: `0 0 0 1px ${tint(color, 8)}`
+      }
+    : { borderColor: "var(--aqt-border-2)", backgroundColor: "var(--aqt-overlay-2)" };
+}
+
+export function accentTextStyle({ color }: RoleRankAccent): CSSProperties {
+  return { color: color ?? "var(--aqt-fg-muted)" };
+}
+
+export function accentChipStyle({ color }: RoleRankAccent): CSSProperties {
+  return color
+    ? { borderColor: tint(color, 30), backgroundColor: tint(color, 12), color }
+    : {
+        borderColor: "var(--aqt-border-2)",
+        backgroundColor: "var(--aqt-overlay-3)",
+        color: "var(--aqt-fg-muted)"
+      };
+}
 
 /** Long enough that a slider drag or a four-digit number is one write, not twenty. */
 const RANK_WRITE_DELAY_MS = 400;
@@ -132,11 +137,8 @@ type RoleRankControlsProps = {
   /** Only rendered when there is something to clear. */
   onClear?: (() => void) | null;
   onChange: (rankValue: number | null, divisionNumber: number | null) => void;
-  /**
-   * The grid these controls label and slide against. Owner-scoped sheets pass
-   * their resolved grid; omission is only for an unscoped workspace editor.
-   */
-  grid?: DivisionGrid;
+  /** The owner game's grid these controls label and slide against. */
+  grid: DivisionGrid;
 };
 
 /**
@@ -149,8 +151,7 @@ type RoleRankControlsProps = {
  * edit "what rank does this player have on this role", and two copies of that
  * had already produced two different ways to clear it.
  *
- * Known owners pass their resolved grid. Only generic workspace editors rely on
- * the first-enabled workspace default.
+ * The owner passes its resolved grid; there is no workspace-default fallback.
  */
 export function RoleRankControls({
   rankValue,
@@ -160,10 +161,9 @@ export function RoleRankControls({
   disabled = false,
   onClear,
   onChange,
-  grid: gridOverride
+  grid
 }: Readonly<RoleRankControlsProps>) {
-  const workspaceGrid = useDivisionGrid();
-  const grid = gridOverride ?? workspaceGrid;
+  const sliderColor = accent.color ?? "var(--aqt-teal)";
   const bounds = useMemo(() => gridBounds(grid), [grid]);
   const tiers = useMemo(() => sortTiersAscending(grid), [grid]);
 
@@ -185,18 +185,14 @@ export function RoleRankControls({
           ) : (
             <span className="flex items-center gap-1">
               <span
-                className={cn(
-                  "flex items-center gap-1 text-label font-semibold",
-                  active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
-                )}
+                className="flex items-center gap-1 text-label font-semibold"
+                style={active ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
               >
                 {rankValue}
                 {sourceLabel ? (
                   <span
-                    className={cn(
-                      "inline-flex h-4 items-center rounded-md border px-1.5 text-label uppercase",
-                      accent.chip
-                    )}
+                    className="inline-flex h-4 items-center rounded-md border px-1.5 text-label uppercase"
+                    style={accentChipStyle(accent)}
                   >
                     {sourceLabel}
                   </span>
@@ -247,8 +243,8 @@ export function RoleRankControls({
             (disabled || !active) && "cursor-not-allowed opacity-50"
           )}
           style={{
-            accentColor: accent.sliderColor,
-            background: `linear-gradient(90deg, ${accent.sliderColor} 0%, ${accent.sliderColor} ${fillPercent}%, rgba(255,255,255,0.08) ${fillPercent}%, rgba(255,255,255,0.08) 100%)`
+            accentColor: sliderColor,
+            background: `linear-gradient(90deg, ${sliderColor} 0%, ${sliderColor} ${fillPercent}%, rgba(255,255,255,0.08) ${fillPercent}%, rgba(255,255,255,0.08) 100%)`
           }}
         />
       </div>

@@ -72,39 +72,3 @@ export const MIX_STATUS_CLASS: Record<CustomGameStatus, string> = {
     "border-[color:color-mix(in_srgb,var(--aqt-emerald)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-[color:var(--aqt-emerald)]",
   cancelled: "border-[color:var(--aqt-border-2)] bg-white/[0.02] text-[color:var(--aqt-fg-faint)]",
 };
-
-/**
- * Role tile tint: a low-alpha fill plus a 2px inset underline in the role
- * colour, so a lit chip states its role without a text label and a dimmed one
- * still reads as the same role.
- *
- * The underline is load-bearing in the lineup rail, where it marks the *first*
- * role a player will be seated in — so a tile that is playable but not first
- * takes `ROLE_TINT_CLASS` instead and leaves the underline unspent.
- */
-export const ROLE_TILE_CLASS: Record<string, string> = {
-  tank: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_12%,transparent)] shadow-[inset_0_-2px_0_var(--aqt-tank)]",
-  damage: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_12%,transparent)] shadow-[inset_0_-2px_0_var(--aqt-damage)]",
-  support:
-    "bg-[color:color-mix(in_srgb,var(--aqt-support)_12%,transparent)] shadow-[inset_0_-2px_0_var(--aqt-support)]",
-};
-
-/** Same fill, no underline: a role the balancer may use, but not first. */
-export const ROLE_TINT_CLASS: Record<string, string> = {
-  tank: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_9%,transparent)]",
-  damage: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_9%,transparent)]",
-  support: "bg-[color:color-mix(in_srgb,var(--aqt-support)_9%,transparent)]",
-};
-
-/**
- * Role glyph colour for the "on" state -- paints the icon itself in the role
- * colour rather than tinting a background behind it, so a lit role reads at
- * a glance without depending on a low-alpha fill catching the light. An
- * "off" role passes no colour at all and falls back to the glyph's own
- * neutral grey (see `PlayerRoleIcon`).
- */
-export const ROLE_ICON_COLOR: Record<string, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)",
-};

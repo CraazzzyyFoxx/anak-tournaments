@@ -36,6 +36,8 @@ import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
+import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -48,14 +50,18 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string, values?: Record<string, unknown>) => {
-    const label = String(values?.label ?? "");
-    return (
-      ({ edit: `Edit ${label}`, save: `Save ${label}`, cancel: `Cancel ${label} edit` } as Record<string, string>)[key] ??
-      ({ editTeamName: "Edit team name", saveTeamName: "Save team name" } as Record<string, string>)[key] ??
-      key
-    );
-  }
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => {
+        const label = String(values?.label ?? "");
+        return (
+          ({ edit: `Edit ${label}`, save: `Save ${label}`, cancel: `Cancel ${label} edit` } as Record<string, string>)[key] ??
+          ({ editTeamName: "Edit team name", saveTeamName: "Save team name" } as Record<string, string>)[key] ??
+          key
+        );
+      },
+      { has: () => false },
+    ),
 }));
 vi.mock("@/lib/datetime/client", () => ({ useFormatter: () => ({ relativeTime: () => "just now" }) }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
@@ -229,6 +235,7 @@ type PanelOptions = {
   undoingMatchId?: number | null;
   omitUndoMatch?: boolean;
   omitPostToDiscord?: boolean;
+  owner?: MixOwner;
 };
 
 function panel(current: CustomGame | undefined, props: PanelOptions) {
@@ -242,6 +249,7 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       game={current}
       lobby={current?.lobbies.find((row) => row.lobby_index === lobbyIndex)}
       lobbyIndex={lobbyIndex}
+      owner={props.owner ?? OW_OWNER}
       gameLoading={false}
       hasMix={props.hasMix ?? current != null}
       balancing={false}
@@ -349,6 +357,45 @@ describe("PickupTeamsPanel", () => {
     expect(scope.textContent).toContain("3450");
     expect(scope.textContent).not.toContain("balance_result");
     expect(scope.textContent).not.toContain('"uuid"');
+  });
+
+  it("seats every player of a League balance: five positions per team, no Overwatch role needed", async () => {
+    const names = ["Zed", "Lee", "Ahri", "Jinx", "Lulu", "Kai", "Sona", "Vi", "Syn", "Ryze"];
+    const positions = ["top", "jungle", "mid", "bot", "support"];
+    const players = Object.fromEntries(
+      names.map((name, index) => [
+        String(index + 1),
+        { name, ratings: { [positions[index % 5]]: 2000 + index }, role_preferences: [positions[index % 5]] },
+      ]),
+    );
+    const rosterOf = (offset: number) =>
+      Object.fromEntries(positions.map((position, index) => [position, [String(offset + index + 1)]]));
+    const scope = await mount(
+      game({
+        lobbies: [
+          lobbyRow({
+            balance_result: {
+              players,
+              feasibility: null,
+              variants: [
+                {
+                  teams: [
+                    { id: 1, average_mmr: 2100, roster: rosterOf(0) },
+                    { id: 2, average_mmr: 2200, roster: rosterOf(5) },
+                  ],
+                  statistics: {},
+                  benched: [],
+                },
+              ],
+            },
+          }),
+        ],
+      }),
+      { owner: LOL_OWNER },
+    );
+
+    for (const name of names) expect(scope.textContent).toContain(name);
+    expect(scope.querySelectorAll("section li")).toHaveLength(10);
   });
 
   it("shows the option's own verdict but not who it left out -- the lineup already marks them benched", async () => {
