@@ -2237,7 +2237,7 @@ export interface paths {
         put?: never;
         /**
          * Name a game's map
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Freeplay's half of what the map pick-ban does automatically: names the map an open position is played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game belongs to another encounter, 409 `result_locked` when the position's result is already settled, and 409 `map_locked` once a captain has claimed a score against the current map.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Freeplay's half of what the map pick-ban does automatically: names the map an open position is played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game belongs to another encounter, 409 `result_locked` when the position's result is already settled, 409 `side_pick_pending` / `side_pick_required` while the position's sides are not decided where the room picks them, and 409 `map_locked` once a captain has claimed a score against the current map.
          *
          *     RPC subject: `rpc.tournament.captain_select_game_map`
          */
@@ -2259,7 +2259,7 @@ export interface paths {
         put?: never;
         /**
          * Claim a game result
-         * @description Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Files the calling captain's own claim of ONE series position's result, immediately after that game rather than at series end: `basis_version` plus one `results` line per participation (`encounter_team_id`, optional score, placement and the stage's own `column_values`). The claiming seat is taken from the caller, never from the body. Every live participation claims independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's current one, and 409 while the stage bracket is still a preview the organizer has not activated.
+         * @description Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Files the calling captain's own claim of ONE series position's result, immediately after that game rather than at series end: `basis_version` plus one `results` line per participation (`encounter_team_id`, optional score, placement and the stage's own `column_values`). The claiming seat is taken from the caller, never from the body. Every live participation claims independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 on a `basis_version` behind the game's current one, and 409 while the stage bracket is still a preview the organizer has not activated.
          *
          *     RPC subject: `rpc.tournament.captain_report_game`
          */
@@ -2413,7 +2413,7 @@ export interface paths {
         put?: never;
         /**
          * Request or withdraw an undo
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). Returns the resulting undo block. 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting undo block. 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first; 409 `side_locked` when the undo would take back a side whose game already has a claim or a confirmed result.
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_undo`
          */
@@ -5963,7 +5963,7 @@ export interface paths {
         put?: never;
         /**
          * Correct a game result
-         * @description Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which participation won a position scraps and re-opens the round that outcome had opened, so the response is `{game, reset_downstream}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. When the room's result rotation (`result_*` first-ban rotation) opened the next round off this position and the correction changes who opens it, that round is scrapped and re-opened for the corrected opener in the same commit — provided nobody used it yet; 409 `dependent_round_started` (nothing written, no audit row) when it was already used: a submission on one of its steps, or its game given a side, claimed or confirmed. The way out is to undo that round (captains) or reset the room first. The response is `{game, reset_downstream}`. Also 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.
          *
          *     RPC subject: `rpc.tournament.admin_game_result`
          */
@@ -6095,7 +6095,7 @@ export interface paths {
         put?: never;
         /**
          * Reopen the last revealed step
-         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened `side_pick` starts with an empty draft, takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_reopen`
          */
@@ -9007,7 +9007,7 @@ export interface paths {
         put?: never;
         /**
          * Run inference
-         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue; requires configured RabbitMQ (503 otherwise). Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
+         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue. Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
          *
          *     RPC subject: `rpc.analytics.infer`
          */
@@ -9119,7 +9119,7 @@ export interface paths {
         put?: never;
         /**
          * Train model
-         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue; requires configured RabbitMQ (503 otherwise). Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.
+         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue. Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.
          *
          *     RPC subject: `rpc.analytics.train`
          */
