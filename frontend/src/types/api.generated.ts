@@ -18394,8 +18394,8 @@ export interface components {
              */
             rank_value: number | null;
             role: components["schemas"]["tournament.RoleRef"];
-            /** Top Heroes */
-            top_heroes?: string[];
+            /** Top Characters */
+            top_characters?: string[];
         };
         /** RegistrationStatusResponse */
         "tournament.RegistrationStatusResponse": {
@@ -18669,6 +18669,8 @@ export interface components {
          *     say *why* a link no longer works instead of looking broken.
          */
         "tournament.RegistrationTeamInvitePreview": {
+            /** Discipline */
+            discipline: string;
             /**
              * Expires At
              * @default null
@@ -19026,6 +19028,8 @@ export interface components {
         "tournament.ScrimCreateRequest": {
             /** Best Of */
             best_of: number;
+            /** Discipline */
+            discipline: string;
             /** Label */
             label: string;
             /** Pool */
@@ -24633,10 +24637,10 @@ export interface components {
             rank_value: number | null;
             role: components["schemas"]["tournament.RoleRef"];
             /**
-             * Top Heroes
+             * Top Characters
              * @default null
              */
-            top_heroes: string[] | null;
+            top_characters: string[] | null;
         };
         /** BalancerRegistrationRoleRead */
         "tournament.BalancerRegistrationRoleRead": {
@@ -24677,8 +24681,8 @@ export interface components {
              */
             rank_value: number | null;
             role: components["schemas"]["tournament.RoleRef"];
-            /** Top Heroes */
-            top_heroes?: string[];
+            /** Top Characters */
+            top_characters?: string[];
         };
         /** BalancerRegistrationStatusCreate */
         "tournament.BalancerRegistrationStatusCreate": {
@@ -27127,6 +27131,8 @@ export interface components {
              * @default false
              */
             auto_approve: boolean;
+            /** Discipline */
+            discipline: string;
             form_schema: components["schemas"]["tournament.FormSchema-Output"];
             /**
              * Hide Registrations

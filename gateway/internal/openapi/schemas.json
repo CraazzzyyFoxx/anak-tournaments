@@ -38350,7 +38350,7 @@
         "role": {
           "$ref": "#/components/schemas/tournament.RoleRef"
         },
-        "top_heroes": {
+        "top_characters": {
           "anyOf": [
             {
               "items": {
@@ -38363,7 +38363,7 @@
             }
           ],
           "default": null,
-          "title": "Top Heroes"
+          "title": "Top Characters"
         }
       },
       "required": [
@@ -38432,11 +38432,11 @@
         "role": {
           "$ref": "#/components/schemas/tournament.RoleRef"
         },
-        "top_heroes": {
+        "top_characters": {
           "items": {
             "type": "string"
           },
-          "title": "Top Heroes",
+          "title": "Top Characters",
           "type": "array"
         }
       },
@@ -48117,6 +48117,10 @@
           "title": "Auto Approve",
           "type": "boolean"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "form_schema": {
           "$ref": "#/components/schemas/tournament.FormSchema-Output"
         },
@@ -48287,6 +48291,7 @@
         "id",
         "tournament_id",
         "workspace_id",
+        "discipline",
         "is_open",
         "form_schema",
         "version_id",
@@ -48860,11 +48865,11 @@
         "role": {
           "$ref": "#/components/schemas/tournament.RoleRef"
         },
-        "top_heroes": {
+        "top_characters": {
           "items": {
             "type": "string"
           },
-          "title": "Top Heroes",
+          "title": "Top Characters",
           "type": "array"
         }
       },
@@ -49335,6 +49340,10 @@
     "tournament.RegistrationTeamInvitePreview": {
       "description": "What a link invite reveals BEFORE it is redeemed.\n\nDeliberately minimal: the holder of a token is not yet a member, so this shows\nwhat they are being asked to join and nothing about who else is on the roster.\nIt carries ``state`` rather than 404-ing a dead invite, so the landing page can\nsay *why* a link no longer works instead of looking broken.",
       "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "expires_at": {
           "anyOf": [
             {
@@ -49390,6 +49399,7 @@
         "tournament_id",
         "tournament_name",
         "workspace_id",
+        "discipline",
         "team_id",
         "team_name",
         "slot_code",
@@ -50244,6 +50254,11 @@
           "title": "Best Of",
           "type": "integer"
         },
+        "discipline": {
+          "minLength": 1,
+          "title": "Discipline",
+          "type": "string"
+        },
         "label": {
           "maxLength": 255,
           "minLength": 1,
@@ -50286,6 +50301,7 @@
       },
       "required": [
         "workspace_id",
+        "discipline",
         "label",
         "best_of",
         "team_names",
