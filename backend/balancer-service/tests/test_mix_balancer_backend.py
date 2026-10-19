@@ -32,7 +32,7 @@ from src.domain.balancer.backends.mix_balancer import (  # noqa: E402
     quality_coefficients,
 )
 from src.domain.balancer.entities import Player  # noqa: E402
-from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS, AlgorithmConfig  # noqa: E402
+from src.services.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 
 _MASK = {"Tank": 1, "Damage": 1}
 _METRICS = {"fairness": 1.5, "uniformity": 2.5, "role_fairness": 3.5, "role_points": 4.5, "total": 12.0}
@@ -117,7 +117,7 @@ class QualityCoefficientTests(unittest.TestCase):
 
 class SolveTests(unittest.TestCase):
     def test_sends_the_shared_envelope_with_the_host_s_tilt_and_role_weights(self) -> None:
-        weights = dict(DEFAULT_ROLE_SETTINGS)
+        weights = default_role_settings("overwatch")
         weights["tank"] = weights["tank"].model_copy(update={"mix_weight": 2.0})
         _, request = _solve(_ONE_VARIANT, mix_comfort_tilt=0.75, role_settings=weights)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 from dataclasses import asdict
 from typing import Any
 
@@ -52,15 +53,22 @@ async def run_balance(
     config_overrides: dict[str, Any] | None,
     progress_callback,
     role_mask: dict[str, int] | None = None,
+    *,
+    discipline: str | None = None,
 ) -> dict[str, Any]:
+    """``discipline`` names the game of a payload that carries no owner format (the synchronous API); a payload with
+    a frozen ``format_context`` is its own game's."""
     try:
         variants = await asyncio.to_thread(
-            balance_teams_tournament,
-            input_data,
-            config_overrides,
-            progress_callback,
-            role_mask,
-            **_format_kwargs(input_data),
+            functools.partial(
+                balance_teams_tournament,
+                input_data,
+                config_overrides,
+                progress_callback,
+                role_mask,
+                discipline=discipline,
+                **_format_kwargs(input_data),
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

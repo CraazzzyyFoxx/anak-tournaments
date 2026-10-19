@@ -41,7 +41,7 @@ from src.domain.draft.feasibility import (
     build_feasibility_state,
     evaluate_pick_options,
 )
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides
+from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
 from src.services.balancer.config.public_contract import normalize_config_payload
 from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
@@ -139,11 +139,11 @@ class DraftFeasibilityService:
         draft's autopick, /suggestions and /fit consider a good fit too.
         """
         stored = await self.tournament_configs.get_by_tournament(session, draft_session.tournament_id)
+        owner = await loaders.tournament(session, draft_session)
         config = apply_config_overrides(
-            AlgorithmConfig(),
+            AlgorithmConfig(role_settings=default_role_settings(owner.discipline)),
             normalize_config_payload(stored.config_json if stored is not None else None),
         )
-        owner = await loaders.tournament(session, draft_session)
         return {
             role.code: config.role_settings[role.code].impact if role.code in config.role_settings else 1.0
             for role in DISCIPLINES[owner.discipline].rated_dimension.roles

@@ -32,6 +32,7 @@ from starlette.datastructures import Headers, UploadFile
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.rbac.workspace_lookup import get_tournament_workspace_id
 from shared.rpc.identity import MissingIdentityError
 from src import schemas
@@ -101,6 +102,8 @@ def register(broker: Any, logger: Any) -> None:
                     user=user,
                     broker=broker,
                     tournament_id=_opt_int(data.get("tournament_id")),
+                    # The game a standalone upload is balanced for (query `discipline`); a tournament job names its own.
+                    discipline=c.q1(data, "discipline", str),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -165,6 +168,10 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = c.q1(data, "workspace_id", int)
             if workspace_id is None:
                 raise HTTPException(status_code=422, detail="workspace_id is required")
+            # The game the payload is balanced for: its role weights are that game's, never another one's.
+            discipline = c.q1(data, "discipline")
+            if discipline is None or discipline not in DISCIPLINES:
+                raise HTTPException(status_code=422, detail="discipline must name an installed game")
             body = schemas.BalanceRequest.model_validate(c.payload(data) or {})
             return await jobs.balance_inline(
                 player_data=body.player_data,
@@ -173,6 +180,7 @@ def register(broker: Any, logger: Any) -> None:
                     body.config_overrides.model_dump(exclude_none=True) if body.config_overrides else None
                 ),
                 workspace_id=workspace_id,
+                discipline=discipline,
                 user=user,
             )
 

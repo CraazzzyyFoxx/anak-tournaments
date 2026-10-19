@@ -21,7 +21,11 @@ os.environ["DEBUG"] = "false"
 
 from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
 from src.services.admin.balancer import balancer_admin_service  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides  # noqa: E402
+from src.services.balancer.config.defaults import (  # noqa: E402
+    AlgorithmConfig,
+    apply_config_overrides,
+    default_role_settings,
+)
 from src.services.balancer.config.provider import (  # noqa: E402
     EDITABLE_CONFIG_FIELD_KEYS,
     get_balancer_config_payload,
@@ -31,7 +35,7 @@ from src.services.balancer.config.public_contract import normalize_config_payloa
 
 
 def test_config_payload_exposes_complete_editable_field_metadata() -> None:
-    payload = get_balancer_config_payload()
+    payload = get_balancer_config_payload("overwatch")
 
     fields = payload["fields"]
     field_keys = {field["key"] for field in fields}
@@ -158,11 +162,11 @@ def test_role_settings_overrides_merge_field_by_field() -> None:
     time an operator nudged tank impact.
     """
     overrides = normalize_config_payload({"role_settings": {"tank": {"impact": 2.0}}})
-    config = apply_config_overrides(AlgorithmConfig(), overrides)
+    config = apply_config_overrides(AlgorithmConfig(role_settings=default_role_settings("overwatch")), overrides)
 
     assert config.role_settings["tank"].impact == 2.0
     assert (config.role_settings["tank"].line_gap_weight, config.role_settings["tank"].line_std_weight) == (0.8, 1.5)
-    assert config.role_settings["support"] == AlgorithmConfig().role_settings["support"]
+    assert config.role_settings["support"] == default_role_settings("overwatch")["support"]
 
 
 def test_internal_balance_payload_rejects_legacy_result_shape() -> None:
@@ -407,7 +411,7 @@ def test_normalize_then_validate_round_trips_all_discomforts() -> None:
 def test_rank_comfort_tilt_field_exposed() -> None:
     from src.services.balancer.config.provider import get_balancer_config_payload
 
-    payload = get_balancer_config_payload()
+    payload = get_balancer_config_payload("overwatch")
     fields_by_key = {field["key"]: field for field in payload["fields"]}
 
     assert "rank_comfort_tilt" in payload["defaults"]

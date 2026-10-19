@@ -13,7 +13,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.team_format import slot_shape
 from shared.jobs import JobService, JobSpec, RedisMetaStore, Unlimited
 from shared.observability import metrics
-from shared.repository import TournamentRepository
+from shared.repository import TournamentRepository, WorkspaceRepository
 from shared.repository.roles import CatalogRoleRepository
 from shared.services.balancer_realtime import (
     BALANCER_JOB_FAILED,
@@ -21,6 +21,7 @@ from shared.services.balancer_realtime import (
     BALANCER_JOB_RUNNING,
     BALANCER_JOB_SUCCEEDED,
 )
+from shared.services.ontology import assert_discipline_enabled
 from shared.services.roster import roster_engine
 from shared.services.team_format import tournament_format, workspace_format
 from src.core import db
@@ -115,8 +116,8 @@ def _build_job_urls(job_id: str) -> dict[str, str]:
     }
 
 
-def get_config() -> dict:
-    return get_balancer_config_payload()
+def get_config(discipline: str | None) -> dict:
+    return get_balancer_config_payload(discipline)
 
 
 def _runtime(store=None) -> JobService:
@@ -145,13 +146,31 @@ async def _emit_job_progress(tournament_id: int, **fields: Any) -> None:
         logger.exception("Failed to publish balancer job progress", tournament_id=tournament_id)
 
 
-async def _owner_format_context(session, workspace_id: int, tournament_id: int | None = None) -> dict[str, Any]:
+async def _owner_format_context(
+    session, workspace_id: int, tournament_id: int | None = None, discipline: str | None = None
+) -> dict[str, Any]:
+    """The owner's frozen format projection: the tournament's, or for a standalone upload the workspace format of the
+    game the upload names (enabled in the workspace). An upload never falls back to a game it did not name."""
     if tournament_id is None:
-        team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline="overwatch")
+        if discipline is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="discipline is required for an upload without tournament_id",
+            )
+        workspace = await WorkspaceRepository().get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        assert_discipline_enabled(workspace, discipline)
+        team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline=discipline)
     else:
         tournament = await TournamentRepository().get(session, tournament_id)
         if tournament is None or tournament.workspace_id != workspace_id:
             raise HTTPException(status_code=404, detail="Tournament not found")
+        if discipline is not None and discipline != tournament.discipline:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"discipline {discipline!r} is not the tournament's ({tournament.discipline!r})",
+            )
         team_format, _ = await tournament_format(session, tournament)
     ontology = await CatalogRoleRepository().ontology(
         session, discipline=team_format.discipline, workspace_id=workspace_id
@@ -168,6 +187,7 @@ async def create_job(
     user,
     broker,
     tournament_id: int | None = None,
+    discipline: str | None = None,
 ) -> CreateJobResponse:
     job_store = get_job_store()
 
@@ -179,9 +199,9 @@ async def create_job(
     player_data = await _payload_parser.parse_player_data(uploaded_file)
     config_overrides = _payload_parser.parse_config_overrides(raw_config)
 
-    # Freeze the owner's projection in the payload; standalone uploads still
-    # use the Overwatch vertical and its workspace default (or module preset).
-    format_context = await _owner_format_context(session, workspace_id, tournament_id)
+    # Freeze the owner's projection in the payload: the tournament's, or the
+    # named game's workspace default (or module preset) for a standalone upload.
+    format_context = await _owner_format_context(session, workspace_id, tournament_id, discipline)
     player_data["format_context"] = format_context
 
     job_id = uuid.uuid4().hex
@@ -333,9 +353,10 @@ async def create_tournament_job(
 async def balance_inline(
     *,
     player_data: dict[str, Any],
-    role_mask: dict[str, int] | None,
+    role_mask: dict[str, int],
     config_overrides: dict[str, Any] | None,
     workspace_id: int,
+    discipline: str,
     user,
 ) -> dict[str, Any]:
     """Solve one payload and return the teams in the same response.
@@ -368,7 +389,7 @@ async def balance_inline(
     started_at = time.perf_counter()
     try:
         result = await asyncio.wait_for(
-            run_balance(player_data, overrides, None, role_mask),
+            run_balance(player_data, overrides, None, role_mask, discipline=discipline),
             timeout=_SYNC_WATCHDOG_SECONDS,
         )
     except TimeoutError as exc:

@@ -19,7 +19,7 @@ from src.domain.balancer.progress import ProgressCallback, emit_progress
 from src.domain.balancer.rating_normalizer import RatingNormalizer
 from src.domain.balancer.result_serializer import _build_response_payload
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides
+from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
 from src.services.balancer.config.public_contract import normalize_config_payload
 
 
@@ -70,14 +70,18 @@ def _prepare_balance_context(
     max_teams: int | None = None,
     team_format: TeamFormat | None = None,
     ontology: Ontology | None = None,
+    discipline: str | None = None,
 ) -> BalanceContext:
     """Prepare config, players and role assignment for balancer flows.
 
     ``role_mask`` is the tournament's resolved roster shape. It is not a config
     override but the shape of the thing being built, so it is applied after the
-    overrides and cannot be contradicted by a saved config.
+    overrides and cannot be contradicted by a saved config. The role weights a run
+    starts from are its game's declaration (the owner format's game, else the
+    ``discipline`` a payload names); a run that names no game weighs every role neutrally.
     """
-    config = AlgorithmConfig()
+    game = team_format.discipline if team_format is not None else discipline
+    config = AlgorithmConfig(role_settings=default_role_settings(game))
 
     emit_progress(
         progress_callback,
@@ -98,6 +102,8 @@ def _prepare_balance_context(
         config.role_mask = role_mask
 
     mask = config.role_mask
+    if not mask:
+        raise ValueError("role_mask is required: the run carries no roster shape")
     emit_progress(
         progress_callback,
         status="running",
@@ -272,6 +278,7 @@ def balance_teams(
     algorithm: str = "tournament_balancer",
     team_format: TeamFormat | None = None,
     ontology: Ontology | None = None,
+    discipline: str | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return ranked balance solutions for the same payload format.
 
@@ -292,6 +299,7 @@ def balance_teams(
         max_teams=backend.max_teams,
         team_format=team_format,
         ontology=ontology,
+        discipline=discipline,
     )
     mask = context.config.role_mask
 
@@ -397,6 +405,7 @@ def balance_teams_tournament(
     *,
     team_format: TeamFormat | None = None,
     ontology: Ontology | None = None,
+    discipline: str | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return a Pareto front of balance solutions for the same payload format."""
     return balance_teams(
@@ -407,4 +416,5 @@ def balance_teams_tournament(
         algorithm="tournament_balancer",
         team_format=team_format,
         ontology=ontology,
+        discipline=discipline,
     )

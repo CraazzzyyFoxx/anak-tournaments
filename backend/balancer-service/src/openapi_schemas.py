@@ -27,7 +27,16 @@ from src.schemas.ranks import CURRENT_LAYERS, LAYERS, SORTS
 
 OPERATIONS: dict[str, Op] = {
     # ── config (public) ────────────────────────────────────────────────────
-    "rpc.balancer.config": Op(response=schemas.BalancerConfigResponse),
+    "rpc.balancer.config": Op(
+        response=schemas.BalancerConfigResponse,
+        query_params=(
+            QueryParam(
+                "discipline",
+                description="Whose role weights the defaults and presets carry; absent: every role neutral. "
+                "404 `discipline_not_installed` for an unknown code.",
+            ),
+        ),
+    ),
     # ── admin: configs + balance ───────────────────────────────────────────
     "rpc.balancer.admin.tournament_config_upsert": Op(
         request=schemas.BalancerTournamentConfigUpsert, response=schemas.BalancerTournamentConfigRead
@@ -47,7 +56,17 @@ OPERATIONS: dict[str, Op] = {
     # ── jobs (public, Redis-backed) ────────────────────────────────────────
     "rpc.balancer.jobs.status": Op(response=schemas.JobStatusResponse),
     "rpc.balancer.jobs.result": Op(response=schemas.BalanceJobResult),
-    "rpc.balancer.jobs.create": Op(response=schemas.CreateJobResponse),
+    "rpc.balancer.jobs.create": Op(
+        response=schemas.CreateJobResponse,
+        query_params=(
+            QueryParam("workspace_id", "integer", required=True),
+            QueryParam(
+                "discipline",
+                description="The game the upload is balanced for (enabled in the workspace); required without "
+                "tournament_id, and must equal the tournament's game with one.",
+            ),
+        ),
+    ),
     # No player payload: the xv-1 input is built server-side from the one roster
     # engine, so a tournament balance and its draft cannot read different ranks.
     "rpc.balancer.jobs.create_for_tournament": Op(
@@ -55,7 +74,14 @@ OPERATIONS: dict[str, Op] = {
     ),
     # Synchronous, stateless twin: the pool and the roster shape ride in the
     # request, the teams come back in the response (same shape as jobs.result).
-    "rpc.balancer.balance": Op(request=schemas.BalanceRequest, response=schemas.BalanceJobResult),
+    "rpc.balancer.balance": Op(
+        request=schemas.BalanceRequest,
+        response=schemas.BalanceJobResult,
+        query_params=(
+            QueryParam("workspace_id", "integer", required=True),
+            QueryParam("discipline", required=True, description="The installed game the pool is balanced for."),
+        ),
+    ),
     # ── draft: public reads ────────────────────────────────────────────────
     "rpc.balancer.draft.tournament_board": Op(response=schemas.DraftBoardSnapshot),
     "rpc.balancer.draft.session_get": Op(response=schemas.DraftSessionRead),

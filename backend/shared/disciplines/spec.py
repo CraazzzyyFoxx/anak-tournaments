@@ -245,6 +245,12 @@ class DisciplineSpec:
     #: ``pick_ban_presets()``: the module's built-in pick/ban rulesets, imported only when called; ``None`` for a game
     #: that offers none.
     pick_ban_presets: Callable[[], tuple[Preset, ...]] | None = field(default=None, compare=False)
+    #: Balancer solver role weights (``impact``, ``line_gap_weight``, ``line_std_weight``, ``mix_weight``) by preset:
+    #: ``"default"`` seeds every run of this game, a named balancer preset's entries are partial overrides it applies.
+    #: A role (or game) without an entry weighs neutrally.
+    balancer_role_settings: Mapping[str, Mapping[str, Mapping[str, float]]] = field(
+        default_factory=dict, compare=False, hash=False
+    )
 
     @property
     def rated_dimension(self) -> DimensionSpec:

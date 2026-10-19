@@ -144,12 +144,6 @@ export function BalancerMainPageClient() {
     if (isPlayersSidebarCollapsed) playersPanelRef.current?.collapse();
   }, [railPercent, isPoolSidebarCollapsed, isPlayersSidebarCollapsed]);
 
-  const balancerConfigQuery = useQuery({
-    queryKey: balancerQueryKeys.publicConfig(),
-    queryFn: () => balancerService.getConfig(),
-    staleTime: Number.POSITIVE_INFINITY
-  });
-
   const registrationsQuery = useQuery({
     queryKey: balancerQueryKeys.registrations(tournamentId),
     queryFn: () =>
@@ -181,6 +175,14 @@ export function BalancerMainPageClient() {
     enabled: tournamentId !== null
   });
   const divisionGrid = useDivisionGrid(tournamentQuery.data?.discipline);
+  // The solver config of the tournament's game: its defaults and presets carry that game's role weights.
+  const configDiscipline = tournamentQuery.data?.discipline ?? null;
+  const balancerConfigQuery = useQuery({
+    queryKey: balancerQueryKeys.publicConfig(configDiscipline),
+    queryFn: ({ signal }) => balancerService.getConfig(configDiscipline as string, signal),
+    enabled: configDiscipline !== null,
+    staleTime: Number.POSITIVE_INFINITY
+  });
   const ontology = useDisciplineMetadata(
     tournamentQuery.data?.workspace_id ?? "all",
     tournamentQuery.data?.discipline ?? null

@@ -85,12 +85,19 @@ class RoleSettings(BaseModel):
 
 NEUTRAL_ROLE_SETTINGS = RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0)
 
-#: Weights keyed by role code; a role without an entry weighs NEUTRAL_ROLE_SETTINGS.
-DEFAULT_ROLE_SETTINGS: dict[str, RoleSettings] = {
-    "tank": RoleSettings(impact=1.4, line_gap_weight=0.8, line_std_weight=1.5, mix_weight=1.0),
-    "damage": RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0),
-    "support": RoleSettings(impact=1.1, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0),
-}
+
+def declared_role_settings(discipline: str | None, preset: str = "default") -> dict[str, dict[str, float]]:
+    """What ``discipline`` declares for ``preset`` (``DisciplineSpec.balancer_role_settings``): complete per role for
+    ``"default"``, partial overrides for a named balancer preset. An unknown or absent game declares nothing -- it is
+    never weighed as another one."""
+    spec = DISCIPLINES.get(discipline) if discipline else None
+    declared = spec.balancer_role_settings.get(preset, {}) if spec is not None else {}
+    return {code: dict(weights) for code, weights in declared.items()}
+
+
+def default_role_settings(discipline: str | None) -> dict[str, RoleSettings]:
+    """The role weights a run of ``discipline`` starts from; a role without an entry weighs ``NEUTRAL_ROLE_SETTINGS``."""
+    return {code: RoleSettings(**weights) for code, weights in declared_role_settings(discipline).items()}
 
 
 def validate_role_settings(value: typing.Any) -> typing.Any:
@@ -173,12 +180,10 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Role configuration. Not an editable setting: every run overwrites it with
-    # the tournament's resolved roster shape (see ``algorithm/runtime.py``).
-    # This default is only the fallback for a run with no shape behind it.
+    # the owner's resolved roster shape (see ``algorithm/runtime.py``); a run
+    # without one has nothing to fill and is refused there, never given a game.
     role_mask: dict[str, int] = Field(
-        default_factory=lambda: {
-            rule.role: rule.hard_min for rule in DISCIPLINES["overwatch"].preset().rules if rule.hard_min
-        },
+        default_factory=dict,
         description="Per-team slot counts the solver fills; a projection of the tournament roster shape",
     )
 
@@ -342,8 +347,9 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Rust MOO advanced objective shaping
+    # Empty (every role neutral) until a run seeds its game's declared weights (``default_role_settings``).
     role_settings: dict[str, RoleSettings] = Field(
-        default_factory=lambda: dict(DEFAULT_ROLE_SETTINGS),
+        default_factory=dict,
         description=(
             "Per-role weights keyed by roster slot code: how much a role counts "
             "towards a team's effective total, and how hard uneven lines of it are penalized."

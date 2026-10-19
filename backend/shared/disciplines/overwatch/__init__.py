@@ -181,6 +181,19 @@ ROLE_QUEUE_5V5 = TeamFormatPreset(
     ),
 )
 
+#: Balancer solver weights of the three roles (ex ``DEFAULT_ROLE_SETTINGS``) and what each balancer preset changes on
+#: them (ex ``ConfigPresets.*.role_settings``): the tank line is the one whose gap and spread are penalized.
+BALANCER_ROLE_SETTINGS = {
+    "default": {
+        "tank": {"impact": 1.4, "line_gap_weight": 0.8, "line_std_weight": 1.5, "mix_weight": 1.0},
+        "damage": {"impact": 1.0, "line_gap_weight": 0.0, "line_std_weight": 0.0, "mix_weight": 1.0},
+        "support": {"impact": 1.1, "line_gap_weight": 0.0, "line_std_weight": 0.0, "mix_weight": 1.0},
+    },
+    "HIGH_QUALITY": {"tank": {"line_gap_weight": 0.25, "line_std_weight": 0.75}},
+    "PREFERENCE_FOCUSED": {"tank": {"line_gap_weight": 1.0, "line_std_weight": 1.5}},
+    "COMBINED": {"tank": {"line_gap_weight": 0.8}},
+}
+
 
 SPEC = DisciplineSpec(
     "overwatch",
@@ -213,4 +226,5 @@ SPEC = DisciplineSpec(
     achievement_eligible_keys=_achievement_eligible_keys,
     analytics=_analytics,
     pick_ban_presets=_pick_ban_presets,
+    balancer_role_settings=BALANCER_ROLE_SETTINGS,
 )

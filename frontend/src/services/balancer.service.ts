@@ -58,9 +58,10 @@ function normalizeConfigResponse(payload: RawBalancerConfigResponse): BalancerCo
 }
 
 export default class balancerService {
-  static async getConfig(): Promise<BalancerConfigResponse> {
+  /** The solver defaults, presets and fields of `discipline`: its role weights, never another game's. */
+  static async getConfig(discipline: string, signal?: AbortSignal): Promise<BalancerConfigResponse> {
     try {
-      const response = await apiFetch("/api/v1/balancer/config", { timeout: 10_000 });
+      const response = await apiFetch("/api/v1/balancer/config", { query: { discipline }, signal, timeout: 10_000 });
       const payload = (await response.json()) as RawBalancerConfigResponse;
       return normalizeConfigResponse(payload);
     } catch (error) {

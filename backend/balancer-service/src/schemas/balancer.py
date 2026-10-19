@@ -39,13 +39,12 @@ class BalanceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     player_data: dict = Field(..., description="Player data in the tournament format")
-    role_mask: dict[str, Annotated[int, Field(ge=0, le=20)]] | None = Field(
-        None,
+    role_mask: dict[str, Annotated[int, Field(ge=0, le=20)]] = Field(
+        ...,
         description=(
-            'Per-team slot counts keyed by roster slot code, e.g. {"tank": 1, "damage": 2, "support": 2} '
-            "-- the default when omitted. Team count is derived from it: floor(players / sum(slots)); "
-            "the remainder is benched. Input role names are matched case-insensitively against these "
-            'keys, so a pool written with "Damage" fills the "damage" slots.'
+            "Per-team slot counts keyed by the game's role codes (open slot `flex`). Required: no game's shape "
+            "is assumed. Team count is derived from it: floor(players / sum(slots)); the remainder is benched. "
+            "Input role names are matched case-insensitively against these keys."
         ),
     )
     config_overrides: ConfigOverrides | None = Field(None, description="Optional configuration overrides")

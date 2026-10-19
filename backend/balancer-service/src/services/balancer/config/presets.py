@@ -10,7 +10,9 @@ their tuning. Tuning evidence lives in ``native/balancer_native``'s
 ``quality_harness`` ablations.
 
 Only the Rust MOO solver is supported, so presets no longer carry an
-``algorithm`` key.
+``algorithm`` key. Role weights are a game's: each preset's role tweaks are
+declared by the module (``DisciplineSpec.balancer_role_settings[<preset>]``)
+and joined in by ``provider.get_balancer_config_payload(discipline)``.
 """
 
 from __future__ import annotations
@@ -48,7 +50,6 @@ class ConfigPresets:
         "average_mmr_balance_weight": 4.0,
         "intra_team_std_weight": 0.5,
         "internal_role_spread_weight": 0.2,
-        "role_settings": {"tank": {"line_gap_weight": 0.25, "line_std_weight": 0.75}},
         "effective_total_std_weight": 0.75,
         "role_discomfort_weight": 1.0,
         "max_role_discomfort_weight": 2.0,
@@ -62,7 +63,6 @@ class ConfigPresets:
         "average_mmr_balance_weight": 0.8,
         "intra_team_std_weight": 2.8,
         "internal_role_spread_weight": 1.2,
-        "role_settings": {"tank": {"line_gap_weight": 1.0, "line_std_weight": 1.5}},
         "effective_total_std_weight": 1.2,
         "role_discomfort_weight": 4.0,
         "max_role_discomfort_weight": 0.5,
@@ -76,7 +76,6 @@ class ConfigPresets:
         "average_mmr_balance_weight": 2.0,
         "intra_team_std_weight": 1.8,
         "internal_role_spread_weight": 0.8,
-        "role_settings": {"tank": {"line_gap_weight": 0.8}},
         "role_discomfort_weight": 2.0,
         "max_role_discomfort_weight": 1.0,
         "team_max_pain_weight": 0.6,

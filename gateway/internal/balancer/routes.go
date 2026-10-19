@@ -30,7 +30,7 @@ const syncBalanceTimeout = 90 * time.Second
 
 // PublicRoutes need no auth (mirrors GET /config in src/routes/balancer.py).
 var PublicRoutes = []edge.RouteSpec{
-	{Method: "GET", Pattern: "/api/v1/balancer/config", Queue: "rpc.balancer.config", Auth: edge.AuthNone, Timeout: fastReadTimeout},
+	{Method: "GET", Pattern: "/api/v1/balancer/config", Queue: "rpc.balancer.config", Query: []string{"discipline"}, Auth: edge.AuthNone, Timeout: fastReadTimeout},
 }
 
 // AdminRoutes are the workspace-scoped admin balancer endpoints from
@@ -165,7 +165,7 @@ var JobRoutes = []edge.RouteSpec{
 	// in the body, the teams come back in the response. No job id, no polling,
 	// no realtime topic — and no workspace read either, so `workspace_id` is
 	// here purely as the authorization scope.
-	{Method: "POST", Pattern: "/api/v1/balancer/balance", Queue: "rpc.balancer.balance", Query: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Timeout: syncBalanceTimeout},
+	{Method: "POST", Pattern: "/api/v1/balancer/balance", Queue: "rpc.balancer.balance", Query: []string{"workspace_id", "discipline"}, Body: true, Auth: edge.AuthRequired, Timeout: syncBalanceTimeout},
 }
 
 // DraftReadRoutes are the public draft spectating reads (no auth), from

@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
-from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS
 
 __all__ = (
     "AutopickChoice",
@@ -207,11 +206,6 @@ class RoleEditResult:
 # --- autopick fit scoring (domain/draft/fit.py) ------------------------------
 
 
-def _default_role_impact() -> dict[str, float]:
-    """Fallback impact weights; services supply the owning discipline's config."""
-    return {code: settings.impact for code, settings in DEFAULT_ROLE_SETTINGS.items()}
-
-
 @dataclass(frozen=True)
 class FitPlayer:
     player_id: int
@@ -246,7 +240,8 @@ class TeamFitScore:
 
 @dataclass(frozen=True)
 class FitConfig:
-    role_impact: Mapping[str, float] = field(default_factory=_default_role_impact)
+    #: Per-role impact of the owning game (``FeasibilityService.resolve_role_impact``); a role absent weighs 1.0.
+    role_impact: Mapping[str, float] = field(default_factory=dict)
     discomfort_weight: float = 1.0
     # Large enough that role-need dominates raw fit when filling scarce roles.
     role_need_bonus: float = 1_000_000.0

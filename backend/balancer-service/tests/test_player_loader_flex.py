@@ -36,7 +36,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
-from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
 from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
@@ -281,10 +280,12 @@ def test_role_mask_is_not_an_editable_or_public_config_field() -> None:
     assert "role_mask" not in PUBLIC_CONFIG_KEYS
 
 
-def test_default_role_mask_is_the_canonical_roster_shape() -> None:
-    slots = {rule.role: rule.hard_min for rule in DISCIPLINES["overwatch"].preset().rules}
-    assert AlgorithmConfig().role_mask == slots
-    assert ConfigPresets.DEFAULT["role_mask"] == slots
+def test_no_game_shape_is_a_default_role_mask() -> None:
+    """Every run carries its owner's shape; with none there is nothing to fill, never another game's 1-2-2."""
+    assert AlgorithmConfig().role_mask == {}
+    assert ConfigPresets.DEFAULT["role_mask"] == {}
+    with pytest.raises(ValueError, match="role_mask is required"):
+        balance_teams({"players": {}})
 
 
 # ---------------------------------------------------------------------------

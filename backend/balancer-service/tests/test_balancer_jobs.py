@@ -87,7 +87,7 @@ def _api_key_user(*, scopes: list[str], workspace_id: int = 77) -> SimpleNamespa
 
 class GetConfigTests(TestCase):
     def test_returns_same_payload_as_provider(self) -> None:
-        self.assertEqual(jobs.get_config(), get_balancer_config_payload())
+        self.assertEqual(jobs.get_config("overwatch"), get_balancer_config_payload("overwatch"))
 
 
 class CreateJobTests(IsolatedAsyncioTestCase):
@@ -387,6 +387,7 @@ class CreateJobFormatIntegrationTests(IsolatedAsyncioTestCase):
                             workspace_id=workspace.id,
                             user=_api_key_user(scopes=["team.create"], workspace_id=workspace.id),
                             broker=SimpleNamespace(),
+                            discipline="overwatch",
                         )
                         assert response.job_id == "format-job"
                         assert store.create_job.await_args.kwargs["role_mask"] == expected
@@ -403,6 +404,21 @@ class CreateJobFormatIntegrationTests(IsolatedAsyncioTestCase):
                                 "overwatch", "Open six", 6, 6, dimensions=(FormatDimension("player_role", "off"),)
                             ),
                         )
+                    # An upload names its game: none, or one the workspace has not enabled, is refused before any job.
+                    for discipline in (None, "lol"):
+                        store.create_job.reset_mock()
+                        with self.assertRaises(HTTPException) as refused:
+                            await jobs.create_job(
+                                session=session,
+                                uploaded_file=SimpleNamespace(filename="players.json", size=10),
+                                raw_config=None,
+                                workspace_id=workspace.id,
+                                user=_api_key_user(scopes=["team.create"], workspace_id=workspace.id),
+                                broker=SimpleNamespace(),
+                                discipline=discipline,
+                            )
+                        assert refused.exception.status_code == 422
+                        store.create_job.assert_not_awaited()
                 await session.rollback()
         finally:
             await engine.dispose()
@@ -475,7 +491,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
         )
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen["role_mask"] = role_mask
             progress_callback({"status": "running", "stage": "optimizing", "message": "Working"})
             return {"variants": [dict(_VARIANT)]}
@@ -500,7 +516,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
             optimizing_messages=messages,
         )
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             progress_callback(
                 {"status": "running", "stage": "optimizing", "message": "Phase 1", "progress": {"percent": 0.0}}
             )
@@ -525,7 +541,7 @@ class ExecuteJobTests(IsolatedAsyncioTestCase):
         )
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen["config_overrides"] = config_overrides
             seen["role_mask"] = role_mask
             return {"variants": [dict(_VARIANT)]}
@@ -552,6 +568,7 @@ class BalanceInlineTests(IsolatedAsyncioTestCase):
             "role_mask": {"tank": 1, "flex": 4},
             "config_overrides": None,
             "workspace_id": 77,
+            "discipline": "overwatch",
             "user": _api_key_user(scopes=["team.create"]),
         }
         kwargs.update(overrides)
@@ -568,7 +585,7 @@ class BalanceInlineTests(IsolatedAsyncioTestCase):
     async def test_caller_cannot_exceed_the_synchronous_solver_budget(self) -> None:
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen.update(config=config_overrides, role_mask=role_mask, callback=progress_callback)
             return {"variants": [dict(_VARIANT)]}
 
@@ -595,7 +612,7 @@ class BalanceInlineTests(IsolatedAsyncioTestCase):
         """The caller never sent ``time_limit_ms``; the inline path sets its own."""
         seen: dict = {}
 
-        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None):
+        async def fake_run_balance(input_data, config_overrides, progress_callback, role_mask=None, *, discipline=None):
             seen.update(config=config_overrides)
             return {"variants": [dict(_VARIANT)]}
 

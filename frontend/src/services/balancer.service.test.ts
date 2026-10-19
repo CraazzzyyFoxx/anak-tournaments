@@ -89,7 +89,9 @@ beforeEach(() => {
 
 describe("balancerService.getConfig", () => {
   it("renders every knob the server ships, including ones no client list knew about", async () => {
-    const config = await balancerService.getConfig();
+    const config = await balancerService.getConfig("overwatch");
+    // One game's config: its role weights are that game's.
+    expect(apiFetch).toHaveBeenCalledWith("/api/v1/balancer/config", expect.objectContaining({ query: { discipline: "overwatch" } }));
 
     // `team_max_pain_weight` and `time_limit_ms` were editable server-side while
     // a hand-written client allowlist silently dropped them from both the drawer
@@ -104,7 +106,7 @@ describe("balancerService.getConfig", () => {
   });
 
   it("drops a row typed as a widget the drawer cannot render", async () => {
-    const config = await balancerService.getConfig();
+    const config = await balancerService.getConfig("overwatch");
 
     // Falling through to the number input would stringify the value and write
     // garbage back into the config.
@@ -112,7 +114,7 @@ describe("balancerService.getConfig", () => {
   });
 
   it("treats a null knob as absent so presets keep matching", async () => {
-    const config = await balancerService.getConfig();
+    const config = await balancerService.getConfig("overwatch");
 
     expect("max_result_variants" in config.defaults).toBe(false);
     expect("max_result_variants" in config.presets.DEFAULT).toBe(false);
@@ -123,7 +125,7 @@ describe("balancerService.getConfig", () => {
       json: async () => ({ ...configPayload(), defaults: { population_size: 250 } }),
     });
 
-    const config = await balancerService.getConfig();
+    const config = await balancerService.getConfig("overwatch");
 
     expect(config.fields.find((field) => field.key === "population_size")?.default).toBe(250);
   });

@@ -53,7 +53,7 @@ Content-Type: application/json
 {}
 ```
 
-The answer is 202 with a `job_id` plus `status_url` / `result_url`; status reads `queued`, `running`, `succeeded` or `failed`. There is also a synchronous twin for integrations — `POST /api/v1/balancer/balance?workspace_id=1`, where the whole pool travels in `player_data`, the roster shape in `role_mask`, and the teams come back in the same response. It reads nothing from the workspace, its solver budget is clamped to 60 seconds, and a pool that will not settle in time answers 504 and belongs on the asynchronous job API.
+The answer is 202 with a `job_id` plus `status_url` / `result_url`; status reads `queued`, `running`, `succeeded` or `failed`. There is also a synchronous twin for integrations — `POST /api/v1/balancer/balance?workspace_id=1&discipline=overwatch`, where `discipline` names the game whose role weights apply, the whole pool travels in `player_data`, the required roster shape in `role_mask`, and the teams come back in the same response. It reads nothing from the workspace, its solver budget is clamped to 60 seconds, and a pool that will not settle in time answers 504 and belongs on the asynchronous job API.
 
 ## The live draft
 

@@ -23,7 +23,8 @@ export const balancerQueryKeys = {
   tournamentConfig: (tournamentId: KeyPart) =>
     ["balancer-admin", "tournament-config", tournamentId] as const,
   publicBalance: (tournamentId: KeyPart) => ["balancer-public", "balance", tournamentId] as const,
-  publicConfig: () => ["balancer-public", "config"] as const,
+  /** The public solver config of one game: its role weights are that game's. */
+  publicConfig: (discipline: KeyPart) => ["balancer-public", "config", discipline] as const,
   draftSetupPool: (tournamentId: KeyPart) =>
     ["balancer", "draft-setup-pool", tournamentId] as const,
   tournamentSummary: (tournamentId: KeyPart) =>
