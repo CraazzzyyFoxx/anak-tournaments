@@ -60,7 +60,7 @@ shared.models.*                    ORM. SQLAlchemy models, one shared `MetaData`
 
 `src/schemas/*.py` sits beside this stack, not inside it: Pydantic wire contracts for the RPC
 boundary (and OpenAPI docs generation). Schemas convert *at* the boundary
-(`schemas.HeroRead.from_entity(hero)` in a service's `to_read`, or
+(`CatalogEntityRead.from_entity(entity, with_parent=False)` in a service's `to_read`, or
 `DraftFeasibilityResponse.model_validate(report)` in an rpc handler) — they are never passed
 down into `domain/` or `shared.repository`, and `domain/`'s own dataclasses are never redefined
 as schemas just to "have one type." Two vocabularies exist on purpose: `schemas` is what the
@@ -145,33 +145,33 @@ is that service's `services/` file, and the second consumer should call it over 
 
 ## Concrete shape of a layer
 
-**`rpc/<domain>.py`** (`app-service/src/rpc/heroes.py`):
+**`rpc/<domain>.py`** (`app-service/src/rpc/statistics.py`):
 
 ```python
 def register(broker: Any, logger: Any) -> None:
-    @broker.subscriber("rpc.app.heroes.leaderboard")
-    async def _leaderboard(data: dict, msg: RabbitMessage) -> dict:
+    @broker.subscriber("rpc.app.statistics.character_leaderboard")
+    async def _character_leaderboard(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            discipline = c.require_discipline(data, in_path=True)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, c.q1(data, "workspace_id", int))
-            return await hero_service.get_hero_leaderboard(session, hero_id=..., grid=ws.grid)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
+            return await character_service.get_hero_leaderboard(
+                session, discipline=discipline, entity_id=c.require_id(data), params=..., grid=ws.grid
+            )
 
-        return await c.envelope(logger, "heroes.leaderboard", op, session_factory=_SF)
+        return await c.envelope(logger, "statistics.character_leaderboard", op, session_factory=_SF)
 ```
 
 **`services/<domain>/service.py`** (`app-service/src/services/hero/service.py`):
 
 ```python
 class HeroService:
-    def __init__(
-        self, *, queries: HeroQueries = hero_queries,
-        repo: CatalogEntityRepository = CatalogEntityRepository("character", discipline="overwatch"),
-    ) -> None:
-        self.queries = queries
-        self.repo = repo
-
-    async def get_hero_leaderboard(self, session: AsyncSession, hero_id: int, ...) -> Paginated[...]:
-        rows, total = await self.queries.get_hero_leaderboard(session, hero_id=hero_id, ...)
+    async def get_hero_leaderboard(
+        self, session: AsyncSession, *, discipline: str, entity_id: int, ...
+    ) -> Paginated[CharacterLeaderboardEntry]:
+        entity = await CatalogEntityRepository("character", discipline=discipline).get(session, entity_id)
+        ...  # 404 for another game's or kind's id
+        rows, total = await HeroQueries.of(discipline).get_hero_leaderboard(session, hero_id=entity_id, ...)
         ...
 
 heroes = HeroService()
@@ -343,25 +343,20 @@ Unchanged, repo-wide, since `backend/docs/repository-boundaries.md`:
 
 ### Catalog reads
 
-Maps and modes are `CatalogEntity` rows (`kind="map"` / `"mode"`). Overwatch-shaped
-public reads use `CatalogEntityRepository(kind, discipline="overwatch")`; generic map
-existence checks use `CatalogEntityRepository("map")`. A map's mode is `parent_id` /
-`parent`, while the response still spells it `gamemode_id` / `gamemode`.
-`MapRead.from_entity` and `GamemodeRead.from_entity` preserve those wire shapes and
-aliases; callers load `parent` before requesting the `gamemode` expansion. Public map
-listing sorts by `parent_id`, not the removed ORM attribute `gamemode_id`.
-The separate user-map statistics sort keeps its `gamemode_id` wire key and translates
-it to `parent_id` when building SQL.
-Hero comparison resolves only Overwatch characters and maps in its catalog outer joins;
-another kind or discipline returns not-found while preserving the anchor row.
+Characters, maps and modes are `CatalogEntity` rows (`kind="character"` / `"map"` / `"mode"`),
+served as one `CatalogEntityRead` shape: a map's mode is `parent_id` / `parent` on the wire
+too, expanded only when the caller requests `parent`. Public catalog reads are native per
+discipline (`/api/v1/catalog/{discipline}/{kind}[/{id}]`, `CatalogEntityRepository(kind,
+discipline=...)`); generic map existence checks use `CatalogEntityRepository("map")`.
 
-Heroes are `CatalogEntity` rows of `kind="character"`, read through
-`CatalogEntityRepository("character", discipline="overwatch")`. Class and color live
-in `attrs`; `HeroRead.from_entity` keeps the `HeroClass` value spelling and defaults
-missing color to `#ffffff`. Direct Overwatch hero lookups and joins constrain both
-kind and discipline, including the aliased kill-feed heroes.
-Nullable catalog images become `""` in both entity adapters and SQL JSON hero
-projections, preserving the string-valued `HeroRead.image_path` wire contract.
+Character statistics are one game's: `/api/v1/statistics/{discipline}/characters/playtime`,
+`/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard`,
+`/api/v1/users/{id}/characters?discipline=` and `/api/v1/users/{id}/compare/characters?discipline=`
+(the old `/api/v1/heroes/…`, `/users/{id}/heroes` and `/users/{id}/compare/heroes` routes are
+gone). Readers are bound to the request's discipline (`UserService.of(code)`,
+`HeroQueries.of(code)`); a character, map or stat code of another game is a 404 / 422, never
+an empty row under a borrowed label. The per-user maps read filters by `mode_id` and expands
+`parent` / `character_stats`. Class and color live in a character's `attrs`.
 
 Registration picks live in `balancer.registration_role_entity` with `entity_id`,
 `entity_kind="character"` and an `entity` relationship; the collection remains

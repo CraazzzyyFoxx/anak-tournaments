@@ -23,13 +23,13 @@ layering every backend service follows.
 
 ## Responsibilities
 
-- **Game catalog** — Overwatch-shaped hero/map/gamemode reads over `catalog.entity`, generic
-  discipline-and-kind admin CRUD, and the alias-miss worklist that closes the loop when the parser
-  meets a name it cannot resolve.
+- **Game catalog** — native per-discipline character/map/mode reads over `catalog.entity`, discipline
+  descriptors and metadata, generic discipline-and-kind admin CRUD, and the alias-miss worklist that
+  closes the loop when the parser meets a name it cannot resolve.
 - **Player identity** — the domain player, social accounts and their visibility, favourites, and the
   destructive profile merge that collapses two players into one.
-- **Read aggregations** — per-user tournament/encounter/map/hero/teammate histories, cross-user
-  comparison, leaderboards, the platform dashboard and tournament readiness.
+- **Read aggregations** — one game's per-user tournament/encounter/map/character/teammate histories,
+  cross-user comparison, leaderboards, the platform dashboard and tournament readiness.
 - **Tenancy** — workspaces, membership and roles, custom domains, and Discord guild claim.
 - **Achievement reads** — a user's earned/locked achievements and the per-achievement earner list,
   including the workspace-scoped rarity aggregate.
@@ -49,9 +49,9 @@ list with request/response schemas is published at `/api/docs`, generated from
 
 | Group | Subject shape | What it covers | Module |
 | --- | --- | --- | --- |
-| Catalog reads | `rpc.app.read.{get,list}`, `rpc.app.{heroes,maps,gamemodes}.lookup`, `rpc.app.heroes.*` | Overwatch-shaped hero/map/gamemode reads over `catalog.entity`, achievement get+list, id–name lookups, hero playtime and leaderboards | `reads_generic`, `heroes`, `maps`, `gamemodes` |
-| Statistics | `rpc.app.statistics.*` | Platform dashboard, tournament readiness, and the champion/winrate/won-maps player boards | `statistics` |
-| Users | `rpc.app.users.*` (reads) | Profile and search; per-user tournament, encounter, map, hero, teammate and match histories; cross-user and cross-hero comparison; the users-overview grid | `users` |
+| Catalog reads | `rpc.app.read.{get,list}`, `rpc.app.catalog.{list,get}`, `rpc.app.disciplines.{list,metadata}` | Native `/api/v1/catalog/{discipline}/{kind}[/{id}]` reads over `catalog.entity`, installed disciplines and their metadata, achievement get+list | `reads_generic`, `catalog`, `disciplines` |
+| Statistics | `rpc.app.statistics.*` | Platform dashboard, tournament readiness, one game's character playtime and character leaderboard (`/api/v1/statistics/{discipline}/characters/playtime`, `/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard`), and the champion/winrate/won-maps player boards; every game-shaped read names its `discipline` (422 absent, 404 `discipline_not_installed`) | `statistics` |
+| Users | `rpc.app.users.*` (reads) | Profile and search; per-user tournament, encounter, map, character (`/users/{id}/characters`), teammate and match histories; cross-user and cross-character comparison (`/users/{id}/compare`, `/users/{id}/compare/characters`); the users-overview grid. Every statistics read takes a required `discipline`; the per-tournament reads use their tournament's own game | `users` |
 | Achievements | `rpc.app.achievements.*` | A user's earned/locked achievements and the earner list for one achievement | `achievements` |
 | Workspaces | `rpc.app.workspaces.*`, `rpc.app.admin.{update,delete}` | Workspace read plus self-service create (any active user, capped at one owned workspace, reserved slugs rejected), member roster and roles, custom domain lifecycle, Discord guild claim, and the superuser-only `verification_set` trust tier; update/delete via the shared engine | `workspaces`, `admin_crud` |
 | Binary assets | `rpc.app.{workspaces.icon_*,assets.*,matches.log}` | Workspace icon and platform-asset upload/delete to S3, match-log download; base64 in the envelope | `binary` |
@@ -63,7 +63,7 @@ list with request/response schemas is published at `/api/docs`, generated from
 
 ### The shared CRUD read engine, and why some subjects carry `#<entity>`
 
-Hero, map, gamemode and achievement `get`/`list` are not four handler pairs. They are one pair —
+Achievement `get`/`list` is not a handler pair of its own. It is one pair —
 `rpc.app.read.get` / `rpc.app.read.list` — dispatched by an `entity` field the gateway puts in the
 request body, against the `EntityConfig` table in `src/services/read_registry.py`
 (`CrudDispatcher`). Workspace `update`/`delete` work the same way through
@@ -71,7 +71,7 @@ request body, against the `EntityConfig` table in `src/services/read_registry.py
 bespoke subject with its own handler.
 
 Because one subject serves many entities, a subject alone cannot key the OpenAPI tables: they use
-`"<subject>#<entity>"` instead — `rpc.app.read.get#hero`, `rpc.app.admin.update#workspace`. The
+`"<subject>#<entity>"` instead — `rpc.app.read.get#achievement`, `rpc.app.admin.update#workspace`. The
 convention is defined in `shared/rpc/openapi.py` and must match the gateway's lookup. A `#` in an
 `OPERATIONS`/`DOCS` key therefore means "generic engine, this entity"; a bare subject means a
 bespoke handler.
@@ -79,12 +79,14 @@ bespoke handler.
 The public catalog is native: `GET /api/v1/catalog/{discipline}/{kind}[/{id}]` (kinds `character`,
 `map`, `mode`) returns `CatalogEntityRead` rows of that one discipline, active rows by default; a kind
 the game does not declare is `404 catalog_kind_not_declared`. The old `/api/v1/{heroes,maps,gamemodes}`
-list/detail/lookup routes are gone; `/api/v1/heroes/…` statistics routes remain until their slice moves
-them. All ids are `catalog.entity` ids; the per-user map statistics wire still accepts `gamemode_id`
-and translates it internally.
+list/detail/lookup routes and the `/api/v1/heroes/…` statistics routes are gone; character statistics
+live under `/api/v1/statistics/{discipline}/characters/…` and `/api/v1/users/{id}/characters`. All ids
+are `catalog.entity` ids; the per-user maps read filters by `mode_id` and expands `parent` /
+`character_stats`.
 
-Statistics readers use native `stats.fact`/`stats.stat_def` queries with an explicit Overwatch
-discipline and workspace-member ownership. Historical observations survive membership removal.
+Statistics readers use native `stats.fact`/`stats.stat_def` queries bound to the request's explicit
+discipline (`UserService.of(code)`) and workspace-member ownership. Historical observations survive
+membership removal.
 Profile and achievement match expansions bulk-load bound games and their historical participant
 slots: home/away means slots 1/2, never ingestion source order or today's active seats.
 `map_index` is the game's position; no pick-ban ordering inference remains. Public match `source`
@@ -92,7 +94,7 @@ and `code` are removed (encounter-game replay codes are independent).
 
 Existing hidden-tournament policies, strict >60-second character qualification, 600-second
 leaderboard threshold, rank ties and null handling are preserved. Profile/comparison per-10
-denominators remain match duration; hero leaderboards use character playtime. MVP placement
+denominators remain match duration; character leaderboards use character playtime. MVP placement
 prefers ImpactRank over Performance. See [player statistics semantics](../../docs/users-identity.md#93-public-player-app-service).
 
 Native floating-point statistics reductions have a fixed observation order: match and historical
