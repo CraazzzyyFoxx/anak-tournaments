@@ -19,6 +19,7 @@ it with a live body.
 from __future__ import annotations
 
 import asyncio
+import gc
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -49,7 +50,7 @@ from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas import BalancerRegistrationUpdateRequest  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
-from src.schemas.registration_build import _public_rosters  # noqa: E402
+from src.schemas.registration_build import _public_rosters, _reg_to_read  # noqa: E402
 from src.services.registration.answers import answer_service  # noqa: E402
 from src.services.registration.lifecycle import lifecycle_service  # noqa: E402
 from src.services.registration.service import registration_service  # noqa: E402
@@ -634,6 +635,53 @@ def test_submit_with_stale_version_is_409_form_version_stale(db_session) -> None
     assert exc.status_code == 409
     assert _errors(exc)[0]["code"] == "form_version_stale"
     assert _errors(exc)[0]["field"] == "form_version_id"
+
+
+def test_a_self_edit_read_never_lazy_loads_its_tournament(db_session) -> None:
+    """P8-D1: the self-edit PATCH labels ``queue_role`` with ``reg.tournament``'s rated dimension. The
+    post-commit reload (``populate_existing``) put that relationship back to lazy, so the read found the
+    Tournament in the identity map -- until a GC pass collected it first and the lazy load ran SQL outside
+    a greenlet: ``MissingGreenlet``, a 500 on an edit that was already written."""
+    suffix = uuid.uuid4().hex[:8]
+
+    async def _run() -> Any:
+        seeded = await _seed(db_session, schema=SCHEMA)
+        try:
+            await registration_service.submit_public_registration(
+                db_session,
+                tournament_id=seeded["tournament_id"],
+                auth_user=seeded["auth_user"],
+                body=RegistrationSubmit(
+                    form_version_id=seeded["version_id"],
+                    answers={"identity_battlenet": [f"E{suffix}#1234"]},
+                ),
+            )
+            registration = await registration_service.get_registration(
+                db_session, seeded["tournament_id"], seeded["auth_user"].id
+            )
+            updated = await registration_service.update_registration(
+                db_session,
+                registration,
+                tournament=await registration_service.tournament_repo.get(db_session, seeded["tournament_id"]),
+                values={"public_notes": "edited"},
+                schema=SCHEMA,
+                form_version_id=seeded["version_id"],
+            )
+            gc.collect()  # the intermittent half: nothing but the read itself may keep the Tournament alive
+            return _reg_to_read(
+                updated,
+                workspace_id=seeded["workspace_id"],
+                provider="battlenet",
+                queue=await registration_service.queue_position(db_session, updated),
+            )
+        finally:
+            await db_session.rollback()
+            await _drop(db_session, seeded["workspace_id"])
+
+    read = asyncio.run(_run())
+
+    assert (read.queue_position, read.queue_total) == (1, 1)
+    assert read.queue_role is None  # no role declared; the tournament was still read to label it
 
 
 def test_a_new_invitee_with_no_form_answers_is_refused(db_session) -> None:

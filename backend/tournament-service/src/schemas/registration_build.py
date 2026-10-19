@@ -100,10 +100,15 @@ def registration_read_loaders() -> tuple[Any, ...]:
     ``registration_load_options()`` is folded in because the same rows are handed
     to the roster engine for their ranks: it reads roles, their heroes and the
     member's player, and a lazy load there would raise ``MissingGreenlet``.
+
+    ``tournament`` labels ``queue_role``. A post-commit ``populate_existing`` reload
+    resets it to lazy, which only resolved while the Tournament happened to still
+    sit in the identity map (P8-D1).
     """
     return (
         *registration_load_options(),
         selectinload(models.BalancerRegistration.registration_team),
+        selectinload(models.BalancerRegistration.tournament),
     )
 
 

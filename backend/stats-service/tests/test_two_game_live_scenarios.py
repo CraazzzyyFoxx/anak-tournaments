@@ -218,14 +218,12 @@ def scenario_ids(live: Live, **values: Any) -> None:
     live.stack.evidence.data["scenario_ids"].setdefault(_SCENARIO[0], {}).update(values)
 
 
-def defect(live: Live, code: str, reproduced: bool, detail: str, *, strict: bool = True) -> None:
+def defect(live: Live, code: str, reproduced: bool, detail: str) -> None:
     """A production defect this live run observed (``P8-D<n>``, listed in ``<ws>/slice-S4-run-report.md``).
 
-    The scenario carries on and its test ends as xfail (``_run``). Strict: once the defect no longer reproduces, this
-    fails so the guard is removed; ``strict=False`` only for a defect seen intermittently (a clean answer passes).
+    The scenario carries on and its test ends as xfail (``_run``). Once the defect no longer reproduces this fails, so
+    the guard is removed.
     """
-    if not reproduced and not strict:
-        return
     assert reproduced, f"{code} no longer reproduces ({detail}): remove its defect() guard"
     live.stack.evidence.append("errors", {"scenario": _SCENARIO[0], "defect": code, "detail": detail})
     _DEFECTS.setdefault(_SCENARIO[0], []).append(f"{code}: {detail}")
@@ -537,12 +535,7 @@ def _registered(live: Live, ids: dict[str, Any], game: str, purpose: str) -> dic
             rid = read.json()["id"]
             # The owner's game names the handle; the other game's handle is never shown here.
             assert read.json()["primary_handle"] == ids["handles"]["dual"][PROVIDER[game]], read.raw[:400]
-            edited = call(live, ids, "dual", "PATCH", "/api/v1/tournaments/{tid}/registration/me", body, tid=tid)
-            # P8-D1 (intermittent): the self-edit is applied, then serializing the reply lazy-loads ``reg.tournament``
-            # (``registration_build._reg_to_read`` queue_role) -> MissingGreenlet -> 500. Any other answer is a failure.
-            if edited.status != 500:
-                assert edited.status == 200, edited.raw[:400]
-            defect(live, "P8-D1", edited.status == 500, "PATCH registration/me -> 500 internal", strict=False)
+            call(live, ids, "dual", "PATCH", "/api/v1/tournaments/{tid}/registration/me", body, expect=200, tid=tid)
             call(
                 live,
                 ids,
