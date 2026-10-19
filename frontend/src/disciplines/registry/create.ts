@@ -5,8 +5,9 @@ export type DisciplineLoader<S extends DisciplineSlot> = (code: string) => Promi
 /**
  * The loader of one slot family: static lazy imports of the installed local modules that declare slots of
  * that family. An unknown code (or one this family has no module for) resolves to `null`, never to another
- * game's module; the load is memoised per code. Imports no module itself, so only a family registry that
- * names its modules reaches them.
+ * game's module; a module that exists but fails to load rejects — it is not "no module". The load is memoised
+ * per code, a failed one is dropped so the next call retries the chunk. Imports no module itself, so only a
+ * family registry that names its modules reaches them.
  */
 export function createDisciplineLoader<S extends DisciplineSlot>(
   modules: Readonly<Record<string, () => Promise<{ default: DisciplineUI<S> }>>>
@@ -19,6 +20,7 @@ export function createDisciplineLoader<S extends DisciplineSlot>(
     if (!pending) {
       pending = load().then((mod) => mod.default);
       cache.set(code, pending);
+      void pending.catch(() => cache.delete(code));
     }
     return pending;
   };

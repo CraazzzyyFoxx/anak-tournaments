@@ -3,6 +3,8 @@
 import { createElement, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
+
 import type { DisciplineLoader } from "./registry/create";
 import type { DisciplineCapabilities, DisciplineSlot, DisciplineUI, SlotProps } from "./types";
 
@@ -23,13 +25,14 @@ interface DisciplineWidgetProps<F extends DisciplineSlot, K extends F> {
   pending?: ReactNode;
 }
 
-type Loaded = { code: string; ui: DisciplineUI | null };
+/** `failed`: the game has a module for this family but its chunk did not load — retryable, not "no module". */
+type Loaded = { code: string; ui: DisciplineUI | null; failed: boolean };
 
 /**
  * Renders one optional module slot (P7 contracts §7). Backend capability and local renderer are separate
  * facts: a capability without its renderer is an explicit configuration error, an unsupported capability is
- * said so, and everything else falls back to the generic view. An unknown discipline never resolves to
- * another game's module.
+ * said so, a module that failed to load is a retryable error, and everything else falls back to the generic
+ * view. An unknown discipline never resolves to another game's module.
  */
 export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   discipline,
@@ -42,38 +45,60 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   fallback,
   pending = null
 }: Readonly<DisciplineWidgetProps<F, K>>): ReactNode {
-  const t = useTranslations("common.discipline");
+  const t = useTranslations("common");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const blocked = (requires !== undefined && !capabilities[requires]) || !applicable;
 
   useEffect(() => {
     if (blocked) return;
     let live = true;
-    void load(discipline)
-      .catch(() => null)
-      .then((ui) => {
-        if (live) setLoaded({ code: discipline, ui });
-      });
+    void load(discipline).then(
+      (ui) => {
+        if (live) setLoaded({ code: discipline, ui, failed: false });
+      },
+      () => {
+        if (live) setLoaded({ code: discipline, ui: null, failed: true });
+      }
+    );
     return () => {
       live = false;
     };
-  }, [discipline, load, blocked]);
+  }, [discipline, load, blocked, attempt]);
 
   if (requires !== undefined && !capabilities[requires]) {
-    return <p className="text-sm text-muted-foreground">{t("widgetUnsupported")}</p>;
+    return <p className="text-sm text-muted-foreground">{t("discipline.widgetUnsupported")}</p>;
   }
   if (!applicable) return fallback;
 
   // Still resolving the family's module: the caller's neutral `pending` view, never its fallback — the fallback says
   // "this game has no renderer", which is only known once the loader has answered.
   if (loaded?.code !== discipline) return pending;
+  if (loaded.failed) {
+    return (
+      <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+        <span>{t("discipline.widgetLoadFailed")}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setLoaded(null);
+            setAttempt((n) => n + 1);
+          }}
+        >
+          {t("retry")}
+        </Button>
+      </div>
+    );
+  }
   const Slot = loaded.ui?.slots[slot] as ComponentType<SlotProps[K]> | undefined;
   if (!Slot) {
     return requires === undefined ? (
       fallback
     ) : (
       <p role="alert" className="text-sm text-destructive">
-        {t("widgetMissing")}
+        {t("discipline.widgetMissing")}
       </p>
     );
   }

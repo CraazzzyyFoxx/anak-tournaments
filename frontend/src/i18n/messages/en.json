@@ -226,6 +226,7 @@
       "empty": "No game is enabled for this scope yet.",
       "widgetUnsupported": "This game does not support this feature.",
       "widgetMissing": "This game declares the feature, but its interface is not installed.",
+      "widgetLoadFailed": "This game's interface could not be loaded.",
       "gridMissing": "This game has no usable division grid in this workspace, so ranks cannot be resolved.",
       "gridMissingAction": "Create or select a {game} division grid",
       "gridMissingOrganizer": "Ask a workspace organizer to publish and activate a {game} division grid."

@@ -73,4 +73,22 @@ describe("slot-family loaders", () => {
 
     expect(imports).toBe(1);
   });
+
+  it("retry a module whose chunk failed to load instead of keeping the failure", async () => {
+    let imports = 0;
+    const load = createDisciplineLoader({
+      chess: async () => {
+        imports += 1;
+        if (imports === 1) throw new Error("ChunkLoadError");
+        return { default: { code: "chess", slots: {} } };
+      }
+    });
+
+    // A failed module is a rejection, not "no module" (`null`).
+    await expect(load("chess")).rejects.toThrow("ChunkLoadError");
+    await expect(load("chess")).resolves.toEqual({ code: "chess", slots: {} });
+    await load("chess");
+
+    expect(imports).toBe(2);
+  });
 });

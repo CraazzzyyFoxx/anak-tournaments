@@ -6,7 +6,8 @@
 //  - a native shape the slot does not apply to renders the generic fallback;
 //  - a promised capability whose renderer is missing is an explicit error, never a silent fallback;
 //  - without a required capability a missing renderer simply shows the generic fallback;
-//  - an unknown game never resolves to another game's module.
+//  - an unknown game never resolves to another game's module;
+//  - a module that failed to load is a retryable error, never the "no renderer" fallback.
 import { NextIntlClientProvider } from "next-intl";
 import { act, lazy, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -277,5 +278,32 @@ describe("DisciplineWidget", () => {
 
     expect(container.querySelector("[data-slot]")).toBeNull();
     expect(container.querySelector("[role=alert]")?.textContent).toBe(en.common.discipline.widgetMissing);
+  });
+
+  it("tells a module that failed to load from one that has no renderer, and retries it", async () => {
+    loadDisciplineUI.mockRejectedValueOnce(new Error("ChunkLoadError"));
+    loadDisciplineUI.mockImplementation(async (code) => moduleOf(code));
+
+    const view = await mount(
+      <DisciplineWidget
+        discipline="overwatch"
+        slot="nativeRankEditor"
+        capabilities={NONE}
+        props={EDITOR_PROPS}
+        fallback={<p>generic</p>}
+      />
+    );
+
+    const alert = view.querySelector("[role=alert]");
+    expect(alert?.textContent).toContain(en.common.discipline.widgetLoadFailed);
+    expect(view.textContent).not.toContain("generic");
+    expect(view.querySelector("[data-slot]")).toBeNull();
+
+    await act(async () => alert?.querySelector("button")?.click());
+    await settle();
+
+    expect(loadDisciplineUI).toHaveBeenCalledTimes(2);
+    expect(view.querySelector("[data-slot]")?.textContent).toBe("overwatch editor");
+    expect(view.querySelector("[role=alert]")).toBeNull();
   });
 });
