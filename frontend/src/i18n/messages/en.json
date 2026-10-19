@@ -5837,9 +5837,7 @@
     "blockers": {
       "not_enough_players": "There are fewer eligible players than roster slots.",
       "pool_unranked": "{count} pool players have no rank — add their ranks in the balancer.",
-      "role_shortage_tank": "There are not enough eligible tank players.",
-      "role_shortage_damage": "There are not enough eligible damage players.",
-      "role_shortage_support": "There are not enough eligible support players."
+      "role_shortage": "There are not enough eligible {role} players."
     },
     "roleDeficit": "{role}: {count, plural, one {# unmatched slot} other {# unmatched slots}} after server validation.",
     "poolCanContinue": "The pool meets the initial capacity and role-coverage checks.",

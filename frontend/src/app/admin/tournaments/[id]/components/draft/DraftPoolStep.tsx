@@ -11,8 +11,10 @@ import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
-import type { DraftFeasibility, DraftRole } from "@/types/draft.types";
+import type { DraftFeasibility } from "@/types/draft.types";
 
 import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT, type DraftPoolReadiness } from "./setup-model";
 
@@ -30,16 +32,9 @@ interface DraftPoolStepProps {
   /** A number pins the count; `null` follows the maximum again. */
   onTeamCountChange: (next: number | null) => void;
   locked?: boolean;
+  /** The owner game's role dictionary: the names of the roles the pool must cover. */
+  ontology: RoleOntology | null;
 }
-
-const ROLES: DraftRole[] = ["tank", "damage", "support"];
-const BLOCKER_MESSAGE_KEYS = {
-  not_enough_players: "blockers.not_enough_players",
-  pool_unranked: "blockers.pool_unranked",
-  "role_shortage:tank": "blockers.role_shortage_tank",
-  "role_shortage:damage": "blockers.role_shortage_damage",
-  "role_shortage:support": "blockers.role_shortage_support"
-} as const;
 
 export function DraftPoolStep({
   readiness,
@@ -50,9 +45,11 @@ export function DraftPoolStep({
   maxTeamCount,
   pinned,
   onTeamCountChange,
-  locked = false
+  locked = false,
+  ontology
 }: Readonly<DraftPoolStepProps>) {
   const t = useTranslations("draftAdmin");
+  const slotLabel = useSlotLabel(ontology);
   const percent = readiness.requiredPlayers
     ? Math.min(100, Math.round((readiness.actualPlayers / readiness.requiredPlayers) * 100))
     : 0;
@@ -135,14 +132,14 @@ export function DraftPoolStep({
       <div className="space-y-3">
         <h3 className="text-sm font-semibold">{t("roleCoverage")}</h3>
         <div className="grid gap-3 sm:grid-cols-3">
-          {ROLES.map((role) => {
+          {Object.keys(readiness.roleCoverage).map((role) => {
             const blocked = readiness.blockers.includes(`role_shortage:${role}`);
             return (
               <div
                 key={role}
                 className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3"
               >
-                <span className="text-sm font-medium">{t(`roles.${role}`)}</span>
+                <span className="text-sm font-medium">{slotLabel(role)}</span>
                 <span className="flex items-center gap-2">
                   <strong className="tabular-nums">{readiness.roleCoverage[role]}</strong>
                   {blocked ? (
@@ -174,15 +171,17 @@ export function DraftPoolStep({
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                 {readiness.blockers.map((blocker) => (
                   <li key={blocker}>
-                    {t(BLOCKER_MESSAGE_KEYS[blocker as keyof typeof BLOCKER_MESSAGE_KEYS], {
-                      count: readiness.missingRanks
-                    })}
+                    {blocker.startsWith("role_shortage:")
+                      ? t("blockers.role_shortage", { role: slotLabel(blocker.slice("role_shortage:".length)) })
+                      : t(blocker === "pool_unranked" ? "blockers.pool_unranked" : "blockers.not_enough_players", {
+                          count: readiness.missingRanks
+                        })}
                   </li>
                 ))}
                 {feasibility?.slot_deficits.map((deficit) => (
                   <li key={deficit.slot_code}>
                     {t("roleDeficit", {
-                      role: t(`roles.${deficit.slot_code}`),
+                      role: slotLabel(deficit.slot_code),
                       count: deficit.unmatched_slots
                     })}
                   </li>

@@ -3,12 +3,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildTeamViews, filterSortTeams } from "@/lib/draft/room-model";
 import type { RosterShape } from "@/lib/roster/shape";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftSession, DraftTeam } from "@/types/draft.types";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 
 // `next/image` outside a Next build rewrites src through the optimizer loader;
@@ -177,6 +181,7 @@ function renderRosters(
       onOpenProfile={noop}
       onSlotFilter={onSlotFilter}
       divisionGrid={GRID}
+      ontology={OW_METADATA}
       clockColor="var(--aqt-fg)"
     />
   );
@@ -187,7 +192,7 @@ describe("roster cells", () => {
     const html = renderRosters(makeBoard(ROLE_SHAPE));
     const cell = html.match(/<button[^>]*aria-label="Ana#1234[^"]*"[^>]*>.*?<\/button>/)?.[0] ?? "";
 
-    expect(html).toContain('aria-label="Ana#1234 · roles.support · 2800 SR');
+    expect(html).toContain('aria-label="Ana#1234 · Support · 2800 SR');
     expect(html).not.toContain("4000 SR");
     // The crest is the rank a viewer reads at a glance: the slot's, not the best role's.
     expect(cell).toContain("/low.png");
@@ -199,7 +204,7 @@ describe("roster cells", () => {
     // assignment that was never made, and a role chip a need that does not exist.
     const html = renderRosters(makeBoard(FLEX_SHAPE));
 
-    expect(html).toContain('aria-label="Ana#1234 · roles.flex · 4000 SR');
+    expect(html).toContain('aria-label="Ana#1234 · flex · 4000 SR');
     expect(html).not.toContain("2800 SR");
     expect(html).not.toContain("teams.chips.needAria");
   });
@@ -207,10 +212,10 @@ describe("roster cells", () => {
   test("a mixed shape spans one flex icon over its flex columns and chips only its role slots", () => {
     const html = renderRosters(makeBoard(MIXED_SHAPE, { players: [], picks: [] }));
 
-    expect(html).toContain('title="roles.flex" class="flex justify-center" style="grid-column:span 2"');
+    expect(html).toContain('title="flex" class="flex justify-center" style="grid-column:span 2"');
     expect(html).toContain("repeat(5, minmax(0,1fr))");
-    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;tank&quot;");
-    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;damage&quot;");
+    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;Tank&quot;");
+    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;Damage&quot;");
     expect(html).not.toContain("&quot;role&quot;:&quot;support&quot;");
   });
 
@@ -238,15 +243,15 @@ describe("open slots", () => {
   test("my own open role slots are buttons that filter the pool", () => {
     const html = renderRosters(makeBoard(ROLE_SHAPE), { myTeamId: 1, onSlotFilter: noop });
 
-    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;roles.tank&quot;}"');
-    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;roles.damage&quot;}"');
+    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;Tank&quot;}"');
+    expect(html).toContain('aria-label="filterBySlot:{&quot;role&quot;:&quot;Damage&quot;}"');
   });
 
   test("an open flex slot never filters: it asks for no role", () => {
     const html = renderRosters(makeBoard(FLEX_SHAPE), { myTeamId: 1, onSlotFilter: noop });
 
     expect(html).not.toContain("filterBySlot");
-    expect(html).toContain("teams.cell.open:{&quot;role&quot;:&quot;roles.flex&quot;}");
+    expect(html).toContain("teams.cell.open:{&quot;role&quot;:&quot;flex&quot;}");
   });
 
   test("another captain's open slots stay inert", () => {
@@ -309,6 +314,7 @@ describe("order tab", () => {
         onlineCaptainIds={new Set()}
         onOpenProfile={noop}
         divisionGrid={GRID}
+        ontology={OW_METADATA}
         headingId="teams-h"
       />
     );

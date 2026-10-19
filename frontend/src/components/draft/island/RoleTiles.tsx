@@ -10,7 +10,8 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { canSeat, type RoomSelection, type TeamView } from "@/lib/draft/room-model";
 import { playerRoles, roleTopHeroes } from "@/lib/draft/workspace-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { ratedDimension, roleTint, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { UserDraftCard } from "@/types/user.types";
@@ -21,8 +22,7 @@ import { Bar, MIN_WINRATE_MAPS, winrateColor } from "./PlayerCareer";
 
 const PRIORITY_KEYS = ["primary", "second", "third"] as const;
 
-const tint = (role: DraftRole, percent: number) =>
-  `color-mix(in srgb, ${ROLE_ACCENT[role]} ${percent}%, transparent)`;
+const tint = (color: string, percent: number) => `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 
 interface RoleTilesProps {
   player: DraftPlayer;
@@ -37,6 +37,8 @@ interface RoleTilesProps {
   /** Only an organizer can act on a missing rank, so only an organizer is told how. */
   isAdmin: boolean;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names, glyphs and colours of every tile. */
+  ontology: RoleOntology | null;
 }
 
 /** One tile per role the player plays: rank, crest, sub-role, maps/WR on the role, top heroes with their WR. */
@@ -48,9 +50,12 @@ export function RoleTiles({
   card,
   cardPending,
   isAdmin,
-  divisionGrid
+  divisionGrid,
+  ontology
 }: Readonly<RoleTilesProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
+  const ratedCode = ontology ? (ratedDimension(ontology)?.code ?? null) : null;
   const roles = playerRoles(player);
   const displayName = player.identity?.handle ?? `#${player.id}`;
   // The team a tile selects for; tiles are read-only chips without one.
@@ -77,7 +82,8 @@ export function RoleTiles({
       style={{ "--tiles": roles.length } as CSSProperties}
     >
       {roles.map((role, index) => {
-        const roleLabel = t(`roles.${role}`);
+        const roleLabel = slotLabel(role);
+        const accent = roleTint(ontology, role);
         // The role's OWN rank, never another role's: an unranked role shows the em-dash.
         const rank = player.role_ranks[role] ?? null;
         const division = resolveDivisionFromRank(divisionGrid, rank);
@@ -90,7 +96,7 @@ export function RoleTiles({
         const usable = team != null && canSeat(team, role);
         const on = selection?.playerId === player.id && selection.role === role;
         const priority = PRIORITY_KEYS[index];
-        const roleStats = roleTotals.find((entry) => entry.role?.dimension === "player_role" && entry.role.role === role) ?? null;
+        const roleStats = roleTotals.find((entry) => entry.role?.dimension === ratedCode && entry.role.role === role) ?? null;
         const share = roleStats && roleStats.maps > 0 ? roleStats.maps_won / roleStats.maps : 0;
         const lowMaps = (roleStats?.maps ?? 0) < MIN_WINRATE_MAPS;
 
@@ -107,7 +113,7 @@ export function RoleTiles({
         const content = (
           <>
             <span className="flex min-w-0 items-center gap-2">
-              <PlayerRoleIcon role={getRoleIconName(role)} size={24} color={ROLE_ACCENT[role]} decorative />
+              <PlayerRoleIcon role={role} ontology={ontology} size={24} decorative />
               <span className="flex min-w-0 flex-col">
                 <span className="whitespace-nowrap text-body font-semibold leading-tight">{roleLabel}</span>
                 {(priority || subRole) && (
@@ -232,7 +238,7 @@ export function RoleTiles({
               key={role}
               title={title}
               className={cn(tileClass, "border")}
-              style={{ borderColor: tint(role, 50), background: tint(role, 8) }}
+              style={{ borderColor: tint(accent, 50), background: tint(accent, 8) }}
             >
               {content}
             </div>
@@ -257,11 +263,11 @@ export function RoleTiles({
               usable ? "cursor-pointer" : "cursor-default border-dashed opacity-55"
             )}
             style={{
-              borderColor: on ? "var(--aqt-teal)" : usable ? tint(role, 50) : "var(--aqt-border-2)",
+              borderColor: on ? "var(--aqt-teal)" : usable ? tint(accent, 50) : "var(--aqt-border-2)",
               background: on
                 ? "color-mix(in srgb, var(--aqt-teal) 14%, transparent)"
                 : usable
-                  ? tint(role, 8)
+                  ? tint(accent, 8)
                   : "transparent"
             }}
           >

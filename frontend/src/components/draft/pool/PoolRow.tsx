@@ -23,7 +23,8 @@ import {
   type DraftPoolRoleFilter,
   type DraftPoolTab
 } from "@/lib/draft/workspace-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftPickOptionsResponse, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -37,8 +38,8 @@ import { formatSubRoleLabel, getHeroIconUrl } from "@/lib/player";
 export const POOL_GRID =
   "grid grid-cols-[minmax(0,1fr)_56px_32px] gap-x-2 sm:grid-cols-[minmax(128px,0.7fr)_minmax(0,var(--pool-roles))_56px_32px]";
 
-export const tint = (role: DraftRole, pct: number) =>
-  `color-mix(in srgb, ${ROLE_ACCENT[role]} ${pct}%, transparent)`;
+/** A CSS colour at `pct` percent over transparent: a role's tint, or any other accent. */
+export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 export const teal = (pct: number) => `color-mix(in srgb, var(--aqt-teal) ${pct}%, transparent)`;
 
 const PRIORITY_KEYS = ["primary", "second", "third"] as const;
@@ -63,6 +64,8 @@ interface PoolRowProps {
   options: DraftPickOptionsResponse | null;
   safetyRequired: boolean;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names, glyphs and colours of every role cell. */
+  ontology: RoleOntology | null;
   /** Unique per mounted pool: prefixes the reason ids role buttons point at. */
   idPrefix: string;
   onSelect: (playerId: number, role: DraftRole) => void;
@@ -86,12 +89,14 @@ export function PoolRow({
   options,
   safetyRequired,
   divisionGrid,
+  ontology,
   idPrefix,
   onSelect,
   onOpenProfile,
   onPrefetchCard
 }: Readonly<PoolRowProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const name = player.identity?.handle ?? `#${player.id}`;
   const roles = playerRoles(player);
   const available = player.status === "available";
@@ -109,7 +114,7 @@ export function PoolRow({
   const note = blocked
     ? actor.full
       ? t("pool.note.full", { team: actor.team.name })
-      : t("pool.note.noSlot", { roles: roles.map((role) => t(`roles.${role}`)).join(", ") })
+      : t("pool.note.noSlot", { roles: roles.map((role) => slotLabel(role)).join(", ") })
     : !available && tab !== "available"
       ? t("pool.note.taken", { team: takenTeam?.team.name ?? t("unknownTeam") })
       : null;
@@ -210,6 +215,7 @@ export function PoolRow({
               options={options}
               safetyRequired={safetyRequired}
               divisionGrid={divisionGrid}
+              ontology={ontology}
               reasonId={`${idPrefix}-${player.id}-${role}-reason`}
               onSelect={onSelect}
             />
@@ -225,6 +231,7 @@ export function PoolRow({
           actingTeam={actingTeam}
           takenTeam={takenTeam}
           fit={fit}
+          ontology={ontology}
         />
         {tab === "shortlist" && queueEditable && queued && queue && (
           <div className="mt-[3px] flex justify-end gap-0.5">
@@ -297,7 +304,8 @@ function RightCell({
   blocked,
   actingTeam,
   takenTeam,
-  fit
+  fit,
+  ontology
 }: Readonly<{
   player: DraftPlayer;
   available: boolean;
@@ -305,8 +313,10 @@ function RightCell({
   actingTeam: TeamView | null;
   takenTeam: TeamView | null;
   fit: PlayerFit | undefined;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const main = "truncate text-body font-semibold";
 
   if (!available) {
@@ -314,10 +324,10 @@ function RightCell({
     // The team is already under the name ("Already on {team}"); this narrow
     // column only has room for what that line lacks — the seat they took.
     if (!player.is_captain && cell?.role) {
-      const label = `${t(`roles.${cell.role}`)}${cell.offRole ? ` · ${t("pool.right.offRole")}` : ""}`;
+      const label = `${slotLabel(cell.role)}${cell.offRole ? ` · ${t("pool.right.offRole")}` : ""}`;
       return (
         <div className={cn("flex justify-end", cell.offRole && "opacity-60 grayscale")} title={label}>
-          <PlayerRoleIcon role={getRoleIconName(cell.role)} size={22} color={ROLE_ACCENT[cell.role]} label={label} />
+          <PlayerRoleIcon role={cell.role} ontology={ontology} size={22} label={label} />
         </div>
       );
     }
@@ -337,7 +347,7 @@ function RightCell({
   const title =
     fit.role == null
       ? t("pool.fitTitleAny", { team: actingTeam.team.name })
-      : t("pool.fitTitle", { team: actingTeam.team.name, role: t(`roles.${fit.role}`) });
+      : t("pool.fitTitle", { team: actingTeam.team.name, role: slotLabel(fit.role) });
   return (
     <div title={title}>
       <div className={cn(main, "tabular-nums")} style={{ color }}>
@@ -363,6 +373,7 @@ function RoleCell({
   options,
   safetyRequired,
   divisionGrid,
+  ontology,
   reasonId,
   onSelect
 }: Readonly<{
@@ -378,12 +389,14 @@ function RoleCell({
   options: DraftPickOptionsResponse | null;
   safetyRequired: boolean;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   reasonId: string;
   onSelect: (playerId: number, role: DraftRole) => void;
 }>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const primary = index === 0;
-  const roleLabel = t(`roles.${role}`);
+  const roleLabel = slotLabel(role);
   // The role's OWN rank: spending a support main on tank is a different number.
   const rank = player.role_ranks[role] ?? null;
   const division = resolveDivisionFromRank(divisionGrid, rank);
@@ -412,9 +425,9 @@ function RoleCell({
       </span>
       <span className={cn("inline-flex h-[22px] w-[22px] shrink-0", !primary && "opacity-60 grayscale")}>
         <PlayerRoleIcon
-          role={getRoleIconName(role)}
+          role={role}
+          ontology={ontology}
           size={22}
-          color={ROLE_ACCENT[role]}
           decorative={actor != null}
           label={roleLabel}
         />
@@ -513,9 +526,9 @@ function RoleCell({
           "--cell-border": on
             ? "var(--aqt-teal)"
             : usable && primary
-              ? tint(role, 55)
+              ? tint(roleTint(ontology, role), 55)
               : "var(--aqt-border-2)",
-          background: on ? teal(18) : usable ? (primary ? tint(role, 9) : "var(--aqt-overlay-2)") : "transparent"
+          background: on ? teal(18) : usable ? (primary ? tint(roleTint(ontology, role), 9) : "var(--aqt-overlay-2)") : "transparent"
         } as CSSProperties
       }
       className={cn(

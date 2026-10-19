@@ -18,10 +18,11 @@ import { Switch } from "@/components/ui/switch";
 import FlexIcon from "@/components/icons/FlexIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { TONE_CLASS } from "@/components/kit/tone";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { isRoleSlot, slotCodesOf, type RosterShape } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormatSettings } from "@/types/draft.types";
-import { isRoleSlotCode, orderSlotCodes, type RosterShape } from "@/lib/roster/shape";
 
 import type { DraftRoundRule } from "./setup-model";
 import type { DraftSetupConfig } from "./setup-types";
@@ -31,6 +32,8 @@ interface DraftConfigStepProps {
   onChange: (next: DraftSetupConfig) => void;
   /** Resolved on the server from the tournament; never editable here (T14 owns it). */
   rosterShape: RosterShape;
+  /** The owner game's role dictionary: the names and glyphs of the shape's slots. */
+  ontology: RoleOntology | null;
   /** The tournament's format rule, resolved to the round count; read-only here. */
   format: DraftFormatSettings;
   tournamentId: number;
@@ -44,11 +47,13 @@ export function DraftConfigStep({
   value,
   onChange,
   rosterShape,
+  ontology,
   format,
   tournamentId,
   locked = false
 }: Readonly<DraftConfigStepProps>) {
   const t = useTranslations("draftAdmin");
+  const slotLabel = useSlotLabel(ontology);
   // Straight off the server shape: deriving rounds from a size here is exactly
   // the mirror this feature removes.
   const rounds = rosterShape.draft_rounds;
@@ -70,21 +75,16 @@ export function DraftConfigStep({
           <Label>{t("teamSize")}</Label>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm tabular-nums">
             <span className="font-semibold">{rosterShape.team_size}</span>
-            {orderSlotCodes(rosterShape.slots).map((code) => {
-              const label = isRoleSlotCode(code) ? t(`roles.${code}`) : t("roles.flex");
+            {slotCodesOf(rosterShape.slots).map((code) => {
+              const label = slotLabel(code);
               return (
                 <span
                   key={code}
                   className="inline-flex items-center gap-1 text-muted-foreground"
                   title={label}
                 >
-                  {isRoleSlotCode(code) ? (
-                    <PlayerRoleIcon
-                      role={getRoleIconName(code)}
-                      size={16}
-                      color={ROLE_ACCENT[code]}
-                      decorative
-                    />
+                  {isRoleSlot(code) ? (
+                    <PlayerRoleIcon role={code} ontology={ontology} size={16} decorative />
                   ) : (
                     <FlexIcon width={16} height={16} />
                   )}

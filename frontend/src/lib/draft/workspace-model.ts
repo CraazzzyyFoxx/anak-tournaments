@@ -29,13 +29,17 @@ export interface DraftViewParams {
   query: string;
 }
 
-export function parseDraftViewParams(params: URLSearchParams): DraftViewParams {
+/**
+ * `roleCodes` are the owner game's role slots for this session (its shape's role codes): a `?role=` the game does not
+ * have is not a filter, so it reads as "all" rather than hiding every player.
+ */
+export function parseDraftViewParams(params: URLSearchParams, roleCodes: readonly DraftRole[]): DraftViewParams {
   const roleValue = params.get("role");
   const poolValue = params.get("pool");
   const teamsValue = params.get("teams");
   return {
     role:
-      roleValue === "tank" || roleValue === "damage" || roleValue === "support" || roleValue === "need"
+      roleValue !== null && (roleValue === "need" || roleCodes.includes(roleValue))
         ? roleValue
         : "all",
     sort: params.get("sort") === "name" ? "name" : "rank",
@@ -46,12 +50,6 @@ export function parseDraftViewParams(params: URLSearchParams): DraftViewParams {
   };
 }
 
-const ROLE_LABELS: Record<DraftRole, string[]> = {
-  tank: ["tank"],
-  damage: ["damage"],
-  support: ["support", "sup", "heal"],
-};
-
 /**
  * `needRoles` answers the `need` filter: the roles the acting team can still
  * seat. Without an acting team (a spectator) `need` narrows nothing.
@@ -60,7 +58,7 @@ export function filterDraftPlayers(
   players: DraftPlayer[],
   filters: Pick<DraftViewParams, "role" | "sort" | "query">,
   needRoles: ReadonlySet<DraftRole> | null = null,
-  { sorted = true }: { sorted?: boolean } = {}
+  { sorted = true, roleName }: { sorted?: boolean; roleName?: (role: DraftRole) => string } = {}
 ): DraftPlayer[] {
   const query = filters.query.toLocaleLowerCase();
   const matches = players.filter((player) => {
@@ -69,7 +67,7 @@ export function filterDraftPlayers(
       player.identity?.handle ?? `#${player.id}`,
       subRoleSlugOf(player.primary_role) ?? "",
       ...Object.values(player.role_sub_roles ?? {}),
-      ...roles.flatMap((r) => ROLE_LABELS[r] ?? [r]),
+      ...roles.flatMap((role) => (roleName ? [role, roleName(role)] : [role])),
     ].join(" ").toLocaleLowerCase();
     const roleOk =
       filters.role === "all" ||
@@ -118,16 +116,17 @@ export function draftPoolView(
   players: DraftPlayer[],
   filters: Pick<DraftViewParams, "role" | "sort" | "query" | "pool">,
   queueIds: readonly number[] = NO_QUEUE,
-  needRoles: ReadonlySet<DraftRole> | null = null
+  needRoles: ReadonlySet<DraftRole> | null = null,
+  roleName?: (role: DraftRole) => string
 ): DraftPoolView {
   const available = players.filter((player) => player.status === "available");
   const all = players.filter((player) => player.status !== "removed");
   const byId = new Map(available.map((player) => [player.id, player]));
   const shortlist = queueIds.flatMap((id) => byId.get(id) ?? []);
-  const roleCounts: Record<DraftRole, number> = { tank: 0, damage: 0, support: 0 };
+  const roleCounts: Record<DraftRole, number> = {};
   for (const player of available) {
     for (const role of playerRoles(player)) {
-      roleCounts[role] += 1;
+      roleCounts[role] = (roleCounts[role] ?? 0) + 1;
     }
   }
   const needCount =
@@ -135,7 +134,7 @@ export function draftPoolView(
       ? null
       : available.filter((player) => playerRoles(player).some((role) => needRoles.has(role))).length;
   const source = filters.pool === "all" ? all : filters.pool === "shortlist" ? shortlist : available;
-  const filtered = filterDraftPlayers(source, filters, needRoles, { sorted: filters.pool !== "shortlist" });
+  const filtered = filterDraftPlayers(source, filters, needRoles, { sorted: filters.pool !== "shortlist", roleName });
   return { available, all, shortlist, filtered, roleCounts, needCount };
 }
 

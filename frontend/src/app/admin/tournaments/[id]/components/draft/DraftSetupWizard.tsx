@@ -9,6 +9,7 @@ import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialo
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { notify } from "@/lib/notify";
 import type { RosterShape } from "@/lib/roster/shape";
@@ -130,6 +131,8 @@ export function DraftSetupWizard({
   const tournament = useHubTournamentQuery(tournamentId).data;
   const tournamentGridVersion = tournament?.division_grid_version ?? null;
   const workspaceGrid = useDivisionGrid(tournament?.discipline);
+  // The owner game's role dictionary (tournament scope): names, glyphs and the roles a pool can cover.
+  const ontology = useDisciplineMetadata(tournament?.workspace_id ?? "all", tournament?.discipline ?? null).data ?? null;
   const divisionGrid: DivisionGrid = useMemo(
     () => (tournamentGridVersion?.tiers ? { tiers: tournamentGridVersion.tiers } : workspaceGrid),
     [tournamentGridVersion, workspaceGrid]
@@ -275,7 +278,7 @@ export function DraftSetupWizard({
       return {
         registration_id: id,
         name: captains.teamNames[id]?.trim() || null,
-        role: pinned && seated === pinned ? toRoleRef(pinned, null, "player_role") : null
+        role: pinned && seated === pinned && shape.dimension ? toRoleRef(pinned, null, shape.dimension) : null
       };
     }),
     preview_only: previewOnly,
@@ -533,6 +536,7 @@ export function DraftSetupWizard({
               value={config}
               onChange={setConfig}
               rosterShape={shape}
+              ontology={ontology}
               format={draftFormat}
               tournamentId={tournamentId}
               locked={!!session}
@@ -551,6 +555,7 @@ export function DraftSetupWizard({
                 setConfig((current) => ({ ...current, teamCount: next }))
               }
               locked={!!session}
+              ontology={ontology}
             />
           )}
           {step === "captains" && (
@@ -561,6 +566,7 @@ export function DraftSetupWizard({
               onChange={setCaptainsAndReset}
               divisionGrid={divisionGrid}
               rosterShape={shape}
+              ontology={ontology}
             />
           )}
           {step === "order" && (

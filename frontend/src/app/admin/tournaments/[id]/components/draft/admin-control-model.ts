@@ -7,11 +7,10 @@ import type {
   DraftRoleEditResponse
 } from "@/types/draft.types";
 
-const ROLES: DraftRole[] = ["tank", "damage", "support"];
-
-export function availableRolesForPlayer(player: DraftPlayer): DraftRole[] {
+/** Of the owner game's `roles`, the ones the player does not declare yet: what an organizer may add. */
+export function availableRolesForPlayer(player: DraftPlayer, roles: readonly DraftRole[]): DraftRole[] {
   const declared = playerRoles(player);
-  return ROLES.filter((role) => !declared.includes(role));
+  return roles.filter((role) => !declared.includes(role));
 }
 
 interface RoleEditCommitState {

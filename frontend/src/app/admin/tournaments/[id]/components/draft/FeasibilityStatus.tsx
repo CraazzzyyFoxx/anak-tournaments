@@ -5,16 +5,21 @@ import { useTranslations } from "next-intl";
 
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { DraftFeasibility } from "@/types/draft.types";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 
 interface FeasibilityStatusProps {
   feasibility: DraftFeasibility | null;
   loading?: boolean;
+  /** The owner game's role dictionary: names of the slots a deficit is about. */
+  ontology: RoleOntology | null;
 }
 
-export function FeasibilityStatus({ feasibility, loading = false }: Readonly<FeasibilityStatusProps>) {
+export function FeasibilityStatus({ feasibility, loading = false, ontology }: Readonly<FeasibilityStatusProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
+  const slotLabel = useSlotLabel(ontology);
   if (loading) return <Skeleton className="h-28 w-full rounded-xl" />;
   if (!feasibility) {
     return (
@@ -32,7 +37,7 @@ export function FeasibilityStatus({ feasibility, loading = false }: Readonly<Fea
       <div className="flex items-start justify-between gap-4">
         <div className="flex gap-3">
           {feasibility.is_feasible ? (
-            <CheckCircle2 className="mt-0.5 h-5 w-5 text-[color:var(--aqt-support)]" aria-hidden />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-[color:var(--aqt-positive)]" aria-hidden />
           ) : (
             <ShieldAlert className="mt-0.5 h-5 w-5 text-[color:var(--aqt-live)]" aria-hidden />
           )}
@@ -63,7 +68,7 @@ export function FeasibilityStatus({ feasibility, loading = false }: Readonly<Fea
           {feasibility.slot_deficits.map((deficit) => (
             <div key={deficit.slot_code} className="flex items-center gap-2 text-sm">
               <AlertTriangle className="h-4 w-4 text-[color:var(--aqt-warm)]" aria-hidden />
-              <span className="flex-1">{t(`roles.${deficit.slot_code}`)}</span>
+              <span className="flex-1">{slotLabel(deficit.slot_code)}</span>
               <span className="font-mono text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
                 {t("deficit", {
                   missing: deficit.unmatched_slots,
@@ -77,4 +82,3 @@ export function FeasibilityStatus({ feasibility, loading = false }: Readonly<Fea
     </section>
   );
 }
-

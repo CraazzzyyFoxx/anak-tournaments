@@ -25,7 +25,8 @@ import {
 } from "@/lib/draft/room-model";
 import { playerRoles, rosterRoleForPlayer } from "@/lib/draft/workspace-model";
 import { notify } from "@/lib/notify";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickPreview, DraftBoard, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
@@ -60,6 +61,8 @@ interface PickIslandProps {
   autopickPreview: DraftAutopickPreview | null;
   queue: QueueControls | null;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names and glyphs of every role on the card. */
+  ontology: RoleOntology | null;
   /** After a successful pick/override: clear selection and card. */
   onPicked: () => void;
 }
@@ -78,13 +81,14 @@ type CardView = "info" | "stats";
  */
 export function PickIsland(props: Readonly<PickIslandProps>) {
   const { board, cardRef, gating, player, selection, onSelectRole, onClose, actingTeam, overrideMode } = props;
-  const { showTargets, target, onTargetChange, queue, divisionGrid } = props;
+  const { showTargets, target, onTargetChange, queue, divisionGrid, ontology } = props;
   const t = useTranslations("draftRedesign");
   const [announcement, setAnnouncement] = useState("");
   const cardQuery = useDraftPlayerCardQuery(player?.user_id ?? null);
   // Held here, not per player: the island outlives every card, so a captain
   // comparing players keeps the view they chose.
   const [view, setView] = useState<CardView>("info");
+  const slotLabel = useSlotLabel(ontology);
 
   const liveRegion = (
     <p className="sr-only" aria-live="polite">
@@ -120,8 +124,8 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
   const priorityLine = priority
     .map(({ role, subRole }, index) =>
       subRole
-        ? t("island.rolePriorityItemSub", { n: index + 1, role: t(`roles.${role}`), subRole })
-        : t("island.rolePriorityItem", { n: index + 1, role: t(`roles.${role}`) })
+        ? t("island.rolePriorityItemSub", { n: index + 1, role: slotLabel(role), subRole })
+        : t("island.rolePriorityItem", { n: index + 1, role: slotLabel(role) })
     )
     .join(" · ");
   const tiles = (
@@ -134,6 +138,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
       cardPending={cardPending}
       isAdmin={gating.isAdmin}
       divisionGrid={divisionGrid}
+      ontology={ontology}
     />
   );
 
@@ -174,7 +179,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
               {draftedRole && (
                 <>
                   <span aria-hidden>·</span>
-                  <PlayerRoleIcon role={getRoleIconName(draftedRole)} size={14} color={ROLE_ACCENT[draftedRole]} />
+                  <PlayerRoleIcon role={draftedRole} ontology={ontology} size={14} />
                 </>
               )}
             </p>
@@ -223,7 +228,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
                       </span>
                     )}
                     <span className="tabular-nums">{index + 1}.</span>
-                    <PlayerRoleIcon role={getRoleIconName(role)} size={16} color={ROLE_ACCENT[role]} />
+                    <PlayerRoleIcon role={role} ontology={ontology} size={16} />
                     {subRole && <span className="truncate">{subRole}</span>}
                   </span>
                 ))}
@@ -300,7 +305,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
                 {hasAccount ? (
                   <>
                     <CareerStats query={cardQuery} />
-                    <CareerTables card={cardQuery.data} pending={cardPending} divisionGrid={divisionGrid} />
+                    <CareerTables card={cardQuery.data} pending={cardPending} divisionGrid={divisionGrid} ontology={ontology} />
                   </>
                 ) : (
                   <p className="px-3.5 py-3 text-body text-[color:var(--aqt-fg-muted)]">{t("island.noAccount")}</p>

@@ -4,13 +4,17 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { buildTeamViews, needRoles, type QueueControls } from "@/lib/draft/room-model";
 import { draftPoolView, type DraftPoolTab, type DraftViewParams } from "@/lib/draft/workspace-model";
 import type { RosterSlotMap } from "@/lib/roster/shape";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import type { DraftBoard, DraftPickOptionsResponse, DraftPlayer, DraftStatus } from "@/types/draft.types";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
   // Shared across bun test files: DraftJournal (loaded by siblings) reads it.
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
@@ -126,7 +130,7 @@ function renderPool({
   return renderToStaticMarkup(
     <PlayerPool
       board={board}
-      pool={draftPoolView(board.players, viewParams, queue?.ids ?? [], actingTeam ? needRoles(actingTeam) : null)}
+      pool={draftPoolView(board.players, viewParams, queue?.ids ?? [], actingTeam ? needRoles(actingTeam, ["tank", "damage", "support"]) : null)}
       viewParams={viewParams}
       onViewParamsChange={() => {}}
       teamViews={teamViews}
@@ -141,6 +145,7 @@ function renderPool({
       options={options}
       safetyRequired={safetyRequired}
       divisionGrid={{ tiers: [] } as never}
+      ontology={OW_METADATA}
       headingId={headingId}
       bottomInset={0}
     />
@@ -148,9 +153,9 @@ function renderPool({
 }
 
 const pickAs = (player: string, role: string) =>
-  `aria-label="pickAs:{&quot;player&quot;:&quot;${player}&quot;,&quot;role&quot;:&quot;roles.${role}&quot;}"`;
-// PlayerRoleIcon names itself `common.roles.*`; the pool's own labels are `roles.*`.
-const poolRole = (role: string) => new RegExp(`(?<!common\\.)roles\\.${role}`);
+  `aria-label="pickAs:{&quot;player&quot;:&quot;${player}&quot;,&quot;role&quot;:&quot;${role.charAt(0).toUpperCase()}${role.slice(1)}&quot;}"`;
+// The owner ontology names every role the pool shows (chips, columns, glyphs): a role the game lacks never appears.
+const poolRole = (role: string) => new RegExp(`${role.charAt(0).toUpperCase()}${role.slice(1)}`);
 
 describe("draft accessibility contracts", () => {
   test("a captain gets one named button per pickable role, hearts and the shortlist tab", () => {

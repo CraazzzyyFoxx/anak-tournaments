@@ -1,6 +1,6 @@
 // Live Draft types — mirror the balancer-service DTOs (src/schemas/draft.py).
 
-import type { RosterRoleSlotCode, RosterShape, RosterSlotCode } from "@/lib/roster/shape";
+import type { RosterShape, SlotCode } from "@/lib/roster/shape";
 import type { FormField } from "@/types/forms.types";
 import type { RoleRef } from "@/lib/roster/role-ref";
 import type { PlayerIdentity } from "@/types/identity.types";
@@ -20,7 +20,8 @@ export interface DraftFormatSettings {
 }
 type DraftPoolSource = "balancer_balance" | "manual";
 export type DraftAutopickStrategy = "best_fit" | "best_available" | "role_need";
-export type DraftRole = RosterRoleSlotCode;
+/** A role code of the session's owner game (its rated dimension): the vocabulary is the game's, never a fixed list. */
+export type DraftRole = string;
 type DraftPlayerStatus = "available" | "picked" | "removed";
 export type DraftPickStatus = "upcoming" | "on_clock" | "completed" | "skipped" | "autopicked";
 
@@ -161,18 +162,16 @@ export interface DraftBoard {
   last_event_id: number | null;
 }
 
-// The server declares `slot_code` as a plain string, but the value set is closed:
-// `shared.domain.roster_shape` rejects anything outside `ROSTER_SLOT_CODES`. The
-// narrower type is what lets these codes index role-keyed lookups and message
-// keys without a cast.
+// A slot code is a role code of the owner game's rated dimension, or the open-slot sentinel (`flex`); the shape
+// the session was created with is the closed set, and names come from the scoped ontology.
 interface DraftSlot {
   team_id: number;
-  slot_code: RosterSlotCode;
+  slot_code: SlotCode;
   ordinal: number;
 }
 
 interface DraftSlotDeficit {
-  slot_code: RosterSlotCode;
+  slot_code: SlotCode;
   unmatched_slots: number;
   eligible_players: number;
 }

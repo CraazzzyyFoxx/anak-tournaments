@@ -66,6 +66,11 @@ export function roleColor(ontology: RoleOntology | null | undefined, code: strin
   return ontology && role ? rolePresentation(ontology.roles, role.id).color : null;
 }
 
+/** The CSS colour a role is drawn in: its presentation colour, else the neutral ink -- never another role's hue. */
+export function roleTint(ontology: RoleOntology | null | undefined, code: string): string {
+  return roleColor(ontology, code) ?? "var(--aqt-fg-muted)";
+}
+
 /** Position of a slot code in {@link slotCodeOrder}; unknown codes sort after every known one. */
 export function slotRank(order: readonly string[], code: string | null | undefined): number {
   const index = order.indexOf(code ?? "");

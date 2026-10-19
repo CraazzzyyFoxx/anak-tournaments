@@ -13,6 +13,7 @@ import { DraftBoardSkeleton } from "@/components/draft/DraftRoomSkeleton";
 import { RoomChat } from "@/components/chat/RoomChat";
 import { shouldShowInitialDraftSkeleton } from "@/components/draft/draft-loading-state";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Tournament } from "@/types/tournament.types";
@@ -26,6 +27,7 @@ import {
 } from "@/hooks/useDraftData";
 import { computeGating } from "@/lib/draft/logic";
 import { draftChatRoom } from "@/lib/realtime/chat-rooms";
+import { poolRoleColumns } from "@/lib/draft/room-model";
 import { parseDraftViewParams, type DraftViewParams } from "@/lib/draft/workspace-model";
 import { DraftWorkspace } from "./DraftWorkspace";
 
@@ -60,9 +62,16 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
     board?.current_pick?.id ?? null,
     Boolean(board && gating?.isMyPick)
   );
+  // The owner game's role dictionary (tournament scope, never the browsing choice): names, glyphs, colours and order.
+  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
+  // `?role=` is a filter only for a role this draft's pool has a column for.
+  const roleColumns = useMemo(
+    () => (board ? poolRoleColumns(board.session.roster_shape, board.players) : []),
+    [board]
+  );
   const viewParams = useMemo(
-    () => parseDraftViewParams(new URLSearchParams(searchParams.toString())),
-    [searchParams]
+    () => parseDraftViewParams(new URLSearchParams(searchParams.toString()), roleColumns),
+    [searchParams, roleColumns]
   );
   // Tournament grid first — a draft is seeded, balanced and displayed on the
   // grid its OWN tournament is configured with. The workspace default is the
@@ -149,6 +158,7 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
         onViewParamsChange={updateViewParams}
         mutations={mutations}
         divisionGrid={divisionGrid}
+        ontology={ontology}
         onlineCaptainIds={onlineCaptainIds}
       />
       {/* Docked over the page, not a column of the board: the board wants

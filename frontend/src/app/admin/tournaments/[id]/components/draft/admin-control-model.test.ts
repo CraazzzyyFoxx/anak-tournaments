@@ -23,7 +23,7 @@ const player = {
 
 describe("admin draft control model", () => {
   it("offers only roles the player does not already declare", () => {
-    expect(availableRolesForPlayer(player)).toEqual(["support"]);
+    expect(availableRolesForPlayer(player, ["tank", "damage", "support"])).toEqual(["support"]);
   });
 
   it("requires a current preview and valid audit inputs before role commit", () => {

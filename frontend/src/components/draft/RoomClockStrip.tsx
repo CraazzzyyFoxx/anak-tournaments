@@ -17,8 +17,10 @@ import {
   turnsUntil
 } from "@/lib/draft/room-model";
 import type { DraftViewParams } from "@/lib/draft/workspace-model";
-import { getRoleIconName } from "@/lib/roster/roles";
-import type { DraftBoard, DraftPick, DraftRole, DraftTeam } from "@/types/draft.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
+import type { DraftBoard, DraftPick, DraftTeam } from "@/types/draft.types";
 
 import { DraftClockRing } from "./DraftClockRing";
 
@@ -28,6 +30,8 @@ interface RoomClockStripProps {
   followed: ReadonlySet<number>;
   onlineCaptainIds: ReadonlySet<number>;
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
+  /** The session owner's role dictionary: the last pick's role glyph and name. */
+  ontology: RoleOntology | null;
 }
 
 /** Who is picking, how far the draft is, what comes next — the room's one clock. */
@@ -36,9 +40,11 @@ export function RoomClockStrip({
   gating,
   followed,
   onlineCaptainIds,
-  onViewParamsChange
+  onViewParamsChange,
+  ontology
 }: Readonly<RoomClockStripProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const tClock = useTranslations("draft.clock");
   const session = board.session;
   const current = board.current_pick;
@@ -273,9 +279,9 @@ export function RoomClockStrip({
                 {lastPlayer.identity?.handle ?? `#${lastPlayer.id}`}
               </span>
               {last.target_role && (
-                <span title={t(`roles.${last.target_role.role as DraftRole}`)} className="inline-flex shrink-0">
-                  <PlayerRoleIcon role={getRoleIconName(last.target_role.role as DraftRole)} size={20} decorative />
-                  <span className="sr-only">{t(`roles.${last.target_role.role as DraftRole}`)}</span>
+                <span title={slotLabel(roleOf(last.target_role))} className="inline-flex shrink-0">
+                  <PlayerRoleIcon role={roleOf(last.target_role)} ontology={ontology} size={20} decorative />
+                  <span className="sr-only">{slotLabel(roleOf(last.target_role))}</span>
                 </span>
               )}
               {last.is_autopick && (

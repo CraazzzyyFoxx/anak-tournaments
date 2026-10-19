@@ -19,6 +19,7 @@ import {
   fitByPlayer,
   isOverrideAct,
   needRoles,
+  poolRoleColumns,
   onClockTeamId,
   seatOf,
   type PickTarget,
@@ -39,6 +40,8 @@ import type { DraftBoard, DraftPickOptionsResponse, DraftPresenceState, DraftRol
 import type { RealtimeConnectionState } from "@/types/realtime.types";
 import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
 
 import { AdminStrip } from "./AdminStrip";
 import styles from "./DraftRoom.module.css";
@@ -63,6 +66,8 @@ interface DraftWorkspaceProps {
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
   mutations: DraftMutations;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary (`null` while it loads): names, glyphs, colours and order of every role. */
+  ontology: RoleOntology | null;
   onlineCaptainIds: ReadonlySet<number>;
 }
 
@@ -103,6 +108,7 @@ export function DraftWorkspace({
   onViewParamsChange,
   mutations,
   divisionGrid,
+  ontology,
   onlineCaptainIds
 }: Readonly<DraftWorkspaceProps>) {
   const t = useTranslations("draftRedesign");
@@ -183,9 +189,22 @@ export function DraftWorkspace({
     () => (finished ? board.players.filter((player) => !player.is_captain) : board.players),
     [finished, board.players]
   );
+  const slotLabel = useSlotLabel(ontology);
+  // The roles a seat can be asked for: every role the shape slots, plus the ones flex slots seat.
+  const roleColumns = useMemo(
+    () => poolRoleColumns(board.session.roster_shape, board.players, slotCodeOrder(ontology)),
+    [board.session.roster_shape, board.players, ontology]
+  );
   const pool = useMemo(
-    () => draftPoolView(poolPlayers, poolParams, queueIds, actingTeam ? needRoles(actingTeam) : null),
-    [poolPlayers, poolParams, queueIds, actingTeam]
+    () =>
+      draftPoolView(
+        poolPlayers,
+        poolParams,
+        queueIds,
+        actingTeam ? needRoles(actingTeam, roleColumns) : null,
+        slotLabel
+      ),
+    [poolPlayers, poolParams, queueIds, actingTeam, roleColumns, slotLabel]
   );
 
   // A captain may line a pick up BEFORE their turn; the board can take that
@@ -388,6 +407,7 @@ export function DraftWorkspace({
       options={options}
       safetyRequired={safetyRequired}
       divisionGrid={divisionGrid}
+      ontology={ontology}
       headingId={headingId}
       bottomInset={bottomInset}
     />
@@ -413,6 +433,7 @@ export function DraftWorkspace({
       onOpenProfile={openProfile}
       onSlotFilter={gating.isCaptain ? (role) => onViewParamsChange({ role, view: "pool" }) : undefined}
       divisionGrid={divisionGrid}
+      ontology={ontology}
       headingId={headingId}
     />
   );
@@ -431,13 +452,16 @@ export function DraftWorkspace({
           connectionState={connectionState}
         />
         <RoomClockStrip
+          ontology={ontology}
           board={board}
           gating={gating}
           followed={followed}
           onlineCaptainIds={onlineCaptainIds}
           onViewParamsChange={onViewParamsChange}
         />
-        {gating.isAdmin && <AdminStrip board={board} mutations={mutations} onlineCaptainIds={onlineCaptainIds} />}
+        {gating.isAdmin && (
+          <AdminStrip board={board} mutations={mutations} onlineCaptainIds={onlineCaptainIds} ontology={ontology} />
+        )}
         <RoomBanner board={board} gating={gating} autopickPreview={autopickPreview} />
         {optionsLoading && gating.isMyPick && (
           <output className="mx-auto block max-w-[1720px] px-4 pb-2 text-sm text-[color:var(--aqt-fg-muted)] sm:px-6">
@@ -523,6 +547,7 @@ export function DraftWorkspace({
             autopickPreview={autopickPreview}
             queue={queue}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             onPicked={clearAll}
           />
           {subject == null && actingTeam != null && currentPick != null && (

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { RosterShape } from "@/lib/roster/shape";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftFormatSettings, DraftSession } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -31,8 +32,11 @@ const SESSIONS = vi.hoisted(
 // instead of a copy string, and the formatter is pinned so the row is stable.
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: () => "1 Feb 2026, 10:00" })
@@ -107,6 +111,7 @@ describe("draft config step", () => {
       value={CONFIG}
       onChange={() => {}}
       rosterShape={SHAPE}
+      ontology={OW_METADATA}
       format={SNAKE}
       tournamentId={5}
     />
@@ -142,8 +147,8 @@ describe("draft config step", () => {
     // A flex-only shape renders the flex glyph plus its screen-reader label; the
     // visible text is the count, never "5 Flex".
     expect(html).toContain("<svg");
-    expect(html).toContain("roles.flex");
-    expect(html).not.toContain("5 roles.flex");
+    expect(html).toContain(">flex<");
+    expect(html).not.toContain("5 flex");
   });
 
   test("names the tournament's format read-only and links to where it is set", () => {
@@ -194,6 +199,7 @@ describe("draft captains step", () => {
       onChange={() => {}}
       divisionGrid={TOURNAMENT_GRID}
       rosterShape={ROLE_SHAPE}
+      ontology={OW_METADATA}
     />
   );
 
@@ -219,9 +225,9 @@ describe("draft captains step", () => {
 
   test("renders each candidate's roles as glyphs and the rank as a division icon", () => {
     // Roles used to be text badges; they are icons now, announced by role name.
-    expect(html).toContain('aria-label="roles.tank"');
-    expect(html).toContain('aria-label="roles.damage"');
-    expect(html).toContain('aria-label="roles.support"');
+    expect(html).toContain('aria-label="Tank"');
+    expect(html).toContain('aria-label="Damage"');
+    expect(html).toContain('aria-label="Support"');
     // Ranked candidates carry a division image; the unranked one still shows a dash.
     expect(html).toContain("<img");
     expect(html).toContain("3800");

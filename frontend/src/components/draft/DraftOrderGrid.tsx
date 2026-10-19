@@ -6,9 +6,12 @@ import { useMemo, useRef } from "react";
 
 import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { currentRound, orderGrid, pickState, picksAway, type RoundDirection } from "@/lib/draft/room-model";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
-import type { DraftBoard, DraftRole } from "@/types/draft.types";
+import type { DraftBoard } from "@/types/draft.types";
 
 import type { OrderKind } from "./TeamsPanel";
 
@@ -22,6 +25,7 @@ interface DraftOrderGridProps {
   myTeamId: number | null;
   followed: ReadonlySet<number>;
   clockColor: string;
+  ontology: RoleOntology | null;
 }
 
 export function DraftOrderGrid({
@@ -31,9 +35,11 @@ export function DraftOrderGrid({
   kind,
   myTeamId,
   followed,
-  clockColor
+  clockColor,
+  ontology
 }: Readonly<DraftOrderGridProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const rows = useMemo(() => orderGrid(board), [board]);
   const playerById = useMemo(() => new Map(board.players.map((player) => [player.id, player])), [board.players]);
   const liveRound = board.current_pick != null ? currentRound(board) : null;
@@ -157,7 +163,7 @@ export function DraftOrderGrid({
                   title={[
                     t("teams.order.cellTitle", { round: pick.round_no, n: pick.overall_no }),
                     tag,
-                    done && pick.target_role ? t(`roles.${pick.target_role.role as DraftRole}`) : null
+                    done && pick.target_role ? slotLabel(roleOf(pick.target_role)) : null
                   ]
                     .filter(Boolean)
                     .join(" · ")}

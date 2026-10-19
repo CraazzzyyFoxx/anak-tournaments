@@ -25,7 +25,9 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { notify } from "@/lib/notify";
+import { ratedDimension, registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
@@ -48,6 +50,8 @@ interface ResolveRoleConflictDialogProps {
   tournamentId: number;
   board: DraftBoard;
   feasibility: DraftFeasibility | null;
+  /** The owner game's role dictionary: the roles an organizer may add, their names and the rated dimension. */
+  ontology: RoleOntology | null;
 }
 
 function playerName(player: DraftPlayer): string {
@@ -59,9 +63,11 @@ export function ResolveRoleConflictDialog({
   onOpenChange,
   tournamentId,
   board,
-  feasibility
+  feasibility,
+  ontology
 }: Readonly<ResolveRoleConflictDialogProps>) {
   const t = useTranslations("draftAdmin.roleConflict");
+  const slotLabel = useSlotLabel(ontology);
   const tAdmin = useTranslations("adminTournament.draft");
   const queryClient = useQueryClient();
   const [playerId, setPlayerId] = useState<number | null>(null);
@@ -74,16 +80,19 @@ export function ResolveRoleConflictDialog({
     [board.players]
   );
   const player = players.find((candidate) => candidate.id === playerId) ?? null;
-  const availableRoles = player ? availableRolesForPlayer(player) : [];
+  const availableRoles = player
+    ? availableRolesForPlayer(player, registrationRoles(ontology).map((entry) => entry.code))
+    : [];
 
   const resetPreview = () => setPreview(null);
   const request = (previewOnly: boolean): DraftRoleEditRequest | null => {
     // A rank is not optional here: a role with no rank is not playable, so the
     // edit would add a role the draft can never offer. The server enforces
     // `gt=0`; refusing to build the body is how the organizer sees it first.
-    if (!player || !role || !reason.trim() || rankValue == null || rankValue <= 0) return null;
+    const dimension = ontology ? ratedDimension(ontology)?.code : null;
+    if (!player || !role || !dimension || !reason.trim() || rankValue == null || rankValue <= 0) return null;
     return {
-      role: { dimension: "player_role", role },
+      role: { dimension, role },
       rank_value: rankValue,
       reason: reason.trim(),
       expected_version: player.version,
@@ -157,7 +166,7 @@ export function ResolveRoleConflictDialog({
                   >
                     {tAdmin("slotLabel", {
                       team: team?.name ?? `#${slot.team_id}`,
-                      role: t(`roles.${slot.slot_code}`),
+                      role: slotLabel(slot.slot_code),
                       ordinal: slot.ordinal
                     })}
                   </Badge>
@@ -220,7 +229,7 @@ export function ResolveRoleConflictDialog({
               </SelectTrigger>
               <SelectContent>
                 {availableRoles.map((entry) => (
-                  <SelectItem key={entry} value={entry}>{t(`roles.${entry}`)}</SelectItem>
+                  <SelectItem key={entry} value={entry}>{slotLabel(entry)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -327,7 +336,7 @@ function ImpactValue({
       <p
         className={cn(
           "mt-1 text-xl font-semibold tabular-nums",
-          good && "text-[color:var(--aqt-support)]"
+          good && "text-[color:var(--aqt-positive)]"
         )}
       >
         {value}

@@ -18,8 +18,9 @@ import {
   type TeamView
 } from "@/lib/draft/room-model";
 import { slotRankForPlayer } from "@/lib/draft/workspace-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
-import { isRoleSlotCode, orderSlotCodes, type RosterSlotCode } from "@/lib/roster/shape";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import { isRoleSlot, OPEN_SLOT_CODE, slotCodesOf, type SlotCode } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import type { DraftBoard, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -40,13 +41,17 @@ interface TeamRostersProps {
   onOpenProfile: (playerId: number) => void;
   onSlotFilter?: (role: DraftRole) => void;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names, glyphs and colours of every slot. */
+  ontology: RoleOntology | null;
   /** The on-clock accent (paused / overtime / my turn). */
   clockColor: string;
 }
 
 const TEAM_SORTS: readonly TeamSort[] = ["order", "next", "avg"];
 
-const SLOT_COLOR: Record<RosterSlotCode, string> = { ...ROLE_ACCENT, flex: "var(--aqt-flex)" };
+/** The colour a slot is drawn in: its role's presentation colour, or the open slot's own. */
+const slotColor = (ontology: RoleOntology | null, code: SlotCode) =>
+  code === OPEN_SLOT_CODE ? "var(--aqt-flex)" : roleTint(ontology, code);
 
 const FOCUS_RING = "outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
 
@@ -55,8 +60,8 @@ function tint(color: string, percent: number): string {
 }
 
 /** Consecutive runs of one slot code: the header spans one icon over each run. */
-function headerGroups(codes: readonly RosterSlotCode[]): { code: RosterSlotCode; span: number }[] {
-  const groups: { code: RosterSlotCode; span: number }[] = [];
+function headerGroups(codes: readonly SlotCode[]): { code: SlotCode; span: number }[] {
+  const groups: { code: SlotCode; span: number }[] = [];
   for (const code of codes) {
     const last = groups.at(-1);
     if (last?.code === code) last.span += 1;
@@ -80,9 +85,11 @@ export function TeamRosters({
   onOpenProfile,
   onSlotFilter,
   divisionGrid,
+  ontology,
   clockColor
 }: Readonly<TeamRostersProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const shape = board.session.roster_shape;
   const listRef = useRef<HTMLDivElement>(null);
   const hovering = useRef(false);
@@ -100,14 +107,14 @@ export function TeamRosters({
   }, [currentPickId, onClockId]);
 
   // Columns: the shape's slots, widened when the server seated more than it holds.
-  const shapeCodes = orderSlotCodes(shape.slots).flatMap((code) =>
+  const shapeCodes = slotCodesOf(shape.slots).flatMap((code) =>
     Array.from({ length: shape.slots[code] ?? 0 }, () => code)
   );
   let columns = shapeCodes.length;
   for (const view of teamViews.values()) columns = Math.max(columns, view.cells.length);
-  const columnCodes: RosterSlotCode[] = [
+  const columnCodes: SlotCode[] = [
     ...shapeCodes,
-    ...Array.from({ length: columns - shapeCodes.length }, () => "flex" as const)
+    ...Array.from({ length: columns - shapeCodes.length }, () => OPEN_SLOT_CODE)
   ];
   // Every seat gets the same share of what is left once the name column has had
   // its 140px: a BattleTag's name part is what these cells exist to show. Below
@@ -116,14 +123,14 @@ export function TeamRosters({
   const gridTemplateColumns = `22px minmax(140px,1.2fr) repeat(${Math.max(columns, 1)}, minmax(0,1fr)) 66px`;
   const rowVars = { "--roster-cols": gridTemplateColumns } as CSSProperties;
 
-  const roleCodes = orderSlotCodes(shape.slots).filter(isRoleSlotCode);
+  const roleCodes = slotCodesOf(shape.slots).filter(isRoleSlot);
   const followCount = board.teams.filter((team) => followed.has(team.id) || team.id === myTeamId).length;
   const chips: { value: TeamFilter; label: string; count: number; aria: string; role: DraftRole | null }[] = [
     { value: "all", label: t("teams.chips.all"), count: teamViews.size, aria: t("teams.chips.allAria", { count: teamViews.size }), role: null },
     { value: "follow", label: t("teams.chips.follow"), count: followCount, aria: t("teams.chips.followAria", { count: followCount }), role: null },
     ...roleCodes.map((role) => {
       const count = teamsNeedingRole(teamViews, role);
-      return { value: role, label: t("teams.chips.need"), count, aria: t("teams.chips.needAria", { role, count }), role };
+      return { value: role, label: t("teams.chips.need"), count, aria: t("teams.chips.needAria", { role: slotLabel(role), count }), role };
     })
   ];
 
@@ -133,7 +140,7 @@ export function TeamRosters({
         <div role="group" aria-label={t("teams.chips.label")} className="flex flex-wrap items-center gap-1.5">
           {chips.map((chip) => {
             const on = filter === chip.value;
-            const accent = chip.role ? ROLE_ACCENT[chip.role] : "var(--aqt-teal)";
+            const accent = chip.role ? roleTint(ontology, chip.role) : "var(--aqt-teal)";
             return (
               <button
                 key={chip.value}
@@ -153,9 +160,7 @@ export function TeamRosters({
                   } as CSSProperties
                 }
               >
-                {chip.role && (
-                  <PlayerRoleIcon role={getRoleIconName(chip.role)} size={17} color={ROLE_ACCENT[chip.role]} decorative />
-                )}
+                {chip.role && <PlayerRoleIcon role={chip.role} ontology={ontology} size={17} decorative />}
                 <span className="truncate">{chip.label}</span>
                 <span className="font-normal tabular-nums text-[color:var(--aqt-fg-faint)]">{chip.count}</span>
               </button>
@@ -196,15 +201,16 @@ export function TeamRosters({
           {headerGroups(columnCodes).map((group, index) => (
             <span
               key={`${group.code}-${index}`}
-              title={t(`roles.${group.code}`)}
+              title={slotLabel(group.code)}
               className="flex justify-center"
               style={{ gridColumn: `span ${group.span}` }}
             >
               <PlayerRoleIcon
-                role={isRoleSlotCode(group.code) ? getRoleIconName(group.code) : "Flex"}
+                role={group.code === OPEN_SLOT_CODE ? null : group.code}
+                ontology={ontology}
                 size={16}
-                color={SLOT_COLOR[group.code]}
-                label={t(`roles.${group.code}`)}
+                color={slotColor(ontology, group.code)}
+                label={slotLabel(group.code)}
               />
             </span>
           ))}
@@ -320,6 +326,7 @@ export function TeamRosters({
                     onSlotFilter={isMe ? onSlotFilter : undefined}
                     onOpenProfile={onOpenProfile}
                     divisionGrid={divisionGrid}
+                    ontology={ontology}
                   />
                 ))}
                 {/* Pad a team the server seated fewer cells for, so the avg column stays aligned. */}
@@ -368,7 +375,8 @@ function RosterCell({
   onClock,
   onSlotFilter,
   onOpenProfile,
-  divisionGrid
+  divisionGrid,
+  ontology
 }: Readonly<{
   cell: TeamSlotCell;
   hasRoleSlots: boolean;
@@ -377,14 +385,16 @@ function RosterCell({
   onSlotFilter?: (role: DraftRole) => void;
   onOpenProfile: (playerId: number) => void;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("draftRedesign");
-  const color = SLOT_COLOR[cell.code];
-  const slotLabel = t(`roles.${cell.code}`);
+  const nameOf = useSlotLabel(ontology);
+  const color = slotColor(ontology, cell.code);
+  const slotLabel = nameOf(cell.code);
 
   if (cell.player == null) {
     const { code } = cell;
-    const filterRole = onSlotFilter && isRoleSlotCode(code) ? code : null;
+    const filterRole = onSlotFilter && isRoleSlot(code) ? code : null;
     const boxClass = "h-[30px] min-w-0 rounded-[7px] border border-dashed";
     const borderColor = tint(color, onClock ? 75 : 30);
     if (filterRole != null && onSlotFilter) {
@@ -416,9 +426,9 @@ function RosterCell({
   const roleLabel =
     !hasRoleSlots || cell.role == null
       ? slotLabel
-      : cell.code === "flex"
-        ? `${slotLabel} · ${t(`roles.${cell.role}`)}`
-        : t(`roles.${cell.role}`);
+      : cell.code === OPEN_SLOT_CODE
+        ? `${slotLabel} · ${nameOf(cell.role)}`
+        : nameOf(cell.role);
   const title = [
     tag,
     roleLabel,

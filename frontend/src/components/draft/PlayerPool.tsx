@@ -35,7 +35,8 @@ import {
   type DraftPoolView,
   type DraftViewParams
 } from "@/lib/draft/workspace-model";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleTint, slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftBoard, DraftPickOptionsResponse, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -64,6 +65,8 @@ interface PlayerPoolProps {
   options: DraftPickOptionsResponse | null;
   safetyRequired: boolean;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary: names, glyphs and colours of every role chip, column and market bar. */
+  ontology: RoleOntology | null;
   headingId: string;
   /** px of bottom padding for the list so the floating layer never hides the last rows. */
   bottomInset: number;
@@ -88,10 +91,12 @@ export function PlayerPool({
   options,
   safetyRequired,
   divisionGrid,
+  ontology,
   headingId,
   bottomInset
 }: Readonly<PlayerPoolProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const [heroFilter, setHeroFilter] = useState<ReadonlySet<string>>(() => new Set());
   // Uncontrolled: the URL is written asynchronously, so an input bound to it
   // snaps back to the last committed query on every keystroke and eats both the
@@ -103,8 +108,8 @@ export function PlayerPool({
   const queueEditable = queue != null && !finished && session.status !== "cancelled";
 
   const columns = useMemo(
-    () => poolRoleColumns(session.roster_shape, board.players),
-    [session.roster_shape, board.players]
+    () => poolRoleColumns(session.roster_shape, board.players, slotCodeOrder(ontology)),
+    [session.roster_shape, board.players, ontology]
   );
   const market = useMemo(() => roleMarket(board, teamViews), [board, teamViews]);
   const summary = useMemo(
@@ -150,8 +155,8 @@ export function PlayerPool({
     { key: "all", label: t("pool.chip.all"), count: finished ? null : pool.available.length, role: null },
     ...columns.map((role) => ({
       key: role,
-      label: t(`roles.${role}`),
-      count: finished ? null : pool.roleCounts[role],
+      label: slotLabel(role),
+      count: finished ? null : (pool.roleCounts[role] ?? 0),
       role
     }))
   ];
@@ -225,8 +230,8 @@ export function PlayerPool({
                     onClick={() => onViewParamsChange({ role: chip.key })}
                     style={
                       {
-                        "--chip-bg": on ? (chip.role ? tint(chip.role, 12) : teal(12)) : "transparent",
-                        borderColor: on ? (chip.role ? ROLE_ACCENT[chip.role] : "var(--aqt-teal)") : "var(--aqt-border-2)"
+                        "--chip-bg": on ? (chip.role ? tint(roleTint(ontology, chip.role), 12) : teal(12)) : "transparent",
+                        borderColor: on ? (chip.role ? roleTint(ontology, chip.role) : "var(--aqt-teal)") : "var(--aqt-border-2)"
                       } as CSSProperties
                     }
                     className={cn(
@@ -237,12 +242,7 @@ export function PlayerPool({
                     )}
                   >
                     {chip.role && (
-                      <PlayerRoleIcon
-                        role={getRoleIconName(chip.role)}
-                        size={17}
-                        color={ROLE_ACCENT[chip.role]}
-                        decorative
-                      />
+                      <PlayerRoleIcon role={chip.role} ontology={ontology} size={17} decorative />
                     )}
                     <span className="truncate">{chip.label}</span>
                     {chip.count != null && (
@@ -346,8 +346,8 @@ export function PlayerPool({
               {market.map((entry) => {
                 const supply = entry.primary + entry.secondary;
                 const denominator = Math.max(entry.openSlots, supply, 1);
-                const barColor = entry.deficit ? "var(--aqt-rose)" : ROLE_ACCENT[entry.role];
-                const roleLabel = t(`roles.${entry.role}`);
+                const barColor = entry.deficit ? "var(--aqt-rose)" : roleTint(ontology, entry.role);
+                const roleLabel = slotLabel(entry.role);
                 // Shortage is a fact, not a hue: the icon + word carry it, the colour only repeats it.
                 const shortage = entry.deficit ? "deficit" : entry.tight ? "tight" : null;
                 const ShortageIcon = entry.deficit ? AlertTriangle : AlertCircle;
@@ -364,7 +364,7 @@ export function PlayerPool({
                       className="flex flex-wrap items-center gap-x-[7px] gap-y-0.5 text-body text-[color:var(--aqt-fg-muted)]"
                       aria-hidden="true"
                     >
-                      <PlayerRoleIcon role={getRoleIconName(entry.role)} size={17} color={ROLE_ACCENT[entry.role]} decorative />
+                      <PlayerRoleIcon role={entry.role} ontology={ontology} size={17} decorative />
                       <span className="min-w-0 truncate">{roleLabel}</span>
                       <span className="shrink-0 whitespace-nowrap tabular-nums">
                         {t("pool.market.slots", { count: entry.openSlots })}
@@ -466,9 +466,9 @@ export function PlayerPool({
               style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))` }}
             >
               {columns.map((role) => (
-                <span key={role} className="flex min-w-0 items-center gap-1.5" style={{ color: ROLE_ACCENT[role] }}>
-                  <PlayerRoleIcon role={getRoleIconName(role)} size={16} color={ROLE_ACCENT[role]} decorative />
-                  <span className="truncate">{t(`roles.${role}`)}</span>
+                <span key={role} className="flex min-w-0 items-center gap-1.5" style={{ color: roleTint(ontology, role) }}>
+                  <PlayerRoleIcon role={role} ontology={ontology} size={16} decorative />
+                  <span className="truncate">{slotLabel(role)}</span>
                 </span>
               ))}
             </span>
@@ -495,6 +495,7 @@ export function PlayerPool({
                   options={options}
                   safetyRequired={safetyRequired}
                   divisionGrid={divisionGrid}
+                  ontology={ontology}
                   idPrefix={headingId}
                   onSelect={onSelect}
                   onOpenProfile={onOpenProfile}

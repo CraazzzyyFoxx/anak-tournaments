@@ -7,7 +7,8 @@
  * recomputed here — this module only arranges what the board already says.
  */
 
-import { orderSlotCodes, type RosterShape, type RosterSlotCode } from "@/lib/roster/shape";
+import { isRoleSlot, OPEN_SLOT_CODE, slotCodesOf, type RosterShape, type SlotCode } from "@/lib/roster/shape";
+import { slotRank } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
@@ -27,9 +28,6 @@ import {
   slotRankForPlayer,
   type DraftPoolRoleFilter
 } from "./workspace-model";
-
-/** Canonical role order, matching `ROSTER_SLOT_CODES` minus `flex`. */
-export const DRAFT_ROLES: readonly DraftRole[] = ["tank", "damage", "support"];
 
 // ---------------------------------------------------------------------------
 // Seats and the acting team
@@ -91,7 +89,7 @@ export function isOverrideAct(board: DraftBoard, gating: DraftGating, actingId: 
 
 export interface TeamSlotCell {
   /** The slot the shape defines at this position. */
-  code: RosterSlotCode;
+  code: SlotCode;
   player: DraftPlayer | null;
   /** The role the seated player plays here (their pick's role, else their primary). */
   role: DraftRole | null;
@@ -129,25 +127,25 @@ export function buildTeamViews(board: DraftBoard): Map<number, TeamView> {
     const roster = [...(rosters.get(team.id) ?? [])].sort(
       (a, b) => (a.is_captain ? -1 : pickNo.get(a.id) ?? 1e9) - (b.is_captain ? -1 : pickNo.get(b.id) ?? 1e9)
     );
-    const cells: TeamSlotCell[] = orderSlotCodes(shape.slots).flatMap((code) =>
+    const cells: TeamSlotCell[] = slotCodesOf(shape.slots).flatMap((code) =>
       Array.from({ length: shape.slots[code] ?? 0 }, () => ({ code, player: null, role: null, offRole: false }))
     );
     for (const player of roster) {
       const role = rosterRoleForPlayer(player, board.picks);
       const registered = role != null && playerRoles(player).includes(role);
-      const free = (code: RosterSlotCode) => cells.find((cell) => cell.player == null && cell.code === code);
-      const target = (role != null ? free(role) : undefined) ?? free("flex") ?? cells.find((cell) => cell.player == null);
-      const seat: TeamSlotCell = target ?? { code: "flex", player: null, role: null, offRole: false };
+      const free = (code: SlotCode) => cells.find((cell) => cell.player == null && cell.code === code);
+      const target = (role != null ? free(role) : undefined) ?? free(OPEN_SLOT_CODE) ?? cells.find((cell) => cell.player == null);
+      const seat: TeamSlotCell = target ?? { code: OPEN_SLOT_CODE, player: null, role: null, offRole: false };
       if (!target) cells.push(seat);
       seat.player = player;
       seat.role = role;
-      seat.offRole = shape.has_role_slots && role != null && (!registered || (seat.code !== "flex" && seat.code !== role));
+      seat.offRole = shape.has_role_slots && role != null && (!registered || (seat.code !== OPEN_SLOT_CODE && seat.code !== role));
     }
     const openRoles = new Map<DraftRole, number>();
     let openFlex = 0;
     for (const cell of cells) {
       if (cell.player != null) continue;
-      if (cell.code === "flex") openFlex += 1;
+      if (cell.code === OPEN_SLOT_CODE) openFlex += 1;
       else openRoles.set(cell.code, (openRoles.get(cell.code) ?? 0) + 1);
     }
     const ranks = cells.flatMap((cell) => {
@@ -178,9 +176,9 @@ export function seatableRoles(player: DraftPlayer, view: TeamView): DraftRole[] 
   return playerRoles(player).filter((role) => canSeat(view, role));
 }
 
-/** Roles the team can still seat anybody on — the `need` filter's set. */
-export function needRoles(view: TeamView): Set<DraftRole> {
-  return new Set(DRAFT_ROLES.filter((role) => canSeat(view, role)));
+/** Of `roles`, the ones the team can still seat anybody on — the `need` filter's set. */
+export function needRoles(view: TeamView, roles: readonly DraftRole[]): Set<DraftRole> {
+  return new Set(roles.filter((role) => canSeat(view, role)));
 }
 
 /**
@@ -210,12 +208,15 @@ export function bestSeatRole(
  * when flex slots exist — every role somebody in the pool plays, since a flex
  * slot seats any of them. An all-flex pool of damage mains shows one column.
  */
-export function poolRoleColumns(shape: RosterShape, players: DraftPlayer[]): DraftRole[] {
-  return DRAFT_ROLES.filter(
-    (role) =>
-      (shape.slots[role] ?? 0) > 0 ||
-      (shape.flex_slots > 0 && players.some((player) => playerRoles(player).includes(role)))
-  );
+export function poolRoleColumns(shape: RosterShape, players: DraftPlayer[], order?: readonly string[]): DraftRole[] {
+  const columns = slotCodesOf(shape.slots).filter(isRoleSlot);
+  if (shape.flex_slots > 0) {
+    for (const player of players) {
+      for (const role of playerRoles(player)) if (!columns.includes(role)) columns.push(role);
+    }
+  }
+  // The owner dictionary's own order, when known; the shape's order otherwise.
+  return order ? columns.sort((left, right) => slotRank(order, left) - slotRank(order, right)) : columns;
 }
 
 export interface RoleMarket {
@@ -237,7 +238,7 @@ export function roleMarket(board: DraftBoard, views: ReadonlyMap<number, TeamVie
   const shape = board.session.roster_shape;
   if (!shape.has_role_slots) return [];
   const available = board.players.filter((player) => player.status === "available");
-  return DRAFT_ROLES.filter((role) => (shape.slots[role] ?? 0) > 0).map((role) => {
+  return slotCodesOf(shape.slots).filter(isRoleSlot).map((role) => {
     let openSlots = 0;
     for (const view of views.values()) openSlots += view.openRoles.get(role) ?? 0;
     const primary = available.filter((player) => roleOf(player.primary_role) === role).length;

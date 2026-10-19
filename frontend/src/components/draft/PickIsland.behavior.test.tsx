@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DraftMutations } from "@/hooks/useDraftData";
 import type { DraftGating } from "@/lib/draft/logic";
 import { buildTeamViews, type RoomSelection } from "@/lib/draft/room-model";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftTeam } from "@/types/draft.types";
 import type { UserDraftCard } from "@/types/user.types";
@@ -22,8 +23,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // Message keys, not copy: every assertion is about WHICH fact reaches the screen.
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}:${JSON.stringify(values)}` : key
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => (values ? `${key}:${JSON.stringify(values)}` : key),
+      { has: () => false }
+    )
 }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
@@ -206,6 +210,7 @@ async function open(setup: Setup = {}) {
           autopickPreview={null}
           queue={setup.queue ? { ids: [], toggle: vi.fn(), move: vi.fn() } : null}
           divisionGrid={GRID}
+          ontology={OW_METADATA}
           onPicked={onPicked}
         />
       </QueryClientProvider>
@@ -258,7 +263,7 @@ async function showStats() {
 }
 
 function tile(role: string): HTMLElement | null {
-  return document.body.querySelector<HTMLElement>(`[role='group'] [title^='roles.${role}']`);
+  return document.body.querySelector<HTMLElement>(`[role='group'] [title^='${role.charAt(0).toUpperCase()}${role.slice(1)}']`);
 }
 
 function card(overrides: Partial<UserDraftCard> = {}): UserDraftCard {

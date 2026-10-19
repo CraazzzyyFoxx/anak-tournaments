@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { DraftClock } from "@/components/draft/DraftClock";
 import { useDraftFeasibilityQuery, useDraftRealtime } from "@/hooks/useDraftData";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { Button } from "@/components/ui/button";
 import { HeroCoord, HeroFrame } from "@/components/site/PageHero";
 import type { DraftBoard } from "@/types/draft.types";
@@ -39,6 +40,8 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
   // the picks made in the room without a manual reload.
   const { connectionState } = useDraftRealtime(tournamentId, board);
   const feasibilityQuery = useDraftFeasibilityQuery(board.session.id);
+  // The session's own owner scope: the draft's roles are the tournament game's, whatever game is being browsed.
+  const ontology = useDisciplineMetadata(board.session.workspace_id, board.session.discipline).data ?? null;
   const feasibility = feasibilityQuery.data ?? null;
   const session = board.session;
   const currentPick = board.current_pick;
@@ -128,7 +131,7 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
 
       <div className="grid gap-5 lg:grid-cols-[7fr_3fr]">
         <main className="min-w-0 space-y-4">
-          <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} />
+          <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} ontology={ontology} />
           {!session.blocked_reason && shouldResolve && (
             <Button variant="outline" onClick={() => setRoleDialogOpen(true)}>
               <AlertTriangle className="mr-2 h-4 w-4" aria-hidden />
@@ -149,6 +152,7 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
         tournamentId={tournamentId}
         board={board}
         feasibility={feasibility}
+        ontology={ontology}
       />
     </div>
   );

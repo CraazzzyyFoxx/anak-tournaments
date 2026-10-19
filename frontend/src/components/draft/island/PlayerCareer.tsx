@@ -9,7 +9,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { roleOf } from "@/lib/roster/role-ref";
-import { getRoleIconName } from "@/lib/roster/roles";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { UserDraftCard } from "@/types/user.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -209,8 +209,9 @@ const SKELETON_ROWS = [0, 1, 2, 3, 4];
 export function CareerTables({
   card,
   pending,
-  divisionGrid
-}: Readonly<{ card: UserDraftCard | undefined; pending: boolean; divisionGrid: DivisionGrid }>) {
+  divisionGrid,
+  ontology
+}: Readonly<{ card: UserDraftCard | undefined; pending: boolean; divisionGrid: DivisionGrid; ontology: RoleOntology | null }>) {
   const t = useTranslations("draftRedesign");
   const format = useFormatter();
 
@@ -286,7 +287,7 @@ export function CareerTables({
                   />
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-[13px] font-medium">{entry.hero.name}</span>
-                    <PlayerRoleIcon role={getRoleIconName(entry.role)} size={14} />
+                    <PlayerRoleIcon role={entry.role} ontology={ontology} size={14} />
                   </span>
                   <span className="text-right text-[13px] tabular-nums text-[color:var(--aqt-fg-muted)]">
                     {entry.maps}

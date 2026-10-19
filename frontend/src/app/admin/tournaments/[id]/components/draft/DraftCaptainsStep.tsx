@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select";
 import { TONE_CLASS } from "@/components/kit/tone";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { RosterShape } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
@@ -40,6 +41,8 @@ interface DraftCaptainsStepProps {
   divisionGrid: DivisionGrid;
   /** The shape the draft seats captains into: which roles have a slot at all. */
   rosterShape: Pick<RosterShape, "slots" | "has_role_slots">;
+  /** The owner game's role dictionary: names and glyphs of the roles a captain can be seated on. */
+  ontology: RoleOntology | null;
 }
 
 export function DraftCaptainsStep({
@@ -48,9 +51,11 @@ export function DraftCaptainsStep({
   value,
   onChange,
   divisionGrid,
-  rosterShape
+  rosterShape,
+  ontology
 }: Readonly<DraftCaptainsStepProps>) {
   const t = useTranslations("draftAdmin");
+  const slotLabel = useSlotLabel(ontology);
   const tAdmin = useTranslations("adminTournament.draft");
 
   const poolById = useMemo(
@@ -127,6 +132,7 @@ export function DraftCaptainsStep({
           teamCount={teamCount}
           onToggle={toggle}
           divisionGrid={divisionGrid}
+          ontology={ontology}
         />
 
         <div className="@container space-y-3">
@@ -161,16 +167,11 @@ export function DraftCaptainsStep({
                           <SelectTrigger
                             className="h-7 w-auto shrink-0 gap-1 px-1.5"
                             aria-label={t("captainRoleFor", { name: row.label })}
-                            title={seat.role ? t(`roles.${seat.role}`) : undefined}
+                            title={seat.role ? slotLabel(seat.role) : undefined}
                           >
                             <SelectValue>
                               {seat.role && (
-                                <PlayerRoleIcon
-                                  role={getRoleIconName(seat.role)}
-                                  size={14}
-                                  color={ROLE_ACCENT[seat.role]}
-                                  decorative
-                                />
+                                <PlayerRoleIcon role={seat.role} ontology={ontology} size={14} decorative />
                               )}
                             </SelectValue>
                           </SelectTrigger>
@@ -178,13 +179,8 @@ export function DraftCaptainsStep({
                             {seat.options.map((role) => (
                               <SelectItem key={role} value={role}>
                                 <span className="inline-flex items-center gap-2">
-                                  <PlayerRoleIcon
-                                    role={getRoleIconName(role)}
-                                    size={14}
-                                    color={ROLE_ACCENT[role]}
-                                    decorative
-                                  />
-                                  {t(`roles.${role}`)}
+                                  <PlayerRoleIcon role={role} ontology={ontology} size={14} decorative />
+                                  {slotLabel(role)}
                                   <span className="font-mono text-xs tabular-nums text-muted-foreground">
                                     {captainSeat(registration, role, rosterShape).rank ?? "—"}
                                   </span>
@@ -196,13 +192,7 @@ export function DraftCaptainsStep({
                       ) : (
                         <span className="flex shrink-0 items-center gap-1">
                           {(seat.role ? [seat.role] : row.roles).map((role) => (
-                            <PlayerRoleIcon
-                              key={role}
-                              role={getRoleIconName(role)}
-                              size={14}
-                              color={ROLE_ACCENT[role]}
-                              label={t(`roles.${role}`)}
-                            />
+                            <PlayerRoleIcon key={role} role={role} ontology={ontology} size={14} label={slotLabel(role)} />
                           ))}
                         </span>
                       )}

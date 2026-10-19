@@ -19,6 +19,8 @@ const players = [
   { id: 2, identity: { provider: "battlenet", handle: "Alpha#2" }, player_name: null, primary_role: { dimension: "player_role", role: "tank" }, secondary_roles: [{ dimension: "player_role", role: "damage" }], effective_rank: 3100 }
 ] as DraftPlayer[];
 
+const ROLES = ["tank", "damage", "support"];
+
 describe("draft workspace model", () => {
   it("only resolves an exact server-approved player and role option", () => {
     const response: DraftPickOptionsResponse = {
@@ -38,7 +40,7 @@ describe("draft workspace model", () => {
   it("filters and sorts the public pool with URL-safe values", () => {
     expect(filterDraftPlayers(players, { role: "all", sort: "name", query: "a" }).map((player) => player.id)).toEqual([2, 1]);
     expect(filterDraftPlayers(players, { role: "damage", sort: "rank", query: "" }).map((player) => player.id)).toEqual([2]);
-    expect(parseDraftViewParams(new URLSearchParams("role=oops&sort=name&view=teams&pool=all&teams=order&q=abc"))).toEqual({
+    expect(parseDraftViewParams(new URLSearchParams("role=oops&sort=name&view=teams&pool=all&teams=order&q=abc"), ROLES)).toEqual({
       role: "all",
       sort: "name",
       view: "teams",
@@ -47,7 +49,11 @@ describe("draft workspace model", () => {
       query: "abc"
     });
     // An unknown pool name falls back to the one everybody starts on.
-    expect(parseDraftViewParams(new URLSearchParams("pool=oops")).pool).toBe("available");
+    expect(parseDraftViewParams(new URLSearchParams("pool=oops"), ROLES).pool).toBe("available");
+    // A role is a filter only when the owner game has it: League's jungle filters, Overwatch's tank does not.
+    expect(parseDraftViewParams(new URLSearchParams("role=jungle"), ["top", "jungle"]).role).toBe("jungle");
+    expect(parseDraftViewParams(new URLSearchParams("role=tank"), ["top", "jungle"]).role).toBe("all");
+    expect(parseDraftViewParams(new URLSearchParams("role=need"), []).role).toBe("need");
   });
 
   it("derives role choices and rosters from the public board snapshot", () => {

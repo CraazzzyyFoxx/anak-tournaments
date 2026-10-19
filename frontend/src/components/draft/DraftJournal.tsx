@@ -3,14 +3,18 @@
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { useFormatter } from "@/lib/datetime/client";
-
-import type { DraftBoard, DraftJournalAction, DraftJournalEntry, DraftRole } from "@/types/draft.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
+import type { DraftBoard, DraftJournalAction, DraftJournalEntry } from "@/types/draft.types";
 
 interface DraftJournalProps {
   id: string;
   board: DraftBoard;
   entries: readonly DraftJournalEntry[] | undefined;
+  ontology: RoleOntology | null;
   isLoading: boolean;
   isError: boolean;
   /** Refetch the journal after a failed load. */
@@ -39,8 +43,9 @@ function entryColor(action: string): string {
 }
 
 /** The organizer's log of what happened in the room, newest first. */
-export function DraftJournal({ id, board, entries, isLoading, isError, onRetry }: Readonly<DraftJournalProps>) {
+export function DraftJournal({ id, board, entries, ontology, isLoading, isError, onRetry }: Readonly<DraftJournalProps>) {
   const t = useTranslations("draftRedesign");
+  const slotLabel = useSlotLabel(ontology);
   const format = useFormatter();
   const teamName = (teamId: number | null) =>
     board.teams.find((team) => team.id === teamId)?.name ?? t("shell.journal.unknownTeam");
@@ -55,7 +60,7 @@ export function DraftJournal({ id, board, entries, isLoading, isError, onRetry }
           pick: entry.pick_no ?? "—",
           team: teamName(entry.team_id),
           player: playerTag(entry.player_id),
-          role: t(`roles.${entry.role?.role as DraftRole ?? "flex"}`),
+          role: slotLabel(entry.role ? roleOf(entry.role) : OPEN_SLOT_CODE),
           reason: entry.reason ?? "",
           seconds: entry.seconds ?? 0
         })

@@ -17,6 +17,7 @@ import {
 import { DRAFT_TEAMS_TABS, type DraftTeamsTab } from "@/lib/draft/workspace-model";
 import type { DraftBoard, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { DraftOrderGrid } from "./DraftOrderGrid";
 import { DraftQueue } from "./DraftQueue";
@@ -39,6 +40,8 @@ interface TeamsPanelProps {
   /** Captain only: an open ROLE slot of MY team filters the pool to that role. */
   onSlotFilter?: (role: DraftRole) => void;
   divisionGrid: DivisionGrid;
+  /** The session owner's role dictionary, handed to every tab that names a role. */
+  ontology: RoleOntology | null;
   headingId: string;
 }
 
@@ -81,6 +84,7 @@ export function TeamsPanel({
   onOpenProfile,
   onSlotFilter,
   divisionGrid,
+  ontology,
   headingId
 }: Readonly<TeamsPanelProps>) {
   const t = useTranslations("draftRedesign");
@@ -159,6 +163,7 @@ export function TeamsPanel({
             onOpenProfile={onOpenProfile}
             onSlotFilter={onSlotFilter}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             clockColor={clockColor}
           />
         </TabsContent>
@@ -169,6 +174,7 @@ export function TeamsPanel({
             remaining={remaining}
             myTeamId={myTeamId}
             clockColor={clockColor}
+            ontology={ontology}
           />
         </TabsContent>
         <TabsContent value="order" className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset">
@@ -180,6 +186,7 @@ export function TeamsPanel({
             myTeamId={myTeamId}
             followed={followed}
             clockColor={clockColor}
+            ontology={ontology}
           />
         </TabsContent>
       </Tabs>

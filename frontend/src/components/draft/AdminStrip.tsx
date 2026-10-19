@@ -17,6 +17,7 @@ import {
 import { useDraftFeasibilityQuery, useDraftJournalQuery, type DraftMutations } from "@/hooks/useDraftData";
 import { notify } from "@/lib/notify";
 import { captainsOnline, lastResolvedPick } from "@/lib/draft/room-model";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { DraftBoard } from "@/types/draft.types";
 
 import { DraftJournal } from "./DraftJournal";
@@ -29,6 +30,7 @@ interface AdminStripProps {
   board: DraftBoard;
   mutations: DraftMutations;
   onlineCaptainIds: ReadonlySet<number>;
+  ontology: RoleOntology | null;
 }
 
 /**
@@ -36,7 +38,7 @@ interface AdminStripProps {
  * draft runs is a reaction to the clock right above it, so it lives there
  * instead of on a control page in a second tab.
  */
-export function AdminStrip({ board, mutations, onlineCaptainIds }: Readonly<AdminStripProps>) {
+export function AdminStrip({ board, mutations, onlineCaptainIds, ontology }: Readonly<AdminStripProps>) {
   const t = useTranslations("draftRedesign");
   const journalId = useId();
   const [confirming, setConfirming] = useState<PendingConfirm>(null);
@@ -199,6 +201,7 @@ export function AdminStrip({ board, mutations, onlineCaptainIds }: Readonly<Admi
           id={journalId}
           board={board}
           entries={journal.data?.entries}
+          ontology={ontology}
           isLoading={journal.isPending}
           isError={journal.isError}
           onRetry={() => void journal.refetch()}
