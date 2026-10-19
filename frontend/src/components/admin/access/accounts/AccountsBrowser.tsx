@@ -103,14 +103,14 @@ export function AccountsBrowser() {
           renderMobileCard={(row) => (
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{row.original.email}</p>
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                @{row.original.username}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {row.original.is_active ? t("active") : t("inactive")} ·{" "}
-                {row.original.roles.length === 0
-                  ? t("noRoles")
-                  : row.original.roles.map((role) => role.name).join(", ")}
+              <p className="truncate text-caption text-muted-foreground">@{row.original.username}</p>
+              <p className="truncate text-caption text-muted-foreground">
+                {[
+                  row.original.is_active ? null : t("inactive"),
+                  row.original.roles.map((role) => role.name).join(", ")
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
           )}

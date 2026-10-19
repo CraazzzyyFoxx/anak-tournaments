@@ -15,10 +15,7 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 
 export default function PreviewSettingsPage() {
   return (
-    <SettingsSectionPage
-      section="preview"
-      description={useTranslations("adminTournament.screenDescriptions")("preview")}
-    >
+    <SettingsSectionPage section="preview">
       {({ tournament, tournamentId, workspaceId, canUpdateTournament }) => (
         <PreviewForm
           tournament={tournament}
@@ -58,7 +55,7 @@ function PreviewForm({
     <>
       <Card>
         <CardContent className="flex flex-col gap-4 pt-6">
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 p-3.5">
+          <div className="flex items-center gap-2">
             <Checkbox
               id="settings-is-hidden"
               checked={form.is_hidden}

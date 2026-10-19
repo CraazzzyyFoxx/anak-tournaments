@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Plus } from "lucide-react";
-import { useFormatter } from "@/lib/datetime/client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,6 +21,8 @@ import type { PaginatedResponse } from "@/types/pagination.types";
 import type { Tournament } from "@/types/tournament.types";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { NextActionHero } from "@/components/kit/NextActionHero";
+import { buildChecklist, hasChallongeSource } from "@/components/admin/tournament-checklist";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { KpiStrip, kpiColumnsClass } from "@/components/admin/dashboard/KpiStrip";
 import { ActiveTournamentCard } from "@/components/admin/dashboard/ActiveTournamentCard";
@@ -67,13 +68,13 @@ function emptyPaginated<T>(): PaginatedResponse<T> {
 export default function AdminDashboard() {
   const t = useTranslations("adminShell.dashboard");
   const tExtra = useTranslations("adminShell.dashboardExtra");
+  const tCommon = useTranslations("common");
+  const checklistT = useTranslations("adminTournaments.checklist");
   const { canAccessPermission } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
   const { user } = useAuthProfile();
-  const format = useFormatter();
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? t("greetingMorning") : hour < 18 ? t("greetingAfternoon") : t("greetingEvening");
-  const today = format.dateTime(new Date(), { weekday: "long", month: "long", day: "numeric" });
+  const greetingPeriod = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
   const canCreateTournaments = canAccessPermission("tournament.create", workspaceId);
@@ -129,6 +130,25 @@ export default function AdminDashboard() {
     queryFn: () => adminService.getTournamentReadiness(activeTournament!.id),
     enabled: canReadReadiness && activeTournament != null
   });
+
+  // The hub Overview's own model and ranking: the hero is the first open item
+  // with somewhere to go, the readiness card lists the rest, so the two can
+  // never disagree with each other or with the hub.
+  const checklist =
+    activeTournament && readinessQuery.data && !readinessQuery.isError
+      ? buildChecklist(
+          readinessQuery.data,
+          {
+            basePath: `/admin/tournaments/${activeTournament.id}`,
+            schedule: activeTournament.phase_schedule.map((entry) => entry.status),
+            hasChallongeSource: hasChallongeSource(activeTournament, activeTournament.stages ?? [])
+          },
+          checklistT
+        )
+      : [];
+  const nextAction = checklist.find(
+    (item) => (item.state === "warn" || item.state === "todo") && item.href
+  );
 
   // One tile per KPI the reader may actually see — the loading skeleton reserves
   // the same count, so a two-permission role no longer gets a four-tile shimmer.
@@ -229,10 +249,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* [1] HEADER — the same primitive every other admin screen opens with */}
+      {/* [1] HEADER — the breadcrumb already names the page, so the h1 stays
+          in the outline only and the visible line is the greeting. */}
       <AdminPageHeader
         title={t("dashboardTitle")}
-        description={tExtra("greetingDescription", { greeting, username: user?.username ?? t("defaultAdmin"), today })}
+        titleHidden
+        description={t("greeting", {
+          period: greetingPeriod,
+          username: user?.username ?? t("defaultAdmin")
+        })}
         actions={
           canCreateTournaments ? (
             <Button asChild size="sm">
@@ -245,7 +270,25 @@ export default function AdminDashboard() {
         }
       />
 
-      {/* [2] LOAD FAILURE — a failed fetch must not read as a real zero */}
+      {/* [2] THE ONE NEXT ACTION of the active tournament */}
+      {nextAction && activeTournament ? (
+        <NextActionHero
+          eyebrow={t("nextAction")}
+          title={
+            <>
+              {nextAction.label}
+              <span className="font-normal text-muted-foreground">
+                {" · "}
+                {[nextAction.detail, activeTournament.name].filter(Boolean).join(" · ")}
+              </span>
+            </>
+          }
+          href={nextAction.href!}
+          cta={tCommon("open")}
+        />
+      ) : null}
+
+      {/* [3] LOAD FAILURE — a failed fetch must not read as a real zero */}
       {(statsFailed || tournamentsFailed) && (
         <Alert variant="destructive">
           <AlertTriangle className="size-4" aria-hidden />
@@ -272,7 +315,7 @@ export default function AdminDashboard() {
         </Alert>
       )}
 
-      {/* [3] DECISION METRICS */}
+      {/* [4] DECISION METRICS */}
       {!statsFailed && (
         <KpiStrip
           tournaments={
@@ -301,7 +344,7 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* [4] WORK COLUMN + ATTENTION RAIL */}
+      {/* [5] WORK COLUMN + ATTENTION RAIL */}
       <section className={cn("grid gap-4", !tournamentsFailed && "xl:grid-cols-[7fr_3fr]")}>
         {!tournamentsFailed && (
           <div className="flex flex-col gap-4">
@@ -310,6 +353,8 @@ export default function AdminDashboard() {
               canRead={canReadReadiness}
               tournament={activeTournament}
               readiness={readinessQuery.data}
+              items={checklist}
+              heroKey={nextAction?.key}
               isLoading={readinessQuery.isLoading}
               failed={readinessQuery.isError}
             />
@@ -320,7 +365,11 @@ export default function AdminDashboard() {
           <div className="flex flex-col gap-4">
             {!statsFailed && <IssuesQueue items={issueItems} />}
             {!tournamentsFailed && (
-              <RecentTournaments canRead={canReadTournaments} tournaments={tournaments} />
+              <RecentTournaments
+                canRead={canReadTournaments}
+                tournaments={tournaments}
+                excludeId={activeTournament?.id}
+              />
             )}
           </div>
         )}

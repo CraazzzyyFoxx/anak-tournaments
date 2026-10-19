@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { Card, CardContent } from "@/components/ui/card";
+import { SaveBar } from "@/components/kit/SaveBar";
 import {
   Dialog,
   DialogContent,
@@ -21,9 +21,9 @@ import type { DiscordGuildInfo } from "@/types/discord.types";
 import type { ManageableDiscordGuild, Workspace } from "@/types/workspace.types";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
-import { AnnouncementsCard } from "./discord/AnnouncementsCard";
+import { AnnouncementsCard, useAnnouncementsForm } from "./discord/AnnouncementsCard";
 import { bindFailure } from "./discord/errors";
-import { MixesCard } from "./discord/MixesCard";
+import { MixesCard, useMixesForm } from "./discord/MixesCard";
 import { ServerCard } from "./discord/ServerCard";
 import { ServerPicker } from "./discord/ServerPicker";
 import { userQueryKeys } from "@/lib/users/query-keys";
@@ -57,9 +57,13 @@ function boundIcon(
  * the guild is not a field the workspace PATCH can set at all. Unlinking is a
  * separate verb (`clear_discord_guild`): workspace.update is enough, so an
  * organiser can leave a server they were kicked from.
+ *
+ * Announcements and mixes are drafts behind one `SaveBar`: both endpoints take
+ * their whole body, so there is no per-field save to make instant.
  */
 export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.discord");
+  const saveBarT = useTranslations("admin.saveBar");
   const settings = useWorkspaceSettingsForm(workspaceId, "discord");
   const { invalidate } = settings;
   const queryClient = useQueryClient();
@@ -73,6 +77,13 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
     retry: false
   });
   const guildInfoQuery = useDiscordGuildInfo(workspaceId, Boolean(workspaceId));
+  // Channels come from the linked guild, so there is nothing to read until one
+  // is bound.
+  const bound = Boolean(settings.workspace?.discord_guild_id);
+  const announcements = useAnnouncementsForm(workspaceId, bound);
+  const mixes = useMixesForm(workspaceId, bound);
+  const changedCount =
+    Object.keys(announcements.payload ?? {}).length + Object.keys(mixes.payload ?? {}).length;
 
   const refresh = () => {
     invalidate();
@@ -126,6 +137,7 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
             guilds={manageable}
             loading={guildsQuery.isLoading}
             failed={guildsQuery.isError}
+            onRetry={() => void guildsQuery.refetch()}
             pendingId={bind.isPending ? (bind.variables ?? null) : null}
             error={error}
             onBind={(guildId) => bind.mutate(guildId)}
@@ -148,23 +160,32 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
                   onUnlink={() => setUnlinkOpen(true)}
                   unlinking={unlink.isPending}
                 />
-                {/* Channels come from the linked guild, so there is nothing to
-                    pick until one is bound. */}
-                <AnnouncementsCard workspaceId={workspace.id} />
-                <MixesCard workspaceId={workspace.id} />
+                <AnnouncementsCard workspaceId={workspace.id} announcements={announcements} />
+                <MixesCard workspaceId={workspace.id} mixes={mixes} />
+                <SaveBar
+                  dirty={announcements.dirty || mixes.dirty}
+                  summary={saveBarT("changedFields", { count: changedCount })}
+                  saving={announcements.saving || mixes.saving}
+                  onDiscard={() => {
+                    announcements.discard();
+                    mixes.discard();
+                  }}
+                  onSave={() => {
+                    if (announcements.dirty) announcements.save();
+                    if (mixes.dirty) mixes.save();
+                  }}
+                />
               </>
             ) : (
-              <Card>
-                <CardContent className="flex flex-col gap-4 pt-6">
-                  <div>
-                    <h2 className={EYEBROW_CLASS}>{t("linkServer")}</h2>
-                    <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-                      {t("linkServerHelp")}
-                    </p>
-                  </div>
-                  {picker}
-                </CardContent>
-              </Card>
+              <section className="flex flex-col gap-4">
+                <div>
+                  <h2 className={EYEBROW_CLASS}>{t("linkServer")}</h2>
+                  <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+                    {t("linkServerHelp")}
+                  </p>
+                </div>
+                {picker}
+              </section>
             )}
 
             <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>

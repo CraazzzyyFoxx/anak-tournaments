@@ -271,7 +271,7 @@ export function SeedingSection({
                 integer
                 min={1}
                 className="h-8 w-28 text-xs tabular-nums"
-                placeholder={tRoot("extra.inherit", { value: stage.advance_count ?? "—" })}
+                placeholder={stage.advance_count != null ? tRoot("extra.inherit", { value: stage.advance_count }) : undefined}
                 value={item.id in advanceDrafts ? advanceDrafts[item.id] : item.advance_count ?? null}
                 onValueChange={(next) =>
                   setAdvanceDrafts((current) => ({ ...current, [item.id]: next }))

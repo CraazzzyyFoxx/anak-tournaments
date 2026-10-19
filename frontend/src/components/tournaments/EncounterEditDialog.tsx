@@ -445,7 +445,6 @@ function EncounterEditDialogBody({
               id={`encounter-edit-${encounter.id}-reason`}
               value={reason}
               maxLength={500}
-              placeholder={t("matchEdit.reasonPlaceholder")}
               onChange={(event) => setReason(event.target.value)}
             />
             <p className="text-label font-medium leading-normal text-[color:var(--aqt-fg-dim)]">

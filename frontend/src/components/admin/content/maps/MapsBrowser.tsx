@@ -125,16 +125,11 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
       />
 
       <CatalogEntityDialogs crud={crud} kindLabel={kindLabel}>
-        <CatalogNameField
-          id={nameFieldId}
-          value={formData.name}
-          onChange={(name) => setFormData({ ...formData, name })}
-          placeholder={t("catalog.entity.namePlaceholder", { kind: kindLabel })}
-        />
+        <CatalogNameField id={nameFieldId} value={formData.name} onChange={(name) => setFormData({ ...formData, name })} />
 
         {hasModes && (
           <div className="space-y-2">
-            <Label htmlFor={modeFieldId}>{t("catalog.map.modeRequired", { kind: modeLabel })}</Label>
+            <Label htmlFor={modeFieldId}>{modeLabel}</Label>
             <Select
               value={formData.parent_id ? formData.parent_id.toString() : ""}
               onValueChange={(value) => setFormData({ ...formData, parent_id: parseInt(value) })}
@@ -157,7 +152,6 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
           id={aliasesFieldId}
           aliases={formData.aliases}
           onChange={(aliases) => setFormData({ ...formData, aliases })}
-          placeholder={"Илиос\nHollywood (Halloween)"}
           helperText={t("fields.aliasesHelp")}
         />
 

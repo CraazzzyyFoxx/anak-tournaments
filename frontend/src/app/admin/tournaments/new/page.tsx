@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, PenLine } from "lucide-react";
 
 import { getPhaseSchedulePayload } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -13,12 +12,12 @@ import {
   WizardShell,
   type WizardStep as WizardRailStep
 } from "@/components/kit/WizardShell";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -60,29 +59,6 @@ import {
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
-
-const STEP_META: Record<WizardStep, { labelKey: WizardStep; descriptionKey: WizardStep }> = {
-  basics: {
-    labelKey: "basics",
-    descriptionKey: "basics"
-  },
-  schedule: {
-    labelKey: "schedule",
-    descriptionKey: "schedule"
-  },
-  rules: {
-    labelKey: "rules",
-    descriptionKey: "rules"
-  },
-  registration: {
-    labelKey: "registration",
-    descriptionKey: "registration"
-  },
-  review: {
-    labelKey: "review",
-    descriptionKey: "review"
-  }
-};
 
 /** `validateWizardStep` returns codes; the wizard turns them into a fix. */
 const BASICS_ERRORS: Record<string, string> = {
@@ -193,14 +169,20 @@ export default function NewTournamentPage() {
   });
 
   // Resume (D4): the latest Unpublished stage-less tournament of this
-  // workspace is an abandoned wizard draft — offer to continue it.
+  // workspace is an abandoned wizard draft — offer to continue it. The list's
+  // "Resume in wizard" passes `?resume=<id>` to name the draft it meant.
   const resumeQuery = useQuery({
     queryKey: adminQueryKeys.tournamentWizardResume(currentWorkspaceId),
     queryFn: () => tournamentService.getAll(null, currentWorkspaceId),
     enabled: Boolean(currentWorkspaceId),
     staleTime: Infinity
   });
-  const resumable = findResumableDraft(resumeQuery.data?.results ?? [], currentWorkspaceId);
+  const resumeId = Number(searchParams?.get("resume"));
+  const resumeCandidates = resumeQuery.data?.results ?? [];
+  const resumable = findResumableDraft(
+    resumeId ? resumeCandidates.filter((candidate) => candidate.id === resumeId) : resumeCandidates,
+    currentWorkspaceId
+  );
   const showResumePrompt = Boolean(resumable) && !resumeDismissed && !draft;
 
   const adoptDraft = (tournament: Tournament) => {
@@ -213,7 +195,7 @@ export default function NewTournamentPage() {
 
   const resumeDraft = (candidate: Tournament) => {
     const prefill = wizardStateFromDraft(candidate, timezone);
-    setParams({ step: "basics", source: null });
+    setParams({ step: "basics", source: null, resume: null });
     setChallongeSlug(candidate.challonge_slug ?? "");
     setForm(prefill.form);
     setSchedule(prefill.schedule);
@@ -339,7 +321,7 @@ export default function NewTournamentPage() {
 
   const rail: WizardRailStep[] = steps.map((entry, index) => ({
     key: entry,
-    label: t(`steps.${STEP_META[entry].labelKey}.label`),
+    label: t(`steps.${entry}.label`),
     state: index === activeIndex ? "current" : index < activeIndex ? "done" : "todo"
   }));
 
@@ -354,14 +336,11 @@ export default function NewTournamentPage() {
 
   if (!canCreate) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("unauthorizedDescription")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <PageStateCard
+        state="not-found"
+        title={t("unauthorized")}
+        description={t("unauthorizedDescription")}
+      />
     );
   }
 
@@ -380,10 +359,7 @@ export default function NewTournamentPage() {
 
   return (
     <div className="space-y-5">
-      <AdminPageHeader
-        title={t("title")}
-        description={t("description")}
-      />
+      <AdminPageHeader title={t("title")} />
 
       <ConfirmDialog
         open={showResumePrompt}
@@ -416,16 +392,9 @@ export default function NewTournamentPage() {
         aside={
           <Link
             href={sourceHref}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+            className="px-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            {source === "challonge" ? (
-              <PenLine aria-hidden className="size-4 shrink-0" />
-            ) : (
-              <Download aria-hidden className="size-4 shrink-0" />
-            )}
-            {source === "challonge"
-              ? t("manualInstead")
-              : t("importInstead")}
+            {source === "challonge" ? t("manualInstead") : t("importInstead")}
           </Link>
         }
         footer={{
@@ -452,17 +421,9 @@ export default function NewTournamentPage() {
               : { label: t("continue"), onClick: next }
         }}
       >
-        <div className="space-y-1">
-          <p className={`${EYEBROW_CLASS} tabular-nums`}>
-            {t("stepOf", { current: activeIndex + 1, total: steps.length })}
-          </p>
-          <h2 className="font-display text-xl font-semibold text-foreground">
-            {t(`steps.${STEP_META[activeStep].labelKey}.label`)}
-          </h2>
-          <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            {t(`steps.${STEP_META[activeStep].descriptionKey}.description`)}
-          </p>
-        </div>
+        <h2 className="font-display text-xl font-semibold text-foreground">
+          {t(`steps.${activeStep}.label`)}
+        </h2>
 
         <Card className="mt-5 p-4 sm:p-6">
           {activeStep === "basics" && (
@@ -484,12 +445,7 @@ export default function NewTournamentPage() {
             />
           )}
           {activeStep === "rules" && (
-            <RulesStep
-              value={form}
-              onChange={setForm}
-              divisionGridVersions={divisionGridVersions}
-              divisionGridLoading={divisionGridsQuery.isLoading}
-            />
+            <RulesStep value={form} onChange={setForm} />
           )}
           {activeStep === "registration" && (
             <RegistrationStep

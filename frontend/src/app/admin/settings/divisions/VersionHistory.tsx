@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
@@ -12,7 +11,7 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import { bandsFromTiers, type Ladder } from "./editor/draftReducer";
 import { LadderBar } from "./LadderBar";
-import { VERSION_STATE_TONE, versionState } from "./versionStatus";
+import { VERSION_PILL, versionState } from "./versionStatus";
 
 export interface VersionHistoryProps {
   versions: DivisionGridVersion[];
@@ -28,7 +27,7 @@ export interface VersionHistoryProps {
   /**
    * Whether a published version may be activated right now, by id. `undefined`
    * while its readiness is loading; absent for versions that are not
-   * candidates (drafts, archived, the active one).
+   * candidates (drafts, archived, the active one). Activate is offered only on `true`.
    */
   activatable: Record<number, boolean | undefined>;
   onActivate?: (version: DivisionGridVersion) => void;
@@ -60,22 +59,19 @@ export function VersionHistory({
     <ol className="divide-y divide-border rounded-xl border border-border bg-card">
       {ordered.map((version) => {
         const state = versionState(version, activeVersionId);
+        const pill = VERSION_PILL[state];
         const bands = bandsFromTiers(ladder, version.tiers);
         const isDraft = version.status === "draft";
-        const canActivate = version.id in activatable;
-        const ready = activatable[version.id];
 
+        // The pill already says "in force"; a count of readers is only known for the others.
         const usage =
-          state === "active"
-            ? t("inForce")
-            : tournamentCounts === null
-              ? null
-              : t("tournamentCount", { count: tournamentCounts[version.id] ?? 0 });
-        const when = isDraft
-          ? t("notPublished")
-          : version.published_at
-            ? format.dateTime(new Date(version.published_at), { dateStyle: "medium" })
-            : null;
+          state === "active" || tournamentCounts === null
+            ? null
+            : t("tournamentCount", { count: tournamentCounts[version.id] ?? 0 });
+        // A draft has no date; its pill says so.
+        const when = version.published_at
+          ? format.dateTime(new Date(version.published_at), { dateStyle: "medium" })
+          : null;
 
         return (
           <li
@@ -99,12 +95,12 @@ export function VersionHistory({
                 <span className="min-w-0 truncate text-sm font-medium" title={version.label}>
                   {version.label}
                 </span>
-                <StatusPill tone={VERSION_STATE_TONE[state]}>{state}</StatusPill>
+                {pill ? <StatusPill tone={pill.tone}>{t(pill.key)}</StatusPill> : null}
               </div>
               {ladder ? (
                 <LadderBar ladder={ladder} bands={bands} tone={state === "active" ? "accent" : "neutral"} />
               ) : null}
-              <p className="font-mono text-label uppercase tracking-wider text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {[t("divisionCount", { count: bands.length }), usage, when]
                   .filter(Boolean)
                   .join(" · ")}
@@ -112,33 +108,19 @@ export function VersionHistory({
             </div>
 
             <div className="col-start-2 flex flex-wrap items-center gap-2 lg:col-start-3 lg:justify-end">
-              {canActivate && onActivate ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={ready !== true}
-                  title={ready === false ? t("editorDetails.mappingBlocked") : undefined}
-                  onClick={() => onActivate(version)}
-                >
-                  <Star aria-hidden className="size-3.5" />
+              {activatable[version.id] === true && onActivate ? (
+                <Button size="sm" variant="outline" onClick={() => onActivate(version)}>
                   {t("activateVersion", { version: version.version })}
                 </Button>
               ) : null}
               {isDraft ? (
-                <Link
-                  href={editorHref(version.id)}
-                  className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {t("openEditor")}
-                  <ArrowRight aria-hidden className="size-3.5" />
-                </Link>
+                <Button size="sm" asChild>
+                  <Link href={editorHref(version.id)}>{t("openEditor")}</Link>
+                </Button>
               ) : (
-                <Link
-                  href={editorHref(version.id)}
-                  className="inline-flex items-center rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {t("view")}
-                </Link>
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={editorHref(version.id)}>{t("view")}</Link>
+                </Button>
               )}
             </div>
           </li>

@@ -5,7 +5,6 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { LiveIndicator } from "@/components/admin/LiveIndicator";
 import { DataTable, columnMeta } from "@/components/data-table";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { formatDate } from "@/components/kit/format-time";
@@ -70,16 +69,22 @@ export function StreamTaskHistory() {
         accessorKey: "status",
         header: tCommon("status"),
         meta: columnMeta<StreamPollTick>({ align: "center" }),
-        // The raw token stays in the cell: the tick log is read next to the
-        // service's own logs, which name the same token. The wording is the
-        // tooltip.
-        cell: ({ row }) => (
-          <span title={t(`status.${row.original.status}.label`)}>
-            <StatusPill tone={STREAM_STATUS_TONES[row.original.status]}>
-              {row.original.status}
+        // The wording shows; the raw token is the tooltip, for reading the row
+        // next to the service's own logs. A pill only for a tick that failed.
+        cell: ({ row }) => {
+          const { status } = row.original;
+          const tone = STREAM_STATUS_TONES[status];
+          const label = t(`status.${status}.label`);
+          return tone === "warning" || tone === "danger" ? (
+            <StatusPill tone={tone} title={status}>
+              {label}
             </StatusPill>
-          </span>
-        )
+          ) : (
+            <span className="text-muted-foreground" title={status}>
+              {label}
+            </span>
+          );
+        }
       },
       {
         accessorKey: "tournaments_updated",
@@ -100,8 +105,7 @@ export function StreamTaskHistory() {
       {
         accessorKey: "ratelimit_remaining",
         header: t("history.rateLimit"),
-        meta: columnMeta<StreamPollTick>({ align: "right", numeric: true }),
-        cell: ({ row }) => row.original.ratelimit_remaining ?? "—"
+        meta: columnMeta<StreamPollTick>({ align: "right", numeric: true })
       }
     ],
     [format, t, tCommon]
@@ -109,12 +113,9 @@ export function StreamTaskHistory() {
 
   return (
     <section aria-labelledby="stream-task-history" className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 id="stream-task-history" className="font-semibold leading-none tracking-tight">
-          {tCommon("taskHistory")}
-        </h2>
-        <LiveIndicator />
-      </div>
+      <h2 id="stream-task-history" className="font-semibold leading-none">
+        {tCommon("taskHistory")}
+      </h2>
       <DataTable<StreamPollTick>
         rows={rows}
         isLoading={query.isLoading}

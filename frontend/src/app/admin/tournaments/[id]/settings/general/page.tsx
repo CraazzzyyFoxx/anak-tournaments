@@ -27,12 +27,8 @@ import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 
 export default function GeneralSettingsPage() {
-  const t = useTranslations("adminTournament.general");
   return (
-    <SettingsSectionPage
-      section="general"
-      description={t("description")}
-    >
+    <SettingsSectionPage section="general">
       {({ tournament, tournamentId, workspaceId, canUpdateTournament }) => (
         <GeneralForm
           tournament={tournament}
@@ -79,7 +75,7 @@ function GeneralForm({
             entityId: tournamentId,
             workspaceId: tournament.workspace_id
           }}
-          target={`tournament “${tournament.name}”`}
+          target={t("auditTarget", { name: tournament.name })}
           showCount
         />
       </div>
@@ -139,7 +135,6 @@ function GeneralForm({
                   <SelectItem value="solo">{t("soloRegistration")}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{t("formationHint")}</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -160,7 +155,7 @@ function GeneralForm({
                   <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
                   {versions.map((version) => (
                     <SelectItem key={version.id} value={version.id.toString()}>
-                      {version.label} (v{version.version}, {version.status})
+                      {t("gridVersionOption", { label: version.label, version: version.version, status: version.status })}
                     </SelectItem>
                   ))}
                 </SelectContent>

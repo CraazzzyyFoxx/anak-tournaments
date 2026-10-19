@@ -173,7 +173,7 @@ export function RoundScheduleSection({
       return [
         scheduleRow(
           1,
-          t("lobbiesRound"),
+          t("lobbies"),
           lobbies.map((lobby) => ({ id: lobby.encounter_id, scheduled_at: lobby.scheduled_at }))
         )
       ];
@@ -291,7 +291,7 @@ export function RoundScheduleSection({
                 <TableHead className={styles.head}>{t("roundColumn")}</TableHead>
                 <TableHead className={styles.head}>{t("timeColumn")}</TableHead>
                 <TableHead className={styles.head}>
-                  {isFfa ? t("lobbiesColumn") : t("matchesColumn")}
+                  {isFfa ? t("lobbies") : t("matchesColumn")}
                 </TableHead>
                 <TableHead className={styles.head}>
                   <span className="sr-only">{t("actionsColumn")}</span>

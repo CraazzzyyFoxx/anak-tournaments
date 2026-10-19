@@ -3,10 +3,9 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
-import { columnMeta, createKebabColumn } from "@/components/data-table";
+import { columnMeta } from "@/components/data-table";
 import type { Team } from "@/types/team.types";
 
 export function useTeamColumns(): ColumnDef<Team>[] {
@@ -38,11 +37,7 @@ export function useTeamColumns(): ColumnDef<Team>[] {
         accessorFn: (team) => team.players.length,
         header: t("players"),
         meta: columnMeta<Team>({ align: "right", numeric: true })
-      },
-      createKebabColumn<Team>(
-        (team) => [{ label: t("open"), icon: Pencil, href: `/admin/teams/${team.id}` }],
-        { rowLabel: (team) => team.name }
-      )
+      }
     ],
     [t]
   );

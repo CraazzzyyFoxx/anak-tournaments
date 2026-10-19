@@ -213,22 +213,19 @@ export function BracketPreview({
 
       {projection.isGroups ? (
         <p className="mt-3 text-sm text-foreground">
-          {t("groups", { count: projection.itemCount })}
-          {projection.advancingTotal > 0 ? (
-            <span className="text-muted-foreground">
-              {t("advance", { counts: [...new Set(projection.advanceCounts)].join(" / "), total: projection.advancingTotal })}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">
-              {t("autoAdvance")}
-            </span>
-          )}
+          {projection.advancingTotal > 0
+            ? t("advance", {
+                count: projection.itemCount,
+                counts: [...new Set(projection.advanceCounts)].join(" / "),
+                total: projection.advancingTotal
+              })
+            : t("autoAdvance", { count: projection.itemCount })}
         </p>
       ) : null}
 
       <div className="mt-3 border-t border-border pt-3">
         {isLoading ? (
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
         ) : groupSections ? (
           <div className="space-y-4">
             {groupSections.map((section) => (

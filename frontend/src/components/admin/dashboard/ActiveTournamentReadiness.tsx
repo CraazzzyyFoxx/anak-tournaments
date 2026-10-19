@@ -9,11 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
-import {
-  buildChecklist,
-  hasChallongeSource,
-  type ChecklistItem
-} from "@/components/admin/tournament-checklist";
+import type { ChecklistItem } from "@/components/admin/tournament-checklist";
 import { cn } from "@/lib/utils";
 import { PermissionHiddenNotice } from "./PermissionHiddenNotice";
 import type { TournamentReadiness } from "@/types/admin.types";
@@ -22,13 +18,18 @@ import type { Tournament } from "@/types/tournament.types";
 /** Open items shown here before the reader is sent to the hub's full checklist. */
 const MAX_ACTIONS = 4;
 
-/** Draft lifecycle read as a tone. Anything unmapped stays neutral. */
-const DRAFT_TONE: Record<string, Tone> = {
-  completed: "success",
+const DRAFT_STATUSES = ["setup", "ready", "live", "paused", "completed", "cancelled"] as const;
+type DraftStatus = (typeof DRAFT_STATUSES)[number];
+
+/** The two draft states that want attention get the card's one pill. */
+const DRAFT_PILL_TONE: Partial<Record<DraftStatus, Tone>> = {
   live: "info",
-  paused: "warning",
-  cancelled: "danger"
+  paused: "warning"
 };
+
+function isDraftStatus(value: string | null | undefined): value is DraftStatus {
+  return DRAFT_STATUSES.includes(value as DraftStatus);
+}
 
 function ActionRow({ item }: Readonly<{ item: ChecklistItem }>) {
   const tone: Tone = item.state === "warn" ? "warning" : "neutral";
@@ -68,37 +69,43 @@ interface ActiveTournamentReadinessProps {
   canRead: boolean;
   tournament: Tournament | null;
   readiness: TournamentReadiness | undefined;
+  /** `buildChecklist` over `readiness`, built once by the dashboard. */
+  items: ChecklistItem[];
+  /** The item the dashboard's `NextActionHero` already shows. */
+  heroKey?: string;
   isLoading: boolean;
   failed: boolean;
 }
 
 /**
- * What still blocks the active tournament, plus its registration and team
- * formation state.
+ * The active tournament's readiness: the open checklist items the hero above
+ * does not already show, plus its registration and team formation state.
  *
- * Reads the same `/admin/tournaments/{id}/readiness` aggregate and the same
- * `buildChecklist` model as the hub's Overview tab, so the dashboard can never
- * disagree with the hub about what is done. The backend masks field groups the
- * reader may not see (`null`), which `buildChecklist` turns into `"no-access"`
- * items — those are filtered out here instead of being shown as work.
+ * `items` is the hub Overview's `buildChecklist` model, so the dashboard can
+ * never disagree with the hub about what is done. The backend masks field
+ * groups the reader may not see (`null`), which `buildChecklist` turns into
+ * `"no-access"` items — those are filtered out here instead of being shown as
+ * work.
  */
 export function ActiveTournamentReadiness({
   canRead,
   tournament,
   readiness,
+  items,
+  heroKey,
   isLoading,
   failed
 }: Readonly<ActiveTournamentReadinessProps>) {
   const t = useTranslations("adminShell.dashboard");
-  const checklistT = useTranslations("adminTournaments.checklist");
   const tExtra = useTranslations("adminShell.dashboardExtra");
+  const tDraft = useTranslations("draftAdmin.statuses");
   if (!canRead) {
     return (
       <Card>
         <CardContent className="pt-6">
           <PermissionHiddenNotice
             title={t("tournamentReadinessHidden")}
-            permission="tournament read or team read"
+            description={t("permissionNoticeReadiness")}
           />
         </CardContent>
       </Card>
@@ -109,19 +116,12 @@ export function ActiveTournamentReadiness({
   if (!tournament) return null;
 
   const basePath = `/admin/tournaments/${tournament.id}`;
-  const items =
-    readiness && !failed
-      ? buildChecklist(readiness, {
-          basePath,
-          schedule: tournament.phase_schedule.map((entry) => entry.status),
-          hasChallongeSource: hasChallongeSource(tournament, tournament.stages ?? [])
-        }, checklistT)
-      : [];
 
   // "skipped" (not applicable) and "no-access" (masked) items are neither work
   // nor progress, so they stay out of both the list and the denominator.
   const open = items.filter((item) => item.state === "todo" || item.state === "warn");
-  const actions = open.slice(0, MAX_ACTIONS);
+  const remaining = open.filter((item) => item.key !== heroKey);
+  const actions = remaining.slice(0, MAX_ACTIONS);
   const doneCount = items.filter((item) => item.state === "done").length;
   const trackedCount = doneCount + open.length;
 
@@ -129,13 +129,16 @@ export function ActiveTournamentReadiness({
   // the whole registration/formation group was masked, not that it is zero.
   const teamAccess = readiness?.registrations_approved != null;
   const draftFormation = readiness?.team_formation === "draft";
+  const sessionStatus = readiness?.draft_session_status;
+  const draftStatus = isDraftStatus(sessionStatus) ? sessionStatus : null;
+  const draftPillTone = draftStatus ? DRAFT_PILL_TONE[draftStatus] : undefined;
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle asChild>
-            <h2>{t("nextActions")}</h2>
+            <h2>{t("readiness")}</h2>
           </CardTitle>
           <Button
             asChild
@@ -172,18 +175,18 @@ export function ActiveTournamentReadiness({
             {actions.map((item) => (
               <ActionRow key={item.key} item={item} />
             ))}
-            {open.length > actions.length && (
+            {remaining.length > actions.length && (
               <p className="pt-2.5 text-xs text-muted-foreground">
-                {t("moreInChecklist", { count: open.length - actions.length })}
+                {t("moreInChecklist", { count: remaining.length - actions.length })}
               </p>
             )}
           </div>
-        ) : (
+        ) : open.length === 0 && trackedCount > 0 ? (
           <p className={cn("flex items-center gap-2 text-sm", TONE_TEXT.success)}>
             <CheckCircle2 className="size-4 shrink-0" aria-hidden />
             {t("everyStepDone")}
           </p>
-        )}
+        ) : null}
 
         {/* Registration counts as one plain row of figures, not four framed
             tiles inside a framed card; the formation state sits in the same row. */}
@@ -195,35 +198,26 @@ export function ActiveTournamentReadiness({
             <Figure label={t("ranked")} value={readiness.registrations_ranked ?? 0} />
             <div>
               <dt className={EYEBROW_CLASS}>{draftFormation ? tExtra("draft") : tExtra("balancer")}</dt>
-              <dd className="mt-1 flex flex-wrap gap-1.5">
+              <dd className="mt-1 text-sm text-foreground">
                 {draftFormation ? (
-                  <StatusPill
-                    tone={
-                      readiness.draft_session_status
-                        ? (DRAFT_TONE[readiness.draft_session_status] ?? "neutral")
-                        : "neutral"
-                    }
-                  >
-                    {readiness.draft_session_status ?? tExtra("noSession")}
-                  </StatusPill>
+                  draftStatus && draftPillTone ? (
+                    <StatusPill tone={draftPillTone}>{tDraft(draftStatus)}</StatusPill>
+                  ) : draftStatus ? (
+                    tDraft(draftStatus)
+                  ) : (
+                    tExtra("noSession")
+                  )
                 ) : (
-                  <>
-                    <StatusPill
-                      tone={(readiness.pool_need_fix ?? 0) > 0 ? "warning" : "success"}
-                      className="tabular-nums"
-                    >
-                      {t("poolReady", { count: readiness.pool_ready ?? 0 })}
-                      {(readiness.pool_need_fix ?? 0) > 0
-                        ? t("needFixing", { count: readiness.pool_need_fix ?? 0 })
-                        : ""}
-                    </StatusPill>
-                    <StatusPill tone={readiness.balance_saved ? "success" : "neutral"}>
-                      {readiness.balance_saved ? t("balanceSaved") : t("balanceNotSaved")}
-                    </StatusPill>
-                    {readiness.balance_exported_at && (
-                      <StatusPill tone="success">{t("exported")}</StatusPill>
-                    )}
-                  </>
+                  <span className="tabular-nums">
+                    {t.rich("poolReady", {
+                      ready: readiness.pool_ready ?? 0,
+                      needFix: readiness.pool_need_fix ?? 0,
+                      warn: (chunks) => <span className={TONE_TEXT.warning}>{chunks}</span>
+                    })}
+                    {" · "}
+                    {readiness.balance_saved ? t("balanceSaved") : t("balanceNotSaved")}
+                    {readiness.balance_exported_at ? ` · ${t("exported")}` : null}
+                  </span>
                 )}
               </dd>
             </div>

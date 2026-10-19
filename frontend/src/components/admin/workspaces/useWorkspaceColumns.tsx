@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CheckCircle, Eye, EyeOff, Pencil, Trash2, XCircle } from "lucide-react";
+import { EyeOff, Pencil, Trash2, XCircle } from "lucide-react";
 
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
@@ -61,10 +61,9 @@ export function useWorkspaceColumns({
         header: t("status"),
         size: 120,
         meta: columnMeta<Workspace>({ align: "center" }),
+        // Active is the norm; only an inactive workspace is marked.
         cell: ({ row }) =>
-          row.original.is_active ? (
-            <StatusIcon icon={CheckCircle} label={t("active")} variant="success" />
-          ) : (
+          row.original.is_active ? null : (
             <StatusIcon icon={XCircle} label={t("inactive")} variant="muted" />
           )
       },
@@ -73,12 +72,11 @@ export function useWorkspaceColumns({
         header: t("visibility"),
         size: 120,
         meta: columnMeta<Workspace>({ align: "center" }),
+        // Listed is the norm; only a hidden workspace is marked.
         cell: ({ row }) =>
           row.original.is_hidden ? (
             <StatusIcon icon={EyeOff} label={t("hidden")} variant="warning" />
-          ) : (
-            <StatusIcon icon={Eye} label={t("listed")} variant="muted" />
-          )
+          ) : null
       },
       createKebabColumn<Workspace>(
         (row) => [

@@ -92,7 +92,7 @@ export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
                 />
               </div>
             )}
-            <span className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-sm font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
               {currentWorkspace?.name ?? SITE_NAME}
             </span>
           </HoverPrefetchLink>
@@ -111,10 +111,10 @@ export function SidebarBackToSite() {
           asChild
           size="sm"
           tooltip={t("returnToSite")}
-          className="h-7 rounded-md px-2.5 text-sm text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40"
+          className="h-7 rounded-md px-2.5 text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/40"
         >
           <HoverPrefetchLink href="/">
-            <ArrowLeft aria-hidden className="size-4 text-sidebar-foreground/30" />
+            <ArrowLeft aria-hidden className="size-4 text-sidebar-foreground/50" />
             <span>{t("returnToSite")}</span>
           </HoverPrefetchLink>
         </SidebarMenuButton>
@@ -168,14 +168,14 @@ export function SidebarUserDropdown() {
                   <span className="truncate text-sm font-medium text-sidebar-foreground">
                     {user?.username ?? tDashboard("user")}
                   </span>
-                  <span className="truncate text-xs text-sidebar-foreground/40">
+                  <span className="truncate text-xs text-sidebar-foreground/60">
                     {roleLabel}
                     {currentWorkspace ? ` · ${currentWorkspace.name}` : ""}
                   </span>
                 </div>
                 <ChevronsUpDown
                   aria-hidden
-                  className="ml-auto size-3.5 text-sidebar-foreground/25 group-data-[collapsible=icon]:hidden"
+                  className="ml-auto size-3.5 text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden"
                 />
               </SidebarMenuButton>
             </PopoverTrigger>

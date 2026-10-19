@@ -2,7 +2,6 @@
 
 import { useTranslations } from "next-intl";
 
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
@@ -10,21 +9,16 @@ import type {
   DivisionGridVersion
 } from "@/types/workspace.types";
 
-import { MONO_CAPTION } from "./model";
-
-const SOURCE_STATUS_TONE = {
-  ok: "success",
-  incomplete: "warning",
-  missing: "danger"
+/** A complete mapping is the norm and gets no pill; only the two gaps do. */
+const SOURCE_PILL = {
+  incomplete: { tone: "warning", key: "impact.mappingIncomplete" },
+  missing: { tone: "danger", key: "impact.noMapping" }
 } as const;
 
-const SOURCE_STATUS_LABEL = {
-  ok: "impact.mappingComplete",
-  incomplete: "impact.mappingIncomplete",
-  missing: "impact.noMapping"
-} as const;
-
-/** The older versions tournaments still read, from the active version's readiness. */
+/**
+ * The older versions tournaments still read, from the active version's readiness.
+ * Nothing in force, or every tournament already on it: nothing to say.
+ */
 export function ReadersSection({
   activeVersion,
   loading,
@@ -35,21 +29,19 @@ export function ReadersSection({
   sources: DivisionGridReadinessSource[];
 }>) {
   const t = useTranslations("adminSettings.divisions");
+  if (!activeVersion || (!loading && sources.length === 0)) return null;
+
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-readers">
+    <section className="flex min-w-0 flex-col gap-2" aria-labelledby="divisions-readers">
       <h2 id="divisions-readers" className="font-display text-base font-semibold">
         {t("readersTitle")}
       </h2>
-      {!activeVersion ? (
-        <p className="text-xs text-muted-foreground">{t("readersDescription")}</p>
-      ) : loading ? (
-        <Skeleton className="h-32 w-full rounded-xl" />
-      ) : sources.length === 0 ? (
-        <EmptyNote size="sm">{t("nothingToMap", { version: activeVersion.version })}</EmptyNote>
+      {loading ? (
+        <Skeleton className="h-24 w-full rounded-xl" />
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="divide-y divide-border">
           {sources.map((source) => (
-            <SourceCard key={source.version_id} source={source} target={activeVersion} />
+            <SourceRow key={source.version_id} source={source} target={activeVersion} />
           ))}
         </ul>
       )}
@@ -60,47 +52,44 @@ export function ReadersSection({
 /**
  * One older version tournaments still read, and whether its divisions have a
  * way into the version in force. The readiness payload names the five newest
- * tournaments and counts all of them, so the list is shown as a sample, never
- * as the whole.
+ * tournaments and counts all of them, so the names are a sample with the
+ * remainder made explicit.
  */
-function SourceCard({
+function SourceRow({
   source,
   target
 }: Readonly<{ source: DivisionGridReadinessSource; target: DivisionGridVersion }>) {
   const t = useTranslations("adminSettings.divisions");
   const hidden = source.tournament_count - source.tournament_names.length;
+  const readers =
+    source.tournament_names.length > 0
+      ? [...source.tournament_names, hidden > 0 ? t("more", { count: hidden }) : null]
+          .filter(Boolean)
+          .join(" · ")
+      : t("tournamentCount", { count: source.tournament_count });
+
   return (
-    <li className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+    <li className="flex flex-col gap-1 py-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium" title={source.version_label}>
             {source.version_label}
           </p>
-          <p className="truncate text-xs text-muted-foreground" title={source.grid_name}>
+          <p className="truncate text-caption text-muted-foreground" title={source.grid_name}>
             {source.grid_name}
           </p>
         </div>
-        <StatusPill tone={SOURCE_STATUS_TONE[source.status]}>
-          {t(SOURCE_STATUS_LABEL[source.status])}
-        </StatusPill>
+        {source.status === "ok" ? null : (
+          <StatusPill tone={SOURCE_PILL[source.status].tone}>
+            {t(SOURCE_PILL[source.status].key)}
+          </StatusPill>
+        )}
       </div>
 
-      <p className={MONO_CAPTION}>{t("tournamentCount", { count: source.tournament_count })}</p>
-      {source.tournament_names.length > 0 ? (
-        <ul className="flex flex-col gap-0.5 text-xs">
-          {source.tournament_names.map((name) => (
-            <li key={name} className="truncate" title={name}>
-              {name}
-            </li>
-          ))}
-          {hidden > 0 ? (
-            <li className="text-muted-foreground">{t("more", { count: hidden })}</li>
-          ) : null}
-        </ul>
-      ) : null}
+      <p className="text-caption text-muted-foreground">{readers}</p>
 
       {source.status === "ok" ? null : (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {source.status === "missing"
             ? t("sourceMissing", { version: target.version })
             : t("sourceIncomplete", {

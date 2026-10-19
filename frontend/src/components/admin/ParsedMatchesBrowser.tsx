@@ -4,37 +4,29 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
+import { FileQuestion } from "lucide-react";
 
-import { DataTable, columnMeta } from "@/components/data-table";
-import { ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
+import { DataTable } from "@/components/data-table";
+import { LogStatusPill, ParsedMatchDetail } from "@/components/admin/ParsedMatchDetail";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { type Tone } from "@/components/kit/tone";
 import {
   TOURNAMENT_QUERY_PARAM,
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { scoreLine } from "@/lib/encounter/detail";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 const PAGE_SIZE = 25;
-
-const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
-  pending: "neutral",
-  processing: "info",
-  awaiting_link: "neutral",
-  done: "success",
-  failed: "danger"
-};
 
 /**
  * Every ingestion status a provenance cell can print.
@@ -180,49 +172,39 @@ export function ParsedMatchesBrowser({
         size: 92,
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="font-mono text-sm tabular-nums text-foreground">
-            {scoreLine(row.original.participants)}
-          </span>
+          <span className="text-sm tabular-nums text-foreground">{scoreLine(row.original.participants)}</span>
         )
       },
       {
+        // The raw log and where it stands: the file name, plus a pill only
+        // while ingestion still wants something; a map with no linked job says so.
         id: "log",
         header: t("log"),
         enableSorting: false,
-        cell: ({ row }) => (
-          <p
-            className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground"
-            title={row.original.log_name ?? undefined}
-          >
-            {row.original.log_name ?? "—"}
-          </p>
-        )
-      },
-      {
-        id: "provenance",
-        header: t("provenance"),
-        size: 148,
-        enableSorting: false,
-        meta: columnMeta<AdminMatchRow>({ align: "center" }),
-        cell: ({ row }) =>
-          row.original.log_record ? (
-            <StatusPill tone={STATUS_TONE[row.original.log_record.status]}>
-              {row.original.log_record.status}
-            </StatusPill>
-          ) : (
-            <StatusPill tone="neutral">{t("noRawLog")}</StatusPill>
-          )
+        cell: ({ row }) => {
+          const record = row.original.log_record;
+          if (!record) return <StatusIcon icon={FileQuestion} label={t("noRawLog")} variant="muted" />;
+          return (
+            <div className="flex min-w-0 items-center gap-2">
+              {row.original.log_name ? (
+                <p
+                  className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground"
+                  title={row.original.log_name}
+                >
+                  {row.original.log_name}
+                </p>
+              ) : null}
+              <LogStatusPill status={record.status} />
+            </div>
+          );
+        }
       }
     ],
     [showTournament, t]
   );
 
   if (workspaceId == null) {
-    return (
-      <EmptyNote>
-        {t("scopePrompt")}
-      </EmptyNote>
-    );
+    return <PageStateCard state="empty" description={t("scopePrompt")} />;
   }
 
   return (
@@ -251,17 +233,17 @@ export function ParsedMatchesBrowser({
             }
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="truncate text-sm font-medium">{row.original.map.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {row.original.encounter_name} ·{" "}
-                  <span className="font-mono tabular-nums">
-                    {scoreLine(row.original.participants)}
-                  </span>
+                  <span className="tabular-nums">{scoreLine(row.original.participants)}</span>
                 </p>
-                <p className="truncate font-mono text-xs text-muted-foreground">
-                  {row.original.log_record?.status ?? t("noRawLog")}
-                </p>
+                {row.original.log_record ? (
+                  <LogStatusPill status={row.original.log_record.status} />
+                ) : (
+                  <StatusIcon icon={FileQuestion} label={t("noRawLog")} variant="muted" />
+                )}
               </div>
             )}
             queryKey={(page, search, pageSize) => [

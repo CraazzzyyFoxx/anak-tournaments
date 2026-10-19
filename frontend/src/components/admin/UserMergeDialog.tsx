@@ -286,17 +286,17 @@ function UserMergeDialogSession({
         <DialogHeader className="space-y-1 px-6 pb-4 pr-12 pt-6">
           <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription className="max-w-[62ch] text-sm leading-relaxed">
-            {t("sourceDeletedDescription", { name: sourceUser.name })}
+            {t("description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
           <fieldset disabled={executeMutation.isPending} className="min-w-0 space-y-6">
           <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto_1fr]">
-            <div className="rounded-md border border-destructive/40 px-3 py-2">
-              <p className="text-xs text-muted-foreground">{t("deletedBadge")}</p>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{t("deletedAfterMerge")}</p>
               <p className="truncate font-medium">{sourceUser.name}</p>
-              <p className="text-xs tabular-nums text-muted-foreground">#{sourceUser.id}</p>
+              <p className="text-caption tabular-nums text-muted-foreground">#{sourceUser.id}</p>
             </div>
             <ArrowRightLeft className="mx-auto hidden h-4 w-4 text-muted-foreground sm:mb-3 sm:block" aria-hidden />
             <div className="space-y-2">
@@ -392,7 +392,7 @@ function UserMergeDialogSession({
                   </p>
                 </div>
                 {!reviewed ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className={previewError ? "text-sm text-danger" : "text-sm text-muted-foreground"}>
                       {previewError ?? t("choicesChanged")}
                     </p>
@@ -461,7 +461,7 @@ function UserMergeDialogSession({
                     </Label>
                   </div>
                 ) : null}
-                <div className="flex items-start gap-3 rounded-md border border-destructive/40 px-3 py-2">
+                <div className="flex items-start gap-3">
                   <Checkbox
                     id={confirmId}
                     checked={confirmDelete}

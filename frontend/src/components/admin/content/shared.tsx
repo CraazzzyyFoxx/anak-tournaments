@@ -8,7 +8,7 @@
 import { useMemo, type FormEvent, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
+import { CircleSlash, Pencil, Trash2 } from "lucide-react";
 
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
@@ -39,10 +39,9 @@ export function useCatalogTrailingColumns({
         size: 72,
         enableSorting: false,
         meta: columnMeta<CatalogEntityRead>({ align: "center" }),
+        // Active is the norm: only the exception is marked.
         cell: ({ row }) =>
-          row.original.active ? (
-            <StatusIcon icon={CircleCheck} label={t("catalog.active")} variant="success" />
-          ) : (
+          row.original.active ? null : (
             <StatusIcon icon={CircleSlash} label={t("catalog.inactive")} variant="muted" />
           ),
       },
@@ -105,14 +104,9 @@ export function CatalogEntityDialogs({
             ? t("catalog.entity.updateTitle", { kind: kindLabel })
             : t("catalog.entity.createTitle", { kind: kindLabel })
         }
-        description={
-          editingEntity
-            ? t("catalog.entity.descriptionUpdate", { kind: kindLabel })
-            : t("catalog.entity.descriptionCreate", { kind: kindLabel })
-        }
         onSubmit={crud.handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingEntity ? t("catalog.entity.updating") : t("catalog.entity.creating")}
+        submittingLabel={editingEntity ? undefined : t("catalog.entity.creating")}
         errorMessage={entityFormError(
           kindLabel,
           !!editingEntity,

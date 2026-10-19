@@ -201,7 +201,7 @@ describe("NewTournamentPage", () => {
       node.textContent?.trim()
     );
     expect(labels.some((label) => label?.includes("Registration"))).toBe(false);
-    expect(container.textContent).toContain("Step 1 of 4");
+    expect(labels).toHaveLength(4);
   });
 
   it("Continue writes the next step to the URL", async () => {

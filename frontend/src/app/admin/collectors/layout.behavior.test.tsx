@@ -164,11 +164,12 @@ describe("CollectorsLayout", () => {
     expect(getRankCollectionStats).toHaveBeenCalled();
   });
 
-  it("shows only the collectors the viewer can read", async () => {
+  it("shows only the collectors the viewer can read, and no bar for a single one", async () => {
     workspaceGrants = ["rank.read"];
     const container = await mount();
 
-    expect(tabKeys(container)).toEqual(["rank"]);
+    // One readable collector is not a choice: the bar is not drawn at all.
+    expect(tabKeys(container)).toEqual([]);
     expect(getSubscriptionCollectionStats).not.toHaveBeenCalled();
     expect(getStreamPollHealth).not.toHaveBeenCalled();
   });

@@ -3,7 +3,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import {
@@ -13,7 +12,8 @@ import {
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -23,7 +23,6 @@ import type {
   TournamentLinkCreateInput,
   TournamentLinkUpdateInput
 } from "@/types/stream.types";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { LinkFormFields } from "./links-tab/LinkFormFields";
 import { EMPTY_LINK_FORM, getLinkForm, linkFieldErrors, type LinkForm } from "./links-tab/model";
@@ -245,54 +244,46 @@ export function TournamentLinksTab({
   };
 
   return (
-    <Card>
-      {/* No title here: the settings section heading above already names this
-          page. The header keeps only what acts on the table. */}
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-        <p className="text-sm text-muted-foreground">{t("lowerFirst")}</p>
-        <div className="flex shrink-0 gap-2">
-          {/* Nothing to poll without an official stream link, so the button is
-              absent rather than disabled — a disabled control invites a guess
-              at what would enable it. */}
-          {canRepollStreams && hasActiveStreamLink && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => repollMutation.mutate()}
-              disabled={repollMutation.isPending}
-              aria-busy={repollMutation.isPending}
-            >
-              <RefreshCw
-                aria-hidden
-                className={`mr-2 h-4 w-4 ${repollMutation.isPending ? "animate-spin" : ""}`}
-              />
-              {t("refresh")}
-            </Button>
-          )}
-          {canCreate && (
-            <Button type="button" onClick={openCreate}>
-              <Plus aria-hidden className="mr-2 h-4 w-4" />
-              {t("add")}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {linksQuery.isError ? (
-          <EmptyNote>
-            {t("loadError")}
-          </EmptyNote>
-        ) : (
-          <DataTable
-            rows={links}
-            isLoading={linksQuery.isLoading}
-            columns={columns}
-            getRowId={(link) => String(link.id)}
-            emptyMessage={canCreate ? t("emptyWithAction") : t("empty")}
-          />
-        )}
-      </CardContent>
+    <>
+      {linksQuery.isError ? (
+        <PageStateCard
+          state="error"
+          description={t("loadError")}
+          onAction={() => void linksQuery.refetch()}
+        />
+      ) : (
+        <DataTable
+          rows={links}
+          isLoading={linksQuery.isLoading}
+          columns={columns}
+          getRowId={(link) => String(link.id)}
+          emptyMessage={t("empty")}
+          actions={
+            <>
+              {/* Nothing to poll without an official stream link, so the button is
+                  absent rather than disabled — a disabled control invites a guess
+                  at what would enable it. */}
+              {canRepollStreams && hasActiveStreamLink && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => repollMutation.mutate()}
+                  disabled={repollMutation.isPending}
+                >
+                  {repollMutation.isPending ? <Spinner /> : null}
+                  {t("refresh")}
+                </Button>
+              )}
+              {canCreate && (
+                <Button type="button" size="sm" onClick={openCreate}>
+                  {t("add")}
+                </Button>
+              )}
+            </>
+          }
+        />
+      )}
 
       <EntityFormDialog
         open={isDialogOpen}
@@ -331,6 +322,6 @@ export function TournamentLinksTab({
           }}
         />
       )}
-    </Card>
+    </>
   );
 }

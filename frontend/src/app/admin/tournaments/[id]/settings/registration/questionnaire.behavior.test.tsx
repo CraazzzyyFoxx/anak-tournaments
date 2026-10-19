@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Two claims about the schema builder.
+// Claims about the questionnaire builder Settings › Registration mounts.
 //
 // 1. What the organizer assembles on screen is what the upsert sends: a new
 //    section, a custom `select` with two options and a `visible_when` pointing
@@ -27,20 +27,27 @@ import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import type { FormField, FormSchema } from "@/types/forms.types";
 
-import RegistrationFormSubRoutePage from "./page";
+import RegistrationFormBuilder from "@/components/balancer/form/RegistrationFormBuilder";
 import { validateAnswer } from "@/lib/forms/validate";
+import { useHubTournamentQuery } from "../../hubQueries";
+
+/** The builder fed the tournament's identity provider, the way the settings page does. */
+function Questionnaire() {
+  const tournamentQuery = useHubTournamentQuery(1);
+  return (
+    <RegistrationFormBuilder
+      tournamentId={1}
+      identityProvider={tournamentQuery.data?.identity_provider}
+      identityProviderError={tournamentQuery.error}
+      onRetryIdentityProvider={() => void tournamentQuery.refetch()}
+    />
+  );
+}
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-
-// Keep the actual route, queries and builder; only replace Next's bundler
-// loader, which does not settle its render-time import in Vitest.
-vi.mock("next/dynamic", async () => {
-  const builder = await import("@/components/balancer/form/RegistrationFormBuilder");
-  return { default: () => builder.default };
-});
 
 // Radix's menus and selects reach for layout APIs happy-dom does not implement.
 // Without these the trigger throws before anything ever opens.
@@ -108,7 +115,7 @@ vi.mock("@/lib/notify", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-  usePathname: () => "/admin/tournaments/1/registration/form",
+  usePathname: () => "/admin/tournaments/1/settings/registration",
   useParams: () => ({ id: "1" }),
   useSearchParams: () => new URLSearchParams("")
 }));
@@ -176,7 +183,7 @@ async function mount() {
         <QueryClientProvider
           client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
         >
-          <RegistrationFormSubRoutePage />
+          <Questionnaire />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -311,7 +318,7 @@ afterEach(async () => {
   container.remove();
 });
 
-describe("registration form builder", () => {
+describe("questionnaire builder", () => {
   it("waits for a delayed LoL owner before offering or saving a default form", async () => {
     const owner = Promise.withResolvers<unknown>();
     getTournament.mockReturnValue(owner.promise);

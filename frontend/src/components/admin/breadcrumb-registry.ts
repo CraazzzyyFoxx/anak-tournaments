@@ -37,7 +37,6 @@ export const SEGMENT_LABELS: Record<string, string> = {
   overview: "breadcrumbOverview",
   registration: "breadcrumbRegistration",
   entries: "breadcrumbEntries",
-  form: "breadcrumbForm",
   feed: "breadcrumbFeed",
   "rank-autofill": "breadcrumbRankAutofill",
   teams: "breadcrumbTeams",

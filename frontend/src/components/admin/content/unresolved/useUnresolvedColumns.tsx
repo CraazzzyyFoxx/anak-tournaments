@@ -6,14 +6,12 @@ import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, EyeOff } from "lucide-react";
 
-import { columnMeta } from "@/components/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useFormatter } from "@/lib/datetime/client";
 import type { CatalogAliasMissRead } from "@/types/admin.types";
 
-import { attachableKind, formatSeenAt } from "./model";
+import { attachableKind, formatMissOrigin, formatSeenAt } from "./model";
 import { MissTarget } from "./UnresolvedCells";
 
 /** One unresolved name: where it came from, how often, and — for a superuser — the inline attach/dismiss. */
@@ -42,28 +40,18 @@ export function useUnresolvedColumns({
   return useMemo<ColumnDef<CatalogAliasMissRead>[]>(
     () => [
       {
-        id: "discipline",
-        header: t("columns.discipline"),
-        size: 96,
+        id: "origin",
+        header: t("columns.origin"),
+        size: 140,
         enableSorting: false,
-        cell: ({ row }) => <code className="text-xs">{row.original.discipline}</code>,
-      },
-      {
-        id: "kind",
-        header: t("columns.type"),
-        size: 96,
-        enableSorting: false,
-        meta: columnMeta<CatalogAliasMissRead>({ align: "center" }),
-        cell: ({ row }) => <Badge variant="outline">{t(`catalog.kinds.${row.original.kind}`)}</Badge>,
+        cell: ({ row }) => <span className="text-sm">{formatMissOrigin(t, row.original)}</span>,
       },
       {
         id: "raw_name",
         header: t("columns.rawName"),
         size: 200,
         enableSorting: false,
-        cell: ({ row }) => (
-          <code className="rounded bg-muted/40 px-1.5 py-0.5 text-xs">{row.original.raw_name}</code>
-        ),
+        cell: ({ row }) => <span className="font-medium">{row.original.raw_name}</span>,
       },
       {
         id: "occurrences",
@@ -94,17 +82,17 @@ export function useUnresolvedColumns({
         cell: ({ row }) => {
           const { last_ingest_job_id: jobId, last_log_tournament_id: tournamentId } = row.original;
           if (jobId == null) {
-            return <span className="text-muted-foreground">—</span>;
+            return null;
           }
           // No tournament means the job carried no tournament hint (or is gone) —
           // show the id, not a link into a tournament we cannot name.
           if (tournamentId == null) {
-            return <code className="text-xs tabular-nums">#{jobId}</code>;
+            return <span className="text-caption tabular-nums">#{jobId}</span>;
           }
           return (
             <Link
               href={`/admin/tournaments/${tournamentId}/matches/logs`}
-              className="text-xs tabular-nums text-primary underline-offset-2 hover:underline"
+              className="text-caption tabular-nums text-primary underline-offset-2 hover:underline"
             >
               #{jobId}
             </Link>
@@ -131,7 +119,7 @@ export function useUnresolvedColumns({
       },
       {
         id: "actions",
-        size: 168,
+        size: 120,
         cell: ({ row }) => {
           const miss = row.original;
           if (!isSuperuser || miss.resolved_at) {
@@ -140,39 +128,32 @@ export function useUnresolvedColumns({
 
           const entityId = targets.get(miss.id);
           const busy = miss.id === attachingId || miss.id === dismissingId;
-          const kind = attachableKind(miss);
+          // Attach exists only once a target is picked; until then the picker is the next step.
+          const canAttach = attachableKind(miss) !== null && entityId !== undefined;
 
           return (
             <div className="flex items-center gap-1.5">
-              {kind !== null && (
+              {canAttach && (
                 <Button
                   type="button"
                   size="sm"
-                  disabled={entityId === undefined || busy}
-                  title={
-                    entityId === undefined
-                      ? t("catalog.pickFirst", { entity: t(`catalog.kinds.${kind}`).toLowerCase() })
-                      : undefined
-                  }
+                  disabled={busy}
                   onClick={() => onAttach({ miss, entityId: entityId! })}
                 >
-                  {busy && attachingId !== undefined ? (
-                    <Spinner />
-                  ) : (
-                    <Check aria-hidden className="h-4 w-4" />
-                  )}
+                  {miss.id === attachingId ? <Spinner /> : <Check aria-hidden className="h-4 w-4" />}
                   {t("actions.attach")}
                 </Button>
               )}
               <Button
                 type="button"
-                size="sm"
-                variant="outline"
+                size="icon"
+                variant="ghost"
                 disabled={busy}
+                aria-label={t("actions.dismiss")}
+                title={t("actions.dismiss")}
                 onClick={() => onDismiss(miss)}
               >
-                <EyeOff aria-hidden className="h-4 w-4" />
-                {t("actions.dismiss")}
+                {miss.id === dismissingId ? <Spinner /> : <EyeOff aria-hidden className="h-4 w-4" />}
               </Button>
             </div>
           );

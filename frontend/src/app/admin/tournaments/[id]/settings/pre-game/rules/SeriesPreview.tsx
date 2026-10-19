@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import pickBanService from "@/services/pickBan.service";
 import type { MapVetoMode, PickBanKind, PickBanRuleset } from "@/types/tournament.types";
@@ -70,20 +70,22 @@ export function SeriesPreview({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-medium">{t("preview.title")}</p>
-        <div className="flex items-center gap-1">
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          size="sm"
+          value={String(previewBestOf)}
+          onValueChange={(next) => {
+            if (next) setSelected(Number(next));
+          }}
+          aria-label={t("preview.title")}
+        >
           {PREVIEW_LENGTHS.map((length) => (
-            <Button
-              key={length}
-              type="button"
-              size="sm"
-              variant={length === previewBestOf ? "default" : "ghost"}
-              aria-pressed={length === previewBestOf}
-              onClick={() => setSelected(length)}
-            >
+            <ToggleGroupItem key={length} value={String(length)}>
               {t("preview.bestOf", { bestOf: length })}
-            </Button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </div>
 
       {preview.isPending ? <Skeleton className="h-24 w-full rounded-lg" /> : null}
@@ -94,37 +96,47 @@ export function SeriesPreview({
 
       {preview.data ? (
         <>
-          <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {preview.data.maps.map((map) => (
-              <li key={map.map_index} className="rounded-md border border-border bg-card p-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {t("preview.map", { n: map.map_index })}
-                  </span>
-                  <Badge variant="secondary">
-                    {map.phase_id ?? t("preview.noPhase")}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("preview.bans", {
-                    added: map.max_new_bans,
-                    active: map.max_active_bans,
-                    steps: map.steps.length,
-                  })}
-                </p>
-                {map.worst_case_remaining ? (
-                  <ul className="mt-1 flex flex-wrap gap-1.5">
-                    {Object.entries(map.worst_case_remaining).map(([group, left]) => (
-                      <li key={group}>
-                        <Badge variant={left < 2 ? "destructive" : "outline"}>
-                          {t("preview.remaining", { group, count: left })}
-                        </Badge>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
+          <ul className="flex flex-col divide-y divide-border">
+            {preview.data.maps.map((map) => {
+              const phaseIndex = ruleset.phases.findIndex((phase) => phase.id === map.phase_id);
+              const phase = ruleset.phases[phaseIndex];
+              const remaining = Object.entries(map.worst_case_remaining ?? {});
+              return (
+                <li key={map.map_index} className="py-2">
+                  <p className="text-sm">
+                    <span className="font-medium">{t("preview.map", { n: map.map_index })}</span>
+                    {phase ? (
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {phase.name ?? t("preview.phase", { n: phaseIndex + 1 })}
+                      </span>
+                    ) : null}
+                  </p>
+                  {map.phase_id == null ? (
+                    <p className="text-xs text-danger">{t("preview.noPhase")}</p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    {t("preview.bans", {
+                      added: map.max_new_bans,
+                      active: map.max_active_bans,
+                      steps: map.steps.length,
+                    })}
+                  </p>
+                  {remaining.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {remaining.map(([group, left], index) => (
+                        <span key={group}>
+                          {index > 0 ? " · " : null}
+                          <span className={cn(left < 2 && "text-danger")}>
+                            {t("preview.remaining", { group, count: left })}
+                          </span>
+                        </span>
+                      ))}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
           <IssueList issues={preview.data.issues} />
         </>

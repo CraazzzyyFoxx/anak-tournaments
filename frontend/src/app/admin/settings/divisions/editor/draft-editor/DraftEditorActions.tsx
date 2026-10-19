@@ -1,6 +1,5 @@
 "use client";
 
-import { RotateCcw, Star, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -22,9 +21,15 @@ interface DraftEditorActionsProps {
   onDiscard: () => void;
   onPublish: () => void;
   onActivate: () => void;
+  /** Clones a published version into a new draft. */
+  onClone: () => void;
 }
 
-/** The editor header's buttons: undo, discard, publish a draft, activate a published version. */
+/**
+ * The editor header's buttons: undo, discard, publish a draft, activate or
+ * clone a published version. An action whose precondition is unmet is absent;
+ * "Ready to publish?" says what is missing.
+ */
 export function DraftEditorActions({
   version,
   activeVersionId,
@@ -39,54 +44,35 @@ export function DraftEditorActions({
   onUndo,
   onDiscard,
   onPublish,
-  onActivate
+  onActivate,
+  onClone
 }: Readonly<DraftEditorActionsProps>) {
   const t = useTranslations("adminSettings.divisions");
+  const isDraft = version.status === "draft";
   return (
     <>
-      {editable ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!canUndo}
-          onClick={onUndo}
-        >
-          <RotateCcw aria-hidden className="size-4" />
+      {editable && canUndo ? (
+        <Button variant="outline" size="sm" onClick={onUndo}>
           {t("editor.undo")}
         </Button>
       ) : null}
       {editable && canDelete ? (
         <Button variant="ghost" size="sm" onClick={onDiscard}>
-          <Trash2 aria-hidden className="size-4" />
           {t("editor.discardDraft")}
         </Button>
       ) : null}
-      {canPublish && version.status === "draft" ? (
-        <Button
-          size="sm"
-          disabled={!publishable || publishing}
-          title={
-            publishable
-              ? undefined
-              : t("editorDetails.publishBlocked")
-          }
-          onClick={onPublish}
-        >
+      {canPublish && isDraft && publishable ? (
+        <Button size="sm" disabled={publishing} onClick={onPublish}>
           {t("editor.publishVersion", { version: version.version })}
         </Button>
       ) : null}
-      {canPublish && version.status !== "draft" && version.id !== activeVersionId ? (
-        <Button
-          size="sm"
-          disabled={!activationReady || activating}
-          title={
-            activationReady
-              ? undefined
-              : t("editorDetails.mappingBlocked")
-          }
-          onClick={onActivate}
-        >
-          <Star aria-hidden className="size-4" />
+      {canPublish && !isDraft ? (
+        <Button variant="outline" size="sm" onClick={onClone}>
+          {t("editor.createDraft")}
+        </Button>
+      ) : null}
+      {canPublish && !isDraft && version.id !== activeVersionId && activationReady ? (
+        <Button size="sm" disabled={activating} onClick={onActivate}>
           {t("activateVersion", { version: version.version })}
         </Button>
       ) : null}

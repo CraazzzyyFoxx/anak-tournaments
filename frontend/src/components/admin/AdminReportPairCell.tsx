@@ -1,9 +1,9 @@
 "use client";
 
-import { AlertTriangle, Check, Minus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { TONE_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { StatusPill } from "@/components/kit/StatusPill";
+import { TONE_TEXT } from "@/components/kit/tone";
 import { reportOf, scoreline } from "@/lib/encounter/reports";
 import { seatsBySlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
@@ -15,8 +15,12 @@ interface AdminReportPairCellProps {
   reports: AdminCaptainReport[];
   /** `null` = not every participation has reported, so agreement is not yet knowable. */
   standingsMatch: boolean | null;
-  /** False when a reported standing cannot happen in this encounter's best-of. */
-  seriesScoreValid: boolean;
+  /**
+   * Pass only where the cell is the whole picture (the resolve dialog): false
+   * adds the advisory that a reported standing cannot happen in this best-of.
+   * The reports table leaves it out; its inspector says it once.
+   */
+  seriesScoreValid?: boolean;
   className?: string;
 }
 
@@ -29,38 +33,30 @@ function ReportSeat({
   label: string;
   report: AdminCaptainReport | null;
   standing: string;
-  t: (key: "unknown" | "noRating" | "noReport") => string;
+  t: (key: "unknown" | "noReport" | "scoreOutside") => string;
 }>) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
-        {label}
-      </p>
+      <p className="truncate text-caption font-medium text-muted-foreground">{label}</p>
       {report ? (
         <>
-          <p className="font-mono text-sm font-semibold tabular-nums">{standing}</p>
+          <p className="text-sm font-semibold tabular-nums">{standing}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {report.reporter_name ?? t("unknown")} &middot;{" "}
+            {report.reporter_name ?? t("unknown")}
             {/* Match quality is configurable per tournament, so an absent rating
-                is a legitimate report — not a missing number to render as NaN. */}
-            {report.closeness == null ? t("noRating") : `${report.closeness}/10`}
+                is a legitimate report: it is left out, not printed as NaN. */}
+            {report.closeness == null ? null : <> &middot; <span className="tabular-nums">{report.closeness}/10</span></>}
           </p>
           {report.comment ? (
             // Clamped rather than hidden: an organizer settling a dispute needs
             // to read what the captain wrote, and `title` carries the rest.
-            <p
-              className="mt-0.5 line-clamp-2 text-xs italic text-muted-foreground"
-              title={report.comment}
-            >
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground" title={report.comment}>
               &ldquo;{report.comment}&rdquo;
             </p>
           ) : null}
         </>
       ) : (
-        <p className="flex items-center gap-1 text-xs italic text-muted-foreground">
-          <Minus className="size-3" aria-hidden />
-          {t("noReport")}
-        </p>
+        <p className="text-xs text-muted-foreground">{t("noReport")}</p>
       )}
     </div>
   );
@@ -69,13 +65,9 @@ function ReportSeat({
 /**
  * Every participation's report for one encounter, side by side in slot order.
  *
- * Agreement is three-valued and rendered as three distinct things, not two: an
- * encounter waiting on a second captain is not in conflict, and showing it as
- * one would send an admin to adjudicate a dispute that does not exist.
- *
- * Every state carries an icon and a word — never colour alone (design book,
- * accessibility floor), so the table still reads under greyscale, in high
- * contrast, and to a screen reader.
+ * Agreement is three-valued, but only one value wants an admin: two reports
+ * that disagree. That is the one pill; agreement and a report still awaited
+ * are the absence of it, since the reports themselves sit right above.
  */
 export function AdminReportPairCell({
   participations,
@@ -88,13 +80,6 @@ export function AdminReportPairCell({
   const reportsT = useTranslations("adminMatches.reports");
   const seats = seatsBySlot(participations);
   const seatIds = seats.map((seat) => seat.encounter_team_id);
-  const verdict =
-    standingsMatch === null
-      ? { tone: "neutral" as const, icon: Minus, label: reportsT("awaitingRemaining") }
-      : standingsMatch
-        ? { tone: "success" as const, icon: Check, label: reportsT("reportsAgree") }
-        : { tone: "danger" as const, icon: AlertTriangle, label: reportsT("reportsDisagree") };
-  const VerdictIcon = verdict.icon;
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -112,28 +97,13 @@ export function AdminReportPairCell({
           );
         })}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs",
-            TONE_CLASS[verdict.tone]
-          )}
-        >
-          <VerdictIcon className="size-3" aria-hidden />
-          {verdict.label}
-        </span>
-        {!seriesScoreValid ? (
-          <span
-            className={cn("inline-flex items-center gap-1 text-xs", TONE_TEXT.warning)}
-            // Advisory, not an error: reports predate per-round best-of, so this
-            // flags something worth a look rather than something that is wrong.
-            title={reportsT("outsideBoTitle")}
-          >
-            <AlertTriangle className="size-3" aria-hidden />
-            {t("scoreOutside")}
-          </span>
-        ) : null}
-      </div>
+      {standingsMatch === false ? <StatusPill tone="danger">{reportsT("reportsDisagree")}</StatusPill> : null}
+      {seriesScoreValid === false ? (
+        // Advisory, not an error: reports predate per-round best-of.
+        <p className={cn("text-xs", TONE_TEXT.warning)} title={reportsT("outsideBoTitle")}>
+          {t("scoreOutside")}
+        </p>
+      ) : null}
     </div>
   );
 }

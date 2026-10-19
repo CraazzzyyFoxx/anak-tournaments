@@ -510,7 +510,7 @@ describe("Stage editor, FFA league scoring", () => {
 
     await click(select("Standings preset"));
     expect(options()).toEqual([
-      "System default (based on type)",
+      "System default",
       "FFA default (game wins, then score)"
     ]);
   });

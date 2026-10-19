@@ -5,17 +5,16 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Trophy, Users } from "lucide-react";
 import { formatDateRange } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { TeamRosterEditor } from "@/components/admin/teams/TeamRosterEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { Label } from "@/components/ui/label";
 import {
@@ -43,7 +42,7 @@ type AdminTeamDetail = Team & {
 };
 
 /** Roster members eligible to captain the team, deduplicated by linked user. */
-function buildCaptainOptions(team: AdminTeamDetail) {
+function buildCaptainOptions(team: AdminTeamDetail, offRosterLabel: (captain: User | null | undefined, id: number) => string) {
   const options = new Map<number, string>();
 
   for (const player of team.players ?? []) {
@@ -55,7 +54,7 @@ function buildCaptainOptions(team: AdminTeamDetail) {
   // A captain inherited from before this rule existed may sit outside the roster.
   // Keep them selectable so the field shows who it actually is.
   if (team.captain_id > 0 && !options.has(team.captain_id)) {
-    options.set(team.captain_id, `${team.captain?.name ?? `User #${team.captain_id}`} (off roster)`);
+    options.set(team.captain_id, offRosterLabel(team.captain, team.captain_id));
   }
 
   return Array.from(options, ([userId, label]) => ({ userId, label }));
@@ -92,7 +91,15 @@ export default function AdminTeamWorkspacePage() {
   const canUpdatePlayer = canAccessPermission("player.update", workspaceId);
   const canDeletePlayer = canAccessPermission("player.delete", workspaceId);
 
-  const captainOptions = useMemo(() => (team ? buildCaptainOptions(team) : []), [team]);
+  const captainOptions = useMemo(
+    () =>
+      team
+        ? buildCaptainOptions(team, (captain, id) =>
+            t("captainOffRoster", { name: captain?.name ?? t("userId", { id }) })
+          )
+        : [],
+    [team, t]
+  );
 
   const invalidateTeam = () =>
     Promise.all([
@@ -138,15 +145,13 @@ export default function AdminTeamWorkspacePage() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-20 w-full rounded-xl" />
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Skeleton className="h-28 rounded-xl" />
-          <Skeleton className="h-28 rounded-xl" />
-          <Skeleton className="h-28 rounded-xl" />
-          <Skeleton className="h-28 rounded-xl" />
-        </div>
         <Skeleton className="h-80 rounded-xl" />
       </div>
     );
+  }
+
+  if (teamQuery.isError) {
+    return <PageStateCard state="error" onAction={() => void teamQuery.refetch()} />;
   }
 
   if (!team) {
@@ -169,9 +174,6 @@ export default function AdminTeamWorkspacePage() {
       </Card>
     );
   }
-
-  const substitutes = team.players?.filter((player) => player.is_substitution).length ?? 0;
-  const starters = (team.players?.length ?? 0) - substitutes;
 
   return (
     <div className="space-y-6">
@@ -202,14 +204,18 @@ export default function AdminTeamWorkspacePage() {
               />
             }
             status={team.captain_id > 0 ? undefined : { label: t("noCaptain"), tone: "warning" }}
-            // Roster counts sit in the tiles one row below, so the meta line
-            // carries only what those tiles do not: where this team plays.
             meta={[
               team.tournament?.name ?? t("noTournament"),
               team.tournament ? (
                 <span className="tabular-nums">
                   {formatDateRange(format, team.tournament.start_date, team.tournament.end_date)}
                 </span>
+              ) : null,
+              <span key="avg" className="tabular-nums">{t("avgSrMeta", { value: team.avg_sr.toFixed(0) })}</span>,
+              <span key="total" className="tabular-nums">{t("totalSrMeta", { value: team.total_sr })}</span>,
+              team.group?.name ?? null,
+              team.placement != null ? (
+                <span key="placement" className="tabular-nums">{t("placement", { id: team.placement })}</span>
               ) : null
             ]}
             backHref={
@@ -219,10 +225,7 @@ export default function AdminTeamWorkspacePage() {
               <>
                 {team.tournament ? (
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`/admin/tournaments/${team.tournament.id}`}>
-                      <Trophy className="size-4" aria-hidden />
-                      {t("openTournament")}
-                    </Link>
+                    <Link href={`/admin/tournaments/${team.tournament.id}`}>{t("openTournament")}</Link>
                   </Button>
                 ) : null}
                 {canDeleteTeam ? (
@@ -232,7 +235,6 @@ export default function AdminTeamWorkspacePage() {
                     className="text-destructive"
                     onClick={() => setDeleteOpen(true)}
                   >
-                    <Trash2 className="size-4" aria-hidden />
                     {t("delete")}
                   </Button>
                 ) : null}
@@ -241,23 +243,6 @@ export default function AdminTeamWorkspacePage() {
           />
         </div>
       </div>
-
-      <StatTileGrid>
-        <StatTile label={t("labels.averageSr")} value={team.avg_sr.toFixed(0)} detail={t("avgDetail")} />
-        <StatTile label={t("labels.totalSr")} value={team.total_sr} detail={t("totalDetail")} />
-        <StatTile
-          label={t("labels.roster")}
-          value={starters}
-          detail={substitutes ? t("subCount", { count: substitutes }) : t("noSubstitutes")}
-          icon={Users}
-          tone="info"
-        />
-        <StatTile
-          label={t("labels.group")}
-          value={team.group?.name ?? "—"}
-          detail={team.placement != null ? t("placement", { id: team.placement }) : t("noPlacement")}
-        />
-      </StatTileGrid>
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4">

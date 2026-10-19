@@ -13,7 +13,6 @@ import {
 } from "@/components/bracket/editor/templateDraft";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -142,7 +141,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
           {t("title")}
         </h3>
         <p className={EYEBROW_CLASS}>
-          {templateQuery.data?.custom ? <Badge variant="outline">{t("custom")}</Badge> : t("generated")}
+          {templateQuery.data?.custom ? t("custom") : t("generated")}
         </p>
       </div>
 
@@ -151,7 +150,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
           {t("hasMatches")}
         </p>
       ) : templateQuery.isPending ? (
-        <Skeleton className="h-64 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
       ) : template === null ? (
         <p className="text-sm text-muted-foreground">
           {t("empty")}
@@ -235,7 +234,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                   <button
                     type="button"
                     className={cn(
-                      "w-full rounded-md border border-danger/30 bg-danger/10 px-2 py-1 text-left text-xs",
+                      "text-left text-xs underline-offset-4 hover:underline",
                       TONE_TEXT.danger
                     )}
                     onClick={() => setHighlightMatchId(problem.match_id)}

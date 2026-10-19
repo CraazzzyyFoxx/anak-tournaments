@@ -13,6 +13,7 @@ import { LinkTabs } from "@/components/kit/LinkTabs";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -122,7 +123,7 @@ export default function AdminAnnouncementsPage() {
   // who has simply chosen no workspace.
   if (!isSuperuser && workspaceId == null) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <AdminPageHeader
           title={t("notifications.admin.title")}
           description={t("notifications.admin.description")}
@@ -161,15 +162,14 @@ export default function AdminAnnouncementsPage() {
            place that says why. */
         footer={
           canPublish ? undefined : (
-            <p className="text-xs text-muted-foreground">{t("notifications.admin.readOnly")}</p>
+            <p className="text-sm text-muted-foreground">{t("notifications.admin.readOnly")}</p>
           )
         }
       />
 
-      {/* One row of tabs, the admin's own — the two feeds are two screens, not
-          a filter over one. Rendered even at a single tab so the platform
-          admin's row does not appear only after they gain the second scope. */}
-      <div data-field="audience">
+      {/* The two feeds are two screens, not a filter over one. One scope
+          draws no tab row, so the wrapper collapses rather than add a gap. */}
+      <div data-field="audience" className="empty:hidden">
         <LinkTabs
           ariaLabel={t("notifications.admin.audienceLabel")}
           activeKey={audience}
@@ -181,12 +181,16 @@ export default function AdminAnnouncementsPage() {
         />
       </div>
 
-      <AnnouncementsTable
-        rows={list.data ?? []}
-        isLoading={list.isLoading}
-        onRetire={canRetire ? (row) => retire.mutate(row) : undefined}
-        isRetiring={retire.isPending}
-      />
+      {list.isError ? (
+        <PageStateCard state="error" onAction={() => void list.refetch()} />
+      ) : (
+        <AnnouncementsTable
+          rows={list.data ?? []}
+          isLoading={list.isLoading}
+          onRetire={canRetire ? (row) => retire.mutate(row) : undefined}
+          isRetiring={retire.isPending}
+        />
+      )}
 
       {canPublish ? (
         <AnnouncementForm

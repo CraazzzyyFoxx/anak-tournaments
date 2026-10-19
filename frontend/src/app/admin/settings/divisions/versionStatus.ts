@@ -22,9 +22,13 @@ export function versionState(
   return "published";
 }
 
-export const VERSION_STATE_TONE: Record<VersionState, Tone> = {
-  archived: "neutral",
-  published: "info",
-  active: "success",
-  draft: "warning"
+/**
+ * The pill a version state earns. Only the two that want attention get one:
+ * published is the norm on a version list and archived is already dimmed.
+ */
+export const VERSION_PILL: Partial<
+  Record<VersionState, { tone: Tone; key: "versionState.draft" | "versionState.active" }>
+> = {
+  draft: { tone: "warning", key: "versionState.draft" },
+  active: { tone: "success", key: "versionState.active" }
 };

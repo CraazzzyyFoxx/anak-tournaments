@@ -53,10 +53,7 @@ export default function RankCollectorPage() {
 
   return (
     <div className="space-y-4">
-      {/* A one-tab bar is a heading with a hover state; non-superusers get none. */}
-      {items.length > 1 && (
-        <LinkTabs items={items} activeKey={activeKey} level={2} ariaLabel={t("views.rankAria")} />
-      )}
+      <LinkTabs items={items} activeKey={activeKey} level={2} ariaLabel={t("views.rankAria")} />
       {activeKey === "settings" ? (
         <RankSettingsPanel />
       ) : activeKey === "mapping" ? (

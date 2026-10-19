@@ -7,6 +7,8 @@
 //    in the workspace and there is no restore.
 // 2. Opening another template while the questions on screen are unsaved asks
 //    first, and only switches once the organizer agrees to lose them.
+//
+// Selection is `?template=`, pushed (MasterDetail's narrow Back is history.back()).
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -67,11 +69,16 @@ vi.mock("@/hooks/useBrowsingDiscipline", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), apiError: vi.fn() }
 }));
+let rerender: (() => void) | null = null;
+const push = vi.fn((url: string) => {
+  window.history.replaceState(null, "", url);
+  rerender?.();
+});
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
-  usePathname: () => "/admin/settings/registration-forms",
+  useRouter: () => ({ push, replace: push, back: vi.fn() }),
+  usePathname: () => window.location.pathname,
   useParams: () => ({}),
-  useSearchParams: () => new URLSearchParams("")
+  useSearchParams: () => new URLSearchParams(window.location.search)
 }));
 
 function template(id: number, name: string, sectionTitle: string) {
@@ -124,16 +131,17 @@ async function mount() {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  rerender = () =>
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <QueryClientProvider
-          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-        >
+        <QueryClientProvider client={client}>
           <Page />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
+  await act(async () => {
+    rerender!();
   });
   await settle();
 }
@@ -177,9 +185,18 @@ function confirmDialog(): HTMLElement | null {
   return document.body.querySelector("[role='alertdialog']");
 }
 
+function menuItem(label: string): HTMLElement {
+  const found = [...document.querySelectorAll<HTMLElement>("[role='menuitem']")].find(
+    (element) => (element.textContent ?? "").trim() === label
+  );
+  if (!found) throw new Error(`no menu item "${label}"`);
+  return found;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
+  window.history.replaceState(null, "", "/admin/settings/registration-forms");
   listTemplates.mockResolvedValue([
     template(11, "Open cup", "Who are you"),
     template(12, "Closed cup", "Roster check")
@@ -192,7 +209,10 @@ describe("workspace registration form templates", () => {
   it("asks before deleting a workspace-shared template", async () => {
     await mount();
 
-    await click(byLabel("Delete Open cup"));
+    await click(button("Open cup"));
+    expect(push).toHaveBeenCalledWith("/admin/settings/registration-forms?template=11");
+    await click(byLabel("Actions for Open cup"));
+    await click(menuItem("Delete"));
     expect(removeTemplate).not.toHaveBeenCalled();
     expect(confirmDialog()?.textContent ?? "").toContain("Open cup");
 
@@ -204,13 +224,12 @@ describe("workspace registration form templates", () => {
   it("asks before dropping unsaved questions for another template", async () => {
     await mount();
 
-    await click(button("Edit questions"));
+    await click(button("Open cup"));
     // Dirty the draft: open the one question and flip Required.
     await click(button("BattleTagidentity_battlenetRequired"));
     await click(labelled("Required"));
 
-    // The second template's "Edit questions" — the first row now reads "Editing".
-    await click(button("Edit questions"));
+    await click(button("Closed cup"));
     expect(confirmDialog()).not.toBeNull();
     expect(container.textContent).toContain("Who are you");
     expect(container.textContent).not.toContain("Roster check");

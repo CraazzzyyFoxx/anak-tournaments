@@ -18,12 +18,8 @@ import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
  * authored document with a points table nobody edits in the same sitting.
  */
 export default function ScoringSettingsPage() {
-  const t = useTranslations("adminTournament.scoring");
   return (
-    <SettingsSectionPage
-      section="scoring"
-      description={t("description")}
-    >
+    <SettingsSectionPage section="scoring">
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <ScoringForm
           tournament={tournament}
@@ -53,9 +49,6 @@ function ScoringForm({
         <CardContent className="flex flex-col gap-5 pt-6">
           <section className="flex flex-col gap-2">
             <h2 className={EYEBROW_CLASS}>{t("points")}</h2>
-            <p className="text-xs text-muted-foreground">
-              {t("hint")}
-            </p>
             <div className="grid grid-cols-3 gap-3 pt-1">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="settings-win-points">{t("win")}</Label>
@@ -87,7 +80,7 @@ function ScoringForm({
             </div>
           </section>
 
-          <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-3.5">
+          <div className="flex flex-col gap-4 border-t border-border pt-5">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="settings-is-league"

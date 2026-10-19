@@ -285,7 +285,7 @@ describe("per-group upper bracket share", () => {
 
     await mount(groups, { stages: [groups, playoff] });
 
-    expect(container.textContent).toContain("→ 4 upper, 8 lower");
+    expect(container.textContent).toContain(": 4 upper, 8 lower");
   });
 
   it("counts the seeds with the numbers being typed, before they are saved", async () => {
@@ -304,7 +304,7 @@ describe("per-group upper bracket share", () => {
     await typeAndBlur(stageUpperInput(), "1");
 
     // The saved stage still says 2 up; the line has to answer the field.
-    expect(container.textContent).toContain("→ 2 upper, 10 lower");
+    expect(container.textContent).toContain(": 2 upper, 10 lower");
   });
 
   it("stays quiet about a playoff fed by another division's groups", async () => {

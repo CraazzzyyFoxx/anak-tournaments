@@ -1,15 +1,13 @@
 "use client";
 
-import { Fragment } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Gavel, ListChecks, Pencil, Upload } from "lucide-react";
 
 import { AuditTrailButton } from "@/components/kit/AuditTrailSheet";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import TeamName from "@/components/TeamName";
+import { InspectorField, InspectorSection } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TournamentLogUploadDialog } from "@/components/logs/TournamentLogUploadDialog";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -19,13 +17,12 @@ import type { AdminMatchRow } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import { reportOf, scoreline } from "@/lib/encounter/reports";
 import { scoreLine } from "@/lib/encounter/detail";
-import { isLobby, seatsBySlot, seatTeam } from "@/lib/encounter/seats";
-
-import { EncounterStatusCell, InspectorField } from "./EncounterCells";
+import { isLobby, seatsBySlot } from "@/lib/encounter/seats";
 
 /**
  * What the row detail adds to the table: the captains' filings and the maps a
- * parser has already read, both fetched only for the row actually open.
+ * parser has already read, both fetched only for the row actually open. The
+ * row's own columns (score, status, result, logs) are not repeated here.
  */
 export function EncounterInspectorPanel({
   encounter,
@@ -63,87 +60,57 @@ export function EncounterInspectorPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <InspectorField label={t("teams")}>
-          <span className="flex items-center gap-1.5">
-            {seats.map((seat, index) => (
-              <Fragment key={seat.id}>
-                {index > 0 ? <span className="text-muted-foreground">{t("vs")}</span> : null}
-                <TeamName team={seatTeam(seat)} fallback={commonT("tbd")} size="xs" />
-              </Fragment>
-            ))}
-          </span>
-        </InspectorField>
-        <InspectorField label={t("score")}>
-          <span className="font-mono tabular-nums">
-            {seats.map((seat) => seat.score).join(" \u2013 ")}
-          </span>
-        </InspectorField>
-        <InspectorField label={t("status")}>
-          <EncounterStatusCell status={encounter.status} />
-        </InspectorField>
-        <InspectorField label={t("result")}>{t(`resultStatus.${encounter.result_status}`)}</InspectorField>
-        <InspectorField label={t("bestOf")}>
-          <span className="tabular-nums">{encounter.best_of}</span>
-        </InspectorField>
-        <InspectorField label={t("logs")}>{encounter.has_logs ? t("attached") : t("none")}</InspectorField>
-      </div>
+      <InspectorField label={t("bestOf")}>
+        <span className="tabular-nums">{encounter.best_of}</span>
+      </InspectorField>
 
-      <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>{t("captainReports")}</p>
+      <InspectorSection title={t("captainReports")}>
         {reportsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-muted-foreground">{t("loading")}</p>
+          <Skeleton className="h-10 w-full" />
         ) : reportRow == null ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("noCaptainReport")}
-          </p>
+          <p className="text-xs text-muted-foreground">{t("noCaptainReport")}</p>
         ) : (
-          <ul className="mt-2 space-y-1 text-sm">
+          <ul className="space-y-1 text-sm">
             {seats.map((seat) => {
               const report = reportOf(reportRow.reports, seat.id);
               return (
                 <li key={seat.id} className="flex items-center gap-2">
-                  <span className="w-24 truncate text-xs uppercase text-muted-foreground" title={seat.name}>
+                  <span className="w-24 truncate text-xs text-muted-foreground" title={seat.name}>
                     {seat.name}
                   </span>
                   {report ? (
                     <>
-                      <span className="font-mono tabular-nums">{scoreline(report.results, seatIds)}</span>
+                      <span className="tabular-nums">{scoreline(report.results, seatIds)}</span>
                       <span className="truncate text-xs text-muted-foreground">
                         {report.reporter_name ?? commonT("unknown")}
                       </span>
                     </>
                   ) : (
-                    <span className="text-xs italic text-muted-foreground">{commonT("noReport")}</span>
+                    <span className="text-xs text-muted-foreground">{commonT("noReport")}</span>
                   )}
                 </li>
               );
             })}
           </ul>
         )}
-      </section>
+      </InspectorSection>
 
-      <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>{t("parsedMaps", { count: parsedMapsQuery.data?.total ?? 0 })}</p>
+      <InspectorSection title={t("parsedMaps", { count: parsedMapsQuery.data?.total ?? 0 })}>
         {parsedMapsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-muted-foreground">{t("loading")}</p>
+          <Skeleton className="h-10 w-full" />
         ) : (parsedMapsQuery.data?.results.length ?? 0) === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("noParsedMap")}
-          </p>
+          <p className="text-xs text-muted-foreground">{t("noParsedMap")}</p>
         ) : (
-          <ul className="mt-2 space-y-1 text-sm">
+          <ul className="space-y-1 text-sm">
             {(parsedMapsQuery.data?.results ?? []).map((map: AdminMatchRow) => (
               <li key={map.id} className="flex items-center justify-between gap-2">
                 <span className="truncate">{map.map.name}</span>
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {scoreLine(map.participants)}
-                </span>
+                <span className="text-xs tabular-nums text-muted-foreground">{scoreLine(map.participants)}</span>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </InspectorSection>
     </div>
   );
 }
@@ -176,15 +143,11 @@ export function EncounterInspectorActions({
           {/* Readiness, the veto and the per-map reports all live in the room,
               and the organizer controls there are the same ones a captain
               cannot reach. */}
-          <Link href={pregameRoomHref(encounter.tournament_id, encounter.id, returnTo)}>
-            <ListChecks aria-hidden className="size-3.5" />
-            {t("openRoom")}
-          </Link>
+          <Link href={pregameRoomHref(encounter.tournament_id, encounter.id, returnTo)}>{t("openRoom")}</Link>
         </Button>
       )}
       {canUpdate ? (
         <Button variant="outline" size="sm" onClick={() => onEdit(encounter)}>
-          <Pencil aria-hidden className="size-3.5" />
           {t("edit")}
         </Button>
       ) : null}
@@ -196,7 +159,6 @@ export function EncounterInspectorActions({
           onUploaded={onUploaded}
           trigger={
             <Button variant="outline" size="sm">
-              <Upload aria-hidden className="size-3.5" />
               {t("uploadLog")}
             </Button>
           }
@@ -209,7 +171,6 @@ export function EncounterInspectorActions({
           <Link
             href={`${reportsHref}${reportsHref.includes("?") ? "&" : "?"}search=${encodeURIComponent(encounter.name)}&id=${encounter.id}`}
           >
-            <Gavel aria-hidden className="size-3.5" />
             {t("resolve")}
           </Link>
         </Button>

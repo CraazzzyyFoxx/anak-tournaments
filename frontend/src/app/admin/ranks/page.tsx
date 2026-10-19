@@ -6,6 +6,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { MixRankerActions } from "@/components/admin/ranks/MixRankerActions";
 import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -23,7 +24,7 @@ export default function RankOverviewPage() {
   const { canAccessPermission, isLoaded } = usePermissions();
 
   if (!isLoaded) {
-    return <div className="h-40 animate-pulse rounded-lg bg-muted/40 motion-reduce:animate-none" />;
+    return <Skeleton className="h-40 w-full rounded-xl" />;
   }
 
   if (!canAccessPermission("team.update", workspaceId)) {
@@ -40,7 +41,6 @@ export default function RankOverviewPage() {
     <div className="space-y-4">
       <AdminPageHeader
         title={t("title")}
-        description={t("description")}
         actions={workspaceId != null ? <MixRankerActions workspaceId={workspaceId} /> : undefined}
       />
       <RankOverviewTable />

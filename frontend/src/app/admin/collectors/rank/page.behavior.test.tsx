@@ -250,7 +250,7 @@ describe("RankCollectorPage", () => {
     granted = [];
     const container = await mount();
 
-    expect(container.textContent).toContain("rank.read");
+    expect(container.textContent).toContain("You do not have access to rank collection health");
     expect(getRankCollectionStats).not.toHaveBeenCalled();
     expect(getRankFetchLog).not.toHaveBeenCalled();
     // No tab bar either: there is nothing behind any of the slots.

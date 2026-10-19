@@ -4,9 +4,10 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { Plus, RefreshCw } from "lucide-react";
+import { FileX2, Plus } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EncounterForm } from "@/components/admin/EncounterForm";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
@@ -16,6 +17,8 @@ import { useFilters } from "@/components/kit/useFilters";
 import { hasChallongeSource } from "@/components/admin/tournament-checklist";
 import { TOURNAMENT_QUERY_PARAM, parseTournamentQueryParam } from "@/components/admin/tournament-filter";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
@@ -27,10 +30,9 @@ import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import type { Encounter } from "@/types/encounter.types";
 import { seatsBySlot } from "@/lib/encounter/seats";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
-import { encounterScopeLabel } from "./encounters/EncounterCells";
+import { ResultStatusPill, encounterScopeLabel, encounterStatusKey } from "./encounters/EncounterCells";
 import { encounterFilterDefs } from "./encounters/filters";
 import {
   EncounterInspectorActions,
@@ -160,14 +162,13 @@ export function EncountersBrowser({
   });
 
   if (workspaceId == null) {
-    return (
-      <EmptyNote>
-        {t("scopePrompt")}
-      </EmptyNote>
-    );
+    return <PageStateCard state="empty" description={t("scopePrompt")} />;
   }
 
   const challongeReady = hasChallongeSource(scope.tournament, stages);
+  // Creating needs a stage to file under and two teams to seat; without them
+  // the button is absent and the empty table says what is missing.
+  const createReady = scopeTournamentId != null && stages.length > 0 && teams.length >= 2;
   const reportsHref =
     tournamentId != null
       ? `/admin/tournaments/${tournamentId}/matches/reports`
@@ -175,23 +176,14 @@ export function EncountersBrowser({
 
   const trailing = (
     <>
-      {canSync ? (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={syncMutation.isPending || scopeTournamentId == null || !challongeReady}
-          onClick={() => syncMutation.mutate()}
-        >
-          <RefreshCw aria-hidden className="size-4" />
+      {canSync && scopeTournamentId != null && challongeReady ? (
+        <Button variant="outline" size="sm" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
+          {syncMutation.isPending ? <Spinner /> : null}
           {t("sync")}
         </Button>
       ) : null}
-      {canCreate ? (
-        <Button
-          size="sm"
-          disabled={scopeTournamentId == null || stages.length === 0 || teams.length < 2}
-          onClick={form.openCreate}
-        >
+      {canCreate && createReady ? (
+        <Button size="sm" onClick={form.openCreate}>
           <Plus aria-hidden className="size-4" />
           {t("create")}
         </Button>
@@ -224,23 +216,31 @@ export function EncountersBrowser({
           emptyMessage={
             scopeTournamentId == null
               ? t("emptyTournament")
-              : t("empty")
+              : canCreate && !createReady
+                ? t("createNeeds")
+                : t("empty")
           }
           onRowClick={(row) => setParams({ id: String(row.original.id) })}
-          renderMobileCard={(row) => (
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{row.original.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {encounterScopeLabel(row.original)} · R{row.original.round} ·{" "}
-                <span className="font-mono tabular-nums">
-                  {seatsBySlot(row.original.teams).map((seat) => seat.score).join("\u2013")}
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {row.original.status} · {row.original.has_logs ? t("logsMobile") : t("noLogsMobile")}
-              </p>
-            </div>
-          )}
+          renderMobileCard={(row) => {
+            const status = encounterStatusKey(row.original.status);
+            const scopeLabel = encounterScopeLabel(row.original);
+            return (
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="truncate text-sm font-medium">{row.original.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {scopeLabel ? `${scopeLabel} · ` : null}R{row.original.round} ·{" "}
+                  <span className="tabular-nums">
+                    {seatsBySlot(row.original.teams).map((seat) => seat.score).join("\u2013")}
+                  </span>
+                </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {status && status !== "completed" ? <span>{t(status)}</span> : null}
+                  <ResultStatusPill status={row.original.result_status} />
+                  {row.original.has_logs ? null : <StatusIcon icon={FileX2} label={t("noLogs")} variant="muted" />}
+                </div>
+              </div>
+            );
+          }}
           queryKey={(page, search, pageSize, sortField, sortDir) => [
             "encounters",
             scopeTournamentId,
@@ -316,7 +316,6 @@ export function EncountersBrowser({
           if (!next) form.close();
         }}
         title={form.mode === "edit" ? t("editTitle") : t("createTitle")}
-        description={t("createDescription")}
         isSubmitting={form.isSaving}
         submittingLabel={form.mode === "edit" ? t("updating") : t("creating")}
         errorMessage={form.error}
@@ -343,7 +342,7 @@ export function EncountersBrowser({
         pending={deleteMutation.isPending}
         intent={{
           title: t("delete"),
-          description: t("deleteDescription", { name: pendingDelete?.name ?? "this encounter" }),
+          description: t("deleteDescription", { name: pendingDelete?.name ?? "" }),
           confirmLabel: t("delete"),
           tone: "danger",
           cascade: [t("allMatches"), t("attachedStats")]

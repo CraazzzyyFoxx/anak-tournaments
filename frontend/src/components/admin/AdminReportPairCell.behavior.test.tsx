@@ -89,46 +89,29 @@ describe("AdminReportPairCell", () => {
     expect(container.textContent).toContain("no report");
   });
 
-  it("distinguishes awaiting from disagreeing", async () => {
-    // The whole point of the three-valued flag: one captain outstanding is a
-    // reminder, two divergent reports are an adjudication. Collapsing them
-    // would send an admin to settle a dispute that does not exist.
+  it("raises only a disagreement, never an awaited report", async () => {
+    // One captain outstanding is a reminder the seats already show; two
+    // divergent reports are an adjudication. Only the latter gets the pill.
     const awaiting = await mount(cell([report(1, 2, 1)], null));
-    expect(awaiting.textContent).toContain("Awaiting remaining reports");
+    expect(awaiting.textContent).not.toContain("Awaiting remaining reports");
     expect(awaiting.textContent).not.toContain("disagree");
 
     const disagree = await mount(cell([report(1, 2, 1), report(2, 0, 2)], false));
     expect(disagree.textContent).toContain("Reports disagree");
-    expect(disagree.textContent).not.toContain("Awaiting");
   });
 
-  it("marks agreement explicitly", async () => {
+  it("says nothing extra when the reports agree", async () => {
+    // The agreeing standings are right there in the cell; a pill would repeat them.
     const container = await mount(cell([report(1, 2, 1), report(2, 2, 1)], true));
-    expect(container.textContent).toContain("Reports agree");
+    expect(container.textContent).not.toContain("Reports agree");
+    expect(container.textContent).not.toContain("disagree");
   });
 
-  it("never encodes the verdict in colour alone", async () => {
-    // Accessibility floor: the state must survive greyscale and a screen
-    // reader, so each verdict carries a word and an icon, not just a tone class.
-    for (const [standingsMatch, expected] of [
-      [null, "Awaiting remaining reports"],
-      [true, "Reports agree"],
-      [false, "Reports disagree"]
-    ] as const) {
-      const container = await mount(
-        cell(standingsMatch === null ? [report(1, 2, 1)] : [report(1, 2, 1), report(2, 2, 1)], standingsMatch)
-      );
-      expect(container.textContent).toContain(expected);
-      expect(container.querySelector("svg")).not.toBeNull();
-    }
-  });
-
-  it("flags an impossible series score without calling the row invalid", async () => {
-    // Advisory only — reports predate per-round best-of, so this is a hint that
-    // sits beside the verdict rather than replacing it.
+  it("flags an impossible series score where the caller asks for it", async () => {
+    // Advisory only — reports predate per-round best-of, so this is a hint
+    // rather than a verdict.
     const container = await mount(cell([report(1, 3, 0), report(2, 3, 0)], true, false));
     expect(container.textContent).toContain("Score outside best-of");
-    expect(container.textContent).toContain("Reports agree");
   });
 
   it("omits the best-of warning when the score is possible", async () => {
@@ -159,7 +142,8 @@ describe("AdminReportPairCell", () => {
     // Match quality is configurable per tournament, so an unrated report is
     // valid data — not a hole to render as "null/10".
     const container = await mount(cell([report(1, 2, 1, { closeness: null })], null));
-    expect(container.textContent).toContain("no rating");
+    expect(container.textContent).toContain("captain");
+    expect(container.textContent).not.toContain("/10");
     expect(container.textContent).not.toContain("null");
     expect(container.textContent).not.toContain("NaN");
   });

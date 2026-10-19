@@ -1,11 +1,10 @@
 "use client";
 
 import { useId } from "react";
-import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
-import { Label } from "@/components/ui/label";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PROVIDER_LABELS } from "@/lib/registration/subscription-requirement";
 import type {
   SubscriptionProviderRequirement,
@@ -60,7 +60,7 @@ export default function SubscriptionRequirementEditor({
   disabled = false
 }: Readonly<SubscriptionRequirementEditorProps>) {
   const t = useTranslations("subscriptionRequirement");
-  const modeSelectId = useId();
+  const modeLabelId = useId();
   const description = useRequirementDescription(value);
   const rows = value.requirements ?? [];
   const mode = value.mode ?? "all";
@@ -87,31 +87,26 @@ export default function SubscriptionRequirementEditor({
     <div className="space-y-3">
       {showModeSelector && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Label htmlFor={modeSelectId} className="text-muted-foreground">
+          <span id={modeLabelId} className="text-muted-foreground">
             {t("matchLabel")}
-          </Label>
-          <Select
+          </span>
+          <ToggleGroup
+            type="single"
             value={mode}
-            disabled={disabled}
             onValueChange={(value) => update({ mode: value as "any" | "all" })}
+            aria-labelledby={modeLabelId}
           >
-            <SelectTrigger
-              id={modeSelectId}
-              // Content-sized: the translated mode labels overflow a fixed width.
-              className="h-8 w-fit min-w-[190px] max-w-full text-sm"
-              aria-label={t("modeAria")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("modes.all")}</SelectItem>
-              <SelectItem value="any">{t("modes.any")}</SelectItem>
-            </SelectContent>
-          </Select>
+            <ToggleGroupItem value="all" disabled={disabled}>
+              {t("modes.all")}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="any" disabled={disabled}>
+              {t("modes.any")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       )}
 
-      {rows.length === 0 && <p className="text-xs text-muted-foreground">{t("emptyHint")}</p>}
+      {rows.length === 0 && <p className="text-caption text-muted-foreground">{t("emptyHint")}</p>}
 
       {rows.map((row, index) => {
         const tiers =
@@ -195,20 +190,17 @@ export default function SubscriptionRequirementEditor({
       )}
 
       {unavailable.length > 0 && (
-        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
-          <p className="max-w-prose text-xs text-warning">
-            {t.rich("unconfiguredWarning", {
-              count: unavailable.length,
-              providers: unavailable.map((p) => PROVIDER_LABELS[p] ?? p).join(", "),
-              em: (chunks) => <em>{chunks}</em>
-            })}
-          </p>
-        </div>
+        <p className="max-w-prose text-caption text-warning">
+          {t.rich("unconfiguredWarning", {
+            count: unavailable.length,
+            providers: unavailable.map((p) => PROVIDER_LABELS[p] ?? p).join(", "),
+            em: (chunks) => <em>{chunks}</em>
+          })}
+        </p>
       )}
 
       {rows.length > 0 && (
-        <p className="max-w-prose text-xs text-muted-foreground">
+        <p className="max-w-prose text-caption text-muted-foreground">
           {t.rich("summary", {
             rule: description,
             hl: (chunks) => <span className="font-medium">{chunks}</span>

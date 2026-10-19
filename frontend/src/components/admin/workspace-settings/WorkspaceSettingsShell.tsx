@@ -8,7 +8,6 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { SectionNav } from "@/components/kit/SectionNav";
 import {
   WORKSPACE_SETTINGS_SECTIONS,
-  workspaceSectionDescription,
   workspaceSectionLabel,
   workspaceSettingsNavGroups,
   type WorkspaceSettingsSectionKey
@@ -19,8 +18,6 @@ export interface WorkspaceSettingsShellProps {
   basePath: string;
   /** Sections this shell routes; the rest are hidden from the rail. */
   sections?: readonly WorkspaceSettingsSectionKey[];
-  /** Rendered to the right of the heading (a back link, an audit trail). */
-  actions?: ReactNode;
   children: ReactNode;
 }
 
@@ -53,7 +50,6 @@ const FULL_SCREEN_PREFIXES = ["/admin/settings/divisions/v/"] as const;
 export function WorkspaceSettingsShell({
   basePath,
   sections,
-  actions,
   children
 }: Readonly<WorkspaceSettingsShellProps>) {
   const t = useTranslations("adminWorkspace.workspaceSettings");
@@ -70,8 +66,6 @@ export function WorkspaceSettingsShell({
     <div className="flex flex-col gap-4">
       <AdminPageHeader
         title={activeKey ? workspaceSectionLabel(activeKey, t) : t("sections.settingsTitle")}
-        description={activeKey ? workspaceSectionDescription(activeKey, t) : undefined}
-        actions={actions}
       />
       <div className="flex flex-col gap-4 md:flex-row md:gap-6">
         <SectionNav

@@ -89,7 +89,7 @@ export function SeedSlotRow({
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs",
+        "flex items-center gap-2 bg-card py-1.5 text-xs",
         isDragging && "opacity-50"
       )}
     >

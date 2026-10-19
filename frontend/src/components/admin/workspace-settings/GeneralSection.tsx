@@ -27,7 +27,6 @@ import {
 } from "@/components/admin/workspace-owner";
 import {
   WorkspaceNotListedNotice,
-  WorkspaceVerificationIcon,
   WorkspaceVerificationControl
 } from "@/components/admin/workspace-verification";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
@@ -99,19 +98,17 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
         <>
           {/* The audit trail is a drawer the whole admin shares, not a section
               of its own: it answers "who changed this" about branding, the
-              domain and the guild alike, and General is where the rail lands. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">{workspace.name}</span>
-              <WorkspaceVerificationIcon status={workspace.verification_status} />
-            </div>
+              domain and the guild alike, and General is where the rail lands.
+              The name and tier sit on the Overview; here the name is the
+              first field. */}
+          <div className="flex justify-end">
             <AuditTrailButton
               scope={{
                 entityType: "workspace",
                 entityId: workspace.id,
                 workspaceId: workspace.id
               }}
-              target={`workspace “${workspace.name}”`}
+              target={t("auditTarget", { name: workspace.name })}
               showCount
             />
           </div>
@@ -156,9 +153,9 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
 
                   <div>
                     <p className="text-sm font-medium leading-none">{t("owner")}</p>
-                    <p className="mt-1.5 text-sm">
+                    <div className="mt-1.5 text-sm">
                       <WorkspaceOwnerValue workspaceId={workspace.id} />
-                    </p>
+                    </div>
                     <p className="mt-1 text-xs text-muted-foreground">{t("ownerHelp")}</p>
                     <WorkspaceOwnerControl workspaceId={workspace.id} isSuperuser={isSuperuser} />
                     <WorkspaceOwnerTransferControl

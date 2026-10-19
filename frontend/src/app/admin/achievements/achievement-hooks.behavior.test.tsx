@@ -178,25 +178,17 @@ describe("the rule form is scoped to a discipline", () => {
 
 describe("the achievement actions are scoped to a discipline", () => {
   let actions: ActionsUnderTest;
-  const input = { current: { value: "picked.json" } as HTMLInputElement };
   const useActions = (discipline: string | null) =>
     function useActionsProbe() {
       actions = useAchievementRuleActions({
         workspaceId: 7,
         discipline,
-        jsonInputRef: input,
         onDeleted: () => {},
         onEvaluated: () => {},
-        onOverrideSaved: () => {},
-        onOverrideRemoved: () => {},
       });
     };
   const file = (content: unknown) => new File([typeof content === "string" ? content : JSON.stringify(content)], "rules.json");
   const importFile = (content: unknown) => act(async () => actions.importRulesFromFile(file(content)));
-
-  beforeEach(() => {
-    input.current.value = "picked.json";
-  });
 
   it("seeds, resets and evaluates in the selected game only", async () => {
     service.seedAchievementRules.mockResolvedValue({ seeded: 0, removed: 0 });

@@ -108,10 +108,7 @@ export function LadderBar({
         })}
       </ol>
       {large ? (
-        <div
-          aria-hidden
-          className="flex justify-between font-mono text-label uppercase tracking-wider text-muted-foreground"
-        >
+        <div aria-hidden className="flex justify-between text-caption text-muted-foreground">
           <span>{rankLabel(ladder, 0)}</span>
           <span>{rankLabel(ladder, ladder.last)}</span>
         </div>

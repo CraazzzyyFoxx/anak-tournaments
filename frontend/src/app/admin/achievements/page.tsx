@@ -1,44 +1,42 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import {
-  Download,
-  LibraryBig,
-  Play,
-  Plus,
-  RotateCcw,
-  Sprout,
-  Upload,
-  UserPlus,
-} from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EvaluationRunSummary } from "@/components/admin/achievements/EvaluationRunSummary";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AchievementRule } from "@/types/admin.types";
 
 import { AchievementFormDialog } from "./_components/AchievementFormDialog";
-import { AchievementLibraryDialog } from "./_components/AchievementLibraryDialog";
-import { AchievementOverrideDialog, type OverrideDraftState } from "./_components/AchievementOverrideDialog";
+import { AchievementImportDialog } from "./_components/AchievementImportDialog";
 import { AchievementOverridesCard } from "./_components/AchievementOverridesCard";
 import { AchievementsTable } from "./_components/AchievementsTable";
-import { DryRunResultDialog } from "./_components/DryRunResultDialog";
+import { DryRunResultPanel } from "./_components/DryRunResultPanel";
 import { EvaluateAchievementsDialog } from "./_components/EvaluateAchievementsDialog";
-import { ImportErrorPanel, ImportResultPanel } from "./_components/ImportOutcomePanels";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { useAchievementCatalog } from "./_hooks/useAchievementCatalog";
+import { useAchievementDiscipline } from "./_hooks/useAchievementDiscipline";
 import { useAchievementRuleActions } from "./_hooks/useAchievementRuleActions";
 import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
-import { useAchievementDiscipline } from "./_hooks/useAchievementDiscipline";
 
-const emptyOverrideDraft: OverrideDraftState = { userName: "", action: "grant", reason: "" };
+/** The one confirmation the page can ask for, with its subject. */
+type Confirmation = { kind: "delete"; rule: AchievementRule } | { kind: "reset" };
 
 export default function AchievementsPage() {
   const t = useTranslations("adminAchievements");
@@ -54,45 +52,34 @@ export default function AchievementsPage() {
     refetch: refetchDisciplines
   } = useAchievementDiscipline();
 
-  const [deletingRule, setDeletingRule] = useState<AchievementRule | null>(null);
-  const [hardResetOpen, setHardResetOpen] = useState(false);
-  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
-
-  const [evaluateDialogOpen, setEvaluateDialogOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  // One domain dialog at a time; it is mounted only while open.
+  const [dialog, setDialog] = useState<"evaluate" | "import" | null>(null);
   const [evalTournamentId, setEvalTournamentId] = useState<number | undefined>(undefined);
   const [evalSelectedRuleIds, setEvalSelectedRuleIds] = useState<Set<number>>(new Set());
-
-  const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
-  const [overrideDraft, setOverrideDraft] = useState<OverrideDraftState>(emptyOverrideDraft);
-  const [overrideFormError, setOverrideFormError] = useState<string | null>(null);
-  const jsonInputRef = useRef<HTMLInputElement>(null);
 
   const canCreate = canAccessPermission("achievement.create", workspaceId);
   const canUpdate = canAccessPermission("achievement.update", workspaceId);
   const canDelete = canAccessPermission("achievement.delete", workspaceId);
 
-  const { tournaments, overrides, refetchOverrides, allRules } = useAchievementCatalog({
+  const { tournaments, overrides, allRules } = useAchievementCatalog({
     workspaceId,
     discipline,
-    pickersOpen: evaluateDialogOpen || overrideDialogOpen,
+    pickersOpen: dialog === "evaluate",
   });
-  // Evaluating and overriding name a tournament: only the selected game's can be one.
+  // Evaluating names a tournament: only the selected game's can be one.
   const tournamentOptions = (tournaments?.results ?? []).filter((tournament) => tournament.discipline === discipline);
 
-  // Everything the page holds for one game — picked rules, the tournament, an override draft, open pickers — is
-  // that game's: when the game (or the workspace) changes, it is dropped rather than carried into the next one.
+  // Everything the page holds for one game — picked rules, the tournament, an open dialog — is that game's: when
+  // the game (or the workspace) changes, it is dropped rather than carried into the next one.
   const scopeKey = `${workspaceId}:${discipline}`;
   const [heldScopeKey, setHeldScopeKey] = useState(scopeKey);
   if (heldScopeKey !== scopeKey) {
     setHeldScopeKey(scopeKey);
-    setDeletingRule(null);
-    setHardResetOpen(false);
-    setEvaluateDialogOpen(false);
+    setConfirmation(null);
+    setDialog(null);
     setEvalTournamentId(undefined);
     setEvalSelectedRuleIds(new Set());
-    setOverrideDialogOpen(false);
-    setOverrideDraft(emptyOverrideDraft);
-    setOverrideFormError(null);
   }
 
   const form = useAchievementRuleForm(workspaceId, discipline);
@@ -100,56 +87,26 @@ export default function AchievementsPage() {
   const actions = useAchievementRuleActions({
     workspaceId,
     discipline,
-    jsonInputRef,
-    onDeleted: () => setDeletingRule(null),
-    onEvaluated: () => setEvaluateDialogOpen(false),
-    onOverrideSaved: () => {
-      refetchOverrides();
-      setOverrideDialogOpen(false);
-      setOverrideDraft((prev) => ({ ...emptyOverrideDraft, action: prev.action }));
-      setOverrideFormError(null);
-    },
-    onOverrideRemoved: () => refetchOverrides(),
+    onDeleted: () => setConfirmation(null),
+    onEvaluated: () => setDialog(null),
   });
 
-  // Validated on submit rather than by disabling the button, so the reader can
-  // read what is missing instead of guessing why nothing happens.
-  const handleOverrideSubmit = () => {
-    // The draft can outlive the game it was filled in for; the backend would take the rule's own game, so the
-    // page has to hold the line: only a rule and tournament of the selected game's catalogue go out.
-    const ruleInGame = allRules?.some((rule) => rule.id === overrideDraft.ruleId) ?? false;
-    const tournamentInGame =
-      overrideDraft.tournamentId == null || tournamentOptions.some((item) => item.id === overrideDraft.tournamentId);
-    const missingLabels = [
-      !overrideDraft.userId ? t("list.missingUser") : null,
-      !overrideDraft.ruleId ? t("list.missingAchievement") : null,
-      !overrideDraft.reason.trim() ? t("list.missingReason") : null,
-    ].filter((label): label is string => label !== null);
-    if (missingLabels.length > 0) {
-      setOverrideFormError(t("list.pickBeforeOverride", { items: missingLabels.join(", ") }));
-      return;
-    }
-    if (!ruleInGame || !tournamentInGame) {
-      setOverrideFormError(t("list.outsideGame"));
-      return;
-    }
-    setOverrideFormError(null);
-    actions.createOverride({
-      achievement_rule_id: overrideDraft.ruleId!,
-      user_id: overrideDraft.userId!,
-      tournament_id: overrideDraft.tournamentId ?? null,
-      action: overrideDraft.action,
-      reason: overrideDraft.reason,
-    });
+  const openEvaluate = (ruleIds: Set<number>) => {
+    setEvalSelectedRuleIds(ruleIds);
+    setEvalTournamentId(undefined);
+    setDialog("evaluate");
+  };
+
+  const closeImport = () => {
+    setDialog(null);
+    actions.dismissImportResult();
+    actions.dismissImportError();
   };
 
   if (!workspaceId || !discipline) {
     return (
       <div className="space-y-6">
-        <AdminPageHeader
-          title={t("common.achievements")}
-          description={t("list.headerDescription")}
-        />
+        <AdminPageHeader title={t("common.achievements")} />
         {!workspaceId ? (
           <EmptyNote>{t("list.selectWorkspace")}</EmptyNote>
         ) : resolved?.kind === "invalid" || resolved?.kind === "empty" ? (
@@ -161,14 +118,15 @@ export default function AchievementsPage() {
     );
   }
 
+  const busy = actions.seedMutation.isPending || actions.hardResetMutation.isPending;
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title={t("common.achievements")}
-        description={t("list.headerDescription")}
         actions={
-          <div className="flex gap-2">
-            {disciplines ? (
+          <>
+            {disciplines && disciplines.length > 1 ? (
               <DisciplineSelector
                 disciplines={disciplines}
                 value={discipline}
@@ -177,87 +135,48 @@ export default function AchievementsPage() {
                 disabled={form.open}
               />
             ) : null}
-            <input
-              ref={jsonInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void actions.importRulesFromFile(file);
-              }}
-            />
-            <Button variant="outline" size="sm" onClick={() => void actions.exportRules()}>
-              <Download className="mr-2 h-4 w-4" aria-hidden />
-              {t("list.exportJson")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setLibraryDialogOpen(true)}>
-              <LibraryBig className="mr-2 h-4 w-4" aria-hidden />
-              {t("list.browseLibrary")}
-            </Button>
-            {(canCreate || canUpdate) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => jsonInputRef.current?.click()}
-                disabled={actions.importMutation.isPending}
-              >
-                <Upload className={`mr-2 h-4 w-4 ${actions.importMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-              {t("list.importJson")}
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setEvalSelectedRuleIds(new Set());
-                setEvalTournamentId(undefined);
-                setEvaluateDialogOpen(true);
-              }}
-            >
-              <Play className="mr-2 h-4 w-4" aria-hidden />
-              {t("list.evaluate")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                actions.overrideMutation.reset();
-                setOverrideFormError(null);
-                setOverrideDialogOpen(true);
-              }}
-            >
-              <UserPlus className="mr-2 h-4 w-4" aria-hidden />
-              {t("list.addOverride")}
-            </Button>
-            {canCreate && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => actions.seed()}
-                disabled={actions.seedMutation.isPending}
-              >
-                <Sprout className={`mr-2 h-4 w-4 ${actions.seedMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-                {t("list.seedDefaults")}
-              </Button>
-            )}
-            {canCreate && (
-              <Button
-                variant="destructive"
-                onClick={() => setHardResetOpen(true)}
-                disabled={actions.hardResetMutation.isPending}
-              >
-                <RotateCcw className={`mr-2 h-4 w-4 ${actions.hardResetMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-                {t("list.hardReset")}
-              </Button>
-            )}
             {canCreate && (
               <Button onClick={form.openCreate}>
                 <Plus className="mr-2 h-4 w-4" aria-hidden />
                 {t("list.create")}
               </Button>
             )}
-          </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("common.moreActions")}
+                  title={t("common.moreActions")}
+                >
+                  {busy ? <Spinner /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => openEvaluate(new Set())}>{t("list.evaluate")}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void actions.exportRules()}>{t("list.exportJson")}</DropdownMenuItem>
+                {(canCreate || canUpdate) && (
+                  <DropdownMenuItem onSelect={() => setDialog("import")}>{t("list.import")}</DropdownMenuItem>
+                )}
+                {canCreate && (
+                  <>
+                    <DropdownMenuItem onSelect={() => actions.seed()} disabled={busy}>
+                      {t("list.seedDefaults")}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => setConfirmation({ kind: "reset" })}
+                      disabled={busy}
+                      className="text-danger focus:text-danger"
+                    >
+                      {t("list.hardReset")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         }
       />
 
@@ -273,14 +192,6 @@ export default function AchievementsPage() {
         />
       )}
 
-      {actions.importError && (
-        <ImportErrorPanel message={actions.importError} onDismiss={actions.dismissImportError} />
-      )}
-
-      {actions.importResult && (
-        <ImportResultPanel result={actions.importResult} onDismiss={actions.dismissImportResult} />
-      )}
-
       <AchievementsTable
         workspaceId={workspaceId}
         discipline={discipline}
@@ -290,106 +201,88 @@ export default function AchievementsPage() {
           onOpen: (rule) => router.push(`/admin/achievements/${rule.id}`),
           onEdit: form.openEdit,
           onTest: (rule) => actions.testMutation.mutate(rule.id),
-          onEvaluate: (rule) => {
-            setEvalSelectedRuleIds(new Set([rule.id]));
-            setEvalTournamentId(undefined);
-            setEvaluateDialogOpen(true);
-          },
+          onEvaluate: (rule) => openEvaluate(new Set([rule.id])),
           onToggle: (rule) => actions.toggle(rule.id, !rule.enabled),
-          onDelete: setDeletingRule,
+          onDelete: (rule) => setConfirmation({ kind: "delete", rule }),
         }}
       />
+
+      {actions.testResult && (
+        <DryRunResultPanel result={actions.testResult} onDismiss={actions.dismissTestResult} />
+      )}
 
       {overrides && overrides.length > 0 && (
         <AchievementOverridesCard
           overrides={overrides}
-          rules={allRules}
+          rules={allRules ?? []}
+          tournaments={tournamentOptions}
           onDelete={(id) => actions.removeOverride(id)}
           isDeleting={actions.deleteOverrideMutation.isPending}
         />
       )}
 
-      <AchievementLibraryDialog
-        key={discipline}
-        open={libraryDialogOpen}
-        onOpenChange={setLibraryDialogOpen}
-        workspaceId={workspaceId}
-        discipline={discipline}
-        canImport={canCreate || canUpdate}
-        onImported={actions.setImportResult}
-      />
+      {dialog === "evaluate" && (
+        <EvaluateAchievementsDialog
+          onClose={() => setDialog(null)}
+          tournaments={tournamentOptions}
+          rules={allRules ?? []}
+          tournamentId={evalTournamentId}
+          onTournamentChange={setEvalTournamentId}
+          selectedRuleIds={evalSelectedRuleIds}
+          onSelectedRuleIdsChange={setEvalSelectedRuleIds}
+          onRun={() => actions.evaluate(evalTournamentId, evalSelectedRuleIds)}
+          isRunning={actions.evaluateMutation.isPending}
+        />
+      )}
 
-      <EvaluateAchievementsDialog
-        open={evaluateDialogOpen}
-        onOpenChange={setEvaluateDialogOpen}
-        tournaments={tournamentOptions}
-        rules={allRules ?? []}
-        tournamentId={evalTournamentId}
-        onTournamentChange={setEvalTournamentId}
-        selectedRuleIds={evalSelectedRuleIds}
-        onSelectedRuleIdsChange={setEvalSelectedRuleIds}
-        onRun={() => actions.evaluate(evalTournamentId, evalSelectedRuleIds)}
-        isRunning={actions.evaluateMutation.isPending}
-      />
-
-      <AchievementOverrideDialog
-        open={overrideDialogOpen}
-        onOpenChange={setOverrideDialogOpen}
-        rules={allRules ?? []}
-        tournaments={tournamentOptions}
-        draft={overrideDraft}
-        onDraftChange={setOverrideDraft}
-        onSubmit={handleOverrideSubmit}
-        isSaving={actions.overrideMutation.isPending}
-        formError={overrideFormError}
-        saveError={
-          actions.overrideMutation.error instanceof Error
-            ? actions.overrideMutation.error.message
-            : undefined
-        }
-      />
+      {dialog === "import" && (
+        <AchievementImportDialog
+          onClose={closeImport}
+          workspaceId={workspaceId}
+          discipline={discipline}
+          onImportFile={(file) => void actions.importRulesFromFile(file)}
+          isImportingFile={actions.importMutation.isPending}
+          result={actions.importResult}
+          error={actions.importError}
+          onImported={actions.setImportResult}
+        />
+      )}
 
       <AchievementFormDialog form={form} />
 
-      {canDelete && deletingRule && (
-        <ConfirmDialog
-          open={!!deletingRule}
-          onOpenChange={(open) => !open && setDeletingRule(null)}
-          onConfirm={() => actions.remove(deletingRule.id)}
-          pending={actions.deleteMutation.isPending}
-          intent={{
-            title: t("list.deleteAchievement"),
-            description: t("list.deleteDescription", { name: deletingRule.name, slug: deletingRule.slug }),
-            confirmLabel: actions.deleteMutation.isPending ? t("common.deleting") : t("common.delete"),
-            tone: "danger",
-            cascade: [
-              t("list.deleteCascadeResult"),
-              t("list.deleteCascadeOverride"),
-            ],
-          }}
-        />
-      )}
-
-      {canCreate && (
-        <ConfirmDialog
-          open={hardResetOpen}
-          onOpenChange={setHardResetOpen}
-          onConfirm={() => {
-            setHardResetOpen(false);
+      <ConfirmDialog
+        open={confirmation !== null}
+        onOpenChange={(open) => !open && setConfirmation(null)}
+        onConfirm={() => {
+          if (confirmation?.kind === "delete") {
+            actions.remove(confirmation.rule.id);
+          } else {
+            setConfirmation(null);
             actions.hardReset();
-          }}
-          pending={actions.hardResetMutation.isPending}
-          intent={{
-            title: t("list.resetTitle"),
-            description: t("list.resetDescription"),
-            confirmLabel: actions.hardResetMutation.isPending ? t("common.saving") : t("list.hardReset"),
-            tone: "danger",
-            cascade: [t("list.resetCascade")],
-          }}
-        />
-      )}
-
-      <DryRunResultDialog result={actions.testResult} onDismiss={actions.dismissTestResult} />
+          }
+        }}
+        pending={confirmation?.kind === "delete" ? actions.deleteMutation.isPending : actions.hardResetMutation.isPending}
+        intent={
+          confirmation?.kind === "delete"
+            ? {
+                title: t("list.deleteAchievement"),
+                description: t("list.deleteDescription", {
+                  name: confirmation.rule.name,
+                  slug: confirmation.rule.slug,
+                }),
+                confirmLabel: actions.deleteMutation.isPending ? t("common.deleting") : t("common.delete"),
+                tone: "danger",
+                cascade: [t("list.deleteCascadeResult"), t("list.deleteCascadeOverride")],
+              }
+            : {
+                title: t("list.resetTitle"),
+                description: t("list.resetDescription"),
+                confirmLabel: t("list.hardReset"),
+                tone: "danger",
+                cascade: [t("list.resetCascade")],
+              }
+        }
+      />
     </div>
   );
 }

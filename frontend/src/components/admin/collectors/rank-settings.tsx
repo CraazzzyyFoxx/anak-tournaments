@@ -7,14 +7,8 @@ import { CollectionSettingsPanel, useCollectionSettings } from "@/components/kit
 import { formatInterval } from "@/components/kit/format-time";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import type { RankCollectionConfig } from "@/types/admin.types";
@@ -59,36 +53,20 @@ export function RankSettingsPanel() {
       {(form, patch) => (
         <>
           <SettingGroup title={t("collection.title")}>
-            <SettingRow
-              htmlFor={`${ids}-enabled`}
-              label={t("collection.enabled")}
-              hint={t("collection.enabledHint")}
-            >
-              <Switch
-                id={`${ids}-enabled`}
-                checked={form.enabled}
-                onCheckedChange={(enabled) => patch({ enabled })}
-              />
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-scope`}
-              label={t("collection.scope")}
-              hint={t("collection.scopeHint")}
-            >
-              <Select
+            <SettingRow label={t("collection.scope")} hint={t("collection.scopeHint")}>
+              <ToggleGroup
+                type="single"
+                variant="pill"
+                size="sm"
                 value={form.scope}
                 onValueChange={(scope) => patch({ scope: scope as RankCollectionConfig["scope"] })}
+                aria-label={t("collection.scope")}
               >
-                <SelectTrigger id={`${ids}-scope`} className="h-8 w-fit min-w-[230px] max-w-full text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="registrations_only">
-                    {t("collection.scopeRegistrations")}
-                  </SelectItem>
-                  <SelectItem value="all">{t("collection.scopeAll")}</SelectItem>
-                </SelectContent>
-              </Select>
+                <ToggleGroupItem value="registrations_only">
+                  {t("collection.scopeRegistrations")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="all">{t("collection.scopeAll")}</ToggleGroupItem>
+              </ToggleGroup>
             </SettingRow>
             <SettingRow
               htmlFor={`${ids}-extra`}

@@ -262,7 +262,8 @@ describe("/admin/workspaces", () => {
     );
     // The list shows none of this; the inspector is why the row is clickable.
     expect(inspector.textContent).toContain("Europe/Moscow");
-    expect(inspector.textContent).toContain("Hidden from the public list");
+    // Visibility is the row's icon column; the inspector does not repeat it.
+    expect(inspector.textContent).not.toContain("Hidden from the public list");
     // The owner is not on the workspace payload at all — the inspector is the
     // only place on this screen that resolves it.
     await waitFor(() => inspector.textContent?.includes("@ada"), "the resolved owner");

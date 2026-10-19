@@ -3,11 +3,10 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { BadgeCheck, CheckCircle, ShieldAlert, Trash2, UserRound, XCircle } from "lucide-react";
+import { BadgeAlert, ShieldAlert, Trash2, UserRound, XCircle } from "lucide-react";
 
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { Badge } from "@/components/ui/badge";
 import { getSingleLinkedPlayer } from "@/lib/auth/profile-links";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type { AuthAdminUser } from "@/types/rbac.types";
@@ -28,20 +27,12 @@ export function useAccountColumns({
   return useMemo<ColumnDef<AuthAdminUser>[]>(
     () => [
       {
-        accessorKey: "id",
-        header: "ID",
-        size: 60,
-        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
-      },
-      {
         accessorKey: "email",
         header: t("account"),
         cell: ({ row }) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{row.original.email}</p>
-            <p className="truncate font-mono text-xs text-muted-foreground">
-              @{row.original.username}
-            </p>
+            <p className="truncate text-caption text-muted-foreground">@{row.original.username}</p>
           </div>
         )
       },
@@ -51,10 +42,7 @@ export function useAccountColumns({
         enableSorting: false,
         cell: ({ row }) => {
           const linked = getSingleLinkedPlayer(row.original.linked_players);
-          if (!linked) {
-            return <span className="text-sm text-muted-foreground">{t("notLinked")}</span>;
-          }
-          return <span className="truncate text-sm">{linked.player_name}</span>;
+          return linked ? <span className="truncate text-sm">{linked.player_name}</span> : null;
         }
       },
       {
@@ -64,14 +52,12 @@ export function useAccountColumns({
         meta: columnMeta<AuthAdminUser>({ align: "center" }),
         cell: ({ row }) => (
           <div className="flex flex-wrap justify-center gap-2">
-            {row.original.is_active ? (
-              <StatusIcon icon={CheckCircle} label={t("active")} variant="success" />
-            ) : (
+            {row.original.is_active ? null : (
               <StatusIcon icon={XCircle} label={t("inactive")} variant="muted" />
             )}
-            {row.original.is_verified ? (
-              <StatusIcon icon={BadgeCheck} label={t("verified")} variant="info" />
-            ) : null}
+            {row.original.is_verified ? null : (
+              <StatusIcon icon={BadgeAlert} label={t("notVerified")} variant="warning" />
+            )}
             {row.original.is_superuser ? (
               <StatusIcon icon={ShieldAlert} label={t("superuser")} variant="destructive" />
             ) : null}
@@ -82,19 +68,11 @@ export function useAccountColumns({
         id: "roles",
         header: t("roles"),
         enableSorting: false,
-        meta: columnMeta<AuthAdminUser>({ align: "center" }),
-        cell: ({ row }) =>
-          row.original.roles.length === 0 ? (
-            <span className="text-sm text-muted-foreground">{t("noRoles")}</span>
-          ) : (
-            <div className="flex flex-wrap justify-center gap-1">
-              {row.original.roles.map((role) => (
-                <Badge key={role.id} variant="secondary">
-                  {role.name}
-                </Badge>
-              ))}
-            </div>
-          )
+        cell: ({ row }) => (
+          <span className="text-caption text-muted-foreground">
+            {row.original.roles.map((role) => role.name).join(", ")}
+          </span>
+        )
       },
       createKebabColumn<AuthAdminUser>(
         (row) => {

@@ -30,7 +30,7 @@ export function AssetPreview({
 }: Readonly<AssetPreviewProps>) {
   const t = useTranslations("adminWorkspace.assetPreview");
   const trimmed = name.trim();
-  const accessibleName = trimmed ? `${trimmed} ${assetLabel}` : assetLabel;
+  const accessibleName = trimmed ? t("named", { name: trimmed, asset: assetLabel }) : assetLabel;
 
   if (!imagePath) {
     return (

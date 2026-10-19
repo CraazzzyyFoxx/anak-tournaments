@@ -153,16 +153,9 @@ describe("buildChecklist", () => {
       readiness({ team_formation: "draft", draft_session_status: "live" }),
       ctx(), t);
     expect(byKey(draftPending, "draft_completed").state).toBe("todo");
-  });
-
-  it("archived never warns", () => {
-    for (const status of ["registration", "live", "playoffs", "completed"]) {
-      const item = byKey(buildChecklist(readiness({ status }), ctx(), t), "archived");
-      expect(item.state, status).toBe("skipped");
-    }
-    expect(
-      byKey(buildChecklist(readiness({ status: "archived" }), ctx(), t), "archived").state
-    ).toBe("done");
+    // The session status is translated, never the raw enum, and the row leads to the board.
+    expect(byKey(draftPending, "draft_completed").detail).toBe("Draft is live");
+    expect(byKey(draftPending, "draft_completed").href).toBe("/admin/tournaments/7/teams/draft");
   });
 
   it("approved is informational without threshold", () => {
@@ -194,12 +187,12 @@ describe("buildChecklist", () => {
     expect(byKey(items, "logs").href).toBe("/admin/tournaments/7/matches/logs");
   });
 
-  it("completion tracks the state machine status", () => {
-    const before = buildChecklist(readiness({ status: "playoffs" }), ctx(), t);
-    expect(byKey(before, "completed").state).toBe("todo");
-    expect(byKey(before, "activation").state).toBe("done");
-
-    const after = buildChecklist(readiness({ status: "completed" }), ctx(), t);
-    expect(byKey(after, "completed").state).toBe("done");
+  it("leaves the lifecycle status to the PhaseStrip", () => {
+    for (const status of ["live", "completed", "archived"]) {
+      const keys = buildChecklist(readiness({ status }), ctx(), t).map((item) => item.key);
+      expect(keys, status).not.toContain("activation");
+      expect(keys, status).not.toContain("completed");
+      expect(keys, status).not.toContain("archived");
+    }
   });
 });

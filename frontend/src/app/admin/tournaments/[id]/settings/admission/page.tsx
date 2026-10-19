@@ -32,10 +32,7 @@ import { useRegistrationFormSection } from "../useRegistrationFormSection";
  */
 export default function AdmissionSettingsPage() {
   return (
-    <SettingsSectionPage
-      section="admission"
-      description={useTranslations("adminTournament.screenDescriptions")("admission")}
-    >
+    <SettingsSectionPage section="admission">
       {({ tournament, tournamentId, canTeamCreate }) => (
         <AdmissionForm
           tournamentId={tournamentId}

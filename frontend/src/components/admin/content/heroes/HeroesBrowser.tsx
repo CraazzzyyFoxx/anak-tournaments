@@ -119,12 +119,7 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
       />
 
       <CatalogEntityDialogs crud={crud} kindLabel={kindLabel}>
-        <CatalogNameField
-          id={nameFieldId}
-          value={formData.name}
-          onChange={(name) => setFormData({ ...formData, name })}
-          placeholder={t("catalog.entity.namePlaceholder", { kind: kindLabel })}
-        />
+        <CatalogNameField id={nameFieldId} value={formData.name} onChange={(name) => setFormData({ ...formData, name })} />
 
         <div className="space-y-2">
           <Label htmlFor={imageFieldId}>{t("catalog.entity.imageUrl", { kind: kindLabel })}</Label>
@@ -149,7 +144,7 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
 
         {classes.length > 0 && (
           <div className="space-y-2">
-            <Label htmlFor={classFieldId}>{t("catalog.character.classRequired")}</Label>
+            <Label htmlFor={classFieldId}>{t("columns.class")}</Label>
             <Select
               value={formData.class}
               onValueChange={(value) => setFormData({ ...formData, class: value })}
@@ -194,7 +189,6 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
           id={aliasesFieldId}
           aliases={formData.aliases}
           onChange={(aliases) => setFormData({ ...formData, aliases })}
-          placeholder={"Ана\nアナ"}
           helperText={t("fields.aliasesHelp")}
         />
 

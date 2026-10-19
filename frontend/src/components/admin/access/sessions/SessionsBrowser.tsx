@@ -24,10 +24,9 @@ const PAGE_SIZE = 20;
  * Auth sessions (T2, F15) — the superuser's read-only view of who is signed in
  * where.
  *
- * The status `<Select>` is now a URL chip, and the raw user agent and the
- * network address live in the inspector: they are what an investigation needs
- * and what made every row three lines tall. The session id stays in the row,
- * truncated, because it is how a session is named in a report.
+ * The status `<Select>` is now a URL chip, and the session id, the raw user
+ * agent and the network address live in the inspector: they are what an
+ * investigation needs and what made every row three lines tall.
  */
 export function SessionsBrowser() {
   const t = useTranslations("adminAccess.common");
@@ -64,17 +63,15 @@ export function SessionsBrowser() {
           renderMobileCard={(row) => (
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
-                {row.original.email ?? `account #${row.original.user_id}`}
+                {row.original.email ?? t("accountFallback", { id: row.original.user_id })}
               </p>
               <p className="truncate text-xs text-muted-foreground">
                 {formatDeviceLabel(row.original.user_agent, t("unknownDevice"))}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {ts.rich("statusSummary", {
-                  status: t(row.original.status),
-                  time: formatTimestamp(format, row.original.last_seen_at, t("unavailable")),
-                  num: (chunks) => <span className="tabular-nums">{chunks}</span>
-                })}
+              <p className="truncate text-xs tabular-nums text-muted-foreground">
+                {[t(row.original.status), formatTimestamp(format, row.original.last_seen_at)]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
           )}
@@ -105,7 +102,7 @@ export function SessionsBrowser() {
       <Inspector
         openId={openRow ? openId : null}
         onClose={() => setParams({ id: null })}
-        title={openRow ? (openRow.email ?? `Account #${openRow.user_id}`) : ""}
+        title={openRow ? (openRow.email ?? t("accountFallback", { id: openRow.user_id })) : ""}
         subtitle={openRow ? formatDeviceLabel(openRow.user_agent, t("unknownDevice")) : undefined}
         openHref={openRow ? accountsHref(openRow) : undefined}
         onPrev={

@@ -185,6 +185,11 @@ function button(label: string) {
   );
 }
 
+/** Dismiss is icon-only: found by its accessible name. */
+function dismissButtons() {
+  return Array.from(document.querySelectorAll('button[aria-label="Dismiss"]'));
+}
+
 /** `kind` of the most recent queue request. */
 function lastKind(): unknown {
   return (getCatalogAliasMisses.mock.calls.at(-1)?.[0] as { kind?: unknown } | undefined)?.kind;
@@ -234,11 +239,11 @@ describe("admin Game content › Unresolved names", () => {
     expect(button("Attach")).toBeUndefined();
   });
 
-  it("gives a superuser the target picker and the inline actions", async () => {
+  it("gives a superuser the target picker and the inline dismiss", async () => {
     const container = await mount();
 
     expect(container.querySelector('[aria-label="Pick a map…"]')).not.toBeNull();
-    expect(button("Attach")).toBeDefined();
+    expect(dismissButtons()).toHaveLength(1);
   });
 
   it("reads ?type= on mount", async () => {
@@ -262,8 +267,8 @@ describe("admin Game content › Unresolved names", () => {
   it("attaches the raw name to the entity picked in the row", async () => {
     const container = await mount();
 
-    // Nothing picked yet, so the action is inert rather than silently failing.
-    expect(button("Attach")).toHaveProperty("disabled", true);
+    // Nothing picked yet, so there is nothing to attach to: the action is absent.
+    expect(button("Attach")).toBeUndefined();
 
     await click(container.querySelector('[aria-label="Pick a map…"]'));
     await click(commandItem("Ilios"));
@@ -287,8 +292,8 @@ describe("admin Game content › Unresolved names", () => {
     }
     expect(container.querySelector('[aria-label^="Pick a"]')).toBeNull();
     expect(button("Attach")).toBeUndefined();
-    expect(Array.from(document.querySelectorAll("button")).filter((b) => b.textContent?.trim() === "Dismiss")).toHaveLength(3);
-    expect(container.textContent).toContain("dismiss only");
+    expect(dismissButtons()).toHaveLength(3);
+    expect(container.textContent).toContain("Dismiss only");
     expect(listCatalogEntities).not.toHaveBeenCalled();
   });
 
@@ -296,7 +301,7 @@ describe("admin Game content › Unresolved names", () => {
     getCatalogAliasMisses.mockResolvedValue({ results: [NONENTITY[2]], total: 1, page: 1, per_page: 25 });
     await mount();
 
-    await click(button("Dismiss"));
+    await click(dismissButtons()[0]);
 
     expect(dismissCatalogAliasMiss).toHaveBeenCalledWith(6);
     expect(attachCatalogAlias).not.toHaveBeenCalled();

@@ -3,7 +3,6 @@
 import { Crown, LifeBuoy, X, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { StatusPill } from "@/components/kit/StatusPill";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
-import { EXPIRY_STAMP, inviteTone, isLiveInvite, isTeamLive, memberName } from "./model";
+import { EXPIRY_STAMP, isLiveInvite, isTeamLive, memberName } from "./model";
 
 /**
  * Captain / substitute marker.
@@ -35,10 +34,9 @@ export function RosterMark({
 }
 
 /**
- * Roster and open invites in one wrapping strip: they fill the same slots, and
- * the dashed chip is what says "offered, not taken". Two separate lists left one
- * of them empty on most teams — and "No open invites." was a whole line spent on
- * the ordinary case.
+ * Roster and open invites in one list: they fill the same slots, and an invite
+ * row is what says "offered, not taken". Plain rows, not chips: a name is not a
+ * status. Two separate lists left one of them empty on most teams.
  */
 export function TeamRosterStrip({
   team,
@@ -63,19 +61,16 @@ export function TeamRosterStrip({
     canManage && !team.roster_locked_at && team.exported_team_id == null && isTeamLive(team);
 
   return (
-    <ul className="flex flex-wrap items-center gap-1.5">
+    <ul className="divide-y divide-border/60 text-sm">
       {team.members.map((member) => (
-        <li
-          key={member.registration_id}
-          className="flex items-center gap-1.5 rounded-md border border-border px-1.5 py-0.5 text-caption"
-        >
+        <li key={member.registration_id} className="flex items-center gap-2 py-1.5">
           <RosterSlotGlyph code={member.slot_code} ontology={ontology} size={14} />
-          <span className="font-medium">{memberName(member)}</span>
+          <span className="min-w-0 truncate">{memberName(member)}</span>
           {member.is_captain && (
             <RosterMark icon={Crown} label={t("member.captain")} className="text-warning" />
           )}
           {member.is_manager && !member.is_captain && (
-            <span className="text-muted-foreground">{t("member.manager")}</span>
+            <span className="text-caption text-muted-foreground">{t("member.manager")}</span>
           )}
           {member.is_substitute && (
             <RosterMark
@@ -87,15 +82,9 @@ export function TeamRosterStrip({
         </li>
       ))}
       {team.invites.map((invite) => (
-        <li
-          key={invite.id}
-          className="flex items-center gap-1.5 rounded-md border border-dashed border-border px-1.5 py-0.5 text-caption"
-        >
-          <StatusPill tone={inviteTone(invite.state)}>
-            {t(`inviteState.${invite.state}`)}
-          </StatusPill>
+        <li key={invite.id} className="flex items-center gap-2 py-1.5">
           <RosterSlotGlyph code={invite.slot_code} ontology={ontology} size={14} />
-          <span className="text-muted-foreground">
+          <span className="min-w-0 truncate text-muted-foreground">
             {invite.target_handle ?? t("invite.linkLabel")}
           </span>
           {invite.is_substitute && (
@@ -105,13 +94,14 @@ export function TeamRosterStrip({
               className="text-muted-foreground"
             />
           )}
-          {invite.expires_at && (
-            <span className="text-muted-foreground">
-              {t("invite.expiresAt", {
-                date: format.dateTime(new Date(invite.expires_at), EXPIRY_STAMP)
-              })}
-            </span>
-          )}
+          <span className="ml-auto shrink-0 text-caption text-muted-foreground">
+            {t(`inviteState.${invite.state}`)}
+            {invite.expires_at
+              ? ` · ${t("invite.expiresAt", {
+                  date: format.dateTime(new Date(invite.expires_at), EXPIRY_STAMP)
+                })}`
+              : null}
+          </span>
           {/* An organizer reaching into someone else's roster. Its own label and
               the danger tone keep it from reading like the captain's own
               "Revoke" — the two are the same effect but not the same act, and

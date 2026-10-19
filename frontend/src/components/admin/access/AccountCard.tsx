@@ -83,14 +83,13 @@ export function AccountDisclosure({
   );
 }
 
+/** Only the states that want attention: active and verified are the norm and render nothing. */
 export function AccountStatusPills({ account }: Readonly<{ account: AuthAdminUser }>) {
   const t = useTranslations("adminAccess.common");
+  if (account.is_active && !account.is_superuser) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <StatusPill tone={account.is_active ? "success" : "neutral"} dot>
-        {account.is_active ? t("active") : t("inactive")}
-      </StatusPill>
-      {account.is_verified ? <StatusPill tone="info">{t("verified")}</StatusPill> : null}
+      {account.is_active ? null : <StatusPill tone="neutral">{t("inactive")}</StatusPill>}
       {account.is_superuser ? <StatusPill tone="danger">{t("superuser")}</StatusPill> : null}
     </div>
   );

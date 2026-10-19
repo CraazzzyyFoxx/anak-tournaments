@@ -5,7 +5,6 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { AlertCircle, AlertTriangle, ChevronRight, Info, type LucideIcon } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusPill } from "@/components/kit/StatusPill";
 import { TONE_TEXT, type Tone } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
 
@@ -43,29 +42,13 @@ interface IssuesQueueProps {
 
 export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
   const t = useTranslations("adminShell.dashboard");
-  // The count pill takes the worst severity present. It used to be
-  // `variant="destructive"` unconditionally, so an info-only list raised a red
-  // alarm. `aria-hidden` because the CardDescription below states the same
-  // count in words — a bare number is not an accessible name.
-  const worstTone: Tone = items.some((item) => item.tone === "critical")
-    ? "danger"
-    : items.some((item) => item.tone === "warning")
-      ? "warning"
-      : "info";
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle asChild>
-            <h2>{t("issues")}</h2>
-          </CardTitle>
-          {items.length > 0 && (
-            <StatusPill tone={worstTone} className="tabular-nums" aria-hidden>
-              {items.length}
-            </StatusPill>
-          )}
-        </div>
+        <CardTitle asChild>
+          <h2>{t("issues")}</h2>
+        </CardTitle>
         {items.length > 0 && (
           <CardDescription>
             {t("issueCount", { count: items.length })}

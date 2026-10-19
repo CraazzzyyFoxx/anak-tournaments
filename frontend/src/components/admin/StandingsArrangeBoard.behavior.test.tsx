@@ -180,7 +180,7 @@ describe("StandingsArrangeBoard", () => {
 
   it("offers no clear when nothing in the table is pinned", async () => {
     await mount(board([standing(1, 1), standing(2, 2)]));
-    expect(button("Clear pins").disabled).toBe(true);
+    expect(() => button("Clear pins")).toThrow();
   });
 
   it("is read-only without the update permission", async () => {

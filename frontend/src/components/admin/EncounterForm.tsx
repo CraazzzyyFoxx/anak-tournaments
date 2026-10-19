@@ -2,7 +2,6 @@
 
 import { useId } from "react";
 import { useTranslations } from "next-intl";
-import { Star } from "lucide-react";
 
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { buildEncounterName } from "@/components/admin/encounter-name";
@@ -136,11 +135,6 @@ export function encounterUpdatePayload(form: EncounterFormState): EncounterUpdat
   };
 }
 
-function closenessToStars(closeness: number | null): number {
-  if (closeness == null || closeness <= 0) return 0;
-  return Math.max(1, Math.min(5, Math.round(closeness * 5)));
-}
-
 /**
  * The encounter fields, for both create and edit.
  *
@@ -167,7 +161,6 @@ export function EncounterForm({
   const t = useTranslations("adminMatches.form");
   const prefix = useId();
   const stage = stages.find((entry) => entry.id === value.stage_id) ?? null;
-  const stars = closenessToStars(value.closeness);
 
   return (
     <div className="space-y-4">
@@ -311,36 +304,20 @@ export function EncounterForm({
       </div>
 
       {mode === "edit" ? (
-        <div role="group" aria-label={t("closeness")}>
-          <p className="text-sm font-medium leading-none">{t("closeness")}</p>
-          <div className="mt-2 flex items-center gap-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <button
-                key={star}
-                type="button"
-                className="p-1"
-                aria-label={t("rateCloseness", { star })}
-                aria-pressed={star <= stars}
-                onClick={() =>
-                  onChange({
-                    ...value,
-                    // Clicking the current rating clears it, which is the only
-                    // way back to "not rated" once a star has been set.
-                    closeness: star === stars ? null : star / 5
-                  })
-                }
-              >
-                <Star
-                  aria-hidden
-                  className={
-                    star <= stars ? "size-6 fill-warning text-warning" : "size-6 text-muted-foreground"
-                  }
-                />
-              </button>
-            ))}
-            <span className="ml-2 text-sm tabular-nums text-muted-foreground">
-              {stars > 0 ? `${stars}/5` : t("notSet")}
-            </span>
+        // The same 1–10 scale captains report on, so the two read alike.
+        <div>
+          <Label htmlFor={`${prefix}-closeness`}>{t("closeness")}</Label>
+          <div className="flex items-center gap-2">
+            <NumberInput
+              id={`${prefix}-closeness`}
+              integer
+              min={1}
+              max={10}
+              className="w-20"
+              value={value.closeness == null ? null : Math.round(value.closeness * 10)}
+              onValueChange={(next) => onChange({ ...value, closeness: next == null ? null : next / 10 })}
+            />
+            <span className="text-sm text-muted-foreground">/10</span>
           </div>
         </div>
       ) : null}

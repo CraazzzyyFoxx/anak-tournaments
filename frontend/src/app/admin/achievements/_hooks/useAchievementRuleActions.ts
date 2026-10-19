@@ -7,7 +7,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import type {
-  AchievementOverrideCreateInput,
   AchievementRuleExportEnvelope,
   AchievementRuleImportResult,
   EvaluationRunRead,
@@ -35,7 +34,7 @@ export interface DryRunResult {
 /**
  * Everything the achievements screen *does* to the catalog of the selected game:
  * seeding, resetting, JSON import/export, evaluation runs, dry runs,
- * enable/disable, deletion and manual overrides.
+ * enable/disable, deletion and removing manual overrides.
  *
  * Every call names `discipline` — two games share the workspace, so "seed" or
  * "reset" without a game would be a different, much larger operation. A file
@@ -49,26 +48,14 @@ export interface DryRunResult {
 export function useAchievementRuleActions({
   workspaceId,
   discipline,
-  /**
-   * The hidden picker behind "Import JSON". Its value is cleared once a file
-   * has been read, or the same file can never be picked twice in a row. It is
-   * owned by the page: a ref handed back out of a hook makes everything else
-   * the hook returns look ref-shaped to the compiler.
-   */
-  jsonInputRef,
   onDeleted,
   onEvaluated,
-  onOverrideSaved,
-  onOverrideRemoved,
 }: {
   workspaceId: number | null;
   /** The selected game; `null` when the workspace has none enabled. */
   discipline: string | null;
-  jsonInputRef: React.RefObject<HTMLInputElement | null>;
   onDeleted: () => void;
   onEvaluated: () => void;
-  onOverrideSaved: () => void;
-  onOverrideRemoved: () => void;
 }) {
   const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
@@ -91,12 +78,6 @@ export function useAchievementRuleActions({
     queryClient.invalidateQueries({
       queryKey: achievementQueryKeys.overridesAll(scope.workspaceId, scope.discipline),
     });
-
-  const clearFilePicker = () => {
-    if (jsonInputRef.current) {
-      jsonInputRef.current.value = "";
-    }
-  };
 
   const deleteMutation = useMutation({
     mutationFn: ({ scope, id }: { scope: RuleScope; id: number }) =>
@@ -129,14 +110,12 @@ export function useAchievementRuleActions({
       queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
       setImportError(null);
       setImportResult(data);
-      clearFilePicker();
     },
     onError: (error) => {
       // The server refused the whole file (unsupported format, a missing or foreign
       // character, a disabled game): say so, and report no success.
       setImportResult(null);
       setImportError(error instanceof Error ? error.message : t("list.importFailed"));
-      clearFilePicker();
     },
   });
 
@@ -161,22 +140,10 @@ export function useAchievementRuleActions({
     onSuccess: (_data, { scope }) => invalidateRules(scope),
   });
 
-  const overrideMutation = useMutation({
-    mutationFn: ({ scope, draft }: { scope: RuleScope; draft: AchievementOverrideCreateInput }) =>
-      adminService.createAchievementOverride(scope.workspaceId, draft),
-    onSuccess: (_data, { scope }) => {
-      invalidateOverrides(scope);
-      onOverrideSaved();
-    },
-  });
-
   const deleteOverrideMutation = useMutation({
     mutationFn: ({ scope, id }: { scope: RuleScope; id: number }) =>
       adminService.deleteAchievementOverride(scope.workspaceId, id),
-    onSuccess: (_data, { scope }) => {
-      invalidateOverrides(scope);
-      onOverrideRemoved();
-    },
+    onSuccess: (_data, { scope }) => invalidateOverrides(scope),
   });
 
   /** Streams the selected game's rules to the browser as the v2 JSON the importer reads back. */
@@ -207,7 +174,6 @@ export function useAchievementRuleActions({
       parsed = JSON.parse(text);
     } catch {
       setImportError(t("list.invalidJson", { name: file.name }));
-      clearFilePicker();
       return;
     }
     const problem = portableFileProblem(parsed);
@@ -219,7 +185,6 @@ export function useAchievementRuleActions({
             ? t("list.importLegacyHero", { name: file.name, slug: problem.slug })
             : t("list.importNotPortable", { name: file.name })
       );
-      clearFilePicker();
       return;
     }
     // portableFileProblem proved the envelope; the server validates every rule in it.
@@ -237,7 +202,7 @@ export function useAchievementRuleActions({
     dismissEvaluationResult: () => setEvaluationResult(null),
     importResult,
     dismissImportResult: () => setImportResult(null),
-    /** The library dialog imports through its own mutation and reports back here. */
+    /** The import dialog's workspace copy runs through its own mutation and reports back here. */
     setImportResult,
     importError,
     dismissImportError: () => setImportError(null),
@@ -250,15 +215,12 @@ export function useAchievementRuleActions({
     evaluateMutation,
     testMutation,
     toggleMutation,
-    overrideMutation,
     deleteOverrideMutation,
     /** Each starts for the game selected now and finishes against that game, whatever is selected then. */
     seed: () => seedMutation.mutate(currentScope()),
     hardReset: () => hardResetMutation.mutate(currentScope()),
     toggle: (id: number, enabled: boolean) => toggleMutation.mutate({ scope: currentScope(), id, enabled }),
     remove: (id: number) => deleteMutation.mutate({ scope: currentScope(), id }),
-    createOverride: (draft: AchievementOverrideCreateInput) =>
-      overrideMutation.mutate({ scope: currentScope(), draft }),
     removeOverride: (id: number) => deleteOverrideMutation.mutate({ scope: currentScope(), id }),
     exportRules,
     importRulesFromFile,

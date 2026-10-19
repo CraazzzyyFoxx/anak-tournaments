@@ -100,7 +100,7 @@ export default function CollectorsLayout({ children }: Readonly<{ children: Reac
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader title={t("title")} description={t("description")} />
+      <AdminPageHeader title={t("title")} />
       <LinkTabs items={items} activeKey={active ?? "rank"} ariaLabel={t("title")} />
       {children}
     </div>

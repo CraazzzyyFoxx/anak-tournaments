@@ -69,36 +69,30 @@ export function usePeopleColumns({
         cell: ({ row }) =>
           row.original.social_accounts?.length ? (
             <SocialAccountList accounts={row.original.social_accounts} linkify={false} />
-          ) : (
-            <span className="text-xs italic text-muted-foreground">{t("noIdentitiesLinked")}</span>
-          )
+          ) : null
       },
-      {
-        id: "account",
-        header: t("columns.account"),
-        enableSorting: false,
-        cell: ({ row }) => {
-          if (!canReadAuth) {
-            return (
-              <span
-                className="text-sm text-muted-foreground"
-                title={t("authGrant")}
-              >
-                —
-              </span>
-            );
-          }
-          const account = authByPlayerId.get(row.original.id);
-          if (!account) {
-            return <span className="text-sm text-muted-foreground">{t("notLinked")}</span>;
-          }
-          return (
-            <span className="truncate text-sm" title={account.email}>
-              {account.username || account.email}
-            </span>
-          );
-        }
-      },
+      // Without the global auth grant there is nothing to read, so no column
+      // rather than a column of blanks claiming every identity is unlinked.
+      ...(canReadAuth
+        ? [
+            {
+              id: "account",
+              header: t("columns.account"),
+              enableSorting: false,
+              cell: ({ row }) => {
+                const account = authByPlayerId.get(row.original.id);
+                if (!account) {
+                  return <span className="text-sm text-muted-foreground">{t("notLinked")}</span>;
+                }
+                return (
+                  <span className="truncate text-sm" title={account.email}>
+                    {account.username || account.email}
+                  </span>
+                );
+              }
+            } satisfies ColumnDef<User>
+          ]
+        : []),
       createKebabColumn<User>(
         (person) => [
           { label: t("actions.openPerson"), href: `/admin/people/${person.id}` },

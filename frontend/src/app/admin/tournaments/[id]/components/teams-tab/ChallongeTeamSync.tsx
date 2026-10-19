@@ -4,19 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { getAdminDetailTableStyles } from "@/components/admin/AdminDetailTable";
 import { WizardShell } from "@/components/kit/WizardShell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -32,7 +26,6 @@ import type {
   ChallongeTeamPreviewParticipant
 } from "@/types/admin.types";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
-import { Spinner } from "@/components/ui/spinner";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { ChallongeTeamPicker } from "./ChallongeTeamPicker";
 import { UNMAPPED_TEAM_VALUE, getChallongeParticipantKey } from "./model";
@@ -207,13 +200,13 @@ export function ChallongeTeamSync({
 
   return (
     <>
-      {canImportTeams ? (
+      {canImportTeams && hasChallongeSource ? (
         <Button
           variant="outline"
+          size="sm"
           onClick={openChallongeSyncDialog}
-          disabled={syncTeamsMutation.isPending || !hasChallongeSource}
+          disabled={syncTeamsMutation.isPending}
         >
-          <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
           {t("sync")}
         </Button>
       ) : null}
@@ -228,12 +221,9 @@ export function ChallongeTeamSync({
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto" aria-describedby={undefined}>
           <DialogHeader className="border-b border-border/60 pb-4">
             <DialogTitle>{t("syncChallonge")}</DialogTitle>
-            <DialogDescription>
-              {t("mappingDescription")}
-            </DialogDescription>
           </DialogHeader>
 
           {/* Two steps rather than one long table with a Sync button at the
@@ -276,7 +266,7 @@ export function ChallongeTeamSync({
                 <p className="text-sm text-muted-foreground">
                   {tx("mappingSummary", { selected: selectedChallongeMappings.length, total: challongeParticipants.length })}
                 </p>
-                <ul className="divide-y divide-border/60 rounded-md border border-border/60">
+                <ul className="divide-y divide-border/60">
                   {confirmedChallongeRows.map((row) => (
                     <li
                       key={row.key}
@@ -302,20 +292,17 @@ export function ChallongeTeamSync({
             ) : (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="secondary" className="tabular-nums">
-                      {t("participantsCount", { count: challongeParticipants.length })}
-                    </Badge>
-                    <Badge
-                      tone={activeUnmappedParticipants.length ? "danger" : "neutral"}
-                      className="tabular-nums"
-                    >
-                      {t("unmappedCount", { count: activeUnmappedParticipants.length })}
-                    </Badge>
-                    <Badge variant="secondary" className="tabular-nums">
-                      {t("selectedCount", { count: selectedChallongeMappings.length })}
-                    </Badge>
-                  </div>
+                  <p className="text-xs tabular-nums text-muted-foreground">
+                    {t.rich("participantsSummary", {
+                      participants: challongeParticipants.length,
+                      unmapped: activeUnmappedParticipants.length,
+                      warn: (chunks) => (
+                        <span className={activeUnmappedParticipants.length > 0 ? "text-warning" : undefined}>
+                          {chunks}
+                        </span>
+                      )
+                    })}
+                  </p>
                   <Button
                     type="button"
                     variant="outline"
@@ -328,7 +315,6 @@ export function ChallongeTeamSync({
                       )
                     }
                   >
-                    <Sparkles className="mr-2 h-4 w-4" aria-hidden />
                     {t("apply")}
                   </Button>
                 </div>
@@ -346,14 +332,13 @@ export function ChallongeTeamSync({
                     </TableHeader>
                     <TableBody>
                       {isChallongePreviewLoading ? (
-                        <TableRow className={tableStyles.row}>
-                          <TableCell className={tableStyles.cell} colSpan={5}>
-                            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                              <Spinner />
-                              {t("loadingParticipants")}
-                            </div>
-                          </TableCell>
-                        </TableRow>
+                        [0, 1, 2].map((index) => (
+                          <TableRow key={index} className={tableStyles.row}>
+                            <TableCell className={tableStyles.cell} colSpan={5}>
+                              <Skeleton className="h-8 w-full" />
+                            </TableCell>
+                          </TableRow>
+                        ))
                       ) : challongeParticipants.length ? (
                         challongeParticipants.map((participant) => {
                           const participantKey = getChallongeParticipantKey(participant);
@@ -408,12 +393,9 @@ export function ChallongeTeamSync({
                                       }))
                                     }
                                   >
-                                    <Sparkles className="mr-2 h-3.5 w-3.5 shrink-0" aria-hidden />
                                     <span className="truncate">{suggestedTeam.name}</span>
                                   </Button>
-                                ) : (
-                                  <span className="text-muted-foreground">{t("none")}</span>
-                                )}
+                                ) : null}
                               </TableCell>
                               <TableCell className={tableStyles.cell}>
                                 <ChallongeTeamPicker

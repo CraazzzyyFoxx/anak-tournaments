@@ -77,6 +77,8 @@ export interface DiscordEntitySelectProps<T extends { id: string; name: string }
   /** Full trigger label content once an entity is selected. */
   renderSelectedLabel: (entity: T) => ReactNode;
   labels: DiscordEntitySelectLabels;
+  /** When set, the list opens with this option, and picking it clears the value. */
+  noneLabel?: string;
 }
 
 /**
@@ -108,7 +110,8 @@ export function DiscordEntitySelect<T extends { id: string; name: string }>({
   onPick,
   renderOption,
   renderSelectedLabel,
-  labels
+  labels,
+  noneLabel
 }: Readonly<DiscordEntitySelectProps<T>>) {
   const sizeClasses = SIZE_CLASSES[size];
 
@@ -178,6 +181,21 @@ export function DiscordEntitySelect<T extends { id: string; name: string }>({
         searchLabel={labels.searchLabel}
         emptyMessage={labels.empty}
       >
+        {noneLabel ? (
+          <CommandGroup>
+            <CommandItem
+              value={noneLabel}
+              onSelect={() => {
+                onChange("");
+                onOpenChange(false);
+                onSearchChange("");
+              }}
+            >
+              <span className="flex-1 text-muted-foreground">{noneLabel}</span>
+              <ComboboxCheck selected={value === ""} />
+            </CommandItem>
+          </CommandGroup>
+        ) : null}
         {groups.map((group, index) => (
           <CommandGroup key={group.heading ?? index} heading={group.heading}>
             {group.entities.map((entity) => (

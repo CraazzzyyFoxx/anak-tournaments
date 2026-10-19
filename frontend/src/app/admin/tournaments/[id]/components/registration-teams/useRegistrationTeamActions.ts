@@ -9,10 +9,9 @@ import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import registrationTeamService from "@/services/registration-team.service";
-import type {
-  RegistrationTeam,
-  RegistrationTeamExportResult
-} from "@/types/registration-team.types";
+import type { RegistrationTeam } from "@/types/registration-team.types";
+
+import { EXPORT_SKIP_CODES } from "./model";
 
 /**
  * Every read and write the organizer's teams browser performs, in one place.
@@ -46,7 +45,6 @@ export function invalidateRegistrationTeams(
 export interface RegistrationTeamActions {
   teams: RegistrationTeam[];
   unassignedPlayers: number;
-  total: number;
   isError: boolean;
   isFetching: boolean;
   error: unknown;
@@ -56,7 +54,6 @@ export interface RegistrationTeamActions {
   actionError: string | null;
   setActionError: (message: string | null) => void;
   reportError: (error: unknown) => void;
-  exportResult: RegistrationTeamExportResult | null;
   /** Any write in flight. One flag, because every control on the screen is
    *  disabled by any of them. */
   busy: boolean;
@@ -87,8 +84,6 @@ export interface RegistrationTeamActions {
     slot_code: string;
     is_substitute: boolean;
   }) => void;
-  nameDraft: Record<number, string>;
-  setNameDraft: React.Dispatch<React.SetStateAction<Record<number, string>>>;
   notesDraft: Record<number, string>;
   setNotesDraft: React.Dispatch<React.SetStateAction<Record<number, string>>>;
 }
@@ -114,9 +109,7 @@ export function useRegistrationTeamActions({
   const queryClient = useQueryClient();
 
   const [actionError, setActionError] = useState<string | null>(null);
-  const [exportResult, setExportResult] = useState<RegistrationTeamExportResult | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
-  const [nameDraft, setNameDraft] = useState<Record<number, string>>({});
 
   const teamsQuery = useQuery({
     queryKey: tournamentQueryKeys.registrationTeamsAdmin(workspaceId, tournamentId, true),
@@ -154,9 +147,14 @@ export function useRegistrationTeamActions({
       // public pages read.
       invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
 
-      setExportResult(result);
       closeConfirm();
-      const names = result.skipped.map((item) => item.name).join(", ");
+      // The toast is the whole report: which teams were skipped, and why.
+      const names = result.skipped
+        .map((item) => {
+          const code = EXPORT_SKIP_CODES.find((known) => known === item.code);
+          return `${item.name}: ${code ? t(`admin.skipReason.${code}`) : t("admin.actionFailed")}`;
+        })
+        .join(", ");
       const description = names ? t("admin.exportSkipped", { names }) : undefined;
 
       if (result.imported_teams === 0) {
@@ -238,14 +236,9 @@ export function useRegistrationTeamActions({
   const renameMutation = useMutation({
     mutationFn: (input: { teamId: number; name: string }) =>
       registrationTeamService.renameAdmin(tournamentId, input.teamId, input.name),
-    onSuccess: (_result, input) => {
+    onSuccess: () => {
       invalidateTeams();
       closeRename();
-      setNameDraft((current) => {
-        const next = { ...current };
-        delete next[input.teamId];
-        return next;
-      });
       notify.success(t("rename.success"));
     },
     onError: reportError
@@ -297,7 +290,6 @@ export function useRegistrationTeamActions({
   return {
     teams: teamsQuery.data?.items ?? [],
     unassignedPlayers: teamsQuery.data?.unassigned_players ?? 0,
-    total: teamsQuery.data?.total ?? 0,
     isError: teamsQuery.isError,
     isFetching: teamsQuery.isFetching,
     error: teamsQuery.error,
@@ -305,7 +297,6 @@ export function useRegistrationTeamActions({
     actionError,
     setActionError,
     reportError,
-    exportResult,
     busy:
       rejectMutation.isPending ||
       exportMutation.isPending ||
@@ -331,8 +322,6 @@ export function useRegistrationTeamActions({
     isPlacing: placeAdminMutation.isPending || attachAdminMutation.isPending,
     placeMember: placeAdminMutation.mutate,
     attachMember: attachAdminMutation.mutate,
-    nameDraft,
-    setNameDraft,
     notesDraft,
     setNotesDraft
   };

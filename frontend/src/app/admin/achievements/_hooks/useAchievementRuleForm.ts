@@ -47,10 +47,10 @@ export interface AchievementRuleForm {
 }
 
 /**
- * The create/edit dialog's state and the two mutations behind it. Creating with
- * an image is two round-trips — the rule has to exist before its badge can be
- * uploaded against its slug — so the upload lives inside the create mutation
- * rather than in a second call site.
+ * The create/edit dialog's state and the two mutations behind it, for the list
+ * and for a rule's own page. Saving with an image is two round-trips — the
+ * rule has to exist before its badge can be uploaded against its slug — so the
+ * upload lives inside each mutation rather than in a second call site.
  *
  * `selectedDiscipline` is where a new rule starts. A form already open keeps the
  * game it was opened for: a create draft is tied to its own `discipline` and an
@@ -101,12 +101,21 @@ export function useAchievementRuleForm(
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: AchievementRuleUpdateInput }) =>
-      adminService.updateAchievementRule(workspaceId!, id, data),
+    mutationFn: async ({ id, data }: { id: number; data: AchievementRuleUpdateInput }) => {
+      const updated = await adminService.updateAchievementRule(workspaceId!, id, data);
+      if (imageFile && updated.slug) {
+        const uploadResult = await adminService.uploadAchievementImage(updated.slug, imageFile, workspaceId!);
+        await adminService.updateAchievementRule(workspaceId!, id, { image_url: uploadResult.public_url });
+      }
+      return updated;
+    },
     onSuccess: (updated) => {
       invalidateRules(updated.discipline);
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.rule(workspaceId, updated.id) });
       setEditingRule(null);
       setFormData(emptyAchievementForm(selectedDiscipline ?? updated.discipline));
+      setImageFile(null);
+      setImagePreview(null);
     },
   });
 
@@ -116,6 +125,7 @@ export function useAchievementRuleForm(
     setFormData(emptyAchievementForm(selectedDiscipline ?? ""));
     setImageFile(null);
     setImagePreview(null);
+    setImageError(null);
   };
 
   const openCreate = () => {

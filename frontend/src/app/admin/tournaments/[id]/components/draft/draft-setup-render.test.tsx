@@ -118,15 +118,15 @@ describe("draft config step", () => {
   );
 
   test("renders the pick-time presets as one segmented control, not four loose buttons", () => {
-    // Pick time and overtime are the two `role=group` widgets here; the format
+    // Pick time and overtime are the two labelled radiogroups here; the format
     // is the tournament's and only named, never edited.
-    expect(html.match(/<div[^>]*role="group"[^>]*aria-labelledby[^>]*>/g) ?? []).toHaveLength(2);
+    expect(html.match(/<div[^>]*role="radiogroup"[^>]*aria-labelledby[^>]*>/g) ?? []).toHaveLength(2);
     for (const seconds of [30, 45, 60, 90]) {
       expect(html).toContain(`>${seconds}s</button>`);
     }
-    // One pressed preset per group (45s pick time, overtime off), and the
+    // One checked preset per group (45s pick time, overtime off), and the
     // free-form fields are labelled as custom overrides, not extra presets.
-    expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(2);
+    expect(html.match(/role="radio" aria-checked="true"/g) ?? []).toHaveLength(2);
     expect(html).toContain('for="draft-pick-time"');
     expect(html).toContain("customPickTime");
   });
@@ -153,7 +153,8 @@ describe("draft config step", () => {
 
   test("names the tournament's format read-only and links to where it is set", () => {
     expect(html).toContain("formats.snake.title");
-    expect(html).not.toContain('role="radiogroup"');
+    // The other formats are never offered here: the wizard does not edit it.
+    expect(html).not.toContain("formats.linear.title");
     expect(html).toContain('href="/admin/tournaments/5/settings/draft"');
   });
 });
@@ -228,10 +229,11 @@ describe("draft captains step", () => {
     expect(html).toContain('aria-label="Tank"');
     expect(html).toContain('aria-label="Damage"');
     expect(html).toContain('aria-label="Support"');
-    // Ranked candidates carry a division image; the unranked one still shows a dash.
+    // Ranked candidates carry a division image; the unranked one shows nothing,
+    // never a dash placeholder.
     expect(html).toContain("<img");
     expect(html).toContain("3800");
-    expect(html).toContain("—");
+    expect(html).not.toContain("—");
   });
 
   test("resolves divisions on the tournament's grid, not the global OW ladder", () => {
@@ -303,14 +305,10 @@ describe("draft history panel", () => {
     expect(html).toContain("statuses.cancelled");
   });
 
-  test("blocks deleting an in-flight draft and allows it for a terminal one", () => {
-    const live = html.slice(html.indexOf(session(12)), html.indexOf(session(11)));
-    const cancelled = html.slice(html.indexOf(session(11)));
-
-    expect(live).toContain("history.cancelFirst");
-    expect(live).toContain('disabled=""');
-    expect(cancelled).toContain("history.delete");
-    expect(cancelled).not.toContain("history.cancelFirst");
-    expect(cancelled).not.toContain('disabled=""');
+  test("offers one actions menu per session instead of a row of buttons", () => {
+    // The menu content (and whether Delete is offered) is portalled on open;
+    // the behavior suite opens it. Statically, each row has exactly one trigger.
+    expect(html.match(/aria-haspopup="menu"/g) ?? []).toHaveLength(2);
+    expect(html).not.toContain("history.delete");
   });
 });

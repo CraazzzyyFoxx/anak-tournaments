@@ -25,7 +25,7 @@ export interface SettingsSectionContext {
 
 export interface SettingsSectionProps {
   section: SettingsSection;
-  description: string;
+  description?: string;
   children: (context: SettingsSectionContext) => ReactNode;
 }
 

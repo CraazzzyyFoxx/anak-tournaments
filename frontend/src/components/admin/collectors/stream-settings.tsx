@@ -7,7 +7,6 @@ import { CollectionSettingsPanel, useCollectionSettings } from "@/components/kit
 import { formatInterval } from "@/components/kit/format-time";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";
-import { Switch } from "@/components/ui/switch";
 import { useFormatter } from "@/lib/datetime/client";
 import type { StreamCollectionConfig } from "@/types/admin.types";
 
@@ -38,13 +37,6 @@ export function StreamSettingsPanel() {
     <CollectionSettingsPanel settings={settings}>
       {(form, patch) => (
         <SettingGroup title={t("title")}>
-          <SettingRow htmlFor={`${ids}-enabled`} label={t("enabled")} hint={t("enabledHint")}>
-            <Switch
-              id={`${ids}-enabled`}
-              checked={form.enabled}
-              onCheckedChange={(enabled) => patch({ enabled })}
-            />
-          </SettingRow>
           <SettingRow
             htmlFor={`${ids}-interval`}
             label={t("interval")}

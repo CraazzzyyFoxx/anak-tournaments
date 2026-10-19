@@ -20,7 +20,7 @@ export function useAccountFilterDefs(roles: readonly RbacRole[]): FilterDef[] {
       },
       {
         key: "exclude_role",
-        label: t("excludeRoleLabel"),
+        label: t("excludeRole"),
         kind: "multi",
         options: roles.map((role) => ({ value: String(role.id), label: role.name }))
       },

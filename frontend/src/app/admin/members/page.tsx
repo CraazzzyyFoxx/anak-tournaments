@@ -2,6 +2,7 @@
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { MembersBrowser } from "@/components/admin/members/MembersBrowser";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { useTranslations } from "next-intl";
 
@@ -12,26 +13,14 @@ export default function WorkspaceMembersPage() {
   const getCurrentWorkspace = useWorkspaceStore((s) => s.getCurrentWorkspace);
   const workspaceName = getCurrentWorkspace()?.name ?? t("thisWorkspace");
 
-  // Exclusive branch: no workspace selected means the table below never renders,
-  // so this header is the page's only `<h1>`.
-  if (!currentWorkspaceId) {
-    return (
-      <div className="flex flex-col gap-6">
-        <AdminPageHeader
-          title={tw("membersTitle")}
-          description={tw("membersDescription")}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-6">
-      <AdminPageHeader
-        title={tw("membersTitle")}
-        description={tw("manageMembers", { workspace: workspaceName })}
-      />
-      <MembersBrowser workspaceId={currentWorkspaceId} workspaceName={workspaceName} />
+    <div className="space-y-4">
+      <AdminPageHeader title={tw("membersTitle")} />
+      {currentWorkspaceId ? (
+        <MembersBrowser workspaceId={currentWorkspaceId} workspaceName={workspaceName} />
+      ) : (
+        <PageStateCard state="empty" description={tw("membersDescription")} />
+      )}
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import type { PermissionCatalogEntry } from "@/components/admin/access/PermissionPicker";
 import type { DateFormatter } from "@/components/kit/format-time";
-import type { Tone } from "@/components/kit/tone";
 import type { AccountApiKey } from "@/types/auth.types";
 
 /**
@@ -11,12 +10,6 @@ import type { AccountApiKey } from "@/types/auth.types";
 export const FULL_ACCESS_SCOPE = "admin.*";
 
 export type ApiKeyStatus = "active" | "expired" | "revoked";
-
-export const STATUS_META: Record<ApiKeyStatus, { tone: Tone }> = {
-  active: { tone: "success" },
-  expired: { tone: "neutral" },
-  revoked: { tone: "warning" }
-};
 
 export function formatTimestamp(format: DateFormatter, value: string | null | undefined, neverLabel: string): string {
   if (!value) return neverLabel;

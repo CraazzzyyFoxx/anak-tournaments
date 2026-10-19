@@ -23,7 +23,7 @@ export function useDivisionColumns(ladder: Ladder | null): ColumnDef<Band>[] {
         id: "number",
         header: "#",
         size: 52,
-        cell: ({ row }) => <span className="font-mono tabular-nums">{row.original.number}</span>
+        cell: ({ row }) => <span className="tabular-nums">{row.original.number}</span>
       },
       {
         id: "name",
@@ -52,7 +52,7 @@ export function useDivisionColumns(ladder: Ladder | null): ColumnDef<Band>[] {
         header: t("table.rankRange"),
         size: 130,
         cell: ({ row }) => (
-          <span className="font-mono text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
+          <span className="text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
         )
       },
       ...(ladder
@@ -61,7 +61,7 @@ export function useDivisionColumns(ladder: Ladder | null): ColumnDef<Band>[] {
               id: "native",
               header: t("table.owRanks"),
               cell: ({ row }) => (
-                <span className={cn("font-mono text-sm", !row.original.native && "text-warning")}>
+                <span className={cn("text-sm", !row.original.native && "text-warning")}>
                   {nativeRangeLabel(ladder, row.original) ?? t("ladder.notLinked")}
                 </span>
               )

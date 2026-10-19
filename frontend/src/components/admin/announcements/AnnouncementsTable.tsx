@@ -9,7 +9,6 @@ import { useFormatter } from "@/lib/datetime/client";
 import { DataTable, columnMeta } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { announcementText } from "@/lib/notifications/announcement-text";
 import type { NotificationItem } from "@/types/notification.types";
@@ -43,9 +42,7 @@ export function AnnouncementsTable({
 
   const columns = useMemo<ColumnDef<NotificationItem>[]>(() => {
     const stamp = (value: string | null) =>
-      value == null ? (
-        <span className="text-sm text-muted-foreground">&mdash;</span>
-      ) : (
+      value == null ? null : (
         <time dateTime={value} className="whitespace-nowrap text-sm tabular-nums">
           {format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" })}
         </time>
@@ -62,25 +59,6 @@ export function AnnouncementsTable({
             {announcementText(row.original.payload, locale)?.title ??
               t("notifications.admin.untitled")}
           </span>
-        ),
-      },
-      {
-        accessorKey: "audience",
-        header: t("notifications.admin.columns.audience"),
-        size: 140,
-        meta: columnMeta({ align: "center" }),
-        // Two values, spelled out: `user` is a member of the wire type but not
-        // of this feed (the RPC scopes it to `workspace`/`global`), and an
-        // interpolated key would claim a message that does not exist.
-        cell: ({ row }) => (
-          <Badge
-            tone={row.original.audience === "global" ? "info" : "neutral"}
-            className="font-normal"
-          >
-            {row.original.audience === "global"
-              ? t("notifications.admin.audience.global")
-              : t("notifications.admin.audience.workspace")}
-          </Badge>
         ),
       },
       {

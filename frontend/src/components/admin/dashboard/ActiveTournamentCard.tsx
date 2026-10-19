@@ -2,23 +2,14 @@
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
-import { ArrowRight, Calendar } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import { StatusPill } from "@/components/kit/StatusPill";
 import { formatTournamentStages } from "@/lib/tournament/stages";
-import type { DateFormatter } from "@/components/kit/format-time";
 import { PermissionHiddenNotice } from "./PermissionHiddenNotice";
-import { tournamentStatus } from "./tournament-status";
 import type { Tournament } from "@/types/tournament.types";
-
-/** A tournament day. Stored as a UTC midnight, so read in UTC — any other zone shifts it. */
-function formatDate(format: DateFormatter, value?: Date | string | null) {
-  if (!value) return "-";
-  return format.dateTime(new Date(value), { dateStyle: "medium", timeZone: "UTC" });
-}
 
 interface ActiveTournamentCardProps {
   canRead: boolean;
@@ -41,7 +32,10 @@ export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTou
     return (
       <Card>
         <CardContent className="pt-6">
-          <PermissionHiddenNotice title={t("tournamentDataHidden")} permission="tournament read" />
+          <PermissionHiddenNotice
+            title={t("tournamentDataHidden")}
+            description={t("permissionNoticeTournaments")}
+          />
         </CardContent>
       </Card>
     );
@@ -65,49 +59,34 @@ export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTou
     );
   }
 
-  const status = tournamentStatus(tournament.is_finished);
-  const stageCount = tournament.stages?.length ?? 0;
-  const stageList = stageCount > 0 ? formatTournamentStages(tournament.stages) : null;
+  // A tournament day is stored as a UTC midnight, so it is read in UTC — any
+  // other zone shifts it. A missing end leaves the start alone, never a dash.
+  const dates = [tournament.start_date, tournament.end_date]
+    .filter((value) => value != null)
+    .map((value) => format.dateTime(new Date(value), { dateStyle: "medium", timeZone: "UTC" }))
+    .join(" – ");
+  // The dashboard falls back to the latest tournament when none is running,
+  // so "Finished" is said in words, never as a pill on the "active" card.
+  const meta = [
+    tournament.is_league ? tExtra("league") : null,
+    tournament.is_finished ? t("finished") : null,
+    dates,
+    formatTournamentStages(tournament.stages ?? [])
+  ].filter(Boolean);
 
   return (
     <Card>
       <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-6">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <StatusPill tone={status.tone} dot={!tournament.is_finished}>
-              {t(status.label as never)}
-            </StatusPill>
-            {tournament.is_league ? tExtra("league") : tExtra("tournament")}
-          </div>
-
-          <CardTitle asChild className="mt-2 line-clamp-1 text-xl text-foreground">
+          <CardTitle asChild className="line-clamp-1 text-xl text-foreground">
             <h2>{tournament.name}</h2>
           </CardTitle>
 
-          {/* Dates, stage count and stage names on one line — the only place
-              the stage count is stated. */}
-          <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            <Calendar className="size-3.5 shrink-0" aria-hidden />
-            <span className="tabular-nums">
-              {formatDate(format, tournament.start_date)} — {formatDate(format, tournament.end_date)}
-            </span>
-            {stageCount > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="tabular-nums">
-                  {t("stagesCount", { count: stageCount })}
-                </span>
-              </>
-            )}
-            {stageList && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="truncate" title={stageList}>
-                  {stageList}
-                </span>
-              </>
-            )}
-          </p>
+          {meta.length > 0 ? (
+            <p className="mt-1 truncate text-xs tabular-nums text-muted-foreground" title={meta.join(" · ")}>
+              {meta.join(" · ")}
+            </p>
+          ) : null}
         </div>
 
         <Button asChild size="sm" className="shrink-0">

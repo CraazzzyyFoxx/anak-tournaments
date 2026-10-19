@@ -6,7 +6,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
-import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -23,11 +22,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DivisionGridMarketplaceImportRequest } from "@/types/workspace.types";
-import { Spinner } from "@/components/ui/spinner";
 import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 
 const STEPS = ["source", "version", "create"] as const;
@@ -329,18 +326,13 @@ export default function DivisionGridImportPage() {
               />
             ) : preflightQuery.data ? (
               <div className="rounded-xl border border-border bg-card p-3 text-sm">
-                <p className={cn(EYEBROW_CLASS, "font-mono")}>{t("preview")}</p>
+                <p className={EYEBROW_CLASS}>{t("preview")}</p>
                 <p className="mt-1">
                   {t("previewSummary", { divisions: preflightQuery.data.tiers_count, mappings: preflightQuery.data.mappings_count, crests: preflightQuery.data.assets_to_copy })}
                 </p>
                 {preflightQuery.data.conflicts.length > 0 ? (
-                  <p className="mt-2">
-                    <StatusPill tone="warning">
-                      {t("conflicts", { count: preflightQuery.data.conflicts.length })}
-                    </StatusPill>{" "}
-                    <span className="text-muted-foreground">
-                      {t("conflictsNote")}
-                    </span>
+                  <p className="mt-2 text-muted-foreground">
+                    {t("conflicts", { count: preflightQuery.data.conflicts.length })}
                   </p>
                 ) : null}
                 {preflightQuery.data.warnings.length > 0 ? (
@@ -378,10 +370,7 @@ export default function DivisionGridImportPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                <p className="flex items-center gap-2 text-sm">
-                  <Spinner />
-                  {t("copying")}
-                </p>
+                <p className="text-sm">{t("copying")}</p>
                 <Progress value={job.progress} />
               </div>
             )}

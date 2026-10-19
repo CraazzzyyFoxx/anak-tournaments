@@ -118,7 +118,7 @@ export function CaptainPoolPicker({
           value={query}
           onValueChange={setQuery}
           label={t("searchCaptains")}
-          placeholder={t("searchCaptains")}
+          placeholder={t("searchCaptainsPlaceholder")}
           containerClassName="min-w-52 flex-1"
         />
         <Select value={sort} onValueChange={(next) => setSort(next as DraftCaptainSort)}>
@@ -136,7 +136,7 @@ export function CaptainPoolPicker({
         </Select>
       </div>
 
-      <div className="max-h-96 divide-y divide-border/60 overflow-auto rounded-xl border border-border/70">
+      <div className="max-h-96 divide-y divide-border overflow-auto rounded-xl border border-border">
         {visible.map((row) => {
           const selected = selectedIds.includes(row.id);
           const disabled = !selected && full;
@@ -162,7 +162,7 @@ export function CaptainPoolPicker({
                 ))}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.label}</span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums">
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
                 {division != null && (
                   <DivisionIcon
                     division={division}
@@ -183,7 +183,7 @@ export function CaptainPoolPicker({
                       : undefined
                   }
                 >
-                  {row.rank ?? "—"}
+                  {row.rank}
                 </span>
               </span>
             </label>

@@ -47,7 +47,7 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
       {drifted ? (
         <p className="inline-flex items-center gap-1.5 text-xs font-medium text-warning">
           <AlertTriangle className="size-3.5" aria-hidden />
-          {t("offTrack")} {tStatus(drifted.key)}
+          {t("offTrack", { status: tStatus(drifted.key) })}
         </p>
       ) : null}
     </div>

@@ -74,7 +74,7 @@ export default function AccessAdminLayout({ children }: Readonly<{ children: Rea
 
     return {
       key: tab.key,
-      label: tab.labelKey === "oauth" ? "OAuth" : tc(tab.labelKey),
+      label: tc(tab.labelKey),
       href: `/admin/access/${tab.key}`,
       hidden: !visible
     };
@@ -85,10 +85,7 @@ export default function AccessAdminLayout({ children }: Readonly<{ children: Rea
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        title={t("title")}
-        description={t("description")}
-      />
+      <AdminPageHeader title={t("title")} />
       <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel={t("sections")} />
       {items.every((item) => item.hidden) ? (
         <PageStateCard

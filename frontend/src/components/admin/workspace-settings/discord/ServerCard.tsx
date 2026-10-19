@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle, HelpCircle, MoreHorizontal, Users } from "lucide-react";
+import { MoreHorizontal, Users } from "lucide-react";
 
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -59,14 +59,15 @@ function botInviteUrl(guildId: string): string | null {
 
 function OwnerMark({ name, src }: Readonly<{ name: string; src?: string | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.discord");
+  const label = t("ownerName", { name });
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
       <Avatar className="size-5 rounded-full border">
         {src ? <AvatarImage src={src} alt="" /> : null}
-        <AvatarFallback className="bg-muted text-[10px] font-medium">{initials(name)}</AvatarFallback>
+        <AvatarFallback className="bg-muted text-label font-medium">{initials(name)}</AvatarFallback>
       </Avatar>
-      <span className="truncate" title={name}>
-        {t("owner")} <span className="text-foreground">{name}</span>
+      <span className="truncate" title={label}>
+        {label}
       </span>
     </span>
   );
@@ -76,7 +77,9 @@ function OwnerMark({ name, src }: Readonly<{ name: string; src?: string | null }
  * The bound server: who it is, whether the bot can act in it, and the verbs
  * on it. "Change server" is the everyday action; unlinking and re-inviting the
  * bot are rare enough to live in the overflow menu, except when the bot is
- * missing — then the invite is the one thing that unblocks the page.
+ * missing: then the invite is the one thing that unblocks the page.
+ *
+ * Only a failing state is marked: a verified, bot-ready server shows nothing.
  */
 export function ServerCard({
   workspace,
@@ -101,11 +104,10 @@ export function ServerCard({
   // `connected: false` is two different situations and `error` separates
   // them: with an error Discord (or discord-service) was unreachable and the
   // lookup degraded rather than 500ing, which says nothing about the bot;
-  // without one, Discord answered and the bot cannot see this guild — it was
-  // never invited, or it was kicked.
+  // without one, Discord answered and the bot cannot see this guild (it was
+  // never invited, or it was kicked).
   const botUnknown = info !== undefined && Boolean(info.error);
   const botMissing = info !== undefined && !info.connected && !info.error;
-  const botPresent = info?.connected === true;
 
   return (
     <Card>
@@ -114,9 +116,14 @@ export function ServerCard({
           <div className="flex min-w-0 items-center gap-3">
             <GuildMark name={name} src={icon} size="lg" />
             <div className="flex min-w-0 flex-col gap-1">
-              <p className="truncate text-base font-semibold" title={name}>
-                {name}
-              </p>
+              <div className="flex min-w-0 items-center gap-2">
+                <p className="truncate text-base font-semibold" title={name}>
+                  {name}
+                </p>
+                {workspace.discord_guild_verified_at ? null : (
+                  <StatusPill tone="warning">{t("ownershipNotVerified")}</StatusPill>
+                )}
+              </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                 {info?.member_count ? (
                   <span className="inline-flex items-center gap-1">
@@ -140,7 +147,13 @@ export function ServerCard({
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label={t("moreActions")}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("moreActions")}
+                  title={t("moreActions")}
+                >
                   <MoreHorizontal aria-hidden className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -164,43 +177,13 @@ export function ServerCard({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {workspace.discord_guild_verified_at ? (
-            <StatusPill tone="success">
-              <CheckCircle aria-hidden className="size-3" />
-              {t("ownershipVerified")}
-            </StatusPill>
-          ) : (
-            <StatusPill tone="warning">
-              <AlertTriangle aria-hidden className="size-3" />
-              {t("ownershipNotVerified")}
-            </StatusPill>
-          )}
-          {botPresent ? (
-            <StatusPill tone="success">
-              <CheckCircle aria-hidden className="size-3" />
-              {t("botInServer")}
-            </StatusPill>
-          ) : null}
-          {botMissing ? (
-            <StatusPill tone="warning">
-              <AlertTriangle aria-hidden className="size-3" />
-              {t("botNotInServer")}
-            </StatusPill>
-          ) : null}
-          {botUnknown ? (
-            <StatusPill tone="neutral">
-              <HelpCircle aria-hidden className="size-3" />
-              {t("botUnknown")}
-            </StatusPill>
-          ) : null}
-        </div>
+        {botUnknown ? (
+          <p className="text-caption text-muted-foreground">{t("botUnknown")}</p>
+        ) : null}
 
         {botMissing ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 p-3">
-            <p className="max-w-prose text-sm text-warning">
-              {t("botMissing")}
-            </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="max-w-prose text-caption text-warning">{t("botMissing")}</p>
             {invite ? (
               <Button asChild size="sm">
                 <a href={invite} target="_blank" rel="noopener noreferrer">

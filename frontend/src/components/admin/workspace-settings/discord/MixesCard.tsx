@@ -1,12 +1,17 @@
 "use client";
 
+import { useMemo } from "react";
 import { useTranslations } from "next-intl";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle } from "lucide-react";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
-import { Button } from "@/components/ui/button";
+import {
+  useScopedSettingsForm,
+  type ScopedSettingsForm
+} from "@/components/kit/useScopedSettingsForm";
 import { Card, CardContent } from "@/components/ui/card";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import {
   Select,
   SelectContent,
@@ -14,14 +19,15 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { toggleVariants } from "@/components/ui/toggle";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import { useDiscordChannels } from "@/hooks/useDiscordEntities";
-import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type { DiscordVoicePermission } from "@/types/discord.types";
-import type { WorkspaceBalancerConfigUpsert } from "@/types/balancer-admin.types";
+import type {
+  WorkspaceBalancerConfig,
+  WorkspaceBalancerConfigUpsert
+} from "@/types/balancer-admin.types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 
 const VOICE_PERMISSION_MESSAGE_KEYS = {
@@ -29,6 +35,9 @@ const VOICE_PERMISSION_MESSAGE_KEYS = {
   connect: "connect",
   move_members: "moveMembers"
 } as const satisfies Record<DiscordVoicePermission, string>;
+
+/** Radix Select has no empty value; this item stands for "no category". */
+const NO_CATEGORY = "none";
 
 function missingLabel(
   t: (key: "viewChannel" | "connect" | "moveMembers") => string,
@@ -40,29 +49,99 @@ function missingLabel(
     .join(", ");
 }
 
+type MixFields = Pick<
+  WorkspaceBalancerConfigUpsert,
+  "mix_discord_channel_id" | "mix_voice_category_id" | "mix_general_voice_channel_ids"
+>;
+
+/** The fields that differ from the stored config; their count is the save bar's summary. */
+function mixDiff(form: MixFields, base: MixFields): Partial<MixFields> {
+  const diff: Partial<MixFields> = {};
+  if (form.mix_discord_channel_id !== base.mix_discord_channel_id) {
+    diff.mix_discord_channel_id = form.mix_discord_channel_id;
+  }
+  if (form.mix_voice_category_id !== base.mix_voice_category_id) {
+    diff.mix_voice_category_id = form.mix_voice_category_id;
+  }
+  const voices = form.mix_general_voice_channel_ids;
+  const savedVoices = base.mix_general_voice_channel_ids;
+  if (voices.length !== savedVoices.length || voices.some((id) => !savedVoices.includes(id))) {
+    diff.mix_general_voice_channel_ids = voices;
+  }
+  return diff;
+}
+
+/** The mix draft the Discord section's `SaveBar` saves, plus its read. */
+export interface MixesForm extends ScopedSettingsForm<MixFields, Partial<MixFields>> {
+  query: UseQueryResult<WorkspaceBalancerConfig>;
+}
+
 /**
- * Where every mix in this workspace announces its matchup, the voice category
- * it moves players through, and which of its voices players wait in.
+ * Draft of where every mix in this workspace announces its matchup, the voice
+ * category it moves players through, and which of its voices players wait in;
+ * saved through the Discord section's one `SaveBar`.
  *
  * All three live in `balancer.workspace_config.config_json`, and the upsert
  * rewrites that whole blob, so every save posts every key (rank-delta knobs
- * included) with only the changed ones replaced. Same query key as the
+ * included) with only the edited ones replaced. Same query key as the
  * balancer page's dialog, so both views agree after a save.
  */
-export function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
-  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
+export function useMixesForm(workspaceId: number | null, enabled: boolean): MixesForm {
   const queryClient = useQueryClient();
-  const configQuery = useQuery({
-    queryKey: balancerQueryKeys.workspaceConfig(workspaceId),
-    queryFn: () => balancerAdminService.getWorkspaceBalancerConfig(workspaceId)
+  const query = useQuery({
+    queryKey: balancerQueryKeys.workspaceConfig(workspaceId ?? 0),
+    queryFn: () => balancerAdminService.getWorkspaceBalancerConfig(workspaceId as number),
+    enabled: enabled && workspaceId !== null
   });
-  const channelsQuery = useDiscordChannels(workspaceId);
-  const config = configQuery.data;
-  // The pickers speak in strings and have no null: "" is their empty value.
-  const channel = config?.mix_discord_channel_id ?? "";
-  const categoryId = config?.mix_voice_category_id ?? "";
-  const generalIds = config?.mix_general_voice_channel_ids ?? [];
+  const config = query.data;
+  const baseline = useMemo<MixFields | null>(
+    () =>
+      config
+        ? {
+            mix_discord_channel_id: config.mix_discord_channel_id ?? null,
+            mix_voice_category_id: config.mix_voice_category_id ?? null,
+            mix_general_voice_channel_ids: config.mix_general_voice_channel_ids ?? []
+          }
+        : null,
+    [config]
+  );
 
+  const form = useScopedSettingsForm({
+    baseline,
+    toPayload: mixDiff,
+    submit: (_diff, values) =>
+      balancerAdminService.upsertWorkspaceBalancerConfig(workspaceId as number, {
+        rank_delta_threshold: config?.rank_delta_threshold ?? null,
+        rank_delta_hide_from_pool: config?.rank_delta_hide_from_pool ?? false,
+        ...values
+      }),
+    onSaved: () => {
+      queryClient.invalidateQueries({
+        queryKey: balancerQueryKeys.workspaceConfig(workspaceId as number)
+      });
+    }
+  });
+
+  return { ...form, query };
+}
+
+export function MixesCard({
+  workspaceId,
+  mixes
+}: Readonly<{ workspaceId: number; mixes: MixesForm }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
+  const { query, form: values, patch, saving } = mixes;
+  const channelsQuery = useDiscordChannels(workspaceId);
+
+  if (query.isError) {
+    return (
+      <PageStateCard state="error" title={t("mixLoadError")} onAction={() => void query.refetch()} />
+    );
+  }
+
+  // The pickers speak in strings and have no null: "" is their empty value.
+  const categoryId = values?.mix_voice_category_id ?? "";
+  const generalIds = values?.mix_general_voice_channel_ids ?? [];
   const channels = channelsQuery.data?.channels ?? [];
   const categories = channels.filter((item) => item.type === "category");
   const category = categories.find((item) => item.id === categoryId);
@@ -75,83 +154,57 @@ export function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
     const missing = missingLabel(t, voice.missing_permissions);
     return missing ? [`${voice.name}: ${missing}`] : [];
   });
-
-  const save = useMutation({
-    mutationFn: (partial: Partial<WorkspaceBalancerConfigUpsert>) =>
-      balancerAdminService.upsertWorkspaceBalancerConfig(workspaceId, {
-        rank_delta_threshold: config?.rank_delta_threshold ?? null,
-        rank_delta_hide_from_pool: config?.rank_delta_hide_from_pool ?? false,
-        mix_discord_channel_id: config?.mix_discord_channel_id ?? null,
-        mix_voice_category_id: config?.mix_voice_category_id ?? null,
-        mix_general_voice_channel_ids: config?.mix_general_voice_channel_ids ?? [],
-        ...partial
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: balancerQueryKeys.workspaceConfig(workspaceId) });
-      notify.success(t("saved"));
-    },
-    onError: (cause) => notify.apiError(cause, { title: t("saveMixError") })
-  });
-
-  const busy = configQuery.isLoading || channelsQuery.isLoading || save.isPending;
   const categoryMissing = missingLabel(t, category?.missing_permissions);
+  const busy = channelsQuery.isLoading || saving;
 
   return (
     <Card>
       <CardContent className="pt-6">
         <SettingGroup title={t("mixes")}>
-          <SettingRow
-            label={t("announcementChannel")}
-            hint={t("announcementChannelHint")}
-          >
-            <div className="flex w-full items-center gap-2 md:max-w-sm">
-              <div className="min-w-0 flex-1">
-                <DiscordChannelSelect
-                  workspaceId={workspaceId}
-                  value={channel}
-                  onChange={(next) => save.mutate({ mix_discord_channel_id: next === "" ? null : next })}
-                  disabled={configQuery.isLoading || save.isPending}
-                  ariaLabel={t("mixChannelAria")}
-                  placeholder={t("noChannel")}
-                />
-              </div>
-              {channel ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={save.isPending}
-                  onClick={() => save.mutate({ mix_discord_channel_id: null })}
-                >
-                  {t("unlink")}
-                </Button>
-              ) : null}
+          {!values ? (
+            <div aria-busy="true" className="flex flex-col gap-4 py-2">
+              {[0, 1].map((row) => (
+                <div key={row} className="grid gap-3 md:grid-cols-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              ))}
             </div>
-          </SettingRow>
+          ) : (
+            <>
+              <SettingRow label={t("announcementChannel")} hint={t("announcementChannelHint")}>
+                <div className="w-full md:max-w-sm">
+                  <DiscordChannelSelect
+                    workspaceId={workspaceId}
+                    value={values.mix_discord_channel_id ?? ""}
+                    onChange={(next) => patch({ mix_discord_channel_id: next === "" ? null : next })}
+                    disabled={saving}
+                    ariaLabel={t("mixChannelAria")}
+                    placeholder={t("noChannel")}
+                    noneLabel={t("noChannel")}
+                  />
+                </div>
+              </SettingRow>
 
-          <SettingRow
-            label={t("voiceCategory")}
-            hint={t("voiceCategoryHint")}
-          >
-            <div className="flex w-full flex-col gap-1 md:max-w-sm">
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
+              <SettingRow label={t("voiceCategory")} hint={t("voiceCategoryHint")}>
+                <div className="flex w-full flex-col gap-1 md:max-w-sm">
                   <Select
-                    value={categoryId}
+                    value={categoryId || NO_CATEGORY}
                     // A new category invalidates the old general voices: they
                     // belong to the category that is being left behind.
                     onValueChange={(next) =>
-                      save.mutate({
-                        mix_voice_category_id: next === "" ? null : next,
+                      patch({
+                        mix_voice_category_id: next === NO_CATEGORY ? null : next,
                         mix_general_voice_channel_ids: []
                       })
                     }
                     disabled={busy}
                   >
                     <SelectTrigger aria-label={t("mixVoiceCategory")}>
-                      <SelectValue placeholder={t("noVoiceCategory")} />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NO_CATEGORY}>{t("noVoiceCategory")}</SelectItem>
                       {categories.map((item) => (
                         <SelectItem key={item.id} value={item.id}>
                           {item.name}
@@ -159,79 +212,56 @@ export function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                       ))}
                     </SelectContent>
                   </Select>
+                  {categoryMissing ? (
+                    <p className="text-xs text-warning">{t("missing", { value: categoryMissing })}</p>
+                  ) : null}
                 </div>
-                {categoryId !== "" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={save.isPending}
-                    onClick={() =>
-                      save.mutate({ mix_voice_category_id: null, mix_general_voice_channel_ids: [] })
-                    }
-                  >
-                    {t("unlink")}
-                  </Button>
-                ) : null}
-              </div>
-              {categoryMissing ? (
-                  <p className="text-xs text-warning">{t("missing", { value: categoryMissing })}</p>
-              ) : null}
-            </div>
-          </SettingRow>
+              </SettingRow>
 
-          {categoryId !== "" ? (
-            <SettingRow
-              label={t("generalVoices")}
-              hint={t("generalVoicesHint")}
-            >
-              <div className="flex w-full flex-col gap-2 md:max-w-sm">
-                {voices.length > 0 ? (
-                  <div role="group" aria-label={t("generalVoices")} className="flex flex-wrap gap-1.5">
-                    {voices.map((voice) => {
-                      const pressed = generalIds.includes(voice.id);
-                      const missing = missingLabel(t, voice.missing_permissions);
-                      return (
-                        <button
-                          key={voice.id}
-                          type="button"
-                          aria-pressed={pressed}
-                          data-state={pressed ? "on" : "off"}
-                          disabled={busy}
-                          onClick={() =>
-                            save.mutate({
-                              mix_general_voice_channel_ids: pressed
-                                ? generalIds.filter((id) => id !== voice.id)
-                                : [...generalIds, voice.id]
-                            })
-                          }
-                          title={missing ? t("missing", { value: missing }) : undefined}
-                          className={cn(
-                            toggleVariants({ variant: "outline", size: "sm" }),
-                            "rounded-full active:scale-[0.98]",
-                            pressed && "border-primary/50"
-                          )}
-                        >
-                          {pressed ? <CheckCircle aria-hidden className="size-3.5" /> : null}
-                          {voice.name}
-                          {missing ? (
-                            <AlertTriangle aria-hidden className="size-3.5 text-warning" />
-                          ) : null}
-                        </button>
-                      );
-                    })}
+              {categoryId !== "" ? (
+                <SettingRow label={t("generalVoices")} hint={t("generalVoicesHint")}>
+                  <div className="flex w-full flex-col gap-2 md:max-w-sm">
+                    {channelsQuery.isLoading ? (
+                      <div aria-busy="true" className="flex gap-1.5">
+                        <span className="sr-only">{t("asking")}</span>
+                        <Skeleton className="h-7 w-20" />
+                        <Skeleton className="h-7 w-20" />
+                      </div>
+                    ) : voices.length > 0 ? (
+                      <FilterChipGroup label={t("generalVoices")}>
+                        {voices.map((voice) => {
+                          const pressed = generalIds.includes(voice.id);
+                          const missing = missingLabel(t, voice.missing_permissions);
+                          return (
+                            <FilterChip
+                              key={voice.id}
+                              active={pressed}
+                              disabled={busy}
+                              onClick={() =>
+                                patch({
+                                  mix_general_voice_channel_ids: pressed
+                                    ? generalIds.filter((id) => id !== voice.id)
+                                    : [...generalIds, voice.id]
+                                })
+                              }
+                              title={missing ? t("missing", { value: missing }) : undefined}
+                            >
+                              {voice.name}
+                            </FilterChip>
+                          );
+                        })}
+                      </FilterChipGroup>
+                    ) : (
+                      <p className="text-xs text-warning">{t("noVoices")}</p>
+                    )}
+                    {lacking.length > 0 ? (
+                      <p className="text-xs text-warning">{t("missingOn", { value: lacking.join("; ") })}</p>
+                    ) : null}
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    {channelsQuery.isLoading ? t("asking") : t("noVoiceCategory")}
-                  </p>
-                )}
-                {lacking.length > 0 ? (
-                  <p className="text-xs text-warning">{t("missingOn", { value: lacking.join("; ") })}</p>
-                ) : null}
-              </div>
-            </SettingRow>
-          ) : null}
+                </SettingRow>
+              ) : null}
+            </>
+          )}
         </SettingGroup>
       </CardContent>
     </Card>

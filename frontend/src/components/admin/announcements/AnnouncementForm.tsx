@@ -66,8 +66,14 @@ export function AnnouncementForm({
   // The audience lives on the page, so it is merged in rather than mirrored:
   // a copy here would need syncing, and a stale one would validate the draft
   // against the wrong locale rule.
-  const draft: AnnouncementDraft = { ...form, audience, workspaceId };
-  const filled = filledLocales(draft);
+  const filled = filledLocales({ ...form, audience, workspaceId });
+  const draft: AnnouncementDraft = {
+    ...form,
+    audience,
+    workspaceId,
+    // One written language is the fallback by definition; the choice appears at two.
+    defaultLocale: filled.length === 1 ? filled[0] : form.defaultLocale,
+  };
 
   const setLocaleText = (locale: AnnouncementLocale, field: "title" | "body", value: string) => {
     setError(null);
@@ -152,39 +158,34 @@ export function AnnouncementForm({
         ))}
       </Tabs>
 
-      <div>
-        <p className="text-sm font-medium leading-none">
-          {t("notifications.admin.form.defaultLocale")}
-        </p>
-        {/* Offered from the same `filledLocales` the validator reads, so
-            "default_locale has no text" is unreachable rather than merely
-            caught. Nothing written yet means nothing to choose between. */}
-        <div className="mt-1.5" data-field="default-locale">
-          {filled.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t("notifications.admin.form.defaultLocaleEmpty")}
-            </p>
-          ) : (
-            <ToggleGroup
-              type="single"
-              value={filled.includes(form.defaultLocale) ? form.defaultLocale : ""}
-              onValueChange={(next) =>
-                setForm((current) => ({ ...current, defaultLocale: next as AnnouncementLocale }))
-              }
-              aria-label={t("notifications.admin.form.defaultLocale")}
-            >
-              {filled.map((locale) => (
-                <ToggleGroupItem key={locale} value={locale}>
-                  {t(`notifications.admin.locales.${locale}`)}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          )}
+      {/* Offered from the same `filledLocales` the validator reads, so
+          "default_locale has no text" is unreachable rather than merely
+          caught. Fewer than two written means nothing to choose between. */}
+      {filled.length > 1 ? (
+        <div data-field="default-locale">
+          <p className="text-sm font-medium leading-none">
+            {t("notifications.admin.form.defaultLocale")}
+          </p>
+          <ToggleGroup
+            type="single"
+            className="mt-1.5"
+            value={filled.includes(form.defaultLocale) ? form.defaultLocale : ""}
+            onValueChange={(next) =>
+              setForm((current) => ({ ...current, defaultLocale: next as AnnouncementLocale }))
+            }
+            aria-label={t("notifications.admin.form.defaultLocale")}
+          >
+            {filled.map((locale) => (
+              <ToggleGroupItem key={locale} value={locale}>
+                {t(`notifications.admin.locales.${locale}`)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("notifications.admin.form.defaultLocaleHint")}
+          </p>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("notifications.admin.form.defaultLocaleHint")}
-        </p>
-      </div>
+      ) : null}
 
       <div>
         <Label htmlFor="announcement-href">{t("notifications.admin.form.href")}</Label>

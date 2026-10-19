@@ -3,11 +3,11 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CheckCircle, Clock, Trash2, UserCog } from "lucide-react";
+import { Clock, Trash2, UserCog } from "lucide-react";
 
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { ProviderBadge } from "@/components/admin/OAuthProviderBadge";
+import { ProviderMark } from "@/components/admin/OAuthProviderMark";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useFormatter } from "@/lib/datetime/client";
 import type { OAuthConnectionAdmin, OAuthProvider } from "@/types/rbac.types";
@@ -31,15 +31,14 @@ export function useOAuthConnectionColumns({
     () => [
       {
         accessorKey: "id",
-        header: "ID",
+        header: t("id"),
         size: 60,
         cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>
       },
       {
         accessorKey: "provider",
         header: t("provider"),
-        meta: columnMeta({ align: "center" }),
-        cell: ({ row }) => <ProviderBadge provider={row.original.provider} />
+        cell: ({ row }) => <ProviderMark provider={row.original.provider} />
       },
       {
         id: "provider_user",
@@ -86,18 +85,10 @@ export function useOAuthConnectionColumns({
         header: t("token"),
         enableSorting: false,
         meta: columnMeta({ align: "center" }),
-        cell: ({ row }) => {
-          const expiresAt = row.original.token_expires_at;
-          if (!expiresAt) {
-            return <span className="text-xs text-muted-foreground">{t("noToken")}</span>;
-          }
-          const expired = isTokenExpired(expiresAt);
-          return expired ? (
+        cell: ({ row }) =>
+          isTokenExpired(row.original.token_expires_at) ? (
             <StatusIcon icon={Clock} label={t("expired")} variant="destructive" />
-          ) : (
-            <StatusIcon icon={CheckCircle} label={t("active")} variant="success" />
-          );
-        }
+          ) : null
       },
       {
         accessorKey: "created_at",
@@ -124,7 +115,8 @@ export function useOAuthConnectionColumns({
           }
         ],
         {
-          rowLabel: (row) => `${providerLabel(row.provider)} connection for ${row.username}`
+          rowLabel: (row) =>
+            t("oauthRowLabel", { provider: providerLabel(row.provider), account: row.username })
         }
       )
     ],

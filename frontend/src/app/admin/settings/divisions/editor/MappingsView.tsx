@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -12,14 +11,13 @@ import type { DivisionGridReadinessSource, DivisionTier } from "@/types/workspac
 import {
   autoMap,
   resolveTarget,
-  unresolvedRows,
   type MappingChoice,
   type MappingChoices,
   type MappingRow,
   type MappingTarget
 } from "./autoMap";
 import { rankRangeLabel, type Band, type Ladder } from "./draftReducer";
-import { MappingTargetPicker, targetSummary } from "./MappingTargetPicker";
+import { MappingTargetPicker, useTargetSummary } from "./MappingTargetPicker";
 
 export interface MappingSource {
   readiness: DivisionGridReadinessSource;
@@ -44,25 +42,15 @@ export interface MappingsViewProps {
   loading: boolean;
 }
 
-function matchLabel(row: MappingRow, target: MappingTarget | null): string {
-  if (target === null) return "SPLIT · choose";
-  if (target.range.length > 1) {
-    return `${target.manual ? "MANUAL" : "AUTO"} · ${target.range.length} divisions`;
-  }
-  const overlap = row.candidates.find((entry) => entry.band.slug === target.primary.slug);
-  const share = overlap ? `${Math.round(overlap.weight * 100)}%` : "no overlap";
-  return `${target.manual ? "MANUAL" : "AUTO"} · ${share}`;
-}
-
 /**
- * Mappings (F12b ·1) — where the players of every version a tournament still
+ * Mappings (F12b ·1): where the players of every version a tournament still
  * reads land in this draft.
  *
- * Overlap on the rank scale proposes a target (AUTO); a tie needs a person
- * (SPLIT). Every row can be overridden with a range of divisions the players
+ * Overlap on the rank scale proposes a target (Auto); a tie needs a person
+ * (Split). Every row can be overridden with a range of divisions the players
  * spread over and the one they land in: when an older version sits on another
  * rank scale, overlap is only a guess and the organiser knows better. The
- * unresolved count here is the tab badge and the "Ready to publish?" blocker.
+ * unresolved count is the tab badge and the "Ready to publish?" blocker.
  */
 export function MappingsView({
   ladder,
@@ -76,6 +64,20 @@ export function MappingsView({
   loading
 }: Readonly<MappingsViewProps>) {
   const t = useTranslations("adminSettings.divisions");
+  const targetSummary = useTargetSummary();
+
+  /** How a row's target was reached: a tie to pick, a manual or automatic range, or the overlap share. */
+  const matchLabel = (row: MappingRow, target: MappingTarget | null): string => {
+    if (target === null) return t("mappingLabels.matchTie");
+    const mode = target.manual ? "manual" : "auto";
+    if (target.range.length > 1) {
+      return t("mappingLabels.matchRange", { mode, count: target.range.length });
+    }
+    const overlap = row.candidates.find((entry) => entry.band.slug === target.primary.slug);
+    return overlap
+      ? t("mappingLabels.matchShare", { mode, share: overlap.weight })
+      : t("mappingLabels.matchNoOverlap", { mode });
+  };
   const mapped = useMemo(
     () => sources.map((source) => ({ ...source, rows: autoMap(ladder, source.tiers, bands) })),
     [bands, ladder, sources]
@@ -102,22 +104,16 @@ export function MappingsView({
   return (
     <div className="flex flex-col gap-6">
       {mapped.map(({ readiness, rows }) => {
-        const unresolved = unresolvedRows(rows, chosen, bands);
         return (
           <section key={readiness.version_id} className="flex min-w-0 flex-col gap-2">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className={cn(EYEBROW_CLASS, "font-mono")}>
-                {t("mappingLabels.header", {
-                  source: readiness.version_label,
-                  target: targetLabel,
-                  tournaments: readiness.tournament_count,
-                  divisions: rows.length
-                })}
-              </p>
-              <StatusPill tone={unresolved.length === 0 ? "success" : "warning"}>
-                {unresolved.length === 0 ? t("mappingLabels.complete") : t("mappingLabels.toResolve", { count: unresolved.length })}
-              </StatusPill>
-            </div>
+            <p className={EYEBROW_CLASS}>
+              {t("mappingLabels.header", {
+                source: readiness.version_label,
+                target: targetLabel,
+                tournaments: readiness.tournament_count,
+                divisions: rows.length
+              })}
+            </p>
 
             <div className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card">
               <table className="w-full text-sm">
@@ -128,9 +124,6 @@ export function MappingsView({
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
                       {t("table.rankRange")}
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      {t("table.players")}
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
                       {t("mappingLabels.inTarget", { target: targetLabel })}
@@ -147,14 +140,8 @@ export function MappingsView({
                     return (
                       <tr key={row.source.slug} className="border-b border-border last:border-b-0">
                         <td className="px-3 py-2">{row.source.name}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                        <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">
                           {rankRangeLabel(row.source)}
-                        </td>
-                        <td
-                          className="px-3 py-2 text-muted-foreground"
-                          title={t("table.playerDistributionUnavailable")}
-                        >
-                          &mdash;
                         </td>
                         <td className="px-3 py-2">
                           {editable && sourceTierId !== undefined ? (
@@ -172,7 +159,7 @@ export function MappingsView({
                         </td>
                         <td
                           className={cn(
-                            "px-3 py-2 font-mono text-xs",
+                            "px-3 py-2 text-xs",
                             target === null ? "text-warning" : "text-muted-foreground"
                           )}
                         >

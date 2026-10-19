@@ -16,7 +16,8 @@ const MODE = {
 vi.mock("@/lib/api/fetch", () => ({
   apiFetch: (path: string, options?: Call["options"]) => {
     calls.push({ path, options });
-    const results = path === "/api/v1/admin/catalog/overwatch/mode" ? [MODE] : [];
+    // Two modes: a filter with a single option is not offered.
+    const results = path === "/api/v1/admin/catalog/overwatch/mode" ? [MODE, { ...MODE, id: 909, slug: "control", name: "Control" }] : [];
     const reply = options?.method === "POST"
       ? { ...MODE, id: 908, kind: "map", name: "Ilios", parent_id: 907, attrs: { in_competitive: true }, parent: MODE }
       : { results, total: results.length, page: 1, per_page: -1 };
@@ -44,8 +45,9 @@ afterEach(async () => {
   page = null;
 });
 
-async function fillName(value: string, placeholder: string) {
-  const input = document.querySelector(`[role="dialog"] input[placeholder="${placeholder}"]`) as HTMLInputElement;
+async function fillName(value: string) {
+  const label = Array.from(document.querySelectorAll('[role="dialog"] label')).find((element) => element.textContent === "Name");
+  const input = document.getElementById(label?.getAttribute("for") ?? "") as HTMLInputElement;
   expect(input).toBeTruthy();
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
@@ -61,7 +63,7 @@ it("loads the selected game's own modes for the create dialog and files the map 
   await click(buttonByText("Create Map"));
   await click(document.querySelector('[role="dialog"] [role="combobox"]'));
   await click(Array.from(document.querySelectorAll('[role="option"]')).find((element) => element.textContent?.trim() === "Push"));
-  await fillName("Ilios", "Map name");
+  await fillName("Ilios");
   await click(document.querySelector('[role="dialog"] button[type="submit"]'));
 
   expect(calls).toContainEqual({
@@ -90,7 +92,7 @@ it("for a game without modes asks for no modes and files a map under nothing", a
   expect(calls).toContainEqual({ path: "/api/v1/admin/catalog/lol/map", options: expect.objectContaining({ query: expect.any(Object) }) });
 
   await click(buttonByText("Create Map"));
-  await fillName("Summoner's Rift", "Map name");
+  await fillName("Summoner's Rift");
   await click(document.querySelector('[role="dialog"] button[type="submit"]'));
 
   expect(calls).toContainEqual({

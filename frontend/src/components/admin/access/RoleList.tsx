@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Lock, Wrench } from "lucide-react";
+import { Lock } from "lucide-react";
 
 import { SearchField } from "@/components/ui/search-field";
 import { cn } from "@/lib/utils";
@@ -34,10 +34,7 @@ export function RoleList({
 
   return (
     <div className="rounded-xl border border-border bg-card">
-      <div className="space-y-2 border-b border-border px-3 py-3">
-        <p className="text-xs tabular-nums text-muted-foreground">
-          {t("roleCountInScope", { count: roles.length })}
-        </p>
+      <div className="border-b border-border px-3 py-3">
         <SearchField
           label={t("filterRoles")}
           placeholder={t("searchRoles")}
@@ -63,32 +60,30 @@ export function RoleList({
                   aria-current={selected ? "true" : undefined}
                   onClick={() => onSelect(role.id)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left transition-colors",
+                    "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected
-                      ? "border-primary bg-primary/10"
-                      : "border-transparent hover:bg-accent/40"
+                    selected ? "bg-accent/40" : "hover:bg-accent/40"
                   )}
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">
                       {role.name}
                     </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {role.description || t("noDescription")}
-                    </span>
+                    {role.description ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {role.description}
+                      </span>
+                    ) : null}
                   </span>
                   {role.is_system ? (
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Lock aria-hidden className="size-3.5" />
-                      {t("system")}
-                    </span>
-                  ) : (
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Wrench aria-hidden className="size-3.5" />
-                      {t("custom")}
-                    </span>
-                  )}
+                    <Lock
+                      role="img"
+                      aria-label={t("system")}
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    >
+                      <title>{t("system")}</title>
+                    </Lock>
+                  ) : null}
                 </button>
               </li>
             );

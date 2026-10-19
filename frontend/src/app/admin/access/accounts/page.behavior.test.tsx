@@ -552,9 +552,9 @@ describe("Access › Accounts · narrow viewport", () => {
 
     expect(container.querySelector("table")).toBeNull();
     expect(cards[0].textContent).toContain("nnniik@example.com");
-    // The card is chosen, not the first three columns: on a phone the status
-    // and the roles are what say whether this login can do anything.
-    expect(cards[0].textContent).toContain("Active");
+    // The card is chosen, not the first three columns: on a phone the roles are
+    // what say whether this login can do anything; an active login says nothing.
+    expect(cards[0].textContent).not.toContain("Active");
     expect(cards[0].textContent).toContain("caster");
   });
 });

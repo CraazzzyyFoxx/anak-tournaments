@@ -3,9 +3,8 @@
 import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
-import { TONE_CLASS } from "@/components/kit/tone";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { FieldDescription } from "@/components/ui/field";
 import type { Tournament } from "@/types/tournament.types";
 
 import { DraftFormatFields } from "../../components/draft/DraftFormatFields";
@@ -53,9 +52,7 @@ function DraftFormatForm({
       <Card>
         <CardContent className="space-y-4 pt-6">
           {locked && (
-            <div className={cn("rounded-xl border px-4 py-3 text-sm", TONE_CLASS.warning)}>
-              {t("formatLockedByDraft")}
-            </div>
+            <FieldDescription className="text-warning">{t("formatLockedByDraft")}</FieldDescription>
           )}
           <DraftFormatFields
             value={value}

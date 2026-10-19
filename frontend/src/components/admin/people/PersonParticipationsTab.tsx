@@ -327,7 +327,7 @@ export function PersonParticipationsTab({
       {
         id: "sub_role",
         header: t("subRole"),
-        cell: ({ row }) => <div>{formatSubRoleLabel(subRoleOf(row.original.role)) ?? "—"}</div>
+        cell: ({ row }) => <div>{formatSubRoleLabel(subRoleOf(row.original.role))}</div>
       },
       {
         id: "flags",

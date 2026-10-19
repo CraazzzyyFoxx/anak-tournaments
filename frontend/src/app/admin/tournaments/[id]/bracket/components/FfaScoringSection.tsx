@@ -237,9 +237,9 @@ export function FfaScoringSection({
             variables: [...columns.map((column) => column.key).filter(Boolean), ...FFA_FORMULA_VARIABLES].join(", "),
             functionList: FFA_FORMULA_FUNCTIONS.join(", "),
             logic: t("logic"),
-            variablesCode: (chunks) => <span className="font-mono">{chunks}</span>,
-            functionCode: (chunks) => <span className="font-mono">{chunks}</span>,
-            logicCode: (chunks) => <span className="font-mono">{chunks}</span>
+            variablesCode: (chunks) => <code>{chunks}</code>,
+            functionCode: (chunks) => <code>{chunks}</code>,
+            logicCode: (chunks) => <code>{chunks}</code>
           })}
         </p>
         <p className="text-xs text-muted-foreground">

@@ -312,8 +312,8 @@ describe("Bracket preview", () => {
 
     await mount(groups);
 
-    // "top 2 of each" would be a lie about group A, and 4 onward a lie about both.
-    expect(container.textContent).toContain("top 3 / 2 of each advance, 5 teams onward");
+    // "Top 2 of each" would be a lie about group A, and 4 teams a lie about both.
+    expect(container.textContent).toContain("Top 3 / 2 of each advance (5 teams).");
   });
 
   it("offers drag-to-reseed on a Draft skeleton only while seeds go in slot order", async () => {

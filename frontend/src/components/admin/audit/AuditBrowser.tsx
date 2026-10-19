@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Lock } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import {
@@ -26,7 +25,7 @@ import type { AuditLogRead } from "@/types/admin.types";
 
 import { AuditInspectorPanel } from "./AuditInspectorPanel";
 import { auditFilterDefs } from "./filters";
-import { ALL_WORKSPACES, SORTABLE, auditFeedFilters } from "./model";
+import { SORTABLE, auditFeedFilters } from "./model";
 import { useAuditColumns } from "./useAuditColumns";
 
 /** Server caps `per_page` at 200, so the selector must not offer more. */
@@ -108,25 +107,23 @@ export function AuditBrowser({
   });
 
   /**
-   * Three empty states, because "nothing recorded" would be a different claim in
-   * each and only one of them is ever true at a time. There is no backfill, so
-   * for the journal's first months the third is the usual answer — and reading it
-   * as "nobody touched anything" would be exactly the false reassurance this
-   * feed exists to replace.
+   * Unfiltered, the empty feed quotes the journal's start date when it has one:
+   * there is no backfill, so "nothing recorded" must not read as "nobody touched
+   * anything". A workspace feed also says what it never holds: a global role
+   * grant can reach inside this workspace and still land on a row with no
+   * workspace. Whole sentences joined, never a split one.
    */
-  const emptyMessage = (() => {
-    if (isNarrowed) {
-      return t("noEntriesMatchFilters");
-    }
-    if (historyStart.data == null) {
-      return allWorkspaces
-        ? t("noEntriesYetAll")
-        : t("noEntriesYetWorkspace");
-    }
-    return allWorkspaces
-      ? t("noActivitySinceAll", { date: formatAuditDate(format, historyStart.data) })
-      : t("noActivitySinceWorkspace", { date: formatAuditDate(format, historyStart.data) });
-  })();
+  const emptyMessage = isNarrowed
+    ? t("noEntriesMatchFilters")
+    : [
+        t("noEntriesYet"),
+        historyStart.data == null
+          ? null
+          : t("startedOn", { date: formatAuditDate(format, historyStart.data) }),
+        allWorkspaces ? null : t("workspaceRows"),
+      ]
+        .filter(Boolean)
+        .join(" ");
 
   const columns = useAuditColumns(filters);
 
@@ -135,7 +132,6 @@ export function AuditBrowser({
   const openTarget = openRow ? formatAuditTarget(openRow, auditT) : null;
 
   return (
-    <>
       <div
         className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
       >
@@ -170,7 +166,7 @@ export function AuditBrowser({
               "admin",
               "audit",
               "feed",
-              allWorkspaces ? ALL_WORKSPACES : workspaceId,
+              allWorkspaces ? "all" : workspaceId,
               entityType,
               entityId,
               actorUserId,
@@ -227,23 +223,5 @@ export function AuditBrowser({
           {openRow ? <AuditInspectorPanel row={openRow} /> : null}
         </Inspector>
       </div>
-
-      {/*
-        The boundary of the feed, stated in the feed.
-        A workspace journal is not the platform's journal: a global role grant can
-        hand someone power inside this workspace and still land on a row with no
-        workspace, which an organizer cannot see. Left unsaid, that is silent
-        incompleteness — and the person it affects should not learn about it from
-        whoever they are arguing with.
-      */}
-      <p className="flex items-start gap-2 text-xs text-muted-foreground">
-        <Lock aria-hidden className="mt-px size-3.5 shrink-0" />
-        {allWorkspaces ? (
-          <span>{t("allWorkspaceRows")}</span>
-        ) : (
-          <span>{t("workspaceRows")}</span>
-        )}
-      </p>
-    </>
   );
 }

@@ -5,13 +5,10 @@
 // same question for every new tournament, and then briefly in the collector
 // dashboard, where it read as monitoring rather than configuration — which it is.
 
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,7 +16,8 @@ import {
   CardHeader,
   CardTitle
 } from "@/components/ui/card";
-import { notify } from "@/lib/notify";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type { SubscriptionRequirement } from "@/types/registration.types";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
@@ -47,15 +45,24 @@ function sameRule(a: SubscriptionRequirement, b: SubscriptionRequirement): boole
   return key(a) === key(b);
 }
 
-/** Exported so its own behaviour can be exercised without the provider card's
- *  queries and second Save button in the way. */
-export function WorkspaceRequirementCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
+/**
+ * The rule half of the subscriptions section. Controlled: `draft` is the
+ * unsaved rule (`null` = untouched), stored by the section's one `SaveBar`
+ * together with the provider drafts.
+ */
+export function WorkspaceRequirementCard({
+  workspaceId,
+  draft,
+  onDraftChange
+}: Readonly<{
+  workspaceId: number;
+  draft: SubscriptionRequirement | null;
+  onDraftChange: (draft: SubscriptionRequirement) => void;
+}>) {
   const t = useTranslations("subscriptionWorkspace");
-  const queryClient = useQueryClient();
-  const requirementKey = ["subscription-requirement", workspaceId] as const;
 
   const requirementQuery = useQuery({
-    queryKey: requirementKey,
+    queryKey: workspaceQueryKeys.subscriptionRequirement(workspaceId),
     queryFn: () => balancerAdminService.getSubscriptionRequirement(workspaceId),
     refetchOnWindowFocus: false
   });
@@ -74,22 +81,7 @@ export function WorkspaceRequirementCard({ workspaceId }: Readonly<{ workspaceId
     .map((config) => config.provider);
 
   const stored = requirementQuery.data?.requirement ?? EMPTY_REQUIREMENT;
-  // `null` means "no local edits", so a refetch that changes nothing cannot
-  // clobber an in-progress rule the admin has not saved yet.
-  const [draft, setDraft] = useState<SubscriptionRequirement | null>(null);
   const value = draft ?? stored;
-
-  const save = useMutation({
-    mutationFn: () =>
-      balancerAdminService.upsertSubscriptionRequirement(workspaceId, { requirement: value }),
-    onSuccess: async () => {
-      setDraft(null);
-      await queryClient.invalidateQueries({ queryKey: requirementKey });
-      notify.success(t("saved"));
-    },
-    onError: (error: unknown) =>
-      notify.error(error instanceof Error ? error.message : t("saveFailed"))
-  });
 
   // Any change to a live rule changes who is admitted, across every tournament in the
   // workspace at once -- so the warning tracks CHANGE, not just emptying. Tightening
@@ -109,6 +101,16 @@ export function WorkspaceRequirementCard({ workspaceId }: Readonly<{ workspaceId
   // refetched on focus, so the copy says "currently", never "right now".
   const enforcingTournaments = requirementQuery.data?.enforcing_tournaments ?? 0;
 
+  if (requirementQuery.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title={t("loadError")}
+        onAction={() => void requirementQuery.refetch()}
+      />
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -119,40 +121,22 @@ export function WorkspaceRequirementCard({ workspaceId }: Readonly<{ workspaceId
       </CardHeader>
       <CardContent className="space-y-4">
         {requirementQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">{t("loading")}</p>
-        ) : requirementQuery.isError ? (
-          <p className="text-sm text-danger">{t("loadError")}</p>
+          <Skeleton className="h-24 w-full" />
         ) : (
           <>
             <SubscriptionRequirementEditor
               value={value}
               availableProviders={availableProviders}
-              onChange={setDraft}
+              onChange={onDraftChange}
             />
 
             {changed && (
-              <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-2.5">
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
-                <p className="max-w-prose text-xs text-warning">
-                  {t(disarming ? "warning.disarming" : "warning.changed", {
-                    count: enforcingTournaments
-                  })}
-                </p>
-              </div>
+              <p className="max-w-prose text-caption text-warning">
+                {t(disarming ? "warning.disarming" : "warning.changed", {
+                  count: enforcingTournaments
+                })}
+              </p>
             )}
-
-            <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                onClick={() => save.mutate()}
-                disabled={save.isPending || draft === null}
-              >
-                {save.isPending ? t("saving") : t("save")}
-              </Button>
-              {draft !== null && !save.isPending && (
-                <span className="text-xs text-muted-foreground">{t("unsavedChanges")}</span>
-              )}
-            </div>
           </>
         )}
       </CardContent>

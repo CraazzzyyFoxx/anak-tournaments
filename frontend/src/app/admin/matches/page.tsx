@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
@@ -37,7 +37,7 @@ function WorkspaceParsedMatches({ workspaceId }: Readonly<{ workspaceId: number 
   const discipline = resolved?.kind === "concrete" ? resolved.code : null;
   return (
     <div className="space-y-4">
-      {disciplines ? (
+      {disciplines && disciplines.length > 1 ? (
         <div className="flex justify-end">
           <DisciplineSelector disciplines={disciplines} value={discipline ?? undefined} allowsAll={false} onSelect={select} />
         </div>
@@ -127,24 +127,12 @@ export default function AdminMatchesPage() {
   if (!isLoaded) return fallback;
 
   if (!canAccessPermission("match.read", workspaceId)) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("noPermission")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
+    return <PageStateCard state="not-found" title={t("unauthorized")} description={t("noPermission")} />;
   }
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        title={t("title")}
-        description={t("description")}
-      />
+      <AdminPageHeader title={t("title")} />
 
       <LinkTabs items={items} activeKey={view} ariaLabel={t("views")} />
 

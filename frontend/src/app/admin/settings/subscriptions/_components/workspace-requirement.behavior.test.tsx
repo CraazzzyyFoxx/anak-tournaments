@@ -7,7 +7,7 @@
 // merely tightening it -- re-decides admission for every tournament at once.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,19 +26,19 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const listSubscriptionProviders = vi.fn();
 const getSubscriptionRequirement = vi.fn();
-const upsertSubscriptionRequirement = vi.fn();
 
 vi.mock("@/services/balancer-admin.service", () => ({
   default: {
     listSubscriptionProviders: (...args: unknown[]) => listSubscriptionProviders(...args),
-    getSubscriptionRequirement: (...args: unknown[]) => getSubscriptionRequirement(...args),
-    upsertSubscriptionRequirement: (...args: unknown[]) => upsertSubscriptionRequirement(...args)
+    getSubscriptionRequirement: (...args: unknown[]) => getSubscriptionRequirement(...args)
   }
 }));
 
-vi.mock("@/lib/notify", () => ({
-  notify: { success: vi.fn(), error: vi.fn() }
-}));
+/** The card is controlled; saving is the section's SaveBar (see ../page.behavior.test.tsx). */
+function Harness() {
+  const [draft, setDraft] = useState<SubscriptionRequirement | null>(null);
+  return <WorkspaceRequirementCard workspaceId={7} draft={draft} onDraftChange={setDraft} />;
+}
 
 const BOOSTY_RULE: SubscriptionRequirement = {
   mode: "all",
@@ -70,21 +70,22 @@ async function mount(
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
-          <WorkspaceRequirementCard workspaceId={7} />
+          <Harness />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
   });
   // React Query resolves through real macrotasks, not microtasks: a bare
-  // `Promise.resolve()` flush lands while the card still says "Loading…".
-  for (let i = 0; i < 50 && container.textContent?.includes("Loading…"); i += 1) {
+  // `Promise.resolve()` flush lands while the card still shows its skeleton.
+  const loading = () => container.querySelector(".animate-pulse") !== null;
+  for (let i = 0; i < 50 && loading(); i += 1) {
     await act(async () => {
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, 0);
       await promise;
     });
   }
-  if (container.textContent?.includes("Loading…")) {
+  if (loading()) {
     throw new Error("the requirement query never resolved");
   }
   return container;
@@ -112,11 +113,6 @@ beforeEach(() => {
   document.body.innerHTML = "";
   listSubscriptionProviders.mockReset();
   getSubscriptionRequirement.mockReset();
-  upsertSubscriptionRequirement.mockReset();
-  upsertSubscriptionRequirement.mockResolvedValue({
-    requirement: { mode: "all", requirements: [] },
-    enforcing_tournaments: 3
-  });
 });
 
 describe("WorkspaceRequirementCard", () => {
@@ -175,17 +171,5 @@ describe("WorkspaceRequirementCard", () => {
     await click(container.querySelector<HTMLElement>('[aria-label="Remove Twitch"]')!);
     expect(container.textContent).not.toContain(CHANGE_WARNING);
     expect(container.textContent).not.toContain(DISARM_WARNING);
-  });
-
-  it("saves the rule wholesale and keeps Save inert until something changed", async () => {
-    const container = await mount(BOOSTY_RULE, [config("boosty", true)]);
-    expect(button(container, "Save").disabled).toBe(true);
-
-    await click(container.querySelector<HTMLElement>('[aria-label="Remove Boosty"]')!);
-    await click(button(container, "Save"));
-
-    expect(upsertSubscriptionRequirement).toHaveBeenCalledWith(7, {
-      requirement: { mode: "all", requirements: [] }
-    });
   });
 });

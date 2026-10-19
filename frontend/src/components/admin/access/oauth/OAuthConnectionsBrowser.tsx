@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { DataTable } from "@/components/data-table";
-import { PROVIDER_META } from "@/components/admin/OAuthProviderBadge";
+import { PROVIDER_META } from "@/components/admin/OAuthProviderMark";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -30,9 +30,9 @@ const PAGE_SIZE = 20;
  * account.
  *
  * The provider `<Select>` in the toolbar is now a URL chip, so "every Discord
- * connection whose token expired" is a link rather than a sequence of clicks,
- * and the detail a support question actually needs — provider id, token
- * expiry, the auth account — moved from the row into the inspector.
+ * connection" is a link rather than a sequence of clicks, and the detail a
+ * support question actually needs (provider id, token expiry, the auth
+ * account) moved from the row into the inspector.
  */
 export function OAuthConnectionsBrowser() {
   const t = useTranslations("adminAccess.common");
@@ -97,13 +97,9 @@ export function OAuthConnectionsBrowser() {
               <p className="truncate text-xs text-muted-foreground">
                 {providerLabel(row.original.provider)} · {row.original.auth_user_username}
               </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {row.original.token_expires_at
-                  ? isTokenExpired(row.original.token_expires_at)
-                    ? to("tokenExpired")
-                    : to("tokenActive")
-                  : t("noToken")}
-              </p>
+              {isTokenExpired(row.original.token_expires_at) ? (
+                <p className="truncate text-xs text-warning">{to("tokenExpired")}</p>
+              ) : null}
             </div>
           )}
           queryKey={(page, search, pageSize, sortField, sortDir) => [
@@ -134,7 +130,6 @@ export function OAuthConnectionsBrowser() {
         openId={openRow ? openId : null}
         onClose={() => setParams({ id: null })}
         title={openRow ? (openRow.display_name ?? openRow.username) : ""}
-        subtitle={openRow ? providerLabel(openRow.provider) : undefined}
         openHref={openRow ? accountsHref(openRow) : undefined}
         onPrev={
           openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
@@ -157,7 +152,13 @@ export function OAuthConnectionsBrowser() {
         intent={{
           title: to("removeTitle"),
           description: pendingDelete
-            ? to("removeDescription", { account: pendingDelete.display_name ?? pendingDelete.username, authAccount: pendingDelete.auth_user_username ?? `#${pendingDelete.auth_user_id}`, provider: providerLabel(pendingDelete.provider) })
+            ? to("removeDescription", {
+                account: pendingDelete.display_name ?? pendingDelete.username,
+                authAccount:
+                  pendingDelete.auth_user_username ??
+                  t("accountFallback", { id: pendingDelete.auth_user_id }),
+                provider: providerLabel(pendingDelete.provider)
+              })
             : "",
           confirmLabel: t("removeConnection"),
           tone: "danger"

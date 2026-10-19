@@ -1,7 +1,5 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-
 import { Card, CardContent } from "@/components/ui/card";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { hasChallongeSource } from "@/components/admin/tournament-checklist";
@@ -13,10 +11,7 @@ import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 
 export default function ChallongeSettingsPage() {
   return (
-    <SettingsSectionPage
-      section="challonge"
-      description={useTranslations("adminTournament.screenDescriptions")("challonge")}
-    >
+    <SettingsSectionPage section="challonge">
       {({ tournament, tournamentId }) => (
         <ChallongeSettings tournament={tournament} tournamentId={tournamentId} />
       )}

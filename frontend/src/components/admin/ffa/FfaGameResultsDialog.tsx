@@ -252,15 +252,13 @@ export function FfaGameResultsDialog({
           placeLabel: requiresPlacement ? t("place") : t("placeOptional")
         })}
         {columns.map((column) => (
-          <span key={column.key} className={EYEBROW_CLASS}>
-            {column.label}
+          <span key={column.key}>
+            <span className={EYEBROW_CLASS}>{column.label}</span>
             {!column.public && (
               // The organizer has to know which of these numbers a spectator
-              // will never see — this form is the only place the column shows
+              // will never see: this form is the only place the column shows
               // up at all, so nothing else can tell them.
-              <span className="block normal-case tracking-normal text-[11px] text-muted-foreground">
-                {t("hidden")}
-              </span>
+              <span className="block text-caption text-muted-foreground">{t("hidden")}</span>
             )}
           </span>
         ))}
@@ -295,7 +293,6 @@ export function FfaGameResultsDialog({
             aria-label={t("reason")}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder={t("reasonLabel")}
           />
           <p className="text-xs text-muted-foreground">
             {t("played")}

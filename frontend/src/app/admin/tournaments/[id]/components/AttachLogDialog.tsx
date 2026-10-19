@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Link2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
@@ -292,7 +291,7 @@ export function AttachLogDialog({
               });
             }}
           >
-            {isPending ? <Spinner /> : <Link2 aria-hidden />}
+            {isPending ? <Spinner /> : null}
             {bindMode ? tx("bind") : t("attach")}
           </Button>
         </DialogFooter>

@@ -3,25 +3,29 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CheckCircle, CircleDot, Crown, EyeOff, Trash2, Trophy } from "lucide-react";
 
-import { columnMeta } from "@/components/data-table";
-import { StatusIcon } from "@/components/admin/StatusIcon";
-import { Button } from "@/components/ui/button";
+import { createKebabColumn } from "@/components/data-table";
+import { StatusPill } from "@/components/kit/StatusPill";
+import { TOURNAMENT_STATUS_TONE } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
+import { formatDateRange } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatTournamentStages } from "@/lib/tournament/stages";
 import type { Tournament } from "@/types/tournament.types";
 
-/** The tournament row: what it is, whether it is running, when, and how it is staged. */
+/** The tournament row: what it is, whether it wants attention, when, and how it is staged. */
 export function useTournamentColumns({
+  canCreate,
   canDelete,
   onDelete
 }: Readonly<{
+  /** `tournament.create`: the wizard a stage-less draft resumes in. */
+  canCreate: boolean;
   canDelete: boolean;
-  /** Stable identity required: the delete button closes over it. */
+  /** Stable identity required: the kebab closes over it. */
   onDelete: (tournament: Tournament) => void;
 }>): ColumnDef<Tournament>[] {
   const t = useTranslations("adminTournaments.list");
+  const tStatus = useTranslations("common.statusBadge");
   const format = useFormatter();
   return useMemo<ColumnDef<Tournament>[]>(
     () => [
@@ -29,52 +33,47 @@ export function useTournamentColumns({
         accessorKey: "name",
         header: t("columns.name"),
         cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{row.original.name}</span>
-            {row.original.is_hidden ? (
-              <StatusIcon icon={EyeOff} label={t("status.unpublished")} variant="muted" />
+          <span className="font-medium">
+            {row.original.name}
+            {row.original.is_league ? (
+              <span className="ml-2 text-caption font-normal text-muted-foreground">
+                {t("type.league")}
+              </span>
             ) : null}
-          </div>
-        )
-      },
-      {
-        accessorKey: "is_league",
-        header: t("columns.type"),
-        meta: columnMeta<Tournament>({ align: "center" }),
-        cell: ({ row }) =>
-          row.getValue("is_league") ? (
-            <StatusIcon icon={Crown} label={t("type.league")} variant="info" />
-          ) : (
-            <StatusIcon icon={Trophy} label={t("type.tournament")} variant="muted" />
-          )
-      },
-      {
-        accessorKey: "is_finished",
-        header: t("columns.status"),
-        meta: columnMeta<Tournament>({ align: "center" }),
-        cell: ({ row }) =>
-          row.getValue("is_finished") ? (
-            <StatusIcon icon={CheckCircle} label={t("status.finished")} variant="muted" />
-          ) : (
-            <StatusIcon icon={CircleDot} label={t("status.active")} variant="success" />
-          )
-      },
-      {
-        accessorKey: "start_date",
-        header: t("columns.startDate"),
-        cell: ({ row }) => (
-          <span className="tabular-nums">
-            {/* Tournament days are UTC midnights — read in UTC. */}
-            {format.dateTime(new Date(row.getValue("start_date")), { dateStyle: "medium", timeZone: "UTC" })}
           </span>
         )
       },
       {
-        accessorKey: "end_date",
-        header: t("columns.endDate"),
+        accessorKey: "status",
+        header: t("columns.status"),
+        enableSorting: false,
+        // Unpublished first: a hidden tournament is a draft whatever its phase.
+        // A finished one renders nothing, the absence says it.
+        cell: ({ row }) => {
+          const tournament = row.original;
+          if (tournament.is_hidden) {
+            return <StatusPill tone="neutral">{t("status.unpublished")}</StatusPill>;
+          }
+          if (
+            tournament.is_finished ||
+            tournament.status === "completed" ||
+            tournament.status === "archived"
+          ) {
+            return null;
+          }
+          return (
+            <StatusPill tone={TOURNAMENT_STATUS_TONE[tournament.status]}>
+              {tStatus(tournament.status)}
+            </StatusPill>
+          );
+        }
+      },
+      {
+        accessorKey: "start_date",
+        header: t("columns.dates"),
         cell: ({ row }) => (
           <span className="tabular-nums">
-            {format.dateTime(new Date(row.getValue("end_date")), { dateStyle: "medium", timeZone: "UTC" })}
+            {formatDateRange(format, row.original.start_date, row.original.end_date)}
           </span>
         )
       },
@@ -84,42 +83,33 @@ export function useTournamentColumns({
         enableSorting: false,
         cell: ({ row }) => {
           const stages = row.original.stages ?? [];
-          if (stages.length === 0) {
-            return <span className="text-muted-foreground">{t("noStages")}</span>;
-          }
-
+          if (stages.length === 0) return null;
           const stagesLabel = formatTournamentStages(stages);
-
           return (
-            <div className="max-w-80">
-              <div className="font-medium tabular-nums">
-                {t("stageCount", { count: stages.length })}
-              </div>
-              <div className="truncate text-xs text-muted-foreground" title={stagesLabel}>
-                {stagesLabel}
-              </div>
+            <div className="max-w-80 truncate text-muted-foreground" title={stagesLabel}>
+              {stagesLabel}
             </div>
           );
         }
       },
-      {
-        id: "actions",
-        cell: ({ row }) =>
-          canDelete ? (
-            <div className="flex items-center gap-2">
-              <Button
-                aria-label={t("deleteAria", { name: row.original.name })}
-                variant="ghost"
-                size="icon"
-                onClick={() => onDelete(row.original)}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4" aria-hidden />
-              </Button>
-            </div>
-          ) : null
-      }
+      createKebabColumn<Tournament>(
+        (tournament) => [
+          { label: t("openHub"), href: `/admin/tournaments/${tournament.id}` },
+          {
+            label: t("resumeWizard"),
+            href: `/admin/tournaments/new?resume=${tournament.id}`,
+            hidden: !canCreate || !tournament.is_hidden || (tournament.stages ?? []).length > 0
+          },
+          {
+            label: t("delete"),
+            onSelect: () => onDelete(tournament),
+            destructive: true,
+            hidden: !canDelete
+          }
+        ],
+        { rowLabel: (tournament) => tournament.name }
+      )
     ],
-    [canDelete, format, onDelete, t]
+    [canCreate, canDelete, format, onDelete, t, tStatus]
   );
 }

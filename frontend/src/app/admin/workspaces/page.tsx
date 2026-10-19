@@ -33,10 +33,9 @@ export default function WorkspacesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-4">
       <AdminPageHeader
         title={t("workspaces")}
-        description={tw("description")}
         actions={
           /* Creating a workspace is open to any active account now (the backend
              caps how many one account may own), so this is no longer a

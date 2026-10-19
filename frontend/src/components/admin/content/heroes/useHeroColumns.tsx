@@ -6,7 +6,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
 import { AssetPreview } from "@/components/admin/AssetPreview";
-import { Badge } from "@/components/ui/badge";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { useCatalogTrailingColumns } from "../shared";
@@ -31,12 +30,6 @@ export function useHeroColumns({
   const trailing = useCatalogTrailingColumns({ kindLabel, isSuperuser, onEdit, onDelete });
   return useMemo<ColumnDef<CatalogEntityRead>[]>(
     () => [
-      {
-        accessorKey: "id",
-        header: t("columns.id"),
-        size: 44,
-        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
-      },
       {
         id: "icon",
         header: t("columns.icon"),
@@ -85,14 +78,9 @@ export function useHeroColumns({
               header: t("columns.class"),
               size: 80,
               enableSorting: false,
-              meta: columnMeta<CatalogEntityRead>({ align: "center" }),
               cell: ({ row }) => {
                 const code = row.original.attrs.class;
-                return typeof code === "string" ? (
-                  <Badge variant="outline">{classLabel(code)}</Badge>
-                ) : (
-                  <span className="text-sm text-muted-foreground">{t("catalog.unknown")}</span>
-                );
+                return typeof code === "string" ? <span className="text-sm">{classLabel(code)}</span> : null;
               },
             } satisfies ColumnDef<CatalogEntityRead>,
           ]

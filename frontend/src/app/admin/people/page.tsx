@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { PeopleBrowser } from "@/components/admin/people/list/PeopleBrowser";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -19,9 +20,7 @@ export default function PeoplePage() {
   const { canAccessPermission, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
-  if (!isLoaded) {
-    return <div className="h-40 animate-pulse rounded-lg bg-muted/40 motion-reduce:animate-none" />;
-  }
+  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
 
   if (!canAccessPermission("user.read", workspaceId)) {
     return (

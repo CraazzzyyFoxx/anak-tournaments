@@ -154,6 +154,7 @@ export function StageEditor({
   const [saveError, setSaveError] = useState<unknown>(null);
 
   const hasEncounters = (progress?.total ?? 0) > 0;
+  const stageStatus = getStageStatus(stage, hasEncounters);
   const changes = stageFormChanges(stage, form);
   // The engine's own round list: the shape the bracket will actually be
   // generated in, including an uneven upper/lower split (and, later, a custom
@@ -262,15 +263,21 @@ export function StageEditor({
   }));
 
   return (
-    <div className="min-w-0 rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
+    <div className="min-w-0">
+      <div className="border-b border-border pb-3">
         <EntityHubHeader
           level={2}
           title={stage.name}
-          status={{
-            label: tr(`extra.statuses.${getStageStatus(stage, hasEncounters).toLowerCase()}`),
-            tone: getStageStatusTone(stage, hasEncounters)
-          }}
+          // A pill only while captains play (or are about to): draft and
+          // completed are the default ends of every stage.
+          status={
+            stageStatus === "Active" || stageStatus === "Preview"
+              ? {
+                  label: tr(`extra.statuses.${stageStatus.toLowerCase()}`),
+                  tone: getStageStatusTone(stage, hasEncounters)
+                }
+              : undefined
+          }
           meta={[
             tRoot(`labels.types.${stage.stage_type}`),
             <span key="slots" className="tabular-nums">
@@ -384,7 +391,7 @@ export function StageEditor({
         />
       </div>
 
-      <div className="border-b border-border px-4 py-2">
+      <div className="border-b border-border py-2">
         <LinkTabs
           items={tabs}
           activeKey={activeSection}
@@ -393,7 +400,7 @@ export function StageEditor({
         />
       </div>
 
-      <div className="p-4">
+      <div className="pt-4">
         {activeSection === "general" ? (
           <GeneralSection
             stage={stage}

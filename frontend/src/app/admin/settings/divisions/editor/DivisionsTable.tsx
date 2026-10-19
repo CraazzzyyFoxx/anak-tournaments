@@ -8,7 +8,6 @@ import { useTranslations } from "next-intl";
 
 import { DataTable, createKebabColumn } from "@/components/data-table";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -19,7 +18,6 @@ import type { DisciplineCapabilities } from "@/types/discipline.types";
 
 import {
   bandIconUrl,
-  bandVerdict,
   floorError,
   ladderOwners,
   nativeRangeLabel,
@@ -27,21 +25,12 @@ import {
   rankRangeLabel,
   type Action,
   type Band,
-  type BandVerdict,
   type Ladder,
   type Scale
 } from "./draftReducer";
 
-const VERDICT_TONE: Record<BandVerdict, "info" | "accent" | "warning"> = {
-  renamed: "info",
-  relinked: "info",
-  "range moved": "accent",
-  new: "warning"
-};
-
 export interface DivisionsTableProps {
   bands: Band[];
-  base: Band[];
   scale: Scale;
   /** The grid's own discipline: the native-rank editor slot is that game's, never another's. */
   discipline: string;
@@ -70,7 +59,6 @@ export interface DivisionsTableProps {
  */
 export function DivisionsTable({
   bands,
-  base,
   scale,
   discipline,
   capabilities,
@@ -85,6 +73,10 @@ export function DivisionsTable({
 }: Readonly<DivisionsTableProps>) {
   const t = useTranslations("adminSettings.divisions");
   const custom = scale === "custom";
+  // Divisions without a crest of their own: borrowing the ladder's, or (no ladder) refused by the server.
+  const crestless = bands.filter((band) => band.icon_url === null).length;
+  // A switch only where both sides are reachable: leaving the ladder always is, returning needs full links.
+  const scaleChoice = ladder !== null && editable && (!custom || canFollowLadder);
 
   const columns = useMemo<ColumnDef<Band>[]>(() => {
     const definitions: ColumnDef<Band>[] = [
@@ -92,26 +84,36 @@ export function DivisionsTable({
         id: "number",
         header: "#",
         size: 52,
-        cell: ({ row }) => <span className="font-mono tabular-nums">{row.original.number}</span>
+        cell: ({ row }) => <span className="tabular-nums">{row.original.number}</span>
       },
       {
         id: "name",
         header: t("table.name"),
         cell: ({ row }) => {
           const band = row.original;
+          const crest = bandIconUrl(ladder, band);
+          const crestNote = band.icon_url === null
+            ? t(ladder ? "table.borrowsCrest" : "table.crestRequired")
+            : undefined;
           return (
             <div className="flex min-w-0 items-center gap-2">
-              {bandIconUrl(ladder, band) ? (
+              {crest ? (
                 <Image
-                  src={bandIconUrl(ladder, band)!}
-                  alt=""
+                  src={crest}
+                  alt={crestNote ?? ""}
+                  title={crestNote}
                   width={20}
                   height={20}
                   className="size-5 shrink-0 object-contain"
                   unoptimized
                 />
               ) : (
-                <span aria-hidden className="size-5 shrink-0 rounded border border-dashed border-border" />
+                <span
+                  role="img"
+                  aria-label={crestNote}
+                  title={crestNote}
+                  className="size-5 shrink-0 rounded border border-dashed border-border"
+                />
               )}
               <InlineEditText
                 value={band.name}
@@ -122,11 +124,6 @@ export function DivisionsTable({
                   dispatch({ type: "rename", bandIndex: band.number - 1, name: next })
                 }
               />
-              {band.icon_url === null ? (
-                <StatusPill tone="neutral">
-                  {ladder ? t("table.borrowsCrest") : t("table.crestRequired")}
-                </StatusPill>
-              ) : null}
             </div>
           );
         }
@@ -139,7 +136,7 @@ export function DivisionsTable({
           custom && editable ? (
             <FloorField bands={bands} bandIndex={row.original.number - 1} dispatch={dispatch} />
           ) : (
-            <span className="font-mono text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
+            <span className="text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
           )
       },
       ...(ladder
@@ -176,7 +173,7 @@ export function DivisionsTable({
                   );
                 }
                 return (
-                  <span className="font-mono text-sm">
+                  <span className="text-sm">
                     <span className={band.native ? undefined : "text-warning"}>
                       {nativeRangeLabel(ladder, band) ?? t("ladder.notLinked")}
                     </span>
@@ -189,29 +186,6 @@ export function DivisionsTable({
             } satisfies ColumnDef<Band>
           ]
         : []),
-      {
-        id: "players",
-        header: t("table.players"),
-        size: 90,
-        cell: () => (
-          <span
-            className="text-muted-foreground"
-            title={t("table.playerDistributionUnavailable")}
-          >
-            &mdash;
-          </span>
-        )
-      },
-      {
-        id: "verdict",
-        header: t("table.vsBase"),
-        size: 120,
-        cell: ({ row }) => {
-          const verdict = bandVerdict(base, row.original);
-          if (verdict === null) return <span className="text-muted-foreground">&mdash;</span>;
-          return <StatusPill tone={VERDICT_TONE[verdict]}>{verdict}</StatusPill>;
-        }
-      }
     ];
 
     if (!editable) return definitions;
@@ -259,7 +233,7 @@ export function DivisionsTable({
         { rowLabel: (band) => band.name }
       )
     ];
-  }, [bands, base, capabilities, custom, discipline, dispatch, editable, ladder, onPickIcon, t]);
+  }, [bands, capabilities, custom, discipline, dispatch, editable, ladder, onPickIcon, t]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -275,7 +249,7 @@ export function DivisionsTable({
               : null}
           </p>
         </div>
-        {ladder ? (
+        {scaleChoice ? (
           <ToggleGroup
             type="single"
             variant="pill"
@@ -284,12 +258,8 @@ export function DivisionsTable({
             onValueChange={(next) => onScaleChange(next as Scale)}
             aria-label={t("table.rankScale")}
           >
-            <ToggleGroupItem value="ladder" disabled={!editable || (custom && !canFollowLadder)}>
-              {t("table.followLadder")}
-            </ToggleGroupItem>
-            <ToggleGroupItem value="custom" disabled={!editable}>
-              {t("table.custom")}
-            </ToggleGroupItem>
+            <ToggleGroupItem value="ladder">{t("table.followLadder")}</ToggleGroupItem>
+            <ToggleGroupItem value="custom">{t("table.custom")}</ToggleGroupItem>
           </ToggleGroup>
         ) : null}
       </div>
@@ -307,7 +277,7 @@ export function DivisionsTable({
             <p className="truncate text-sm font-medium">
               {row.original.number}. {row.original.name}
             </p>
-            <p className="truncate font-mono text-xs text-muted-foreground">
+            <p className="truncate text-xs tabular-nums text-muted-foreground">
               {rankRangeLabel(row.original)}
               {ladder ? ` · ${nativeRangeLabel(ladder, row.original) ?? t("ladder.notLinked")}` : null}
             </p>
@@ -320,6 +290,11 @@ export function DivisionsTable({
           ? t("table.customScaleFooter")
           : t("table.ladderScaleFooter")}
       </p>
+      {crestless > 0 ? (
+        <p className={ladder ? "text-xs text-muted-foreground" : "text-xs text-warning"}>
+          {t(ladder ? "impactChecks.crestsSome" : "impactChecks.crestsRequired", { count: crestless })}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -343,7 +318,7 @@ function FloorField({
 
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5 font-mono text-sm tabular-nums">
+      <div className="flex items-center gap-1.5 text-sm tabular-nums">
         <Input
           inputMode="numeric"
           aria-label={t("table.floor", { name: band.name })}
@@ -360,7 +335,7 @@ function FloorField({
               setDraft(null);
             }
           }}
-          className="h-7 w-20 px-1.5 font-mono tabular-nums aria-invalid:border-destructive"
+          className="h-7 w-20 px-1.5 tabular-nums aria-invalid:border-destructive"
         />
         <span className="text-muted-foreground">&ndash; {band.rankMax ?? "\u221e"}</span>
       </div>

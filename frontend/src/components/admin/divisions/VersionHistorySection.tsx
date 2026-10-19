@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
-import { Download, Upload, Wand2 } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -14,20 +14,25 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 
 import { editorHref } from "./model";
 
 /**
- * The open grid's versions, the drafts that can be started from them, and —
- * when the browsed game has more than one grid — which grid is open.
+ * The open grid's versions, the drafts that can be started from them, and,
+ * when the browsed game has more than one grid, which grid is open.
  */
 export function VersionHistorySection({
   canCreate,
@@ -60,47 +65,40 @@ export function VersionHistorySection({
     newDraftPending: boolean;
     onLoadStandard: () => void;
     loadStandardPending: boolean;
-    /** The transfer row under the list. */
+    /** The transfer menu, last among the header actions. */
     children: ReactNode;
   }
 >) {
   const t = useTranslations("adminSettings.divisions");
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-history">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id="divisions-history" className="font-display text-base font-semibold">
-            {t("versionHistory")}
-          </h2>
-          <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">
-            {t("versionHistoryDescription")}
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="divisions-history" className="font-display text-base font-semibold">
+          {t("versionHistory")}
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreate && latestVersion ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onNewDraft(latestVersion.id)}
+              disabled={newDraftPending}
+            >
+              {t("newDraft", { version: latestVersion.version })}
+            </Button>
+          ) : null}
+          {canCreate && ladder && selectedGrid ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onLoadStandard}
+              disabled={loadStandardPending}
+            >
+              {t("loadStandard")}
+            </Button>
+          ) : null}
+          {children}
         </div>
-        {canCreate ? (
-          <div className="flex flex-wrap gap-2">
-            {latestVersion ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onNewDraft(latestVersion.id)}
-                disabled={newDraftPending}
-              >
-                + {t("newDraft", { version: latestVersion.version })}
-              </Button>
-            ) : null}
-            {ladder ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onLoadStandard}
-                disabled={loadStandardPending || selectedGrid === null}
-              >
-                <Wand2 aria-hidden className="size-3.5" />
-                {t("loadStandard")}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
       {grids.length > 1 ? (
@@ -118,8 +116,7 @@ export function VersionHistorySection({
             <SelectContent>
               {grids.map((grid) => (
                 <SelectItem key={grid.id} value={String(grid.id)}>
-                  {grid.name}
-                  {grid.archived_at ? " (archived)" : ""}
+                  {grid.archived_at ? t("archivedGrid", { name: grid.name }) : grid.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -140,20 +137,19 @@ export function VersionHistorySection({
           editorHref={editorHref}
         />
       )}
-
-      {children}
     </section>
   );
 }
 
 /** A grid in and out of the workspace: portable JSON both ways, or the guided workspace import. */
-export function GridTransferBar({
+export function GridTransferMenu({
   canCreate,
   inputRef,
   onImportFile,
   importPending,
   onExport,
-  exportDisabled
+  canExport,
+  exportPending
 }: Readonly<{
   canCreate: boolean;
   /** Owned by the caller, which clears it once the picked file is read. */
@@ -161,46 +157,52 @@ export function GridTransferBar({
   onImportFile: (file: File) => void;
   importPending: boolean;
   onExport: () => void;
-  exportDisabled: boolean;
+  /** A grid is open, so there is something to export. */
+  canExport: boolean;
+  exportPending: boolean;
 }>) {
   const t = useTranslations("adminSettings.divisions");
+  if (!canCreate && !canExport) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-      <span className={cn(EYEBROW_CLASS, "mr-2")}>{t("transfer")}</span>
+    <>
       {canCreate ? (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            aria-hidden
-            tabIndex={-1}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onImportFile(file);
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => inputRef.current?.click()}
-            disabled={importPending}
-          >
-            <Upload aria-hidden className="size-3.5" />
-            {t("importJson")}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onImportFile(file);
+          }}
+        />
+      ) : null}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-8" aria-label={t("transfer")} title={t("transfer")}>
+            <MoreHorizontal aria-hidden className="size-4" />
           </Button>
-        </>
-      ) : null}
-      <Button variant="ghost" size="sm" onClick={onExport} disabled={exportDisabled}>
-        <Download aria-hidden className="size-3.5" />
-        {t("exportJson")}
-      </Button>
-      {canCreate ? (
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/admin/settings/divisions/import">{t("importWorkspace")}</Link>
-        </Button>
-      ) : null}
-    </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          {canCreate ? (
+            <DropdownMenuItem disabled={importPending} onSelect={() => inputRef.current?.click()}>
+              {t("importJson")}
+            </DropdownMenuItem>
+          ) : null}
+          {canExport ? (
+            <DropdownMenuItem disabled={exportPending} onSelect={onExport}>
+              {t("exportJson")}
+            </DropdownMenuItem>
+          ) : null}
+          {canCreate ? (
+            <DropdownMenuItem asChild>
+              <Link href="/admin/settings/divisions/import">{t("importWorkspace")}</Link>
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }

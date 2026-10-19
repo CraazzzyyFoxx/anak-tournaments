@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, Check, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
 import type { DivisionGridReadinessSource } from "@/types/workspace.types";
 
@@ -17,30 +17,23 @@ export interface ImpactColumnProps {
   edits: EditNote[];
 }
 
-const SOURCE_STATUS_KEY: Record<DivisionGridReadinessSource["status"], "impact.mappingComplete" | "impact.mappingIncomplete" | "impact.noMapping"> = {
-  ok: "impact.mappingComplete",
+/** A complete mapping is the norm and says nothing; only the gaps are named. */
+const SOURCE_GAP_KEY = {
   incomplete: "impact.mappingIncomplete",
   missing: "impact.noMapping"
-};
+} as const;
 
 /**
  * Impact · Ready to publish? · Changes in the draft (F12 ·6…·8).
  *
- * The right rail on `xl`, and the "Impact" sub-tab below it — one component
+ * The right rail on `xl`, and the "Impact" sub-tab below it: one component
  * either way, so the two do not drift.
  */
 export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnProps>) {
   const t = useTranslations("adminSettings.divisions");
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
       <Panel title={t("impact.title")}>
-        <p className={EYEBROW_CLASS}>{t("impact.playersChanging")}</p>
-        <p
-          className="font-display text-xl font-semibold"
-          title={t("impact.distributionUnavailable")}
-        >
-          &mdash;
-        </p>
         {sources.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             {t("impact.noOtherVersion")}
@@ -49,13 +42,13 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
           <ul className="flex flex-col gap-1.5 text-xs">
             {sources.map((source) => (
               <li key={source.version_id}>
-                <span className="font-mono">{source.version_label}</span>{" "}
+                {source.version_label}{" "}
                 <span className="text-muted-foreground">
-                  · {source.tournament_count}{" "}
-                  {source.tournament_count === 1 ? "tournament" : "tournaments"}
+                  · {t("tournamentCount", { count: source.tournament_count })}
                 </span>
-                <br />
-                <span className="text-muted-foreground">{t(SOURCE_STATUS_KEY[source.status])}</span>
+                {source.status === "ok" ? null : (
+                  <span className="block text-warning">{t(SOURCE_GAP_KEY[source.status])}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -77,10 +70,7 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
         </ul>
       </Panel>
 
-      <Panel
-        title={t("impact.changesInDraft")}
-        aside={t("impact.editCount", { count: edits.length })}
-      >
+      <Panel title={t("impact.changesInDraft")}>
         {edits.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t("impact.nothingEdited")}</p>
         ) : (
@@ -97,17 +87,10 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
   );
 }
 
-function Panel({
-  title,
-  aside,
-  children
-}: Readonly<{ title: string; aside?: string; children: ReactNode }>) {
+function Panel({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
   return (
-    <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-display text-sm font-semibold">{title}</h2>
-        {aside ? <span className={cn(EYEBROW_CLASS, "font-mono")}>{aside}</span> : null}
-      </div>
+    <section className="flex flex-col gap-2 p-3">
+      <h2 className="font-display text-sm font-semibold">{title}</h2>
       {children}
     </section>
   );

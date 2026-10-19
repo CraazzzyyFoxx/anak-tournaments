@@ -3,9 +3,10 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Lock, Pencil, Trash2, Trophy } from "lucide-react";
+import { Lock, Pencil, Trash2 } from "lucide-react";
 
 import { createKebabColumn } from "@/components/data-table";
+import { PlaceBadge } from "@/components/ui/place-badge";
 import TeamName from "@/components/TeamName";
 import type { Stage, Standings } from "@/types/tournament.types";
 
@@ -38,10 +39,11 @@ export function useStandingsColumns({
         size: 72,
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            {row.original.position === 1 ? (
-              <Trophy aria-hidden className="size-4 text-warning" />
-            ) : null}
-            <span className="font-bold tabular-nums">{row.original.position}</span>
+            {row.original.position >= 1 && row.original.position <= 3 ? (
+              <PlaceBadge place={row.original.position} />
+            ) : (
+              <span className="tabular-nums">#{row.original.position}</span>
+            )}
             {row.original.is_pinned ? (
               <span title={t("pinnedPlace")} className="text-muted-foreground">
                 <Lock aria-hidden className="size-3.5" />
@@ -58,9 +60,7 @@ export function useStandingsColumns({
         cell: ({ row }) =>
           row.original.team ? (
             <TeamName team={row.original.team} size="xs" nameClassName="font-medium" />
-          ) : (
-            "—"
-          )
+          ) : null
       },
       // Scoped to one stage, the stage itself is the pinned chip: the column only
       // earns its place when the stage has groups to tell apart.
@@ -82,7 +82,7 @@ export function useStandingsColumns({
                 header: t("columns.group"),
                 enableSorting: false,
                 cell: ({ row }) => (
-                  <span className="text-sm">{row.original.stage_item?.name ?? "—"}</span>
+                  <span className="text-sm">{row.original.stage_item?.name}</span>
                 )
               } satisfies ColumnDef<Standings>
             ]
@@ -103,7 +103,7 @@ export function useStandingsColumns({
         accessorKey: "draw",
         header: t("drawsShort"),
         size: 64,
-        cell: ({ row }) => <span className="tabular-nums text-warning">{row.original.draw}</span>
+        cell: ({ row }) => <span className="tabular-nums">{row.original.draw}</span>
       },
       {
         accessorKey: "lose",
@@ -126,23 +126,23 @@ export function useStandingsColumns({
         // Median and full are separate tiebreakers, and a lone number reads as
         // whichever one the organizer assumes. Show the pair, matching the
         // public table.
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums" title={t("buchholzTitle")}>
-            {row.original.buchholz == null
-              ? "—"
-              : row.original.full_buchholz == null
+        cell: ({ row }) =>
+          row.original.buchholz == null ? null : (
+            <span className="text-sm tabular-nums" title={t("buchholzTitle")}>
+              {row.original.full_buchholz == null
                 ? row.original.buchholz.toFixed(2)
                 : `${row.original.buchholz.toFixed(2)} / ${row.original.full_buchholz.toFixed(2)}`}
-          </span>
-        )
+            </span>
+          )
       },
       {
         accessorKey: "tb",
         header: t("columns.tiebreak"),
         size: 72,
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{row.original.tb != null ? row.original.tb : "—"}</span>
-        )
+        cell: ({ row }) =>
+          row.original.tb == null ? null : (
+            <span className="text-sm tabular-nums">{row.original.tb}</span>
+          )
       },
       createKebabColumn<Standings>(
         (row) => [

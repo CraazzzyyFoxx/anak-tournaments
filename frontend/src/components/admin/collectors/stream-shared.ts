@@ -9,11 +9,10 @@ import type { StreamPollHealth, StreamPollStatus } from "@/types/admin.types";
  * exhaustive against `StreamPollStatus`, so a status added backend-side fails
  * the build here instead of silently rendering as a raw enum token.
  *
- * The wording lives in `collectors.streams.status.<key>` — a `label` an
- * operator reads and a `hint` telling them what to do next, because the whole
- * reason the health panel exists is that the tick swallows its own failures, so
- * "what went wrong" without "what to do" leaves them back in the logs. An empty
- * `hint` (only `ok`) means there is nothing to do.
+ * The wording lives in `collectors.streams.status.<key>`: a `label` an
+ * operator reads and, for a warning or danger outcome only, a `hint` telling
+ * them what to do next, because the tick swallows its own failures, so "what
+ * went wrong" without "what to do" leaves them back in the logs.
  */
 export const STREAM_STATUS_TONES: Record<StreamPollStatus, Tone> = {
   ok: "success",

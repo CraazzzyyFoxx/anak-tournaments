@@ -127,8 +127,8 @@ describe("teams sub-tab bar", () => {
 
     await render(<TeamsLayout>{<div data-testid="body" />}</TeamsLayout>);
 
-    const tabs = [...container.querySelectorAll("a[data-link-tab]")].map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Roster"]);
+    // One visible tab is no choice, so there is no tab bar at all.
+    expect(container.querySelectorAll("a[data-link-tab]")).toHaveLength(0);
     // Not merely hidden: the body is withheld and the URL corrected, so a
     // pasted link cannot open a draft on a tournament that has none.
     expect(container.querySelector("[data-testid='body']")).toBeNull();
@@ -157,9 +157,6 @@ describe("draft phase strip", () => {
   it.each([
     ["setup", "Setup"],
     ["ready", "Ready"],
-    ["live", "Live"],
-    // A paused draft is a running one waiting on the organizer, not its own phase.
-    ["paused", "Live"],
     ["completed", "Done"],
     // Cancelled leaves a fresh wizard on screen, so the strip says Setup too.
     ["cancelled", "Setup"]
@@ -171,8 +168,20 @@ describe("draft phase strip", () => {
     expect(currentPhase()).toBe(label);
   });
 
+  it.each(["live", "paused"] as DraftStatus[])(
+    "leaves a %s session's phase to the control room",
+    async (status) => {
+      mocks.getTournamentBoard.mockResolvedValue({ session: { id: 3, status } });
+
+      await render(<TeamsDraftPage />);
+
+      expect(container.querySelector("ol[aria-label='Phases']")).toBeNull();
+      expect(mocks.dashboardMounts).toContain(64);
+    }
+  );
+
   it("names all four phases in lifecycle order", async () => {
-    mocks.getTournamentBoard.mockResolvedValue({ session: { id: 3, status: "live" } });
+    mocks.getTournamentBoard.mockResolvedValue({ session: { id: 3, status: "ready" } });
 
     await render(<TeamsDraftPage />);
 

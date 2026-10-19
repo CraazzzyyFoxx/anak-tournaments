@@ -9,9 +9,9 @@ import type { Stage, StageItem } from "@/types/tournament.types";
  * Standings or Reports view beside it — which is why this is a list of
  * definitions rather than a row of local selects.
  *
- * The tournament chip only exists where the tournament is not already pinned,
- * and the stage/group chips only once the scope has any: a chip with no options
- * is a control that cannot answer the question it asks.
+ * The tournament chip only exists where the tournament is not already pinned.
+ * A stage or group filter with fewer than two options is not offered:
+ * `FilterBar` drops it, while a value already in the URL stays removable.
  */
 export function encounterFilterDefs({
   tournamentId,
@@ -35,22 +35,20 @@ export function encounterFilterDefs({
       options: tournaments.map((entry) => ({ value: String(entry.id), label: entry.name }))
     });
   }
-  if (stages.length > 0) {
-    list.push({
+  list.push(
+    {
       key: "stage",
       label: t("stage"),
       kind: "single",
       options: stages.map((stage) => ({ value: String(stage.id), label: stage.name }))
-    });
-  }
-  if (stageItems.length > 0) {
-    list.push({
+    },
+    {
       key: "group",
       label: t("group"),
       kind: "single",
       options: stageItems.map((item) => ({ value: String(item.id), label: item.name }))
-    });
-  }
+    }
+  );
   list.push(
     {
       key: "status",

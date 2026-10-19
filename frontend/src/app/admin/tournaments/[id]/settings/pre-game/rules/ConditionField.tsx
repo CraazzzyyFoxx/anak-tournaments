@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Filter, RotateCcw } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -188,7 +187,6 @@ export function ConditionField({
           </DialogHeader>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{t(`context.${context}`)}</Badge>
             {leaves.length === 0 ? (
               <span className="text-xs text-muted-foreground">{t("builder.noLeaves")}</span>
             ) : null}

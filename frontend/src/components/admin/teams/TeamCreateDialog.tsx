@@ -110,7 +110,7 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
           <Input
             id="team-create-name"
             value={form.name}
-            placeholder={captainHandle || t("teamName")}
+            placeholder={captainHandle || undefined}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           />
           <p className="text-xs text-muted-foreground">

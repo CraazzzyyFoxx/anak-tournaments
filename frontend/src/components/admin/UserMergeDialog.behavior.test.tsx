@@ -218,9 +218,9 @@ describe("profile/auth merge review boundaries", () => {
     await acknowledge("I understand that Source");
     await pick("Other account:", "Delete account and transfer its resources");
     expect(labelledControl<HTMLButtonElement>("I reviewed the OAuth destinations").getAttribute("aria-checked")).toBe("false");
-    expect(labelledControl("discord: incoming-login").textContent).toBe("Choose a retained sign-in account");
-    await openSelect("discord: incoming-login");
-    expect(option("incoming-auth (#11) — selected for deletion").getAttribute("aria-disabled")).toBe("true");
+    expect(labelledControl("Discord: incoming-login").textContent).toBe("Choose a retained sign-in account");
+    await openSelect("Discord: incoming-login");
+    expect(option("incoming-auth (#11) (selected for deletion)").getAttribute("aria-disabled")).toBe("true");
     await selectOption("existing-auth (#22)");
     await click(button("Merge and delete source"));
     expect(executeMerge).not.toHaveBeenCalled();

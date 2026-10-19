@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
-import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 
 // @xyflow/react (plus its stylesheet) is the heaviest thing this route can
 // pull, and the tree is one card on a page that is mostly forms and tables —
@@ -54,14 +54,9 @@ export function ConditionTreeCard({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>{t("detail.conditionTree")}</CardTitle>
-          <CardDescription>
-            {editing
-              ? t("detail.editTree")
-              : t("detail.conditionTree")}
-          </CardDescription>
-        </div>
+        <CardTitle asChild>
+          <h2>{t("detail.conditionTree")}</h2>
+        </CardTitle>
         {canUpdate && !editing && (
           <Button
             variant="outline"
@@ -71,7 +66,6 @@ export function ConditionTreeCard({
               onEditingChange(true);
             }}
           >
-            <Pencil className="mr-2 h-4 w-4" />
             {t("detail.editTree")}
           </Button>
         )}
@@ -86,6 +80,7 @@ export function ConditionTreeCard({
                 {t("detail.cancelEdit")}
               </Button>
               <Button onClick={() => onSave(draft)} disabled={isSaving}>
+                {isSaving && <Spinner />}
                 {isSaving ? t("common.saving") : t("detail.saveTree")}
               </Button>
             </div>

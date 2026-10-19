@@ -52,14 +52,12 @@ export default function StreamCollectorPage() {
 
   return (
     <div className="space-y-4">
-      {items.length > 1 && (
-        <LinkTabs
-          items={items}
-          activeKey={activeKey}
-          level={2}
-          ariaLabel={t("views.streamsAria")}
-        />
-      )}
+      <LinkTabs
+        items={items}
+        activeKey={activeKey}
+        level={2}
+        ariaLabel={t("views.streamsAria")}
+      />
       {activeKey === "settings" ? (
         <StreamSettingsPanel />
       ) : (

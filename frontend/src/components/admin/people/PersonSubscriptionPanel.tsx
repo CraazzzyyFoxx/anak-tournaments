@@ -1,26 +1,22 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Search } from "lucide-react";
-import { useDebounce } from "use-debounce";
+import { CircleAlert, CircleCheck, CircleSlash, HelpCircle, type LucideIcon } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useClickOutside } from "@/hooks/useClickOutside";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import userService from "@/services/user.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import {
   PROVIDER_LABELS,
-  STATE_BAR,
   StateBadge,
   formatDate,
   formatRelative,
@@ -30,147 +26,18 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Spinner } from "@/components/ui/spinner";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
-interface SelectUser {
-  (userId: number, label: string): void;
-}
+const STATE_ICON: Record<string, { icon: LucideIcon; variant: "success" | "warning" | "info" | "destructive" }> = {
+  active: { icon: CircleCheck, variant: "success" },
+  inactive: { icon: CircleSlash, variant: "warning" },
+  unknown: { icon: HelpCircle, variant: "info" },
+  error: { icon: CircleAlert, variant: "destructive" }
+};
 
-// ─── Player search (header combobox) ─────────────────────────────────────────
-
-/** Compact search that lives in the page header; matches drop down below the
- *  input and open the player detail on select. */
-export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }>) {
-  const t = useTranslations("adminPeople.subscription");
-  const [term, setTerm] = useState("");
-  const [open, setOpen] = useState(false);
-  // APG combobox: DOM focus never leaves the input, so the highlighted row is
-  // tracked here and pointed at through `aria-activedescendant`.
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const listId = useId();
-  const [debouncedTerm] = useDebounce(term, 300);
-  const debounced = debouncedTerm.trim();
-
-  useClickOutside(containerRef, () => setOpen(false));
-
-  const searchQuery = useQuery({
-    queryKey: adminQueryKeys.subscriptionsUserSearch(debounced),
-    queryFn: () => userService.searchUsers(debounced),
-    enabled: debounced.length >= 2
-  });
-  const results = searchQuery.data ?? [];
-  const showDropdown = open && debounced.length >= 2;
-
-  // A highlight kept across a new result set would send Enter to whoever now
-  // occupies that index. Cleared in the render that first sees the new data, not
-  // in an effect: an effect leaves the stale row highlighted for one paint.
-  const [seenResults, setSeenResults] = useState(searchQuery.data);
-  if (seenResults !== searchQuery.data) {
-    setSeenResults(searchQuery.data);
-    setActiveIndex(-1);
-  }
-
-  const pick = (id: number, name: string) => {
-    onSelect(id, name);
-    setOpen(false);
-    setActiveIndex(-1);
-    setTerm("");
-  };
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      setOpen(false);
-      setActiveIndex(-1);
-      return;
-    }
-    if (!showDropdown || results.length === 0) return;
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setActiveIndex((index) => (index + 1) % results.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setActiveIndex((index) => (index <= 0 ? results.length - 1 : index - 1));
-    } else if (event.key === "Enter" && activeIndex >= 0) {
-      event.preventDefault();
-      const picked = results[activeIndex];
-      if (picked) pick(picked.id, picked.name);
-    }
-  };
-
-  const foundLabel = t("found", { count: results.length });
-  const resultsAnnouncement = showDropdown && !searchQuery.isLoading ? foundLabel : "";
-
-  return (
-    <div ref={containerRef} className="relative w-full sm:w-72">
-      <Search
-        aria-hidden
-        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-      />
-      <Input
-        className="pl-8"
-        role="combobox"
-        aria-label={t("searchLabel")}
-        aria-autocomplete="list"
-        aria-expanded={showDropdown}
-        aria-controls={listId}
-        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
-        autoComplete="off"
-        placeholder={t("search")}
-        value={term}
-        onChange={(event) => {
-          setTerm(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-      />
-      {/* Stable region, updated in place: an inserted live region announces
-          unreliably, and the result count is the one thing a sighted user gets
-          for free here. */}
-      <output className="sr-only">{resultsAnnouncement}</output>
-      {showDropdown && (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
-          {searchQuery.isLoading ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">{t("searching")}</p>
-          ) : results.length > 0 ? (
-            <div
-              id={listId}
-              role="listbox"
-              aria-label={t("matching")}
-              className="max-h-72 divide-y divide-border overflow-y-auto"
-            >
-              {results.map((user, index) => (
-                <button
-                  key={user.id}
-                  id={`${listId}-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={activeIndex === index}
-                  // Out of the tab order on purpose: DOM focus stays in the input
-                  // and `aria-activedescendant` points here, so the highlight
-                  // below is this option's visible focus. Still a real button, so
-                  // it is a control rather than a div that only answers a mouse.
-                  tabIndex={-1}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => pick(user.id, user.name)}
-                  className={cn(
-                    "block w-full cursor-pointer px-3 py-2 text-left text-sm",
-                    activeIndex === index ? "bg-muted/60" : "hover:bg-muted/50"
-                  )}
-                >
-                  {user.name}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p id={listId} className="px-3 py-2 text-sm text-muted-foreground">
-              {t("noMatch", { query: debounced })}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
+/** One check state as a toned glyph, its word as the tooltip: for lines and logs, not tables. */
+export function SubscriptionStateIcon({ state }: Readonly<{ state: string }>) {
+  const labels = useSubscriptionLabels();
+  const meta = STATE_ICON[state] ?? STATE_ICON.unknown;
+  return <StatusIcon icon={meta.icon} label={labels.state[state] ?? state} variant={meta.variant} />;
 }
 
 // ─── Per-player check timeline ───────────────────────────────────────────────
@@ -198,37 +65,33 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
     <section className="space-y-2">
       <h3 className="text-sm font-semibold">{t("history")}</h3>
       {query.isLoading ? (
-        <p className="text-sm text-muted-foreground">{t("loading")}</p>
+        <Skeleton className="h-24 w-full" />
+      ) : query.isError ? (
+        <PageStateCard state="error" onAction={() => void query.refetch()} />
       ) : rows.length === 0 ? (
-        <EmptyNote>
-          {t("emptyHistory")}
-        </EmptyNote>
+        <EmptyNote>{t("emptyHistory")}</EmptyNote>
       ) : (
-        <ol className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+        <ol className="max-h-72 divide-y divide-border/60 overflow-y-auto pr-1">
           {rows.map((row) => {
             const reason = row.error ?? (row.reason ? labels.reason(row.reason) : null);
             return (
-              <li
-                key={row.id}
-                className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md border border-border/60 bg-card/50 px-2.5 py-1.5 text-xs"
-              >
-                <span aria-hidden className={cn("h-2 w-2 rounded-full", STATE_BAR[row.state] ?? "bg-muted")} />
+              <li key={row.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5 text-sm">
+                <SubscriptionStateIcon state={row.state} />
                 <span className="tabular-nums text-muted-foreground">
                   {formatDate(format, row.created_at)}
                 </span>
                 <span className="font-medium">{PROVIDER_LABELS[row.provider] ?? row.provider}</span>
-                <span>{labels.state[row.state] ?? row.state}</span>
-                {row.tier_label || row.tier_rank != null ? (
-                  <span className="text-muted-foreground">
-                    {row.tier_label ?? t("tierValue", { rank: row.tier_rank ?? 0 })}
-                  </span>
-                ) : null}
-                <span className="text-muted-foreground">
-                  · {labels.source[row.source] ?? row.source}
+                <span className="text-caption text-muted-foreground">
+                  {[
+                    row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : null),
+                    labels.source[row.source] ?? row.source
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
                 {reason ? (
-                  <span className={cn("truncate", row.error ? "text-danger" : "text-muted-foreground")}>
-                    · {reason}
+                  <span className={cn("truncate text-caption", row.error ? "text-danger" : "text-muted-foreground")}>
+                    {reason}
                   </span>
                 ) : null}
               </li>
@@ -246,8 +109,7 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
  * One player's subscription verdicts, with the re-check controls.
  *
  * Moved out of the subscription collector screen: a person's entitlements
- * belong on their card (People › Identity), and the collector page keeps it
- * only until its own WU drops the player lookup.
+ * belong on their card (People › Identity).
  */
 export function SubscriptionPlayerPanel({
   userId,
@@ -290,21 +152,17 @@ export function SubscriptionPlayerPanel({
             disabled={triggerMutation.isPending}
             onClick={() => triggerMutation.mutate(null)}
           >
-            {triggerMutation.isPending ? (
-              <Spinner className="mr-1.5 size-3.5" />
-            ) : (
-              <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
-            )}
+            {triggerMutation.isPending ? <Spinner className="mr-1.5 size-3.5" /> : null}
             {t("recheck")}
           </Button>
         </div>
 
         {statusQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">{t("loading")}</p>
+          <Skeleton className="h-24 w-full" />
+        ) : statusQuery.isError ? (
+          <PageStateCard state="error" onAction={() => void statusQuery.refetch()} />
         ) : rows.length === 0 ? (
-          <EmptyNote>
-            {t("empty")}
-          </EmptyNote>
+          <EmptyNote>{t("empty")}</EmptyNote>
         ) : (
           <Table>
             <TableHeader>
@@ -322,7 +180,7 @@ export function SubscriptionPlayerPanel({
               {rows.map((row) => (
                 <TableRow key={`${row.workspace_id}-${row.provider}`}>
                   <TableCell className="text-sm">
-                    {row.workspace_name ?? row.workspace_id ?? "—"}
+                    {row.workspace_name ?? row.workspace_id}
                   </TableCell>
                   <TableCell className="font-medium">
                     {PROVIDER_LABELS[row.provider] ?? row.provider}
@@ -331,16 +189,16 @@ export function SubscriptionPlayerPanel({
                     <StateBadge state={row.state} />
                   </TableCell>
                   <TableCell className="text-sm tabular-nums text-muted-foreground">
-                    {row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : "—")}
+                    {row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : null)}
                   </TableCell>
                   <TableCell
                     className="text-sm tabular-nums text-muted-foreground"
-                    title={formatDate(format, row.checked_at)}
+                    title={row.checked_at ? formatDate(format, row.checked_at) : undefined}
                   >
-                    {formatRelative(format, row.checked_at)}
+                    {row.checked_at ? formatRelative(format, row.checked_at) : null}
                   </TableCell>
                   <TableCell className="max-w-40 truncate text-xs text-muted-foreground">
-                    {row.reason ? labels.reason(row.reason) : "—"}
+                    {row.reason ? labels.reason(row.reason) : null}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -350,7 +208,6 @@ export function SubscriptionPlayerPanel({
                       onClick={() => triggerMutation.mutate([row.provider])}
                       aria-label={t("recheckFor", { provider: PROVIDER_LABELS[row.provider] ?? row.provider, label })}
                     >
-                      <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
                       {t("recheck")}
                     </Button>
                   </TableCell>
@@ -363,32 +220,5 @@ export function SubscriptionPlayerPanel({
 
       <PlayerCheckTimeline userId={userId} />
     </div>
-  );
-}
-
-// ─── Player detail dialog ─────────────────────────────────────────────────────
-
-interface SubscriptionPlayerDetailProps {
-  userId: number;
-  label: string;
-  onClose: () => void;
-}
-
-/** The dialog wrapper the subscription collector screen still opens from its lookup. */
-export function SubscriptionPlayerDetail({
-  userId,
-  label,
-  onClose
-}: Readonly<SubscriptionPlayerDetailProps>) {
-  return (
-    <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{label}</DialogTitle>
-        </DialogHeader>
-
-        <SubscriptionPlayerPanel userId={userId} label={label} />
-      </DialogContent>
-    </Dialog>
   );
 }

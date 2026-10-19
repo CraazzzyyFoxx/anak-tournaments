@@ -2,10 +2,10 @@
 
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { CheckCircle } from "lucide-react";
 
-import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { ManageableDiscordGuild } from "@/types/workspace.types";
 import { GuildMark } from "./GuildMark";
@@ -22,6 +22,7 @@ export function ServerPicker({
   guilds,
   loading,
   failed,
+  onRetry,
   pendingId,
   error,
   onBind
@@ -30,6 +31,8 @@ export function ServerPicker({
   guilds: ManageableDiscordGuild[];
   loading: boolean;
   failed: boolean;
+  /** Re-reads the server list after a failed load. */
+  onRetry?: () => void;
   pendingId: string | null;
   error: string | null;
   onBind: (guildId: string) => void;
@@ -38,22 +41,28 @@ export function ServerPicker({
   return (
     <div className="flex flex-col gap-3">
       {loading ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner />
-          {t("asking")}
-        </p>
+        <ul
+          aria-busy="true"
+          aria-label={t("asking")}
+          className="flex flex-col divide-y divide-border/60 rounded-lg border border-border"
+        >
+          {[0, 1, 2].map((row) => (
+            <li key={row} className="flex items-center gap-3 p-3">
+              <Skeleton className="size-9 rounded-lg" />
+              <Skeleton className="h-4 w-40" />
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {failed ? (
-        <p className="max-w-prose text-sm text-danger">
-          {t("unreachable")}
-        </p>
+        <PageStateCard state="error" title={t("unreachable")} onAction={onRetry} />
       ) : null}
 
       {/* No administered server is not an error: most often the Discord account
           simply is not linked yet, and the fix is one screen away. */}
       {!loading && !failed && guilds.length === 0 ? (
-        <div className="max-w-prose rounded-lg border border-dashed border-border p-4">
+        <div className="max-w-prose">
           <p className="text-sm">{t("none")}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {t("linkHelp")}
@@ -74,16 +83,13 @@ export function ServerPicker({
                   <p className="truncate text-sm font-medium" title={guild.name}>
                     {guild.name}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {guild.owner ? t("owner") : t("linkServer")}
-                  </p>
+                  {guild.owner ? (
+                    <p className="text-caption text-muted-foreground">{t("owner")}</p>
+                  ) : null}
                 </div>
               </div>
               {guild.guild_id === boundId ? (
-                <StatusPill tone="success">
-                  <CheckCircle aria-hidden className="size-3" />
-                  {t("linked")}
-                </StatusPill>
+                <span className="text-caption text-muted-foreground">{t("linked")}</span>
               ) : (
                 <Button
                   size="sm"

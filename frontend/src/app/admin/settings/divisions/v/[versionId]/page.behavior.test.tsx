@@ -5,7 +5,7 @@
 //  1. the `division_grid.read` gate is the page's, and `division_grid.update`
 //     decides editable-vs-read-only — a draft is not writable just because it
 //     is a draft;
-//  2. Publish is refused while any older version a tournament still reads has
+//  2. Publish is absent while any older version a tournament still reads has
 //     an incomplete mapping. This is the whole point of splitting Publish from
 //     Activate: an immutable version that no old tournament can be translated
 //     into would strand those tournaments' players;
@@ -366,7 +366,7 @@ describe("Divisions › draft editor", () => {
     canUpdate = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("division_grid.update");
+    expect(container.textContent).toContain("You cannot edit this draft");
     expect(button("Undo last change")).toBeUndefined();
     expect(byLabel("Start a new division at Champion 2")).toBeNull();
   });
@@ -377,9 +377,7 @@ describe("Divisions › draft editor", () => {
     );
     const container = await mount();
 
-    const publish = button("Publish v4");
-    expect(publish).toBeTruthy();
-    expect(publish!.disabled).toBe(true);
+    expect(button("Publish v4")).toBeUndefined();
     expect(container.textContent).toContain("1 mapping decision left in the Mappings tab");
   });
 
@@ -403,7 +401,7 @@ describe("Divisions › draft editor", () => {
     expect(changes.textContent).toContain("identical to v3");
   });
 
-  it("cuts the ladder and surfaces the draft summary in the save bar", async () => {
+  it("cuts the ladder and surfaces the edit count in the save bar", async () => {
     const container = await mount();
     expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
 
@@ -411,7 +409,6 @@ describe("Divisions › draft editor", () => {
 
     const bar = container.querySelector('[aria-label="Unsaved changes"]');
     expect(bar).toBeTruthy();
-    expect(bar!.textContent).toContain("4 divisions");
     expect(bar!.textContent).toContain("1 edit");
     // The new band has no tier id yet, so mappings cannot be computed onto it.
     expect(container.textContent).toContain("The draft is saved as a version");
@@ -507,7 +504,7 @@ describe("Divisions › draft editor", () => {
     await click(byLabel("Players of Old rest land in Elite"));
 
     const bar = container.querySelector('[aria-label="Unsaved changes"]');
-    expect(bar?.textContent).toContain("1 mapping pick");
+    expect(bar?.textContent).toContain("1 edit");
     await click(button("Save draft"));
 
     expect(updateDivisionGridVersion).not.toHaveBeenCalled();

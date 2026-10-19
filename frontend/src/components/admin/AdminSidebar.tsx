@@ -29,31 +29,8 @@ import {
   SidebarUserDropdown,
   SidebarWorkspaceLogoItem
 } from "@/components/admin/sidebar-shared";
-import { Badge } from "@/components/ui/badge";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
-
-/**
- * Queue counter beside a nav entry. Renders nothing at zero: a badge is a
- * "there is work here" signal, and a permanent `0` is noise.
- */
-function NavBadge({ value, isActive }: Readonly<{ value?: number; isActive: boolean }>) {
-  if (!value) return null;
-
-  return (
-    <Badge
-      shape="pill"
-      className={cn(
-        "ml-auto shrink-0 border-transparent px-1.5 tabular-nums group-data-[collapsible=icon]:hidden",
-        isActive
-          ? "bg-sidebar-primary/20 text-sidebar-primary"
-          : "bg-sidebar-accent text-sidebar-foreground/60"
-      )}
-    >
-      {value}
-    </Badge>
-  );
-}
 
 export function AdminSidebar() {
   const t = useTranslations("adminShell");
@@ -91,17 +68,17 @@ export function AdminSidebar() {
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          aria-label={t("commandPalette.searchShortcut")}
+          aria-label={t("commandPalette.search")}
           aria-keyshortcuts="Control+K Meta+K"
-          className="mt-1 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 px-2.5 text-sm text-sidebar-foreground/50 transition-colors hover:border-sidebar-border hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="mt-1 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 px-2.5 text-sm text-sidebar-foreground/60 transition-colors hover:border-sidebar-border hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <Search aria-hidden className="size-3.5 shrink-0" />
-          <span aria-hidden className="group-data-[collapsible=icon]:hidden">
-            {t("commandPalette.searchShort")}
+          <span aria-hidden className="truncate group-data-[collapsible=icon]:hidden">
+            {t("commandPalette.searchPlaceholder")}
           </span>
           <kbd
             aria-hidden
-            className="ml-auto rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-xs font-medium leading-none text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden"
+            className="ml-auto rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-xs font-medium leading-none text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden"
           >
             {t("commandPalette.ctrlK")}
           </kbd>
@@ -117,11 +94,11 @@ export function AdminSidebar() {
               <div className="mx-2 my-2 h-px bg-sidebar-border/40 group-data-[collapsible=icon]:mx-1" />
             )}
 
-            {/* Group label — mono uppercase eyebrow, the design book's label
-                register, tinted to the sidebar ramp rather than the page one. */}
+            {/* Group label — the shared uppercase eyebrow, tinted to the
+                sidebar ramp rather than the page one. */}
             {group.title ? (
               <div className="flex items-center gap-2 px-3 py-1.5 group-data-[collapsible=icon]:hidden">
-                <span className={cn(EYEBROW_CLASS, "font-mono text-sidebar-foreground/40")}>
+                <span className={cn(EYEBROW_CLASS, "text-sidebar-foreground/60")}>
                   {t(group.title as never)}
                 </span>
               </div>
@@ -131,33 +108,27 @@ export function AdminSidebar() {
               <SidebarMenu>
                 {group.items.map((item) => {
                   const isActive = item.href === activeHref;
+                  // Queue size beside the entry; nothing at zero, because a
+                  // permanent `0` is noise.
+                  const count = item.badge?.();
                   return (
                     <SidebarMenuItem key={item.href}>
+                      {/* Current page = the accent fill + `aria-current`. One
+                          cue, not a fill, a bar, a weight and a teal icon. */}
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
                         tooltip={t(item.title as never)}
-                        className={cn(
-                          "relative h-8 rounded-md px-2.5 text-sm transition-all",
-                          "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
-                          isActive && [
-                            "bg-sidebar-accent text-sidebar-foreground font-medium",
-                            // Left accent bar
-                            "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
-                            "before:h-4 before:w-0.5 before:rounded-full before:bg-sidebar-primary"
-                          ]
-                        )}
+                        className="h-8 rounded-md px-2.5 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground data-[active=true]:font-normal"
                       >
                         <HoverPrefetchLink href={item.href} aria-current={isActive ? "page" : undefined}>
-                          <item.icon
-                            aria-hidden
-                            className={cn(
-                              "size-5",
-                              isActive ? "text-sidebar-primary" : "text-sidebar-foreground/40"
-                            )}
-                          />
+                          <item.icon aria-hidden className="size-5 text-sidebar-foreground/50" />
                           <span className="flex-1 truncate">{t(item.title as never)}</span>
-                          <NavBadge value={item.badge?.()} isActive={isActive} />
+                          {count ? (
+                            <span className="ml-auto shrink-0 text-xs tabular-nums text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
+                              {count}
+                            </span>
+                          ) : null}
                         </HoverPrefetchLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

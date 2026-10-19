@@ -22,6 +22,12 @@ vi.mock("@/stores/workspace.store", () => ({ useWorkspaceStore: (selector: (stat
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/hooks/useBrowsingDiscipline", () => ({ useBrowsingDiscipline: () => ({ axis: 1, resolved: { kind: "concrete", code: discipline }, disciplines: [], select: vi.fn(), refetch: vi.fn(), isError: false }) }));
 vi.mock("@/components/workspace/DisciplineSelector", () => ({ DisciplineSelector: () => null, DisciplineUnavailable: () => null }));
+// A wide viewport: the first role opens without a `?role=`.
+vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => false }));
+// `?role=` is the selection; a push rewrites the URL and re-renders.
+let rerender: (() => void) | null = null;
+const push = vi.fn((url: string) => { window.history.replaceState(null, "", url); rerender?.(); });
+vi.mock("next/navigation", () => ({ usePathname: () => window.location.pathname, useRouter: () => ({ push, replace: push }), useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("@/hooks/useDisciplineMetadata", () => ({ useDisciplineMetadata: (_axis: number, code: string) => ({ data: {
   discipline: { code }, workspace_id: 1,
   dimensions: [{ id: 1, code: "position", name: "Position", rated: true, active: true, selection_mode: "single", sort_order: 0 }],
@@ -37,30 +43,37 @@ function tick() {
   return promise;
 }
 async function renderPage() {
-  await act(async () => { root!.render(<QueryClientProvider client={client}><WorkspaceSubRolesSettingsPage /></QueryClientProvider>); await tick(); });
+  rerender = () => root!.render(<QueryClientProvider client={client}><WorkspaceSubRolesSettingsPage /></QueryClientProvider>);
+  await act(async () => { rerender!(); await tick(); });
   // TanStack notifies after the mount commit starts the read, not during root.render().
   await act(async () => { await tick(); });
 }
 async function mount() { container = document.createElement("div"); document.body.append(container); root = createRoot(container); client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); await renderPage(); }
 async function click(node: Element) { await act(async () => { node.dispatchEvent(new MouseEvent("click", { bubbles: true })); await tick(); }); }
-function toggle(label: string) { return [...container.querySelectorAll('[role="switch"]')].find(node => node.getAttribute("aria-label") === label)!; }
-beforeEach(() => { discipline = "overwatch"; denied = []; getPlayerSubRoles.mockReset().mockResolvedValue(CATALOG); createPlayerSubRole.mockReset().mockResolvedValue(CATALOG[0]); updatePlayerSubRole.mockReset().mockResolvedValue(CATALOG[0]); deletePlayerSubRole.mockReset().mockResolvedValue(undefined); });
-afterEach(async () => { if (root) await act(async () => root!.unmount()); client?.clear(); container?.remove(); root = undefined; });
+function toggle(label: string) { return [...container.querySelectorAll('[role="switch"]')].find(node => node.getAttribute("aria-label") === label); }
+function button(text: string) { return [...document.querySelectorAll("button")].find(node => node.textContent?.trim() === text)!; }
+beforeEach(() => { window.history.replaceState(null, "", "/admin/settings/sub-roles"); push.mockClear(); discipline = "overwatch"; denied = []; getPlayerSubRoles.mockReset().mockResolvedValue(CATALOG); createPlayerSubRole.mockReset().mockResolvedValue(CATALOG[0]); updatePlayerSubRole.mockReset().mockResolvedValue(CATALOG[0]); deletePlayerSubRole.mockReset().mockResolvedValue(undefined); });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); client?.clear(); container?.remove(); document.body.innerHTML = ""; root = undefined; rerender = null; });
 
 describe("native sub-role settings", () => {
   it("passes explicit discipline, includes retired children, and preserves delete/restore permission paths", async () => {
     await mount();
     expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, discipline: "overwatch", include_inactive: true }, expect.any(AbortSignal));
     expect(container.textContent).toContain("Off Tank");
-    await click(toggle("Deactivate Main Tank"));
+    await click(toggle("Deactivate Main Tank")!);
     expect(deletePlayerSubRole).toHaveBeenCalledWith(11);
-    await click(toggle("Restore Off Tank"));
+    await click(toggle("Restore Off Tank")!);
     expect(updatePlayerSubRole).toHaveBeenCalledWith(12, { is_active: true });
   });
-  it("renders five LoL parents rather than three fixed role columns", async () => {
+  it("lists five LoL parents and opens one role's sub-roles at a time", async () => {
     discipline = "lol"; getPlayerSubRoles.mockResolvedValue([]); await mount();
-    expect([...container.querySelectorAll("h2")].map(node => node.textContent)).toEqual(["Top", "Jungle", "Mid", "Bottom", "Support"]);
+    expect([...container.querySelectorAll("nav button")].map(node => node.textContent)).toEqual(["Top", "Jungle", "Mid", "Bottom", "Support"]);
+    expect([...container.querySelectorAll("h2")].map(node => node.textContent)).toEqual(["Top"]);
     expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol", include_inactive: true }, expect.any(AbortSignal));
+    // Selecting is navigation, pushed so the narrow-viewport Back returns to the list.
+    await click([...container.querySelectorAll("nav button")].find(node => node.textContent === "Mid")!);
+    expect(push).toHaveBeenCalledWith("/admin/settings/sub-roles?role=mid");
+    expect([...container.querySelectorAll("h2")].map(node => node.textContent)).toEqual(["Mid"]);
   });
   it("creates a child in the captured discipline without implicitly writing presentation overrides", async () => {
     discipline = "lol"; getPlayerSubRoles.mockResolvedValue([]); await mount();
@@ -81,18 +94,20 @@ describe("native sub-role settings", () => {
   });
   it("can explicitly clear both inherited icons and stored colors without touching the name", async () => {
     await mount();
-    const clearIcon = container.querySelector('[aria-label="Clear Icon URL for Main Tank"]')!;
-    const clearColor = container.querySelector('[aria-label="Clear Color (#RRGGBB) for Main Tank"]')!;
-    await click(clearIcon);
-    await click(clearColor);
-    expect(updatePlayerSubRole).toHaveBeenCalledWith(11, { icon: null });
-    expect(updatePlayerSubRole).toHaveBeenCalledWith(11, { color: null });
-    expect(updatePlayerSubRole.mock.calls.every(([, patch]) => !("label" in patch))).toBe(true);
+    await click(container.querySelector('[aria-label="Icon and color of Main Tank"]')!);
+    await click(document.querySelector('[aria-label="Clear Icon URL for Main Tank"]')!);
+    await click(document.querySelector('[aria-label="Clear Color (#RRGGBB) for Main Tank"]')!);
+    // Nothing left to clear: the Clear buttons are gone.
+    expect(document.querySelector('[aria-label="Clear Icon URL for Main Tank"]')).toBeNull();
+    await click(button("Save"));
+    expect(updatePlayerSubRole).toHaveBeenCalledTimes(1);
+    expect(updatePlayerSubRole).toHaveBeenCalledWith(11, { icon: null, color: null });
   });
-  it("hides create and gates delete independently from restore", async () => {
+  it("hides create, and gates delete independently from restore", async () => {
     denied = ["player.create", "player.delete"]; await mount();
     expect([...container.querySelectorAll("button")].filter(node => node.textContent?.trim() === "Add")).toHaveLength(0);
-    expect(toggle("Deactivate Main Tank").hasAttribute("disabled")).toBe(true);
-    expect(toggle("Restore Off Tank").hasAttribute("disabled")).toBe(false);
+    // A permission-gated action is absent, not disabled.
+    expect(toggle("Deactivate Main Tank")).toBeUndefined();
+    expect(toggle("Restore Off Tank")!.hasAttribute("disabled")).toBe(false);
   });
 });

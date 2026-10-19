@@ -97,28 +97,31 @@ describe("ParsedMatchDetail", () => {
     });
   });
 
-  it.each([
-    { time: null, duration: "—" },
-    { time: 0, duration: "0m 00s" }
-  ])("preserves statistics with unavailable raw logs and duration $time", async ({ time, duration }) => {
-    const duration_s = time;
+  it("preserves statistics with unavailable raw logs and omits an unknown duration", async () => {
     const scope = await mount(
-      <ParsedMatchDetail row={row({ duration_s, log_name: null, log_record: null })} workspaceId={1} />
+      <ParsedMatchDetail row={row({ duration_s: null, log_name: null, log_record: null })} workspaceId={1} />
     );
-    const durationLabel = Array.from(scope.querySelectorAll("p")).find(
-      (element) => element.textContent === "Duration"
-    );
-    expect(durationLabel?.nextElementSibling?.textContent).toBe(duration);
+    const labels = Array.from(scope.querySelectorAll("p")).map((element) => element.textContent);
+    expect(labels).not.toContain("Duration");
+    expect(scope.textContent).toContain("No raw log linked.");
     expect(scope.textContent).toContain("A 2 – 1 B");
     expect(scope.textContent).toContain("120");
     expect(scope.textContent).toContain("88");
     expect(scope.textContent).toContain("40");
   });
 
-  it("names the record and its state when provenance resolves", async () => {
+  it("formats a zero duration rather than dropping it", async () => {
+    const scope = await mount(<ParsedMatchDetail row={row({ duration_s: 0 })} workspaceId={1} />);
+    const durationLabel = Array.from(scope.querySelectorAll("p")).find(
+      (element) => element.textContent === "Duration"
+    );
+    expect(durationLabel?.nextElementSibling?.textContent).toBe("0m 00s");
+  });
+
+  it("names the record and adds no state for a log that went through", async () => {
     const scope = await mount(<ParsedMatchDetail row={row()} workspaceId={1} />);
     expect(scope.textContent).toContain("#77");
-    expect(scope.textContent).toContain("done");
+    expect(scope.textContent).not.toContain("Done");
   });
 
   it("keeps an awaiting-link job distinct from success and failure", async () => {
@@ -128,11 +131,11 @@ describe("ParsedMatchDetail", () => {
         workspaceId={1}
       />
     );
-    expect(scope.textContent).toContain("awaiting_link");
+    expect(scope.textContent).toContain("Awaiting link");
     expect(scope.textContent).toContain("#77");
     expect(scope.textContent).toContain("desktop_agent");
-    expect(scope.textContent).not.toContain("done");
-    expect(scope.textContent).not.toContain("failed");
+    expect(scope.textContent).not.toContain("Done");
+    expect(scope.textContent).not.toContain("Failed");
   });
 
   it("keeps historical scores and job details when source teams and filename are absent", async () => {
@@ -148,7 +151,6 @@ describe("ParsedMatchDetail", () => {
     );
     expect(scope.textContent).toContain("A 2 – 1 B");
     expect(scope.textContent).toContain("#77");
-    expect(scope.textContent).toContain("done");
     expect(scope.textContent).toContain("120");
   });
 

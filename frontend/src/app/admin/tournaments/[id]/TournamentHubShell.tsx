@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type messages from "@/i18n/messages/en.json";
+import { formatDateRange } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { isNotFoundError } from "@/lib/api/error";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
@@ -14,13 +17,12 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { TournamentHubActions } from "./components/TournamentHubActions";
-import { formatDate, TOURNAMENT_STATUS_TONE } from "./components/tournamentWorkspace.helpers";
+import { TournamentStatusControl } from "./components/TournamentStatusControl";
+import { TOURNAMENT_STATUS_TONE } from "./components/tournamentWorkspace.helpers";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
 import {
   useHubEncountersCountQuery,
   useHubStagesQuery,
-  useHubStandingsQuery,
   useHubTeamsCountQuery,
   useHubTournamentQuery
 } from "./hubQueries";
@@ -86,9 +88,6 @@ export function TournamentHubShell({
   const encountersCountQuery = useHubEncountersCountQuery(tournamentId);
 
   const stagesQuery = useHubStagesQuery(tournamentId);
-  // Pre-T5 the standings query was gated to the overview|matches tabs, but the
-  // header shows the standings metric unconditionally — keep it always enabled.
-  const standingsQuery = useHubStandingsQuery(tournamentId);
 
   const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
   // Align the workspace store with the tournament's workspace: workspace-scoped
@@ -195,9 +194,8 @@ export function TournamentHubShell({
     }
   }, [permissionsLoaded, tournament, activeTabAllowed, basePath, router]);
 
-  const teamsCount = teamsCountQuery.data ?? null;
-  const encountersCount = encountersCountQuery.data ?? null;
-  const standingsCount = standingsQuery.data?.length ?? null;
+  const teamsCount = teamsCountQuery.data;
+  const encountersCount = encountersCountQuery.data;
 
   if (tournamentQuery.isLoading || stagesQuery.isLoading || !permissionsLoaded) {
     return (
@@ -212,13 +210,12 @@ export function TournamentHubShell({
   }
 
   if (!tournament) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("notFound")}</CardTitle>
-          <CardDescription>{t("notFoundDescription")}</CardDescription>
-        </CardHeader>
-      </Card>
+    // An invalid id never queries, and a 404 is an answer: both are not-found.
+    // Anything else is a failed read the user can retry.
+    return tournamentQuery.isError && !isNotFoundError(tournamentQuery.error) ? (
+      <PageStateCard state="error" onAction={() => void tournamentQuery.refetch()} />
+    ) : (
+      <PageStateCard state="not-found" title={t("notFound")} description={t("notFoundDescription")} />
     );
   }
 
@@ -248,14 +245,11 @@ export function TournamentHubShell({
     ].some(Boolean)
   ) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("unauthorizedDescription")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <PageStateCard
+        state="not-found"
+        title={t("unauthorized")}
+        description={t("unauthorizedDescription")}
+      />
     );
   }
 
@@ -276,26 +270,34 @@ export function TournamentHubShell({
         }}
         meta={[
           <span key="dates" className="tabular-nums">
-            {formatDate(format, tournament.start_date)} — {formatDate(format, tournament.end_date)}
+            {formatDateRange(format, tournament.start_date, tournament.end_date)}
           </span>,
           tournament.is_league ? t("league") : null,
-          <span key="teams" className="tabular-nums">
-            {t("teamsMetric", { value: formatMetric(teamsCount, teamsCountQuery.isLoading), count: teamsCount ?? 0 })}
-          </span>,
-          <span key="encounters" className="tabular-nums">
-            {t("encountersMetric", { value: formatMetric(encountersCount, encountersCountQuery.isLoading), count: encountersCount ?? 0 })}
-          </span>,
-          <span key="standings" className="tabular-nums">
-            {t("standingsMetric", { value: formatMetric(standingsCount, standingsQuery.isLoading), count: standingsCount ?? 0 })}
-          </span>
+          typeof teamsCount === "number" ? (
+            <span key="teams" className="tabular-nums">
+              {t("teamsMetric", { count: teamsCount })}
+            </span>
+          ) : null,
+          typeof encountersCount === "number" ? (
+            <span key="encounters" className="tabular-nums">
+              {t("encountersMetric", { count: encountersCount })}
+            </span>
+          ) : null,
+          canReadAnalytics ? (
+            <Link
+              key="analytics"
+              href={`/tournaments/analytics?tournamentId=${tournament.id}`}
+              className="underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {t("openAnalytics")}
+            </Link>
+          ) : null
         ]}
         actions={
-          <TournamentHubActions
+          <TournamentStatusControl
             tournament={tournament}
-            tournamentId={tournamentId}
-            canReadAnalytics={canReadAnalytics}
-            canUpdateTournament={canUpdateTournament}
-            canToggleFinished={canUpdateTournament && isSuperuser}
+            canUpdate={canUpdateTournament}
+            isSuperuser={isSuperuser}
           />
         }
       />
@@ -303,10 +305,4 @@ export function TournamentHubShell({
       {activeTabAllowed ? children : null}
     </div>
   );
-}
-
-/** `12`, `…` while loading, `—` when the count is unavailable. */
-function formatMetric(value: number | null, isLoading: boolean) {
-  if (typeof value === "number") return String(value);
-  return isLoading ? "…" : "—";
 }

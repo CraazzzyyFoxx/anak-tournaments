@@ -57,8 +57,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 // The detail body has its own behaviour suite; here it only has to report
-// whether the browser handed it a row.
-vi.mock("@/components/admin/ParsedMatchDetail", () => ({
+// whether the browser handed it a row. Its status pill stays real: the table
+// cell renders it.
+vi.mock("@/components/admin/ParsedMatchDetail", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   ParsedMatchDetail: ({ row }: { row: AdminMatchRow }) => (
     <div data-testid="detail">{row.map.name}</div>
   )
@@ -240,18 +242,16 @@ describe("ParsedMatchesBrowser", () => {
     expect(text).toContain("2 – 1");
   });
 
-  it("scopes the request to the workspace and pins the tournament when given", async () => {
+  it("scopes the request to the workspace and offers no tournament chip when the hub owns it", async () => {
     await mount(() => (
-      <ParsedMatchesBrowser tournamentId={9} discipline="overwatch" workspaceId={4} tournamentName="Spring Cup" />
+      <ParsedMatchesBrowser tournamentId={9} discipline="overwatch" workspaceId={4} />
     ));
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     expect(lastQuery().workspace_id).toBe(4);
     expect(lastQuery().tournament_id).toBe(9);
-    // Pinned: the hub owns the scope, so the chip carries no remove control.
-    const pinned = document.querySelector('[data-pinned-filter="tournament"]');
-    expect(pinned?.textContent).toContain("Spring Cup");
-    expect(activeChip("Tournament: Spring Cup")).toBeNull();
+    // The hub owns the scope: there is no tournament chip to show or remove.
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
   });
 
   it("maps the no-raw-log chip to the one filter a status cannot express", async () => {
@@ -278,7 +278,7 @@ describe("ParsedMatchesBrowser", () => {
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
-    await waitFor(() => container.textContent?.includes(status), "the provenance status");
+    await waitFor(() => container.textContent?.includes(label), "the provenance status");
     await pickChip(container, "Ingestion status", label);
 
     expect(lastQuery().log_status).toEqual([status]);

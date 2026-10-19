@@ -329,9 +329,13 @@ describe("RegistrationTeamsBrowser", () => {
     // server's English `shortfall` string.
     expect(scope.textContent).toContain("Still needed: 1× Damage, 2× Support");
     expect(scope.textContent).not.toContain("1x damage");
-    expect(scope.textContent).toContain("Roster complete");
+    // One status per row, and only one that wants attention: the forming team
+    // says so, the complete one says only that its admission is pending.
+    expect(row(scope, "Team Alpha")?.textContent).toContain("Forming");
+    expect(row(scope, "Team Beta")?.textContent).toContain("Pending");
+    expect(row(scope, "Team Beta")?.textContent).not.toContain("Roster complete");
     expect(row(scope, "Team Alpha")?.textContent).toContain("Nyx");
-    expect(row(scope, "Team Alpha")?.textContent).toContain("Starters: 1 of 4");
+    expect(row(scope, "Team Alpha")?.textContent).toContain("1/4");
     // One read serves every filter below, so terminal teams are already here.
     expect(listAdmin).toHaveBeenCalledTimes(1);
     expect(listAdmin).toHaveBeenCalledWith(TOURNAMENT_ID, { includeTerminal: true });
@@ -346,7 +350,7 @@ describe("RegistrationTeamsBrowser", () => {
     const scope = await mount();
 
     await click(scope.querySelector("button[aria-label='Add filter']"));
-    await click(commandItem("State"));
+    await click(commandItem("Status"));
     await click(commandItem("Rejected and disbanded"));
 
     // A filter that lives in component state cannot be linked; this one is the URL.
@@ -428,7 +432,7 @@ describe("RegistrationTeamsBrowser", () => {
     expect(buttonWithText(scope, "Add selected teams")).toBeUndefined();
   });
 
-  it("keeps the export result and every skipped team on screen after the toast", async () => {
+  it("reports the export and every skipped team, with its reason, in the toast", async () => {
     exportRegistered.mockResolvedValue({
       removed_teams: 0,
       imported_teams: 1,
@@ -441,10 +445,9 @@ describe("RegistrationTeamsBrowser", () => {
     await click(buttonWithText(scope, "Add selected teams"));
     await click(buttonWithText(confirmDialog()!, "Add selected teams"));
 
-    // A toast expires; an organizer must still be able to see which team did not
-    // go, and why.
-    expect(scope.textContent).toContain("Teams added: 1");
-    expect(scope.textContent).toContain("Team Gamma: roster incomplete");
+    expect(notifySuccess).toHaveBeenCalledWith("1 team added.", {
+      description: "Skipped: Team Gamma: roster incomplete"
+    });
   });
 
   it("refuses to reject a team without a reason its captain can read", async () => {
@@ -583,13 +586,14 @@ describe("RegistrationTeamsBrowser", () => {
     expect(placeMemberAdmin).not.toHaveBeenCalled();
   });
 
-  it("renames a team from the inspector", async () => {
+  it("renames a team from its row", async () => {
     const scope = await mount();
-    await click(row(scope, "Team Alpha"));
 
-    const inspector = document.body.querySelector("aside[aria-label='Row inspector']")!;
-    await type(inspector.querySelector("#name-1") as HTMLInputElement, "Wolves");
-    await click(buttonWithText(inspector, "Rename"));
+    await click(menuItem(await rowMenu(scope, "Team Alpha"), "Rename"));
+    const dialog = formDialog()!;
+    const field = dialog.querySelector("input") as HTMLInputElement;
+    await type(field, "Wolves");
+    await submit(dialog);
 
     expect(renameAdmin).toHaveBeenCalledWith(TOURNAMENT_ID, 1, "Wolves");
   });

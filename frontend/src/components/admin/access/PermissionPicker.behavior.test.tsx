@@ -150,7 +150,7 @@ describe("PermissionPicker", () => {
     );
 
     expect(box("match.read")?.hasAttribute("disabled")).toBe(true);
-    expect(container.textContent).toContain("1/3 selected");
+    expect(container.textContent).toContain("1 of 3 selected");
   });
 
   it("offers narrowing and bulk selection only for a catalogue that needs it", async () => {

@@ -160,7 +160,7 @@ export default function DivisionDraftEditorPage() {
       ladder={ladder}
       version={version}
       base={parentQuery.data ? bandsFromTiers(ladder, parentQuery.data.tiers) : []}
-      baseLabel={parentQuery.data ? `v${parentQuery.data.version}` : "the base version"}
+      baseLabel={parentQuery.data ? `v${parentQuery.data.version}` : ""}
       readiness={readinessQuery.data ?? null}
       activeVersionId={activeVersionId}
       editable={version.status === "draft" && canUpdate}

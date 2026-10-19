@@ -2,35 +2,36 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, HelpCircle } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { InspectorField, InspectorSection } from "@/components/kit/InspectorField";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, TONE_CLASS, type Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/kit/tone";
 import { formatDate } from "@/components/kit/format-time";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { observedScore } from "@/lib/encounter/detail";
 import { seatsBySlot } from "@/lib/encounter/seats";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
-const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
+/**
+ * The ingestion states that want an admin, and their tone. `done` is what
+ * nearly every map is, so it has no pill: its absence says the log went
+ * through.
+ */
+const LOG_STATUS_ATTENTION: Partial<Record<LogProcessingStatus, Tone>> = {
   pending: "neutral",
   processing: "info",
-  awaiting_link: "neutral",
-  done: "success",
+  awaiting_link: "warning",
   failed: "danger"
 };
 
-function Field({ label, value }: Readonly<{ label: string; value: string | number }>) {
-  return (
-    <div className="min-w-0">
-      <p className={EYEBROW_CLASS}>{label}</p>
-      <p className="truncate text-sm tabular-nums">{value}</p>
-    </div>
-  );
+/** A parsed map's ingestion state as a pill, only while it is not `done`. */
+export function LogStatusPill({ status }: Readonly<{ status: LogProcessingStatus }>) {
+  const t = useTranslations("adminMatches.parsed");
+  const tone = LOG_STATUS_ATTENTION[status];
+  return tone ? <StatusPill tone={tone}>{t(status)}</StatusPill> : null;
 }
 
 /**
@@ -64,88 +65,94 @@ export function ParsedMatchDetail({
 
   const detail = detailQuery.data;
   const record = row.log_record;
-  const duration = row.duration_s == null
-    ? "—"
-    : `${Math.floor(row.duration_s / 60)}m ${String(Math.round(row.duration_s % 60)).padStart(2, "0")}s`;
+  const duration =
+    row.duration_s == null
+      ? null
+      : `${Math.floor(row.duration_s / 60)}m ${String(Math.round(row.duration_s % 60)).padStart(2, "0")}s`;
   const seats = seatsBySlot(row.participants);
+  const scores = seats.map((seat) => observedScore(seat));
+  const score = scores.some((value) => value == null)
+    ? null
+    : seats.length === 2
+      ? `${seats[0].name} ${scores[0]} – ${scores[1]} ${seats[1].name}`
+      : seats.map((seat, index) => `${seat.name} ${scores[index]}`).join(" – ");
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <Field
-          label={t("score")}
-          value={
-            seats.length === 2
-              ? `${seats[0].name} ${observedScore(seats[0]) ?? "—"} – ${observedScore(seats[1]) ?? "—"} ${seats[1].name}`
-              : seats.map((seat) => `${seat.name} ${observedScore(seat) ?? "—"}`).join(" – ")
-          }
-        />
-        <Field label={t("duration")} value={duration} />
-        <Field label={t("rounds")} value={detailQuery.isLoading ? "…" : (detail?.rounds ?? "—")} />
+        <InspectorField label={t("score")}>
+          {score ? <span className="tabular-nums">{score}</span> : null}
+        </InspectorField>
+        <InspectorField label={t("duration")}>
+          {duration ? <span className="tabular-nums">{duration}</span> : null}
+        </InspectorField>
+        <InspectorField label={t("rounds")}>
+          {detailQuery.isLoading ? (
+            <Skeleton className="h-4 w-8" />
+          ) : detail?.rounds == null ? null : (
+            <span className="tabular-nums">{detail.rounds}</span>
+          )}
+        </InspectorField>
       </div>
 
-      <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>{t("provenance")}</p>
+      <InspectorSection title={t("provenance")}>
         {record ? (
-          <div className="mt-2 space-y-2">
+          <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusPill tone={STATUS_TONE[record.status]}>{record.status}</StatusPill>
-              <span className="font-mono text-xs">{record.filename ?? "—"}</span>
+              <LogStatusPill status={record.status} />
+              {record.filename ? <span className="font-mono text-xs">{record.filename}</span> : null}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Field label={t("record")} value={`#${record.id}`} />
-              <Field label={t("source")} value={record.source ?? "—"} />
-              <Field label={t("uploader")} value={record.uploader_id ?? "—"} />
-              <Field label={t("attempts")} value={record.attempts} />
-              <Field label={t("started")} value={formatDate(format, record.started_at)} />
-              <Field label={t("finished")} value={formatDate(format, record.finished_at)} />
+              <InspectorField label={t("record")}>
+                <span className="tabular-nums">#{record.id}</span>
+              </InspectorField>
+              <InspectorField label={t("source")}>{record.source}</InspectorField>
+              <InspectorField label={t("uploader")}>
+                {record.uploader_id == null ? null : <span className="tabular-nums">{record.uploader_id}</span>}
+              </InspectorField>
+              <InspectorField label={t("attempts")}>
+                <span className="tabular-nums">{record.attempts}</span>
+              </InspectorField>
+              <InspectorField label={t("started")}>
+                {record.started_at ? formatDate(format, record.started_at) : null}
+              </InspectorField>
+              <InspectorField label={t("finished")}>
+                {record.finished_at ? formatDate(format, record.finished_at) : null}
+              </InspectorField>
             </div>
             {record.error_message ? (
-              <p
-                className={cn(
-                  "flex items-start gap-2 rounded-md border p-2 text-xs",
-                  TONE_CLASS.danger
-                )}
-              >
-                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                <span className="break-all">{record.error_message}</span>
-              </p>
+              <p className="break-all text-xs text-danger">{record.error_message}</p>
             ) : null}
           </div>
         ) : (
           // No linked raw log is distinct from a failed ingestion job.
-          <div className="mt-2 space-y-1">
-            <p className="flex items-center gap-2 text-sm">
-              <HelpCircle className="size-4 text-muted-foreground" aria-hidden />
-              {t("noRawLog")}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t("provenanceText")}
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">{t("provenanceText")}</p>
         )}
-      </section>
+      </InspectorSection>
 
-      <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>{t("parsedVolume")}</p>
+      <InspectorSection title={t("parsedVolume")}>
         {detailQuery.isLoading ? (
-          <Skeleton className="mt-2 h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         ) : (
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            <Field label={t("statistics")} value={detail?.statistics_count ?? 0} />
-            <Field label={t("killFeed")} value={detail?.kill_feed_count ?? 0} />
-            <Field label={t("events")} value={detail?.event_count ?? 0} />
+          <div className="grid grid-cols-3 gap-2">
+            <InspectorField label={t("statistics")}>
+              <span className="tabular-nums">{detail?.statistics_count ?? 0}</span>
+            </InspectorField>
+            <InspectorField label={t("killFeed")}>
+              <span className="tabular-nums">{detail?.kill_feed_count ?? 0}</span>
+            </InspectorField>
+            <InspectorField label={t("events")}>
+              <span className="tabular-nums">{detail?.event_count ?? 0}</span>
+            </InspectorField>
           </div>
         )}
         {detail != null && detail.statistics_count === 0 ? (
           // A map with no statistics parsed but a `done` record means the log
           // was accepted and yielded nothing — worth surfacing, since the
           // encounter will still count it as played.
-          <p className="mt-2 text-xs text-warning">
-            {t("noStats")}
-          </p>
+          <p className="mt-2 text-xs text-warning">{t("noStats")}</p>
         ) : null}
-      </section>
+      </InspectorSection>
     </div>
   );
 }

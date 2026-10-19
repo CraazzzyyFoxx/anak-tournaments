@@ -56,14 +56,12 @@ export default function SubscriptionCollectorPage() {
 
   return (
     <div className="space-y-4">
-      {items.length > 1 && (
-        <LinkTabs
-          items={items}
-          activeKey={activeKey}
-          level={2}
-          ariaLabel={t("views.subscriptionsAria")}
-        />
-      )}
+      <LinkTabs
+        items={items}
+        activeKey={activeKey}
+        level={2}
+        ariaLabel={t("views.subscriptionsAria")}
+      />
       {activeKey === "settings" ? (
         <SubscriptionSettingsPanel />
       ) : (

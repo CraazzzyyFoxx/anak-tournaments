@@ -6,7 +6,6 @@ import { Check, Download, RotateCcw, Upload } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -208,8 +207,7 @@ export function RulesStep({
       {validating ? <p className="text-xs text-muted-foreground">{t("validating")}</p> : null}
 
       {selectedStep != null && selectedPhase != null ? (
-        <Card>
-          <CardContent className="flex flex-col gap-4 pt-5">
+        <section className="flex flex-col gap-4 border-t border-border pt-4">
             <div className="flex flex-wrap items-center gap-2">
               <FieldTitle className="text-sm">
                 {t("inspector", {
@@ -244,8 +242,7 @@ export function RulesStep({
                 })
               }
             />
-          </CardContent>
-        </Card>
+        </section>
       ) : null}
 
       <SeriesPreview

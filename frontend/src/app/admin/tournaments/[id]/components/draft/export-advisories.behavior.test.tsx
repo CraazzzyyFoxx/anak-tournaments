@@ -48,6 +48,28 @@ async function click(label: string) {
   await settle();
 }
 
+/** The history row's actions live in a Radix menu, which opens on `pointerdown`. */
+async function openRowMenu() {
+  const trigger = container.querySelector('button[aria-haspopup="menu"]');
+  expect(trigger).not.toBeNull();
+  await act(async () => {
+    trigger!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    trigger!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
+}
+
+function menuItems(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+}
+
+async function chooseMenuItem(label: string) {
+  const item = menuItems().find((node) => node.textContent?.trim() === label);
+  expect(item).toBeDefined();
+  await act(async () => { item!.click(); });
+  await settle();
+}
+
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
@@ -68,10 +90,15 @@ afterEach(async () => {
 describe("draft export advisories", () => {
   it.each(["history", "controls"])("shows skipped names and format warnings from %s", async (surface) => {
     await mount(surface === "history"
-      ? <DraftHistoryPanel tournamentId={5} onSessionDeleted={() => {}} />
+      ? <DraftHistoryPanel tournamentId={5} />
       : <LifecycleControls tournamentId={5} board={{ session, current_pick: null, picks: [] } as unknown as DraftBoard} />);
-    await click("actions.export");
-    if (surface === "controls") await click("Confirm export");
+    if (surface === "history") {
+      await openRowMenu();
+      await chooseMenuItem("actions.export");
+    } else {
+      await click("actions.export");
+      await click("Confirm export");
+    }
     await vi.waitFor(() => expect(notify.warning).toHaveBeenCalled());
     expect(notify.warning).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       description: advisories.join("\n"), duration: Infinity
@@ -81,9 +108,27 @@ describe("draft export advisories", () => {
 
   it("keeps a clean export as a success", async () => {
     vi.mocked(draftService.lifecycle).mockResolvedValue({ ...session, advisories: [] } as DraftSession);
-    await mount(<DraftHistoryPanel tournamentId={5} onSessionDeleted={() => {}} />);
-    await click("actions.export");
+    await mount(<DraftHistoryPanel tournamentId={5} />);
+    await openRowMenu();
+    await chooseMenuItem("actions.export");
     await vi.waitFor(() => expect(notify.success).toHaveBeenCalled());
     expect(notify.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe("draft history row actions", () => {
+  it("offers delete for a finished session", async () => {
+    await mount(<DraftHistoryPanel tournamentId={5} />);
+    await openRowMenu();
+    expect(menuItems().map((item) => item.textContent?.trim())).toContain("history.delete");
+  });
+
+  it("leaves delete out of the menu while the draft is on the clock", async () => {
+    vi.mocked(draftService.listSessions).mockResolvedValue([{ ...session, status: "live" }]);
+    await mount(<DraftHistoryPanel tournamentId={5} />);
+    await openRowMenu();
+    const labels = menuItems().map((item) => item.textContent?.trim());
+    expect(labels).toContain("openBoard");
+    expect(labels).not.toContain("history.delete");
   });
 });

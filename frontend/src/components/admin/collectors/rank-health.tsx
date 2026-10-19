@@ -2,24 +2,22 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, Pause, Play, RotateCcw } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { StatTileGridSkeleton } from "@/components/admin/StatTileGridSkeleton";
-import { TintedBadge } from "@/components/admin/TintedBadge";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useFormatter } from "@/lib/datetime/client";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { RankCollectionStats } from "@/types/admin.types";
 import { Spinner } from "@/components/ui/spinner";
 
-import { RUN_STATE_TONES } from "./collector-state";
+import { DistributionBar } from "./DistributionBar";
 import {
   STATUS_BAR,
   STATUS_ORDER,
@@ -32,52 +30,23 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 const RANK_SETTING_KEY = "parser.rank_collection";
 
-/**
- * Stacked distribution of battle tags per collection status.
- *
- * The bar is `aria-hidden`: the legend directly under it repeats every segment
- * as `<status> <count>` text, so the state is never carried by colour alone.
- */
-function StatusBar({ stats }: Readonly<{ stats: RankCollectionStats }>) {
-  const tDashboard = useTranslations("adminShell.dashboardExtra");
-  const labels = useRankStatusLabels();
-  const total = stats.total || 1;
-  const counts = stats.by_status || {};
-  return (
-    <div className="space-y-2">
-      <div aria-hidden className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/20">
-        {STATUS_ORDER.map((s) =>
-          counts[s] ? (
-            <div
-              key={s}
-              className={cn("h-full", STATUS_BAR[s])}
-              style={{ width: `${(counts[s] / total) * 100}%` }}
-              title={tDashboard("statusCountTitle", { label: labels[s], count: counts[s] })}
-            />
-          ) : null
-        )}
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-        {STATUS_ORDER.map((s) =>
-          counts[s] ? (
-            <span key={s} className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <span aria-hidden className={cn("h-2 w-2 rounded-full", STATUS_BAR[s])} />
-              {labels[s]} <span className="tabular-nums text-foreground">{counts[s]}</span>
-            </span>
-          ) : null
-        )}
-      </div>
-    </div>
-  );
-}
+/** Settings keys naming each collection scope; an unknown scope prints its raw token. */
+const SCOPE_KEYS = {
+  registrations_only: "collection.scopeRegistrations",
+  all: "collection.scopeAll"
+} as const;
 
 export function RankHealthDashboard() {
   const t = useTranslations("collectors.rank");
   const tCommon = useTranslations("collectors.common");
+  const tSettings = useTranslations("collectors.settings.rank");
   const format = useFormatter();
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
   const isSuperuser = user?.isSuperuser ?? false;
+  const { canAccessPermission } = usePermissions();
+  const canReenable = canAccessPermission("rank.update");
+  const statusLabels = useRankStatusLabels();
   // The stats are scoped to the workspace `apiFetch` injects, so it belongs in
   // the key — otherwise switching workspace serves the previous tenant's cache.
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -110,13 +79,20 @@ export function RankHealthDashboard() {
         tCommon(stats?.enabled ? "collectionPaused" : "collectionResumed")
       );
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.rankStatsAll() });
+      // The Settings slot saves the whole value, `enabled` included: it must
+      // not save back the state this button just flipped.
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.settings() });
     },
     onError: (error) =>
       notify.apiError(error, { title: tCommon("collectionToggleError") })
   });
 
-  if (statsQuery.isLoading || !stats) {
-    return <StatTileGridSkeleton />;
+  if (!stats) {
+    return statsQuery.isError ? (
+      <PageStateCard state="error" onAction={() => statsQuery.refetch()} />
+    ) : (
+      <StatTileGridSkeleton />
+    );
   }
 
   const disabled = stats.by_status?.disabled ?? 0;
@@ -129,27 +105,24 @@ export function RankHealthDashboard() {
   // A breaker state the backend grows later still renders, as its raw token.
   const circuitKey = `circuit.${stats.overfast_circuit_state ?? "closed"}` as "circuit.closed";
   const circuitState = t.has(circuitKey) ? t(circuitKey) : (stats.overfast_circuit_state ?? "");
+  const scope =
+    stats.scope in SCOPE_KEYS
+      ? tSettings(SCOPE_KEYS[stats.scope as keyof typeof SCOPE_KEYS])
+      : stats.scope;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Polls every 10s — announce the pause/resume flip and the pacing. */}
-        <output className="flex flex-wrap items-center gap-2 text-sm">
-          <TintedBadge
-            value={stats.enabled ? "running" : "paused"}
-            tones={RUN_STATE_TONES}
-            labels={{ running: t("run.collecting"), paused: tCommon("health.paused") }}
-            fallback={tCommon("health.paused")}
-            dot
-          />
-          <span className="text-muted-foreground">
-            {t.rich("pace", {
-              scope: stats.scope,
-              interval: formatInterval(format, stats.interval_seconds),
-              rate: stats.rate_limit_per_minute,
-              b: (chunks) => <b className="text-foreground">{chunks}</b>,
-              num: (chunks) => <span className="tabular-nums">{chunks}</span>
-            })}
-          </span>
+        <output className="text-sm text-muted-foreground">
+          {stats.enabled
+            ? t.rich("pace", {
+                scope,
+                interval: formatInterval(format, stats.interval_seconds),
+                rate: stats.rate_limit_per_minute,
+                b: (chunks) => <b className="text-foreground">{chunks}</b>,
+                num: (chunks) => <span className="tabular-nums">{chunks}</span>
+              })
+            : tCommon("health.paused")}
         </output>
         {isSuperuser && (
           <Button
@@ -158,13 +131,7 @@ export function RankHealthDashboard() {
             disabled={toggleMutation.isPending}
             onClick={() => toggleMutation.mutate()}
           >
-            {toggleMutation.isPending ? (
-              <Spinner className="mr-1.5" />
-            ) : stats.enabled ? (
-              <Pause aria-hidden className="mr-1.5 h-4 w-4" />
-            ) : (
-              <Play aria-hidden className="mr-1.5 h-4 w-4" />
-            )}
+            {toggleMutation.isPending ? <Spinner className="mr-1.5" /> : null}
             {tCommon(stats.enabled ? "pauseCollection" : "resumeCollection")}
           </Button>
         )}
@@ -189,14 +156,7 @@ export function RankHealthDashboard() {
       )}
 
       <StatTileGrid className="xl:grid-cols-5">
-        {/* Not a StatTile: the tile owns a stacked distribution bar below the value. */}
-        <div className="space-y-3 rounded-xl border border-border/60 bg-card/70 p-4">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className={EYEBROW_CLASS}>{t("tiles.battleTags")}</p>
-            <p className="text-2xl font-semibold tabular-nums">{stats.total}</p>
-          </div>
-          <StatusBar stats={stats} />
-        </div>
+        <StatTile label={t("tiles.battleTags")} value={stats.total} />
 
         <StatTile
           label={t("tiles.coverage")}
@@ -232,41 +192,33 @@ export function RankHealthDashboard() {
           icon={outage || invalidTags > 0 ? AlertTriangle : undefined}
         />
 
-        {/* Not a StatTile: the tile owns the bulk re-enable action. */}
-        <div
-          className={cn(
-            "flex flex-col justify-between gap-2 rounded-xl border p-4",
-            disabled > 0 ? "border-danger/40 bg-danger/10" : "border-border/60 bg-card/70"
-          )}
-        >
-          <div className="flex items-baseline justify-between gap-3">
-            <p className={cn(EYEBROW_CLASS, disabled > 0 && "text-danger")}>
-              {t("tiles.autoDisabled")}
-            </p>
-            <p className={cn("text-2xl font-semibold tabular-nums", disabled > 0 && "text-danger")}>
-              {disabled}
-            </p>
-          </div>
-          {disabled > 0 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-danger/40 text-danger hover:bg-danger/10"
-              disabled={reenableMutation.isPending}
-              onClick={() => reenableMutation.mutate()}
-            >
-              {reenableMutation.isPending ? (
-                <Spinner className="mr-1.5" />
-              ) : (
-                <RotateCcw aria-hidden className="mr-1.5 h-4 w-4" />
-              )}
-              {t("tiles.reenableAll")}
-            </Button>
-          ) : (
-            <p className="text-xs text-muted-foreground">{t("tiles.noneDisabled")}</p>
-          )}
-        </div>
+        <StatTile
+          label={t("tiles.autoDisabled")}
+          value={disabled}
+          tone={disabled > 0 ? "danger" : "neutral"}
+          action={
+            disabled > 0 && canReenable ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={reenableMutation.isPending}
+                onClick={() => reenableMutation.mutate()}
+              >
+                {reenableMutation.isPending ? <Spinner className="mr-1.5" /> : null}
+                {t("tiles.reenableAll")}
+              </Button>
+            ) : undefined
+          }
+        />
       </StatTileGrid>
+
+      <DistributionBar
+        order={STATUS_ORDER}
+        counts={stats.by_status}
+        total={stats.total}
+        labels={statusLabels}
+        fills={STATUS_BAR}
+      />
     </div>
   );
 }

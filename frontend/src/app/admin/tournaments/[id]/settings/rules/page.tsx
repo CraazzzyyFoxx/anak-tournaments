@@ -25,12 +25,8 @@ const RULES_MAX_LENGTH = 32_000;
  * page is the editor at full height instead of a text box above two selects.
  */
 export default function RulesSettingsPage() {
-  const t = useTranslations("adminTournament.rules");
   return (
-    <SettingsSectionPage
-      section="rules"
-      description={t("description")}
-    >
+    <SettingsSectionPage section="rules">
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <RulesForm
           tournament={tournament}
@@ -59,7 +55,7 @@ function RulesForm({
       <Card>
         <CardContent className="flex flex-col gap-3 pt-6">
           <p className="text-caption text-muted-foreground">
-            {t("hint")} <code>##</code> {t("headings")} <code>###</code> {t("subsections")}
+            {t.rich("hint", { code: (chunks) => <code>{chunks}</code> })}
           </p>
           <MarkdownEditor
             label={t("label")}

@@ -289,18 +289,18 @@ describe("EncounterReportsBrowser", () => {
     // survives in the URL so a narrowed list is linkable.
     expect(new URLSearchParams(window.location.search).get("result_status")).toBe("disputed");
 
-    await pickChip(container, "Reports filed", "Awaiting second");
+    await pickChip(container, "Captain reports", "Awaiting second");
     expect(lastQuery().reported_count).toBe(1);
     // Two chips, two params: narrowing one must not silently drop the other.
     expect(lastQuery().result_status).toEqual(["disputed"]);
 
     // Zero is a value, not "unset" — "nobody reported" is the whole point of
     // this option and a falsy guard would swallow it.
-    await pickChip(container, "Reports filed", "No reports");
+    await pickChip(container, "Captain reports", "No reports");
     expect(lastQuery().reported_count).toBe(0);
 
     // Removing the chips is how "all" is spelled.
-    await click(activeChip("Reports filed: No reports"));
+    await click(activeChip("Captain reports: No reports"));
     await click(activeChip("Result: Disputed"));
     expect(lastQuery().reported_count).toBeUndefined();
     expect(lastQuery().result_status).toBeUndefined();

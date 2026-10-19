@@ -20,12 +20,8 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 
 export default function ScheduleSettingsPage() {
-  const t = useTranslations("adminTournament.schedule");
   return (
-    <SettingsSectionPage
-      section="schedule"
-      description={t("description")}
-    >
+    <SettingsSectionPage section="schedule">
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <ScheduleForm
           tournament={tournament}
@@ -131,7 +127,7 @@ function ScheduleForm({
             </div>
           </section>
 
-          <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-3.5">
+          <div className="flex flex-col gap-4 border-t border-border pt-5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="settings-auto-transitions" className="cursor-pointer">

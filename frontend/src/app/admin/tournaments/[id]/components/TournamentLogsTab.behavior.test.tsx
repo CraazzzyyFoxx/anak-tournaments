@@ -309,7 +309,9 @@ describe("TournamentLogsTab", () => {
     // failures" could not be linked to anyone.
     const scope = await mount();
 
-    await click(button(scope, "Show failed"));
+    await click(scope.querySelector('button[aria-label="Add filter"]'));
+    await click(commandItem("Status"));
+    await click(commandItem("Failed"));
 
     expect(new URLSearchParams(window.location.search).get("status")).toBe("failed");
     await settle();
@@ -402,7 +404,7 @@ describe("TournamentLogsTab", () => {
     ["missing", "Raw log file is missing"],
     ["conflict", "recorded hash"],
     ["unverified", "not been verified"]
-  ] as const)("keeps %s raw history visible but disables retry and attachment", async (raw_status, explanation) => {
+  ] as const)("keeps %s raw history visible but offers no retry or attachment", async (raw_status, explanation) => {
     getLogHistory.mockResolvedValue({
       items: [record(17, { status: "failed", raw_status, raw_available: false })],
       total: 1
@@ -410,10 +412,10 @@ describe("TournamentLogsTab", () => {
     const scope = await mount(78, [PLAYOFF]);
     expect(scope.textContent).toContain("round_17.txt");
     expect(scope.textContent).toContain(explanation);
-    expect(button(scope, "Retry")?.disabled).toBe(true);
+    // Absent, not disabled: the row says why, and nothing invites a guess.
+    expect(button(scope, "Retry")).toBeUndefined();
     expect(scope.querySelector('button[aria-label="Select row 17"]')).toBeNull();
     expect(scope.querySelector('button[aria-label="Actions for round_17.txt"]')).toBeNull();
-    await click(button(scope, "Retry"));
     expect(retryLogRecord).not.toHaveBeenCalled();
   });
 
@@ -428,7 +430,6 @@ describe("TournamentLogsTab", () => {
     const scope = await mount(78, [PLAYOFF]);
     expect(scope.textContent).toContain("Historical source reference");
     expect(scope.textContent).toContain("Game binding is unconfirmed");
-    expect(scope.querySelectorAll('button[disabled]').length).toBeGreaterThanOrEqual(2);
     expect(scope.querySelector('button[aria-label="Select row 17"]')).toBeNull();
     expect(scope.querySelector('button[aria-label="Select row 18"]')).toBeNull();
     expect(scope.querySelector('button[aria-label="Actions for round_17.txt"]')).toBeNull();
@@ -444,7 +445,7 @@ describe("TournamentLogsTab", () => {
     const scope = await mount(78, [PLAYOFF]);
 
     await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
-    await click(menuItem("Attach to encounter…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away · Playoffs · LB Round 3"));
     expect(button(document, "Attach and reprocess")?.disabled).toBe(true);
@@ -474,7 +475,6 @@ describe("TournamentLogsTab", () => {
     });
     const scope = await mount(null);
     expect(scope.textContent).toContain("Awaiting link");
-    expect(scope.textContent).toContain("Not attached");
     expect(scope.querySelector('[title*="desktop_agent"]')).not.toBeNull();
     await click(scope.querySelector('button[aria-label="Add filter"]'));
     await click(commandItem("Status"));
@@ -504,7 +504,7 @@ describe("TournamentLogsTab", () => {
   it("clears the selected game when the encounter changes", async () => {
     const scope = await mount(78, [PLAYOFF, { ...PLAYOFF, id: 6663, name: "Other teams" }]);
     await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
-    await click(menuItem("Attach to encounter…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     await click(document.querySelector('button[aria-label="Pick a game"]'));
@@ -522,7 +522,7 @@ describe("TournamentLogsTab", () => {
     retryLogRecord.mockReturnValue(retry.promise);
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
-    await click(menuItem("Attach to encounter…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     await click(document.querySelector('button[aria-label="Pick a game"]'));
@@ -544,7 +544,7 @@ describe("TournamentLogsTab", () => {
     getEncounter.mockRejectedValue(new Error("Forbidden"));
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
-    await click(menuItem("Attach to encounter…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not load games");
@@ -556,7 +556,7 @@ describe("TournamentLogsTab", () => {
     expect(retryLogRecord).not.toHaveBeenCalled();
   });
 
-  it("points forward when the tournament has no logs at all", async () => {
+  it("says so plainly when the tournament has no logs at all", async () => {
     getLogHistory.mockResolvedValue({ items: [], total: 0 });
     getLogStats.mockResolvedValue({
       ...STATS,
@@ -569,7 +569,7 @@ describe("TournamentLogsTab", () => {
 
     const scope = await mount();
 
-    expect(scope.textContent).toContain("No logs for this tournament yet");
+    expect(scope.textContent).toContain("No logs yet.");
     expect(scope.textContent).not.toContain("Clear filters");
   });
 
@@ -619,7 +619,7 @@ describe("TournamentLogsTab", () => {
     expect(description).not.toContain("round_30.txt");
   });
 
-  it("shows the structured error code and its issue paths, and keeps awaiting jobs awaiting", async () => {
+  it("shows the structured error message and its issue paths, and keeps awaiting jobs awaiting", async () => {
     getLogHistory.mockResolvedValue({
       items: [
         record(40, {
@@ -636,7 +636,7 @@ describe("TournamentLogsTab", () => {
       total: 2
     });
     const scope = await mount();
-    expect(scope.textContent).toContain("Invalid document");
+    expect(scope.textContent).toContain("The document is invalid");
     expect(scope.querySelector("pre")?.textContent).toBe(
       "The document is invalid\nteams.0.players: Unknown hero Ana2"
     );
@@ -667,7 +667,7 @@ describe("TournamentLogsTab", () => {
     });
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
-    await click(menuItem("Bind to game…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     await click(document.querySelector('button[aria-label="Pick a game"]'));
@@ -703,7 +703,7 @@ describe("TournamentLogsTab", () => {
     bindLogRecord.mockResolvedValue({ id: 18, status: "done", error: null, binding: null });
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_18.txt"]'));
-    await click(menuItem("Bind to game…"));
+    await click(menuItem("Attach to game…"));
     // The ordinary retry stays refused for a hint-only binding; the explicit bind is not.
     expect(scope.textContent).toContain("Game binding is unconfirmed");
     // The hinted encounter is preselected, so only the game is picked.
@@ -774,8 +774,7 @@ describe("TournamentLogsTab", () => {
     const scope = await mount(78, [PLAYOFF]);
 
     await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
-    expect(menuItem("Attach to encounter…")).toBeUndefined();
-    await click(menuItem("Bind to game…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     await click(document.querySelector('button[aria-label="Pick a game"]'));
@@ -823,7 +822,7 @@ describe("TournamentLogsTab", () => {
     bindLogRecord.mockRejectedValue(new ApiError(409, [{ msg: "changed", code: "stale_revision" }]));
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
-    await click(menuItem("Bind to game…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     await click(document.querySelector('button[aria-label="Pick a game"]'));
@@ -862,7 +861,7 @@ describe("TournamentLogsTab", () => {
     bindLogRecord.mockResolvedValue({ id: 17, status: "done", error: null, binding: null });
     const scope = await mount(78, [PLAYOFF]);
     await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
-    await click(menuItem("Bind to game…"));
+    await click(menuItem("Attach to game…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away"));
     await click(document.querySelector('button[aria-label="Pick a game"]'));
@@ -907,7 +906,7 @@ describe("TournamentLogsTab", () => {
     // No encounter list is passed here, exactly as /admin/matches does.
     const scope = await mount(null, []);
     await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
-    await click(menuItem("Bind to game…"));
+    await click(menuItem("Attach to game…"));
     expect(document.querySelector('button[aria-label="Pick an encounter"]')?.hasAttribute("disabled")).toBe(true);
     await click(document.querySelector('button[aria-label="Pick a tournament"]'));
     await click(commandItem("OWT 78"));

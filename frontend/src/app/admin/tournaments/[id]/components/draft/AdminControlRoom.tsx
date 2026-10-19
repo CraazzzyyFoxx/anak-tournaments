@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, ArrowUpRight, ShieldAlert } from "lucide-react";
+import { ArrowUpRight, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { DraftClock } from "@/components/draft/DraftClock";
 import { useDraftFeasibilityQuery, useDraftRealtime } from "@/hooks/useDraftData";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { StatusPill } from "@/components/kit/StatusPill";
+import { EYEBROW_CLASS, type Tone } from "@/components/kit/tone";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { StatusDot } from "@/components/ui/status-dot";
 import { HeroCoord, HeroFrame } from "@/components/site/PageHero";
 import type { DraftBoard } from "@/types/draft.types";
 
@@ -24,6 +28,12 @@ interface AdminControlRoomProps {
 
 const BLOCKED_REASONS = ["role_shortage", "order_recalculated"] as const;
 
+const CONNECTION_TONE: Record<string, Tone> = {
+  connected: "success",
+  connecting: "warning",
+  reconnecting: "warning"
+};
+
 /**
  * The organizer's control page for a live draft.
  *
@@ -35,6 +45,7 @@ const BLOCKED_REASONS = ["role_shortage", "order_recalculated"] as const;
  */
 export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlRoomProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
+  const tDraft = useTranslations("draftAdmin");
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   // Subscribed here too: the status, clock and feasibility below must follow
   // the picks made in the room without a manual reload.
@@ -54,18 +65,17 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
   const blockedReason = BLOCKED_REASONS.find((reason) => reason === session.blocked_reason);
 
   return (
-    <div className="space-y-5 text-[color:var(--aqt-fg)]">
+    <div className="space-y-5">
       <HeroFrame>
         <div className="flex flex-col gap-6 px-5 py-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="min-w-0">
-            <div className="flex flex-wrap gap-4">
-              <HeroCoord>{t("adminCoordinate", { id: session.id })}</HeroCoord>
-              <HeroCoord>{t(`status.${session.status}`)}</HeroCoord>
-            </div>
+            <StatusPill tone={session.status === "paused" ? "warning" : "info"} dot={session.status === "live"}>
+              {tDraft(`statuses.${session.status}`)}
+            </StatusPill>
             {/* The clock is deliberately outside the live region: it ticks four
                 times a second and would re-announce the whole strip with it. */}
             <div role="status" className="mt-4">
-              <p className="font-mono text-xs uppercase tracking-wider tabular-nums text-[color:var(--aqt-teal)]">
+              <p className={`${EYEBROW_CLASS} tabular-nums`}>
                 {currentPick
                   ? t("onTheClock", {
                       round: currentPick.round_no,
@@ -74,11 +84,12 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
                     })
                   : t("currentPickEmpty")}
               </p>
-              <h2 className="mt-2 font-onest text-2xl font-semibold tracking-tight sm:text-3xl">
+              <h2 className="mt-2 font-onest text-2xl font-semibold sm:text-3xl">
                 {currentTeam?.name ?? t("noCurrentPick")}
               </h2>
             </div>
-            <p className="mt-3 text-sm text-[color:var(--aqt-fg-muted)]">
+            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <StatusDot tone={CONNECTION_TONE[connectionState] ?? "neutral"} />
               {t(`connectionState.${connectionState}`)}
             </p>
           </div>
@@ -109,40 +120,35 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
       </HeroFrame>
 
       {session.blocked_reason && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 border-y border-[color:var(--aqt-live)]/30 bg-[color:var(--aqt-live)]/8 px-4 py-3"
-        >
-          <ShieldAlert
-            className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--aqt-live)]"
-            aria-hidden
-          />
-          <div className="flex-1">
-            <p className="font-medium">{t("systemPause")}</p>
-            <p className="mt-1 text-sm text-[color:var(--aqt-fg-muted)]">
+        <Alert variant="destructive" className="rounded-xl">
+          <ShieldAlert className="size-4" aria-hidden />
+          <AlertTitle>{t("systemPause")}</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-muted-foreground">
               {blockedReason ? t(`blockedReason.${blockedReason}`) : session.blocked_reason}
-            </p>
-          </div>
-          {shouldResolve && (
-            <Button onClick={() => setRoleDialogOpen(true)}>{t("resolveRoles")}</Button>
-          )}
-        </div>
+            </span>
+            {shouldResolve && (
+              <Button size="sm" onClick={() => setRoleDialogOpen(true)}>
+                {t("resolveRoles")}
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="grid gap-5 lg:grid-cols-[7fr_3fr]">
-        <main className="min-w-0 space-y-4">
-          <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} ontology={ontology} />
+        <div className="min-w-0 space-y-4">
           {!session.blocked_reason && shouldResolve && (
             <Button variant="outline" onClick={() => setRoleDialogOpen(true)}>
-              <AlertTriangle className="mr-2 h-4 w-4" aria-hidden />
               {t("resolveRoles")}
             </Button>
           )}
-        </main>
-        <aside className="border-[color:var(--aqt-border)] lg:border-l lg:pl-6">
           {/* Deleting a session is refused while it is live, so the live one is
               listed as context; the terminal ones stay erasable from here. */}
-          <DraftHistoryPanel tournamentId={tournamentId} onSessionDeleted={() => {}} />
+          <DraftHistoryPanel tournamentId={tournamentId} />
+        </div>
+        <aside className="lg:border-l lg:border-border lg:pl-6">
+          <FeasibilityStatus feasibility={feasibility} loading={feasibilityQuery.isLoading} ontology={ontology} />
         </aside>
       </div>
 

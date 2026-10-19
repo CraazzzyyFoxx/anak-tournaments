@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -19,12 +19,15 @@ export interface MappingTargetPickerProps {
   onChange: (choice: MappingChoice | null) => void;
 }
 
-/** "38. Bronze 3", plus "· over 36–40" when the players spread over a range. */
-export function targetSummary(target: MappingTarget | null): string {
-  if (!target) return "not chosen";
-  const landing = `${target.primary.number}. ${target.primary.name}`;
-  if (target.range.length === 1) return landing;
-  return `${landing} · over ${target.range[0].number}\u2013${target.range.at(-1)!.number}`;
+/** Names a target: "38. Bronze 3", plus "· over 36–40" when the players spread over a range. */
+export function useTargetSummary() {
+  const t = useTranslations("adminSettings.divisions.mapping");
+  return (target: MappingTarget | null): string => {
+    if (!target) return t("nothingChosen");
+    const landing = `${target.primary.number}. ${target.primary.name}`;
+    if (target.range.length === 1) return landing;
+    return t("spreadSummary", { landing, from: target.range[0].number, to: target.range.at(-1)!.number });
+  };
 }
 
 /**
@@ -38,6 +41,7 @@ export function targetSummary(target: MappingTarget | null): string {
  */
 export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<MappingTargetPickerProps>) {
   const t = useTranslations("adminSettings.divisions.mapping");
+  const targetSummary = useTargetSummary();
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<number | null>(null);
   const focusRef = useRef<HTMLButtonElement>(null);
@@ -102,9 +106,9 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
               <span className="truncate">
                 {target.primary.number}. {target.primary.name}
               </span>
-              <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                 {target.range.length > 1
-                  ? `over ${target.range[0].number}\u2013${target.range.at(-1)!.number}`
+                  ? t("over", { from: target.range[0].number, to: target.range.at(-1)!.number })
                   : rankRangeLabel(target.primary)}
               </span>
             </span>
@@ -125,7 +129,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
       >
         <div className="border-b border-border px-3 py-2">
           <p className="text-sm font-medium">
-            {name} <span className="font-mono text-xs text-muted-foreground">{rankRangeLabel(row.source)}</span>
+            {name} <span className="text-xs tabular-nums text-muted-foreground">{rankRangeLabel(row.source)}</span>
           </p>
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {hint}
@@ -160,19 +164,19 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                   onClick={() => pick(index)}
                   className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="w-6 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                  <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                     {band.number}
                   </span>
                   <span className={cn("min-w-0 flex-1 truncate", landing && "font-semibold")}>
                     {band.name}
                   </span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {rankRangeLabel(band)}
                   </span>
                 </button>
                 <span
                   className={cn(
-                    "w-10 shrink-0 text-right font-mono text-xs tabular-nums",
+                    "w-10 shrink-0 text-right text-xs tabular-nums",
                     target ? "text-foreground" : "text-muted-foreground"
                   )}
                 >
@@ -214,7 +218,6 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                 setAnchor(null);
               }}
             >
-              <RotateCcw aria-hidden className="size-3" />
               {t("automatic")}
             </Button>
           ) : null}

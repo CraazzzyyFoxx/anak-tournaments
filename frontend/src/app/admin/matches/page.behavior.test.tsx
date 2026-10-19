@@ -6,8 +6,8 @@
 //  2. `?view=` is the only state the switch owns, and it survives a reload;
 //  3. switching view keeps the shared tournament scope and drops the row id,
 //     because an encounter id means nothing in the parsed-maps view;
-//  4. the tournament chip is NOT pinned here — that is the difference from the
-//     same browser mounted inside a hub;
+//  4. the tournament chip is removable here — inside a hub the tournament is
+//     not a filter at all;
 //  5. below `md` the rows become cards: these tables carry more than four
 //     columns, so a phone gets the card layout instead of a sideways scroll.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -296,7 +296,7 @@ describe("/admin/matches", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getEncounters).not.toHaveBeenCalled();
   });
 
@@ -340,7 +340,6 @@ describe("/admin/matches", () => {
     const container = await mount();
     await waitFor(() => container.querySelector("table"), "the encounters table");
 
-    expect(container.querySelector('[data-pinned-filter="tournament"]')).toBeNull();
     const chip = document.querySelector<HTMLButtonElement>(
       'button[aria-label^="Remove filter Tournament:"]'
     );
@@ -366,6 +365,6 @@ describe("/admin/matches", () => {
     // The card is chosen, not the first three columns: the score and the log
     // state are what a phone needs from an encounter.
     expect(cards[0].textContent).toContain("1–2");
-    expect(cards[0].textContent).toContain("no logs");
+    expect(cards[0].querySelector('[role="img"][aria-label="No logs"]')).not.toBeNull();
   });
 });

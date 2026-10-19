@@ -65,11 +65,11 @@ export function UserSearchCombobox({
     }
 
     if (typeof value === "number" && value > 0) {
-      return `User #${value}`;
+      return t("userId", { id: value });
     }
 
     return resolvedPlaceholder;
-  }, [resolvedPlaceholder, results, selectedName, value]);
+  }, [resolvedPlaceholder, results, selectedName, t, value]);
 
   return (
     <Combobox

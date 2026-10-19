@@ -82,7 +82,7 @@ export function nextWizardStep(steps: WizardStep[], current: WizardStep): Wizard
 
 /**
  * Steps whose entry needs a persisted tournament id: step 4 links the full
- * form builder (`…/{id}/registration/form`) and review publishes via PATCH.
+ * form builder (`…/{id}/settings/registration`) and review publishes via PATCH.
  * "Create now" and "Review & Create" ensure the draft by construction.
  */
 export function stepEntryRequiresDraft(step: WizardStep): boolean {

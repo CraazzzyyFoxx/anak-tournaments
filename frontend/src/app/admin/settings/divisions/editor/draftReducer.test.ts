@@ -20,7 +20,6 @@ import {
   bandsCoverLadder as coversLadder,
   bandsFromTiers as tiersToBands,
   bandsMissingCrest,
-  bandVerdict,
   createLadder,
   describeEdits,
   diffBands,
@@ -453,26 +452,26 @@ describe("tiers <-> bands", () => {
 });
 
 describe("diff against the parent version", () => {
-  it("labels each band new, range moved, relinked or renamed — range before link before name", () => {
+  it("sorts each band into added, moved or renamed; a new native link counts as moved", () => {
     const ladder = threeBandDraft();
     const state = apply(ladder, [
       { type: "rename", bandIndex: 0, name: "Apex" },
       { type: "splitAt", rank: 10 },
       { type: "nudge", rank: 21, delta: -1 }
     ]);
-    expect(bandVerdict(ladder.base, state.bands[0])).toBe("renamed");
-    expect(bandVerdict(ladder.base, state.bands[1])).toBe("range moved");
-    expect(bandVerdict(ladder.base, state.bands[2])).toBe("new");
-    expect(bandVerdict(ladder.base, state.bands[3])).toBe("range moved");
+    const diff = diffBands(ladder.base, state.bands);
+    expect(diff.added.map((band) => band.name)).toEqual(["Untitled division"]);
+    expect(diff.moved.map((entry) => entry.after.slug)).toEqual([
+      state.bands[1].slug,
+      state.bands[3].slug
+    ]);
+    expect(diff.renamed.map((entry) => entry.after.name)).toEqual(["Apex"]);
 
     const newEra = newEraDraft();
     const linked = apply(newEra, [{ type: "link", bandIndex: 1, from: 3, to: 5 }]);
-    expect(bandVerdict(newEra.base, linked.bands[1])).toBe("relinked");
-    expect(bandVerdict(newEra.base, linked.bands[2])).toBeNull();
-
-    const diff = diffBands(ladder.base, state.bands);
-    expect(diff.added.map((band) => band.name)).toEqual(["Untitled division"]);
-    expect(diff.renamed.map((entry) => entry.after.name)).toEqual(["Apex"]);
+    const moved = diffBands(newEra.base, linked.bands).moved.map((entry) => entry.after.slug);
+    expect(moved).toContain(linked.bands[1].slug);
+    expect(moved).not.toContain(linked.bands[2].slug);
   });
 
   it("reports a merged-away band as removed", () => {

@@ -297,11 +297,11 @@ describe("command palette", () => {
     expect(hrefs).toEqual([...new Set(hrefs)]);
   });
 
-  it("includes aliases in the search value", () => {
+  it("searches the translated label and the aliases", () => {
     const people = allItems.find((item) => item.href === "/admin/people");
 
     expect(people).toBeDefined();
-    expect(adminNavItemSearchValue(people!)).toContain("battletag");
-    expect(adminNavItemSearchValue(people!)).toContain(people!.title);
+    expect(adminNavItemSearchValue("Люди", people!)).toContain("battletag");
+    expect(adminNavItemSearchValue("Люди", people!)).toContain("Люди");
   });
 });

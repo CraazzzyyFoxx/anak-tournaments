@@ -170,6 +170,7 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
 
   const columns = useStatusColumns({
     canManageStatuses,
+    showScope: !scopeFilter,
     onEdit: openEdit,
     onConfirm: setPendingStatus
   });

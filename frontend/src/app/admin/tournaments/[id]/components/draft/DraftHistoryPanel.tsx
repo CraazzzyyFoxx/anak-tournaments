@@ -3,14 +3,21 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { History, Trash2 } from "lucide-react";
+import { History, MoreHorizontal } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { type Tone } from "@/components/kit/tone";
 import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -20,21 +27,22 @@ import type { DraftSession, DraftStatus } from "@/types/draft.types";
 interface DraftHistoryPanelProps {
   tournamentId: number;
   /** Notified with the erased session id so the caller can reset a stale wizard. */
-  onSessionDeleted: (sessionId: number) => void;
+  onSessionDeleted?: (sessionId: number) => void;
 }
 
-const STATUS_TONE: Record<DraftStatus, Tone> = {
-  setup: "neutral",
+/**
+ * A pill only for a session that still wants attention; history is mostly
+ * finished sessions, and their status is a word in the meta line.
+ */
+const STATUS_TONE: Partial<Record<DraftStatus, Tone>> = {
   ready: "accent",
   live: "info",
-  paused: "warning",
-  completed: "success",
-  cancelled: "danger"
+  paused: "warning"
 };
 
 export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<DraftHistoryPanelProps>) {
   const t = useTranslations("draftAdmin");
-  const tAdmin = useTranslations("adminTournament.draft");
+  const tTable = useTranslations("kitTable.dataTableExtra");
   const format = useFormatter();
   const queryClient = useQueryClient();
   const [pendingDelete, setPendingDelete] = useState<DraftSession | null>(null);
@@ -58,7 +66,7 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
     onSuccess: async (_result, sessionId) => {
       setPendingDelete(null);
       notify.success(t("history.deleted", { id: sessionId }));
-      onSessionDeleted(sessionId);
+      onSessionDeleted?.(sessionId);
       await invalidate();
     },
     onError: (error) => notify.apiError(error, { title: t("history.deleteFailed") })
@@ -93,103 +101,111 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
   const sessions = sessionsQuery.data ?? [];
   const pending = deleteMutation.isPending || exportMutation.isPending || exportRanksMutation.isPending;
 
+  if (sessionsQuery.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title={t("history.loadFailed")}
+        onAction={() => void sessionsQuery.refetch()}
+      />
+    );
+  }
+
   return (
-    <section className="rounded-xl border border-border/70">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+    <section className="rounded-xl border border-border">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <History className="h-4 w-4 text-muted-foreground" aria-hidden />
           <h3 className="text-sm font-semibold">{t("history.title")}</h3>
-          {sessions.length > 0 && (
-            <Badge variant="secondary" className="tabular-nums">
-              {sessions.length}
-            </Badge>
-          )}
         </div>
         <p className="text-xs text-muted-foreground">{t("history.hint")}</p>
       </header>
 
       {sessionsQuery.isLoading ? (
-        <div className="h-24 animate-pulse rounded-b-xl bg-muted/40" />
-      ) : sessionsQuery.isError ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 text-sm text-muted-foreground">
-          <span>{t("history.loadFailed")}</span>
-          <Button variant="outline" size="sm" onClick={() => void sessionsQuery.refetch()}>
-            {t("retry")}
-          </Button>
+        <div className="space-y-2 p-4">
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
         </div>
       ) : sessions.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("history.empty")}</p>
       ) : (
-        <ul className="divide-y divide-border/60">
+        <ul className="divide-y divide-border">
           {sessions.map((session) => {
             // A draft on the clock must be cancelled before it can be erased.
             const inFlight = session.status === "live" || session.status === "paused";
+            const tone = STATUS_TONE[session.status];
+            const name = t("sessionNumber", { id: session.id });
+            const meta = [
+              tone ? null : t(`statuses.${session.status}`),
+              session.created_at
+                ? format.dateTime(new Date(session.created_at), { dateStyle: "medium", timeStyle: "short" })
+                : null,
+              t(`formats.${session.format}.title`),
+              t("roundsShort", { rounds: session.rounds })
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
-            <li
-              key={session.id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-sm"
-            >
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {t("sessionNumber", { id: session.id })}
-              </span>
-              <StatusPill tone={STATUS_TONE[session.status]} className="shrink-0">
-                {t(`statuses.${session.status}`)}
-              </StatusPill>
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums">
-                {tAdmin("sessionMeta", {
-                  date: session.created_at
-                    ? format.dateTime(new Date(session.created_at), {
-                        dateStyle: "medium",
-                        timeStyle: "short"
-                      })
-                    : "—",
-                  format: t(`formats.${session.format}.title`),
-                  rounds: t("roundsShort", { rounds: session.rounds })
-                })}
-              </span>
-              {/* Wraps rather than staying on one line: this panel now lives in
-                  the wizard's 220px rail (F5 ·4), where three buttons abreast
-                  would overflow it. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/draft/${tournamentId}`} target="_blank">
-                    {t("openBoard")}
-                  </Link>
-                </Button>
-                {session.status === "completed" && (
-                  <>
+              <li key={session.id} className="flex items-start gap-2 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium tabular-nums">{name}</span>
+                    {tone ? (
+                      <StatusPill tone={tone} className="shrink-0">
+                        {t(`statuses.${session.status}`)}
+                      </StatusPill>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 text-caption tabular-nums text-muted-foreground">{meta}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => exportMutation.mutate(session.id)}
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0 text-muted-foreground"
+                      aria-label={tTable("actionsFor", { label: name })}
+                      title={tTable("actionsFor", { label: name })}
                     >
-                      {t("actions.export")}
+                      <MoreHorizontal className="h-4 w-4" aria-hidden />
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      title={t("actions.exportRanksHint")}
-                      onClick={() => exportRanksMutation.mutate(session.id)}
-                    >
-                      {t("actions.exportRanks")}
-                    </Button>
-                  </>
-                )}
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8 text-danger hover:bg-danger/10 hover:text-danger"
-                  disabled={pending || inFlight}
-                  title={inFlight ? t("history.cancelFirst") : undefined}
-                  aria-label={t("history.delete", { id: session.id })}
-                  onClick={() => setPendingDelete(session)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden />
-                </Button>
-              </div>
-            </li>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem asChild>
+                      <Link href={`/draft/${tournamentId}`} target="_blank">
+                        {t("openBoard")}
+                      </Link>
+                    </DropdownMenuItem>
+                    {session.status === "completed" && (
+                      <>
+                        <DropdownMenuItem
+                          disabled={pending}
+                          onSelect={() => exportMutation.mutate(session.id)}
+                        >
+                          {t("actions.export")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={pending}
+                          title={t("actions.exportRanksHint")}
+                          onSelect={() => exportRanksMutation.mutate(session.id)}
+                        >
+                          {t("actions.exportRanks")}
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {!inFlight && (
+                      <DropdownMenuItem
+                        disabled={pending}
+                        className="text-danger focus:text-danger"
+                        onSelect={() => setPendingDelete(session)}
+                      >
+                        {t("history.delete", { id: session.id })}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
             );
           })}
         </ul>

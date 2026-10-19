@@ -3,12 +3,11 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Gamepad2, Swords } from "lucide-react";
+import { Gamepad2 } from "lucide-react";
 
 import { columnMeta } from "@/components/data-table";
 import { AssetPreview } from "@/components/admin/AssetPreview";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { Badge } from "@/components/ui/badge";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { useCatalogTrailingColumns } from "../shared";
@@ -34,12 +33,6 @@ export function useMapColumns({
   const trailing = useCatalogTrailingColumns({ kindLabel, isSuperuser, onEdit, onDelete });
   return useMemo<ColumnDef<CatalogEntityRead>[]>(
     () => [
-      {
-        accessorKey: "id",
-        header: t("columns.id"),
-        size: 44,
-        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
-      },
       {
         id: "image",
         header: t("columns.image"),
@@ -69,15 +62,7 @@ export function useMapColumns({
               header: modeLabel,
               size: 112,
               enableSorting: false,
-              meta: columnMeta<CatalogEntityRead>({ align: "center" }),
-              cell: ({ row }) => {
-                const map = row.original;
-                return map.parent ? (
-                  <Badge variant="outline">{map.parent.name}</Badge>
-                ) : (
-                  <span className="text-sm text-muted-foreground">{t("catalog.unknown")}</span>
-                );
-              },
+              cell: ({ row }) => (row.original.parent ? <span className="text-sm">{row.original.parent.name}</span> : null),
             } satisfies ColumnDef<CatalogEntityRead>,
             {
               accessorKey: "in_competitive",
@@ -85,12 +70,11 @@ export function useMapColumns({
               size: 120,
               enableSorting: false,
               meta: columnMeta<CatalogEntityRead>({ align: "center" }),
+              // Most maps are in the competitive pool: only the exception is marked.
               cell: ({ row }) =>
-                row.original.attrs.in_competitive !== false ? (
-                  <StatusIcon icon={Swords} label={t("catalog.competitive")} variant="success" />
-                ) : (
+                row.original.attrs.in_competitive === false ? (
                   <StatusIcon icon={Gamepad2} label={t("catalog.casual")} variant="muted" />
-                ),
+                ) : null,
             } satisfies ColumnDef<CatalogEntityRead>,
           ]
         : []),

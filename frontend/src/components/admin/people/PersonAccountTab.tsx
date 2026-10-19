@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Link2, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
 
 import {
   AccountStatusPills,
@@ -26,7 +26,9 @@ import {
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useFormatter } from "@/lib/datetime/client";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { notify } from "@/lib/notify";
 import { rbacService } from "@/services/rbac.service";
@@ -90,7 +92,6 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
         disabled={picked == null || link.isPending}
         onClick={() => picked && link.mutate(picked.id)}
       >
-        <Link2 aria-hidden className="size-3.5" />
         {t("link")}
       </Button>
     </div>
@@ -107,6 +108,7 @@ export function PersonAccountTab({
   canReadAuth
 }: Readonly<{ personId: number; canReadAuth: boolean }>) {
   const t = useTranslations("adminPeople.account");
+  const format = useFormatter();
   const { hasPermission } = usePermissions();
   const canAssignRoles = hasPermission("role.update") && hasPermission("role.read");
   const canUpdateAccount = hasPermission("auth_user.update");
@@ -139,9 +141,7 @@ export function PersonAccountTab({
     );
   }
 
-  if (accountsQuery.isLoading) {
-    return <div className="h-40 animate-pulse rounded-lg bg-muted/40 motion-reduce:animate-none" />;
-  }
+  if (accountsQuery.isLoading) return <Skeleton className="h-40 w-full rounded-xl" />;
 
   if (!linked) {
     return (
@@ -153,10 +153,7 @@ export function PersonAccountTab({
             <LinkAccount personId={personId} />
           ) : (
             <Button asChild variant="outline" size="sm">
-              <Link href="/admin/access/accounts">
-                <ExternalLink aria-hidden className="size-3.5" />
-                {t("open")}
-              </Link>
+              <Link href="/admin/access/accounts">{t("open")}</Link>
             </Button>
           )
         }
@@ -183,14 +180,13 @@ export function PersonAccountTab({
             {" · "}
             {email ?? t("noEmail")}
             {" · "}
-            <span className="tabular-nums">{t("joinedOn", { date: linked.created_at.slice(0, 10) })}</span>
+            <span className="tabular-nums">
+              {t("joinedOn", { date: format.dateTime(new Date(linked.created_at), { dateStyle: "medium" }) })}
+            </span>
           </p>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link href={accessHref}>
-            <ExternalLink aria-hidden className="size-3.5" />
-            {t("openInAccess")}
-          </Link>
+          <Link href={accessHref}>{t("openInAccess")}</Link>
         </Button>
       </div>
 

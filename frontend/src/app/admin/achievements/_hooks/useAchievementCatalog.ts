@@ -9,8 +9,8 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 /**
  * What the achievements screen reads but does not page: the tournament list
- * behind the comboboxes, the manual overrides, and the full rule catalog the
- * evaluate/override pickers need.
+ * behind the evaluate picker, the manual overrides, and the full rule catalog
+ * the evaluate picker and the overrides table need.
  *
  * The catalog is deliberately lazy — it is a `per_page: -1` request, so it is
  * not worth fetching until something on screen actually reads every rule.
@@ -23,7 +23,7 @@ export function useAchievementCatalog({
   workspaceId: number | null;
   /** The selected game: its overrides and rules, never another game's. `null` when none is enabled. */
   discipline: string | null;
-  /** An open evaluate/override dialog needs every rule, not just the current page. */
+  /** An open evaluate dialog needs every rule, not just the current page. */
   pickersOpen: boolean;
 }) {
   const { data: tournaments } = useQuery({
@@ -31,7 +31,7 @@ export function useAchievementCatalog({
     queryFn: () => tournamentService.getAll(null),
   });
 
-  const { data: overrides, refetch: refetchOverrides } = useQuery({
+  const { data: overrides } = useQuery({
     queryKey: achievementQueryKeys.overridesAll(workspaceId, discipline),
     queryFn: () => adminService.getAchievementOverrides(workspaceId!, discipline!),
     enabled: !!workspaceId && !!discipline,
@@ -48,7 +48,6 @@ export function useAchievementCatalog({
   return {
     tournaments,
     overrides,
-    refetchOverrides,
     allRules: allRulesPage?.results,
   };
 }

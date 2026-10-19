@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FolderInput } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { DataTable } from "@/components/data-table";
@@ -11,6 +10,7 @@ import { Inspector } from "@/components/kit/Inspector";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Spinner } from "@/components/ui/spinner";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -19,7 +19,7 @@ import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
 import { cn } from "@/lib/utils";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
-import { EXPORT_SKIP_CODES, isExportEligible, type PendingConfirm } from "./registration-teams/model";
+import { isExportEligible, type PendingConfirm } from "./registration-teams/model";
 import { PlaceMemberDialog } from "./registration-teams/PlaceMemberDialog";
 import { RenameTeamDialog } from "./registration-teams/RenameTeamDialog";
 import { TeamConfirmDialog } from "./registration-teams/TeamConfirmDialog";
@@ -144,6 +144,8 @@ export function RegistrationTeamsBrowser({
     : -1;
 
   const disabled = actions.busy || actions.isFetching;
+  // Shown inside the dialog or inspector the refused act came from, which stays
+  // open on a refusal; the page itself carries no alert stack.
   const inlineError = actions.actionError ? (
     <Alert variant="destructive" role="alert"><AlertDescription>{actions.actionError}</AlertDescription></Alert>
   ) : null;
@@ -191,44 +193,23 @@ export function RegistrationTeamsBrowser({
         )}
       >
         <div className="flex min-h-0 min-w-0 flex-col gap-3">
-          {inlineError}
           {/* The export materializes registered TEAMS. A player on no team is
               invisible to it, and on a team-registration tournament neither the
               balancer nor the draft runs either — so they silently never become
               a tournament.player. Before pressing export is the only moment this
-              is still cheap to fix, which is why the warning sits above the
-              table rather than in the toast. */}
+              is still cheap to fix, which is why the line sits above the table. */}
           {actions.unassignedPlayers > 0 && (
-            <Alert>
-              <AlertDescription>
-                {t("admin.unassigned", { count: actions.unassignedPlayers })}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {actions.exportResult && (
-            <Alert role="status">
-              <AlertDescription className="space-y-2">
-                <p>{t("admin.exportResult", { imported: actions.exportResult.imported_teams, removed: actions.exportResult.removed_teams, players: actions.exportResult.created_players, skipped: actions.exportResult.skipped.length })}</p>
-                {actions.exportResult.skipped.length > 0 && (
-                  <ul className="list-inside list-disc">
-                    {actions.exportResult.skipped.map((item) => {
-                      const code = EXPORT_SKIP_CODES.find((known) => known === item.code);
-                      return <li key={item.team_id}>{item.name}: {code ? t(`admin.skipReason.${code}`) : t("admin.actionFailed")}</li>;
-                    })}
-                  </ul>
-                )}
-              </AlertDescription>
-            </Alert>
+            <p className="text-caption text-warning">
+              {t("admin.unassigned", { count: actions.unassignedPlayers })}
+            </p>
           )}
 
           {actions.isError ? (
-            <Alert variant="destructive" role="alert">
-              <AlertDescription>
-                {translateRegistrationTeamError(tErr, actions.error, t("admin.loadFailed"))}
-                <Button type="button" variant="outline" size="sm" className="ml-2" disabled={actions.isFetching} onClick={actions.refetch}>{t("admin.retry")}</Button>
-              </AlertDescription>
-            </Alert>
+            <PageStateCard
+              state="error"
+              description={translateRegistrationTeamError(tErr, actions.error, t("admin.loadFailed"))}
+              onAction={actions.refetch}
+            />
           ) : (
             <DataTable<RegistrationTeam>
               rows={visibleTeams}
@@ -270,11 +251,7 @@ export function RegistrationTeamsBrowser({
                             setConfirm({ kind: "export", teams: selected, clear });
                           }}
                         >
-                          {actions.isExporting ? (
-                            <Spinner className="mr-2" />
-                          ) : (
-                            <FolderInput className="mr-2 h-4 w-4" aria-hidden />
-                          )}
+                          {actions.isExporting ? <Spinner /> : null}
                           {t("admin.exportSelected")}
                         </Button>
                       </BulkBar>
@@ -282,14 +259,6 @@ export function RegistrationTeamsBrowser({
                   : undefined
               }
               toolbar={<FilterBar defs={filterDefs} filters={filters} />}
-              actions={
-                <span
-                  className="shrink-0 text-xs tabular-nums text-muted-foreground"
-                  title={t("list.count", { count: actions.total })}
-                >
-                  {actions.total}
-                </span>
-              }
             />
           )}
         </div>

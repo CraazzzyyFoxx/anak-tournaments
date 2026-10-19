@@ -16,7 +16,7 @@ import type { CatalogAliasMissKind, CatalogAliasMissRead } from "@/types/admin.t
 import { MISS_QUEUE_KEY } from "@/app/admin/content/miss-queue";
 
 import { unresolvedFilterDefs } from "./filters";
-import { attachableKind, formatSeenAt } from "./model";
+import { attachableKind, formatMissOrigin, formatSeenAt } from "./model";
 import { MissTarget } from "./UnresolvedCells";
 import { useUnresolvedColumns } from "./useUnresolvedColumns";
 
@@ -142,12 +142,10 @@ export function UnresolvedBrowser() {
       }
       renderMobileCard={(row) => (
         <div className="min-w-0 flex-1 space-y-1.5">
-          <code className="block truncate rounded bg-muted/40 px-1.5 py-0.5 text-xs">
-            {row.original.raw_name}
-          </code>
+          <p className="truncate font-medium">{row.original.raw_name}</p>
           <p className="truncate text-xs text-muted-foreground">
             {t("catalog.mobileSummary", {
-              entity: `${row.original.discipline} · ${t(`catalog.kinds.${row.original.kind}`)}`,
+              entity: formatMissOrigin(t, row.original),
               count: row.original.occurrences,
               date: formatSeenAt(format, row.original.last_seen_at),
             })}

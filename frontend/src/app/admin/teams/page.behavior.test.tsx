@@ -309,7 +309,8 @@ describe("/admin/teams", () => {
   it("keeps the create gate on the value the list is filtered by", async () => {
     const container = await mount();
     await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
-    expect(button("Create team")?.hasAttribute("disabled")).toBe(true);
+    // A team belongs to one tournament: without one chosen there is no button.
+    expect(button("Create team")).toBeFalsy();
 
     await click(container.querySelector('button[aria-label="Add filter"]'));
     await click(await waitFor(() => commandItem("Tournament"), "the Tournament filter"));

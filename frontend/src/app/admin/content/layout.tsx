@@ -77,9 +77,8 @@ export default function GameContentLayout({ children }: Readonly<{ children: Rea
     <div className="flex flex-col gap-6">
       <AdminPageHeader
         title={t("header")}
-        description={t("description")}
         actions={
-          activeKey !== "unresolved" && disciplines ? (
+          activeKey !== "unresolved" && disciplines && disciplines.length > 1 ? (
             <DisciplineSelector
               disciplines={disciplines}
               value={resolved?.kind === "concrete" ? resolved.code : undefined}

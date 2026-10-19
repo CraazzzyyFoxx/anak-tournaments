@@ -1,16 +1,12 @@
 import type { DateFormatter } from "@/components/kit/format-time";
-import type { Tone } from "@/components/kit/tone";
 import { detectBrowser, detectPlatform } from "@/lib/user-agent";
 import type { AdminAuthSession, AdminSessionStatus } from "@/types/rbac.types";
 
-export const STATUS_META: Record<AdminSessionStatus, { tone: Tone }> = {
-  active: { tone: "success" }, revoked: { tone: "warning" }, expired: { tone: "neutral" }
-};
+export const SESSION_STATUSES: readonly AdminSessionStatus[] = ["active", "revoked", "expired"];
 
-export function formatTimestamp(format: DateFormatter, value: string | null | undefined, unavailable: string): string {
-  if (!value) return unavailable;
-
-  return format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" });
+/** A missing time renders nothing. */
+export function formatTimestamp(format: DateFormatter, value: string | null | undefined): string {
+  return value ? format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" }) : "";
 }
 
 export function formatDeviceLabel(
@@ -22,7 +18,7 @@ export function formatDeviceLabel(
   const browser = detectBrowser(userAgent);
   const platform = detectPlatform(userAgent);
 
-  if (browser && platform) return `${browser} on ${platform}`;
+  if (browser && platform) return `${browser} · ${platform}`;
   if (browser) return browser;
   if (platform) return platform;
 

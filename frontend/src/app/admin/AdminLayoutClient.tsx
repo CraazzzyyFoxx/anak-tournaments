@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, type CSSProperties, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
@@ -25,19 +25,26 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/site/sidebar-cookies";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { NotificationItem } from "@/types/notification.types";
 
+/** The shell's own outline (sidebar column + header bar) while permissions load. */
 function LoadingState() {
   const t = useTranslations("adminShell.layout");
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <div className="text-center">
-        <Spinner className="size-8" />
-        <p className="mt-4 text-muted-foreground">{t("loading")}</p>
+    <div role="status" className="flex h-screen w-full">
+      <span className="sr-only">{t("loading")}</span>
+      <Skeleton className="hidden h-full w-[15.5rem] shrink-0 rounded-none md:block" />
+      <div className="flex flex-1 flex-col">
+        <Skeleton className="h-12 w-full rounded-none" />
+        <div className="flex flex-col gap-4 p-4 md:px-5">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
       </div>
     </div>
   );
@@ -45,24 +52,18 @@ function LoadingState() {
 
 function UnauthorizedState() {
   const t = useTranslations("adminShell.layout");
+  const router = useRouter();
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold">{t("unauthorized")}</h1>
-        <p className="mt-4 text-muted-foreground">
-          {t("noPermission")}
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("contactAdmin")}
-        </p>
-        <HoverPrefetchLink
-          href="/"
-          className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          {t("goHome")}
-        </HoverPrefetchLink>
-      </div>
-    </div>
+    <main className="flex min-h-screen w-full items-center justify-center p-4">
+      <PageStateCard
+        state="error"
+        className="w-full max-w-md"
+        title={t("unauthorized")}
+        description={t("noPermission")}
+        actionLabel={t("goHome")}
+        onAction={() => router.push("/")}
+      />
+    </main>
   );
 }
 
@@ -80,6 +81,7 @@ function EntityBreadcrumbName({
 
 function AdminBreadcrumb() {
   const t = useTranslations("adminShell.layout");
+  const tShell = useTranslations("adminShell");
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const segments = pathname.split("/").filter(Boolean);
@@ -88,10 +90,15 @@ function AdminBreadcrumb() {
   return (
     <Breadcrumb>
       <BreadcrumbList>
+        {/* The root is the page the sidebar calls Dashboard: one name for it. */}
         <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <HoverPrefetchLink href="/admin">{t("admin")}</HoverPrefetchLink>
-          </BreadcrumbLink>
+          {segments.length > 1 ? (
+            <BreadcrumbLink asChild>
+              <HoverPrefetchLink href="/admin">{tShell("nav.dashboard")}</HoverPrefetchLink>
+            </BreadcrumbLink>
+          ) : (
+            <BreadcrumbPage>{tShell("nav.dashboard")}</BreadcrumbPage>
+          )}
         </BreadcrumbItem>
         {segments.slice(1).map((segment, index) => {
           const href = `/admin/${segments.slice(1, index + 2).join("/")}`;
@@ -183,7 +190,7 @@ export function AdminLayoutClient({
         </a>
         <AdminSidebar />
         <SidebarInset className="min-w-0">
-          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-5">
+          <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border/50 bg-background px-4 md:px-5">
             <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />

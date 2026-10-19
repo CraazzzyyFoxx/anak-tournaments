@@ -1,12 +1,13 @@
 "use client";
 
 import { useId } from "react";
-import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { StatusPill } from "@/components/kit/StatusPill";
+import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Card, CardContent } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
@@ -15,23 +16,37 @@ import { tabFallback } from "../../hubQueries";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useRegistrationFormSection } from "../useRegistrationFormSection";
 
+const RegistrationFormBuilder = dynamic(
+  () => import("@/components/balancer/form/RegistrationFormBuilder"),
+  { loading: () => tabFallback }
+);
+
 /**
- * How entries are taken, and what the public sees of them.
+ * How entries are taken, what the public sees of them, and the questionnaire
+ * itself. The builder used to be a Registration sub-tab of its own; it is
+ * configuration, so it lives here (`registration/form` redirects to this page).
  *
- * Split out of the questionnaire builder, which mixed this with the admission
- * rules and the fields themselves under six groups on one screen. The rows are
- * translated while the rail around them is not: they came with their messages,
- * and dropping the Russian copy to match an English-only admin shell would be a
- * regression paid by organizers, not by this refactor.
+ * Two editors, two save bars: both write the same full-replace form, and each
+ * echoes the other's saved fields. Each bar is sticky only inside its own
+ * block, so the two never stack.
  */
 export default function RegistrationSettingsPage() {
+  const t = useTranslations("registrationFormAdmin.page");
   return (
-    <SettingsSectionPage
-      section="registration"
-      description={useTranslations("adminTournament.screenDescriptions")("registration")}
-    >
-      {({ tournamentId, canTeamCreate }) => (
-        <RegistrationForm tournamentId={tournamentId} disabled={!canTeamCreate} />
+    <SettingsSectionPage section="registration">
+      {({ tournament, tournamentId, canTeamCreate }) => (
+        <>
+          <div>
+            <RegistrationForm tournamentId={tournamentId} disabled={!canTeamCreate} />
+          </div>
+          <section className="flex flex-col gap-3">
+            <h2 className={EYEBROW_CLASS}>{t("questionnaire.title")}</h2>
+            <RegistrationFormBuilder
+              tournamentId={tournamentId}
+              identityProvider={tournament.identity_provider}
+            />
+          </section>
+        </>
       )}
     </SettingsSectionPage>
   );
@@ -64,14 +79,13 @@ function RegistrationForm({
     <>
       <Card>
         <CardContent className="flex flex-col gap-5 pt-6">
-          <SettingGroup title={tStatus("title")} description={tStatus("description")}>
+          <SettingGroup title={tStatus("title")}>
             {/* Derived, not editable: openness is the REGISTRATION phase-schedule
                 window. Shown because this is the screen an organizer opens to ask
-                "are we taking entries", and the answer lives one section away. */}
+                "are we taking entries", and the answer lives one section away.
+                Closed is the absence of the pill. */}
             <SettingRow label={tStatus("acceptLabel")} hint={tStatus("scheduleHint")}>
-              <StatusPill tone={saved?.is_open ? "success" : "neutral"}>
-                {saved?.is_open ? tStatus("stateOpen") : tStatus("stateClosed")}
-              </StatusPill>
+              {saved?.is_open ? <StatusPill tone="success">{tStatus("stateOpen")}</StatusPill> : null}
             </SettingRow>
             <SettingRow
               htmlFor={`${ids}-auto-approve`}
@@ -126,17 +140,6 @@ function RegistrationForm({
                 disabled={disabled}
                 onCheckedChange={(next) => patch({ show_ranks: next })}
               />
-            </SettingRow>
-          </SettingGroup>
-
-          <SettingGroup title={t("questionnaire.title")} description={t("questionnaire.description")}>
-            <SettingRow label={t("questionnaire.label")} hint={t("questionnaire.hint")}>
-              <Link
-                href={`/admin/tournaments/${tournamentId}/registration/form`}
-                className="text-sm font-medium text-foreground underline underline-offset-4"
-              >
-                {t("questionnaire.action")}
-              </Link>
             </SettingRow>
           </SettingGroup>
         </CardContent>

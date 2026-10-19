@@ -2,11 +2,9 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -15,7 +13,6 @@ import { notify } from "@/lib/notify";
 import type { RosterShape } from "@/lib/roster/shape";
 import { roleOf, toRoleRef } from "@/lib/roster/role-ref";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import balancerAdminService from "@/services/balancer-admin.service";
 import draftService from "@/services/draft.service";
 import type {
@@ -71,7 +68,6 @@ export function DraftSetupWizard({
   aside
 }: Readonly<DraftSetupWizardProps>) {
   const t = useTranslations("draftAdmin");
-  const tAdmin = useTranslations("adminTournament.draft");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
   const initialSession = board?.session ?? null;
@@ -425,22 +421,23 @@ export function DraftSetupWizard({
     state: index < currentIndex ? "done" : index === currentIndex ? "current" : "todo"
   }));
 
+  // No "Save draft": the wizard has nothing to save before the seed preview
+  // creates the server session, and creating it earlier locks the config.
+  // Discarding is a quiet text action; the confirm carries the weight.
   const cancelButton = canCancelSetup ? (
     <Button
       type="button"
       size="sm"
-      variant="outline"
+      variant="ghost"
       disabled={pending}
-      className="border-[color:var(--aqt-live)]/40 text-[color:var(--aqt-live)] hover:border-[color:var(--aqt-live)] hover:bg-[color:var(--aqt-live)]/10"
       onClick={() => setConfirming("cancel")}
     >
-      <XCircle className="mr-2 h-4 w-4" aria-hidden />
       {session ? t("actions.cancel") : t("discardSetup")}
     </Button>
   ) : null;
 
   return (
-    <div className="space-y-5 text-[color:var(--aqt-fg)]">
+    <>
       <WizardShell
         steps={wizardSteps}
         aside={aside}
@@ -460,22 +457,12 @@ export function DraftSetupWizard({
               }
         }
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className={EYEBROW_CLASS}>
-              {t("stepOf", { current: currentIndex + 1, total: SETUP_STEPS.length })}
-            </p>
-            <h2 className="mt-2 font-onest text-xl font-semibold">{t(`stepTitles.${step}`)}</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[color:var(--aqt-fg-muted)]">
-              {t(`stepDescriptions.${step}`)}
-            </p>
-          </div>
-          {session && (
-            <Badge variant="outline" className="tabular-nums">
-              {tAdmin("sessionVersion", { id: session.id, version: session.version })}
-            </Badge>
-          )}
-        </div>
+        <h2 className="font-onest text-xl font-semibold">{t(`stepTitles.${step}`)}</h2>
+        {(step === "config" || step === "pool") && (
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            {t(`stepDescriptions.${step}`)}
+          </p>
+        )}
         <div className="mt-6">
           {step === "config" && (
             <DraftConfigStep
@@ -494,6 +481,7 @@ export function DraftSetupWizard({
               feasibility={preview?.feasibility ?? feasibilityQuery.data ?? null}
               loading={poolQuery.isLoading}
               failed={poolQuery.isError}
+              onRetry={() => void poolQuery.refetch()}
               teamCount={teamCount}
               maxTeamCount={maxTeams}
               pinned={config.teamCount != null}
@@ -572,6 +560,6 @@ export function DraftSetupWizard({
           else resetSetupState();
         }}
       />
-    </div>
+    </>
   );
 }

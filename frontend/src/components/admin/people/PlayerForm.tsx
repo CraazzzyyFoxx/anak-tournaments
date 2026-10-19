@@ -214,9 +214,7 @@ function DivisionField({
     <div>
       <Label>{t("division")}</Label>
       <div className="flex h-9 items-center">
-        {division == null ? (
-          <span className="text-sm text-muted-foreground">—</span>
-        ) : (
+        {division == null ? null : (
           <DivisionIcon division={division} tournamentGrid={grid} width={28} height={28} />
         )}
       </div>

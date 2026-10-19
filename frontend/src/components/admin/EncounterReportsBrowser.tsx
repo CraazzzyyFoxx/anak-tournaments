@@ -3,11 +3,9 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ClipboardCheck, Clock3, Gavel, ScrollText } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import { ResolveResultDialog } from "@/components/admin/ResolveResultDialog";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { useFilters } from "@/components/kit/useFilters";
@@ -16,15 +14,16 @@ import {
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow } from "@/types/admin.types";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
+import { ResultStatusPill } from "./encounters/EncounterCells";
 import { encounterReportFilterDefs } from "./encounter-reports/filters";
 import { ReportInspectorPanel } from "./encounter-reports/ReportInspectorPanel";
 import { useEncounterReportColumns } from "./encounter-reports/useEncounterReportColumns";
@@ -81,9 +80,10 @@ export function EncounterReportsBrowser({
         tournamentId,
         tournaments: scope.tournaments,
         stages: scope.stages,
+        stats,
         t: t as unknown as (key: string) => string
       }),
-    [tournamentId, scope.tournaments, scope.stages, t]
+    [tournamentId, scope.tournaments, scope.stages, stats, t]
   );
 
   const filters = useFilters(defs);
@@ -103,45 +103,11 @@ export function EncounterReportsBrowser({
   const columns = useEncounterReportColumns({ showTournament, customFields });
 
   if (workspaceId == null) {
-    return (
-      <EmptyNote>
-        {t("scopePrompt")}
-      </EmptyNote>
-    );
+    return <PageStateCard state="empty" description={t("scopePrompt")} />;
   }
 
   return (
     <div className="space-y-3">
-      <StatTileGrid>
-        <StatTile
-          label={t("confirmed")}
-          value={stats?.by_result_status.confirmed ?? 0}
-          icon={ClipboardCheck}
-          tone="success"
-        />
-        <StatTile
-          label={t("disputed")}
-          value={stats?.by_result_status.disputed ?? 0}
-          detail={t("recordedResult")}
-          icon={AlertTriangle}
-          tone="danger"
-        />
-        <StatTile
-          label={t("reportsDisagree")}
-          value={stats?.mismatch_count ?? 0}
-          detail={t("scoresDiffer")}
-          icon={ScrollText}
-          tone="warning"
-        />
-        <StatTile
-          label={t("awaitingSecond")}
-          value={stats?.awaiting_second_count ?? 0}
-          detail={t("oneReported")}
-          icon={Clock3}
-          tone="info"
-        />
-      </StatTileGrid>
-
       <div
         className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
       >
@@ -174,7 +140,7 @@ export function EncounterReportsBrowser({
                     total: row.original.participations.length
                   })}
                 </p>
-                <p className="text-xs text-muted-foreground">{row.original.result_status}</p>
+                <ResultStatusPill status={row.original.result_status} />
               </div>
             )}
             queryKey={(page, search, pageSize) => [
@@ -238,7 +204,6 @@ export function EncounterReportsBrowser({
           actions={
             openRow && canUpdateEncounter ? (
               <Button type="button" size="sm" variant="secondary" onClick={() => setResolving(openRow)}>
-                <Gavel aria-hidden className="size-3.5" />
                 {openRow.result_status === "confirmed" ? t("review") : t("resolve")}
               </Button>
             ) : null

@@ -9,7 +9,7 @@ const WINDOWS_CHROME =
 
 describe("formatDeviceLabel", () => {
   it("names the browser and the platform when it can read both", () => {
-    expect(formatDeviceLabel(WINDOWS_CHROME, "Unknown")).toBe("Chrome on Windows");
+    expect(formatDeviceLabel(WINDOWS_CHROME, "Unknown")).toBe("Chrome · Windows");
     expect(formatDeviceLabel("Firefox/130.0", "Unknown")).toBe("Firefox");
     expect(formatDeviceLabel("Linux x86_64", "Unknown")).toBe("Linux");
   });

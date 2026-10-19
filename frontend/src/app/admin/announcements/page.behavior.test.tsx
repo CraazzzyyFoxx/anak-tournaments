@@ -218,7 +218,8 @@ afterEach(async () => {
 describe("/admin/announcements", () => {
   it("offers the platform-wide audience only to a superuser", async () => {
     const workspaceOwner = await mount();
-    expect(scopeTabs(workspaceOwner)).toEqual([LABEL.audience.workspace]);
+    // One scope is no choice: the tab row draws nothing.
+    expect(scopeTabs(workspaceOwner)).toEqual([]);
 
     superuser = true;
     const platformAdmin = await mount();
@@ -269,13 +270,13 @@ describe("/admin/announcements", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("offers a fallback locale only among the ones that have a title", async () => {
+  it("offers a fallback locale only once two languages have a title", async () => {
     const container = await mount();
     const dialog = await openComposer(container);
-    expect(options(dialog, "default-locale")).toEqual([]);
+    expect(dialog.querySelector('[data-field="default-locale"]')).toBeNull();
 
     await fillTitle(dialog, "ru", "Только по-русски");
-    expect(options(dialog, "default-locale")).toEqual([LABEL.locales.ru]);
+    expect(dialog.querySelector('[data-field="default-locale"]')).toBeNull();
 
     await fillTitle(dialog, "en", "In English too");
     expect(options(dialog, "default-locale")).toEqual([LABEL.locales.ru, LABEL.locales.en]);

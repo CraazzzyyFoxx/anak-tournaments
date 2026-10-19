@@ -7,7 +7,6 @@ import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { Button } from "@/components/ui/button";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { DisciplineCapabilities } from "@/types/discipline.types";
 import { notify } from "@/lib/notify";
@@ -17,7 +16,7 @@ import type {
   DivisionGridVersion
 } from "@/types/workspace.types";
 
-import { VERSION_STATE_TONE, versionState } from "../versionStatus";
+import { VERSION_PILL, versionState } from "../versionStatus";
 import { autoMap, unresolvedRows, type MappingChoices } from "./autoMap";
 import { ChangesView } from "./ChangesView";
 import { DivisionsTable } from "./DivisionsTable";
@@ -27,7 +26,6 @@ import { MappingsView } from "./MappingsView";
 import { publishChecks, readyToPublish } from "./publishChecks";
 import {
   bandsCoverLadder,
-  bandsDifferingFromBase,
   bandsFromTiers,
   bandsMissingCrest,
   describeEdits,
@@ -59,6 +57,7 @@ export interface DraftEditorProps {
   version: DivisionGridVersion;
   /** The parent version's bands; empty when this version has no parent. */
   base: Band[];
+  /** The parent's name ("v3"); read only alongside a non-empty `base`. */
   baseLabel: string;
   readiness: DivisionGridActivationReadiness | null;
   activeVersionId: number | null;
@@ -240,7 +239,7 @@ export function DraftEditor({
     }
   ];
 
-  const lifecycle = versionState(version, activeVersionId);
+  const pill = VERSION_PILL[versionState(version, activeVersionId)];
   const intent: ConfirmIntent =
     confirming === "delete"
       ? {
@@ -274,12 +273,10 @@ export function DraftEditor({
       <EntityHubHeader
         backHref="/admin/settings/divisions"
         title={version.label}
-        status={{
-          label: `v${version.version} · ${lifecycle}`,
-          tone: VERSION_STATE_TONE[lifecycle]
-        }}
+        status={pill ? { label: t(pill.key), tone: pill.tone } : undefined}
         meta={[
-          base.length > 0 ? t("editorDetails.createdFrom", { base: baseLabel }) : t("editorDetails.noParent"),
+          `v${version.version}`,
+          base.length > 0 ? t("editorDetails.createdFrom", { base: baseLabel }) : null,
           t("divisionCount", { count: state.bands.length }),
           state.scale === "ladder" ? t("editorDetails.followRanges") : t("editorDetails.customScale")
         ]}
@@ -299,27 +296,17 @@ export function DraftEditor({
             onDiscard={() => setConfirming("delete")}
             onPublish={() => setConfirming("publish")}
             onActivate={() => activateMutation.mutate()}
+            onClone={cloneToDraft}
           />
         }
       />
 
       {!editable ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-          <p className="text-sm text-muted-foreground">
-            {version.status === "draft"
-              ? t("editorDetails.readOnlyDraft")
-              : t("editorDetails.readOnlyPublished")}
-          </p>
-          {version.status !== "draft" && canPublish ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={cloneToDraft}
-            >
-              {t("editor.createDraft")}
-            </Button>
-          ) : null}
-        </div>
+        <p className="text-caption text-muted-foreground">
+          {version.status === "draft"
+            ? t("editorDetails.readOnlyDraft")
+            : t("editorDetails.readOnlyPublished")}
+        </p>
       ) : null}
 
       <input
@@ -366,7 +353,6 @@ export function DraftEditor({
           {activeTab === "divisions" ? (
             <DivisionsTable
               bands={state.bands}
-              base={state.base}
               scale={state.scale}
               discipline={discipline}
               capabilities={capabilities}
@@ -414,19 +400,7 @@ export function DraftEditor({
           dirty={dirty}
           saving={saveMutation.isPending}
           primaryLabel={t("editor.saveDraft")}
-          summary={
-            <>
-              {t.rich("editor.saveBarSummary", {
-                version: version.version,
-                status: t(`editor.status.${version.status as "draft" | "published" | "archived"}`),
-                divisions: state.bands.length,
-                edits: state.history.length,
-                strong: (chunks) => <strong>{chunks}</strong>
-              })}
-              {pickedCount > 0 ? ` · ${t("editor.mappingSummary", { count: pickedCount })}` : null}{" "}
-              · {t("editor.differenceSummary", { count: bandsDifferingFromBase(state.base, state.bands), base: baseLabel })}
-            </>
-          }
+          summary={t("impact.editCount", { count: state.history.length + pickedCount })}
           onDiscard={() => onReload()}
           onSave={() => {
             const crestless = bandsMissingCrest(ladder, state.bands);

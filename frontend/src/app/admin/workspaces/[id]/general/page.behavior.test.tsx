@@ -230,14 +230,11 @@ describe("Workspaces › [id] › General", () => {
     expect(container.textContent).toContain("Not listed on the home page yet");
   });
 
-  it.each([
-    ["verified", "Verified"],
-    ["trusted", "Trusted"]
-  ] as const)("drops the notice once the workspace is %s", async (status, label) => {
+  it.each(["verified", "trusted"] as const)("drops the notice once the workspace is %s", async (status) => {
     getById.mockResolvedValue({ ...OTHER_WORKSPACE, verification_status: status });
     await render();
 
-    expect(container.querySelector(`[role="img"][aria-label="${label}"]`)).not.toBeNull();
+    expect(container.querySelector("#workspace-name")).not.toBeNull();
     expect(container.textContent).not.toContain("Not listed on the home page yet");
   });
 

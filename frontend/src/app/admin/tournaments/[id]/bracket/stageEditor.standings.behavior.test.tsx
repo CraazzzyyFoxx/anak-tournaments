@@ -236,17 +236,6 @@ describe("stage editor › Standings section", () => {
     expect(container.textContent).toContain("Group Team");
     // The playoff's row belongs to the playoff's own Standings section.
     expect(container.textContent).not.toContain("Playoff Team");
-    expect(container.textContent).toContain("Stage: Groups");
-  });
-
-  it("states the stage as a pinned fact, not a filter that can be widened", async () => {
-    await mount(groups);
-
-    const chip = container.querySelector('[data-pinned-filter="stage"]');
-    expect(chip?.textContent).toBe("Stage: Groups");
-    // A pinned chip carries no remove control: widening the scope here would
-    // show rows of stages this editor is not editing.
-    expect(chip?.querySelector("button")).toBeNull();
   });
 
   it("follows the selection: the playoff section shows the playoff's rows", async () => {
@@ -254,6 +243,5 @@ describe("stage editor › Standings section", () => {
 
     expect(container.textContent).toContain("Playoff Team");
     expect(container.textContent).not.toContain("Group Team");
-    expect(container.textContent).toContain("Stage: Playoff");
   });
 });

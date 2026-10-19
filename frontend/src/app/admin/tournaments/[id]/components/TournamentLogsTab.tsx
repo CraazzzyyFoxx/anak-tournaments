@@ -1,7 +1,7 @@
 "use client";
 
 import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, RefreshCw, RotateCcw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
@@ -12,7 +12,6 @@ import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { AttachLogDialog } from "./AttachLogDialog";
 import {
@@ -199,7 +198,7 @@ export function TournamentLogsTab({
       if (job.status === "done") {
         notify.success(tx("bound"));
       } else {
-        notify.error(tx("boundNotDone", { status: job.status }), { description: job.error?.message });
+        notify.error(tx("boundNotDone", { status: t(STATUS_META[job.status].key) }), { description: job.error?.message });
       }
       setAttachTarget(null);
       refreshAll();
@@ -224,34 +223,6 @@ export function TournamentLogsTab({
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <FolderInput className="size-4 shrink-0 text-primary" aria-hidden />
-            <h2 className="text-base font-semibold">{t("title")}</h2>
-          </div>
-          <p className="mt-1 text-pretty text-sm text-muted-foreground">
-            {t("description")}
-          </p>
-        </div>
-
-        {stats && stats.failed > 0 ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-danger/25 bg-danger/5 px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-            <p className="min-w-0 text-danger">
-              {t("failedToProcess", { count: stats.failed })}
-            </p>
-            {statusFilter !== "failed" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 text-xs"
-                onClick={() => filters.set("status", "failed")}
-              >
-                {t("showFailed")}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-
         <DataTable<LogProcessingRecord>
           columns={columns}
           getRowId={(record) => String(record.id)}
@@ -298,8 +269,8 @@ export function TournamentLogsTab({
                 }
               }}
             >
-              {retryMutation.isPending ? <Spinner /> : <RotateCcw aria-hidden />}
-              {t("retry")} {selected.length}
+              {retryMutation.isPending ? <Spinner /> : null}
+              {tx("retrySelected", { count: selected.length })}
             </Button>
           )}
           toolbar={
@@ -309,16 +280,16 @@ export function TournamentLogsTab({
               trailing={
                 stats ? (
                   <p className="hidden shrink-0 text-xs text-muted-foreground sm:block">
-                    {tx("summary", {
-                      count: stats.total,
-                      average:
-                        stats.avg_duration_seconds != null
-                          ? `${stats.avg_duration_seconds.toFixed(1)}s`
-                          : "-"
-                    })}
                     {stats.last_created_at
-                      ? tx("newest", { time: formatLogTime(format, stats.last_created_at) })
-                      : null}
+                      ? tx("summaryNewest", {
+                          count: stats.total,
+                          average: stats.avg_duration_seconds?.toFixed(1) ?? "none",
+                          time: formatLogTime(format, stats.last_created_at)
+                        })
+                      : tx("summary", {
+                          count: stats.total,
+                          average: stats.avg_duration_seconds?.toFixed(1) ?? "none"
+                        })}
                   </p>
                 ) : null
               }
@@ -365,7 +336,7 @@ export function TournamentLogsTab({
                     onClick={refreshAll}
                     disabled={isFetching}
                   >
-                    <RefreshCw className={cn(isFetching && "animate-spin")} aria-hidden />
+                    {isFetching ? <Spinner /> : <RefreshCw aria-hidden />}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>{t("refresh")}</TooltipContent>

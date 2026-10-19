@@ -137,14 +137,13 @@ describe("the condition editor follows the game's registry", () => {
     expect(attr("palette-item")).not.toContain("match_win");
   });
 
-  it("shows an unavailable state with addition disabled for a game without conditions, never a default node", async () => {
+  it("shows an unavailable state with no addition for a game without conditions, never a default node", async () => {
     getConditionTypes.mockResolvedValue([]);
     await render(editor("lol"));
     expect(container.querySelector("[data-testid=builder]")).toBeNull();
     const status = container.querySelector("[role=status]");
     expect(status?.textContent).toContain("no achievement conditions yet");
-    const add = [...container.querySelectorAll("button")].find((button) => button.textContent === "Add condition");
-    expect(add?.disabled).toBe(true);
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent === "Add condition")).toBe(false);
   });
 
   it("does not let a late Overwatch answer populate League after the game was switched", async () => {
@@ -178,11 +177,19 @@ describe("the condition editor follows the game's registry", () => {
     expect(attr("leaf-option")).toContain("hero_kd_best");
   });
 
-  it("reports a failed registry request instead of drawing a default node", async () => {
+  it("reports a failed registry request instead of drawing a default node, and retries it", async () => {
     getConditionTypes.mockRejectedValue(new Error("boom"));
     await render(editor("lol"));
     expect(container.querySelector("[data-testid=builder]")).toBeNull();
     expect(container.querySelector("[role=alert]")?.textContent).toContain("could not be loaded");
+
+    getConditionTypes.mockResolvedValue([condition("lol_first_blood")]);
+    const retry = [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry");
+    await act(async () => {
+      retry!.click();
+      await settle();
+    });
+    expect(container.querySelector("[data-testid=builder]")?.getAttribute("data-default")).toBe("lol_first_blood");
   });
 
   it("keeps rendering an existing tree read-only without waiting for the registry", async () => {

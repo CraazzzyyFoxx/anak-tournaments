@@ -2,11 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import teamService from "@/services/team.service";
-import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
@@ -27,6 +27,14 @@ export const tabFallback = (
     <Skeleton className="h-64 w-full rounded-xl" />
   </div>
 );
+
+/**
+ * Shared failure state of every hub tab body that needs the tournament: a
+ * failed read is an error with a retry, never a blank tab.
+ */
+export function tabError(retry: () => unknown) {
+  return <PageStateCard state="error" onAction={() => void retry()} />;
+}
 
 /*
  * Shared query hooks of the tournament hub (T5). Keys and options MUST stay
@@ -95,20 +103,6 @@ export function useHubEncountersCountQuery(tournamentId: number) {
   });
 }
 
-export function useHubStandingsQuery(tournamentId: number) {
-  return useQuery({
-    queryKey: getTournamentWorkspaceQueryKeys(tournamentId).standings,
-    queryFn: () =>
-      tournamentService.getStandings(tournamentId, {
-        includeMatchesHistory: false,
-        includeTeamGroup: false
-      }),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
-    refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: false
-  });
-}
-
 export function useHubDivisionGridsQuery(
   tournamentId: number,
   workspaceId: number | null | undefined
@@ -132,4 +126,3 @@ export function flattenDivisionGridVersions(
     .slice()
     .sort((left, right) => right.version - left.version);
 }
-

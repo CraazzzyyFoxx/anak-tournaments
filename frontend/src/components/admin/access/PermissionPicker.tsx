@@ -2,10 +2,8 @@
 
 import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
-import { CheckSquare, XSquare } from "lucide-react";
 
-import { EYEBROW_CLASS, TONE_CLASS } from "@/components/kit/tone";
-import { Badge } from "@/components/ui/badge";
+import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -193,6 +191,9 @@ export function PermissionPicker({
   // of rows needs neither, and a "Grant all" over two rows in a restrictions
   // panel would read as the opposite of what checking them does.
   const showBulkControls = catalog.length > 8;
+  // "Selected only" narrows nothing at none or all; it stays while on, so it can be switched off.
+  const showSelectedOnly =
+    grantedOnly || (selectedCount > 0 && selectedCount < catalog.length);
 
   const cellCheckbox = (entry: PermissionCatalogEntry) => {
     const covered = isCovered(entry);
@@ -211,9 +212,9 @@ export function PermissionPicker({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <p className={EYEBROW_CLASS}>{t("permissions")}</p>
-        <Badge variant="outline" className="tabular-nums">
+        <span className="text-caption tabular-nums text-muted-foreground">
           {t("selectedSummary", { selected: selectedCount, total: catalog.length })}
-        </Badge>
+        </span>
         {showBulkControls ? (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <SearchField
@@ -223,9 +224,11 @@ export function PermissionPicker({
               value={query}
               onValueChange={setQuery}
             />
-            <FilterChip active={grantedOnly} onClick={() => setGrantedOnly(!grantedOnly)}>
-              {t("selectedOnly")}
-            </FilterChip>
+            {showSelectedOnly ? (
+              <FilterChip active={grantedOnly} onClick={() => setGrantedOnly(!grantedOnly)}>
+                {t("selectedOnly")}
+              </FilterChip>
+            ) : null}
             {readOnly ? null : (
               <>
                 <Button
@@ -235,7 +238,6 @@ export function PermissionPicker({
                   disabled={visible.length === 0}
                   onClick={() => setKeys(visible.map((entry) => entry.key), true)}
                 >
-                  <CheckSquare aria-hidden className="size-4" />
                   {t("selectAll")}
                 </Button>
                 <Button
@@ -247,7 +249,6 @@ export function PermissionPicker({
                     setKeys([...visible.map((entry) => entry.key), ...offeredWildcards], false)
                   }
                 >
-                  <XSquare aria-hidden className="size-4" />
                   {t("clearAll")}
                 </Button>
               </>
@@ -262,11 +263,7 @@ export function PermissionPicker({
             <li key={wildcard}>
               <label
                 htmlFor={`${fieldId}-wildcard-${wildcard}`}
-                className={cn(
-                  "flex items-start gap-2 rounded-md border p-2",
-                  readOnly ? "" : "cursor-pointer",
-                  TONE_CLASS.danger
-                )}
+                className={cn("flex items-start gap-2", readOnly ? "" : "cursor-pointer")}
               >
                 <Checkbox
                   id={`${fieldId}-wildcard-${wildcard}`}
@@ -276,8 +273,15 @@ export function PermissionPicker({
                   onCheckedChange={(checked) => setKeys([wildcard], checked === true)}
                 />
                 <span className="min-w-0">
-                  <span className="block font-mono text-xs font-semibold">{wildcard}</span>
-                  <span className="mt-0.5 block text-xs">
+                  <span
+                    className={cn(
+                      "block font-mono text-xs font-semibold",
+                      wildcard === GLOBAL_WILDCARD && "text-danger"
+                    )}
+                  >
+                    {wildcard}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
                     {wildcard === GLOBAL_WILDCARD
                       ? tp("everything")
                       : tp("everythingScoped", {
@@ -352,7 +356,7 @@ export function PermissionPicker({
                           disabled={readOnly || columnKeys.length === 0}
                           onCheckedChange={(checked) => setKeys(columnKeys, checked === true)}
                         />
-                        <span className="text-xs capitalize">
+                        <span className="font-mono text-xs">
                           {action === "*" ? ti("all") : humanize(action)}
                         </span>
                       </span>
@@ -387,14 +391,7 @@ export function PermissionPicker({
                     </TableCell>
                     {actions.map((action) => {
                       const entry = group.byAction.get(action);
-                      if (!entry) {
-                        return (
-                          <TableCell key={action} className="text-center text-muted-foreground">
-                            <span aria-hidden>—</span>
-                            <span className="sr-only">{t("notApplicable")}</span>
-                          </TableCell>
-                        );
-                      }
+                      if (!entry) return <TableCell key={action} aria-hidden />;
                       return (
                         <TableCell key={action} className="text-center">
                           <span className="flex justify-center">{cellCheckbox(entry)}</span>

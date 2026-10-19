@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Star, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -35,10 +34,10 @@ import type {
 } from "@/types/workspace.types";
 
 import { GridInForceSection } from "./GridInForceSection";
-import { MONO_CAPTION, editorHref } from "./model";
+import { editorHref } from "./model";
 import { ReadersSection } from "./ReadersSection";
 import { useDivisionColumns } from "./useDivisionColumns";
-import { GridTransferBar, VersionHistorySection } from "./VersionHistorySection";
+import { GridTransferMenu, VersionHistorySection } from "./VersionHistorySection";
 
 /**
  * Settings › Divisions: what grid is in force, the version history behind it,
@@ -362,14 +361,10 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   // version in force, start a draft, start from the standard ladder.
   const nextAction = draft ? (
     <Button size="sm" asChild>
-      <Link href={editorHref(draft.id)}>
-        {t("openDraft", { version: draft.version })}
-        <ArrowRight aria-hidden className="size-3.5" />
-      </Link>
+      <Link href={editorHref(draft.id)}>{t("openDraft", { version: draft.version })}</Link>
     </Button>
   ) : readyCandidate ? (
     <Button size="sm" onClick={() => setActivating(readyCandidate)}>
-      <Star aria-hidden className="size-3.5" />
       {t("activateVersion", { version: readyCandidate.version })}
     </Button>
   ) : canCreate && latestVersion ? (
@@ -382,7 +377,6 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
       onClick={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
       disabled={standardMutation.isPending}
     >
-      <Wand2 aria-hidden className="size-3.5" />
       {t("loadStandard")}
     </Button>
   ) : null;
@@ -407,66 +401,62 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
         nextAction={nextAction}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
-        <VersionHistorySection
-          canCreate={canCreate}
-          versions={versions}
-          latestVersion={latestVersion}
-          ladder={ladder}
-          grids={scopedGrids}
-          selectedGrid={selectedGrid}
-          onSelectGrid={(value) => setParams({ grid: value })}
-          activeVersionId={activeVersionId}
-          tournamentCounts={tournamentCounts}
-          activatable={activatable}
-          onActivate={setActivating}
-          onNewDraft={(versionId) => cloneMutation.mutate({ scope: submitScope, versionId })}
-          newDraftPending={cloneMutation.isPending}
-          onLoadStandard={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
-          loadStandardPending={standardMutation.isPending}
-        >
-          <GridTransferBar
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-6">
+          <VersionHistorySection
             canCreate={canCreate}
-            inputRef={portableInputRef}
-            onImportFile={(file) => void importPortable(file)}
-            importPending={portableImportMutation.isPending}
-            onExport={() => void exportPortable()}
-            exportDisabled={selectedGrid === null || pendingAction === "export"}
+            versions={versions}
+            latestVersion={latestVersion}
+            ladder={ladder}
+            grids={scopedGrids}
+            selectedGrid={selectedGrid}
+            onSelectGrid={(value) => setParams({ grid: value })}
+            activeVersionId={activeVersionId}
+            tournamentCounts={tournamentCounts}
+            activatable={activatable}
+            onActivate={setActivating}
+            onNewDraft={(versionId) => cloneMutation.mutate({ scope: submitScope, versionId })}
+            newDraftPending={cloneMutation.isPending}
+            onLoadStandard={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
+            loadStandardPending={standardMutation.isPending}
+          >
+            <GridTransferMenu
+              canCreate={canCreate}
+              inputRef={portableInputRef}
+              onImportFile={(file) => void importPortable(file)}
+              importPending={portableImportMutation.isPending}
+              onExport={() => void exportPortable()}
+              canExport={selectedGrid !== null}
+              exportPending={pendingAction === "export"}
+            />
+          </VersionHistorySection>
+
+          <ReadersSection
+            activeVersion={activeVersion}
+            loading={readinessQuery.isLoading}
+            sources={sources}
           />
-        </VersionHistorySection>
+        </div>
 
-        <ReadersSection
-          activeVersion={activeVersion}
-          loading={readinessQuery.isLoading}
-          sources={sources}
-        />
-      </div>
-
-      <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-table">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-table">
           <h2 id="divisions-table" className="font-display text-base font-semibold">
             {t("divisionsInForce")}
           </h2>
           {activeVersion ? (
-            <span className={MONO_CAPTION}>
-              v{activeVersion.version} · {activeVersion.label}
-            </span>
-          ) : null}
-        </div>
-        {activeVersion ? (
-          <DataTable<Band>
-            rows={activeBands}
-            columns={columns}
-            getRowId={(row) => row.slug}
-            initialPageSize={50}
-            emptyMessage={t("table.empty")}
-          />
-        ) : (
-          <EmptyNote size="sm">
-            {t(hasNativeLadder ? "playersUntilActivated" : "organizerGridRequired")}
-          </EmptyNote>
-        )}
-      </section>
+            <DataTable<Band>
+              rows={activeBands}
+              columns={columns}
+              getRowId={(row) => row.slug}
+              initialPageSize={50}
+              emptyMessage={t("table.empty")}
+            />
+          ) : (
+            <EmptyNote size="sm">
+              {t(hasNativeLadder ? "playersUntilActivated" : "organizerGridRequired")}
+            </EmptyNote>
+          )}
+        </section>
+      </div>
 
       <ConfirmDialog
         open={activating !== null}

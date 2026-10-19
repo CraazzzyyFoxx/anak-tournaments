@@ -32,10 +32,8 @@ import type { Stage, StageType } from "@/types/tournament.types";
 
 import {
   getProgressPercent,
-  getStageAssignedTeams,
   getStageStatus,
   getStageStatusTone,
-  getStageTeamSlots,
   normalizeMaxRounds,
   STAGE_TYPE_LABELS,
   type StageProgress
@@ -45,7 +43,6 @@ interface StageListProps {
   tournamentId: number;
   /** Already ordered by `order`. */
   stages: Stage[];
-  teamsCount: number;
   progressByStageId: Map<number, StageProgress>;
   selectedStageId: number | null;
   onSelect: (stageId: number) => void;
@@ -63,7 +60,6 @@ interface StageListProps {
 export function StageList({
   tournamentId,
   stages,
-  teamsCount,
   progressByStageId,
   selectedStageId,
   onSelect,
@@ -136,6 +132,11 @@ export function StageList({
     return moved.length === stages.length ? moved : stages;
   }, [pendingOrder, stages]);
 
+  // A phase number is only worth showing where two stages share it: that is
+  // the one case where the order is not already the list's own order.
+  const phaseSizes = new Map<number, number>();
+  for (const stage of stages) phaseSizes.set(stage.order, (phaseSizes.get(stage.order) ?? 0) + 1);
+
   const dirty =
     name.trim().length > 0 ||
     stageType !== "round_robin" ||
@@ -145,23 +146,14 @@ export function StageList({
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{t("flow")}</p>
-          <p className="text-xs tabular-nums text-muted-foreground">
-            {t("stageCount", { count: stages.length, teams: teamsCount })}
-          </p>
-        </div>
+        <p className="text-sm font-semibold text-foreground">{t("flow")}</p>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="size-4" aria-hidden />
           {t("add")}
         </Button>
       </div>
 
-      {stages.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">
-          {t("empty")}
-        </p>
-      ) : (
+      {stages.length > 0 ? (
         <>
           <SortableRows
             className="flex flex-col gap-1 p-2"
@@ -178,15 +170,18 @@ export function StageList({
                 stage={stage}
                 progress={progressByStageId.get(stage.id)}
                 selected={selectedStageId === stage.id}
+                sharedPhase={(phaseSizes.get(stage.order) ?? 0) > 1}
                 onSelect={() => onSelect(stage.id)}
               />
             )}
           </SortableRows>
-          <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-            {t("drag")}
-          </p>
+          {stages.length > 1 ? (
+            <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+              {t("drag")}
+            </p>
+          ) : null}
         </>
-      )}
+      ) : null}
 
       <EntityFormDialog
         open={createOpen}
@@ -198,7 +193,6 @@ export function StageList({
           }
         }}
         title={t("dialogTitle")}
-        description={t("dialogDescription")}
         submitLabel={t("submit")}
         submittingLabel={t("submitting")}
         onSubmit={(event: FormEvent) => {
@@ -283,11 +277,13 @@ function StageCard({
   stage,
   progress,
   selected,
+  sharedPhase,
   onSelect
 }: Readonly<{
   stage: Stage;
   progress: StageProgress | undefined;
   selected: boolean;
+  sharedPhase: boolean;
   onSelect: () => void;
 }>) {
   const t = useTranslations("adminBracket.list");
@@ -295,71 +291,57 @@ function StageCard({
   const tr = (key: string) => tRoot(key as never);
   const { ref, style, handleProps } = useSortableRow(String(stage.id));
   const hasEncounters = (progress?.total ?? 0) > 0;
-  const slots = getStageTeamSlots(stage);
-  const assigned = getStageAssignedTeams(stage);
+  const status = getStageStatus(stage, hasEncounters);
+  // Completed is where every stage ends up and draft is where it starts: only
+  // a stage captains are playing (or about to) earns a pill.
+  const showStatus = status === "Active" || status === "Preview";
 
-  // The whole card selects. The name stays a <button> so keyboard users have a
-  // focus stop; its Enter/Space click bubbles to the card's handler, so it
-  // carries none of its own. A click on the grip bubbles too, which is harmless.
+  // The name button is stretched over the row (`after:inset-0`), so the whole
+  // row selects while the grip, a sibling above it, stays the drag handle.
   return (
     <div
       ref={ref}
       style={style}
-      onClick={onSelect}
       className={cn(
-        "flex cursor-pointer items-start gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-border",
+        "relative flex items-start gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-border",
         selected && "border-border bg-accent/30"
       )}
     >
-      <div className="flex flex-col items-center gap-1 pt-0.5">
-        <SortableGrip handleProps={handleProps} label={t("reorder", { name: stage.name })} />
-        <span
-          title={t("phase", { number: stage.order })}
-          className="font-mono text-xs tabular-nums text-muted-foreground"
-        >
-          <span className="sr-only">{tRoot("extra.phaseLabel")}</span>
-          {stage.order}
-        </span>
-      </div>
+      <SortableGrip
+        className="relative z-10"
+        handleProps={handleProps}
+        label={t("reorder", { name: stage.name })}
+      />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
+            onClick={onSelect}
             aria-current={selected ? "true" : undefined}
-            className="min-w-0 truncate text-left text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 truncate text-left text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
           >
             {stage.name}
           </button>
-          <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
-            {tr(`extra.statuses.${getStageStatus(stage, hasEncounters).toLowerCase()}`)}
-          </StatusPill>
+          {showStatus ? (
+            <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
+              {tr(`extra.statuses.${status.toLowerCase()}`)}
+            </StatusPill>
+          ) : null}
         </div>
 
-        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          <span>{tr(`labels.types.${stage.stage_type}`)}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">{t("items", { count: stage.items.length })}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">
-            {t("slots", { assigned, total: slots })}
-          </span>
-        </p>
+        {sharedPhase ? (
+          <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+            {t("phase", { number: stage.order })}
+          </p>
+        ) : null}
 
         {progress && progress.total > 0 ? (
-          <div className="mt-2">
-            <p className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{t("matches")}</span>
-              <span className="tabular-nums">
-                {progress.completed}/{progress.total}
-              </span>
-            </p>
-            <Progress
-              value={getProgressPercent(progress.completed, progress.total)}
-              className="h-1.5"
-              aria-label={t("progress", { completed: progress.completed, total: progress.total })}
-            />
-          </div>
+          <Progress
+            value={getProgressPercent(progress.completed, progress.total)}
+            className="mt-2 h-1.5"
+            aria-label={t("progress", { completed: progress.completed, total: progress.total })}
+          />
         ) : null}
       </div>
     </div>

@@ -24,12 +24,6 @@ export function useGamemodeColumns({
   return useMemo<ColumnDef<CatalogEntityRead>[]>(
     () => [
       {
-        accessorKey: "id",
-        header: t("columns.id"),
-        size: 80,
-        cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
-      },
-      {
         accessorKey: "name",
         header: t("columns.name"),
       },

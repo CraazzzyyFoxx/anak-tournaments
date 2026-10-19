@@ -3,9 +3,8 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle, Copy } from "lucide-react";
+import { Copy } from "lucide-react";
 
-import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,7 +25,6 @@ import { PLATFORM_ZONE } from "@/lib/site/host";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace } from "@/types/workspace.types";
-import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -49,8 +47,8 @@ const domainStateOf = (ws: Workspace): DomainState => ({
  * The custom domain is a three-step stepper rather than a field with a Save
  * button, because it is not a value the form owns: adding it mints a DNS token
  * server-side, and the domain only starts serving once a resolver can see that
- * token. A `SaveBar` cannot express "now go edit your DNS", so the stepper
- * says which of the three states the domain is in and what closes it.
+ * token. A `SaveBar` cannot express "now go edit your DNS", so the `PhaseStrip`
+ * says which of the three states the domain is in, and nothing else repeats it.
  */
 export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.domain");
@@ -171,7 +169,6 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     <InputGroupInput
                       id="workspace-subdomain"
                       value={values.subdomain ?? ""}
-                      placeholder="my-team"
                       onChange={(event) =>
                         patch({
                           subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
@@ -195,18 +192,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
           <Card>
             <CardContent className="flex flex-col gap-3 pt-6">
               <div>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
-                  {domain.verifiedAt ? (
-                    <StatusPill tone="success">
-                      <CheckCircle aria-hidden className="size-3" /> {t("verifiedLive")}
-                    </StatusPill>
-                  ) : domain.domain ? (
-                    <StatusPill tone="warning">
-                      <Spinner className="size-3" /> {t("pending")}
-                    </StatusPill>
-                  ) : null}
-                </div>
+                <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
                 <p className="mt-1 max-w-prose text-xs text-muted-foreground">
                   {t("groups.customDomain.description")}
                 </p>
@@ -226,7 +212,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                   aria-label={t("domainLabel")}
                   className="min-w-[16rem] flex-1"
                   value={draftDomain}
-                  placeholder="tourney.example.com"
+                  placeholder={t("domainPlaceholder")}
                   disabled={!!domain.verifiedAt}
                   onChange={(event) => setDraftDomain(event.target.value.toLowerCase().trim())}
                 />
@@ -257,56 +243,39 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {t.rich("liveHelp", { strong: (chunks) => <strong>{chunks}</strong> })}
-              </p>
 
               {pending ? (
-                <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3">
-                  <div>
-                    <h3 className="text-xs font-semibold text-foreground">{t("howToConnect")}</h3>
-                    <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                      <li>{t("openProvider")}</li>
-                      <li>{t("addRecords")}</li>
-                      <li>
-                        {t.rich("propagationHelp", {
-                          seconds: VERIFY_POLL_MS / 1000,
-                          num: (chunks) => <span className="tabular-nums">{chunks}</span>,
-                          strong: (chunks) => <strong>{chunks}</strong>
-                        })}
-                      </li>
-                    </ol>
-                  </div>
-                  <div className="flex flex-col gap-1.5 text-xs">
-                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 font-mono">
-                      <span className="text-muted-foreground">TXT</span>
-                      <span className="break-all">{`_owt-verify.${domain.domain}`}</span>
-                      <span className="break-all text-muted-foreground">{t("ownership")}</span>
-                      <span className="text-muted-foreground">{t("value")}</span>
-                      <span className="break-all">{domain.token}</span>
-                      {domain.token ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-5"
-                          aria-label={t("copyTxt")}
-                          onClick={() => domain.token && copy(domain.token)}
-                        >
-                          <Copy aria-hidden className="size-3" />
-                        </Button>
-                      ) : (
-                        <span />
-                      )}
+                <div className="flex flex-col gap-3 border-t border-border pt-3">
+                  <p className="max-w-prose text-xs text-muted-foreground">
+                    {t("addRecords", { seconds: VERIFY_POLL_MS / 1000 })}
+                  </p>
+                  <dl className="divide-y divide-border/60 font-mono text-xs">
+                    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
+                      <dt className="text-muted-foreground">TXT</dt>
+                      <dd className="break-all">{`_owt-verify.${domain.domain}`}</dd>
+                      <dd className="break-all">{domain.token}</dd>
+                      <dd>
+                        {domain.token ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-5"
+                            aria-label={t("copyTxt")}
+                            title={t("copyTxt")}
+                            onClick={() => domain.token && copy(domain.token)}
+                          >
+                            <Copy aria-hidden className="size-3" />
+                          </Button>
+                        ) : null}
+                      </dd>
                     </div>
-                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 font-mono">
-                      <span className="text-muted-foreground">CNAME</span>
-                      <span className="break-all">{domain.domain}</span>
-                      <span className="break-all text-muted-foreground">
-                        {t("pointsToZone", { zone: PLATFORM_ZONE })}
-                      </span>
+                    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
+                      <dt className="text-muted-foreground">CNAME</dt>
+                      <dd className="break-all">{domain.domain}</dd>
+                      <dd className="break-all">{PLATFORM_ZONE}</dd>
                     </div>
-                  </div>
+                  </dl>
                   <Button
                     type="button"
                     size="sm"
@@ -334,7 +303,6 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                       id="workspace-seo-title"
                       className="mt-1.5"
                       value={values.seo_title ?? ""}
-                      placeholder={t("seoTitlePlaceholder")}
                       onChange={(event) => patch({ seo_title: event.target.value })}
                     />
                   </div>
@@ -344,7 +312,6 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                       id="workspace-seo-description"
                       className="mt-1.5"
                       value={values.seo_description ?? ""}
-                      placeholder={t("seoDescriptionPlaceholder")}
                       onChange={(event) => patch({ seo_description: event.target.value })}
                     />
                   </div>

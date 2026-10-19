@@ -16,12 +16,8 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 export default function DangerSettingsPage() {
-  const t = useTranslations("adminTournament.danger");
   return (
-    <SettingsSectionPage
-      section="danger"
-      description={t("description")}
-    >
+    <SettingsSectionPage section="danger">
       {({ tournament, tournamentId }) => (
         <DeleteTournament tournament={tournament} tournamentId={tournamentId} />
       )}
@@ -50,9 +46,9 @@ function DeleteTournament({
 
   return (
     <>
-      <Card className="border-destructive/30 bg-destructive/5">
+      <Card>
         <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-destructive/80">
+          <p className="text-xs text-muted-foreground">
             {t("warning")}
           </p>
           <Button

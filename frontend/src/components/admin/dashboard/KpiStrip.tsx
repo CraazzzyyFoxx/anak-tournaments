@@ -2,7 +2,6 @@ import { ClipboardList, ScrollText, Swords, Trophy, type LucideIcon } from "luci
 import { useTranslations } from "next-intl";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import type { Tone } from "@/components/kit/tone";
 
 /**
  * Column class for `count` KPI tiles. Exported so the dashboard's loading
@@ -30,7 +29,8 @@ interface KpiStripProps {
  *
  * These used to be lifetime totals (tournaments / teams / players /
  * encounters) — numbers that only ever grow and answer no question an admin
- * arrives with. Each tile now states where the current cycle stands.
+ * arrives with. Each tile now states where the current cycle stands. A
+ * second line only when it adds a number; colour only when one needs work.
  */
 export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Readonly<KpiStripProps>) {
   const t = useTranslations("adminShell.dashboard");
@@ -39,7 +39,7 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
     value: string | number;
     label: string;
     detail?: string;
-    tone?: Tone;
+    warn?: boolean;
   }[] = [];
 
   if (tournaments !== null) {
@@ -47,8 +47,7 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
       icon: Trophy,
       value: tournaments.active,
       label: t("activeTournaments"),
-      detail: t("inTotal", { count: tournaments.total }),
-      tone: tournaments.active > 0 ? "accent" : "neutral",
+      detail: t("inTotal", { count: tournaments.total })
     });
   }
 
@@ -56,9 +55,7 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
     items.push({
       icon: ClipboardList,
       value: registrationOpen,
-      label: t("registrationOpen"),
-      detail: registrationOpen > 0 ? t("acceptingEntries") : t("nothingOpen"),
-      tone: registrationOpen > 0 ? "info" : "neutral",
+      label: t("registrationOpen")
     });
   }
 
@@ -68,8 +65,7 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
       icon: Swords,
       value: `${matches.completed} / ${matches.total}`,
       label: t("matchesPlayed"),
-      detail: remaining > 0 ? t("stillToPlay", { count: remaining }) : t("bracketComplete"),
-      tone: matches.total > 0 && remaining === 0 ? "success" : "neutral",
+      detail: remaining > 0 ? t("stillToPlay", { count: remaining }) : undefined
     });
   }
 
@@ -80,8 +76,8 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
       icon: ScrollText,
       value: `${percent}%`,
       label: t("logCoverage"),
-      detail: missing > 0 ? t("withoutLogs", { count: missing }) : t("everyMatchCovered"),
-      tone: missing > 0 ? "warning" : "success",
+      detail: missing > 0 ? t("withoutLogs", { count: missing }) : undefined,
+      warn: missing > 0
     });
   }
 
@@ -96,7 +92,7 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
           value={item.value}
           detail={item.detail}
           icon={item.icon}
-          tone={item.tone}
+          tone={item.warn ? "warning" : "neutral"}
         />
       ))}
     </StatTileGrid>

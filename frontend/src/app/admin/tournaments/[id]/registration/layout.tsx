@@ -2,21 +2,21 @@
 
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useHubTournamentQuery } from "../hubQueries";
 import { REGISTRATION_SUB_TABS, type RegistrationSubTab } from "../tab-guards";
-import { useTranslations } from "next-intl";
-
-const SUB_TAB_LABEL_KEYS: Record<RegistrationSubTab, "entries" | "teams" | "form" | "feed" | "rankAutofill"> = {
-  entries: "entries",
-  teams: "teams",
-  form: "form",
-  feed: "feed",
-  "rank-autofill": "rankAutofill"
-};
 
 const DEFAULT_SUB_TAB: RegistrationSubTab = "entries";
 
@@ -25,12 +25,11 @@ function isRegistrationSubTab(value: string): value is RegistrationSubTab {
 }
 
 /**
- * Sub-tab bar for the Registration hub tab.
- *
- * The three sibling routes (form, feed, rank-autofill) used to be reachable
- * only from a dropdown inside the entries table — an orphan cluster with no
- * visible switcher. They are the same kind of destination as the Matches
- * sub-tabs, so they get the same bar, from the same component.
+ * Sub-tab bar of the Registration hub tab: the two views of who entered
+ * (entries, teams). The tools that act on entries (Sheets feed, rank autofill)
+ * keep their routes but sit in a "Tools" menu beside the bar; the questionnaire
+ * builder is configuration and lives in Settings › Registration (`form`
+ * redirects there).
  *
  * Navigation only: no queries beyond the tournament the guard needs (already
  * in cache from the shell), and no realtime — the hub shell owns that.
@@ -76,12 +75,15 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
     router.replace(`${basePath}/${DEFAULT_SUB_TAB}`);
   }, [known, basePath, router]);
 
-  const items: LinkTabItem[] = REGISTRATION_SUB_TABS.map((key) => ({
-    key,
-    label: t(`tabs.${SUB_TAB_LABEL_KEYS[key]}`),
-    href: `${basePath}/${key}`,
-    hidden: key === "teams" && teamsOffered !== true
-  }));
+  const items: LinkTabItem[] = [
+    { key: "entries", label: t("tabs.entries"), href: `${basePath}/entries` },
+    {
+      key: "teams",
+      label: t("tabs.teams"),
+      href: `${basePath}/teams`,
+      hidden: teamsOffered !== true
+    }
+  ];
 
   // Held back until permissions resolve, so a legitimate visitor never sees the
   // tab bar blink out on first paint.
@@ -89,7 +91,28 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
 
   return (
     <div className="space-y-4">
-      <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
+        </div>
+        {allowed && active !== "teams" ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="ml-auto">
+                {t("tools")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`${basePath}/feed`}>{t("tabs.feed")}</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`${basePath}/rank-autofill`}>{t("tabs.rankAutofill")}</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </div>
       {allowed && known ? children : null}
     </div>
   );

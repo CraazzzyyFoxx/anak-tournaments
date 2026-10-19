@@ -336,7 +336,7 @@ describe("Bracket tab · URL is the state", () => {
     await mount("?stage=10&section=items");
 
     expect(sectionTab("Items")?.getAttribute("aria-current")).toBe("page");
-    expect(bodyText()).toContain("Groups, bracket lanes and the teams in their slots.");
+    expect(bodyText()).toContain("Edit matches");
     // Items links out instead of editing matches in place.
     expect(
       [...document.querySelectorAll("a")].some(

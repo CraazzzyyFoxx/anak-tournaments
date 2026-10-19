@@ -9,7 +9,7 @@ export function DraftReseedDiff({ diff }: Readonly<{ diff: DraftSeedResponse["di
   const t = useTranslations("draftAdmin");
   const tAdmin = useTranslations("adminTournament.draft");
   return (
-    <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
+    <div className="mt-3 grid grid-cols-3 gap-2 text-sm tabular-nums">
       <div>
         {tAdmin("diff", {
           label: t("teams"),

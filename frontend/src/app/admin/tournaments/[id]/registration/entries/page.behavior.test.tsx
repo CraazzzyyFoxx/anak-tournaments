@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
 // Registration › Entries (F4). What is pinned here:
-//  1. the sections are one sub-tab bar, and the active one carries
-//     `aria-current="page"` — they used to be reachable only from a dropdown
-//     buried in the table's toolbar;
+//  1. the sub-tab bar holds only the two views of who entered (entries,
+//     teams) — one view is no bar at all — and the tools that act on entries
+//     (Sheets feed, rank autofill) sit in a "Tools" menu beside it;
 //  2. `teams` is offered only on a tournament that forms its teams by
 //     registration — it used to be a Radix `Tabs` switcher inside this page,
 //     which is neither the admin's one tab implementation nor linkable;
@@ -300,21 +300,24 @@ afterEach(async () => {
 });
 
 describe("Registration entries", () => {
-  it("gives the sections one sub-tab bar and marks the active one", async () => {
+  it("offers no tab bar for one view, and the tools in a menu", async () => {
     const scope = await mount();
-    const nav = scope.querySelector("nav[aria-label='Registration sections']");
-    const links = [...(nav?.querySelectorAll("a") ?? [])];
 
-    // No `teams`: this tournament balances, so registered teams do not exist.
-    expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "/admin/tournaments/80/registration/entries",
-      "/admin/tournaments/80/registration/form",
+    // No `teams`: this tournament balances, so entries is the only view.
+    expect(scope.querySelector("nav[aria-label='Registration sections']")).toBeNull();
+
+    const tools = [...scope.querySelectorAll("button")].find(
+      (button) => button.textContent === "Tools"
+    );
+    await act(async () => {
+      tools?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      await tick();
+    });
+    const items = [...document.body.querySelectorAll("[role='menuitem']")];
+    expect(items.map((item) => item.getAttribute("href"))).toEqual([
       "/admin/tournaments/80/registration/feed",
       "/admin/tournaments/80/registration/rank-autofill"
     ]);
-    expect(
-      links.filter((link) => link.getAttribute("aria-current") === "page").map((l) => l.textContent)
-    ).toEqual(["Entries"]);
   });
 
   it("offers the teams section only when captains form the teams", async () => {
@@ -326,22 +329,20 @@ describe("Registration entries", () => {
         [])
     ];
 
-    // A linkable section beside its siblings, not a Radix `Tabs` pair inside
+    // A linkable section beside its sibling, not a Radix `Tabs` pair inside
     // the entries table whose state no URL could carry.
-    expect(links.map((link) => link.getAttribute("href"))).toContain(
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/admin/tournaments/80/registration/entries",
       "/admin/tournaments/80/registration/teams"
-    );
-    expect(links.map((link) => link.textContent)).toEqual([
-      "Entries",
-      "Teams",
-      "Form",
-      "Sheets feed",
-      "Rank autofill"
     ]);
+    expect(
+      links.filter((link) => link.getAttribute("aria-current") === "page").map((l) => l.textContent)
+    ).toEqual(["Entries"]);
   });
 
   it("hides the section body without team.read", async () => {
     canTeamRead = false;
+    teamFormation = "registration";
 
     const scope = await mount("", false);
 
@@ -372,7 +373,8 @@ describe("Registration entries", () => {
   });
 
   it("drops the page cursor when the filters are cleared", async () => {
-    const scope = await mount("?admission=admitted&page=3");
+    // "Clear all" is offered only from two chips up.
+    const scope = await mount("?admission=admitted&status=approved&page=3");
 
     await click(
       [...scope.querySelectorAll("button")].find(
@@ -382,6 +384,7 @@ describe("Registration entries", () => {
 
     const url = new URL(replace.mock.calls.at(-1)![0], "http://x");
     expect(url.searchParams.get("admission")).toBeNull();
+    expect(url.searchParams.get("status")).toBeNull();
     expect(url.searchParams.get("page")).toBeNull();
   });
 

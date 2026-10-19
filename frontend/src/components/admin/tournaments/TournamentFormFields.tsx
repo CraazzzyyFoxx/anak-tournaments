@@ -6,7 +6,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -17,11 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-type TournamentFormFieldsMode =
-  | "manual-create"
-  | "challonge-create"
-  | "edit"
-  | "workspace-edit";
+type TournamentFormFieldsMode = "manual-create" | "challonge-create";
 
 export type TournamentFormFieldsValue = {
   name: string;
@@ -29,11 +24,9 @@ export type TournamentFormFieldsValue = {
   is_league: boolean;
   start_date: string;
   end_date: string;
-  challonge_slug?: string | null;
   // Public-URL slug (`/tournaments/<slug>`); blank at creation auto-generates
-  // one from `name`. Renaming an existing tournament redirects the old link.
+  // one from `name`.
   slug?: string | null;
-  is_finished?: boolean;
   win_points?: number;
   draw_points?: number;
   loss_points?: number;
@@ -59,6 +52,11 @@ interface TournamentFormFieldsProps<T extends TournamentFormFieldsValue> {
   divisionGridLoading?: boolean;
 }
 
+/**
+ * Step 1 of the new-tournament wizard. Team formation lives here and not on
+ * the Rules step because the Schedule step right after needs it to know
+ * whether a draft phase exists; the division grid sits beside it.
+ */
 export function TournamentFormFields<T extends TournamentFormFieldsValue>({
   value,
   onChange,
@@ -70,19 +68,11 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
   divisionGridLoading = false,
 }: Readonly<TournamentFormFieldsProps<T>>) {
   const t = useTranslations("adminTournaments.form");
-  const showDescription = mode !== "challonge-create";
-  const showInlineChallonge = mode === "edit" || mode === "workspace-edit";
-  const showSeparateChallonge = mode === "challonge-create";
-  const showFinished = mode === "edit" || mode === "workspace-edit";
-  const showDivisionGrid =
-    mode === "workspace-edit" || mode === "manual-create" || mode === "challonge-create";
-  const showScoring = mode === "workspace-edit";
-  const showTeamFormation =
-    mode === "workspace-edit" || mode === "manual-create" || mode === "challonge-create";
+  const challonge = mode === "challonge-create";
 
   return (
     <div className="grid gap-5">
-      {showSeparateChallonge ? (
+      {challonge ? (
         <div className="col-span-full">
           <Label htmlFor={`${idPrefix}-challonge-separate`}>
             {t.rich("challongeUrlOrSlugRequired", {
@@ -101,24 +91,20 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
             {t("challongeHelp")}
           </p>
         </div>
-      ) : null}
-
-      {mode !== "challonge-create" ? (
+      ) : (
         <div className="col-span-full">
           <Label htmlFor={`${idPrefix}-name`}>
-            {mode === "manual-create"
-              ? t.rich("nameRequired", { required: () => requiredMark })
-              : t("name")}
+            {t.rich("nameRequired", { required: () => requiredMark })}
           </Label>
           <Input
             id={`${idPrefix}-name`}
             value={value.name}
             onChange={(event) => onChange({ ...value, name: event.target.value })}
-            required={mode === "manual-create"}
+            required
             className="mt-1.5"
           />
         </div>
-      ) : null}
+      )}
 
       <div className="col-span-full">
         <Label htmlFor={`${idPrefix}-slug`}>{t("publicSlug")}</Label>
@@ -129,14 +115,10 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
           placeholder={t("slugPlaceholder")}
           className="mt-1.5"
         />
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {mode === "edit" || mode === "workspace-edit"
-            ? t("slugEditHelp")
-            : t("slugCreateHelp")}
-        </p>
+        <p className="mt-1.5 text-xs text-muted-foreground">{t("slugCreateHelp")}</p>
       </div>
 
-      {showDescription ? (
+      {challonge ? null : (
         <div className="col-span-full">
           <Label htmlFor={`${idPrefix}-description`}>{t("description")}</Label>
           <Textarea
@@ -146,113 +128,77 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
             className="mt-1.5 min-h-[80px]"
           />
         </div>
-      ) : null}
+      )}
 
-      {showInlineChallonge ? (
-        <div className="col-span-full">
-          <Label htmlFor={`${idPrefix}-challonge`}>{t("challongeUrlOrSlugTitleCase")}</Label>
-          <Input
-            id={`${idPrefix}-challonge`}
-            placeholder={t("challongePlaceholder")}
-            value={value.challonge_slug ?? ""}
-            onChange={(event) => onChange({ ...value, challonge_slug: event.target.value })}
-            className="mt-1.5"
-          />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-full">
+        <div>
+          <Label htmlFor={`${idPrefix}-team-formation`}>{t("teamFormation")}</Label>
+          <Select
+            value={value.team_formation ?? "balancer"}
+            onValueChange={(nextValue) => onChange({ ...value, team_formation: nextValue })}
+          >
+            <SelectTrigger id={`${idPrefix}-team-formation`} className="mt-1.5">
+              <SelectValue placeholder={t("selectMethod")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="balancer">{t("formation.balancer")}</SelectItem>
+              <SelectItem value="draft">{t("formation.draft")}</SelectItem>
+              <SelectItem value="registration">{t("formation.registration")}</SelectItem>
+              <SelectItem value="solo">{t("formation.solo")}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {t("teamFormationHelp")}
+          </p>
         </div>
-      ) : null}
 
-      {/* Select fields group */}
-      {showTeamFormation || showDivisionGrid ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-full">
-          {showTeamFormation ? (
-            <div>
-              <Label htmlFor={`${idPrefix}-team-formation`}>{t("teamFormation")}</Label>
-              <Select
-                value={value.team_formation ?? "balancer"}
-                onValueChange={(nextValue) => onChange({ ...value, team_formation: nextValue })}
-              >
-                <SelectTrigger id={`${idPrefix}-team-formation`} className="mt-1.5">
-                  <SelectValue placeholder={t("selectMethod")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="balancer">{t("formation.balancer")}</SelectItem>
-                  <SelectItem value="draft">{t("formation.draft")}</SelectItem>
-                  <SelectItem value="registration">{t("formation.registration")}</SelectItem>
-                  <SelectItem value="solo">{t("formation.solo")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {t("teamFormationHelp")}
-              </p>
-            </div>
-          ) : null}
-
-          {showDivisionGrid ? (
-            <div>
-              <Label htmlFor={`${idPrefix}-division-grid-version`}>{t("divisionGridVersion")}</Label>
-              <Select
-                value={value.division_grid_version_id?.toString() ?? "none"}
-                onValueChange={(nextValue) =>
-                  onChange({
-                    ...value,
-                    division_grid_version_id: nextValue === "none" ? null : Number(nextValue),
-                  })
-                }
-              >
-                <SelectTrigger id={`${idPrefix}-division-grid-version`} className="mt-1.5">
-                  <SelectValue
-                    placeholder={divisionGridLoading ? t("loadingDivisionGrids") : t("selectVersion")}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
-                  {divisionGridVersions.map((version) => (
-                    <SelectItem key={version.id} value={version.id.toString()}>
-                      {version.label} (v{version.version}, {version.status})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Checkboxes grouped in a premium panel */}
-      {mode === "workspace-edit" || mode === "manual-create" || mode === "challonge-create" || showFinished ? (
-        <div className="flex flex-col sm:flex-row gap-5 bg-muted/20 border border-border/50 rounded-lg p-3.5 col-span-full">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id={`${idPrefix}-is-league`}
-              checked={value.is_league}
-              onCheckedChange={(checked) => onChange({ ...value, is_league: checked === true })}
-            />
-            <Label htmlFor={`${idPrefix}-is-league`} className="cursor-pointer text-sm font-medium">
-              {t("leagueSeason")}
-            </Label>
-          </div>
-
-          {showFinished ? (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id={`${idPrefix}-is-finished`}
-                checked={value.is_finished ?? false}
-                onCheckedChange={(checked) => onChange({ ...value, is_finished: checked === true })}
+        <div>
+          <Label htmlFor={`${idPrefix}-division-grid-version`}>{t("divisionGridVersion")}</Label>
+          <Select
+            value={value.division_grid_version_id?.toString() ?? "none"}
+            onValueChange={(nextValue) =>
+              onChange({
+                ...value,
+                division_grid_version_id: nextValue === "none" ? null : Number(nextValue),
+              })
+            }
+          >
+            <SelectTrigger id={`${idPrefix}-division-grid-version`} className="mt-1.5">
+              <SelectValue
+                placeholder={divisionGridLoading ? t("loadingDivisionGrids") : t("selectVersion")}
               />
-              <Label htmlFor={`${idPrefix}-is-finished`} className="cursor-pointer text-sm font-medium">
-                {t("finished")}
-              </Label>
-            </div>
-          ) : null}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
+              {divisionGridVersions.map((version) => (
+                <SelectItem key={version.id} value={version.id.toString()}>
+                  {t("gridVersionOption", {
+                    label: version.label,
+                    version: version.version,
+                    status: version.status,
+                  })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      ) : null}
+      </div>
+
+      <div className="col-span-full flex items-center gap-2">
+        <Checkbox
+          id={`${idPrefix}-is-league`}
+          checked={value.is_league}
+          onCheckedChange={(checked) => onChange({ ...value, is_league: checked === true })}
+        />
+        <Label htmlFor={`${idPrefix}-is-league`} className="cursor-pointer text-sm font-medium">
+          {t("leagueSeason")}
+        </Label>
+      </div>
 
       <div className="col-span-full">
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-date-range`}>
-            {mode === "manual-create" || mode === "challonge-create"
-              ? t.rich("dateRangeRequired", { required: () => requiredMark })
-              : t("dateRange")}
+            {t.rich("dateRangeRequired", { required: () => requiredMark })}
           </FieldLabel>
           <div className="mt-1.5">
             <DateRangePicker
@@ -264,41 +210,6 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
           </div>
         </Field>
       </div>
-
-      {showScoring ? (
-        <div className="col-span-full border-t border-border/40 pt-4">
-          <p className="mb-3 text-sm font-medium">{t("scoringPoints")}</p>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label htmlFor={`${idPrefix}-win-points`}>{t("win")}</Label>
-              <NumberInput
-                id={`${idPrefix}-win-points`}
-                value={value.win_points ?? 0}
-                onValueChange={(next) => onChange({ ...value, win_points: next ?? 0 })}
-                className="mt-1.5 tabular-nums"
-              />
-            </div>
-            <div>
-              <Label htmlFor={`${idPrefix}-draw-points`}>{t("draw")}</Label>
-              <NumberInput
-                id={`${idPrefix}-draw-points`}
-                value={value.draw_points ?? 0}
-                onValueChange={(next) => onChange({ ...value, draw_points: next ?? 0 })}
-                className="mt-1.5 tabular-nums"
-              />
-            </div>
-            <div>
-              <Label htmlFor={`${idPrefix}-loss-points`}>{t("loss")}</Label>
-              <NumberInput
-                id={`${idPrefix}-loss-points`}
-                value={value.loss_points ?? 0}
-                onValueChange={(next) => onChange({ ...value, loss_points: next ?? 0 })}
-                className="mt-1.5 tabular-nums"
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

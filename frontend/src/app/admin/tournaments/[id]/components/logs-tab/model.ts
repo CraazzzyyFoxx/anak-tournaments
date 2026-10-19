@@ -1,18 +1,17 @@
-import { CheckCircle2, Clock3, Link2, Loader2, XCircle } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { type Tone } from "@/components/kit/tone";
 import type { DateFormatter } from "@/components/kit/format-time";
-import type { LogProcessingRecord, LogProcessingStatus } from "@/types/admin.types";
-import { getRetryKind } from "../logs.helpers";
+import type { LogOperationErrorCode, LogProcessingRecord, LogProcessingStatus } from "@/types/admin.types";
+import { LOG_OPERATION_ERROR_CODES, getRetryKind } from "../logs.helpers";
 
 export type LogFilter = LogProcessingStatus;
 
-export const STATUS_META: Record<LogProcessingStatus, { key: "queued" | "processing" | "awaitingLink" | "processed" | "failed"; icon: LucideIcon; tone: Tone }> = {
-  pending: { key: "queued", icon: Clock3, tone: "neutral" },
-  processing: { key: "processing", icon: Loader2, tone: "info" },
-  awaiting_link: { key: "awaitingLink", icon: Link2, tone: "neutral" },
-  done: { key: "processed", icon: CheckCircle2, tone: "success" },
-  failed: { key: "failed", icon: XCircle, tone: "danger" }
+/** Label key of every status; `tone` only where the row wants attention (a pill). */
+export const STATUS_META: Record<LogProcessingStatus, { key: "queued" | "processing" | "awaitingLink" | "processed" | "failed"; tone?: Tone }> = {
+  pending: { key: "queued" },
+  processing: { key: "processing", tone: "info" },
+  awaiting_link: { key: "awaitingLink", tone: "warning" },
+  done: { key: "processed" },
+  failed: { key: "failed", tone: "danger" }
 };
 
 /** Chip order is scan order: the states that need action come first. */
@@ -52,13 +51,11 @@ export function isRetryable(record: LogProcessingRecord) {
   return getRetryKind(record) != null && getRetryRefusal(record) == null;
 }
 
+/** Seconds between start and finish; null while unfinished or for a clock that went backwards. */
 export function formatDuration(record: LogProcessingRecord) {
-  if (!record.started_at || !record.finished_at) {
-    return record.status === "processing" ? "running" : "-";
-  }
-
+  if (!record.started_at || !record.finished_at) return null;
   const durationMs = new Date(record.finished_at).getTime() - new Date(record.started_at).getTime();
-  if (!Number.isFinite(durationMs) || durationMs < 0) return "-";
+  if (!Number.isFinite(durationMs) || durationMs < 0) return null;
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
@@ -72,22 +69,23 @@ export function formatLogTime(format: DateFormatter, value: string) {
   });
 }
 
-/** A structured error names its code; historical text (code `historical`) keeps the legacy status parse. */
-export function getErrorSummary(record: LogProcessingRecord) {
+/**
+ * What the error column says first: a refused-operation code the catalogue
+ * translates, otherwise the server's own message (HTTP status prefix dropped).
+ * Historical text (code `historical`) reads as a plain message.
+ */
+export function getErrorSummary(
+  record: LogProcessingRecord
+): { code: LogOperationErrorCode } | { message: string } | null {
   const structured = record.error && record.error.code !== "historical" ? record.error : null;
   const errorMessage = record.error_message;
   if (!structured && !errorMessage) return null;
 
-  const codeMatch = errorMessage?.match(/['"]code['"]:\s*['"]([^'"]+)['"]/);
-  const statusMatch = errorMessage?.match(/^(\d{3})/);
-  const code = (structured?.code ?? codeMatch?.[1])?.replaceAll("_", " ");
-
-  if (code) {
-    const formattedCode = code.charAt(0).toUpperCase() + code.slice(1);
-    return statusMatch ? `${statusMatch[1]} · ${formattedCode}` : formattedCode;
-  }
-
-  return errorMessage!.replace(/^(\d{3}:\s*)?/, "").slice(0, 120);
+  const rawCode = structured?.code ?? errorMessage?.match(/['"]code['"]:\s*['"]([^'"]+)['"]/)?.[1];
+  const code = LOG_OPERATION_ERROR_CODES.find((known) => known === rawCode);
+  if (code) return { code };
+  const message = structured?.message || errorMessage || "";
+  return { message: message.replace(/^(\d{3}:\s*)?/, "").slice(0, 120) };
 }
 
 /** The message plus every issue path the validator reported. */

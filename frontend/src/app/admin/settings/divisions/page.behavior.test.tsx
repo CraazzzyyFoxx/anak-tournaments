@@ -6,10 +6,10 @@
 //  1. the `division_grid.read` gate is the PAGE's. Hiding a rail link is not
 //     access control: the URL typed into the address bar has to be refused,
 //     and nothing may be asked of the API before it is allowed;
-//  2. the version strip states come from the two facts that decide them — the
+//  2. the version list's pills come from the two facts that decide them — the
 //     stored status and the workspace's default version pointer — so a
-//     published version the workspace points at reads "active", which is not
-//     a status the backend has;
+//     published version the workspace points at reads "In force", which is not
+//     a status the backend has; published and archived rows carry no pill;
 //  3. the grid selector only appears when the workspace really has more than
 //     one grid, and it writes `?grid=`;
 //  4. "Load standard OW ladder" — the scenario carried over from
@@ -339,15 +339,18 @@ describe("Settings › Divisions", () => {
     expect(getDivisionGrids).not.toHaveBeenCalled();
   });
 
-  it("shows the version strip with the workspace's own version marked active", async () => {
+  it("shows the version list with the workspace's own version marked in force", async () => {
     const container = await mount();
 
     expect(container.textContent).toContain("v1");
     expect(container.textContent).toContain("v4");
-    // v3 is `published` server-side; "active" is the workspace pointing at it.
-    expect(container.textContent).toContain("active");
-    expect(container.textContent).toContain("archived");
-    expect(container.textContent).toContain("draft");
+    const history = container.querySelector('[aria-labelledby="divisions-history"]');
+    // v3 is `published` server-side; "In force" is the workspace pointing at it.
+    expect(history?.textContent).toContain("In force");
+    expect(history?.textContent).toContain("Draft");
+    // Published and archived are the norm: no pill, and never the raw enum.
+    expect(history?.textContent).not.toContain("archived");
+    expect(history?.textContent).not.toContain("published");
 
     // Only the draft is worth opening for editing.
     const editorLinks = Array.from(container.querySelectorAll("a")).filter((anchor) =>
@@ -379,7 +382,7 @@ describe("Settings › Divisions", () => {
     const container = await mount();
 
     expect(container.textContent).toContain("7 tournaments");
-    expect(container.textContent).toContain("mapping complete");
+    expect(container.textContent).not.toContain("mapping complete");
     // The payload carries the five newest names and the full count, so the
     // names are shown as a sample with the remainder made explicit.
     expect(container.textContent).toContain("Anak Cup 11");
@@ -616,7 +619,7 @@ describe("Settings › Divisions", () => {
   it("clones the newest version into a fresh draft", async () => {
     await mount();
 
-    await click(button("+ New draft from v4"));
+    await click(button("New draft from v4"));
 
     expect(cloneDivisionGridVersion).toHaveBeenCalledWith(23);
     expect(replace).toHaveBeenCalledWith("/admin/settings/divisions/v/24");

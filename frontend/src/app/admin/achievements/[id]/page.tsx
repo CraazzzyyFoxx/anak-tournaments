@@ -5,25 +5,20 @@ import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { hasUnsavedChanges } from "@/lib/form-change";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { AchievementRuleUpdateInput } from "@/types/admin.types";
 
-import { achievementFormData } from "../achievement-form.model";
+import { AchievementFormDialog } from "../_components/AchievementFormDialog";
+import { AchievementOverridesCard } from "../_components/AchievementOverridesCard";
+import { useAchievementRuleForm } from "../_hooks/useAchievementRuleForm";
 import { AchievementDetailHeader } from "./_components/AchievementDetailHeader";
 import { AchievementDetailsCard } from "./_components/AchievementDetailsCard";
-import { AchievementEditDialog } from "./_components/AchievementEditDialog";
-import { AchievementUsersCard } from "./_components/AchievementUsersCard";
+import { AchievementUsersTable } from "./_components/AchievementUsersTable";
 import { ConditionTreeCard } from "./_components/ConditionTreeCard";
 import { RuleOverrideDialog, type RuleOverrideDraft } from "./_components/RuleOverrideDialog";
-import { RuleOverridesCard } from "./_components/RuleOverridesCard";
-import {
-  useAchievementDetailData,
-  useAchievementDetailMutations,
-  type RuleUsersView,
-} from "./_hooks/useAchievementDetail";
+import { useAchievementDetailData, useAchievementDetailMutations } from "./_hooks/useAchievementDetail";
 
 const emptyOverrideDraft: RuleOverrideDraft = { userName: "", action: "grant", reason: "" };
 
@@ -38,21 +33,17 @@ export default function AchievementDetailPage() {
   const canUpdate = canAccessPermission("achievement.update", workspaceId);
   const canDelete = canAccessPermission("achievement.delete", workspaceId);
 
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deletingRule, setDeletingRule] = useState(false);
   const [editingTree, setEditingTree] = useState(false);
   const [overrideDialogOpen, setOverrideDialogOpen] = useState(false);
   const [overrideDraft, setOverrideDraft] = useState<RuleOverrideDraft>(emptyOverrideDraft);
-  const [formData, setFormData] = useState<AchievementRuleUpdateInput>({});
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [usersView, setUsersView] = useState<RuleUsersView>({ sort: "count", order: "desc" });
 
-  const { rule, isLoading, tournaments, users, overrides, refetchOverrides } =
-    useAchievementDetailData({ workspaceId, ruleId, usersView });
+  const { rule, isLoading, isError, refetch, tournaments, overrides, refetchOverrides } =
+    useAchievementDetailData({ workspaceId, ruleId });
+
+  const form = useAchievementRuleForm(workspaceId, rule?.discipline ?? null);
 
   const {
-    updateMutation,
     saveTreeMutation,
     deleteMutation,
     toggleMutation,
@@ -64,11 +55,6 @@ export default function AchievementDetailPage() {
     workspaceId,
     ruleId,
     discipline: rule?.discipline,
-    onUpdated: () => {
-      setEditDialogOpen(false);
-      setImageFile(null);
-      setImagePreview(null);
-    },
     onTreeSaved: () => setEditingTree(false),
     onOverrideSaved: () => {
       refetchOverrides();
@@ -79,23 +65,26 @@ export default function AchievementDetailPage() {
     onDeleted: () => router.push("/admin/achievements"),
   });
 
-  const totalUsers = users.data?.pages[0]?.total ?? 0;
-
   if (!workspaceId) {
-    return <div className="p-6 text-muted-foreground">{t("detail.selectWorkspace")}</div>;
+    return <PageStateCard state="empty" title={t("detail.selectWorkspace")} />;
   }
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-75 w-full rounded-xl" />
       </div>
     );
   }
 
+  if (isError) {
+    return <PageStateCard state="error" onAction={() => refetch()} />;
+  }
+
   if (!rule) {
-    return <div className="p-6 text-muted-foreground">{t("detail.notFound")}</div>;
+    return <PageStateCard state="not-found" title={t("detail.notFound")} />;
   }
 
   return (
@@ -104,21 +93,18 @@ export default function AchievementDetailPage() {
         rule={rule}
         canUpdate={canUpdate}
         canDelete={canDelete}
-        isEvaluating={evaluateMutation.isPending}
+        isBusy={evaluateMutation.isPending || testMutation.isPending}
         onTest={() => testMutation.mutate(undefined)}
         onEvaluate={() => evaluateMutation.mutate(undefined)}
         onToggle={() => toggleMutation.mutate(!rule.enabled)}
-        onEdit={() => {
-          setFormData(achievementFormData(rule));
-          updateMutation.reset();
-          setEditDialogOpen(true);
-        }}
+        onEdit={() => form.openEdit(rule)}
         onDelete={() => setDeletingRule(true)}
       />
 
-      <div className="grid grid-cols-1 gap-6">
-        <AchievementDetailsCard rule={rule} totalUsers={totalUsers} />
-      </div>
+      <AchievementDetailsCard
+        rule={rule}
+        minTournamentName={tournaments.find((tournament) => tournament.id === rule.min_tournament_id)?.name}
+      />
 
       <ConditionTreeCard
         conditionTree={rule.condition_tree as Record<string, unknown>}
@@ -133,75 +119,39 @@ export default function AchievementDetailPage() {
         }
       />
 
-      <AchievementUsersCard
-        pages={users.data?.pages ?? []}
-        totalUsers={totalUsers}
-        tournaments={tournaments?.results ?? []}
-        view={usersView}
-        onViewChange={setUsersView}
+      <AchievementUsersTable
+        workspaceId={workspaceId}
+        ruleId={ruleId}
+        tournaments={tournaments}
         onAddOverride={() => {
           overrideMutation.reset();
           setOverrideDialogOpen(true);
         }}
-        hasNextPage={users.hasNextPage}
-        isFetchingNextPage={users.isFetchingNextPage}
-        fetchNextPage={users.fetchNextPage}
-        isError={users.isError}
       />
 
       {overrides && overrides.length > 0 && (
-        <RuleOverridesCard
+        <AchievementOverridesCard
           overrides={overrides}
+          tournaments={tournaments}
           onDelete={(id) => deleteOverrideMutation.mutate(id)}
+          isDeleting={deleteOverrideMutation.isPending}
         />
       )}
 
       <RuleOverrideDialog
         open={overrideDialogOpen}
         onOpenChange={setOverrideDialogOpen}
+        ruleId={ruleId}
         ruleName={rule.name}
-        tournaments={tournaments?.results ?? []}
+        tournaments={tournaments}
         draft={overrideDraft}
         onDraftChange={setOverrideDraft}
-        onSubmit={() =>
-          overrideMutation.mutate({
-            achievement_rule_id: ruleId,
-            user_id: overrideDraft.userId!,
-            tournament_id: overrideDraft.tournamentId ?? null,
-            action: overrideDraft.action,
-            reason: overrideDraft.reason,
-          })
-        }
+        onSubmit={(input) => overrideMutation.mutate(input)}
         isSaving={overrideMutation.isPending}
-        saveError={
-          overrideMutation.error instanceof Error ? overrideMutation.error.message : undefined
-        }
+        saveError={overrideMutation.error instanceof Error ? overrideMutation.error.message : undefined}
       />
 
-      <AchievementEditDialog
-        open={editDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) setEditDialogOpen(false);
-        }}
-        slug={rule.slug}
-        formData={formData}
-        onFormDataChange={setFormData}
-        imagePreview={imagePreview}
-        onPickImage={(file) => {
-          setImageFile(file);
-          setImagePreview(URL.createObjectURL(file));
-        }}
-        onClearImage={() => {
-          setImageFile(null);
-          setImagePreview(null);
-        }}
-        onSubmit={() => updateMutation.mutate({ data: formData, imageFile })}
-        isSubmitting={updateMutation.isPending}
-        isDirty={editDialogOpen && hasUnsavedChanges(formData, achievementFormData(rule))}
-        errorMessage={
-          updateMutation.error instanceof Error ? updateMutation.error.message : undefined
-        }
-      />
+      <AchievementFormDialog form={form} />
 
       <ConfirmDialog
         open={deletingRule}

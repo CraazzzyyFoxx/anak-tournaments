@@ -1,19 +1,18 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Link2Off, ShieldAlert, Users, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Link2Off, ShieldAlert, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { TONE_CLASS } from "@/components/kit/tone";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
-import { cn } from "@/lib/utils";
 import type { DraftFeasibility } from "@/types/draft.types";
 
 import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT, type DraftPoolReadiness } from "./setup-model";
@@ -23,6 +22,7 @@ interface DraftPoolStepProps {
   feasibility?: DraftFeasibility | null;
   loading: boolean;
   failed: boolean;
+  onRetry: () => void;
   /** The team count in effect: the pinned one, else the pool's maximum. */
   teamCount: number;
   /** `maxDraftTeamCount` — how many teams this pool can fill at most. */
@@ -41,6 +41,7 @@ export function DraftPoolStep({
   feasibility,
   loading,
   failed,
+  onRetry,
   teamCount,
   maxTeamCount,
   pinned,
@@ -55,19 +56,15 @@ export function DraftPoolStep({
     : 0;
 
   if (loading) {
-    return <Skeleton className="h-52 w-full rounded-2xl" />;
+    return <Skeleton className="h-52 w-full rounded-xl" />;
   }
   if (failed) {
-    return (
-      <div className={cn("rounded-2xl border p-5 text-sm", TONE_CLASS.danger)}>
-        {t("poolLoadFailed")}
-      </div>
-    );
+    return <PageStateCard state="error" description={t("poolLoadFailed")} onAction={onRetry} />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-border/70 bg-card p-5">
+      <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">{t("poolPlayers")}</p>
@@ -91,24 +88,22 @@ export function DraftPoolStep({
                 onValueChange={(next) => onTeamCountChange(next ?? MIN_DRAFT_TEAM_COUNT)}
                 className="h-9 w-20 tabular-nums"
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9"
-                disabled={locked || !pinned}
-                onClick={() => onTeamCountChange(null)}
-              >
-                {t("teamCountMax")}
-              </Button>
+              {!locked && pinned && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => onTeamCountChange(null)}
+                >
+                  {t("teamCountMax")}
+                </Button>
+              )}
             </div>
             <p className="text-xs tabular-nums text-muted-foreground">
               {t("teamCountMaxHint", { count: maxTeamCount })}
             </p>
           </div>
-          <StatusPill tone={readiness.blockers.length === 0 ? "success" : "danger"}>
-            {readiness.blockers.length === 0 ? t("poolReady") : t("poolBlocked")}
-          </StatusPill>
         </div>
         <Progress value={percent} className="mt-4 h-2" aria-label={t("poolPlayers")} />
       </div>
@@ -137,7 +132,7 @@ export function DraftPoolStep({
             return (
               <div
                 key={role}
-                className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 px-4 py-3"
+                className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
               >
                 <span className="text-sm font-medium">{slotLabel(role)}</span>
                 <span className="flex items-center gap-2">
@@ -163,45 +158,31 @@ export function DraftPoolStep({
       </div>
 
       {(readiness.blockers.length > 0 || (feasibility && !feasibility.is_feasible)) && (
-        <div className={cn("rounded-2xl border p-4", TONE_CLASS.danger)}>
-          <div className="flex gap-3">
-            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
-            <div>
-              <h3 className="font-medium">{t("blockingIssues")}</h3>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                {readiness.blockers.map((blocker) => (
-                  <li key={blocker}>
-                    {blocker.startsWith("role_shortage:")
-                      ? t("blockers.role_shortage", { role: slotLabel(blocker.slice("role_shortage:".length)) })
-                      : t(blocker === "pool_unranked" ? "blockers.pool_unranked" : "blockers.not_enough_players", {
-                          count: readiness.missingRanks
-                        })}
-                  </li>
-                ))}
-                {feasibility?.slot_deficits.map((deficit) => (
-                  <li key={deficit.slot_code}>
-                    {t("roleDeficit", {
-                      role: slotLabel(deficit.slot_code),
-                      count: deficit.unmatched_slots
-                    })}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {readiness.blockers.length === 0 && (
-        <div
-          className={cn(
-            "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm",
-            TONE_CLASS.success
-          )}
-        >
-          <Users className="h-5 w-5 shrink-0" aria-hidden />
-          {t("poolCanContinue")}
-        </div>
+        <Alert variant="destructive" className="rounded-xl">
+          <ShieldAlert className="size-4" aria-hidden />
+          <AlertTitle>{t("blockingIssues")}</AlertTitle>
+          <AlertDescription>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+              {readiness.blockers.map((blocker) => (
+                <li key={blocker}>
+                  {blocker.startsWith("role_shortage:")
+                    ? t("blockers.role_shortage", { role: slotLabel(blocker.slice("role_shortage:".length)) })
+                    : blocker === "pool_unranked"
+                      ? t("blockers.pool_unranked", { count: readiness.missingRanks })
+                      : t("blockers.not_enough_players")}
+                </li>
+              ))}
+              {feasibility?.slot_deficits.map((deficit) => (
+                <li key={deficit.slot_code}>
+                  {t("roleDeficit", {
+                    role: slotLabel(deficit.slot_code),
+                    count: deficit.unmatched_slots
+                  })}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

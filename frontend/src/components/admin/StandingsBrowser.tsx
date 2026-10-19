@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, RefreshCw } from "lucide-react";
+import { Lock } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import { StandingsArrangeBoard } from "@/components/admin/StandingsArrangeBoard";
@@ -15,6 +15,8 @@ import {
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getTournamentWorkspaceQueryKeys, invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -219,7 +221,17 @@ export function StandingsBrowser({
     );
   }
 
+  const failedQuery = standingsQuery.isError
+    ? standingsQuery
+    : stagesQuery.isError
+      ? stagesQuery
+      : null;
+  if (failedQuery) {
+    return <PageStateCard state="error" onAction={() => void failedQuery.refetch()} />;
+  }
+
   const canRecalculate = canUpdate && scopeTournamentId != null;
+  const canSync = canAccessPermission("challonge.update", workspaceId) && scopeTournamentId != null;
   const arranging = view === "arrange" && scopeTournamentId != null;
 
   const toolbar = (
@@ -227,20 +239,30 @@ export function StandingsBrowser({
       defs={defs}
       filters={filters}
       trailing={
-        <>
-          {scopeTournamentId != null ? (
-            <ToggleGroup
-              type="single"
-              variant="pill"
-              size="sm"
-              value={view}
-              onValueChange={(next) => setView(next as "table" | "arrange")}
-              aria-label={t("view")}
-            >
-              <ToggleGroupItem value="table">{t("table")}</ToggleGroupItem>
-              <ToggleGroupItem value="arrange">{t("arrange")}</ToggleGroupItem>
-            </ToggleGroup>
-          ) : null}
+        scopeTournamentId != null ? (
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            value={view}
+            onValueChange={(next) => {
+              if (next) setView(next as "table" | "arrange");
+            }}
+            aria-label={t("view")}
+          >
+            <ToggleGroupItem value="table">{t("table")}</ToggleGroupItem>
+            <ToggleGroupItem value="arrange">{t("arrange")}</ToggleGroupItem>
+          </ToggleGroup>
+        ) : null
+      }
+    />
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Actions on the whole table, not filters: above the filter surface. */}
+      {canRecalculate || canSync ? (
+        <div className="flex flex-wrap justify-end gap-2">
           {canRecalculate ? (
             <Button
               variant="outline"
@@ -248,28 +270,22 @@ export function StandingsBrowser({
               disabled={recalculateMutation.isPending}
               onClick={() => setRecalculateOpen(true)}
             >
-              <RefreshCw aria-hidden className="size-4" />
               {t("recalculate")}
             </Button>
           ) : null}
-          {canAccessPermission("challonge.update", workspaceId) && scopeTournamentId != null ? (
+          {canSync ? (
             <Button
               variant="outline"
               size="sm"
               disabled={syncMutation.isPending}
               onClick={() => syncMutation.mutate()}
             >
-              <RefreshCw aria-hidden className="size-4" />
+              {syncMutation.isPending ? <Spinner /> : null}
               {t("sync")}
             </Button>
           ) : null}
-        </>
-      }
-    />
-  );
-
-  return (
-    <div className="space-y-3">
+        </div>
+      ) : null}
       {arranging ? (
         <>
           {toolbar}
@@ -330,9 +346,6 @@ export function StandingsBrowser({
             value: formatTiebreakOrder(tiebreakOrder),
             valueText: (chunks) => <span className="font-medium text-foreground">{chunks}</span>
           })}
-          <span className="font-medium text-foreground">
-            {formatTiebreakOrder(tiebreakOrder)}
-          </span>
         </p>
       ) : null}
 

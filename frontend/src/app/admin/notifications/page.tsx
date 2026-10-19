@@ -19,7 +19,7 @@ export default function AdminWorkspaceNotificationsPage() {
 
   if (workspaceId == null) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <AdminPageHeader
           title={t("notifications.workspaceAdmin.title")}
           description={t("notifications.workspaceAdmin.description")}

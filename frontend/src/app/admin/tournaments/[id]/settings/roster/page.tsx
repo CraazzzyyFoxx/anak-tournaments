@@ -23,10 +23,7 @@ import { useRegistrationFormSection } from "../useRegistrationFormSection";
 
 export default function RosterSettingsPage() {
   return (
-    <SettingsSectionPage
-      section="roster"
-      description={useTranslations("adminTournament.screenDescriptions")("roster")}
-    >
+    <SettingsSectionPage section="roster">
       {({ tournament, tournamentId, canUpdateTournament, canTeamCreate }) => (
         <RosterForm
           key={`${tournament.workspace_id}:${tournament.discipline}:${tournamentId}`}

@@ -86,7 +86,7 @@ export function TiebreakersSection({
             }
           >
             <SelectTrigger id={`${ids}-preset`}>
-              <SelectValue placeholder={t("systemDefault")} />
+              <SelectValue placeholder={tRoot("labels.rankingPresets.default")} />
             </SelectTrigger>
             <SelectContent>
               {(FFA_STAGE_TYPES.includes(form.stageType)
@@ -170,7 +170,7 @@ export function TiebreakersSection({
             {t("resetDefaults")}
           </Button>
         </div>
-        <ol className="flex flex-col gap-1 rounded-lg border border-border bg-card p-2">
+        <ol className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
           {active.map((metricId, index) => {
             const metricLabel =
               catalogue.find((metric) => metric.id === metricId)?.label ??
@@ -179,7 +179,7 @@ export function TiebreakersSection({
             return (
               <li
                 key={metricId}
-                className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-1 text-xs"
+                className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
               >
                 <span className="flex items-center gap-2 font-medium text-muted-foreground">
                   <Checkbox
@@ -191,7 +191,7 @@ export function TiebreakersSection({
                   <span className="tabular-nums">{index + 1}.</span>
                   <span className="text-foreground">{metricLabel}</span>
                   {isRankingMetric ? (
-                    <span className="text-label uppercase tracking-wide">{t("rankingMetric")}</span>
+                    <span className={EYEBROW_CLASS}>{t("rankingMetric")}</span>
                   ) : null}
                 </span>
                 <span className="flex items-center gap-0.5">

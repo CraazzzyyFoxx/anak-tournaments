@@ -1,11 +1,8 @@
 "use client";
 
-import { Play } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -18,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Spinner } from "@/components/ui/spinner";
 import type { AchievementCategory, AchievementRule } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 
@@ -25,11 +23,11 @@ import { groupRulesByCategory } from "../achievement-form.model";
 
 /**
  * Picks the scope of an evaluation run. An empty selection means "everything",
- * which is why the count reads "all" rather than "0 selected".
+ * which is why the count reads "all" rather than "0 selected". Mounted only
+ * while open.
  */
 export function EvaluateAchievementsDialog({
-  open,
-  onOpenChange,
+  onClose,
   tournaments,
   rules,
   tournamentId,
@@ -39,8 +37,7 @@ export function EvaluateAchievementsDialog({
   onRun,
   isRunning,
 }: Readonly<{
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
   tournaments: Tournament[];
   rules: AchievementRule[];
   tournamentId?: number;
@@ -69,7 +66,7 @@ export function EvaluateAchievementsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t("evaluateDialog.title")}</DialogTitle>
@@ -79,7 +76,6 @@ export function EvaluateAchievementsDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Tournament selector */}
           <div className="space-y-2">
             <Label htmlFor="eval-tournament">{t("evaluateDialog.tournamentOptional")}</Label>
             <TournamentCombobox
@@ -91,7 +87,6 @@ export function EvaluateAchievementsDialog({
             />
           </div>
 
-          {/* Achievement selection by category */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">
@@ -130,8 +125,10 @@ export function EvaluateAchievementsDialog({
                           onCheckedChange={(checked) => toggleCategory(category, !!checked)}
                           aria-label={t("evaluateDialog.selectEvery", { category: t(`common.categoryValues.${category as AchievementCategory}`) })}
                         />
-                        <span className="text-sm font-medium">{t(`common.categoryValues.${category as AchievementCategory}`)}</span>
-                        <Badge variant="secondary" className="text-xs tabular-nums">{categoryRules.length}</Badge>
+                        <span className="text-sm font-medium">
+                          {t(`common.categoryValues.${category as AchievementCategory}`)}{" "}
+                          <span className="tabular-nums text-muted-foreground">({categoryRules.length})</span>
+                        </span>
                       </div>
                       <div className="ml-6 grid grid-cols-2 gap-1">
                         {categoryRules.map((rule) => (
@@ -154,11 +151,11 @@ export function EvaluateAchievementsDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={onClose}>
             {t("evaluateDialog.cancel")}
           </Button>
           <Button onClick={onRun} disabled={isRunning}>
-            <Play className={`mr-2 h-4 w-4 ${isRunning ? "animate-spin" : ""}`} aria-hidden />
+            {isRunning && <Spinner />}
             {isRunning ? t("common.evaluating") : t("evaluation.run")}
           </Button>
         </DialogFooter>

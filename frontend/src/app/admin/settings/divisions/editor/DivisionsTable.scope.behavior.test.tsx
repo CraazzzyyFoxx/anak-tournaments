@@ -137,8 +137,9 @@ describe("DivisionsTable · per-game scope", () => {
     expect(container.textContent).not.toContain("Follow OW ladder");
     expect(container.querySelector('button[aria-label^="OW ranks of"]')).toBeNull();
     // Iron has no crest and there is no ladder to borrow one from: it is asked for, not faked.
-    expect(container.textContent).toContain("crest required");
-    expect(container.textContent).not.toContain("borrows crest");
+    expect(container.textContent).toContain("1 division has no crest");
+    expect(container.querySelector('[role="img"][title="Crest required"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("borrow");
     expect([...container.querySelectorAll("img")].map((image) => image.getAttribute("src"))).toEqual([
       "https://cdn/gold.png"
     ]);

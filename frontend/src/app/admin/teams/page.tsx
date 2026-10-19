@@ -30,11 +30,8 @@ export default function TeamsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <AdminPageHeader
-        title={t("title")}
-        description={t("description")}
-      />
+    <div className="space-y-4">
+      <AdminPageHeader title={t("title")} />
       <TeamsBrowser />
     </div>
   );

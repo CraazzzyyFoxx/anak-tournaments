@@ -256,7 +256,7 @@ describe("TeamRosterEditor", () => {
 
   it("persists a newcomer flag toggle", async () => {
     const scope = await mount();
-    const toggle = scope.querySelector<HTMLButtonElement>('button[aria-label="Newcomer — Rein"]')!;
+    const toggle = scope.querySelector<HTMLButtonElement>('button[aria-label="Newcomer: Rein"]')!;
 
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
 

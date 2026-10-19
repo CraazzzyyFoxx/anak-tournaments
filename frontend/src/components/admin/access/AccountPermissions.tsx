@@ -23,15 +23,15 @@ export function AccountPermissions({ permissions }: Readonly<{ permissions: stri
   return (
     <AccountDisclosure title={t("effectivePermissions")} summary={permissions.length}>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{t("none")}. {t("addRole")}.</p>
+        <p className="text-xs text-muted-foreground">{t("noEffectivePermissions")}</p>
       ) : (
-        <dl className="space-y-1 font-mono text-xs">
+        <dl className="space-y-1 text-xs">
           {rows.map(([resource, actions]) => (
             <div key={resource} className="flex gap-3">
               <dt className="w-28 shrink-0 truncate text-muted-foreground" title={resource}>
                 {resource}
               </dt>
-              <dd className="min-w-0 flex-1 break-words">{actions.sort().join(" · ")}</dd>
+              <dd className="min-w-0 flex-1 break-words font-mono">{actions.sort().join(" · ")}</dd>
             </div>
           ))}
         </dl>

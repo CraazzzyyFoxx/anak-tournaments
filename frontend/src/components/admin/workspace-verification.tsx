@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import { BadgeCheck, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -13,14 +15,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { TONE_CLASS, type Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/kit/tone";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace, WorkspaceVerificationStatus } from "@/types/workspace.types";
 
-// `tone` is narrowed to the three that are also `StatusIcon` variants, so the
-// glyph and the notice's tinted surface stay driven by one field.
+// `tone` is narrowed to the three that are also `StatusIcon` variants.
 const TIERS: Record<
   WorkspaceVerificationStatus,
   { tone: Extract<Tone, "warning" | "info" | "success">; icon: LucideIcon }
@@ -63,17 +63,10 @@ export function WorkspaceNotListedNotice({
   if (status !== "unverified") return null;
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border px-4 py-3 text-sm",
-        TONE_CLASS[TIERS.unverified.tone]
-      )}
-    >
-      <p className="font-medium">{t("notListed")}</p>
-      <p className="mt-1 max-w-prose opacity-90">
-        {t("notice")}
-      </p>
-    </div>
+    <Alert>
+      <AlertTitle>{t("notListed")}</AlertTitle>
+      <AlertDescription>{t("notice")}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -98,9 +91,7 @@ export function WorkspaceVerificationControl({
 
   return (
     <div>
-      <label htmlFor="workspace-verification" className="text-sm font-medium leading-none">
-        {t("label")}
-      </label>
+      <Label htmlFor="workspace-verification">{t("label")}</Label>
       <Select
         value={workspace.verification_status}
         disabled={mutation.isPending}

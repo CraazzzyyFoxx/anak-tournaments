@@ -59,11 +59,11 @@ export const ATTENTION_TONE: Record<PregameRoomAttention, Tone> = {
 };
 
 /** `ban`/`pick`/`protect` as a column reads it. Unknown actions pass through. */
-export function stepActionLabel(action: string | null): string {
+export function stepActionLabel(action: string): string {
   if (action === "ban") return "action.ban";
   if (action === "pick") return "action.pick";
   if (action === "protect") return "action.protect";
-  return action ?? "—";
+  return action;
 }
 
 /**

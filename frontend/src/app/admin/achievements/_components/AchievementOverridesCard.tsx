@@ -3,9 +3,8 @@
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -14,72 +13,80 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { useFormatter } from "@/lib/datetime/client";
 import type { AchievementOverrideRead, AchievementRule } from "@/types/admin.types";
+import type { Tournament } from "@/types/tournament.types";
 
 /**
- * Every manual grant and revoke in the workspace. Rule ids are resolved to
- * slugs through the catalog when it has loaded, and fall back to the raw id
- * rather than rendering a blank cell.
+ * Manual grants and revokes. The list page passes `rules` and gets an
+ * achievement column (rule ids resolved to slugs once the catalog has loaded);
+ * a rule's own page omits it, every row there is that rule.
  */
 export function AchievementOverridesCard({
   overrides,
   rules,
+  tournaments,
   onDelete,
-  isDeleting,
+  isDeleting = false,
 }: Readonly<{
   overrides: AchievementOverrideRead[];
   rules?: AchievementRule[];
+  tournaments: Tournament[];
   onDelete: (id: number) => void;
-  isDeleting: boolean;
+  isDeleting?: boolean;
 }>) {
   const t = useTranslations("adminAchievements");
+  const format = useFormatter();
   return (
     <Card>
       <CardHeader>
         <CardTitle asChild>
           <h2>{t("overrides.title")}</h2>
         </CardTitle>
-        <CardDescription>
-          {t("overrides.description")}
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("common.achievement")}</TableHead>
+              {rules && <TableHead>{t("common.achievement")}</TableHead>}
               <TableHead>{t("common.user")}</TableHead>
               <TableHead>{t("common.action")}</TableHead>
               <TableHead>{t("common.reason")}</TableHead>
               <TableHead>{t("common.tournament")}</TableHead>
+              <TableHead>{t("common.date")}</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {overrides.map((ov) => (
               <TableRow key={ov.id}>
-                <TableCell>
-                  {rules?.find((r) => r.id === ov.achievement_rule_id)?.slug ?? ov.achievement_rule_id}
-                </TableCell>
-                <TableCell className="tabular-nums">#{ov.user_id}</TableCell>
-                <TableCell>
-                  <Badge variant={ov.action === "grant" ? "success" : "destructive"}>
-                    {ov.action}
-                  </Badge>
+                {rules && (
+                  <TableCell>
+                    {rules.find((r) => r.id === ov.achievement_rule_id)?.slug ?? ov.achievement_rule_id}
+                  </TableCell>
+                )}
+                <TableCell className="tabular-nums">{t("overrides.user", { id: ov.user_id })}</TableCell>
+                <TableCell className={ov.action === "grant" ? TONE_TEXT.success : TONE_TEXT.danger}>
+                  {ov.action === "grant" ? t("common.grant") : t("common.revoke")}
                 </TableCell>
                 <TableCell className="max-w-48 truncate">{ov.reason}</TableCell>
-                <TableCell className="tabular-nums">{ov.tournament_id ?? "—"}</TableCell>
+                <TableCell>
+                  {ov.tournament_id != null &&
+                    (tournaments.find((tournament) => tournament.id === ov.tournament_id)?.name ??
+                      t("common.tournamentId", { id: ov.tournament_id }))}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {format.dateTime(new Date(ov.created_at), { dateStyle: "medium" })}
+                </TableCell>
                 <TableCell>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => onDelete(ov.id)}
                     disabled={isDeleting}
-                    aria-label={t("overrides.removeLabel", {
-                      action: ov.action,
-                      achievement: rules?.find((r) => r.id === ov.achievement_rule_id)?.name ?? `#${ov.achievement_rule_id}`,
-                      userId: ov.user_id,
-                    })}
+                    aria-label={t("overrides.removeLabel", { userId: ov.user_id })}
+                    title={t("overrides.removeLabel", { userId: ov.user_id })}
                   >
                     <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
                   </Button>

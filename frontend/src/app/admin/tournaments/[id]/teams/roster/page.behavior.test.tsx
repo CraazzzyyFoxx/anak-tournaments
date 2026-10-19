@@ -9,7 +9,7 @@
 //  2. the page passes real permissions down: without `team.create` there is no
 //     sync/import entry at all, so the gate is not a disabled button;
 //  3. the tournament and its stages come from the hub's shared queries, and a
-//     missing tournament renders nothing rather than a half-empty screen.
+//     missing tournament renders the shared tab error rather than a blank tab.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -68,6 +68,7 @@ vi.mock("@/hooks/usePermissions", () => ({
 
 vi.mock("../../hubQueries", () => ({
   tabFallback: null,
+  tabError: () => "tab-error",
   useHubTournamentQuery: () => ({ data: mocks.tournament, isLoading: false }),
   useHubStagesQuery: () => ({ data: [{ id: 1, name: "Groups" }], isLoading: false }),
   useHubTeamsQuery: () => ({ data: { results: [] }, isLoading: false })
@@ -171,8 +172,8 @@ describe("teams roster route", () => {
   it("renders the roster screen with its team operations", async () => {
     await render();
 
-    expect(container.textContent).toContain("Team operations");
     expect(byText("button", "Sync teams")).toBeTruthy();
+    expect(byText("a", "Open balancer")).toBeTruthy();
   });
 
   it("withholds sync without team.create", async () => {
@@ -181,16 +182,15 @@ describe("teams roster route", () => {
     await render();
 
     expect(byText("button", "Sync teams")).toBeUndefined();
-    // `team.update` alone still reaches the shared teams workspace.
-    expect(byText("a", "Manage teams")).toBeTruthy();
+    expect(byText("a", "Open balancer")).toBeUndefined();
   });
 
-  it("renders nothing until the tournament is loaded", async () => {
+  it("shows the tab error when the tournament is missing", async () => {
     mocks.tournament = null;
 
     await render();
 
-    expect(container.textContent).toBe("");
+    expect(container.textContent).toBe("tab-error");
   });
 
   it("opens the mapping wizard from ?challongeSync=1 and strips the param", async () => {

@@ -101,18 +101,12 @@ export function GamemodesBrowser({ descriptor, discipline, kind, kindLabel }: Re
       />
 
       <CatalogEntityDialogs crud={crud} kindLabel={kindLabel}>
-        <CatalogNameField
-          id={nameFieldId}
-          value={formData.name}
-          onChange={(name) => setFormData({ ...formData, name })}
-          placeholder={t("catalog.entity.namePlaceholder", { kind: kindLabel })}
-        />
+        <CatalogNameField id={nameFieldId} value={formData.name} onChange={(name) => setFormData({ ...formData, name })} />
 
         <CatalogAliasesField
           id={aliasesFieldId}
           aliases={formData.aliases}
           onChange={(aliases) => setFormData({ ...formData, aliases })}
-          placeholder={"Контроль\nコントロール"}
           helperText={t("fields.aliasesHelp")}
         />
 

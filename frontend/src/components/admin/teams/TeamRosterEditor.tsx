@@ -12,7 +12,6 @@ import {
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -226,9 +225,8 @@ export function TeamRosterEditor({
           }
         />
       </TableCell>
-      <TableCell className={tableStyles.cell}>
-        {draft.parentId != null ? <Badge variant="secondary">{t("substitute")}</Badge> : null}
-      </TableCell>
+      {/* Flags: a draft has none yet; it is a substitute by being a "Replace" draft. */}
+      <TableCell className={tableStyles.cell} />
       <TableCell className={tableStyles.cell}>
         <div className="flex items-center justify-end gap-1">
           <Button
@@ -322,7 +320,7 @@ export function TeamRosterEditor({
                         }}
                       />
                       <p className="truncate px-2 text-xs text-muted-foreground">
-                        {player.user?.name ?? `User #${player.user_id}`}
+                        {player.user?.name ?? t("userId", { id: player.user_id })}
                       </p>
                     </div>
                   </TableCell>
@@ -390,7 +388,6 @@ export function TeamRosterEditor({
                           patch(player, { is_newcomer_role: !player.is_newcomer_role })
                         }
                       />
-                      {player.is_substitution ? <Badge variant="secondary">{t("sub")}</Badge> : null}
                     </div>
                   </TableCell>
 

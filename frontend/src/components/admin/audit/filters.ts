@@ -10,7 +10,7 @@ import {
 import type { FilterDef } from "@/components/kit/useFilters";
 import type { AuditLogRead } from "@/types/admin.types";
 
-import { ALL_WORKSPACES, SCOPE_PARAM } from "./model";
+import { SCOPE_PARAM } from "./model";
 
 /** The `adminMatches.audit` translator of the browser that renders the chips. */
 type AuditScreenTranslator = ReturnType<typeof useTranslations<"adminMatches.audit">>;
@@ -53,14 +53,9 @@ export function auditFilterDefs({
     },
   ];
   if (isSuperuser) {
-    // Absent means "this workspace". The one option widens the feed to every
-    // workspace plus the platform-level rows that belong to none.
-    list.push({
-      key: SCOPE_PARAM,
-      label: t("scope"),
-      kind: "single",
-      options: [{ value: ALL_WORKSPACES, label: t("everyWorkspacePlatform") }],
-    });
+    // Absent means "this workspace". A toggle, not a one-option list: the
+    // FilterBar offers no list it cannot give a second choice in.
+    list.push({ key: SCOPE_PARAM, label: t("everyWorkspacePlatform"), kind: "toggle" });
   }
   if (entityId) {
     list.push({

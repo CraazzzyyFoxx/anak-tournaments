@@ -73,12 +73,12 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
     enabled: canReadMatch
   });
 
-  // Same key and interval as the view itself, so the two never disagree and
-  // mounting the bar beside it costs no second request.
+  // Same key and interval as the rooms view, so the two never disagree. Polled
+  // only while that view is open; elsewhere one fetch feeds the badge.
   const roomsQuery = useQuery({
     queryKey: adminQueryKeys.pregameRooms(tournamentId),
     queryFn: () => adminService.getPregameRooms(tournamentId),
-    refetchInterval: PREGAME_ROOMS_REFETCH_MS,
+    refetchInterval: segment === "rooms" ? PREGAME_ROOMS_REFETCH_MS : false,
     enabled: canReadMatch
   });
 

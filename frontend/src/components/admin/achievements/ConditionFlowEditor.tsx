@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { RuleBuilder, type RuleLeafFieldsProps } from "@/components/rule-builder";
-import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -72,7 +72,7 @@ export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: R
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   // The registry only changes when the engine ships a new node, so it is cached
   // for the session per game rather than refetched per editor mount.
-  const { data: conditionTypes, isPending, isError } = useQuery({
+  const { data: conditionTypes, isPending, isError, refetch } = useQuery({
     queryKey: achievementQueryKeys.conditionTypes(workspaceId, discipline),
     queryFn: () => adminService.getConditionTypes(workspaceId!, discipline),
     enabled: !!workspaceId,
@@ -105,9 +105,8 @@ export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: R
   const defaultLeaf = defaultLeafOf(offered, DEFAULT_CONDITION_TYPE);
 
   const renderLeafFields = useCallback(
-    ({ nodeId, leafType, params, setParam, controlName }: RuleLeafFieldsProps) => (
+    ({ leafType, params, setParam, controlName }: RuleLeafFieldsProps) => (
       <ConditionLeafFields
-        nodeId={nodeId}
         conditionType={leafType}
         params={params}
         setParam={setParam}
@@ -131,23 +130,10 @@ export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: R
     );
   }
   if (needsRegistry && isError) {
-    return (
-      <p role="alert" className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
-        {t("condition.typesFailed")}
-      </p>
-    );
+    return <PageStateCard state="error" description={t("condition.typesFailed")} onAction={() => refetch()} />;
   }
   if (needsRegistry && defaultLeaf === null) {
-    return (
-      <div role="status" className="space-y-3 rounded-lg border p-4 text-sm text-muted-foreground">
-        <p>{t("condition.unavailable")}</p>
-        {!readOnly && (
-          <Button type="button" variant="outline" size="sm" disabled>
-            {t("condition.addCondition")}
-          </Button>
-        )}
-      </div>
-    );
+    return <PageStateCard state="empty" description={t("condition.unavailable")} />;
   }
 
   const builderDefault = defaultLeaf ?? DEFAULT_CONDITION_TYPE;

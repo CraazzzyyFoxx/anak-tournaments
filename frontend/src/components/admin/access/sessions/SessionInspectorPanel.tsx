@@ -1,23 +1,13 @@
 "use client";
 
-import { Globe } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { AccessStatusCell } from "@/components/admin/access/AccessStatusCell";
+import { InspectorField } from "@/components/kit/InspectorField";
 import { useFormatter } from "@/lib/datetime/client";
 import type { AdminAuthSession } from "@/types/rbac.types";
 
 import { formatTimestamp } from "./model";
-import { SessionStatusCell } from "./SessionCells";
-
-function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
-  return (
-    <div className="min-w-0">
-      <p className={EYEBROW_CLASS}>{label}</p>
-      <div className="mt-0.5 break-words text-sm">{children}</div>
-    </div>
-  );
-}
 
 export function SessionInspectorPanel({ session }: Readonly<{ session: AdminAuthSession }>) {
   const t = useTranslations("adminAccess.common");
@@ -27,40 +17,41 @@ export function SessionInspectorPanel({ session }: Readonly<{ session: AdminAuth
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t("status")}>
-          <SessionStatusCell status={session.status} />
-        </Field>
-        <Field label={ts("network")}>
-          <span className="flex items-center gap-1.5">
-            <Globe aria-hidden className="size-3.5 text-muted-foreground" />
-            <span className="tabular-nums">{session.ip_address ?? t("unavailable")}</span>
-          </span>
-        </Field>
-        <Field label={t("signedIn")}>
-          <span className="tabular-nums">{formatTimestamp(format, session.login_at, t("unavailable"))}</span>
-        </Field>
-        <Field label={t("lastSeen")}>
-          <span className="tabular-nums">
-            {formatTimestamp(format, session.last_seen_at, t("unavailable"))}
-          </span>
-        </Field>
-        <Field label={t("expires")}>
-          <span className="tabular-nums">{formatTimestamp(format, session.expires_at, t("unavailable"))}</span>
-        </Field>
-        <Field label={t("revoked")}>
-          <span className="tabular-nums">
-            {session.revoked_at ? formatTimestamp(format, session.revoked_at, t("unavailable")) : ts("notRevoked")}
-          </span>
-        </Field>
+        <InspectorField label={t("status")}>
+          <AccessStatusCell status={session.status} activePill />
+        </InspectorField>
+        <InspectorField label={ts("network")}>
+          {session.ip_address ? <span className="tabular-nums">{session.ip_address}</span> : null}
+        </InspectorField>
+        <InspectorField label={t("signedIn")}>
+          {session.login_at ? (
+            <span className="tabular-nums">{formatTimestamp(format, session.login_at)}</span>
+          ) : null}
+        </InspectorField>
+        <InspectorField label={t("lastSeen")}>
+          {session.last_seen_at ? (
+            <span className="tabular-nums">{formatTimestamp(format, session.last_seen_at)}</span>
+          ) : null}
+        </InspectorField>
+        <InspectorField label={t("expires")}>
+          {session.expires_at ? (
+            <span className="tabular-nums">{formatTimestamp(format, session.expires_at)}</span>
+          ) : null}
+        </InspectorField>
+        <InspectorField label={t("revoked")}>
+          {session.revoked_at ? (
+            <span className="tabular-nums">{formatTimestamp(format, session.revoked_at)}</span>
+          ) : null}
+        </InspectorField>
       </div>
-      <Field label={ts("sessionId")}>
-        <span className="font-mono text-xs tabular-nums">{session.session_id}</span>
-      </Field>
-      <Field label={ts("userAgent")}>
-        <span className="font-mono text-xs">
-          {session.user_agent ?? t("userAgentUnavailable")}
-        </span>
-      </Field>
+      <InspectorField label={ts("sessionId")}>
+        <span className="break-all font-mono text-xs">{session.session_id}</span>
+      </InspectorField>
+      <InspectorField label={ts("userAgent")}>
+        {session.user_agent ? (
+          <span className="break-words font-mono text-xs">{session.user_agent}</span>
+        ) : null}
+      </InspectorField>
     </div>
   );
 }

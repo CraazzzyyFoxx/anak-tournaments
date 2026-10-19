@@ -156,7 +156,8 @@ describe("/admin/notifications", () => {
       expect.objectContaining({ workspaceId: 7, kind: null, page: 1, perPage: 25 })
     );
     expect(container.textContent).toContain(LABEL.kinds.registration.approved);
-    expect(container.textContent).toContain(LABEL.state.live);
+    // A live row carries no state marker; only a retired one does.
+    expect(container.querySelector(`[aria-label="${LABEL.state.retired}"]`)).toBeNull();
   });
 
   it("gives a read-only operator no retire control at all", async () => {
@@ -209,7 +210,7 @@ describe("/admin/notifications", () => {
 
     const container = await mount();
 
-    expect(container.textContent).toContain(LABEL.state.retired);
+    expect(container.querySelector(`[aria-label="${LABEL.state.retired}"]`)).not.toBeNull();
     expect(buttons(container, LABEL.retire.action)).toHaveLength(0);
   });
 

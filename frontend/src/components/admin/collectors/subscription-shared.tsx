@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { TintedBadge } from "@/components/admin/TintedBadge";
+import { StatusPill } from "@/components/kit/StatusPill";
 import type { Tone } from "@/components/kit/tone";
 import type { SubscriptionCollectionStats } from "@/types/admin.types";
 
@@ -11,9 +11,11 @@ import type { CollectorHealth } from "./collector-state";
 
 export { formatDate, formatRelative, formatInterval } from "@/components/kit/format-time";
 
-/** Tone per check state, handed to `TintedBadge` as the domain's vocabulary. */
+/**
+ * Tone per check state that needs attention. `active` is absent on purpose: it
+ * is the normal verdict, so it renders as plain text.
+ */
 const STATE_TONES: Record<string, Tone> = {
-  active: "success",
   inactive: "warning",
   unknown: "info",
   error: "danger"
@@ -73,11 +75,16 @@ export function useSubscriptionLabels() {
   );
 }
 
+/** A check state: a pill only when it needs attention, plain text otherwise. */
 export function StateBadge({ state }: Readonly<{ state: string | null }>) {
   const t = useTranslations("collectors.subscriptions.state");
   const labels = useSubscriptionLabels();
-  return (
-    <TintedBadge value={state} tones={STATE_TONES} labels={labels.state} fallback={t("never")} />
+  const label = state ? (labels.state[state] ?? state) : t("never");
+  const tone = state ? STATE_TONES[state] : undefined;
+  return tone ? (
+    <StatusPill tone={tone}>{label}</StatusPill>
+  ) : (
+    <span className="text-muted-foreground">{label}</span>
   );
 }
 

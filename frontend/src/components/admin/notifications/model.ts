@@ -16,7 +16,6 @@ export const KINDS = [
   "team.disbanded"
 ] as const;
 
-export const ALL_KINDS = "all";
 export const KIND_PARAM = "kind";
 
 /**

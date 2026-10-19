@@ -361,13 +361,13 @@ function ConstraintList({
       {constraints.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("step.noConstraints")}</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col divide-y divide-border">
           {constraints.map((constraint, index) => {
             const spec = specs.find((candidate) => candidate.type === constraint.type);
             return (
               <li
                 key={`${constraint.type}-${index}`}
-                className="rounded-md border border-border bg-card p-2"
+                className="py-2"
               >
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium">{constraintLabel(constraint.type)}</span>

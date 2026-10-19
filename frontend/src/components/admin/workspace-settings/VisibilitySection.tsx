@@ -3,14 +3,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup } from "@/components/kit/SettingRow";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
@@ -35,10 +29,7 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
         <>
           <Card>
             <CardContent className="flex flex-col gap-5 pt-6">
-              <SettingGroup
-                title={t("groups.discovery.title")}
-                description={t("groups.discovery.description")}
-              >
+              <SettingGroup title={t("groups.discovery.title")}>
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <Label htmlFor="workspace-is-hidden">{t("hidden")}</Label>
@@ -52,26 +43,23 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
                 </div>
               </SettingGroup>
 
-              <SettingGroup
-                title={t("groups.newcomers.title")}
-                description={t("groups.newcomers.description")}
-              >
+              <SettingGroup title={t("groups.newcomers.title")}>
                 <div>
-                  <Label htmlFor="workspace-newcomer-scope">{t("newcomerScope")}</Label>
-                  <Select
+                  <p id="workspace-newcomer-scope" className="text-sm font-medium leading-none">
+                    {t("newcomerScope")}
+                  </p>
+                  <ToggleGroup
+                    type="single"
+                    className="mt-1.5"
                     value={values.newcomer_scope}
                     onValueChange={(value) =>
                       patch({ newcomer_scope: value as "global" | "workspace" })
                     }
+                    aria-labelledby="workspace-newcomer-scope"
                   >
-                    <SelectTrigger id="workspace-newcomer-scope" className="mt-1.5 w-full">
-                      <SelectValue placeholder={t("selectScope")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="global">{t("platformWide")}</SelectItem>
-                      <SelectItem value="workspace">{t("workspaceOnly")}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <ToggleGroupItem value="global">{t("platformWide")}</ToggleGroupItem>
+                    <ToggleGroupItem value="workspace">{t("workspaceOnly")}</ToggleGroupItem>
+                  </ToggleGroup>
                   <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t("scopeHelp")}</p>
                 </div>
               </SettingGroup>

@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Pencil, Check, X, ArrowRightLeft } from "lucide-react";
+import { Pencil, Check, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import {
   Dialog,
@@ -72,7 +71,7 @@ function AvatarSection({ user, canEdit, onUserUpdated }: Readonly<AvatarSectionP
       />
 
       {(uploadMutation.isError || deleteMutation.isError) && (
-        <p className="max-w-[200px] text-center text-xs text-destructive">
+        <p className="max-w-52 text-center text-xs text-destructive">
           {t("avatarUpdateError", {
             message: (uploadMutation.error ?? deleteMutation.error) instanceof Error
               ? ((uploadMutation.error ?? deleteMutation.error) as Error).message
@@ -172,10 +171,11 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
+            className="h-8 w-8"
             onClick={handleSave}
             disabled={updateMutation.isPending}
             aria-label={t("saveName")}
+            title={t("saveName")}
           >
             {updateMutation.isPending ? (
               <Spinner />
@@ -186,10 +186,11 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
           <Button
             size="icon"
             variant="ghost"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground"
             onClick={handleCancel}
             disabled={updateMutation.isPending}
             aria-label={t("cancelName")}
+            title={t("cancelName")}
           >
             <X aria-hidden className="h-4 w-4" />
           </Button>
@@ -209,15 +210,16 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
   }
 
   return (
-    <div className="flex items-center gap-2 group">
+    <div className="flex items-center gap-2">
       <h3 className="text-lg font-semibold truncate">{user.name}</h3>
       {canEdit && (
         <Button
           size="icon"
           variant="ghost"
-          className="h-7 w-7 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+          className="h-7 w-7"
           onClick={handleStartEditing}
           aria-label={t("editName")}
+          title={t("editName")}
         >
           <Pencil aria-hidden className="h-3.5 w-3.5" />
         </Button>
@@ -274,13 +276,12 @@ export function PlayerProfileBody({
   return (
     <>
       {/* ── Avatar + Name header ──────────────────────── */}
-      <div className="flex flex-col items-center gap-3 pb-4 border-b border-border/40">
+      <div className="flex flex-col items-center gap-3 pb-4 border-b border-border">
         <AvatarSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
         <NameSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
         <span className="text-xs text-muted-foreground tabular-nums">{t("idLabel", { id: user.id })}</span>
         {canMerge && onMergeRequested ? (
           <Button type="button" variant="outline" size="sm" onClick={() => onMergeRequested(user)}>
-            <ArrowRightLeft aria-hidden className="mr-2 h-4 w-4" />
             {t("merge")}
           </Button>
         ) : null}
@@ -288,12 +289,7 @@ export function PlayerProfileBody({
 
       {/* ── Social identities ─────────────────────────── */}
       <div className="pt-2">
-        <div className="flex items-center gap-2 mb-3">
-          <h4 className="text-sm font-medium text-muted-foreground">{t("socialIdentities")}</h4>
-          <Badge variant="outline" className="tabular-nums font-normal text-xs">
-            {user.social_accounts?.length ?? 0}
-          </Badge>
-        </div>
+        <h4 className="mb-3 text-sm font-medium text-muted-foreground">{t("socialIdentities")}</h4>
         <SocialAccountsEditor
           userId={user.id}
           accounts={user.social_accounts ?? []}

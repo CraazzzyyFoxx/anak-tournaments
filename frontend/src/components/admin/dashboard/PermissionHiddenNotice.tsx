@@ -1,13 +1,12 @@
 import { Lock } from "lucide-react";
-import { useTranslations } from "next-intl";
 
 import { EmptyNote } from "@/components/kit/EmptyNote";
 
 interface PermissionHiddenNoticeProps {
   /** What is hidden, phrased as a statement: "Tournament data is hidden". */
   title: string;
-  /** Which permission the reader needs, e.g. "tournament read". */
-  permission: string;
+  /** Who can grant access and which permission, as one translated sentence. */
+  description: string;
 }
 
 /**
@@ -16,12 +15,11 @@ interface PermissionHiddenNoticeProps {
  */
 export function PermissionHiddenNotice({
   title,
-  permission
+  description
 }: Readonly<PermissionHiddenNoticeProps>) {
-  const t = useTranslations("adminShell.dashboard");
   return (
     <EmptyNote icon={Lock} title={title}>
-      {t("permissionNotice", { permission })}
+      {description}
     </EmptyNote>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus, Wand2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -155,17 +155,15 @@ export function MembersBrowser({
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5"
           disabled={autofillMutation.isPending}
           onClick={() => autofillMutation.mutate()}
         >
-          <Wand2 aria-hidden className="size-3.5" />
           {tw("fillMissing")}
         </Button>
       ) : null}
       {canCreateMembers ? (
-        <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
-          <UserPlus aria-hidden className="size-3.5" />
+        <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Plus aria-hidden className="size-4" />
           {t("addMember")}
         </Button>
       ) : null}

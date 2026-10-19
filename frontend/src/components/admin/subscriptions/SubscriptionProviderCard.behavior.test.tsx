@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import SubscriptionProvidersCard from "./SubscriptionProviderCard";
+import SubscriptionProvidersCard, { type ProviderDraft } from "./SubscriptionProviderCard";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -14,17 +14,14 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const listSubscriptionProviders = vi.fn();
-const upsertSubscriptionProvider = vi.fn();
+// The card saves nothing itself: every editor reports its draft to the
+// section's one SaveBar, so the draft IS the request that would be sent.
+const onDraftChange = vi.fn<(provider: string, draft: ProviderDraft | null) => void>();
 
 vi.mock("@/services/balancer-admin.service", () => ({
   default: {
-    listSubscriptionProviders: (...args: unknown[]) => listSubscriptionProviders(...args),
-    upsertSubscriptionProvider: (...args: unknown[]) => upsertSubscriptionProvider(...args)
+    listSubscriptionProviders: (...args: unknown[]) => listSubscriptionProviders(...args)
   }
-}));
-
-vi.mock("@/lib/notify", () => ({
-  notify: { success: vi.fn(), error: vi.fn() }
 }));
 
 const BOOSTY_WITH_STORED_CODE = {
@@ -54,25 +51,37 @@ async function mount(
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
-          <SubscriptionProvidersCard workspaceId={7} />
+          <SubscriptionProvidersCard workspaceId={7} resetKey={0} onDraftChange={onDraftChange} />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
   });
   // React Query resolves through the real task queue, not just microtasks, so a
-  // `Promise.resolve()` flush is not enough — it lands while the card still says
-  // "Loading…" and every assertion below races it. Yield real macrotasks instead.
-  for (let i = 0; i < 50 && container.textContent?.includes("Loading…"); i += 1) {
+  // `Promise.resolve()` flush is not enough — it lands while the card still shows
+  // its skeleton and every assertion below races it. Yield real macrotasks instead.
+  const loading = () => container.querySelector(".animate-pulse") !== null;
+  for (let i = 0; i < 50 && loading(); i += 1) {
     await act(async () => {
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, 0);
       await promise;
     });
   }
-  if (container.textContent?.includes("Loading…")) {
+  if (loading()) {
     throw new Error("the providers query never resolved");
   }
   return container;
+}
+
+/** The last draft the editor reported for `provider`; `null` = nothing to save. */
+function lastDraft(provider = "boosty"): ProviderDraft | null {
+  const calls = onDraftChange.mock.calls.filter(([name]) => name === provider);
+  return calls.at(-1)?.[1] ?? null;
+}
+
+/** Any edit: flipping the provider's enabled checkbox makes a draft. */
+async function edit(container: HTMLElement) {
+  await click(container.querySelector<HTMLElement>('button[role="checkbox"]')!);
 }
 
 function button(container: HTMLElement, text: string): HTMLButtonElement {
@@ -119,18 +128,19 @@ async function pickMethod(container: HTMLElement, label: string) {
 beforeEach(() => {
   document.body.innerHTML = "";
   listSubscriptionProviders.mockReset();
-  upsertSubscriptionProvider.mockReset();
-  upsertSubscriptionProvider.mockResolvedValue(BOOSTY_WITH_STORED_CODE);
+  onDraftChange.mockReset();
 });
 
 describe("SubscriptionProvidersCard", () => {
-  it("omits `codes` when the admin typed none, so a plain save cannot wipe what they cannot see", async () => {
+  it("omits `codes` when the admin typed none, so a save cannot wipe what they cannot see", async () => {
     const container = await mount([BOOSTY_WITH_STORED_CODE]);
+    // Untouched: nothing to save.
+    expect(lastDraft()).toBeNull();
 
-    await click(button(container, "Save"));
+    await edit(container);
 
-    expect(upsertSubscriptionProvider).toHaveBeenCalledTimes(1);
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    const body = lastDraft()!.payload;
+    expect(body.enabled).toBe(false);
     expect("codes" in body).toBe(false);
   });
 
@@ -142,10 +152,8 @@ describe("SubscriptionProvidersCard", () => {
       (el) => (el as HTMLInputElement).placeholder === "code from the post"
     ) as HTMLInputElement;
     await type(codeInput, "fresh-secret");
-    await click(button(container, "Save"));
 
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
-    expect(body.codes).toEqual([{ code: "fresh-secret", tier_rank: 1 }]);
+    expect(lastDraft()!.payload.codes).toEqual([{ code: "fresh-secret", tier_rank: 1 }]);
   });
 
   it("blocks saving two tiers on the same role — the verdict would depend on ordering", async () => {
@@ -159,8 +167,9 @@ describe("SubscriptionProvidersCard", () => {
       }
     ]);
 
-    expect(button(container, "Save").disabled).toBe(true);
     expect(container.textContent).toContain(en.subscriptionProviders.warnings.duplicateRole);
+    await edit(container);
+    expect(lastDraft()!.blocked).toBe(true);
   });
 
   it("warns that a guild with no role mapping fails open", async () => {
@@ -186,9 +195,9 @@ describe("SubscriptionProvidersCard", () => {
       }
     ]);
 
-    await click(button(container, "Save"));
+    await edit(container);
 
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    const body = lastDraft("twitch")!.payload;
     expect(body).toMatchObject({
       provider: "twitch",
       broadcaster_id: "12345",
@@ -201,10 +210,9 @@ describe("SubscriptionProvidersCard", () => {
   it("never posts a guild — it belongs to the workspace now", async () => {
     const container = await mount([BOOSTY_WITH_STORED_CODE]);
 
-    await click(button(container, "Save"));
+    await edit(container);
 
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
-    expect("guild_id" in body).toBe(false);
+    expect("guild_id" in lastDraft()!.payload).toBe(false);
   });
 
   it("warns when live verification is on but the workspace has no guild", async () => {
@@ -228,9 +236,10 @@ describe("SubscriptionProvidersCard", () => {
 
     expect(container.textContent).toContain("Boosty");
     expect(container.textContent).toContain("Twitch");
+    // No per-provider Save: the section's one SaveBar stores every draft.
     expect(
       [...container.querySelectorAll("button")].filter((el) => el.textContent === "Save")
-    ).toHaveLength(2);
+    ).toHaveLength(0);
   });
 });
 
@@ -238,10 +247,9 @@ describe("verification method", () => {
   it("defaults to either when the server sends nothing, so no mechanism is silently off", async () => {
     const container = await mount([BOOSTY_WITH_STORED_CODE]);
 
-    await click(button(container, "Save"));
+    await edit(container);
 
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
-    expect(body.verification_method).toBe("any");
+    expect(lastDraft()!.payload.verification_method).toBe("any");
   });
 
   it("labels the live option after the mechanism the provider actually uses", async () => {
@@ -288,9 +296,9 @@ describe("verification method", () => {
   it("omits the fields of a rejected mechanism instead of blanking them", async () => {
     const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "code" }]);
 
-    await click(button(container, "Save"));
+    await edit(container);
 
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
+    const body = lastDraft()!.payload;
     expect(body.verification_method).toBe("code");
     // Leaving them out preserves the stored guild and roles for a switch back;
     // sending empties would destroy them on a radio click.
@@ -302,10 +310,8 @@ describe("verification method", () => {
     const container = await mount([{ ...BOOSTY_WITH_STORED_CODE, verification_method: "any" }]);
 
     await pickMethod(container, en.subscriptionProviders.methods.live.boosty.label);
-    await click(button(container, "Save"));
 
-    const [, body] = upsertSubscriptionProvider.mock.calls[0];
-    expect(body.verification_method).toBe("live");
+    expect(lastDraft()!.payload.verification_method).toBe("live");
   });
 
   it("warns that code-only with no code configured fails open", async () => {

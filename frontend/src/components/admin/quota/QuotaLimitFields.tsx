@@ -3,7 +3,6 @@
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import type { QuotaDimension, QuotaLimitsPayload } from "@/types/auth.types";
@@ -36,6 +35,7 @@ export interface QuotaLimitFieldsProps {
  * A value above the inherited ceiling is the one edit authority splits on, so
  * it is marked in place rather than left to a 422: refused outright for an
  * admin, flagged as a superuser override for the account that may store it.
+ * The inherited ceiling itself is the placeholder of an empty field.
  */
 export function QuotaLimitFields({
   idPrefix,
@@ -48,7 +48,6 @@ export function QuotaLimitFields({
   disabled = false
 }: Readonly<QuotaLimitFieldsProps>) {
   const t = useTranslations("quota");
-  const tSettings = useTranslations("adminSettings.quota");
   const format = useFormatter();
 
   return (
@@ -81,14 +80,7 @@ export function QuotaLimitFields({
 
         return (
           <div key={dimension} className="space-y-1.5">
-            <div className="flex min-h-6 items-center justify-between gap-2">
-              <Label htmlFor={fieldId}>{label}</Label>
-              {isRaise ? (
-                <Badge tone={canRaise ? "warning" : "danger"} className="font-normal">
-                  {t("superuserOnly")}
-                </Badge>
-              ) : null}
-            </div>
+            <Label htmlFor={fieldId}>{label}</Label>
             <NumberInput
               id={fieldId}
               integer
@@ -117,14 +109,7 @@ export function QuotaLimitFields({
               </p>
             ) : null}
             <p id={hintId} className="text-xs text-muted-foreground">
-              {inherited
-                ? tSettings("hintWithInherited", {
-                    hint: t(`dimensions.${dimension}.hint`),
-                    inherited: t("inheritedCeiling", {
-                      value: ceiling === null ? t("unlimited") : format.number(ceiling)
-                    })
-                  })
-                : t(`dimensions.${dimension}.hint`)}
+              {t(`dimensions.${dimension}.hint`)}
             </p>
           </div>
         );

@@ -238,11 +238,7 @@ export function PeopleBrowser({ workspaceId }: Readonly<{ workspaceId: number | 
               />
             }
             searchPlaceholder={t("search")}
-            emptyMessage={
-              canCreate
-                ? t("emptyCreate")
-                : t("empty")
-            }
+            emptyMessage={t("empty")}
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
           />
         </div>
@@ -251,7 +247,6 @@ export function PeopleBrowser({ workspaceId }: Readonly<{ workspaceId: number | 
           openId={openRow ? openId : null}
           onClose={() => setParams({ id: null })}
           title={openRow?.name ?? ""}
-          subtitle={openRow ? `Identity #${openRow.id}` : undefined}
           openHref={openRow ? `/admin/people/${openRow.id}` : undefined}
           onPrev={
             openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
@@ -292,7 +287,6 @@ export function PeopleBrowser({ workspaceId }: Readonly<{ workspaceId: number | 
           }
         }}
         title={t("createTitle")}
-        description={t("createDescription")}
         onSubmit={(event) => {
           event.preventDefault();
           createMutation.mutate({ name: createName, authUserId: linkAuthUserId });
@@ -308,7 +302,7 @@ export function PeopleBrowser({ workspaceId }: Readonly<{ workspaceId: number | 
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={nameFieldId}>{t("nameRequired")}</Label>
+            <Label htmlFor={nameFieldId}>{t("name")}</Label>
             <Input
               id={nameFieldId}
               value={createName}
@@ -377,13 +371,7 @@ export function PeopleBrowser({ workspaceId }: Readonly<{ workspaceId: number | 
           title: t("deleteTitle"),
           description: t("deleteDescription", { name: pendingDelete?.name ?? t("thisIdentity") }),
           confirmLabel: t("deleteConfirm"),
-          tone: "danger",
-          cascade: [
-            t("columns.identities"),
-            t("columns.identities"),
-            t("columns.identities"),
-            t("columns.person")
-          ]
+          tone: "danger"
         }}
         onConfirm={() => {
           if (pendingDelete) deleteMutation.mutate(pendingDelete.id);

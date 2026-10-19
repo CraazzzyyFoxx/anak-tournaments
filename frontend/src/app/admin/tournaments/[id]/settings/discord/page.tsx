@@ -15,12 +15,8 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 
 export default function DiscordSettingsPage() {
-  const t = useTranslations("adminTournament.discordSettings");
   return (
-    <SettingsSectionPage
-      section="discord"
-      description={t("description")}
-    >
+    <SettingsSectionPage section="discord">
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <DiscordSettings
           tournamentId={tournamentId}

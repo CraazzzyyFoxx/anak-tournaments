@@ -2,12 +2,12 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ban, FolderInput, Pencil, RotateCcw, Unlock, UserPlus } from "lucide-react";
+import { Ban, FolderInput, Lock, Pencil, RotateCcw, Unlock, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { columnMeta, createKebabColumn, type KebabAction } from "@/components/data-table";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { Badge } from "@/components/ui/badge";
 import { formatShortfall } from "@/lib/registration/team-shortfall";
 import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
 import type { RegistrationTeam } from "@/types/registration-team.types";
@@ -34,9 +34,9 @@ export interface TeamRowHandlers {
 }
 
 /**
- * The organizer's row vocabulary: name, lifecycle, admission, captain, roster
- * counts and — the reason the screen exists — the shortfall, as a column rather
- * than a badge.
+ * The organizer's row vocabulary: name, the one status worth attention,
+ * captain, and the roster with — the reason the screen exists — what it is
+ * still short of.
  */
 export function useRegistrationTeamColumns({
   canManageTeams,
@@ -105,10 +105,10 @@ export function useRegistrationTeamColumns({
         header: t("admin.columns.team"),
         cell: ({ row }) => (
           <div className="min-w-0 space-y-0.5">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <span className="break-words font-medium">{row.original.name}</span>
               {row.original.roster_locked_at && (
-                <Badge variant="outline">{t("lock.locked")}</Badge>
+                <StatusIcon icon={Lock} label={t("lock.locked")} variant="muted" className="size-3.5" />
               )}
             </div>
             {row.original.rejection_reason && (
@@ -129,30 +129,20 @@ export function useRegistrationTeamColumns({
         })
       },
       {
+        // One status per row: the lifecycle when it wants attention (forming,
+        // rejected, disbanded), else the admission when it does (pending,
+        // waitlisted). A complete, accepted or exported team shows nothing.
         id: "state",
         accessorFn: (team) => getRegistrationTeamStatus(team),
         header: t("admin.columns.state"),
         cell: ({ row }) => {
           const status = getRegistrationTeamStatus(row.original);
-          return (
-            <StatusPill tone={TEAM_STATUS_TONE[status] ?? "neutral"}>
-              {t(`status.${status}`)}
-            </StatusPill>
-          );
-        },
-        meta: columnMeta<RegistrationTeam>({ category: "core" })
-      },
-      {
-        id: "admission",
-        accessorFn: (team) => team.admission ?? "pending",
-        header: t("admin.columns.admission"),
-        cell: ({ row }) => {
+          const statusTone = TEAM_STATUS_TONE[status];
+          if (statusTone) return <StatusPill tone={statusTone}>{t(`status.${status}`)}</StatusPill>;
           const admission = row.original.admission ?? "pending";
-          return (
-            <StatusPill tone={ADMISSION_TONE[admission] ?? "neutral"}>
-              {t(`admission.${admission}`)}
-            </StatusPill>
-          );
+          const admissionTone = ADMISSION_TONE[admission];
+          if (!admissionTone) return null;
+          return <StatusPill tone={admissionTone}>{t(`admission.${admission}`)}</StatusPill>;
         },
         meta: columnMeta<RegistrationTeam>({ category: "core" })
       },
@@ -165,7 +155,7 @@ export function useRegistrationTeamColumns({
         header: t("admin.columns.captain"),
         cell: ({ row }) => {
           const captain = captainOf(row.original);
-          if (!captain) return <span className="text-muted-foreground">—</span>;
+          if (!captain) return null;
           const name = memberName(captain);
           return (
             <div className="min-w-0">
@@ -181,38 +171,31 @@ export function useRegistrationTeamColumns({
         meta: columnMeta<RegistrationTeam>({ category: "core" })
       },
       {
+        // Counts and shortfall in one cell: both answer "how complete is it".
         id: "roster",
         accessorFn: (team) => rosterCounts(team).starters,
         header: t("admin.columns.roster"),
         cell: ({ row }) => {
-          const { starters, required } = rosterCounts(row.original);
-          return (
-            <span className="text-caption text-muted-foreground">
-              {t("admin.rosterSummary", {
-                starters,
-                required,
-                bench: row.original.substitutes_used,
-                maxBench: row.original.max_substitutes
-              })}
-            </span>
-          );
-        },
-        meta: columnMeta<RegistrationTeam>({ category: "core", className: "min-w-[9rem]" })
-      },
-      {
-        // The reason the screen exists, so it is a column and not a badge.
-        id: "shortfall",
-        accessorFn: (team) => Object.keys(team.open_slots).length,
-        header: t("admin.columns.shortfall"),
-        cell: ({ row }) => {
           const team = row.original;
+          const { starters, required } = rosterCounts(team);
           const issues = team.eligibility_issues?.length ?? 0;
           const short = team.status === "forming" && team.exported_team_id == null;
-          if (!short && issues === 0) return <span className="text-muted-foreground">—</span>;
           return (
-            <div className="space-y-0.5 text-caption text-warning">
-              {short && <p>{t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })}</p>}
-              {issues > 0 && <p>{t("admin.problemCount", { count: issues })}</p>}
+            <div className="space-y-0.5 text-caption">
+              <p className="tabular-nums text-muted-foreground">
+                {t("admin.rosterSummary", {
+                  starters,
+                  required,
+                  bench: team.substitutes_used,
+                  maxBench: team.max_substitutes
+                })}
+              </p>
+              {short && (
+                <p className="text-warning">
+                  {t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })}
+                </p>
+              )}
+              {issues > 0 && <p className="text-warning">{t("admin.problemCount", { count: issues })}</p>}
             </div>
           );
         },

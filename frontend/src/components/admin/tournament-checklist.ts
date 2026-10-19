@@ -1,6 +1,5 @@
 import type { useTranslations } from "next-intl";
 
-import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import type { TournamentReadiness } from "@/types/admin.types";
 import type { StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
 
@@ -34,13 +33,8 @@ export function hasChallongeSource(
 
 export type ChecklistState = "done" | "todo" | "warn" | "skipped" | "no-access";
 
-export type ChecklistPhase =
-  | "setup"
-  | "registration"
-  | "formation"
-  | "bracket"
-  | "live"
-  | "finish";
+/** Lifecycle phases with work in them; the status itself lives in the PhaseStrip. */
+export type ChecklistPhase = "setup" | "registration" | "formation" | "bracket" | "live";
 
 export interface ChecklistItem {
   key: string;
@@ -102,7 +96,7 @@ export function buildChecklist(
         : readiness.registration_form_configured
           ? "done"
           : "todo",
-      href: `${registrationHref}/form`
+      href: `${ctx.basePath}/settings/registration`
     });
     items.push({
       key: "registration_open",
@@ -154,20 +148,20 @@ export function buildChecklist(
 
   // ── Formation (by team_formation, §3) ──────────────────────────────────
   if (readiness.team_formation === "draft") {
-    const draftSessionDetail = readiness.draft_session_status
-      ? t("sessionDetail", { status: readiness.draft_session_status })
-      : t("noDraftSession");
+    const draftStatus = readiness.draft_session_status;
     items.push({
       key: "draft_completed",
       phase: "formation",
       label: t("draftCompleted"),
-      state: !teamAccess
-        ? "no-access"
-        : readiness.draft_session_status === "completed"
-          ? "done"
-          : "todo",
-      detail: teamAccess ? draftSessionDetail : undefined,
-      href: teamsHref
+      state: !teamAccess ? "no-access" : draftStatus === "completed" ? "done" : "todo",
+      detail:
+        !teamAccess || draftStatus === "completed"
+          ? undefined
+          : draftStatus
+            ? t("sessionDetail", { status: draftStatus })
+            : t("noDraftSession"),
+      // The draft board, not the roster: it is where a draft is run.
+      href: `${ctx.basePath}/teams/draft`
     });
   } else {
     const poolReady = readiness.pool_ready ?? 0;
@@ -226,13 +220,6 @@ export function buildChecklist(
     state: !setupAccess ? "no-access" : readiness.bracket_generated ? "done" : "todo",
     href: stagesHref
   });
-  items.push({
-    key: "activation",
-    phase: "bracket",
-    label: t("tournamentLive"),
-    // Status is never masked — derived from the state machine, not counters.
-    state: reachedAtLeast(readiness.status, "live") ? "done" : "todo"
-  });
 
   // ── Live ───────────────────────────────────────────────────────────────
   const encountersTotal = readiness.encounters_total ?? 0;
@@ -255,21 +242,6 @@ export function buildChecklist(
         ? t("logsNotUsed")
         : t("logsDetail", { withLogs, total: encountersTotal }),
     href: `${ctx.basePath}/matches/logs`
-  });
-
-  // ── Finish ─────────────────────────────────────────────────────────────
-  items.push({
-    key: "completed",
-    phase: "finish",
-    label: t("completed"),
-    state: reachedAtLeast(readiness.status, "completed") ? "done" : "todo"
-  });
-  items.push({
-    key: "archived",
-    phase: "finish",
-    label: t("archived"),
-    // Optional phase (§3): never warns or nags — done or quietly skipped.
-    state: readiness.status === "archived" ? "done" : "skipped"
   });
 
   return items;

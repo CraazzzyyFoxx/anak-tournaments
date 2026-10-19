@@ -3,10 +3,9 @@
 import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, LockKeyhole, RefreshCw } from "lucide-react";
+import { GripVertical, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -95,22 +94,24 @@ export function DraftOrderStep({
                 </SelectContent>
               </Select>
               {value.order === "random" && (
-                <div className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 pl-2.5 pr-1">
-                  <LockKeyhole className="h-4 w-4 text-muted-foreground" aria-hidden />
-                  <span className="font-mono text-xs tabular-nums">{value.randomSeed}</span>
+                <>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {value.randomSeed}
+                  </span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-8 w-8 shrink-0"
                     onClick={() =>
                       onChange({ ...value, randomSeed: Math.floor(Math.random() * 2_147_483_647) })
                     }
                     aria-label={t("newRandomSeed")}
+                    title={t("newRandomSeed")}
                   >
                     <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                   </Button>
-                </div>
+                </>
               )}
             </div>
             <p className="text-sm text-muted-foreground">
@@ -171,8 +172,8 @@ function SortableCaptain({ id, position, label, rank }: Readonly<SortableCaptain
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-border/70 bg-card px-3 py-2.5",
-        isDragging && "relative z-20 border-primary shadow-lg"
+        "flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5",
+        isDragging && "relative z-20 border-primary"
       )}
     >
       <Button
@@ -183,17 +184,15 @@ function SortableCaptain({ id, position, label, rank }: Readonly<SortableCaptain
         {...attributes}
         {...listeners}
         aria-label={t("moveCaptain", { name: label })}
+        title={t("moveCaptain", { name: label })}
       >
         <GripVertical className="h-4 w-4" aria-hidden />
       </Button>
-      <Badge
-        variant="secondary"
-        className="grid h-7 w-7 place-items-center rounded-full p-0 tabular-nums"
-      >
+      <span className="w-5 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
         {position}
-      </Badge>
+      </span>
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-      <span className="font-mono text-xs tabular-nums text-muted-foreground">{rank ?? "—"}</span>
+      <span className="text-xs tabular-nums text-muted-foreground">{rank}</span>
     </div>
   );
 }

@@ -269,11 +269,7 @@ function RankOverviewRows({
         enableSorting: false,
         cell: ({ row }) =>
           row.original.author_name ??
-          (row.original.author_user_id == null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            `#${row.original.author_user_id}`
-          )),
+          (row.original.author_user_id == null ? null : `#${row.original.author_user_id}`),
       },
       {
         accessorKey: "role",
@@ -281,7 +277,7 @@ function RankOverviewRows({
         meta: columnMeta<RankOverviewRow>({ align: "center" }),
         cell: ({ row }) => {
           const role = row.original.role;
-          if (!role) return <span className="text-muted-foreground">—</span>;
+          if (!role) return null;
           const rated = ratedDimension(ontology);
           const known =
             role === OPEN_SLOT_CODE ||
@@ -310,9 +306,7 @@ function RankOverviewRows({
           const { division, ow_division: owDivision, ow_tier: owTier } = row.original;
           return (
             <div className="flex items-center gap-2">
-              {division == null ? (
-                <span className="text-muted-foreground">—</span>
-              ) : (
+              {division == null ? null : (
                 <>
                   <DivisionIcon division={division} tournamentGrid={grid} width={20} height={20} />
                   <span className="truncate">
@@ -339,7 +333,7 @@ function RankOverviewRows({
         enableSorting: false,
         cell: ({ row }) => {
           const source = row.original.source;
-          if (!source) return <span className="text-muted-foreground">—</span>;
+          if (!source) return null;
           return (
             <span className="text-xs text-muted-foreground">
               {t(`sources.${source}`, { game: ontology.discipline.name })}
@@ -352,34 +346,20 @@ function RankOverviewRows({
         header: t("columns.canonDiff"),
         meta: columnMeta<RankOverviewRow>({ align: "right", numeric: true }),
         cell: ({ row }) =>
-          row.original.canon_diff == null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            signedDelta(row.original.canon_diff)
-          ),
+          row.original.canon_diff == null ? null : signedDelta(row.original.canon_diff),
       },
       {
         accessorKey: "delta",
         header: t("columns.delta"),
         meta: columnMeta<RankOverviewRow>({ align: "right", numeric: true }),
-        cell: ({ row }) =>
-          row.original.delta == null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            signedDelta(row.original.delta)
-          ),
+        cell: ({ row }) => (row.original.delta == null ? null : signedDelta(row.original.delta)),
       },
       {
         accessorKey: "sigma",
         header: t("columns.sigma"),
         enableSorting: false,
         meta: columnMeta<RankOverviewRow>({ align: "right", numeric: true }),
-        cell: ({ row }) =>
-          row.original.sigma == null ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            row.original.sigma.toFixed(1)
-          ),
+        cell: ({ row }) => (row.original.sigma == null ? null : row.original.sigma.toFixed(1)),
       },
       {
         id: "context",
@@ -387,7 +367,7 @@ function RankOverviewRows({
         enableSorting: false,
         cell: ({ row }) => {
           const context = row.original.context;
-          if (!context) return <span className="text-muted-foreground">—</span>;
+          if (!context) return null;
           const href =
             context.id == null
               ? null
@@ -424,7 +404,7 @@ function RankOverviewRows({
                 <span className="truncate text-xs text-muted-foreground">{detail}</span>
               ) : null}
               {context.kind === "native_account" && context.team ? (
-                <span className="truncate text-xs uppercase text-muted-foreground">
+                <span className="truncate text-xs text-muted-foreground">
                   {context.team}
                 </span>
               ) : null}

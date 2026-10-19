@@ -7,7 +7,6 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { LiveIndicator } from "@/components/admin/LiveIndicator";
 import { DataTable, columnMeta } from "@/components/data-table";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
@@ -76,7 +75,7 @@ export function RankTaskHistory() {
         source: source || undefined,
         limit: FETCH_LIMIT
       }),
-    refetchInterval: 3000
+    refetchInterval: 10000
   });
 
   const columns = useMemo<ColumnDef<RankFetchLogRow>[]>(
@@ -129,7 +128,7 @@ export function RankTaskHistory() {
         accessorKey: "snapshots_written",
         header: t("history.snapshots"),
         meta: columnMeta<RankFetchLogRow>({ align: "right", numeric: true }),
-        cell: ({ row }) => row.original.snapshots_written || "—"
+        cell: ({ row }) => row.original.snapshots_written || null
       },
       {
         accessorKey: "error",
@@ -140,9 +139,7 @@ export function RankTaskHistory() {
             <span className="block max-w-64 truncate text-xs text-danger" title={row.original.error}>
               {row.original.error}
             </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
-          )
+          ) : null
       }
     ],
     [format, t, tCommon]
@@ -150,12 +147,9 @@ export function RankTaskHistory() {
 
   return (
     <section aria-labelledby="rank-task-history" className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 id="rank-task-history" className="font-semibold leading-none tracking-tight">
-          {tCommon("taskHistory")}
-        </h2>
-        <LiveIndicator />
-      </div>
+      <h2 id="rank-task-history" className="font-semibold leading-none">
+        {tCommon("taskHistory")}
+      </h2>
       <DataTable<RankFetchLogRow>
         rows={query.data ?? []}
         isLoading={query.isLoading}

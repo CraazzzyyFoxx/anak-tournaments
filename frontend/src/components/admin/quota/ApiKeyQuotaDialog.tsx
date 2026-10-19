@@ -4,8 +4,7 @@ import { useId, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
-import { EmptyNote } from "@/components/kit/EmptyNote";
-import { Badge } from "@/components/ui/badge";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApiKeyQuota, useSetApiKeyQuota } from "@/hooks/useAccountApiKeys";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -82,7 +81,6 @@ export function ApiKeyQuotaDialog({
       title={t("apiKey.dialogTitle", { name: apiKey?.name ?? "" })}
       description={t("apiKey.dialogDescription")}
       submitLabel={removing ? t("clearOverride") : t("save")}
-      submittingLabel={t("saving")}
       isSubmitting={setQuota.isPending}
       isDirty={form.dirty}
       fieldErrors={form.errors as Record<string, string>}
@@ -102,25 +100,18 @@ export function ApiKeyQuotaDialog({
               <QuotaUsagePanel usage={usageQuery.data} />
             </div>
           ) : (
-            <EmptyNote size="sm">{t("loadFailed")}</EmptyNote>
+            <PageStateCard
+              state="error"
+              title={t("loadFailed")}
+              onAction={() => void usageQuery.refetch()}
+            />
           )}
         </section>
 
         <section className="border-t border-border/60 pt-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-medium">{t("overrideHeading")}</h3>
-            <Badge tone={form.overridden ? "info" : "neutral"} className="font-normal">
-              {t(form.overridden ? "state.overridden" : "state.inherited")}
-            </Badge>
-            {isSuperuser ? (
-              <Badge tone="warning" className="font-normal">
-                {t("authority.badge")}
-              </Badge>
-            ) : null}
-          </div>
-          <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t("overrideHint")}</p>
-          <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">
-            {isSuperuser ? t("authority.keySuperuser") : t("authority.keyAdmin")}
+          <h3 className="text-sm font-medium">{t("overrideHeading")}</h3>
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            {isSuperuser ? t("overrideHint") : t("overrideHintAdmin")}
           </p>
           <div className="mt-3">
             <QuotaLimitFields

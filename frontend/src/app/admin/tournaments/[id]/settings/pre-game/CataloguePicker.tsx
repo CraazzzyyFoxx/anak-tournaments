@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { badgeVariants } from "@/components/ui/badge";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import {
   Command,
   CommandEmpty,
@@ -108,94 +108,74 @@ function useCatalogueFilter(options: CatalogueItem[]) {
 
 /**
  * The group filter row above the search field: game mode for a map, role for a
- * hero. Hidden with nothing to narrow — a single-group catalogue (or one still
- * loading) has no use for a row of one redundant "All" pill.
+ * hero. Hidden with nothing to narrow: a single-group catalogue (or one still
+ * loading) has no use for a row of one redundant "All" chip.
  */
 function GroupFilterRow({
   groups,
-  total,
   value,
   onChange
 }: Readonly<{
   groups: CatalogueGroup[];
-  total: number;
   value: string;
   onChange: (value: string) => void;
 }>) {
   const t = useTranslations("pickBan.admin");
-  const tAdmin = useTranslations("adminTournament.preGame");
   if (groups.length <= 1) return null;
 
   return (
-    <div
-      role="group"
-      aria-label={t("groupFilterLabel")}
-      className="flex flex-wrap gap-1 border-b border-border p-1.5"
-    >
-      <Button
-        type="button"
-        size="sm"
-        variant={value === ALL_GROUPS ? "default" : "outline"}
-        aria-pressed={value === ALL_GROUPS}
-        onClick={() => onChange(ALL_GROUPS)}
-        className="h-6 px-2 text-[0.6875rem]"
-      >
-        {tAdmin("groupFilterAllCount", { label: t("groupFilterAll"), count: total })}
-      </Button>
+    <FilterChipGroup label={t("groupFilterLabel")} className="border-b border-border p-1.5">
+      <FilterChip active={value === ALL_GROUPS} onClick={() => onChange(ALL_GROUPS)}>
+        {t("groupFilterAll")}
+      </FilterChip>
       {groups.map((group) => (
-        <Button
+        <FilterChip
           key={group.key}
-          type="button"
-          size="sm"
-          variant={value === group.key ? "default" : "outline"}
-          aria-pressed={value === group.key}
+          active={value === group.key}
+          count={group.count}
           onClick={() => onChange(group.key)}
-          className="h-6 px-2 text-[0.6875rem]"
         >
-          {group.label ?? t("groupFilterUngrouped")} ({group.count})
-        </Button>
+          {group.label ?? t("groupFilterUngrouped")}
+        </FilterChip>
       ))}
-    </div>
+    </FilterChipGroup>
   );
 }
 
-/** Item art behind a scrim, so a label stays legible whatever the image. */
+/** Item art behind a flat scrim, so a label stays legible whatever the image. */
 function ItemArt({ option }: Readonly<{ option: CatalogueItem }>) {
   return (
     <>
       {option.imageSrc ? (
         <span
           aria-hidden
-          className="absolute inset-0 bg-cover bg-center opacity-35 transition-opacity group-hover:opacity-55"
+          className="absolute inset-0 bg-cover bg-center opacity-35"
           style={{ backgroundImage: `url("${option.imageSrc}")` }}
         />
       ) : (
         <span aria-hidden className="absolute inset-0 bg-muted/40" />
       )}
-      {/* Explicit scrim: art luminance varies wildly, so the label cannot rely
-          on the image staying dark enough behind it. */}
-      <span
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-background/30"
-      />
+      <span aria-hidden className="absolute inset-0 bg-background/60" />
     </>
   );
 }
 
-/** One catalogue tile: art, group badge, name, and its selection position. */
+/**
+ * One catalogue tile: art and name. The group is the filter row above, and the
+ * pick order is the numbered chip list under the picker, so neither is
+ * repeated on the tile.
+ */
 function CatalogueTile({
   option,
-  selectionIndex,
+  selected,
   disabled,
   onToggle
 }: Readonly<{
   option: CatalogueItem;
-  /** Position in the persisted order, or -1 when unselected. */
-  selectionIndex: number;
+  selected: boolean;
   disabled: boolean;
   onToggle: () => void;
 }>) {
-  const selected = selectionIndex >= 0;
   return (
     <button
       type="button"
@@ -204,33 +184,12 @@ function CatalogueTile({
       disabled={disabled}
       onClick={onToggle}
       className={cn(
-        "group relative flex h-20 flex-col justify-between overflow-hidden rounded-lg border p-2 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary/10 ring-2 ring-primary/40"
-          : "border-border bg-card hover:border-primary/50",
+        "relative flex h-20 flex-col justify-end overflow-hidden rounded-lg border p-2 text-left transition-colors",
+        selected ? "border-primary" : "border-border bg-card hover:border-primary/50",
         disabled && "cursor-not-allowed"
       )}
     >
       <ItemArt option={option} />
-      {/* `span`, not `<Badge>`: this sits inside a `<button>`, which may only
-          contain phrasing content, and `Badge` renders a `div`. */}
-      <span className="relative z-10 flex items-start justify-between gap-1">
-        {option.group ? (
-          <span className={cn(badgeVariants({ variant: "outline" }), "bg-background/85")}>
-            {option.group}
-          </span>
-        ) : (
-          <span />
-        )}
-        {selected ? (
-          <span
-            aria-hidden
-            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold tabular-nums text-primary-foreground shadow-xs"
-          >
-            {selectionIndex + 1}
-          </span>
-        ) : null}
-      </span>
       <span className="relative z-10 truncate text-xs font-semibold text-foreground">
         {option.name}
       </span>
@@ -252,7 +211,7 @@ export interface CatalogueChipsProps {
   leading?: ReactNode;
 }
 
-/** Selected items in stored order, each with the control that removes it. */
+/** Selected items in stored order; each chip removes its item. */
 export function CatalogueChips({
   itemIds,
   catalogue,
@@ -268,33 +227,36 @@ export function CatalogueChips({
       {itemIds.map((itemId, index) => {
         const item = catalogue.get(itemId);
         const name = item?.name ?? `#${itemId}`;
+        const content = (
+          <>
+            {item?.imageSrc ? (
+              <Image
+                src={item.imageSrc}
+                alt=""
+                width={16}
+                height={16}
+                className="size-4 shrink-0 rounded-sm object-cover"
+              />
+            ) : null}
+            <span className="text-muted-foreground tabular-nums">{index + 1}</span>
+            <span className="max-w-40 truncate">{name}</span>
+          </>
+        );
         return (
           <li key={itemId}>
-            <span className="flex items-center gap-1.5 rounded-md border border-border bg-card py-1 pe-1 ps-1.5 text-xs">
-              {item?.imageSrc ? (
-                <Image
-                  src={item.imageSrc}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="size-4 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
-                />
-              ) : (
-                <span aria-hidden className="size-4 shrink-0 rounded-sm bg-muted" />
-              )}
-              <span className="text-muted-foreground tabular-nums">{index + 1}</span>
-              <span className="max-w-40 truncate font-medium">{name}</span>
-              {disabled ? null : (
-                <button
-                  type="button"
-                  aria-label={t("poolRemove", { item: name })}
-                  onClick={() => onRemove(itemId)}
-                  className="relative flex size-5 items-center justify-center rounded text-muted-foreground transition-colors after:absolute after:-inset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                >
-                  <X aria-hidden className="size-3.5" />
-                </button>
-              )}
-            </span>
+            {disabled ? (
+              <span className="flex items-center gap-1.5 text-xs">{content}</span>
+            ) : (
+              <FilterChip
+                active
+                aria-label={t("poolRemove", { item: name })}
+                title={t("poolRemove", { item: name })}
+                onClick={() => onRemove(itemId)}
+              >
+                {content}
+                <X aria-hidden className="size-3.5" />
+              </FilterChip>
+            )}
           </li>
         );
       })}
@@ -380,7 +342,6 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
           <Command shouldFilter={false}>
             <GroupFilterRow
               groups={filter.groups}
-              total={options.length}
               value={filter.groupFilter}
               onChange={filter.setGroupFilter}
             />
@@ -476,7 +437,6 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
         <div role="group" aria-label={addLabel} className="flex flex-col gap-3">
           <GroupFilterRow
             groups={filter.groups}
-            total={options.length}
             value={filter.groupFilter}
             onChange={filter.setGroupFilter}
           />
@@ -504,7 +464,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
                 <CatalogueTile
                   key={option.id}
                   option={option}
-                  selectionIndex={selectionOrder.get(option.id) ?? -1}
+                  selected={selectionOrder.has(option.id)}
                   disabled={disabled}
                   onToggle={() => {
                     onToggle(option.id);

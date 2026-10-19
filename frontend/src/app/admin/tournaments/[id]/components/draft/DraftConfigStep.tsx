@@ -15,13 +15,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import FlexIcon from "@/components/icons/FlexIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { TONE_CLASS } from "@/components/kit/tone";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { isRoleSlot, slotCodesOf, type RosterShape } from "@/lib/roster/shape";
-import { cn } from "@/lib/utils";
 import type { DraftAutopickStrategy, DraftFormatSettings } from "@/types/draft.types";
 
 import type { DraftRoundRule } from "./setup-model";
@@ -64,11 +63,7 @@ export function DraftConfigStep({
 
   return (
     <div className="space-y-6">
-      {locked && (
-        <div className={cn("rounded-xl border px-4 py-3 text-sm", TONE_CLASS.warning)}>
-          {t("configLocked")}
-        </div>
-      )}
+      {locked && <p className="text-caption text-warning">{t("configLocked")}</p>}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -141,33 +136,21 @@ export function DraftConfigStep({
             {t("pickTime")}
           </span>
         </div>
-        <div
-          className="flex flex-wrap items-center gap-3"
-          role="group"
-          aria-labelledby={pickTimeLabelId}
-        >
-          {/* One segmented control instead of four standalone buttons: the presets
-              are a single choice, so they must not read as four separate widgets
-              next to the custom field. */}
-          <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border/70 bg-card p-0.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            aria-labelledby={pickTimeLabelId}
+            value={String(value.pickTimeSeconds)}
+            onValueChange={(next) => patch({ pickTimeSeconds: Number(next) })}
+          >
             {PICK_TIME_PRESETS.map((seconds) => (
-              <button
-                key={seconds}
-                type="button"
-                disabled={locked}
-                aria-pressed={value.pickTimeSeconds === seconds}
-                onClick={() => patch({ pickTimeSeconds: seconds })}
-                className={cn(
-                  "inline-flex h-8 min-w-13 items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  value.pickTimeSeconds === seconds
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {seconds}s
-              </button>
+              <ToggleGroupItem key={seconds} value={String(seconds)} disabled={locked} className="tabular-nums">
+                {`${seconds}s`}
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <div className="flex items-center gap-2">
             <Label htmlFor="draft-pick-time" className="text-xs font-normal text-muted-foreground">
               {t("customPickTime")}
@@ -193,30 +176,21 @@ export function DraftConfigStep({
             {t("overtime")}
           </span>
         </div>
-        <div
-          className="flex flex-wrap items-center gap-3"
-          role="group"
-          aria-labelledby={overtimeLabelId}
-        >
-          <div className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border/70 bg-card p-0.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            aria-labelledby={overtimeLabelId}
+            value={String(value.overtimeSeconds)}
+            onValueChange={(next) => patch({ overtimeSeconds: Number(next) })}
+          >
             {OVERTIME_PRESETS.map((seconds) => (
-              <button
-                key={seconds}
-                type="button"
-                disabled={locked}
-                aria-pressed={value.overtimeSeconds === seconds}
-                onClick={() => patch({ overtimeSeconds: seconds })}
-                className={cn(
-                  "inline-flex h-8 min-w-13 items-center justify-center rounded-[5px] px-3 text-sm font-medium tabular-nums transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                  value.overtimeSeconds === seconds
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
+              <ToggleGroupItem key={seconds} value={String(seconds)} disabled={locked} className="tabular-nums">
                 {seconds === 0 ? t("overtimeOff") : `${seconds}s`}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
           <div className="flex items-center gap-2">
             <Label htmlFor="draft-overtime" className="text-xs font-normal text-muted-foreground">
               {t("customOvertime")}
@@ -257,12 +231,12 @@ export function DraftConfigStep({
         </p>
       </div>
 
-      <details className="group rounded-xl border border-border/70 bg-muted/20">
+      <details className="group rounded-xl border border-border">
         <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium">
           {t("advanced")}
           <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden />
         </summary>
-        <div className="space-y-4 border-t border-border/60 px-4 py-4">
+        <div className="space-y-4 border-t border-border px-4 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <Label htmlFor="draft-admin-override">{t("allowOverride")}</Label>

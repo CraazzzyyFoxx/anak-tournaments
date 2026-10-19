@@ -1,5 +1,6 @@
 import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
 import type { FilterDef } from "@/components/kit/useFilters";
+import type { EncounterReportsStats } from "@/types/admin.types";
 import type { Stage } from "@/types/tournament.types";
 
 /**
@@ -10,11 +11,14 @@ export function encounterReportFilterDefs({
   tournamentId,
   tournaments,
   stages,
+  stats,
   t
 }: Readonly<{
   tournamentId: number | null;
   tournaments: Array<{ id: number; name: string }>;
   stages: Stage[];
+  /** Scope-wide counters, shown as option counts; they ignore the chips themselves. */
+  stats: EncounterReportsStats | undefined;
   t: (key: string) => string;
 }>): FilterDef[] {
   const list: FilterDef[] = [];
@@ -26,14 +30,14 @@ export function encounterReportFilterDefs({
       options: tournaments.map((entry) => ({ value: String(entry.id), label: entry.name }))
     });
   }
-  if (stages.length > 0) {
-    list.push({
-      key: "stage",
-      label: t("stage"),
-      kind: "single",
-      options: stages.map((stage) => ({ value: String(stage.id), label: stage.name }))
-    });
-  }
+  // A single stage is not a choice: `FilterBar` drops the filter, while a
+  // value already in the URL stays removable.
+  list.push({
+    key: "stage",
+    label: t("stage"),
+    kind: "single",
+    options: stages.map((stage) => ({ value: String(stage.id), label: stage.name }))
+  });
   list.push(
     {
       key: "result_status",
@@ -44,8 +48,8 @@ export function encounterReportFilterDefs({
       options: [
         { value: "none", label: t("none") },
         { value: "pending_confirmation", label: t("pendingConfirmation") },
-        { value: "confirmed", label: t("confirmed") },
-        { value: "disputed", label: t("disputed") }
+        { value: "confirmed", label: t("confirmed"), count: stats?.by_result_status.confirmed },
+        { value: "disputed", label: t("disputed"), count: stats?.by_result_status.disputed }
       ]
     },
     {
@@ -56,7 +60,7 @@ export function encounterReportFilterDefs({
       kind: "single",
       options: [
         { value: "0", label: t("noReports") },
-        { value: "1", label: t("awaitingSecond") },
+        { value: "1", label: t("awaitingSecond"), count: stats?.awaiting_second_count },
         { value: "2", label: t("bothReported") }
       ]
     },

@@ -1,6 +1,5 @@
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 import type { Tone } from "@/components/kit/tone";
-import type { DateFormatter } from "@/components/kit/format-time";
 import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/workspace/timezone";
 import {
@@ -44,14 +43,8 @@ export type TournamentFormState = {
   draft_format_json: DraftFormatSettings | null;
 };
 
-/** A tournament day. Stored as a UTC midnight, so read in UTC — any other zone shifts it. */
-export function formatDate(format: DateFormatter, value?: Date | string | null) {
-  if (!value) return "-";
-  return format.dateTime(new Date(value), { dateStyle: "medium", timeZone: "UTC" });
-}
-
 /**
- * Tone of the hub header's status pill.
+ * Tone of a tournament's status pill (hub header, tournaments list).
  *
  * Statuses are not qualities, so this is not a good/bad scale: `live` is the
  * one that wants attention, a finished tournament is neutral, everything

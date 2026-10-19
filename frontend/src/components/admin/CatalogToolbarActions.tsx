@@ -8,9 +8,10 @@
  * helpers live here instead of being copy-pasted three times.
  */
 
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 interface CatalogToolbarActionsProps {
   /**
@@ -42,7 +43,7 @@ export function CatalogToolbarActions({
   return (
     <div className="flex gap-2">
       <Button variant="outline" onClick={onSync} disabled={isSyncing} aria-busy={isSyncing}>
-        <RefreshCw aria-hidden className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+        {isSyncing ? <Spinner /> : null}
         {syncLabel}
       </Button>
       <Button onClick={onCreate}>

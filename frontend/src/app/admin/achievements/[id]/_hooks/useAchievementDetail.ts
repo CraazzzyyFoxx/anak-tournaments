@@ -1,6 +1,6 @@
 "use client";
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { notifyEvaluationRun } from "@/components/admin/achievements/EvaluationRunSummary";
@@ -9,17 +9,7 @@ import adminService from "@/services/admin.service";
 import tournamentService from "@/services/tournament.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import type {
-  AchievementOverrideCreateInput,
-  AchievementRuleUpdateInput,
-} from "@/types/admin.types";
-
-/** How the users table is currently sliced. Every field is part of its query key. */
-export interface RuleUsersView {
-  tournamentId?: number;
-  sort: string;
-  order: "asc" | "desc";
-}
+import type { AchievementOverrideCreateInput } from "@/types/admin.types";
 
 /** One row of the "users who earned this" table. */
 export interface RuleUserRow {
@@ -31,17 +21,15 @@ export interface RuleUserRow {
   first_qualified: string | null;
 }
 
-/** Everything one achievement's page reads: the rule, its users, its overrides. */
+/** What one achievement's page reads besides its users table: the rule, the tournaments, its overrides. */
 export function useAchievementDetailData({
   workspaceId,
   ruleId,
-  usersView,
 }: {
   workspaceId: number | null;
   ruleId: number;
-  usersView: RuleUsersView;
 }) {
-  const { data: rule, isLoading } = useQuery({
+  const { data: rule, isLoading, isError, refetch } = useQuery({
     queryKey: achievementQueryKeys.rule(workspaceId, ruleId),
     queryFn: () => adminService.getAchievementRule(workspaceId!, ruleId),
     enabled: !!workspaceId
@@ -50,28 +38,6 @@ export function useAchievementDetailData({
   const { data: tournaments } = useQuery({
     queryKey: tournamentQueryKeys.list(),
     queryFn: () => tournamentService.getAll(null)
-  });
-
-  const users = useInfiniteQuery({
-    queryKey: achievementQueryKeys.ruleUsersPage(
-      workspaceId,
-      ruleId,
-      usersView.tournamentId,
-      usersView.sort,
-      usersView.order
-    ),
-    queryFn: ({ pageParam = 1 }) =>
-      adminService.getAchievementRuleUsers(workspaceId!, ruleId, {
-        page: pageParam,
-        per_page: 30,
-        tournament_id: usersView.tournamentId,
-        sort: usersView.sort,
-        order: usersView.order
-      }),
-    getNextPageParam: (lastPage) =>
-      lastPage.total / lastPage.per_page > lastPage.page ? lastPage.page + 1 : undefined,
-    enabled: !!workspaceId,
-    initialPageParam: 1
   });
 
   // The overrides list is per game, and which game is the loaded rule's: its id key
@@ -86,15 +52,23 @@ export function useAchievementDetailData({
     enabled: !!workspaceId && !!discipline
   });
 
-  return { rule, isLoading, tournaments, users, overrides, refetchOverrides };
+  return {
+    rule,
+    isLoading,
+    isError,
+    refetch,
+    // Only the rule's own game's tournaments can be picked or named on its page.
+    tournaments: (tournaments?.results ?? []).filter((tournament) => tournament.discipline === discipline),
+    overrides,
+    refetchOverrides
+  };
 }
 
-/** Everything one achievement's page writes. */
+/** Everything one achievement's page writes, except the metadata edit (the shared rule form owns it). */
 export function useAchievementDetailMutations({
   workspaceId,
   ruleId,
   discipline,
-  onUpdated,
   onTreeSaved,
   onOverrideSaved,
   onOverrideRemoved,
@@ -104,7 +78,6 @@ export function useAchievementDetailMutations({
   ruleId: number;
   /** The rule's own game; `undefined` until the rule has loaded (no mutation can run before). */
   discipline: string | undefined;
-  onUpdated: () => void;
   onTreeSaved: () => void;
   onOverrideSaved: () => void;
   onOverrideRemoved: () => void;
@@ -118,36 +91,6 @@ export function useAchievementDetailMutations({
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
   };
-
-  const updateMutation = useMutation({
-    mutationFn: async ({
-      data,
-      imageFile
-    }: {
-      data: AchievementRuleUpdateInput;
-      imageFile: File | null;
-    }) => {
-      const updated = await adminService.updateAchievementRule(workspaceId!, ruleId, data);
-      // The badge is uploaded against the rule's slug, so it can only be
-      // attached once the rule itself has been written.
-      if (imageFile && updated.slug) {
-        const uploadResult = await adminService.uploadAchievementImage(
-          updated.slug,
-          imageFile,
-          workspaceId!
-        );
-        await adminService.updateAchievementRule(workspaceId!, ruleId, {
-          image_url: uploadResult.public_url
-        });
-      }
-      return updated;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ruleKey });
-      invalidateLists();
-      onUpdated();
-    }
-  });
 
   const saveTreeMutation = useMutation({
     mutationFn: (conditionTree: Record<string, unknown>) =>
@@ -212,7 +155,6 @@ export function useAchievementDetailMutations({
   });
 
   return {
-    updateMutation,
     saveTreeMutation,
     deleteMutation,
     toggleMutation,

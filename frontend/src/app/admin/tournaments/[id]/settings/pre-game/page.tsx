@@ -3,21 +3,11 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { AlertTriangle } from "lucide-react";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { MasterDetail } from "@/components/kit/MasterDetail";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
@@ -161,18 +151,14 @@ function PreGamePhase({
   const hrefFor = (target: PreGameScope) =>
     `${basePath}?scope=${encodePreGameScope(target)}&kind=${kind}&step=${step}`;
 
-
-  if (configsQuery.isError) {
+  const failedQuery = configsQuery.isError ? configsQuery : stagesQuery.isError ? stagesQuery : null;
+  if (failedQuery) {
     return (
-      <Alert variant="destructive">
-        <AlertTriangle aria-hidden className="size-4" />
-        <AlertDescription className="flex flex-wrap items-center gap-3">
-          <span>{t("loadFailed")}</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => configsQuery.refetch()}>
-            {t("retry")}
-          </Button>
-        </AlertDescription>
-      </Alert>
+      <PageStateCard
+        state="error"
+        title={t("loadFailed")}
+        onAction={() => void failedQuery.refetch()}
+      />
     );
   }
 
@@ -183,27 +169,26 @@ function PreGamePhase({
   return (
     <div className="flex flex-col gap-4">
       {/* Map veto and hero bans are two independent configs per scope, so the
-          kind is part of what is being edited, not a filter over one list —
+          kind is part of what is being edited, not a filter over one list,
           and the tree's inherited/overridden markers only mean anything for
-          one of them at a time. A `Select`, not a tab row: the step tabs below
-          are this screen's tabs. */}
-      <div className="flex items-center gap-2">
-        <Label htmlFor="pre-game-kind" className="text-xs text-muted-foreground">
-          {t("kindLabel")}
-        </Label>
-        <Select value={kind} onValueChange={(next) => setParams({ kind: next })}>
-          <SelectTrigger id="pre-game-kind" className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PRE_GAME_KINDS.map((value) => (
-              <SelectItem key={value} value={value}>
-                {t(value === "map" ? "kindMap" : "kindHero")}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+          one of them at a time. */}
+      <ToggleGroup
+        type="single"
+        variant="pill"
+        size="sm"
+        className="self-start"
+        value={kind}
+        onValueChange={(next) => {
+          if (next) setParams({ kind: next });
+        }}
+        aria-label={t("kindLabel")}
+      >
+        {PRE_GAME_KINDS.map((value) => (
+          <ToggleGroupItem key={value} value={value}>
+            {t(value === "map" ? "kindMap" : "kindHero")}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
 
       <MasterDetail
         listWidth={260}

@@ -7,7 +7,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 
 import { DataTable, columnMeta } from "@/components/data-table";
-import { Badge } from "@/components/ui/badge";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import userService from "@/services/user.service";
 import type { AchievementRarity } from "@/types/achievement.types";
@@ -22,6 +21,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  */
 export function PersonAchievementsTab({ personId }: Readonly<{ personId: number }>) {
   const t = useTranslations("adminPeople.achievements");
+  const tCategory = useTranslations("adminAchievements.common.categoryValues");
   const achievementsQuery = useQuery({
     queryKey: adminQueryKeys.personAchievements(personId),
     queryFn: () => userService.getUserAchievements(personId)
@@ -48,15 +48,15 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
       {
         accessorKey: "category",
         header: t("category"),
-        meta: columnMeta<AchievementRarity>({ align: "center" }),
-        cell: ({ row }) =>
-          row.original.category ? (
-            <Badge variant="outline" className="font-normal capitalize">
-              {row.original.category}
-            </Badge>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )
+        cell: ({ row }) => {
+          const category = row.original.category as "overall" | null;
+          if (!category) return null;
+          return (
+            <span className="text-sm text-muted-foreground">
+              {tCategory.has(category) ? tCategory(category) : category}
+            </span>
+          );
+        }
       },
       {
         accessorKey: "count",
@@ -69,17 +69,14 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
         id: "tournaments",
         header: t("tournaments"),
         enableSorting: false,
-        cell: ({ row }) =>
-          row.original.tournaments.length === 0 ? (
-            <span className="text-muted-foreground">—</span>
-          ) : (
-            <span className="truncate text-sm text-muted-foreground">
-              {row.original.tournaments.map((tournament) => tournament.name).join(", ")}
-            </span>
-          )
+        cell: ({ row }) => (
+          <span className="truncate text-sm text-muted-foreground">
+            {row.original.tournaments.map((tournament) => tournament.name).join(", ")}
+          </span>
+        )
       }
     ],
-    [t]
+    [t, tCategory]
   );
 
   if (achievementsQuery.isError) {

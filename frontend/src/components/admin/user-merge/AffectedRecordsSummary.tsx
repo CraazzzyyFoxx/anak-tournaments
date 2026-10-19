@@ -41,7 +41,7 @@ export function AffectedRecordsSummary({
   return (
     <div className="space-y-3">
       <p className="text-sm font-medium" id="merge-affected-records">
-        {t("moving")} {targetName}
+        {t("moving", { name: targetName })}
       </p>
       <div aria-labelledby="merge-affected-records">
         {affectedEntries.length > 0 ? (

@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -125,6 +125,28 @@ function playerLabel(player: RegistrationRankAutofillPlayer): string {
   return player.identity?.handle ?? player.display_name ?? `#${player.registration_id}`;
 }
 
+interface RowState {
+  tone: Tone;
+  label: string;
+}
+
+/** One status per row, worst first; any other state rides along in a `title` icon. */
+function RowStatus({ states }: Readonly<{ states: Array<RowState | false | undefined> }>) {
+  const [worst, ...rest] = states.filter((state): state is RowState => Boolean(state));
+  if (!worst) return null;
+  const more = rest.map((state) => state.label).join(", ");
+  return (
+    <>
+      <StatusPill tone={worst.tone}>{worst.label}</StatusPill>
+      {more ? (
+        <span role="img" aria-label={more} title={more} className="shrink-0 text-muted-foreground">
+          <Info className="size-3.5" aria-hidden />
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function RankAutofillRolePill({
   role,
   discipline,
@@ -181,6 +203,7 @@ function RankAutofillRolePill({
       title={[
         [role.reason, source].filter(Boolean).join(" / "),
         isPeak ? t("rankAutofill.owValue.peak.caveat") : null,
+        isUnverified ? t("rankAutofill.badgeUnverified") : null,
         ...breakdown
       ]
         .filter(Boolean)
@@ -222,7 +245,6 @@ function RankAutofillRolePill({
             {primaryRank ?? "-"}
           </span>
           {isPeak && <span className="opacity-60">{t("rankAutofill.pillPeak")}</span>}
-          {isUnverified && <span className="opacity-60">{t("rankAutofill.pillUnverified")}</span>}
         </>
       )}
     </div>
@@ -303,9 +325,9 @@ export function RankAutofillPreviewTables({
             aria-label={t("rankAutofill.selectAllAria")}
           />
           <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.assign")}</span>
-          <StatusPill tone="success" className="tabular-nums">
+          <span className="text-caption tabular-nums text-muted-foreground">
             {selectedIds.size}/{updatablePlayers.length}
-          </StatusPill>
+          </span>
         </div>
         {updatablePlayers.length === 0 ? (
           <p className="text-xs text-[color:var(--aqt-fg-dim)]">
@@ -331,15 +353,15 @@ export function RankAutofillPreviewTables({
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-[color:var(--aqt-fg)]">
                     {playerLabel(player)}
                   </span>
-                  {player.partial && (
-                    <StatusPill tone="warning">{t("rankAutofill.badgePartial")}</StatusPill>
-                  )}
-                  {player.will_add_to_balancer && (
-                    <StatusPill tone="info">
-                      <ArrowRight className="size-3 shrink-0" aria-hidden />
-                      Balancer
-                    </StatusPill>
-                  )}
+                  <RowStatus
+                    states={[
+                      player.partial && { tone: "warning", label: t("rankAutofill.badgePartial") },
+                      player.will_add_to_balancer && {
+                        tone: "info",
+                        label: t("rankAutofill.stats.toBalancer")
+                      }
+                    ]}
+                  />
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5 pl-6">
                   <span className="text-xs text-[color:var(--aqt-fg-dim)]">
@@ -367,9 +389,9 @@ export function RankAutofillPreviewTables({
         <div className="mb-2 flex shrink-0 items-center gap-2">
           <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.skipped")}</span>
           {skippedPlayers.length > 0 && (
-            <StatusPill tone="warning" className="tabular-nums">
+            <span className="text-caption tabular-nums text-muted-foreground">
               {skippedPlayers.length}
-            </StatusPill>
+            </span>
           )}
         </div>
         {skippedPlayers.length === 0 ? (
@@ -408,9 +430,9 @@ export function RankAutofillPreviewTables({
         <div className="mb-2 flex shrink-0 items-center gap-2">
           <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.alreadySet")}</span>
           {unchangedPlayers.length > 0 && (
-            <StatusPill tone="neutral" className="tabular-nums">
+            <span className="text-caption tabular-nums text-muted-foreground">
               {unchangedPlayers.length}
-            </StatusPill>
+            </span>
           )}
         </div>
         {unchangedPlayers.length === 0 ? (
@@ -430,12 +452,18 @@ export function RankAutofillPreviewTables({
                     <span className="min-w-0 flex-1 truncate text-xs font-medium text-[color:var(--aqt-fg-muted)]">
                       {playerLabel(player)}
                     </span>
-                    {hasUnverifiedRole(player) && (
-                      <StatusPill tone="warning">{t("rankAutofill.badgeUnverified")}</StatusPill>
-                    )}
-                    {playerHasMismatch(player) && (
-                      <StatusPill tone="danger">{t("rankAutofill.badgeMismatch")}</StatusPill>
-                    )}
+                    <RowStatus
+                      states={[
+                        playerHasMismatch(player) && {
+                          tone: "danger",
+                          label: t("rankAutofill.badgeMismatch")
+                        },
+                        hasUnverifiedRole(player) && {
+                          tone: "warning",
+                          label: t("rankAutofill.badgeUnverified")
+                        }
+                      ]}
+                    />
                   </div>
                   <div className="mt-0.5 text-xs leading-4 text-[color:var(--aqt-fg-dim)]">
                     {player.reason ?? t("rankAutofill.unchangedFallback")}

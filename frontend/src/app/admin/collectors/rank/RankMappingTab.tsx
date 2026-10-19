@@ -1,7 +1,5 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,19 +14,13 @@ import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
  * unsupported message — never another game's mapping panel.
  */
 export function RankMappingTab() {
-  const t = useTranslations("collectors");
   // The collector settings are platform-wide, so the installed games are listed globally.
   const browsing = useBrowsingDiscipline({ allowsAll: false, axis: "all" });
   const { resolved, disciplines } = browsing;
 
   if (resolved === null) {
     return browsing.isError ? (
-      <PageStateCard
-        state="error"
-        title={t("mapping.noCollectorTitle")}
-        description={t("mapping.noCollector")}
-        onAction={browsing.refetch}
-      />
+      <PageStateCard state="error" onAction={browsing.refetch} />
     ) : (
       <Skeleton className="h-40 w-full rounded-xl" />
     );

@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -129,6 +128,15 @@ export function ResolveRoleConflictDialog({
   });
 
   const canCommit = canCommitRoleEdit({ player, role, rankValue, reason, preview });
+  // One "Tank ×2 · Support ×1" line, not a chip per open team slot.
+  const unmatchedSummary = Object.entries(
+    (feasibility?.unmatched_slots ?? []).reduce<Record<string, number>>((counts, slot) => {
+      counts[slot.slot_code] = (counts[slot.slot_code] ?? 0) + 1;
+      return counts;
+    }, {})
+  )
+    .map(([code, count]) => t("slotCount", { role: slotLabel(code), count }))
+    .join(" · ");
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -149,31 +157,14 @@ export function ResolveRoleConflictDialog({
           <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
-        {feasibility && feasibility.unmatched_slots.length > 0 && (
-          <div className="rounded-xl border border-[color:var(--aqt-live)]/30 bg-[color:var(--aqt-live)]/10 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold">
+        {unmatchedSummary && (
+          <section>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-danger">
               <AlertTriangle className="h-4 w-4" aria-hidden />
               {t("unmatchedSlots")}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {feasibility.unmatched_slots.map((slot) => {
-                const team = board.teams.find((candidate) => candidate.id === slot.team_id);
-                return (
-                  <Badge
-                    key={`${slot.team_id}-${slot.slot_code}-${slot.ordinal}`}
-                    variant="outline"
-                    className="tabular-nums"
-                  >
-                    {tAdmin("slotLabel", {
-                      team: team?.name ?? `#${slot.team_id}`,
-                      role: slotLabel(slot.slot_code),
-                      ordinal: slot.ordinal
-                    })}
-                  </Badge>
-                );
-              })}
-            </div>
-          </div>
+            </h3>
+            <p className="mt-1 text-sm tabular-nums">{unmatchedSummary}</p>
+          </section>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -193,19 +184,19 @@ export function ResolveRoleConflictDialog({
               <SelectContent>
                 {players.map((candidate) => (
                   <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                    {playerName(candidate)} · {roleOf(candidate.primary_role) ?? t("noRole")}
+                    {playerName(candidate)} · {candidate.primary_role ? slotLabel(roleOf(candidate.primary_role)) : t("noRole")}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {player && (
-              <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+              <p className="text-xs text-muted-foreground">
                 {tAdmin("rolesSummary", {
                   label: t("declaredRoles"),
                   roles: (player.primary_role
                     ? [player.primary_role, ...player.secondary_roles]
                     : player.secondary_roles
-                  ).map(roleOf).join(", ") || t("noRole")
+                  ).map((entry) => slotLabel(roleOf(entry))).join(", ") || t("noRole")
                 })}
               </p>
             )}
@@ -247,7 +238,7 @@ export function ResolveRoleConflictDialog({
                 resetPreview();
               }}
             />
-            <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("rankRequired")}</p>
+            <p className="text-xs text-muted-foreground">{t("rankRequired")}</p>
           </div>
 
           <div className="space-y-2 sm:col-span-2">
@@ -261,35 +252,29 @@ export function ResolveRoleConflictDialog({
               }}
               placeholder={t("reasonPlaceholder")}
             />
-            <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("reasonPrivate")}</p>
+            <p className="text-xs text-muted-foreground">{t("reasonPrivate")}</p>
           </div>
         </div>
 
         {preview && (
-          <div
-            role="status"
-            className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)] p-4"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 font-medium">
-                <ShieldCheck className="h-4 w-4 text-[color:var(--aqt-teal)]" aria-hidden />
-                {t(`impact.${roleEditImpact(preview)}`)}
-              </div>
-              <Badge variant="outline">{t("previewOnly")}</Badge>
-            </div>
+          <section role="status" className="border-t border-border pt-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
+              {t(`impact.${roleEditImpact(preview)}`)}
+            </h3>
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-center">
               <ImpactValue
                 label={t("before")}
                 value={`${preview.before.matched_slots}/${preview.before.total_open_slots}`}
               />
-              <ArrowRight className="h-4 w-4 text-[color:var(--aqt-fg-faint)]" aria-hidden />
+              <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
               <ImpactValue
                 label={t("after")}
                 value={`${preview.after.matched_slots}/${preview.after.total_open_slots}`}
                 good={preview.after.is_feasible}
               />
             </div>
-          </div>
+          </section>
         )}
 
         <DialogFooter>
@@ -310,7 +295,6 @@ export function ResolveRoleConflictDialog({
               commitMutation.mutate();
             }}
           >
-            <CheckCircle2 className="mr-2 h-4 w-4" aria-hidden />
             {t("commit")}
           </Button>
         </DialogFooter>
@@ -336,7 +320,7 @@ function ImpactValue({
       <p
         className={cn(
           "mt-1 text-xl font-semibold tabular-nums",
-          good && "text-[color:var(--aqt-positive)]"
+          good && "text-success"
         )}
       >
         {value}

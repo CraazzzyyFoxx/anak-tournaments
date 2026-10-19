@@ -196,7 +196,8 @@ describe("WorkspaceStatusesSettingsPage", () => {
     expect(groups).toEqual(["System", "Custom"]);
     expect(container.querySelectorAll("table")).toHaveLength(1);
     expect(container.textContent).toContain("Awaiting captain");
-    expect(container.textContent).toContain("Excludes pool");
+    // The pool exclusion is a boolean exception: an icon in the Effects column.
+    expect(container.querySelector('[aria-label="Excludes pool"]')).not.toBeNull();
   });
 
   it("keeps the scope filter in the URL instead of in the page structure", async () => {
@@ -216,7 +217,7 @@ describe("WorkspaceStatusesSettingsPage", () => {
   it("resets a built-in through a different intent than it deletes a custom status", async () => {
     await mount();
 
-    await open(kebabFor("the Pending system status"));
+    await open(kebabFor("the Pending status"));
     // A built-in cannot be deleted, only reset — the two actions are not the
     // same row action wearing different words.
     expect(() => menuItem("Delete")).toThrow();
@@ -232,7 +233,7 @@ describe("WorkspaceStatusesSettingsPage", () => {
   it("deletes a custom status with the destructive intent", async () => {
     await mount();
 
-    await open(kebabFor("the Awaiting captain custom status"));
+    await open(kebabFor("the Awaiting captain status"));
     expect(() => menuItem("Reset to default")).toThrow();
     await click(menuItem("Delete"));
 

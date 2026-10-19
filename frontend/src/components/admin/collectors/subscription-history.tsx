@@ -7,7 +7,6 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { LiveIndicator } from "@/components/admin/LiveIndicator";
 import { DataTable, columnMeta } from "@/components/data-table";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
@@ -50,6 +49,7 @@ export function SubscriptionTaskHistory() {
   const format = useFormatter();
   const router = useRouter();
   const labels = useSubscriptionLabels();
+  const tKit = useTranslations("kit.authUser");
   const filterDefs = useMemo<FilterDef[]>(
     () => [
       {
@@ -95,7 +95,7 @@ export function SubscriptionTaskHistory() {
         provider: provider || undefined,
         limit: FETCH_LIMIT
       }),
-    refetchInterval: 3000
+    refetchInterval: 10000
   });
 
   const columns = useMemo<ColumnDef<SubscriptionCheckLogRow>[]>(
@@ -111,10 +111,13 @@ export function SubscriptionTaskHistory() {
       },
       {
         id: "player",
-        accessorFn: (row) => row.user_name ?? `auth #${row.auth_user_id ?? "?"}`,
+        accessorFn: (row) =>
+          row.user_name ?? (row.auth_user_id != null ? tKit("userId", { id: row.auth_user_id }) : ""),
         header: t("history.player"),
         meta: columnMeta<SubscriptionCheckLogRow>({
-          searchValue: (row) => row.user_name ?? `auth #${row.auth_user_id ?? "?"}`
+          searchValue: (row) =>
+            row.user_name ??
+            (row.auth_user_id != null ? tKit("userId", { id: row.auth_user_id }) : "")
         }),
         cell: ({ row, getValue }) =>
           row.original.user_id != null ? (
@@ -154,7 +157,7 @@ export function SubscriptionTaskHistory() {
             {row.original.tier_label ??
               (row.original.tier_rank != null
                 ? t("history.tierRank", { rank: row.original.tier_rank })
-                : "—")}
+                : null)}
           </span>
         )
       },
@@ -174,7 +177,7 @@ export function SubscriptionTaskHistory() {
         cell: ({ row }) => {
           const { error, reason } = row.original;
           const text = error ?? (reason ? labels.reason(reason) : null);
-          return (
+          return text ? (
             <span
               className={cn(
                 "block max-w-64 truncate text-xs",
@@ -182,23 +185,20 @@ export function SubscriptionTaskHistory() {
               )}
               title={error ?? reason ?? undefined}
             >
-              {text ?? "—"}
+              {text}
             </span>
-          );
+          ) : null;
         }
       }
     ],
-    [format, t, tCommon, labels]
+    [format, t, tCommon, tKit, labels]
   );
 
   return (
     <section aria-labelledby="subscription-check-history" className="space-y-3">
-      <div className="flex items-center gap-2">
-        <h2 id="subscription-check-history" className="font-semibold leading-none tracking-tight">
-          {t("history.title")}
-        </h2>
-        <LiveIndicator />
-      </div>
+      <h2 id="subscription-check-history" className="font-semibold leading-none">
+        {t("history.title")}
+      </h2>
       <DataTable<SubscriptionCheckLogRow>
         rows={query.data ?? []}
         isLoading={query.isLoading}

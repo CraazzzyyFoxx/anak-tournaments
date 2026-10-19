@@ -22,8 +22,8 @@ import type { Workspace } from "@/types/workspace.types";
 
 /**
  * The setup checklist of one workspace, as rows: a glyph for done/not yet,
- * the item, one sentence on what it gives, and a link into the section that
- * sets it.
+ * the item, and for what is not done yet one sentence on what it gives and a
+ * link into the section that sets it.
  *
  * Rendered by the wizard's last step and by the settings overview from the
  * same `workspaceSetupChecklist`, so the two never disagree on what counts
@@ -51,7 +51,9 @@ export function SetupChecklist({
               </ItemMedia>
               <ItemContent>
                 <ItemTitle>{t(`items.${item.key}`)}</ItemTitle>
-                <ItemDescription>{t(`hints.${item.key}`, { zone: PLATFORM_ZONE })}</ItemDescription>
+                {item.done ? null : (
+                  <ItemDescription>{t(`hints.${item.key}`, { zone: PLATFORM_ZONE })}</ItemDescription>
+                )}
               </ItemContent>
               {!item.done && item.section ? (
                 <ItemActions>

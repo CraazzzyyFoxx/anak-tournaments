@@ -1,9 +1,7 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftFormat } from "@/types/draft.types";
 
@@ -29,46 +27,33 @@ export function DraftSetupPreview({
   const schedule = buildDraftSchedule(orderedCaptainIds, rounds, format, roundRules);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{t("schedulePreview")}</h3>
-        <Badge variant="secondary">{t(`formats.${format}.title`)}</Badge>
-      </div>
-      <div className="space-y-2">
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">{t("schedulePreview")}</h3>
+      <ol className="divide-y divide-border">
         {schedule.map((entry) => (
-          <div
-            key={entry.round}
-            className="flex min-w-0 items-start gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5"
-          >
-            <span className="w-16 shrink-0 pt-1 text-xs font-medium tabular-nums text-muted-foreground">
+          <li key={entry.round} className="flex min-w-0 items-baseline gap-3 py-2">
+            <span className="w-16 shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
               {t("roundNumber", { round: entry.round })}
             </span>
             {entry.resolved ? (
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                {entry.teamIds.map((id, index) => {
-                  const registration = pool.find((candidate) => candidate.id === id);
-                  return (
-                    <span key={id} className="flex shrink-0 items-center gap-1">
-                      <span className="max-w-32 truncate rounded-lg bg-background px-2.5 py-1 text-xs shadow-sm">
-                        {registration ? registrationLabel(registration) : `#${id}`}
-                      </span>
-                      {index < entry.teamIds.length - 1 && (
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden />
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
+              <span className="min-w-0 flex-1 text-sm">
+                {entry.teamIds
+                  .map((id) => {
+                    const registration = pool.find((candidate) => candidate.id === id);
+                    return registration ? registrationLabel(registration) : `#${id}`;
+                  })
+                  .join(" · ")}
+              </span>
             ) : (
               /* Showing the seed order here would promise an order the draft will
                  not follow: this rule is resolved server-side. Name it instead. */
-              <p className="min-w-0 flex-1 pt-1 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 text-xs text-muted-foreground">
                 {t(`rules.${entry.rule}`)} · {t("orderResolvedOnTheServer")}
-              </p>
+              </span>
             )}
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
     </div>
   );
 }

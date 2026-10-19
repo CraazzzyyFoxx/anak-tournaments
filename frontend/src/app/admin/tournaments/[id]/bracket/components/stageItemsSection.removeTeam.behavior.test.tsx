@@ -144,10 +144,21 @@ describe("remove assigned team", () => {
   it("asks the screen's confirmation before dropping the slot", async () => {
     await mount(groupStage([item(100)]));
 
-    const remove = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Remove slot 1 of Group 100"]'
+    const menu = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Actions for slot 1 of Group 100"]'
     );
-    if (!remove) throw new Error("No remove button on the assigned slot");
+    if (!menu) throw new Error("No actions menu on the assigned slot");
+
+    await act(async () => {
+      menu.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      menu.click();
+    });
+    await settle();
+
+    const remove = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => (element.textContent ?? "").trim() === "Remove"
+    );
+    if (!remove) throw new Error("No remove item in the slot menu");
 
     await act(async () => {
       remove.click();
@@ -176,6 +187,6 @@ describe("remove assigned team", () => {
     });
     await mount(groupStage([empty]));
 
-    expect(container.querySelector('button[aria-label="Remove slot 2 of Group 100"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Actions for slot 2 of Group 100"]')).toBeNull();
   });
 });

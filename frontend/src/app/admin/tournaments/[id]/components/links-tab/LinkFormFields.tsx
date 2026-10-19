@@ -35,7 +35,7 @@ export function LinkFormFields({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor={kindFieldId}>{t("kindRequired")}</Label>
+        <Label htmlFor={kindFieldId}>{t("kind")}</Label>
         <Select
           value={formData.kind}
           onValueChange={(kind) =>
@@ -68,7 +68,7 @@ export function LinkFormFields({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={urlFieldId}>{t("urlRequired")}</Label>
+        <Label htmlFor={urlFieldId}>{t("url")}</Label>
         <Input
           id={urlFieldId}
           type="url"

@@ -48,7 +48,7 @@ function MissTargetPicker({
   // parser resolves.
   const options = (targets.data?.results ?? []).map((entity) => ({
     value: String(entity.id),
-    label: entity.parent ? `${entity.name} — ${entity.parent.name}` : entity.name,
+    label: entity.parent ? `${entity.name} · ${entity.parent.name}` : entity.name,
   }));
 
   if (targets.isError) {

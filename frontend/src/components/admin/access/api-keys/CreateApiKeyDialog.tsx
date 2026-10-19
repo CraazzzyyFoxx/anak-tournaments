@@ -4,7 +4,6 @@ import { useId, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 
 import { PermissionPicker } from "@/components/admin/access/PermissionPicker";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -140,7 +139,7 @@ export function CreateApiKeyDialog({
         />
 
         {isSuperuser ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3">
             <div className="space-y-0.5">
               <Label htmlFor={superuserId}>{t("superuserAccess")}</Label>
               <p className="text-xs text-muted-foreground">
@@ -157,9 +156,7 @@ export function CreateApiKeyDialog({
         ) : null}
 
         {availableScopes.length === 0 ? (
-          <EmptyNote size="sm">
-            {ta("inertDescription")}
-          </EmptyNote>
+          <p className="text-caption text-warning">{ta("inertDescription")}</p>
         ) : (
           <PermissionPicker
             mode="list"

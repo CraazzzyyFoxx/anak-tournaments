@@ -62,8 +62,8 @@ export function useEncounterForm({
       close();
       notify.success(created ? t("create") : t("editTitle"));
     },
-    onError: (failure: Error) =>
-      setError(t("saveFailed", { message: t("createDescription"), error: failure.message }))
+    // `EntityFormDialog` already leads with "Could not save"; the detail is the API's.
+    onError: (failure: Error) => setError(failure.message)
   });
 
   // `saveMutation` is rebuilt on every state transition; `reset` is not, so the

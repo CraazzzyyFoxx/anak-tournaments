@@ -6,7 +6,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   Archive,
   ArrowUpToLine,
-  CircleDot,
   ExternalLink,
   Pencil,
   RotateCcw,
@@ -15,7 +14,6 @@ import {
 
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { Badge } from "@/components/ui/badge";
 import type { TournamentLink } from "@/types/stream.types";
 import { primaryStreamLinkSortOrder } from "../tournamentLinks.helpers";
 
@@ -45,23 +43,20 @@ export function useLinkColumns({
         accessorKey: "kind",
         header: t("kind"),
         size: 112,
-        cell: ({ row }) => (
-          <Badge variant="secondary">{t(`kinds.${row.original.kind}`)}</Badge>
-        ),
+        cell: ({ row }) => t(`kinds.${row.original.kind}`),
         meta: columnMeta<TournamentLink>({
-          align: "center",
           searchValue: (link) => t(`kinds.${link.kind}`)
         })
       },
       {
         accessorKey: "label",
         header: t("label"),
-        cell: ({ row }) => row.original.label ?? <span className="text-muted-foreground">—</span>,
+        cell: ({ row }) => row.original.label,
         meta: columnMeta<TournamentLink>({ className: "max-w-[16rem] truncate" })
       },
       {
         accessorKey: "url",
-        header: "URL",
+        header: t("url"),
         cell: ({ row }) => (
           <a
             href={row.original.url}
@@ -87,15 +82,14 @@ export function useLinkColumns({
         meta: columnMeta<TournamentLink>({ align: "right", numeric: true })
       },
       {
+        // Active is the norm, so only the exception is marked.
         id: "state",
         header: t("state"),
         size: 96,
         enableSorting: false,
         meta: columnMeta<TournamentLink>({ align: "center" }),
         cell: ({ row }) =>
-          row.original.is_active ? (
-            <StatusIcon icon={CircleDot} label={t("active")} variant="success" />
-          ) : (
+          row.original.is_active ? null : (
             <StatusIcon icon={Archive} label={t("archived")} variant="muted" />
           )
       },

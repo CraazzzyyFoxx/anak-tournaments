@@ -70,7 +70,7 @@ export function ScheduleStep({ value, onChange, showDraftPhase }: Readonly<Sched
         </div>
       ))}
 
-      <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-0.5">
             <Label htmlFor="wizard-auto-transitions" className="cursor-pointer text-sm font-medium">

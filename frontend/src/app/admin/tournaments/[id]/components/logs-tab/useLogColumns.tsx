@@ -8,9 +8,8 @@ import { useFormatter } from "@/lib/datetime/client";
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { RawLogStatus } from "@/components/match/MatchLogIndicator";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { LogProcessingRecord, LogProcessingStatus } from "@/types/admin.types";
+import type { LogProcessingRecord } from "@/types/admin.types";
 import { getLogFileName, getRetryKind } from "../logs.helpers";
 import {
   SOURCE_LABELS,
@@ -23,19 +22,6 @@ import {
   getRetryRefusal,
   isRetryable
 } from "./model";
-
-function LogStatusBadge({ status }: Readonly<{ status: LogProcessingStatus }>) {
-  const t = useTranslations("adminTournament.logs");
-  const meta = STATUS_META[status];
-  const Icon = meta.icon;
-
-  return (
-    <StatusPill tone={meta.tone} className="px-1.5">
-      <Icon className={cn("size-3", status === "processing" && "animate-spin")} aria-hidden />
-      {t(meta.key)}
-    </StatusPill>
-  );
-}
 
 /** The log job row: what was filed, where it landed, how processing went, and what can be done about it. */
 export function useLogColumns({
@@ -86,11 +72,14 @@ export function useLogColumns({
         enableSorting: false,
         cell: ({ row }) => (
           <p className="max-w-[16rem] truncate text-xs text-muted-foreground">
-            {row.original.attached_encounter_name ?? t("notAttached")}
+            {row.original.attached_encounter_name}
           </p>
         )
       },
       {
+        // Pill only for the states that want attention (failed, awaiting a link,
+        // processing); queued is a muted word, processed is nothing. Below it,
+        // at most one line: why nothing can be done, or what is awaited.
         id: "status",
         header: t("status"),
         accessorFn: (record) => t(STATUS_META[record.status].key),
@@ -98,33 +87,28 @@ export function useLogColumns({
         enableSorting: false,
         cell: ({ row }) => {
           const record = row.original;
+          const meta = STATUS_META[record.status];
           const refusal = getRetryRefusal(record);
+          const note = !record.raw_available ? (
+            <RawLogStatus raw_status={record.raw_status} raw_available={record.raw_available} />
+          ) : refusal ? (
+            tx(refusal)
+          ) : record.status === "awaiting_link" ? (
+            tx("awaitingLinkHint")
+          ) : null;
           return (
-            <div className="max-w-[22rem] space-y-1.5">
+            <div className="max-w-[22rem] space-y-1">
               <div className="flex items-center gap-1.5">
-                <LogStatusBadge status={record.status} />
+                {meta.tone ? (
+                  <StatusPill tone={meta.tone}>{t(meta.key)}</StatusPill>
+                ) : record.status === "pending" ? (
+                  <span className="text-xs text-muted-foreground">{t(meta.key)}</span>
+                ) : null}
                 {record.attempts > 1 ? (
                   <span className="text-xs tabular-nums text-muted-foreground">×{record.attempts}</span>
                 ) : null}
               </div>
-              <p className="text-xs text-muted-foreground">
-                <RawLogStatus raw_status={record.raw_status} raw_available={record.raw_available} />
-              </p>
-              {record.status === "awaiting_link" ? (
-                <p className="text-xs text-muted-foreground">{tx("awaitingLinkHint")}</p>
-              ) : null}
-              {refusal ? (
-                <>
-                  <p id={`log-retry-refusal-${record.id}`} className="text-xs text-muted-foreground">
-                    {tx(refusal)}
-                  </p>
-                  {record.status !== "done" && record.status !== "processing" ? (
-                    <Button type="button" variant="outline" size="sm" disabled aria-describedby={`log-retry-refusal-${record.id}`}>
-                      {t("retry")}
-                    </Button>
-                  ) : null}
-                </>
-              ) : null}
+              {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
             </div>
           );
         }
@@ -135,19 +119,16 @@ export function useLogColumns({
         accessorFn: (record) => record.error_message ?? "",
         enableSorting: false,
         cell: ({ row }) => {
-          const errorSummary = getErrorSummary(row.original);
-          if (!errorSummary) return null;
+          const summary = getErrorSummary(row.original);
+          if (!summary) return null;
           return (
             <details className="group max-w-[28rem]">
               <summary className={cn(
                 "inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs focus-visible:outline-2 focus-visible:outline-offset-2",
                 row.original.status === "failed" ? "text-danger" : "text-muted-foreground"
               )}>
-                <ChevronRight
-                  className="size-3 shrink-0 transition-transform group-open:rotate-90"
-                  aria-hidden
-                />
-                {errorSummary}
+                <ChevronRight className="size-3 shrink-0 group-open:rotate-90" aria-hidden />
+                {"code" in summary ? tx(`opError.${summary.code}`) : summary.message}
               </summary>
               <pre
                 tabIndex={0}
@@ -175,12 +156,12 @@ export function useLogColumns({
       {
         id: "duration",
         header: t("duration"),
-        accessorFn: (record) => formatDuration(record),
+        accessorFn: (record) => formatDuration(record) ?? "",
         size: 88,
         enableSorting: false,
         meta: columnMeta<LogProcessingRecord>({ align: "right", numeric: true }),
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{formatDuration(row.original)}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{formatDuration(row.original)}</span>
         )
       },
       // Pending jobs can be requeued; an actively processing job cannot be retried.
@@ -196,25 +177,20 @@ export function useLogColumns({
               if (isRetryable(record)) onRetry([record]);
             }
           },
-          // An awaiting or failed job that kept its document teams is bound with an explicit team map; that is not
-          // gated by the ordinary-retry refusal (a hint without a game is not an observation). Any other
-          // unfinished one is only re-filed through a hint. A processed log already filed its match.
+          // One entry for both ways a log reaches a game: the dialog binds with an explicit team map when the
+          // job kept its document teams (not gated by the ordinary-retry refusal: a hint without a game is not
+          // an observation), and otherwise re-files it through a hint. A processed log already filed its match.
           // The workspace-wide console holds no encounter list: its dialog picks a tournament first.
           {
-            label: tx("bindToGame"),
+            label: tx("attachToGame"),
             icon: Link2,
-            hidden: !canBindExplicitly(record) || noEncounters,
-            onSelect: () => {
-              if (canBindExplicitly(record)) onAttach(record);
-            }
-          },
-          {
-            label: t("attachTo"),
-            icon: Link2,
-            hidden: record.status === "done" || record.status === "processing" || canBindExplicitly(record) || noEncounters || getRetryRefusal(record) != null,
-            onSelect: () => {
-              if (getRetryRefusal(record) == null) onAttach(record);
-            }
+            hidden:
+              noEncounters ||
+              !(
+                canBindExplicitly(record) ||
+                (record.status !== "done" && record.status !== "processing" && getRetryRefusal(record) == null)
+              ),
+            onSelect: () => onAttach(record)
           }
         ],
         { rowLabel: (record) => getLogFileName(record.filename) }

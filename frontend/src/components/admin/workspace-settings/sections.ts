@@ -29,9 +29,8 @@ export const WORKSPACE_SETTINGS_SECTIONS = [
 export type WorkspaceSettingsSectionKey = (typeof WORKSPACE_SETTINGS_SECTIONS)[number];
 
 /**
- * Each section's key under `sections.*` and `sectionDescriptions.*` in
- * `adminWorkspace.workspaceSettings`: the slugs are kebab-case, message keys
- * are camelCase.
+ * Each section's key under `sections.*` in `adminWorkspace.workspaceSettings`:
+ * the slugs are kebab-case, message keys are camelCase.
  */
 const SECTION_MESSAGE_KEYS = {
   overview: "overview",
@@ -57,15 +56,6 @@ export function workspaceSectionLabel(
   t: WorkspaceSettingsTranslator
 ): string {
   return t(`sections.${SECTION_MESSAGE_KEYS[section]}`);
-}
-
-/** One sentence under the hub heading, so a section says what it decides
- * before the reader has to infer it from the controls. */
-export function workspaceSectionDescription(
-  section: WorkspaceSettingsSectionKey,
-  t: WorkspaceSettingsTranslator
-): string {
-  return t(`sectionDescriptions.${SECTION_MESSAGE_KEYS[section]}`);
 }
 
 /**

@@ -277,12 +277,36 @@ describe("/admin/audit", () => {
     await waitFor(() => container.textContent?.includes("Tournament updated"), "the audit row");
     replace.mockClear();
 
-    await click(linkButton("only this record"));
+    await click(document.querySelector('button[aria-label^="Actions for"]'));
+    await click(
+      await waitFor(
+        () =>
+          Array.from(document.querySelectorAll('[role="menuitem"]')).find(
+            (item) => item.textContent?.trim() === "Only this record"
+          ),
+        "the record filter in the row menu"
+      )
+    );
 
     const params = new URLSearchParams(window.location.search);
     expect(params.get("entity_type")).toBe("tournament");
     expect(params.get("entity_id")).toBe("14");
     expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a superuser widen the feed to every workspace from the filter picker", async () => {
+    superuser = true;
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Tournament updated"), "the audit row");
+    expect(feedQuery().allWorkspaces).toBe(false);
+
+    // One option is no list to choose from, so the scope is a toggle chip: the
+    // picker would never offer a one-option single filter.
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Every workspace + platform"), "the scope toggle"));
+
+    expect(new URLSearchParams(window.location.search).get("scope")).toBe("1");
+    await waitFor(() => feedQuery().allWorkspaces === true, "the platform-wide request");
   });
 
   it("opens the inspector on a row instead of a dialog", async () => {
@@ -304,7 +328,6 @@ describe("/admin/audit", () => {
     expect(inspector.textContent).toContain("name");
     expect(inspector.textContent).toContain("MoonRise Mix Vol.3");
     expect(inspector.textContent).toContain("10.0.0.4");
-    expect(inspector.textContent).toContain("#4210");
   });
 
   it("renders rows as cards below md, where six columns do not fit", async () => {

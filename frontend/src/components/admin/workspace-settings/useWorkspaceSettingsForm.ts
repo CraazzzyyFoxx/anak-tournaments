@@ -27,6 +27,8 @@ export interface WorkspaceSettingsForm
   workspace: Workspace | undefined;
   isLoading: boolean;
   isError: boolean;
+  /** Re-runs the workspace read after a failed load. */
+  refetch: () => void;
   /** Re-read `admin-workspaces`, `admin-workspace` and the picker store. */
   invalidate: () => void;
 }
@@ -79,6 +81,7 @@ export function useWorkspaceSettingsForm(
     workspace,
     isLoading: query.isLoading,
     isError: query.isError,
+    refetch: () => void query.refetch(),
     invalidate
   };
 }

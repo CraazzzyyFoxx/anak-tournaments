@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Trash2, Users } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
 import { createKebabColumn } from "@/components/data-table";
@@ -29,25 +29,18 @@ export function useTeamColumns({
       {
         accessorKey: "avg_sr",
         header: t("avgSr"),
-        cell: ({ row }) => (
-          <div className="font-mono tabular-nums">{row.original.avg_sr.toFixed(0)}</div>
-        )
+        cell: ({ row }) => <div className="tabular-nums">{row.original.avg_sr.toFixed(0)}</div>
       },
       {
         accessorKey: "total_sr",
         header: t("labels.totalSr"),
-        cell: ({ row }) => <div className="font-mono tabular-nums">{row.original.total_sr}</div>
+        cell: ({ row }) => <div className="tabular-nums">{row.original.total_sr}</div>
       },
       {
         accessorKey: "players",
         header: t("players"),
         enableSorting: false,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-1 tabular-nums">
-            <Users className="h-4 w-4" aria-hidden />
-            {row.original.players?.length ?? 0}
-          </div>
-        )
+        cell: ({ row }) => <div className="tabular-nums">{row.original.players?.length ?? 0}</div>
       },
       {
         accessorKey: "tournament",
@@ -56,9 +49,7 @@ export function useTeamColumns({
         cell: ({ row }) =>
           row.original.tournament ? (
             <div className="text-sm text-muted-foreground">{row.original.tournament.name}</div>
-          ) : (
-            "—"
-          )
+          ) : null
       },
       createKebabColumn<Team>(
         (row) => [

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
 
+import { createKebabColumn } from "@/components/data-table";
 import {
   auditDiffRows,
   auditSourceLabel,
@@ -15,7 +16,6 @@ import {
   useAuditTranslator
 } from "@/components/kit/audit-log";
 import type { FilterState } from "@/components/kit/useFilters";
-import { Badge } from "@/components/ui/badge";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { AuditLogRead } from "@/types/admin.types";
@@ -30,6 +30,7 @@ export function useAuditColumns({
   setMany: setFilters
 }: Readonly<Pick<FilterState, "set" | "setMany">>): ColumnDef<AuditLogRead>[] {
   const t = useTranslations("adminMatches.audit");
+  const tk = useTranslations("kitAudit.audit");
   const auditT = useAuditTranslator();
   const format = useFormatter();
 
@@ -65,9 +66,9 @@ export function useAuditColumns({
                 // Never let a phrase we derived from the raw string pass for a
                 // curated one: `action` is written from every service on the
                 // platform, so this dictionary will always trail new call sites.
-                <Badge tone="neutral" className="font-normal">
-                  {t("unrecognised")}
-                </Badge>
+                <span className="text-caption text-muted-foreground" title={described.raw}>
+                  {tk("unrecognised")}
+                </span>
               )}
             </div>
           );
@@ -77,27 +78,16 @@ export function useAuditColumns({
         accessorKey: "actor_label",
         header: t("actor"),
         cell: ({ row }) => (
-          <div className="min-w-0">
-            {/* A machine actor is a fact, not a missing name (FR3), so it reads as
-                one instead of as an em dash. */}
-            <p
-              className={cn(
-                "truncate text-sm",
-                isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
-              )}
-            >
-              {formatAuditActor(row.original, auditT)}
-            </p>
-            {row.original.actor_auth_user_id != null ? (
-              <button
-                type="button"
-                className="text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                onClick={() => setFilter("actor_user_id", String(row.original.actor_auth_user_id))}
-              >
-                {t("onlyActor")}
-              </button>
-            ) : null}
-          </div>
+          // A machine actor is a fact, not a missing name (FR3), so it reads as
+          // one instead of as an em dash.
+          <p
+            className={cn(
+              "truncate text-sm",
+              isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
+            )}
+          >
+            {formatAuditActor(row.original, auditT)}
+          </p>
         ),
       },
       {
@@ -105,32 +95,11 @@ export function useAuditColumns({
         header: t("target"),
         cell: ({ row }) => {
           const target = formatAuditTarget(row.original, auditT);
-          if (!target) {
-            return <span className="text-sm text-muted-foreground">&mdash;</span>;
-          }
+          if (!target) return null;
           return (
-            <div className="min-w-0">
-              <p className="truncate text-sm" title={target}>
-                {target}
-              </p>
-              {row.original.entity_type && row.original.entity_id != null ? (
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                  // The type and the id are one filter in two params, so they go
-                  // in one write — `set` twice would start from the same URL
-                  // snapshot and only the second would survive.
-                  onClick={() =>
-                    setFilters({
-                      entity_type: row.original.entity_type ?? null,
-                      entity_id: String(row.original.entity_id),
-                    })
-                  }
-                >
-                  {t("onlyRecord")}
-                </button>
-              ) : null}
-            </div>
+            <p className="truncate text-sm" title={target}>
+              {target}
+            </p>
           );
         },
       },
@@ -151,11 +120,9 @@ export function useAuditColumns({
         cell: ({ row }) => {
           const rows = auditDiffRows(row.original.before_json, row.original.after_json, auditT);
           if (rows.length === 0) {
-            return (
-              <span className="text-xs text-muted-foreground">
-                {row.original.reason ? "reason only" : "no field detail"}
-              </span>
-            );
+            return row.original.reason ? (
+              <span className="text-xs text-muted-foreground">{t("reasonOnly")}</span>
+            ) : null;
           }
           const named = rows.slice(0, 3).map((diff) => diff.field);
           return (
@@ -169,7 +136,29 @@ export function useAuditColumns({
           );
         },
       },
+      createKebabColumn<AuditLogRead>(
+        (row) => [
+          {
+            label: t("onlyActor"),
+            hidden: row.actor_auth_user_id == null,
+            onSelect: () => setFilter("actor_user_id", String(row.actor_auth_user_id))
+          },
+          {
+            label: t("onlyRecord"),
+            hidden: !row.entity_type || row.entity_id == null,
+            // The type and the id are one filter in two params, so they go in
+            // one write: `set` twice would start from the same URL snapshot and
+            // only the second would survive.
+            onSelect: () =>
+              setFilters({
+                entity_type: row.entity_type ?? null,
+                entity_id: String(row.entity_id),
+              })
+          }
+        ],
+        { rowLabel: (row) => describeAuditAction(row.action, auditT).label }
+      ),
     ],
-    [format, setFilter, setFilters, t, auditT],
+    [format, setFilter, setFilters, t, tk, auditT],
   );
 }

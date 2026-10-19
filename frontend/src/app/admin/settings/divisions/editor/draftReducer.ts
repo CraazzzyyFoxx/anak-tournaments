@@ -160,9 +160,9 @@ export function nativeRangeLabel(ladder: Ladder, band: Band): string | null {
     : `${rankLabel(ladder, band.native.from)} – ${rankLabel(ladder, band.native.to)}`;
 }
 
-/** The native run in the width of a table cell ("GR5–MA2"); "—" when unlinked. */
-export function nativeShortLabel(ladder: Ladder, band: Band): string {
-  if (!band.native) return "\u2014";
+/** The native run in the width of a table cell ("GR5–MA2"); `null` when unlinked. */
+export function nativeShortLabel(ladder: Ladder, band: Band): string | null {
+  if (!band.native) return null;
   const short = (index: number) =>
     rankLabel(ladder, index).replace(/^(\S{2})\S*\s+(\d+)$/, (_match, stem: string, digit: string) =>
       `${stem.toUpperCase()}${digit}`
@@ -746,28 +746,12 @@ export function standardTiers(ladder: Ladder): DraftTierPayload[] {
 // Diff against the parent version
 // ---------------------------------------------------------------------------
 
-export type BandVerdict = "new" | "range moved" | "relinked" | "renamed";
-
 function sameRun(left: NativeRun | null, right: NativeRun | null): boolean {
   return left?.from === right?.from && left?.to === right?.to;
 }
 
 function rangeMoved(before: Band, after: Band): boolean {
   return before.rankMin !== after.rankMin || before.rankMax !== after.rankMax;
-}
-
-/**
- * How one band differs from the version the draft was created from, or `null`.
- * A moved range outranks a new native link, which outranks a rename: each changes
- * fewer players' divisions than the one before it.
- */
-export function bandVerdict(base: Band[], band: Band): BandVerdict | null {
-  const before = base.find((entry) => entry.slug === band.slug);
-  if (!before) return "new";
-  if (rangeMoved(before, band)) return "range moved";
-  if (!sameRun(before.native, band.native)) return "relinked";
-  if (before.name !== band.name) return "renamed";
-  return null;
 }
 
 export interface BandDiff {
@@ -799,10 +783,4 @@ export function diffBands(base: Band[], bands: Band[]): BandDiff {
   }
   diff.removed = base.filter((band) => !draftSlugs.has(band.slug));
   return diff;
-}
-
-/** Bands whose range or link differs from the parent version's — the save-bar's "Z differ". */
-export function bandsDifferingFromBase(base: Band[], bands: Band[]): number {
-  const diff = diffBands(base, bands);
-  return diff.added.length + diff.removed.length + diff.moved.length;
 }

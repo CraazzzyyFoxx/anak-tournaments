@@ -1,6 +1,6 @@
 "use client";
 
-import { ShieldCheck, UserRoundCheck, X } from "lucide-react";
+import { ShieldCheck, X } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
@@ -15,12 +15,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { TONE_CLASS } from "@/components/kit/tone";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import type { RosterShape } from "@/lib/roster/shape";
-import { cn } from "@/lib/utils";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -93,7 +91,7 @@ export function DraftCaptainsStep({
   const renderRank = (rank: number | null, size: number) => {
     const division = resolveDivisionFromRank(divisionGrid, rank);
     return (
-      <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground">
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
         {division != null && (
           <DivisionIcon
             division={division}
@@ -102,7 +100,7 @@ export function DraftCaptainsStep({
             height={size}
           />
         )}
-        {rank ?? "—"}
+        {rank}
       </span>
     );
   };
@@ -111,15 +109,9 @@ export function DraftCaptainsStep({
     <div className="@container space-y-5">
       <div
         role="status"
-        className={cn(
-          "sticky top-2 z-10 flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm backdrop-blur",
-          TONE_CLASS[value.ids.length === teamCount ? "success" : "warning"]
-        )}
+        className="sticky top-2 z-10 flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3"
       >
-        <div className="flex items-center gap-3">
-          <UserRoundCheck className="h-5 w-5" aria-hidden />
-          <span className="text-sm font-medium">{t("captainsSelected")}</span>
-        </div>
+        <span className="text-sm font-medium">{t("captainsSelected")}</span>
         <strong className="tabular-nums">
           {value.ids.length} / {teamCount}
         </strong>
@@ -150,7 +142,7 @@ export function DraftCaptainsStep({
                 if (!row || !registration) return null;
                 const seat = captainSeat(registration, value.roles[id], rosterShape);
                 return (
-                  <div key={id} className="min-w-0 rounded-xl border border-border/70 bg-card p-3">
+                  <div key={id} className="min-w-0 rounded-xl border border-border bg-card p-3">
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium tabular-nums">
                         {index + 1}. {row.label}
@@ -181,8 +173,8 @@ export function DraftCaptainsStep({
                                 <span className="inline-flex items-center gap-2">
                                   <PlayerRoleIcon role={role} ontology={ontology} size={14} decorative />
                                   {slotLabel(role)}
-                                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                                    {captainSeat(registration, role, rosterShape).rank ?? "—"}
+                                  <span className="text-xs tabular-nums text-muted-foreground">
+                                    {captainSeat(registration, role, rosterShape).rank}
                                   </span>
                                 </span>
                               </SelectItem>

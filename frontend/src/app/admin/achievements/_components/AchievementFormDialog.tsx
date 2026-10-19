@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { Upload, X } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import { InspectorField } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,9 +34,11 @@ import { useDisciplineLabel } from "../_hooks/useDisciplineLabel";
 import { RuleEntityField } from "./RuleEntityField";
 
 /**
- * Create and edit share one dialog: the fields are the same, and the only
- * difference is that an existing rule's slug is frozen. The condition tree is
- * not here — it is edited on the rule's own page, where there is room for it.
+ * Create and edit share one dialog, on the list and on a rule's own page: the
+ * fields are the same, and the only difference is that an existing rule's slug
+ * is frozen. The game is the rule's own and immutable, so it is stated, not
+ * offered. The condition tree is not here — it is edited on the rule's own
+ * page, where there is room for it.
  */
 export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRuleForm }>) {
   const t = useTranslations("adminAchievements");
@@ -73,7 +75,6 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
       }
       onSubmit={submit}
       isSubmitting={isSubmitting}
-      submittingLabel={editingRule ? t("common.updating") : t("common.creating")}
       errorMessage={error}
       isDirty={isDirty}
     >
@@ -86,7 +87,6 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                 id="slug"
                 value={(formData as AchievementRuleCreateInput).slug ?? ""}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                placeholder={t("form.slugPlaceholder")}
                 required
                 disabled={!!editingRule}
               />
@@ -97,17 +97,15 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                 id="name"
                 value={formData.name ?? ""}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder={t("form.achievementName")}
                 required
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="rule-discipline">{t("form.discipline")}</Label>
-              <Input id="rule-discipline" value={discipline ? disciplineLabel(discipline) : ""} readOnly disabled />
-            </div>
+            {discipline && (
+              <InspectorField label={t("form.discipline")}>{disciplineLabel(discipline)}</InspectorField>
+            )}
             {discipline && (
               <RuleEntityField
                 discipline={discipline}
@@ -207,17 +205,18 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                   size="sm"
                   onClick={() => imageInputRef.current?.click()}
                 >
-                  <Upload className="mr-2 h-4 w-4" aria-hidden />
-                  {imagePreview ? t("form.changeImage") : t("form.uploadImage")}
+                  {imagePreview || formData.image_url ? t("form.changeImage") : t("form.uploadImage")}
                 </Button>
-                {imagePreview && (
+                {(imagePreview || formData.image_url) && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={clearImage}
+                    onClick={() => {
+                      clearImage();
+                      if (formData.image_url) setFormData({ ...formData, image_url: null });
+                    }}
                   >
-                    <X className="mr-2 h-4 w-4" aria-hidden />
                     {t("form.removeImage")}
                   </Button>
                 )}

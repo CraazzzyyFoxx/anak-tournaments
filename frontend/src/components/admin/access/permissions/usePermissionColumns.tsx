@@ -5,10 +5,9 @@ import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
-import { Badge } from "@/components/ui/badge";
 import type { RbacPermission } from "@/types/rbac.types";
 
-/** The permission row: its name, the resource and action it is built from, and what it allows. */
+/** The permission row: its name and what it allows. Resource and action are the filters. */
 export function usePermissionColumns(): ColumnDef<RbacPermission>[] {
   const t = useTranslations("adminAccess.common");
   return useMemo<ColumnDef<RbacPermission>[]>(
@@ -22,25 +21,10 @@ export function usePermissionColumns(): ColumnDef<RbacPermission>[] {
         cell: ({ row }) => <span className="font-mono text-sm">{row.original.name}</span>
       },
       {
-        accessorKey: "resource",
-        header: t("resource"),
-        meta: columnMeta<RbacPermission>({ align: "center" }),
-        cell: ({ row }) => <Badge variant="outline">{row.original.resource}</Badge>
-      },
-      {
-        accessorKey: "action",
-        header: t("action"),
-        meta: columnMeta<RbacPermission>({ align: "center" }),
-        cell: ({ row }) => <Badge variant="secondary">{row.original.action}</Badge>
-      },
-      {
         accessorKey: "description",
         header: t("description"),
         enableSorting: false,
-        cell: ({ row }) =>
-          row.original.description || (
-            <span className="text-muted-foreground">{t("noDescription")}</span>
-          )
+        cell: ({ row }) => row.original.description || null
       }
     ],
     [t]

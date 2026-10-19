@@ -437,6 +437,10 @@ async function mount({
 async function click(element: Element) {
   await act(async () => {
     element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    // Radix tabs select on mousedown, which `click()` alone never sends.
+    if (element.getAttribute("role") === "tab") {
+      element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    }
     (element as HTMLElement).click();
   });
   await settle(4);
@@ -479,15 +483,20 @@ function option(label: string): HTMLElement {
   return found;
 }
 
-/** The step strip's button for one step. */
-function stepButton(index: number, label: string) {
-  return only(`${index} · ${label}`);
+/** The step tabs' trigger for one step. */
+function stepButton(label: string): HTMLElement {
+  const found = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+    (element) => (element.textContent ?? "").trim() === label
+  );
+  if (!found) throw new Error(`no step tab named "${label}"`);
+  return found;
 }
 
 /** The editor pane: everything right of the scope tree. */
 function editor(): HTMLElement {
-  const nav = container.querySelector('nav[aria-label="Configuration steps"]');
-  const found = nav?.parentElement;
+  const tabs = container.querySelector('[role="tablist"][aria-label="Configuration steps"]');
+  // tablist → Tabs root → the editor column.
+  const found = tabs?.parentElement?.parentElement;
   if (!(found instanceof HTMLElement)) throw new Error("the editor is not open");
   return found;
 }
@@ -574,7 +583,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
     await mount({ url: "?kind=map" });
 
     expect(container.textContent).toContain(en.pickBan.admin.pickScopeTitle);
-    expect(container.querySelector('nav[aria-label="Configuration steps"]')).toBeNull();
+    expect(container.querySelector('[role="tablist"][aria-label="Configuration steps"]')).toBeNull();
     // The tournament node is the place to start, and it carries the scope.
     expect(treeLink("Whole tournament").getAttribute("href")).toContain("scope=tournament");
   });
@@ -600,8 +609,8 @@ describe("Settings › Pre-game phase — URL is the state", () => {
       url: "?scope=stage:10&kind=map&step=pool"
     });
 
-    expect(editor().querySelector("h2")?.textContent).toBe("Group stage — all rounds");
-    expect(editor().textContent).toContain("2 selected");
+    expect(editor().querySelector("h2")?.textContent).toBe("Group stage · all rounds");
+    expect(editor().querySelectorAll('button[aria-label^="Remove "]')).toHaveLength(2);
   });
 
   it("follows a scope link into the URL and re-reads it", async () => {
@@ -610,7 +619,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
     await click(treeLink("Playoffs"));
 
     expect(search).toContain("scope=stage:11");
-    expect(editor().querySelector("h2")?.textContent).toBe("Playoffs — all rounds");
+    expect(editor().querySelector("h2")?.textContent).toBe("Playoffs · all rounds");
   });
 
   it("switches Pool · Rules · Sides through ?step=", async () => {
@@ -618,11 +627,11 @@ describe("Settings › Pre-game phase — URL is the state", () => {
 
     expect(editor().textContent).toContain(en.pickBan.admin.poolSection);
 
-    await click(stepButton(2, "Rules"));
+    await click(stepButton("Rules"));
     expect(new URLSearchParams(search).get("step")).toBe("rules");
     expect(editor().textContent).toContain(en.pickBan.rules.hint);
 
-    await click(stepButton(3, "Sides"));
+    await click(stepButton("Sides"));
     expect(new URLSearchParams(search).get("step")).toBe("sides");
     expect(editor().textContent).toContain(en.pickBan.admin.rulesSection);
   });
@@ -630,7 +639,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
   it("restores the step named by the URL on load", async () => {
     await mount({ url: "?scope=tournament&kind=hero&step=sides" });
 
-    expect(stepButton(3, "Sides").getAttribute("aria-current")).toBe("step");
+    expect(stepButton("Sides").getAttribute("aria-selected")).toBe("true");
     expect(editor().textContent).toContain(en.pickBan.admin.rulesSection);
   });
 
@@ -699,7 +708,7 @@ describe("Settings › Pre-game phase will not send a config the server rejects"
     await click(only("Save rules"));
     expect(upsertConfig).not.toHaveBeenCalled();
 
-    await click(stepButton(2, "Rules"));
+    await click(stepButton("Rules"));
     await click(only("Sequential ban"));
 
     expect(editor().textContent).not.toContain("has no steps");
@@ -733,7 +742,7 @@ describe("Settings › Pre-game phase will not send a config the server rejects"
     await click(only("Genji"));
     await click(only("Tracer"));
     await click(only("Ana"));
-    await click(stepButton(2, "Rules"));
+    await click(stepButton("Rules"));
     await click(only("Simultaneous blind ban"));
     await click(only("Save rules"));
 
@@ -994,14 +1003,15 @@ describe("Settings › Pre-game phase's picker searches by name and adds/clears 
   it("the group filter narrows the picker to one game mode", async () => {
     await openMapPicker();
     // Busan / Ilios are Control, King's Row / Hollywood are Hybrid.
-    await click(only("Control (2)"));
+    // The chip's count is its own span: "Control" then "2".
+    await click(only("Control2"));
 
     expect(only("Busan")).toBeTruthy();
     expect(only("Ilios")).toBeTruthy();
     expect(() => only("King's Row")).toThrow();
     expect(() => only("Hollywood")).toThrow();
 
-    await click(only("All (4)"));
+    await click(only("All"));
     expect(only("King's Row")).toBeTruthy();
   });
 });
@@ -1087,7 +1097,7 @@ describe("Settings › Pre-game phase predicts a round scope before the bracket 
     await openPlayoffs();
     await settle();
 
-    expect(tree().textContent).toContain("isn't built yet, and no teams are wired into it either");
+    expect(tree().textContent).toContain(en.pickBan.admin.roundHintUnknown);
   });
 });
 
@@ -1103,7 +1113,7 @@ describe("Settings › Pre-game phase prefills a narrower scope from the rules a
     });
 
     expect(editor().textContent).toContain("Prefilled from Whole tournament");
-    expect(editor().textContent).toContain("4 selected");
+    expect(editor().querySelectorAll('button[aria-label^="Remove "]')).toHaveLength(4);
     expect(editor().textContent).toContain("Busan");
   });
 
@@ -1140,8 +1150,8 @@ describe("Settings › Pre-game phase prefills a narrower scope from the rules a
       url: "?scope=round:10:1&kind=map&step=pool"
     });
 
-    expect(editor().textContent).toContain("Prefilled from Group stage — all rounds");
-    expect(editor().textContent).toContain("2 selected");
+    expect(editor().textContent).toContain("Prefilled from Group stage · all rounds");
+    expect(editor().querySelectorAll('button[aria-label^="Remove "]')).toHaveLength(2);
   });
 
   it("marks in the tree which scopes decide something and which only repeat", async () => {
@@ -1324,7 +1334,8 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     const text = editor().textContent ?? "";
     expect(text).toContain("Round 1");
     expect(text).toContain("Round 2");
-    expect(text).toContain("3 matches");
+    // Round 1's three match groups, one row each.
+    expect(text).toContain("Match 3");
     // Round 2's own stored maps, not the stage-wide ones round 1 falls back to.
     expect(text).toContain("Hollywood");
   });
@@ -1377,7 +1388,7 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     // Two rounds of three groups: every one of them is on screen asking to be
     // filled, rather than an empty list with a validation error under it.
     expect(byName("Add maps")).toHaveLength(6);
-    expect(text).toContain("no candidates");
+    expect(text).toContain("Match 1");
   });
 
   it("reopens on the groups its rounds store, with nothing at the stage level", async () => {
@@ -1484,7 +1495,7 @@ describe("Settings › Pre-game phase authors every round of a stage at once", (
     });
 
     const text = editor().textContent ?? "";
-    expect(text).toContain("apply to every round of it");
+    expect(text).toContain(en.pickBan.admin.roundsUnknownStageWide);
     expect(text).toContain("Match 1");
     expect(text).not.toContain("Round 1");
   });
@@ -1509,7 +1520,7 @@ describe("Settings › Pre-game phase only guards edits an organizer made", () =
     await click(treeLink("Round 2"));
 
     expect(document.body.textContent).not.toContain("Discard unsaved changes?");
-    expect(editor().textContent).toContain("Group stage — round 2");
+    expect(editor().textContent).toContain("Group stage · round 2");
   });
 
   it("still stops a scope switch that would lose an edit", async () => {
@@ -1523,6 +1534,6 @@ describe("Settings › Pre-game phase only guards edits an organizer made", () =
     await click(treeLink("Round 2"));
 
     expect(document.body.textContent).toContain("Discard unsaved changes?");
-    expect(editor().textContent).toContain("Group stage — round 1");
+    expect(editor().textContent).toContain("Group stage · round 1");
   });
 });

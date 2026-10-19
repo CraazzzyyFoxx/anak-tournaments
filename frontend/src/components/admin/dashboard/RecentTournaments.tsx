@@ -2,23 +2,29 @@
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
-import { ArrowRight, Layers3 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { formatTournamentStages } from "@/lib/tournament/stages";
 import { PermissionHiddenNotice } from "./PermissionHiddenNotice";
-import { tournamentStatus } from "./tournament-status";
 import type { Tournament } from "@/types/tournament.types";
 
 interface RecentTournamentsProps {
   canRead: boolean;
   tournaments: Tournament[];
+  /** The tournament the active card already shows; not listed twice. */
+  excludeId?: number;
 }
 
-export function RecentTournaments({ canRead, tournaments }: Readonly<RecentTournamentsProps>) {
+export function RecentTournaments({ canRead, tournaments, excludeId }: Readonly<RecentTournamentsProps>) {
   const t = useTranslations("adminShell.dashboard");
+  const recent = tournaments.filter((tournament) => tournament.id !== excludeId).slice(0, 6);
+
+  // The only tournament is the one the active card shows: nothing else to list.
+  if (canRead && recent.length === 0 && tournaments.length > 0) return null;
+
   return (
     <Card className="flex flex-1 flex-col">
       <CardHeader>
@@ -43,13 +49,14 @@ export function RecentTournaments({ canRead, tournaments }: Readonly<RecentTourn
       </CardHeader>
       <CardContent className="flex flex-1 flex-col">
         {!canRead ? (
-          <PermissionHiddenNotice title={t("tournamentQueueHidden")} permission="tournament read" />
-        ) : tournaments.length > 0 ? (
+          <PermissionHiddenNotice
+            title={t("tournamentQueueHidden")}
+            description={t("permissionNoticeTournaments")}
+          />
+        ) : recent.length > 0 ? (
           <ul className="divide-y divide-border/50">
-            {tournaments.slice(0, 6).map((tournament) => {
-              const stageCount = tournament.stages?.length ?? 0;
-              const stageList = formatTournamentStages(tournament.stages ?? []) || t("noStagesYet");
-              const status = tournamentStatus(tournament.is_finished);
+            {recent.map((tournament) => {
+              const stageList = formatTournamentStages(tournament.stages ?? []);
 
               return (
                 <li key={tournament.id}>
@@ -60,21 +67,18 @@ export function RecentTournaments({ canRead, tournaments }: Readonly<RecentTourn
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-foreground">{tournament.name}</div>
-                      <div
-                        className="mt-0.5 truncate text-xs text-muted-foreground"
-                        title={stageList}
-                      >
-                        {stageList}
-                      </div>
+                      {stageList ? (
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={stageList}>
+                          {stageList}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
-                        <Layers3 className="size-3" aria-hidden />
-                        {stageCount}
-                        <span className="sr-only"> {t("stageUnit", { count: stageCount })}</span>
-                      </span>
-                      <StatusPill tone={status.tone}>{t(status.label as never)}</StatusPill>
-                    </div>
+                    {/* Most of this list is finished: only a running one is worth a pill. */}
+                    {tournament.is_finished ? null : (
+                      <StatusPill tone="success" className="shrink-0">
+                        {t("active")}
+                      </StatusPill>
+                    )}
                   </HoverPrefetchLink>
                 </li>
               );

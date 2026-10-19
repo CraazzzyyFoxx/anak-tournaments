@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, Download, RotateCcw, Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -75,27 +74,21 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
       <div className="flex flex-wrap gap-2">
         {session.status === "live" && currentPick && (
           <Button variant="outline" onClick={() => setConfirmedAction("autopick")}>
-            <Sparkles className="mr-2 h-4 w-4" aria-hidden />
             {t("actions.autopick")}
           </Button>
         )}
         {resolvedCount > 0 && ["live", "paused", "completed"].includes(session.status) && (
           <Button variant="outline" onClick={() => setConfirmedAction("rollback")}>
-            <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
             {t("actions.rollback")}
           </Button>
         )}
         {["live", "paused", "ready"].includes(session.status) && (
           <Button variant="destructive" onClick={() => setConfirmedAction("cancel")}>
-            <Ban className="mr-2 h-4 w-4" aria-hidden />
             {t("actions.cancel")}
           </Button>
         )}
         {session.status === "completed" && (
-          <Button onClick={() => setConfirmedAction("export")}>
-            <Download className="mr-2 h-4 w-4" aria-hidden />
-            {t("actions.export")}
-          </Button>
+          <Button onClick={() => setConfirmedAction("export")}>{t("actions.export")}</Button>
         )}
       </div>
 

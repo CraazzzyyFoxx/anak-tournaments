@@ -5,12 +5,12 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { MonitorSmartphone, UserCog } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { AccessStatusCell } from "@/components/admin/access/AccessStatusCell";
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { useFormatter } from "@/lib/datetime/client";
 import type { AdminAuthSession } from "@/types/rbac.types";
 
 import { accountsHref, formatDeviceLabel, formatTimestamp } from "./model";
-import { SessionStatusCell } from "./SessionCells";
 
 export function useSessionColumns() {
   const t = useTranslations("adminAccess.common");
@@ -19,31 +19,21 @@ export function useSessionColumns() {
   return useMemo<ColumnDef<AdminAuthSession>[]>(
     () => [
       {
-        accessorKey: "session_id",
-        header: "ID",
-        size: 140,
-        enableSorting: false,
-        cell: ({ row }) => (
-          <span className="block truncate font-mono text-xs" title={row.original.session_id}>
-            {row.original.session_id}
-          </span>
-        )
-      },
-      {
         id: "user",
         header: t("account"),
         enableSorting: false,
-        accessorFn: (row) => row.email ?? row.username ?? `#${row.user_id}`,
+        accessorFn: (row) => row.email ?? row.username ?? t("accountFallback", { id: row.user_id }),
         cell: ({ row }) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
-              {row.original.email ?? t("emailUnavailable")}
+              {row.original.email ??
+                (row.original.username
+                  ? `@${row.original.username}`
+                  : t("accountFallback", { id: row.original.user_id }))}
             </p>
-            <p className="truncate font-mono text-xs text-muted-foreground">
-              {row.original.username
-                ? `@${row.original.username}`
-                : `account #${row.original.user_id}`}
-            </p>
+            {row.original.email && row.original.username ? (
+              <p className="truncate text-caption text-muted-foreground">@{row.original.username}</p>
+            ) : null}
           </div>
         )
       },
@@ -65,14 +55,14 @@ export function useSessionColumns() {
         accessorKey: "status",
         header: t("status"),
         meta: columnMeta<AdminAuthSession>({ align: "center" }),
-        cell: ({ row }) => <SessionStatusCell status={row.original.status} />
+        cell: ({ row }) => <AccessStatusCell status={row.original.status} activePill />
       },
       {
         accessorKey: "login_at",
         header: t("signedIn"),
         cell: ({ row }) => (
           <span className="text-sm tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.login_at, t("unavailable"))}
+            {formatTimestamp(format, row.original.login_at)}
           </span>
         )
       },
@@ -81,13 +71,18 @@ export function useSessionColumns() {
         header: t("lastSeen"),
         cell: ({ row }) => (
           <span className="text-sm tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.last_seen_at, t("unavailable"))}
+            {formatTimestamp(format, row.original.last_seen_at)}
           </span>
         )
       },
       createKebabColumn<AdminAuthSession>(
         (row) => [{ label: t("openAuthAccount"), icon: UserCog, href: accountsHref(row) }],
-        { rowLabel: (row) => `session of ${row.email ?? row.username ?? `#${row.user_id}`}` }
+        {
+          rowLabel: (row) =>
+            t("sessionRowLabel", {
+              account: row.email ?? row.username ?? t("accountFallback", { id: row.user_id })
+            })
+        }
       )
     ],
     [format, t]

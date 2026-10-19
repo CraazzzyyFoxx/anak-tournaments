@@ -112,11 +112,11 @@ function StatusColorPicker({
           >
             <span className="flex min-w-0 items-center gap-3">
               <span
-                className="size-5 shrink-0 rounded-md border border-border shadow-sm"
+                className="size-5 shrink-0 rounded-md border border-border"
                 style={{ backgroundColor: normalizedValue }}
                 aria-hidden
               />
-              <span className="truncate font-mono text-xs uppercase">
+              <span className={cn("truncate text-xs", normalizeHexColor(value) && "font-mono")}>
                 {normalizeHexColor(value) || t("default")}
               </span>
             </span>
@@ -159,7 +159,7 @@ function StatusColorPicker({
           <div className="space-y-2">
             <p className={EYEBROW_CLASS}>{t("custom")}</p>
             <div className="flex items-center gap-2">
-              <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background shadow-sm">
+              <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background">
                 <input
                   type="color"
                   className="size-6 cursor-pointer rounded-md border border-border bg-transparent p-0"
@@ -178,7 +178,7 @@ function StatusColorPicker({
                 value={value}
                 onChange={(event) => onChange(normalizeHexColor(event.target.value))}
                 placeholder="#38bdf8"
-                className="font-mono uppercase"
+                className="font-mono"
               />
             </div>
           </div>
@@ -368,9 +368,7 @@ export function StatusForm({
       ) : null}
       <div className="space-y-2">
         <p className="text-sm font-medium">{t("preview")}</p>
-        <div className="rounded-lg border p-3">
-          <StatusMetaBadge meta={previewMeta} fallbackValue="preview" />
-        </div>
+        <StatusMetaBadge meta={previewMeta} fallbackValue="preview" />
       </div>
     </div>
   );

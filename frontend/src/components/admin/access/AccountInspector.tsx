@@ -11,6 +11,7 @@ import { AccountNotifications } from "@/components/admin/access/AccountNotificat
 import { AccountPermissions } from "@/components/admin/access/AccountPermissions";
 import { AccountRestrictions } from "@/components/admin/access/AccountRestrictions";
 import { AccountRoles } from "@/components/admin/access/AccountRoles";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { rbacService } from "@/services/rbac.service";
@@ -59,9 +60,11 @@ export function AccountInspector({
   const account = accountQuery.data;
   if (!account) {
     return (
-      <p className="text-sm text-muted-foreground">
-        {t("loadError")}
-      </p>
+      <PageStateCard
+        state="error"
+        title={t("loadError")}
+        onAction={() => void accountQuery.refetch()}
+      />
     );
   }
 
@@ -70,11 +73,7 @@ export function AccountInspector({
       <div className="space-y-2">
         <AccountStatusPills account={account} />
         <p className="text-xs tabular-nums text-muted-foreground">
-          {t.rich("summary", {
-            accountId: account.id,
-            date: account.created_at.slice(0, 10),
-            num: (chunks) => <span className="font-mono">#{chunks}</span>
-          })}
+          {t("summary", { accountId: account.id, date: account.created_at.slice(0, 10) })}
         </p>
       </div>
       <AccountRoles userId={account.id} roles={account.roles} canEdit={canAssignRoles} />

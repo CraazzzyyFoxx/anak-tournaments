@@ -1,16 +1,14 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Check, Clipboard, KeyRound, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { DataTable } from "@/components/data-table";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import { ApiKeyQuotaDialog } from "@/components/admin/quota/ApiKeyQuotaDialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
-import { TONE_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,11 +16,9 @@ import {
   fetchAccountApiKeys,
   useRenameAccountApiKey,
   useRevokeAccountApiKey,
-  type AccountApiKeyListResult,
-  type AccountApiKeyStatusCounts
+  type AccountApiKeyListResult
 } from "@/hooks/useAccountApiKeys";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import type { AccountApiKey } from "@/types/auth.types";
 import type { Workspace } from "@/types/workspace.types";
 
@@ -32,8 +28,6 @@ import { getApiKeyStatus } from "./model";
 import { useApiKeyColumns } from "./useApiKeyColumns";
 
 const PAGE_SIZE = 20;
-
-const EMPTY_COUNTS: AccountApiKeyStatusCounts = { total: 0, active: 0, expired: 0, revoked: 0 };
 
 /**
  * Workspace API keys (T2, F15).
@@ -64,7 +58,6 @@ export function ApiKeysBrowser({
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [pendingRevoke, setPendingRevoke] = useState<AccountApiKey | null>(null);
   const [pendingQuota, setPendingQuota] = useState<AccountApiKey | null>(null);
-  const [counts, setCounts] = useState<AccountApiKeyStatusCounts>(EMPTY_COUNTS);
   const [availableScopes, setAvailableScopes] = useState<string[]>([]);
   const secretId = useId();
 
@@ -93,20 +86,8 @@ export function ApiKeysBrowser({
 
   return (
     <div className="space-y-4">
-      <StatTileGrid>
-        <StatTile
-          label={t("totalKeys")}
-          value={counts.total}
-          detail={workspace ? ta("inWorkspace", { workspace: workspace.name }) : undefined}
-          icon={KeyRound}
-        />
-        <StatTile label={t("active")} value={counts.active} tone="success" />
-        <StatTile label={t("expired")} value={counts.expired} tone="neutral" />
-        <StatTile label={t("revoked")} value={counts.revoked} tone="warning" />
-      </StatTileGrid>
-
       {oneTimeKey ? (
-        <div className={cn("rounded-xl border p-3", TONE_CLASS.success)}>
+        <div className="rounded-lg border border-border p-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 flex-1">
               <Label htmlFor={secretId} className="text-sm font-medium text-foreground">
@@ -125,15 +106,9 @@ export function ApiKeysBrowser({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <output className="text-xs text-muted-foreground">
-                {copiedSecret ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Check aria-hidden className="size-3.5" />
-                    {t("copied")}
-                  </span>
-                ) : null}
+                {copiedSecret ? t("copied") : null}
               </output>
               <Button
-                variant="outline"
                 size="sm"
                 aria-label={t("copyApiSecret")}
                 onClick={async () => {
@@ -142,7 +117,6 @@ export function ApiKeysBrowser({
                   notify.success(ta("copied"));
                 }}
               >
-                <Clipboard aria-hidden className="size-4" />
                 {t("copySecret")}
               </Button>
               <Button
@@ -150,6 +124,7 @@ export function ApiKeysBrowser({
                 size="icon"
                 className="size-8"
                 aria-label={t("dismissSecret")}
+                title={t("dismissSecret")}
                 onClick={() => {
                   setOneTimeKey(null);
                   setCopiedSecret(false);
@@ -195,10 +170,12 @@ export function ApiKeysBrowser({
               owt_sk_{row.original.public_id}_…
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {ta("scopeSummary", {
-                status: t(getApiKeyStatus(row.original)),
-                count: row.original.scopes.length
-              })}
+              {[
+                getApiKeyStatus(row.original) === "active" ? null : t(getApiKeyStatus(row.original)),
+                ta("scopeCount", { count: row.original.scopes.length })
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
         )}
@@ -228,7 +205,6 @@ export function ApiKeysBrowser({
           // The table hands back what `queryFn` resolved; only a real listing carries the extras.
           if (!("counts" in page)) return;
           const result = page as AccountApiKeyListResult;
-          setCounts(result.counts);
           // Never let a missing array reach the picker: it reads `.length`
           // first, and an undefined there took the whole admin page down.
           setAvailableScopes(result.available_scopes ?? []);

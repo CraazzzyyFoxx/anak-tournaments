@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, LifeBuoy } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { StatusPill } from "@/components/kit/StatusPill";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import type { RoleOntology } from "@/lib/roster/ontology";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFormatter } from "@/lib/datetime/client";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
@@ -18,15 +17,15 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
 import registrationTeamService from "@/services/registration-team.service";
 
-import { EXPIRY_STAMP, HISTORY_STATES, inviteTone } from "./model";
+import { EXPIRY_STAMP, HISTORY_STATES } from "./model";
 import { RosterMark } from "./TeamRosterStrip";
 
 /**
  * One team's whole invite ledger, organizer side.
  *
- * Collapsed and unfetched until asked for: the chips above already answer the
+ * Collapsed and unfetched until asked for: the roster above already answers the
  * usual question, and this read exists for the rarer one — was that slot
- * refused, or did the link merely lapse. The chips cannot answer it because the
+ * refused, or did the link merely lapse. The roster cannot answer it because the
  * team read returns only LIVE invites (a terminal row there would hold a roster
  * slot open).
  *
@@ -38,17 +37,13 @@ export function TeamInviteHistory({
   tournamentId,
   workspaceId,
   teamId,
-  ontology,
-  meta
+  ontology
 }: Readonly<{
   tournamentId: number;
   workspaceId: number;
   teamId: number;
   /** The tournament's own game's scoped ontology, for the slot glyphs. */
   ontology: RoleOntology | null;
-  /** Rendered on the trigger's own line — a second full-width row for one
-   *  short counter is the kind of thing that made this panel three screens. */
-  meta?: ReactNode;
 }>) {
   const t = useTranslations("registrationTeams");
   const tErr = useTranslations("registrationTeams.errors");
@@ -66,31 +61,25 @@ export function TeamInviteHistory({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="flex items-center justify-between gap-2">
-        {meta}
-        <CollapsibleTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="ml-auto h-6 gap-1 px-1.5 text-caption font-normal text-muted-foreground"
-          >
-            {t("history.toggle")}
-            <ChevronDown
-              aria-hidden
-              className={cn("size-3.5 transition-transform", open && "rotate-180")}
-            />
-          </Button>
-        </CollapsibleTrigger>
-      </div>
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-1.5 text-caption font-normal text-muted-foreground"
+        >
+          {t("history.toggle")}
+          <ChevronDown aria-hidden className={cn("size-3.5", open && "rotate-180")} />
+        </Button>
+      </CollapsibleTrigger>
       <CollapsibleContent className="space-y-1 pt-2">
         {historyQuery.isError ? (
-          <Alert variant="destructive" role="alert">
-            <AlertDescription>
-              {translateRegistrationTeamError(tErr, historyQuery.error, t("admin.loadFailed"))}
-              <Button type="button" variant="outline" size="sm" className="ml-2" disabled={historyQuery.isFetching} onClick={() => void historyQuery.refetch()}>{t("admin.retry")}</Button>
-            </AlertDescription>
-          </Alert>
+          <PageStateCard
+            state="error"
+            className="border-0 bg-transparent py-4"
+            description={translateRegistrationTeamError(tErr, historyQuery.error, t("admin.loadFailed"))}
+            onAction={() => void historyQuery.refetch()}
+          />
         ) : historyQuery.isLoading ? (
           <Skeleton className="h-12 w-full rounded-md" />
         ) : (
@@ -118,9 +107,7 @@ export function TeamInviteHistory({
                   const known = HISTORY_STATES.find((candidate) => candidate === entry.state);
                   return (
                     <li key={entry.id} className="flex flex-wrap items-center gap-2 text-xs">
-                      <StatusPill tone={inviteTone(entry.state)}>
-                        {known ? t(`history.state.${known}`) : entry.state}
-                      </StatusPill>
+                      <span>{known ? t(`history.state.${known}`) : entry.state}</span>
                       {/* The slot is a role, and a role is a glyph here as
                           everywhere else in this feature: spelled out, "Damage"
                           and "Support" doubled the width of every ledger row.

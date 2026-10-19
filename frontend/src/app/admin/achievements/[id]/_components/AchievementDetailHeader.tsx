@@ -1,40 +1,40 @@
 "use client";
 
-import Link from "next/link";
 import { useTranslations } from "next-intl";
-import {
-  ArrowLeft,
-  CheckCircle,
-  CircleOff,
-  Eye,
-  EyeOff,
-  Pencil,
-  Play,
-  TestTube,
-  Trash2
-} from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 
-import { AchievementArt } from "@/components/achievements/AchievementArt";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { StatusIcon } from "@/components/admin/StatusIcon";
+import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Spinner } from "@/components/ui/spinner";
 import type { AchievementRule } from "@/types/admin.types";
 
+/**
+ * The rule's hub header: name, slug, a pill only when the rule is disabled,
+ * Edit as the one primary action and everything else in the menu. The menu
+ * trigger turns into a spinner while a test or an evaluation is running.
+ */
 export function AchievementDetailHeader({
   rule,
   canUpdate,
   canDelete,
-  isEvaluating,
+  isBusy,
   onTest,
   onEvaluate,
   onToggle,
   onEdit,
-  onDelete
+  onDelete,
 }: Readonly<{
   rule: AchievementRule;
   canUpdate: boolean;
   canDelete: boolean;
-  isEvaluating: boolean;
+  isBusy: boolean;
   onTest: () => void;
   onEvaluate: () => void;
   onToggle: () => void;
@@ -43,63 +43,45 @@ export function AchievementDetailHeader({
 }>) {
   const t = useTranslations("adminAchievements");
   return (
-    <div className="flex items-start gap-3">
-      <Button variant="ghost" size="icon" asChild aria-label={t("common.back")}>
-        <Link href="/admin/achievements">
-          <ArrowLeft aria-hidden className="h-4 w-4" />
-        </Link>
-      </Button>
-      <AchievementArt achievement={rule} sizes="48px" className="size-12 shrink-0 rounded-lg border" />
-      <div className="min-w-0 flex-1">
-        <AdminPageHeader
-          title={rule.name}
-          description={rule.slug}
-          meta={
-            rule.enabled ? (
-              <StatusIcon icon={CheckCircle} label={t("common.enabled")} variant="success" />
-            ) : (
-              <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />
-            )
-          }
-          actions={
-            <>
-              <Button variant="outline" size="sm" onClick={onTest}>
-                <TestTube aria-hidden className="mr-2 h-4 w-4" />
-                {t("detail.testConditions")}
+    <EntityHubHeader
+      backHref="/admin/achievements"
+      title={rule.name}
+      status={rule.enabled ? undefined : { label: t("common.disabled"), tone: "neutral" }}
+      meta={[<span key="slug" className="font-mono text-caption">{rule.slug}</span>]}
+      actions={
+        <>
+          {canUpdate && <Button onClick={onEdit}>{t("detail.editAchievement")}</Button>}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t("common.moreActions")}
+                title={t("common.moreActions")}
+              >
+                {isBusy ? <Spinner /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
               </Button>
-              <Button variant="outline" size="sm" onClick={onEvaluate}>
-                <Play
-                  aria-hidden
-                  className={`mr-2 h-4 w-4 ${isEvaluating ? "animate-spin" : ""}`}
-                />
-                {isEvaluating ? t("common.evaluating") : t("detail.runEvaluation")}
-              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onTest}>{t("detail.testConditions")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onEvaluate}>{t("detail.runEvaluation")}</DropdownMenuItem>
               {canUpdate && (
-                <Button variant="outline" size="sm" onClick={onToggle}>
-                  {rule.enabled ? (
-                    <EyeOff aria-hidden className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Eye aria-hidden className="mr-2 h-4 w-4" />
-                  )}
+                <DropdownMenuItem onSelect={onToggle}>
                   {rule.enabled ? t("detail.disableAchievement") : t("detail.enableAchievement")}
-                </Button>
-              )}
-              {canUpdate && (
-                <Button size="sm" onClick={onEdit}>
-                  <Pencil aria-hidden className="mr-2 h-4 w-4" />
-                  {t("detail.editAchievement")}
-                </Button>
+                </DropdownMenuItem>
               )}
               {canDelete && (
-                <Button variant="destructive" size="sm" onClick={onDelete}>
-                  <Trash2 aria-hidden className="mr-2 h-4 w-4" />
-                  {t("detail.deleteAchievement")}
-                </Button>
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={onDelete} className="text-danger focus:text-danger">
+                    {t("detail.deleteAchievement")}
+                  </DropdownMenuItem>
+                </>
               )}
-            </>
-          }
-        />
-      </div>
-    </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      }
+    />
   );
 }

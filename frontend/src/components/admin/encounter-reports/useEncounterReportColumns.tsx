@@ -5,11 +5,9 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
 import { AdminReportPairCell } from "@/components/admin/AdminReportPairCell";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { TONE_TEXT } from "@/components/kit/tone";
+import { ResultStatusPill, encounterStatusKey } from "@/components/admin/encounters/EncounterCells";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { useFormatter } from "@/lib/datetime/client";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import type { AdminCaptainReport, EncounterReportsRow } from "@/types/admin.types";
 import type { ReplayCode, ReportCustomFieldDefinition } from "@/types/encounter.types";
@@ -17,7 +15,7 @@ import type { ReplayCode, ReportCustomFieldDefinition } from "@/types/encounter.
 import { reportOf, scoreline } from "@/lib/encounter/reports";
 import { seatsBySlot } from "@/lib/encounter/seats";
 
-import { DASH, fmtDate, replayCodesText, submittedAt } from "./report-model";
+import { fmtDate, replayCodesText, submittedAt } from "./report-model";
 
 /**
  * One field of every seat's report, in slot order.
@@ -44,7 +42,7 @@ function SeatsCell({
 
 /**
  * A column reading one string off each seat's report (`seatIds` is the slot
- * order of the row's seats), blank rendered as an em dash.
+ * order of the row's seats); a blank answer leaves the line empty.
  */
 function sidesColumn(
   id: string,
@@ -71,7 +69,7 @@ function sidesColumn(
             return {
               slot: seat.slot,
               name: seat.name,
-              value: <span title={text || undefined}>{text || DASH}</span>
+              value: <span title={text || undefined}>{text}</span>
             };
           })}
         />
@@ -100,6 +98,7 @@ export function useEncounterReportColumns({
 }>): ColumnDef<EncounterReportsRow>[] {
   const format: DateFormatter = useFormatter();
   const t = useTranslations("adminMatches.reports");
+  const encounterT = useTranslations("adminMatches.encounters");
 
   return useMemo<ColumnDef<EncounterReportsRow>[]>(
     () => [
@@ -139,7 +138,11 @@ export function useEncounterReportColumns({
               .join(` ${t("vs")} `)}
           </p>
         ),
-        meta: columnMeta<EncounterReportsRow>({ category: "core" })
+        meta: columnMeta<EncounterReportsRow>({
+          category: "core",
+          // The encounter name already reads "A vs B"; the recorded seats are the second question.
+          defaultHidden: true
+        })
       },
       {
         id: "reports",
@@ -151,7 +154,6 @@ export function useEncounterReportColumns({
             participations={row.original.participations}
             reports={row.original.reports}
             standingsMatch={row.original.standings_match}
-            seriesScoreValid={row.original.series_score_valid}
           />
         ),
         meta: columnMeta<EncounterReportsRow>({ category: "core" })
@@ -173,13 +175,11 @@ export function useEncounterReportColumns({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="space-y-1">
-            <StatusPill tone={row.original.result_status === "disputed" ? "danger" : "neutral"}>
-              {row.original.result_status}
-            </StatusPill>
+            <ResultStatusPill status={row.original.result_status} />
             {row.original.last_resolution ? (
               <p className="text-xs text-muted-foreground">
                 {t("resolutionBy", {
-                  action: row.original.last_resolution.action,
+                  action: t(`actions.${row.original.last_resolution.action}`),
                   actor: row.original.last_resolution.actor_name ?? t("automatedProcess")
                 })}
               </p>
@@ -253,25 +253,13 @@ export function useEncounterReportColumns({
         className: "min-w-[200px] max-w-[280px]"
       }),
       {
-        id: "series_score_valid",
-        header: t("seriesCheck"),
-        enableSorting: false,
-        cell: ({ row }) =>
-          row.original.series_score_valid ? (
-            <span className="text-xs text-muted-foreground">{t("ok")}</span>
-          ) : (
-            // Advisory, not an error: reports predate per-round best-of.
-            <span className={cn("text-xs", TONE_TEXT.warning)} title={t("outsideBoTitle")}>
-              {t("outsideBo")}
-            </span>
-          ),
-        meta: columnMeta<EncounterReportsRow>({ category: "meta", defaultHidden: true })
-      },
-      {
         id: "status",
         header: t("status"),
         enableSorting: false,
-        cell: ({ row }) => <span className="text-xs">{row.original.status}</span>,
+        cell: ({ row }) => {
+          const status = encounterStatusKey(row.original.status);
+          return status ? <span className="text-xs">{encounterT(status)}</span> : null;
+        },
         meta: columnMeta<EncounterReportsRow>({ category: "meta", defaultHidden: true })
       },
       {
@@ -332,12 +320,12 @@ export function useEncounterReportColumns({
         enableSorting: false,
         cell: ({ row }) => {
           const resolution = row.original.last_resolution;
-          if (!resolution) return <span className="text-xs text-muted-foreground">{DASH}</span>;
+          if (!resolution) return null;
           return (
             <div className="text-xs">
               <p className="truncate">
                 {t("resolutionBy", {
-                  action: resolution.action,
+                  action: t(`actions.${resolution.action}`),
                   actor: resolution.actor_name ?? t("automatedProcess")
                 })}
               </p>
@@ -354,7 +342,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "encounter_id",
-        header: "ID",
+        header: t("encounterId"),
         enableSorting: false,
         cell: ({ row }) => <span className="text-xs tabular-nums">{row.original.id}</span>,
         meta: columnMeta<EncounterReportsRow>({
@@ -380,6 +368,6 @@ export function useEncounterReportColumns({
         )
       )
     ],
-        [showTournament, customFields, format, t]
+    [showTournament, customFields, format, t, encounterT]
   );
 }

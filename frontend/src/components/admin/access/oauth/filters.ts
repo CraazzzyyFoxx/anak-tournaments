@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { PROVIDER_META } from "@/components/admin/OAuthProviderBadge";
+import { PROVIDER_META } from "@/components/admin/OAuthProviderMark";
 import type { FilterDef } from "@/components/kit/useFilters";
 import type { OAuthProvider } from "@/types/rbac.types";
 

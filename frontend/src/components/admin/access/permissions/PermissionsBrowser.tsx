@@ -92,7 +92,6 @@ export function PermissionsBrowser() {
         openId={openRow ? openId : null}
         onClose={() => setParams({ id: null })}
         title={openRow ? openRow.name : ""}
-        subtitle={openRow ? `${openRow.resource} · ${openRow.action}` : undefined}
         onPrev={openIndex > 0 ? () => setParams({ id: String(rows[openIndex - 1].id) }) : undefined}
         onNext={
           openIndex >= 0 && openIndex < rows.length - 1

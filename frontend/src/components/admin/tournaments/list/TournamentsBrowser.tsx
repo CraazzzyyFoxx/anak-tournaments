@@ -1,37 +1,46 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { DataTable } from "@/components/data-table";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
+import { FilterBar } from "@/components/kit/FilterBar";
+import { useFilters, type FilterDef } from "@/components/kit/useFilters";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { notify } from "@/lib/notify";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
 import type { Tournament } from "@/types/tournament.types";
 import { usePermissions } from "@/hooks/usePermissions";
-import { paginateResults, sortArray } from "@/lib/api/paginate-results";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 import { useTournamentColumns } from "./useTournamentColumns";
 
+/** The lifecycle chip: which rows each option keeps. */
+const LIFECYCLE = {
+  live: (tournament: Tournament) => tournament.status === "live" || tournament.status === "playoffs",
+  registration: (tournament: Tournament) =>
+    tournament.status === "registration" || tournament.status === "check_in",
+  unpublished: (tournament: Tournament) => tournament.is_hidden,
+  finished: (tournament: Tournament) =>
+    tournament.is_finished || tournament.status === "completed" || tournament.status === "archived"
+} as const;
+type Lifecycle = keyof typeof LIFECYCLE;
+const LIFECYCLE_KEYS = Object.keys(LIFECYCLE) as Lifecycle[];
+
+function isLifecycle(value: string): value is Lifecycle {
+  return value in LIFECYCLE;
+}
+
 /**
- * Every tournament in the workspace. A row opens the tournament hub, except an
- * unpublished one with no stages yet, which is a wizard left half-way: that one
- * asks whether to resume the wizard or open the hub anyway.
+ * Every tournament in the workspace (T2). A row opens the hub; there is no
+ * Inspector because the hub is one click away and says everything a panel
+ * would. A stage-less unpublished draft also offers "Resume in wizard" in its
+ * menu, which hands the id to the wizard's own resume prompt.
  */
 export function TournamentsBrowser() {
   const t = useTranslations("adminTournaments.list");
@@ -39,110 +48,83 @@ export function TournamentsBrowser() {
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const canCreate = canAccessPermission("tournament.create", currentWorkspaceId);
   const canDelete = canAccessPermission("tournament.delete", currentWorkspaceId);
 
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-  const [draftPromptTournament, setDraftPromptTournament] = useState<Tournament | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Tournament | null>(null);
+
+  const tournamentsQuery = useQuery({
+    queryKey: tournamentQueryKeys.list(),
+    queryFn: () => tournamentService.getAll(null)
+  });
+  const tournaments = useMemo(() => tournamentsQuery.data?.results ?? [], [tournamentsQuery.data]);
+
+  const defs = useMemo<FilterDef[]>(
+    () => [
+      {
+        key: "status",
+        label: t("columns.status"),
+        kind: "single",
+        options: LIFECYCLE_KEYS.map((key) => ({
+          value: key,
+          label: t(`status.${key}`),
+          count: tournaments.filter(LIFECYCLE[key]).length
+        }))
+      }
+    ],
+    [t, tournaments]
+  );
+  const filters = useFilters(defs);
+  const lifecycle = String(filters.values.status ?? "");
+  const rows = isLifecycle(lifecycle) ? tournaments.filter(LIFECYCLE[lifecycle]) : tournaments;
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => adminService.deleteTournament(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.list() });
-      setDeleteDialogOpen(false);
-      setSelectedTournament(null);
+      setPendingDelete(null);
       notify.success(t("deleted"));
     }
   });
 
-  const handleDelete = useCallback((tournament: Tournament) => {
-    setSelectedTournament(tournament);
-    setDeleteDialogOpen(true);
-  }, []);
+  const columns = useTournamentColumns({
+    canCreate,
+    canDelete,
+    onDelete: useCallback((tournament: Tournament) => setPendingDelete(tournament), [])
+  });
 
-  const handleConfirmDelete = () => {
-    if (selectedTournament) {
-      deleteMutation.mutate(selectedTournament.id);
-    }
-  };
-
-  const handleRowClick = (tournament: Tournament) => {
-    if (tournament.is_hidden && (tournament.stages ?? []).length === 0) {
-      setDraftPromptTournament(tournament);
-      return;
-    }
-    router.push(`/admin/tournaments/${tournament.id}`);
-  };
-
-  const columns = useTournamentColumns({ canDelete, onDelete: handleDelete });
+  if (tournamentsQuery.isError) {
+    return <PageStateCard state="error" onAction={() => void tournamentsQuery.refetch()} />;
+  }
 
   return (
     <>
-      <DataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => [
-          "tournaments",
-          page,
-          search,
-          pageSize,
-          sortField,
-          sortDir
-        ]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          tournamentService.getAll(null).then((data) => {
-            const filtered = search
-              ? data.results.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
-              : data.results;
-            return { ...paginateResults(sortArray(filtered, sortField, sortDir), page, pageSize) };
-          })
-        }
+      <DataTable<Tournament>
+        rows={rows}
+        isLoading={tournamentsQuery.isLoading}
         columns={columns}
+        getRowId={(tournament) => String(tournament.id)}
         searchPlaceholder={t("searchPlaceholder")}
+        filterKey={filters.filterKey}
+        toolbar={<FilterBar defs={defs} filters={filters} />}
         emptyMessage={t("empty")}
-        onRowClick={(row) => handleRowClick(row.original)}
+        onRowClick={(row) => router.push(`/admin/tournaments/${row.original.id}`)}
       />
 
-      {/* Draft resume prompt */}
-      <AlertDialog
-        open={draftPromptTournament !== null}
-        onOpenChange={(open) => {
-          if (!open) setDraftPromptTournament(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("resumeTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("resumeDescription", { name: draftPromptTournament?.name ?? "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                if (draftPromptTournament) {
-                  router.push(`/admin/tournaments/${draftPromptTournament.id}`);
-                }
-              }}
-            >
-              {t("openHub")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => router.push("/admin/tournaments/new")}>
-              {t("resumeWizard")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Delete Dialog */}
       {canDelete ? (
         <ConfirmDialog
-          open={deleteDialogOpen}
-          onOpenChange={setDeleteDialogOpen}
-          onConfirm={handleConfirmDelete}
+          open={pendingDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDelete(null);
+          }}
+          onConfirm={() => {
+            if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
+          }}
           pending={deleteMutation.isPending}
           intent={{
             title: t("deleteTitle"),
-            description: t("deleteDescription", { name: selectedTournament?.name ?? "" }),
-            confirmLabel: deleteMutation.isPending ? t("deleting") : t("delete"),
+            description: t("deleteDescription", { name: pendingDelete?.name ?? "" }),
+            confirmLabel: t("delete"),
             tone: "danger",
             cascade: [
               t("cascade.stages"),

@@ -3,12 +3,14 @@
 import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ChevronDown, History } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { AdminReportPairCell } from "@/components/admin/AdminReportPairCell";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { InspectorSection } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +21,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow, EncounterSetResultInput } from "@/types/admin.types";
@@ -38,7 +42,6 @@ import { seatsBySlot } from "@/lib/encounter/seats";
  * stores — the two must not drift.
  */
 type Mode = string;
-const BEST_OF_LABEL = "BO";
 
 export interface ResolveResultDialogProps {
   row: EncounterReportsRow | null;
@@ -64,6 +67,7 @@ export function ResolveResultDialog({
   onResolved
 }: Readonly<ResolveResultDialogProps>) {
   const t = useTranslations("adminTournaments.resolve");
+  const tActions = useTranslations("adminMatches.reports.actions");
   const format = useFormatter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
@@ -123,7 +127,11 @@ export function ResolveResultDialog({
           <DialogHeader>
             <DialogTitle>{isConfirmed ? t("confirmed") : t("resolve")}</DialogTitle>
             <DialogDescription>
-              {row.name} {"·"} {row.stage_name ?? t("unassigned")} {"·"} {BEST_OF_LABEL}{row.best_of}
+              {t("description", {
+                name: row.name,
+                stage: row.stage_name ?? t("unassigned"),
+                bestOf: row.best_of
+              })}
             </DialogDescription>
           </DialogHeader>
 
@@ -135,9 +143,8 @@ export function ResolveResultDialog({
           />
 
           {row.replay_codes.length > 0 ? (
-            <div className="rounded-lg border border-border/60 p-3">
-              <p className={EYEBROW_CLASS}>{t("replayCodes")}</p>
-              <ul className="mt-2 space-y-1">
+            <InspectorSection title={t("replayCodes")}>
+              <ul className="space-y-1">
                 {row.replay_codes.map((entry) => (
                   <li
                     key={`${entry.position}-${entry.encounter_team_id}`}
@@ -155,7 +162,7 @@ export function ResolveResultDialog({
                   </li>
                 ))}
               </ul>
-            </div>
+            </InspectorSection>
           ) : null}
 
           {isConfirmed ? (
@@ -167,7 +174,6 @@ export function ResolveResultDialog({
                 value={reopenReason}
                 maxLength={500}
                 onChange={(event) => setReopenReason(event.target.value)}
-                placeholder={t("reopenReasonPlaceholder")}
               />
             </div>
           ) : (
@@ -182,52 +188,50 @@ export function ResolveResultDialog({
             />
           )}
 
-          <div className="rounded-lg border border-border/60">
-            <button
-              type="button"
-              className={cn(EYEBROW_CLASS, "flex w-full items-center gap-2 p-2 text-left")}
-              aria-expanded={historyOpen}
-              onClick={() => setHistoryOpen((current) => !current)}
-            >
-              <History className="size-3.5" aria-hidden />
-              {t("history")}
-              <ChevronDown
-                className={`ml-auto size-3.5 transition-transform ${historyOpen ? "rotate-180" : ""}`}
-                aria-hidden
-              />
-            </button>
-            {historyOpen ? (
-              <div className="border-t border-border/60 p-2">
-                {auditQuery.isLoading ? (
-                  <p className="text-xs text-muted-foreground">{t("loading")}</p>
-                ) : (auditQuery.data?.length ?? 0) === 0 ? (
+          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} asChild>
+            <section className="border-t border-border/60 pt-3">
+              <h3>
+                <CollapsibleTrigger
+                  className={cn(
+                    EYEBROW_CLASS,
+                    "group flex w-full items-center gap-1.5 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  )}
+                >
+                  <ChevronRight aria-hidden className="size-3.5 group-data-[state=open]:rotate-90" />
+                  {t("history")}
+                </CollapsibleTrigger>
+              </h3>
+              <CollapsibleContent className="mt-2">
+                {auditQuery.isPending ? (
+                  <Skeleton className="h-4 w-full" />
+                ) : auditQuery.isError ? (
+                  <PageStateCard state="error" onAction={() => void auditQuery.refetch()} />
+                ) : auditQuery.data.length === 0 ? (
                   // Encounters that predate the audit trail have nothing to
                   // show; saying so beats an empty box that reads as a failure.
                   <p className="text-xs text-muted-foreground">{t("noChanges")}</p>
                 ) : (
                   <ul className="space-y-1">
-                    {auditQuery.data!.map((entry) => (
+                    {auditQuery.data.map((entry) => (
                       <li key={entry.id} className="text-xs text-muted-foreground">
                         {t.rich("historyEntry", {
-                          actionText: entry.action,
+                          actionText: tActions(entry.action),
+                          actor: entry.actor_name ?? t("automatedProcess"),
+                          standing: scoreline(entry.after, seatIds),
+                          when: format.dateTime(new Date(entry.created_at), {
+                            dateStyle: "medium",
+                            timeStyle: "short"
+                          }),
                           action: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
-                          actor: entry.actor_name ?? t("automatedProcess")
-                        })} {"·"} {" "}
-                        <span className="font-mono tabular-nums">
-                          {scoreline(entry.after, seatIds)}
-                        </span>{" "}
-                        {"·"} {" "}
-                        {format.dateTime(new Date(entry.created_at), {
-                          dateStyle: "medium",
-                          timeStyle: "short"
+                          score: (chunks) => <span className="tabular-nums">{chunks}</span>
                         })}
                       </li>
                     ))}
                   </ul>
                 )}
-              </div>
-            ) : null}
-          </div>
+              </CollapsibleContent>
+            </section>
+          </Collapsible>
 
           {isConfirmed ? (
             <DialogFooter>
@@ -400,7 +404,7 @@ function ResolveForm({
               >
                 <span>{option.label}</span>
                 {option.detail ? (
-                  <span className="font-mono text-xs text-muted-foreground">{option.detail}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{option.detail}</span>
                 ) : null}
               </Label>
             </div>
@@ -449,7 +453,6 @@ function ResolveForm({
             value={reason}
             maxLength={500}
             onChange={(event) => setReason(event.target.value)}
-            placeholder={t("reasonPlaceholder")}
           />
           <p className="text-xs text-muted-foreground">{t("reasonHelp")}</p>
         </div>
@@ -461,7 +464,7 @@ function ResolveForm({
             {t.rich("willRecordScore", {
               standing: preview.join(" \u2013 "),
               score: (chunks) => (
-                <span className="font-mono font-semibold tabular-nums">{chunks}</span>
+                <span className="font-semibold tabular-nums">{chunks}</span>
               )
             })}
           </>

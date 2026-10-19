@@ -4,7 +4,7 @@
 //  1. adding a domain surfaces the DNS records to copy — the domain is not
 //     live until a resolver can see them, so the records ARE the next step;
 //  2. a pending domain re-checks DNS on its own, without anyone pressing
-//     "Verify now", and flips to "Verified · live" when the check passes;
+//     "Verify now", and moves the stepper to "Verified" when the check passes;
 //  3. removing a live domain goes through a confirmation: it takes the
 //     workspace off its own address, which no misclick should be able to do.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -208,7 +208,6 @@ describe("Workspace settings › Domain", () => {
 
     // Nobody pressed "Verify now": the pending state polls by itself.
     expect(verifyCustomDomain).toHaveBeenCalledWith(7);
-    expect(container.textContent).toContain("Verified · live");
     expect(container.querySelector('[aria-current="step"]')?.textContent).toContain("Verified");
     expect(domainInput().disabled).toBe(true);
   });

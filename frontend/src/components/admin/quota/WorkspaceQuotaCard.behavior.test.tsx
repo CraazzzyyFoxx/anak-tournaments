@@ -184,4 +184,31 @@ describe("WorkspaceQuotaCard", () => {
       "session"
     ]);
   });
+
+  it("saves every changed scope, hidden tab included, from one bar", async () => {
+    await render();
+
+    const [workspaceHeavy, , sessionHeavy] = fields("heavy_per_day");
+    await act(async () => {
+      setValue.call(workspaceHeavy, "120");
+      workspaceHeavy.dispatchEvent(new Event("input", { bubbles: true }));
+      setValue.call(sessionHeavy, "40");
+      sessionHeavy.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const bar = document.body.querySelector<HTMLElement>(
+      `[role="region"][aria-label="${en.admin.saveBar.unsavedChanges}"]`
+    );
+    expect(bar?.textContent).toContain("Workspace, Session");
+    const save = [...bar!.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes(en.quota.save)
+    );
+    await act(async () => save!.click());
+    await settle();
+
+    const written = (vi.mocked(fetch).mock.calls as [string, RequestInit | undefined][])
+      .filter(([, init]) => init?.method === "POST")
+      .map(([, init]) => JSON.parse(init!.body as string).scope);
+    expect(written).toEqual(["workspace", "session"]);
+  });
 });

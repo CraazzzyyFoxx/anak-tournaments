@@ -1,26 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
-import { Button } from "@/components/ui/button";
+import {
+  useScopedSettingsForm,
+  type ScopedSettingsForm
+} from "@/components/kit/useScopedSettingsForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import { notificationQueryKeys } from "@/lib/notifications/query-keys";
-import { notify } from "@/lib/notify";
 import notificationService from "@/services/notification.service";
-import type { NotificationWorkspaceConfigUpdate } from "@/types/notification.types";
+import type {
+  NotificationWorkspaceConfig,
+  NotificationWorkspaceConfigUpdate
+} from "@/types/notification.types";
 import { announcementFailure } from "./errors";
 
 /**
@@ -37,114 +38,152 @@ const KIND_MESSAGE_KEYS: Record<
   "encounter.scheduled": "encounterScheduled"
 };
 
-const LOCALES = [
-  { value: "ru" },
-  { value: "en" }
-] as const;
+/** The fields that differ from the stored config; their count is the save bar's summary. */
+function announcementDiff(
+  form: NotificationWorkspaceConfigUpdate,
+  base: NotificationWorkspaceConfigUpdate
+): Partial<NotificationWorkspaceConfigUpdate> {
+  const diff: Partial<NotificationWorkspaceConfigUpdate> = {};
+  if (form.discord_channel_id !== base.discord_channel_id) {
+    diff.discord_channel_id = form.discord_channel_id;
+  }
+  if (form.locale !== base.locale) diff.locale = form.locale;
+  const kindsChanged =
+    form.broadcast_kinds.length !== base.broadcast_kinds.length ||
+    form.broadcast_kinds.some((kind) => !base.broadcast_kinds.includes(kind));
+  if (kindsChanged) diff.broadcast_kinds = form.broadcast_kinds;
+  return diff;
+}
+
+/** The announcement draft the Discord section's `SaveBar` saves, plus its read. */
+export interface AnnouncementsForm
+  extends ScopedSettingsForm<
+    NotificationWorkspaceConfigUpdate,
+    Partial<NotificationWorkspaceConfigUpdate>
+  > {
+  query: UseQueryResult<NotificationWorkspaceConfig>;
+  /** Why the last save was refused, in the organiser's words. */
+  error: string | null;
+}
 
 /**
- * Where tournament events are announced, which of them, and in what language.
+ * Draft of where tournament events are announced, which of them, and in what
+ * language; saved through the Discord section's one `SaveBar`.
  *
- * Saves on every change like the rest of this page: each field stands on its
- * own, and a draft-and-save bar beside controls that save instantly is how an
- * edit gets left behind. The body is always all three fields, because that is
- * what the RPC takes.
+ * The RPC takes all three fields, so a save sends the whole draft, not the
+ * diff. A refusal is kept as `error`, because a guild unlinked since the page
+ * loaded and Discord being down are different fixes.
  */
-export function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
+export function useAnnouncementsForm(
+  workspaceId: number | null,
+  enabled: boolean
+): AnnouncementsForm {
   const t = useTranslations("adminWorkspace.workspaceSettings.discord");
-  const contentT = useTranslations("adminWorkspace.content.fields");
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const configQuery = useQuery({
-    queryKey: notificationQueryKeys.workspaceConfig(workspaceId),
-    queryFn: () => notificationService.workspaceConfig(workspaceId)
+  const query = useQuery({
+    queryKey: notificationQueryKeys.workspaceConfig(workspaceId ?? 0),
+    queryFn: () => notificationService.workspaceConfig(workspaceId as number),
+    enabled: enabled && workspaceId !== null
   });
-  const config = configQuery.data;
+  const config = query.data;
+  const baseline = useMemo<NotificationWorkspaceConfigUpdate | null>(
+    () =>
+      config
+        ? {
+            discord_channel_id: config.discord_channel_id,
+            locale: config.locale,
+            broadcast_kinds: config.broadcast_kinds
+          }
+        : null,
+    [config]
+  );
 
-  const save = useMutation({
-    mutationFn: (body: NotificationWorkspaceConfigUpdate) =>
-      notificationService.updateWorkspaceConfig(workspaceId, body),
-    onSuccess: (saved) => {
-      setError(null);
-      queryClient.setQueryData(notificationQueryKeys.workspaceConfig(workspaceId), saved);
-      notify.success(t("saved"));
-    },
-    onError: (cause) => {
-      setError(announcementFailure(cause, t));
-      notify.apiError(cause, { title: t("saveAnnouncementError") });
+  const form = useScopedSettingsForm({
+    baseline,
+    toPayload: announcementDiff,
+    submit: async (_diff, values) => {
+      try {
+        const saved = await notificationService.updateWorkspaceConfig(workspaceId as number, values);
+        setError(null);
+        queryClient.setQueryData(notificationQueryKeys.workspaceConfig(workspaceId as number), saved);
+      } catch (cause) {
+        setError(announcementFailure(cause, t));
+        throw cause;
+      }
     }
   });
 
-  const update = (partial: Partial<NotificationWorkspaceConfigUpdate>) => {
-    if (!config) return;
-    save.mutate({
-      discord_channel_id: config.discord_channel_id,
-      locale: config.locale,
-      broadcast_kinds: config.broadcast_kinds,
-      ...partial
-    });
-  };
+  return { ...form, query, error };
+}
+
+export function AnnouncementsCard({
+  workspaceId,
+  announcements
+}: Readonly<{ workspaceId: number; announcements: AnnouncementsForm }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
+  const contentT = useTranslations("adminWorkspace.content.fields");
+  const { query, form: values, patch, saving, error } = announcements;
+  const kinds = query.data?.broadcastable_kinds ?? [];
+
+  if (query.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title={t("announcementLoadError")}
+        onAction={() => void query.refetch()}
+      />
+    );
+  }
 
   return (
     <Card id="announcements">
       <CardContent className="pt-6">
         <SettingGroup title={t("announcements")}>
-          {!config ? (
-            <p className="py-2 text-sm text-muted-foreground">
-              {configQuery.isError ? t("announcementLoadError") : t("announcementLoading")}
-            </p>
+          {!values ? (
+            <div aria-busy="true" className="flex flex-col gap-4 py-2">
+              <span className="sr-only">{t("announcementLoading")}</span>
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="grid gap-3 md:grid-cols-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+              ))}
+            </div>
           ) : (
             <>
-              <SettingRow
-                label={t("channel")}
-                hint={t("channelHint")}
-              >
-                <div className="flex w-full items-center gap-2 md:max-w-sm">
-                  <div className="min-w-0 flex-1">
-                    <DiscordChannelSelect
-                      workspaceId={workspaceId}
-                      // The picker has no null: "" is its no-channel value.
-                      value={config.discord_channel_id ?? ""}
-                      onChange={(next) => update({ discord_channel_id: next === "" ? null : next })}
-                      disabled={save.isPending}
-                      ariaLabel={t("announcementChannelAria")}
-                      placeholder={t("noChannel")}
-                    />
-                  </div>
-                  {config.discord_channel_id ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={save.isPending}
-                      onClick={() => update({ discord_channel_id: null })}
-                    >
-                      {t("unlink")}
-                    </Button>
-                  ) : null}
+              <SettingRow label={t("channel")} hint={t("channelHint")}>
+                <div className="w-full md:max-w-sm">
+                  <DiscordChannelSelect
+                    workspaceId={workspaceId}
+                    // The picker has no null: "" is its no-channel value.
+                    value={values.discord_channel_id ?? ""}
+                    onChange={(next) => patch({ discord_channel_id: next === "" ? null : next })}
+                    disabled={saving}
+                    ariaLabel={t("announcementChannelAria")}
+                    placeholder={t("noChannel")}
+                    noneLabel={t("noChannel")}
+                  />
                 </div>
               </SettingRow>
 
-              <SettingRow
-                label={t("events")}
-                hint={t("eventsHint")}
-              >
+              <SettingRow label={t("events")} hint={t("eventsHint")}>
                 <div className="flex flex-col gap-2">
-                  {config.broadcastable_kinds.map((kind) => {
+                  {kinds.map((kind) => {
                     const id = `broadcast-${kind}`;
-                    const checked = config.broadcast_kinds.includes(kind);
+                    const checked = values.broadcast_kinds.includes(kind);
                     return (
                       <div key={kind} className="flex items-center gap-2">
                         <Checkbox
                           id={id}
                           checked={checked}
-                          disabled={save.isPending}
+                          disabled={saving}
                           onCheckedChange={(next) =>
-                            update({
+                            patch({
                               broadcast_kinds:
                                 next === true
-                                  ? [...config.broadcast_kinds, kind]
-                                  : config.broadcast_kinds.filter((entry) => entry !== kind)
+                                  ? [...values.broadcast_kinds, kind]
+                                  : values.broadcast_kinds.filter((entry) => entry !== kind)
                             })
                           }
                         />
@@ -157,27 +196,20 @@ export function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: numbe
                 </div>
               </SettingRow>
 
-              <SettingRow
-                htmlFor="announcement-locale"
-                label={t("language")}
-                hint={t("languageHint")}
-              >
-                <Select
-                  value={config.locale}
-                  onValueChange={(next) => update({ locale: next as "ru" | "en" })}
-                  disabled={save.isPending}
+              <SettingRow label={t("language")} hint={t("languageHint")}>
+                <ToggleGroup
+                  type="single"
+                  value={values.locale}
+                  onValueChange={(next) => patch({ locale: next as "ru" | "en" })}
+                  aria-label={t("language")}
                 >
-                  <SelectTrigger id="announcement-locale" className="w-full md:w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LOCALES.map((locale) => (
-                      <SelectItem key={locale.value} value={locale.value}>
-                        {locale.value === "ru" ? t("russian") : t("english")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <ToggleGroupItem value="ru" disabled={saving}>
+                    {t("russian")}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="en" disabled={saving}>
+                    {t("english")}
+                  </ToggleGroupItem>
+                </ToggleGroup>
               </SettingRow>
             </>
           )}

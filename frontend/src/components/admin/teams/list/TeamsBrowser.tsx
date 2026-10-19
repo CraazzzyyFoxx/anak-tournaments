@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -58,7 +58,6 @@ export function TeamsBrowser() {
   const [pageRows, setPageRows] = useState<Team[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Team | null>(null);
-  const createHintId = useId();
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.list(),
@@ -94,11 +93,6 @@ export function TeamsBrowser() {
     }
   });
 
-  const createBlockedReason =
-    canCreateTeam && selectedTournamentId == null
-      ? t("pickTournament")
-      : null;
-
   const columns = useTeamColumns({ canDelete: canDeleteTeam, onDelete: setPendingDelete });
 
   const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
@@ -122,23 +116,13 @@ export function TeamsBrowser() {
                 defs={defs}
                 filters={filters}
                 trailing={
-                  canCreateTeam ? (
-                    <>
-                      {createBlockedReason ? (
-                        <span id={createHintId} className="text-sm text-muted-foreground">
-                          {createBlockedReason}
-                        </span>
-                      ) : null}
-                      <Button
-                        size="sm"
-                        onClick={() => setCreateDialogOpen(true)}
-                        disabled={createBlockedReason != null}
-                        aria-describedby={createBlockedReason ? createHintId : undefined}
-                      >
-                        <Plus className="size-4" aria-hidden />
-                        {t("create")}
-                      </Button>
-                    </>
+                  // A team belongs to one tournament, so the action exists only
+                  // once the list is scoped to one.
+                  canCreateTeam && selectedTournamentId != null ? (
+                    <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+                      <Plus className="size-4" aria-hidden />
+                      {t("create")}
+                    </Button>
                   ) : null
                 }
               />
@@ -159,7 +143,7 @@ export function TeamsBrowser() {
                   {t.rich("mobileSummary", {
                     count: row.original.players?.length ?? 0,
                     avgSr: row.original.avg_sr.toFixed(0),
-                    num: (chunks) => <span className="font-mono tabular-nums">{chunks}</span>
+                    num: (chunks) => <span className="tabular-nums">{chunks}</span>
                   })}
                 </p>
               </div>
@@ -191,7 +175,6 @@ export function TeamsBrowser() {
           openId={openRow ? openId : null}
           onClose={() => setParams({ id: null })}
           title={openRow?.name ?? ""}
-          subtitle={openRow?.tournament?.name ?? undefined}
           openHref={openRow ? `/admin/teams/${openRow.id}` : undefined}
           onPrev={
             openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined

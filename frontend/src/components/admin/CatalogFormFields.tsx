@@ -18,21 +18,14 @@ interface CatalogNameFieldProps {
   id: string;
   value: string | undefined;
   onChange: (value: string) => void;
-  placeholder: string;
 }
 
-export function CatalogNameField({ id, value, onChange, placeholder }: Readonly<CatalogNameFieldProps>) {
+export function CatalogNameField({ id, value, onChange }: Readonly<CatalogNameFieldProps>) {
   const t = useTranslations("adminWorkspace.content.fields");
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{t("name")}</Label>
-      <Input
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required
-      />
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} required />
     </div>
   );
 }
@@ -41,18 +34,11 @@ interface CatalogAliasesFieldProps {
   id: string;
   aliases: string[] | undefined;
   onChange: (aliases: string[]) => void;
-  placeholder: string;
   /** Helper copy under the textarea — a plain sentence or a richer fragment. */
   helperText: ReactNode;
 }
 
-export function CatalogAliasesField({
-  id,
-  aliases,
-  onChange,
-  placeholder,
-  helperText,
-}: Readonly<CatalogAliasesFieldProps>) {
+export function CatalogAliasesField({ id, aliases, onChange, helperText }: Readonly<CatalogAliasesFieldProps>) {
   const t = useTranslations("adminWorkspace.content.fields");
   return (
     <div className="space-y-2">
@@ -61,9 +47,7 @@ export function CatalogAliasesField({
         id={id}
         value={formatAliasesInput(aliases ?? [])}
         onChange={(e) => onChange(parseAliasesInput(e.target.value))}
-        placeholder={placeholder}
         rows={5}
-        className="font-mono text-xs"
       />
       <p className="text-xs text-muted-foreground">{helperText}</p>
     </div>

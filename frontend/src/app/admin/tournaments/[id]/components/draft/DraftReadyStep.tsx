@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowUpRight, CheckCircle2, Play, ShieldAlert } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { StatusPill } from "@/components/kit/StatusPill";
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
-import { TONE_CLASS } from "@/components/kit/tone";
-import { cn } from "@/lib/utils";
 import type { DraftFeasibility, DraftSession } from "@/types/draft.types";
+
+import { DraftFacts } from "./DraftFacts";
 
 interface DraftReadyStepProps {
   tournamentId: number;
@@ -39,44 +38,37 @@ export function DraftReadyStep({
 
   return (
     <div className="space-y-6">
-      <div className={cn("rounded-2xl border p-6", TONE_CLASS[ready ? "success" : "danger"])}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex gap-3">
-            {ready ? (
-              <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0" aria-hidden />
-            ) : (
-              <ShieldAlert className="mt-0.5 h-6 w-6 shrink-0" aria-hidden />
-            )}
-            <div>
-              <h3 className="text-lg font-semibold">
-                {ready ? t("readyToStart") : t("notReadyToStart")}
-              </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {ready ? t("readyToStartHint") : t("notReadyToStartHint")}
-              </p>
-            </div>
+      {ready ? (
+        <div className="flex gap-3">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden />
+          <div>
+            <h3 className="text-lg font-semibold">{t("readyToStart")}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{t("readyToStartHint")}</p>
           </div>
-          <StatusPill tone={ready ? "success" : "danger"}>
-            {ready ? t("ready") : t("blocked")}
-          </StatusPill>
         </div>
-      </div>
+      ) : (
+        <Alert variant="destructive" className="rounded-xl">
+          <ShieldAlert className="size-4" aria-hidden />
+          <AlertTitle>{t("notReadyToStart")}</AlertTitle>
+          <AlertDescription>{t("notReadyToStartHint")}</AlertDescription>
+        </Alert>
+      )}
 
-      <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
-        <StatTile label={t("teamSize")} value={session.roster_shape.team_size} />
-        <StatTile label={t("rounds")} value={session.rounds} />
-        <StatTile label={t("pickTime")} value={`${session.pick_time_seconds}s`} />
-      </StatTileGrid>
+      <DraftFacts
+        facts={[
+          { label: t("teamSize"), value: session.roster_shape.team_size },
+          { label: t("rounds"), value: session.rounds },
+          { label: t("pickTime"), value: `${session.pick_time_seconds}s` }
+        ]}
+      />
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button size="lg" disabled={pending || !ready} onClick={() => setStartDialogOpen(true)}>
-          {pending ? (
-            <Spinner className="mr-2" />
-          ) : (
-            <Play className="mr-2 h-4 w-4" aria-hidden />
-          )}
-          {t("startDraft")}
-        </Button>
+        {ready && (
+          <Button size="lg" disabled={pending} onClick={() => setStartDialogOpen(true)}>
+            {pending && <Spinner className="mr-2" />}
+            {t("startDraft")}
+          </Button>
+        )}
         <Button asChild size="lg" variant="outline">
           <Link href={`/draft/${tournamentId}`} target="_blank" rel="noreferrer">
             {t("openLiveBoard")}

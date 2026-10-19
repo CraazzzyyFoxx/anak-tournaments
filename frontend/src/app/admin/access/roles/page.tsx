@@ -224,18 +224,28 @@ export default function AccessAdminRolesPage() {
           }
           detail={
             selectedRole ? (
-              <RoleEditor
-                key={selectedRole.id}
-                role={selectedRole}
-                permissions={permissionsQuery.data ?? []}
-                workspaceName={
-                  workspaces.find((workspace) => workspace.id === selectedRole.workspace_id)?.name
-                }
-                canUpdate={canUpdateRole}
-                canDelete={canDeleteRole}
-                onRequestDelete={() => setPending({ kind: "delete", role: selectedRole })}
-                onDirtyChange={setEditorDirty}
-              />
+              permissionsQuery.isError && !permissionsQuery.data ? (
+                <PageStateCard
+                  state="error"
+                  title={t("permissionsLoadError")}
+                  onAction={() => void permissionsQuery.refetch()}
+                />
+              ) : permissionsQuery.isLoading ? (
+                <Skeleton className="h-72 w-full rounded-xl" />
+              ) : (
+                <RoleEditor
+                  key={selectedRole.id}
+                  role={selectedRole}
+                  permissions={permissionsQuery.data ?? []}
+                  workspaceName={
+                    workspaces.find((workspace) => workspace.id === selectedRole.workspace_id)?.name
+                  }
+                  canUpdate={canUpdateRole}
+                  canDelete={canDeleteRole}
+                  onRequestDelete={() => setPending({ kind: "delete", role: selectedRole })}
+                  onDirtyChange={setEditorDirty}
+                />
+              )
             ) : null
           }
           emptyDetail={
@@ -263,7 +273,7 @@ export default function AccessAdminRolesPage() {
           }
         }}
         title={tc("createRole")}
-        description={t("createDescription", { scope: 
+        description={t("createDescription", { scope:
           workspaceId === null
             ? tc("global")
             : (workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? tc("workspace"))
@@ -286,7 +296,6 @@ export default function AccessAdminRolesPage() {
               id="create-role-name"
               required
               value={createName}
-              placeholder="support_admin"
               onChange={(event) => setCreateName(event.target.value)}
             />
           </div>

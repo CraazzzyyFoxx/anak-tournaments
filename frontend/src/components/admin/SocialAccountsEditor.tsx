@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Eye, EyeOff, Pencil, Plus, ShieldCheck, Star, Trash2, X } from "lucide-react";
+import { Check, Eye, EyeOff, MoreHorizontal, Plus, Star, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -22,7 +29,6 @@ import adminService from "@/services/admin.service";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { SocialAccount, SocialProvider, User } from "@/types/user.types";
-import { Spinner } from "@/components/ui/spinner";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 interface SocialAccountsEditorProps {
@@ -62,7 +68,10 @@ function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Rea
   });
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-6 text-xs text-muted-foreground">
+    <div
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-6 text-xs text-muted-foreground"
+      aria-busy={mutation.isPending}
+    >
       <label className="flex cursor-pointer select-none items-center gap-1.5">
         <Switch
           checked={globalVisible}
@@ -83,7 +92,6 @@ function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Rea
           <EyeOff className="h-3 w-3" /> {t("workspace")}
         </label>
       )}
-      {mutation.isPending && <Spinner className="size-3" />}
     </div>
   );
 }
@@ -101,6 +109,7 @@ interface AccountRowProps {
 
 function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId, onUserUpdated }: Readonly<AccountRowProps>) {
   const t = useTranslations("adminPeople.social");
+  const tTable = useTranslations("kitTable.dataTableExtra");
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(account.username);
@@ -177,9 +186,11 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
           onClick={handleSave}
           disabled={updateMutation.isPending || !editValue.trim()}
+          aria-busy={updateMutation.isPending}
           aria-label={t("save")}
+          title={t("save")}
         >
-          {updateMutation.isPending ? <Spinner /> : <Check className="h-4 w-4" />}
+          <Check className="h-4 w-4" />
         </Button>
         <Button
           size="icon"
@@ -188,6 +199,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           onClick={() => setEditing(false)}
           disabled={updateMutation.isPending}
           aria-label={t("cancel")}
+          title={t("cancel")}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -195,75 +207,63 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
     );
   }
 
+  const busy = verifyMutation.isPending || primaryMutation.isPending || deleteMutation.isPending;
+  const canVerify = canManage && !account.is_verified && config.canBeVerified;
+  const canMakePrimary = canManage && !account.is_primary;
+
   return (
     <>
-      <div className="rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50">
-        <div className="group flex items-center gap-2">
+      <div className="rounded-lg px-2 py-1.5">
+        <div className="flex items-center gap-2">
           <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
             <SocialIcon provider={account.provider} size={14} />
           </span>
           <span className="flex-1 truncate text-sm font-medium">{account.username}</span>
           {account.is_verified ? (
-            <Check
-              className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-teal)]"
-              aria-label={t("verified")}
-            />
-          ) : (
-            canManage &&
-            config.canBeVerified && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => verifyMutation.mutate()}
-                disabled={verifyMutation.isPending}
-                aria-label={t("verify", { username: account.username })}
-                title={t("verifyTitle")}
-              >
-                {verifyMutation.isPending ? (
-                  <Spinner className="size-3.5" />
-                ) : (
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            )
-          )}
+            <StatusIcon icon={Check} label={t("verified")} variant="success" className="size-3.5" />
+          ) : null}
           {account.is_primary ? (
-            <Star
-              className="h-3.5 w-3.5 shrink-0 fill-[color:var(--aqt-amber)] text-[color:var(--aqt-amber)]"
-              aria-label={t("primary")}
-            />
-          ) : (
-            canManage && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() => primaryMutation.mutate()}
-                disabled={primaryMutation.isPending}
-                aria-label={t("makePrimary")}
-                title={t("makePrimary")}
+            <StatusIcon icon={Star} label={t("primary")} variant="warning" className="size-3.5 fill-current" />
+          ) : null}
+          {canManage ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={busy}
+                aria-busy={busy}
+                aria-label={tTable("actionsFor", { label: account.username })}
+                title={tTable("actionsFor", { label: account.username })}
+                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color] hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
-                {primaryMutation.isPending ? <Spinner className="size-3.5" /> : <Star className="h-3.5 w-3.5" />}
-              </Button>
-            )
-          )}
-          {canManage && (
-            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditValue(account.username); setEditing(true); }} aria-label={t("edit", { username: account.username })}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setDeleteOpen(true)}
-                aria-label={t("delete", { username: account.username })}
-              >
-                {deleteMutation.isPending ? <Spinner className="size-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
-              </Button>
-            </div>
-          )}
+                <MoreHorizontal aria-hidden className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {canVerify ? (
+                  <DropdownMenuItem title={t("verifyTitle")} onSelect={() => verifyMutation.mutate()}>
+                    {t("verify")}
+                  </DropdownMenuItem>
+                ) : null}
+                {canMakePrimary ? (
+                  <DropdownMenuItem onSelect={() => primaryMutation.mutate()}>
+                    {t("makePrimary")}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setEditValue(account.username);
+                    setEditing(true);
+                  }}
+                >
+                  {t("edit")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => setDeleteOpen(true)}
+                  className="text-danger focus:text-danger"
+                >
+                  {t("delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
         {(canManage || canSetVisibility) && (
           <div className="mt-1">
@@ -328,9 +328,11 @@ function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider:
           className="h-9 w-9 shrink-0"
           onClick={handleAdd}
           disabled={!value.trim() || addMutation.isPending}
+          aria-busy={addMutation.isPending}
           aria-label={t("add", { label: config.label })}
+          title={t("add", { label: config.label })}
         >
-          {addMutation.isPending ? <Spinner /> : <Plus className="h-4 w-4" />}
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
       {addMutation.isError && addMutation.error instanceof Error && (

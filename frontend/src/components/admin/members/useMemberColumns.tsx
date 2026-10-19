@@ -5,7 +5,6 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Check, ChevronsUpDown, Trash2 } from "lucide-react";
 import { createKebabColumn } from "@/components/data-table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -47,6 +46,7 @@ export function useMemberColumns({
 }>): ColumnDef<WorkspaceMember>[] {
   const t = useTranslations("adminAccess.common");
   const tm = useTranslations("adminAccess.member");
+  const tk = useTranslations("kit.authUser");
 
   return useMemo<ColumnDef<WorkspaceMember>[]>(() => {
     const cols: ColumnDef<WorkspaceMember>[] = [
@@ -64,7 +64,7 @@ export function useMemberColumns({
               </Avatar>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground">
-                  {member.username ?? `User #${member.auth_user_id}`}
+                  {member.username ?? tk("userId", { id: member.auth_user_id })}
                 </p>
                 {member.email ? (
                   <p className="truncate text-xs text-muted-foreground">{member.email}</p>
@@ -86,18 +86,10 @@ export function useMemberColumns({
           const member = row.original;
           const customCount = memberCustomRoleIds(member).length;
           if (!canUpdateMembers) {
-            return (
-              <div className="flex flex-wrap gap-1.5">
-                {member.rbac_roles.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">{t("noRoles")}</span>
-                ) : (
-                  member.rbac_roles.map((role) => (
-                    <Badge key={role.id} variant="outline" className="text-xs">
-                      {role.name}
-                    </Badge>
-                  ))
-                )}
-              </div>
+            return member.rbac_roles.length === 0 ? null : (
+              <span className="text-sm text-muted-foreground">
+                {member.rbac_roles.map((role) => role.name).join(" · ")}
+              </span>
             );
           }
           return (
@@ -131,14 +123,7 @@ export function useMemberColumns({
                       aria-label={tm("customRoles", { member: memberLabel(member) })}
                     >
                       {tm("custom")}
-                      {customCount > 0 ? (
-                        <Badge
-                          variant="secondary"
-                          className="ml-0.5 h-4 px-1 text-xs tabular-nums"
-                        >
-                          {customCount}
-                        </Badge>
-                      ) : null}
+                      {customCount > 0 ? <span className="tabular-nums">{customCount}</span> : null}
                       <ChevronsUpDown aria-hidden className="size-3 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -209,6 +194,7 @@ export function useMemberColumns({
     toggleCustomRole,
     requestRemoval,
     t,
-    tm
+    tm,
+    tk
   ]);
 }

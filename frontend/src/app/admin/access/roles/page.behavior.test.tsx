@@ -341,7 +341,6 @@ describe("Access › Roles · ?role= is the selection", () => {
 
     await waitFor(() => container.textContent?.includes("Runs the broadcast"), "the editor");
     expect(getRole).toHaveBeenCalledWith(12);
-    expect(container.textContent).toContain("Custom role");
   });
 
   it("re-scopes the role query from the scope chip", async () => {
@@ -400,13 +399,12 @@ describe("Access › Roles · one permission toggle", () => {
     getRole.mockResolvedValue({ ...OWNER, permissions: PERMISSIONS });
     const container = await mount("?role=1");
 
-    await waitFor(() => container.textContent?.includes("System role"), "the editor");
+    await waitFor(() => container.textContent?.includes("cannot be edited"), "the editor");
     const box = await waitFor(
       () => document.querySelector('[aria-label="Toggle match.update"]'),
       "the match.update cell"
     );
     expect(box.hasAttribute("disabled")).toBe(true);
-    expect(container.textContent).toContain("cannot be edited");
   });
 });
 

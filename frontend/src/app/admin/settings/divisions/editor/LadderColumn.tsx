@@ -5,7 +5,6 @@ import Image from "next/image";
 import { ChevronDown, ChevronUp, Merge, Scissors } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -80,16 +79,13 @@ export function LadderColumn({
 
   return (
     <div className="flex max-h-[calc(100vh-13rem)] flex-col rounded-xl border border-border bg-card xl:sticky xl:top-4">
-      <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2">
-        <h2 className="font-display text-sm font-semibold">{t("ladder.title")}</h2>
-        <span className={cn(EYEBROW_CLASS, "font-mono tabular-nums")}>{t("ladder.rankCount", { count: ladder.count })}</span>
-      </div>
+      <h2 className="border-b border-border px-3 py-2 font-display text-sm font-semibold">
+        {t("ladder.title")}
+      </h2>
 
       <p className="px-3 pt-2 text-xs text-muted-foreground">{hint}</p>
       {implicitLinks && !onLadder ? (
-        <p className="mx-2 mt-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
-          {t("ladder.noLinks")}
-        </p>
+        <p className="px-3 pt-1 text-xs text-muted-foreground">{t("ladder.noLinks")}</p>
       ) : null}
 
       <ol
@@ -119,16 +115,16 @@ export function LadderColumn({
             <li
               key={rank.slug}
               data-selected-start={selected && startsRun ? "" : undefined}
+              aria-current={selected ? "true" : undefined}
               className={cn(
                 "group relative flex h-7 items-center gap-2 border-l-2 pl-2 pr-1",
                 startsRun && index > 0 && "mt-1",
-                band === null
-                  ? "border-l-warning/70 bg-warning/5"
-                  : selected
-                    ? "border-l-primary bg-primary/10"
-                    : owner! % 2 === 0
-                      ? "border-l-foreground/20"
-                      : "border-l-foreground/50"
+                owner === null
+                  ? "border-l-transparent"
+                  : owner % 2 === 0
+                    ? "border-l-foreground/20"
+                    : "border-l-foreground/50",
+                selected && "bg-accent/40"
               )}
             >
               <button
@@ -152,12 +148,8 @@ export function LadderColumn({
               {startsRun ? (
                 <span
                   className={cn(
-                    "max-w-[55%] truncate rounded px-1.5 py-0.5 text-xs font-medium",
-                    band === null
-                      ? "text-warning"
-                      : selected
-                        ? "bg-primary/15 text-primary"
-                        : "bg-muted text-foreground"
+                    "max-w-[55%] truncate text-xs font-medium",
+                    band === null && "text-warning"
                   )}
                   title={band ? `${band.number}. ${band.name}` : undefined}
                 >
@@ -166,7 +158,7 @@ export function LadderColumn({
               ) : null}
 
               {canRaise || canLower || canJoin || canCut ? (
-                <span className="absolute inset-y-0 right-0 flex items-center gap-0.5 bg-gradient-to-r from-transparent via-card via-40% to-card pl-6 pr-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+                <span className="absolute inset-y-0 right-0 flex items-center gap-0.5 bg-gradient-to-r from-transparent via-card via-40% to-card pl-6 pr-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
                   {canRaise ? (
                     <RowButton
                       label={into(owner, index - 1)}

@@ -137,7 +137,6 @@ export function WorkspacesBrowser() {
           openId={openRow ? openId : null}
           onClose={() => setParams({ id: null })}
           title={openRow?.name ?? ""}
-          subtitle={openRow ? `#${openRow.id} · ${openRow.slug}` : undefined}
           onPrev={
             openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined
           }
