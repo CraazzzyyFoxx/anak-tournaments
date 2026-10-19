@@ -23,8 +23,9 @@ const TREE: Record<string, string> = {
   "disciplines/registry/deep.ts": 'export { helper } from "../overwatch/ladder/helper";',
   "disciplines/overwatch/rank.ts": 'import { helper } from "./ladder/helper";\nexport default helper;',
   "disciplines/overwatch/ladder/helper.ts": "export const helper = 1;",
+  // Relative specs: this file is itself scanned by the real check, where they resolve outside src/.
   "disciplines/overwatch/bad.ts":
-    'import { x } from "../lol/x";\nimport "@/app/actions/save";\nimport NotFound from "@/app/not-found";\nimport { Panel } from "@/components/admin/Panel";\nexport { x, NotFound, Panel };',
+    'import { x } from "../lol/x";\nimport "@/app/actions/save";\nimport NotFound from "@/app/not-found";\nimport { Panel } from "../../components/admin/Panel";\nexport { x, NotFound, Panel };',
   "disciplines/lol/x.ts": "export const x = 1;",
   "app/actions/save.ts": "export {};",
   "app/not-found.tsx": "export default function NotFound() { return null; }",
