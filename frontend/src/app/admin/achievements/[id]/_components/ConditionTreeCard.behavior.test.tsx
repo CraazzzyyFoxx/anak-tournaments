@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import { disciplineServiceMock } from "@/test/discipline-metadata";
 
 import { ConditionTreeCard } from "./ConditionTreeCard";
 
@@ -122,6 +123,17 @@ describe("the condition tree card", () => {
 
     expect(container.textContent).toContain(en.common.discipline.widgetUnsupported);
     expect(container.querySelector('[data-testid="builder"]')).toBeNull();
+    expect(getConditionTypes).not.toHaveBeenCalled();
+  });
+
+  it("says the game could not be read for an empty tree whose metadata failed, and asks for no registry", async () => {
+    vi.spyOn(disciplineServiceMock.default, "metadata").mockRejectedValueOnce(new Error("metadata down"));
+    await render("lol", {});
+
+    expect(container.querySelector('[data-testid="builder"]')).toBeNull();
+    expect(editButton()).toBeUndefined();
+    // The error state offers its retry instead of a canvas that would have to ask the registry.
+    expect(container.querySelectorAll("button").length).toBe(1);
     expect(getConditionTypes).not.toHaveBeenCalled();
   });
 

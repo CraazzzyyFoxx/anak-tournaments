@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -57,8 +58,9 @@ export function ConditionTreeCard({
   // could ask for a registry mounts before the answer.
   const metadata = useDisciplineMetadata("all", discipline);
   const conditions = metadata.data?.discipline.capabilities.achievement_conditions;
-  // A stored tree draws itself without the registry; an empty one would need it, so an unsupported game shows none.
-  const showStored = conditions === true || (conditions === false && Object.keys(conditionTree).length > 0);
+  // A stored tree draws itself without the registry; an empty one would need it, so it is only drawn for a game
+  // known to have conditions.
+  const showStored = conditions === true || Object.keys(conditionTree).length > 0;
 
   return (
     <Card>
@@ -99,8 +101,11 @@ export function ConditionTreeCard({
           </div>
         ) : metadata.isPending ? (
           <Skeleton className="h-75 w-full rounded-lg" />
-        ) : showStored || metadata.isError ? (
+        ) : showStored ? (
           <ConditionFlowViewer value={conditionTree} readOnly discipline={discipline} />
+        ) : metadata.isError ? (
+          // Whether this game has conditions is unknown, and an empty tree would have to ask the registry.
+          <PageStateCard state="error" onAction={() => void metadata.refetch()} />
         ) : null}
       </CardContent>
     </Card>
