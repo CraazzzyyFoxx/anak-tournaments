@@ -39,6 +39,7 @@ describe("slot-family loaders", () => {
       "characterCompareSummary",
       "characterPopover",
       "characterStats",
+      "lobbyRankTiles",
       "roleSignatures",
       "topCharacters",
       "tournamentSummary"

@@ -17,6 +17,7 @@ import type {
   UserMapRead,
   UserTournament
 } from "@/types/user.types";
+import type { UserTournamentStat } from "@/types/statistics.types";
 
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
@@ -124,6 +125,15 @@ export type SlotProps = {
   /** An extra cell of a tournament (or league) dossier's summary strip, over the player's entries (8b addition). */
   tournamentSummary: { entries: UserTournament[]; metadata: DisciplineMetadata };
   /**
+   * The lobby-rank tiles of the overview's tournament card (slice 11): the game's own selection, order and
+   * presentation of the ranked tournament `stats` (keyed by stat code); `onOpen` opens the lobby leaderboard of one.
+   */
+  lobbyRankTiles: {
+    stats: Record<string, UserTournamentStat | undefined>;
+    onOpen: (stat: string, label: string) => void;
+    metadata: DisciplineMetadata;
+  };
+  /**
    * The character comparison (`/users/heroes-compare`), 8b fix amendment: the host owns the browsed game, the
    * checked character (`undefined` until one is picked and found in that game) and the tournament scope; the module
    * reads that character's leaderboard itself — its wire and column catalog are the module's — and draws the
@@ -197,6 +207,7 @@ export type ProfileSlot =
   | "topCharacters"
   | "roleSignatures"
   | "tournamentSummary"
+  | "lobbyRankTiles"
   | "characterCompare"
   | "characterCompareSummary";
 export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";

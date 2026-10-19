@@ -11,6 +11,7 @@ const overwatch: DisciplineUI<ProfileSlot> = {
     topCharacters: lazy(() => import("./character/TopHeroesTable")),
     roleSignatures: lazy(() => import("./character/RoleSignatures")),
     tournamentSummary: lazy(() => import("./character/AvgMvpCell")),
+    lobbyRankTiles: lazy(() => import("./character/LobbyRankTiles")),
     characterCompare: lazy(() => import("./character/compare/CharacterCompare")),
     characterCompareSummary: lazy(() => import("./character/compare/CharacterCompareSummary"))
   }
