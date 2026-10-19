@@ -78,6 +78,16 @@ export function slotRank(order: readonly string[], code: string | null | undefin
 }
 
 /**
+ * The distinct top-level rated role codes a statistics read reported, in the game's declared order. A code this
+ * dictionary does not know (or a missing dictionary) keeps its reported order after every known one -- never dropped,
+ * never reordered by a fixed vocabulary.
+ */
+export function orderedRoleCodes(ontology: RoleOntology | null | undefined, codes: Iterable<string>): string[] {
+  const order = slotCodeOrder(ontology);
+  return [...new Set(codes)].sort((a, b) => slotRank(order, a) - slotRank(order, b));
+}
+
+/**
  * A roster's role order for ONE game: the position of a participation's role (its root, so a workspace child sits
  * with its parent) in the dictionary's declared `sort_order`. A role of another dimension or game, an unknown role,
  * an unassigned player and a missing dictionary all rank equally, after every declared role -- so nothing is

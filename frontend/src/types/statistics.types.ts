@@ -8,13 +8,8 @@ export interface TournamentStatistics {
   avg_closeness: number;
 }
 
-export interface TournamentDivisionStatistics {
-  id: number;
-  name: string;
-  tank_avg_div: number | null;
-  damage_avg_div: number | null;
-  support_avg_div: number | null;
-}
+/** One tournament's average division per top-level role code of its game's rated dimension (unplayed roles absent). */
+export type TournamentDivisionStatistics = Schema<"tournament.DivisionStatistics">;
 
 export interface PlayerStatistics {
   id: number;

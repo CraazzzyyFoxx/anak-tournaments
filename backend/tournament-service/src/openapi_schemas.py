@@ -66,7 +66,9 @@ OPERATIONS: dict[str, Op] = {
         response=schemas.TournamentStatistics, response_array=True, query_params=(_WS,)
     ),
     "rpc.tournament.statistics_division": Op(
-        response=schemas.DivisionStatistics, response_array=True, query_params=(_WS,)
+        response=schemas.DivisionStatistics,
+        response_array=True,
+        query_params=(_WS, QueryParam("discipline", required=True, description="Explicit discipline code.")),
     ),
     "rpc.tournament.saved_views": Op(response=schemas.EncounterSavedViewRead, response_array=True, query_params=(_WS,)),
     # ── public reads (paginated) ───────────────────────────────────────────

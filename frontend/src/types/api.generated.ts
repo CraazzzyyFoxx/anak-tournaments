@@ -3487,7 +3487,7 @@ export interface paths {
         };
         /**
          * Get division statistics
-         * @description Permission: public; no authentication required. Returns average-division statistics per tournament, normalized against the workspace division grid with fallback to the global grid.
+         * @description Permission: public; no authentication required. Returns, for the tournaments of the game named by the required `discipline` query param (422 when absent, 404 `discipline_not_installed` for an unknown code), the average division per tournament keyed by the top-level role codes of that game's rated dimension (`role_avg_divs`; a role nobody played is absent), normalized against the workspace's division grid for that game with fallback to its global grid.
          *
          *     RPC subject: `rpc.tournament.statistics_division`
          */
@@ -4101,7 +4101,7 @@ export interface paths {
         };
         /**
          * Compare user characters
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404; a `stats` code the game does not declare as a character stat is a 422 `stat_not_declared`.
          *
          *     RPC subject: `rpc.app.users.compare_characters`
          */
@@ -17105,16 +17105,14 @@ export interface components {
         };
         /** DivisionStatistics */
         "tournament.DivisionStatistics": {
-            /** Damage Avg Div */
-            damage_avg_div: number | null;
             /** Id */
             id: number;
             /** Name */
             name: string;
-            /** Support Avg Div */
-            support_avg_div: number | null;
-            /** Tank Avg Div */
-            tank_avg_div: number | null;
+            /** Role Avg Divs */
+            role_avg_divs: {
+                [key: string]: number;
+            };
         };
         /**
          * ElectOpenerInput
@@ -41305,8 +41303,9 @@ export interface operations {
     };
     get__api_v1_tournaments_statistics_division: {
         parameters: {
-            query?: {
+            query: {
                 workspace_id?: number;
+                discipline: string;
             };
             header?: never;
             path?: never;

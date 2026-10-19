@@ -19,9 +19,8 @@ class TournamentStatistics(BaseModel):
 class DivisionStatistics(BaseModel):
     id: int
     name: str
-    tank_avg_div: float | None
-    damage_avg_div: float | None
-    support_avg_div: float | None
+    #: Average division by top-level role code of the game's rated dimension; a role nobody played is absent.
+    role_avg_divs: dict[str, float]
 
 
 class PlayerStatistics(BaseModel):

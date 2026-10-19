@@ -548,15 +548,16 @@ class TournamentFlowsService:
     async def get_avg_divisions_tournaments(
         self,
         session: AsyncSession,
+        discipline: str,
         workspace_id: int | None = None,
         *,
         normalizer: DivisionGridNormalizer | None = None,
         fallback_grid: DivisionGrid,
     ) -> list[schemas.DivisionStatistics]:
         """
-        Retrieves average division statistics for tournaments, normalizing each
-        tournament's player ranks through the tournament's own division_grid_version
-        before averaging.
+        Retrieves one game's average division per tournament and per top-level role of its rated
+        dimension, normalizing each tournament's player ranks through the tournament's own
+        division_grid_version before averaging.
 
         When a normalizer is provided, divisions are converted to the target grid so
         values are comparable across tournaments that used different grid versions.
@@ -567,14 +568,16 @@ class TournamentFlowsService:
         # average is weighted by the count instead of iterating every player row.
         #
         # Open slots have no role, and are excluded from the per-role averages.
-        raw_rank_cache: dict[int, dict[str | None, list[tuple[float, int]]]] = {}
+        raw_rank_cache: dict[int, dict[str, list[tuple[float, int]]]] = {}
         tournament_names: dict[int, str] = {}
 
-        rows = await self.tournaments.get_avg_div_tournaments(session, workspace_id=workspace_id)
+        rows = await self.tournaments.get_avg_div_tournaments(session, discipline, workspace_id=workspace_id)
         for tournament, role, rank, players_count in rows:
             if tournament.id not in raw_rank_cache:
                 raw_rank_cache[tournament.id] = {}
                 tournament_names[tournament.id] = tournament.name
+            if role is None:
+                continue
 
             source_version_id: int | None = tournament.division_grid_version_id
 
@@ -594,28 +597,23 @@ class TournamentFlowsService:
 
             raw_rank_cache[tournament.id].setdefault(role, []).append((float(div_number), int(players_count)))
 
-        def avg_or_none(values: list[tuple[float, int]] | None) -> float | None:
-            if not values:
-                return None
+        def avg_or_none(values: list[tuple[float, int]]) -> float | None:
             total_players = sum(count for _, count in values)
             if not total_players:
                 return None
             return round(sum(division * count for division, count in values) / total_players, 2)
 
-        output: list[schemas.DivisionStatistics] = []
-        # OW-shaped read (wire fields name these roles); P7 makes it data-driven.
-        for tournament_id, roles in raw_rank_cache.items():
-            output.append(
-                schemas.DivisionStatistics(
-                    id=tournament_id,
-                    name=tournament_names[tournament_id],
-                    tank_avg_div=avg_or_none(roles.get("tank")),
-                    damage_avg_div=avg_or_none(roles.get("damage")),
-                    support_avg_div=avg_or_none(roles.get("support")),
-                )
+        # Keyed by the game's own role codes; a role nobody played in a tournament is absent, not zero.
+        return [
+            schemas.DivisionStatistics(
+                id=tournament_id,
+                name=tournament_names[tournament_id],
+                role_avg_divs={
+                    role: average for role, values in roles.items() if (average := avg_or_none(values)) is not None
+                },
             )
-
-        return output
+            for tournament_id, roles in raw_rank_cache.items()
+        ]
 
     async def get_tournaments_overall(
         self, session: AsyncSession, workspace_id: int | None = None

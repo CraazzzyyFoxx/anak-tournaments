@@ -10,11 +10,8 @@ import statisticsService from "@/services/statistics.service";
 import { isTenantHost } from "@/lib/site/tenant-host";
 import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
-import type {
-  PlayerStatistics,
-  TournamentDivisionStatistics,
-  TournamentStatistics,
-} from "@/types/statistics.types";
+import disciplineService from "@/services/discipline.service";
+import type { PlayerStatistics, TournamentStatistics } from "@/types/statistics.types";
 import {
   ChartCardSkeleton,
   StatsGridSkeleton,
@@ -33,7 +30,8 @@ export default async function StatisticsPage({
   searchParams
 }: Readonly<{ searchParams: Promise<{ discipline?: string | string[] }> }>) {
   const [t, { discipline }] = await Promise.all([getTranslations(), searchParams]);
-  // The leaderboards are one game's (§2.3 composite); the totals and trends above them are game-neutral.
+  // The leaderboards and the division-by-role trend are one game's (§2.3 composite); the totals and the activity
+  // trend are game-neutral.
   const browsing = await resolveServerBrowsingDiscipline(discipline);
   const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
   return (
@@ -61,9 +59,11 @@ export default async function StatisticsPage({
         <Suspense fallback={<ChartCardSkeleton />}>
           <ActivityTrendCard />
         </Suspense>
-        <Suspense fallback={<ChartCardSkeleton />}>
-          <DivisionTrendCard />
-        </Suspense>
+        {game === null ? null : (
+          <Suspense fallback={<ChartCardSkeleton />}>
+            <DivisionTrendCard discipline={game} />
+          </Suspense>
+        )}
       </section>
 
       <section className="space-y-4">
@@ -179,25 +179,25 @@ async function ActivityTrendCard() {
   return <TournamentsChart data={data} />;
 }
 
-async function DivisionTrendCard() {
+/** The browsed game's average division per tournament, one line per role of its rated dimension. */
+async function DivisionTrendCard({ discipline }: Readonly<{ discipline: string }>) {
   const t = await getTranslations();
   const skipWorkspace = !(await isTenantHost());
-  let data: TournamentDivisionStatistics[] | null = null;
-  try {
-    data = await statisticsService.getTournamentsDivision({ skipWorkspace });
-  } catch {
-    data = null;
-  }
+  const [data, ontology] = await Promise.all([
+    statisticsService.getTournamentsDivision(discipline, { skipWorkspace }).catch(() => null),
+    disciplineService.metadata("all", discipline).catch(() => null)
+  ]);
+  const title = `${t("statistics.avgDivisionByRole")} · ${ontology?.discipline.name ?? discipline}`;
 
   if (!data || data.length === 0) {
     return (
       <DashCard>
-        <DashCardHeader>{t("statistics.avgDivisionByRole")}</DashCardHeader>
+        <DashCardHeader>{title}</DashCardHeader>
         <ErrorBody message={data ? t("common.noData") : t("common.loadError")} />
       </DashCard>
     );
   }
-  return <TournamentsDivisionChart data={data} />;
+  return <TournamentsDivisionChart data={data} ontology={ontology} title={title} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

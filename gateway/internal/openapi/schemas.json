@@ -2443,7 +2443,7 @@
       "summary": "Compare users"
     },
     "rpc.app.users.compare_characters": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404.",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404; a `stats` code the game does not declare as a character stat is a 422 `stat_not_declared`.",
       "query_params": [
         {
           "name": "baseline",
@@ -10794,13 +10794,21 @@
       "summary": "Recalculate standings"
     },
     "rpc.tournament.statistics_division": {
-      "description": "Permission: public; no authentication required. Returns average-division statistics per tournament, normalized against the workspace division grid with fallback to the global grid.",
+      "description": "Permission: public; no authentication required. Returns, for the tournaments of the game named by the required `discipline` query param (422 when absent, 404 `discipline_not_installed` for an unknown code), the average division per tournament keyed by the top-level role codes of that game's rated dimension (`role_avg_divs`; a role nobody played is absent), normalized against the workspace's division grid for that game with fallback to its global grid.",
       "query_params": [
         {
           "name": "workspace_id",
           "required": false,
           "schema": {
             "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Explicit discipline code.",
+            "type": "string"
           }
         }
       ],
@@ -41946,17 +41954,6 @@
     },
     "tournament.DivisionStatistics": {
       "properties": {
-        "damage_avg_div": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Damage Avg Div"
-        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -41965,35 +41962,18 @@
           "title": "Name",
           "type": "string"
         },
-        "support_avg_div": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Support Avg Div"
-        },
-        "tank_avg_div": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Tank Avg Div"
+        "role_avg_divs": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Role Avg Divs",
+          "type": "object"
         }
       },
       "required": [
         "id",
         "name",
-        "tank_avg_div",
-        "damage_avg_div",
-        "support_avg_div"
+        "role_avg_divs"
       ],
       "title": "DivisionStatistics",
       "type": "object"

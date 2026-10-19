@@ -130,18 +130,20 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.statistics_division")
     async def _statistics_division(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
+            # One game's tournaments, its grid and its rated roles: absent is 422, unknown 404.
+            discipline = pick_ban_config.installed_discipline(_require_q1(data, "discipline")).code
             workspace_id = _q1(data, "workspace_id", int)
-            fallback_grid = await get_division_grid(session, workspace_id, discipline="overwatch")
+            fallback_grid = await get_division_grid(session, workspace_id, discipline=discipline)
             normalizer = None
             if workspace_id is not None:
                 try:
                     normalizer = await build_workspace_division_grid_normalizer(
-                        session, workspace_id, require_complete=False, discipline="overwatch"
+                        session, workspace_id, require_complete=False, discipline=discipline
                     )
                 except DivisionGridNormalizationError:
                     pass  # fall back to the global grid for all tournaments
             return await tournament_flows.flows_service.get_avg_divisions_tournaments(
-                session, workspace_id=workspace_id, normalizer=normalizer, fallback_grid=fallback_grid
+                session, discipline, workspace_id=workspace_id, normalizer=normalizer, fallback_grid=fallback_grid
             )
 
         return await _read(logger, op)

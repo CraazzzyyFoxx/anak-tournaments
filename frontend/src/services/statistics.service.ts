@@ -56,10 +56,16 @@ export default class statisticsService {
     );
   }
 
-  static async getTournamentsDivision(opts?: StatsOpts): Promise<TournamentDivisionStatistics[]> {
-    return apiFetch("/api/v1/tournaments/statistics/division", buildWorkspaceOpts(opts)).then(
-      (res) => res.json()
-    );
+  /** One game's per-tournament average division by its own rated roles: the game is explicit, never defaulted. */
+  static async getTournamentsDivision(
+    discipline: string,
+    opts?: StatsOpts
+  ): Promise<TournamentDivisionStatistics[]> {
+    const base = buildWorkspaceOpts(opts);
+    return apiFetch("/api/v1/tournaments/statistics/division", {
+      ...base,
+      query: { ...base.query, discipline },
+    }).then((res) => res.json());
   }
 
   static async getOverallStatistics(opts?: StatsOpts): Promise<TournamentOverall> {

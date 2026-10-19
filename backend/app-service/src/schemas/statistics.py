@@ -2,7 +2,6 @@ from pydantic import BaseModel
 
 __all__ = (
     "TournamentStatistics",
-    "DivisionStatistics",
     "PlayerStatistics",
     "OverallStatistics",
     "DashboardActiveTournamentStats",
@@ -18,14 +17,6 @@ class TournamentStatistics(BaseModel):
     players_count: int
     avg_sr: float
     avg_closeness: float | None
-
-
-class DivisionStatistics(BaseModel):
-    id: int
-    name: str
-    tank_avg_div: float | None
-    damage_avg_div: float | None
-    support_avg_div: float | None
 
 
 class PlayerStatistics(BaseModel):

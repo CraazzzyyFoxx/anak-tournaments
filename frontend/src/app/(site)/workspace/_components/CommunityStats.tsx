@@ -6,7 +6,10 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Column, ColumnHead, LoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
+import { orderedRoleCodes, roleName, roleTint, slotLabel } from "@/lib/roster/ontology";
+import disciplineService from "@/services/discipline.service";
 import statisticsService from "@/services/statistics.service";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { CharacterPlaytime } from "@/types/user.types";
 import type { TournamentDivisionStatistics, TournamentStatistics } from "@/types/statistics.types";
 import type { Workspace } from "@/types/workspace.types";
@@ -17,12 +20,8 @@ const TITLE_ID = "cs-title";
 /** How many tournaments fit the activity chart before the bars get unreadable. */
 const ACTIVITY_SPAN = 24;
 const TOP_CHARACTERS = 5;
-
-const ROLES = [
-  { key: "Tank", color: "var(--aqt-tank)", avg: "tank_avg_div" },
-  { key: "Damage", color: "var(--aqt-damage)", avg: "damage_avg_div" },
-  { key: "Support", color: "var(--aqt-support)", avg: "support_avg_div" }
-] as const;
+/** Placeholder rows while the game's roles are unknown. */
+const SKELETON_ROLES = 3;
 
 const BAR_CLASS = "flex-1 min-w-[3px] max-w-9 rounded-t-[3px]";
 
@@ -68,8 +67,8 @@ export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace
         <Column>
           <ColumnHead title={<Skeleton className="h-3 w-44" />} />
           <div className="mt-4 grid gap-2.5">
-            {ROLES.map((role) => (
-              <Skeleton key={role.key} className="h-10 w-full" />
+            {Array.from({ length: SKELETON_ROLES }, (_, row) => (
+              <Skeleton key={row} className="h-10 w-full" />
             ))}
           </div>
         </Column>
@@ -86,7 +85,7 @@ export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace
   );
 }
 
-/** Three readings of the community's whole history: turnout, skill, and (of the browsed game) characters. */
+/** Three readings of the community's whole history: turnout, and (of the browsed game) skill and characters. */
 export async function CommunityStats({
   workspace,
   discipline
@@ -94,9 +93,10 @@ export async function CommunityStats({
   const workspaceId = workspace.id;
   const t = await getTranslations("workspace");
 
-  const [history, division, characters] = await Promise.all([
+  const [history, division, ontology, characters] = await Promise.all([
     statisticsService.getTournaments({ workspaceId }).catch(() => null),
-    statisticsService.getTournamentsDivision({ workspaceId }).catch(() => null),
+    discipline ? statisticsService.getTournamentsDivision(discipline, { workspaceId }).catch(() => null) : null,
+    discipline ? disciplineService.metadata("all", discipline).catch(() => null) : null,
     discipline
       ? statisticsService
           .getCharacterPlaytime(discipline, { axis: workspaceId, perPage: TOP_CHARACTERS })
@@ -116,7 +116,9 @@ export async function CommunityStats({
     <Shell workspace={workspace}>
       <StatsGrid>
         <ActivityColumn history={history} />
-        <DivisionColumn workspace={workspace} division={division} />
+        {discipline ? (
+          <DivisionColumn workspace={workspace} discipline={discipline} division={division} ontology={ontology} />
+        ) : null}
         {discipline ? <CharactersColumn characters={characters?.results ?? null} /> : null}
       </StatsGrid>
     </Shell>
@@ -200,12 +202,23 @@ function shortLabel(name: string, index: number): string {
   return String(index + 1);
 }
 
-/** The community's average division, per role. */
+/** The community's average division in the browsed game, per role of that game's rated dimension. */
 async function DivisionColumn({
   workspace,
-  division
-}: Readonly<{ workspace: Workspace; division: TournamentDivisionStatistics[] | null }>) {
-  const [t, format] = await Promise.all([getTranslations("workspace"), getFormatter()]);
+  discipline,
+  division,
+  ontology
+}: Readonly<{
+  workspace: Workspace;
+  discipline: string;
+  division: TournamentDivisionStatistics[] | null;
+  ontology: DisciplineMetadata | null;
+}>) {
+  const [t, tRoles, format] = await Promise.all([
+    getTranslations("workspace"),
+    getTranslations("common.roles"),
+    getFormatter()
+  ]);
 
   if (division === null) {
     return (
@@ -216,13 +229,18 @@ async function DivisionColumn({
     );
   }
 
-  const averages = ROLES.map((role) => {
-    // A tournament with no players in a role reports null (or a 0 placeholder).
+  // A tournament reports only the roles somebody played; the column averages each over the tournaments that did.
+  const codes = orderedRoleCodes(ontology, division.flatMap((row) => Object.keys(row.role_avg_divs)));
+  const averages = codes.map((code) => {
     const values = division
-      .map((row) => row[role.avg])
-      .filter((value): value is number => typeof value === "number" && value > 0);
+      .map((row) => row.role_avg_divs[code])
+      .filter((value): value is number => value !== undefined && value > 0);
     return {
-      ...role,
+      code,
+      label: slotLabel(ontology, code, code, (role) =>
+        roleName(role, (key) => (tRoles.has(key as never) ? tRoles(key as never) : null))
+      ),
+      color: roleTint(ontology, code),
       value: values.length === 0 ? null : values.reduce((sum, v) => sum + v, 0) / values.length
     };
   });
@@ -233,18 +251,18 @@ async function DivisionColumn({
       <ul className="mt-4 grid gap-2.5">
         {averages.map((role) => (
           <li
-            key={role.key}
+            key={role.code}
             className="grid min-h-10 grid-cols-[22px_minmax(0,1fr)_36px_48px] items-center gap-2.5"
           >
-            <PlayerRoleIcon role={role.key} size={20} color={role.color} decorative />
-            <span className="text-[color:var(--aqt-fg-muted)]">{t(`roles.${role.key}`)}</span>
+            <PlayerRoleIcon role={role.code} ontology={ontology} size={20} decorative />
+            <span className="text-[color:var(--aqt-fg-muted)]">{role.label}</span>
             {role.value === null ? (
               <span />
             ) : (
               <DivisionIcon
                 division={Math.round(role.value)}
-                tournamentGrid={workspace.effective_division_grid_versions.overwatch}
-                discipline="overwatch"
+                tournamentGrid={workspace.effective_division_grid_versions[discipline]}
+                discipline={discipline}
                 width={32}
                 height={32}
                 className="size-8 object-contain"

@@ -84,7 +84,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.statistics_division": {
         "summary": "Get division statistics",
-        "description": "Permission: public; no authentication required. Returns average-division statistics per tournament, normalized against the workspace division grid with fallback to the global grid.",
+        "description": "Permission: public; no authentication required. Returns, for the tournaments of the game named by the required `discipline` query param (422 when absent, 404 `discipline_not_installed` for an unknown code), the average division per tournament keyed by the top-level role codes of that game's rated dimension (`role_avg_divs`; a role nobody played is absent), normalized against the workspace's division grid for that game with fallback to its global grid.",
     },
     "rpc.tournament.saved_views": {
         "summary": "List saved encounter views",

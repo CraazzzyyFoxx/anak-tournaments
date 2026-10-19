@@ -217,6 +217,7 @@ class TournamentService:
     async def get_avg_div_tournaments(
         self,
         session: AsyncSession,
+        discipline: str,
         workspace_id: int | None = None,
     ) -> typing.Sequence[tuple[models.Tournament, str | None, int, int]]:
         """
@@ -232,7 +233,7 @@ class TournamentService:
         Returns:
             A sequence of tuples containing:
             1. A `Tournament` model instance (with division_grid_version_id available).
-            2. The role (e.g., tank, damage, support).
+            2. The top-level role code on the game's rated dimension (None for an open slot).
             3. The player's raw rank.
             4. The number of players with that (role, rank) in the tournament.
         """
@@ -247,6 +248,7 @@ class TournamentService:
                 models.Player.tournament_id == models.Tournament.id,
                 models.Tournament.is_league.is_(False),
                 models.Tournament.is_hidden.is_(False),
+                models.Tournament.discipline == discipline,
             )
             # Grouping by the Tournament PK lets Postgres project the whole
             # tournament row (functional dependency).
