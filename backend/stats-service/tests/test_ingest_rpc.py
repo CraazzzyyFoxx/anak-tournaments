@@ -9,6 +9,8 @@ import asyncio
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from loguru import logger
@@ -41,6 +43,9 @@ def run(database, monkeypatch, scenario):
             broker = _Broker()
             monkeypatch.setattr(rpc_ingest, "_SF", env.sf)
             monkeypatch.setattr(rpc_ingest._clients, "s3_client", env.s3)
+            # The metered gate is process-global wiring (lifecycle.startup); these tests are about the
+            # envelopes, so stand it in rather than depend on a sibling module having configured it.
+            monkeypatch.setattr(rpc_ingest, "quota", SimpleNamespace(charge=AsyncMock()))
             rpc_ingest.register(broker, logger)
 
             def call(subject, **data):
