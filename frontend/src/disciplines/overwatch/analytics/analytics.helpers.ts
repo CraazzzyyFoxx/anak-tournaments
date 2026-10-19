@@ -5,7 +5,7 @@ import {
   TeamAnalytics,
   TournamentAnalyticsSummary,
 } from "@/types/analytics.types";
-import { GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
+import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
 
 const RECOMMENDED_ALGORITHM_ORDER = [
   "Linear",

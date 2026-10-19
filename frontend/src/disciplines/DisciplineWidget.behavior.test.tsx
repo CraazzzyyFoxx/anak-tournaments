@@ -201,6 +201,28 @@ describe("DisciplineWidget", () => {
     expect(view.textContent).toContain("generic");
   });
 
+  it("shows the caller's pending view while the module resolves, then the slot in its place", async () => {
+    const pending = Promise.withResolvers<DisciplineUI | null>();
+    loadDisciplineUI.mockReturnValue(pending.promise);
+
+    const view = await mount(
+      <DisciplineWidget
+        discipline="overwatch"
+        slot="nativeRankEditor"
+        capabilities={LADDER}
+        requires="native_ladder"
+        props={EDITOR_PROPS}
+        fallback={<p>generic</p>}
+        pending={<p>loading board</p>}
+      />
+    );
+    expect(view.textContent).toBe("loading board");
+
+    await act(async () => pending.resolve(moduleOf("overwatch")));
+    await settle();
+    expect(view.textContent).toBe("overwatch editor");
+  });
+
   it("shows the generic fallback, and loads nothing, for a shape the slot does not apply to", async () => {
     loadDisciplineUI.mockImplementation(async (code) => moduleOf(code));
 

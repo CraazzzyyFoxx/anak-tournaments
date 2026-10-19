@@ -10,6 +10,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 
+import type { DisciplineCapabilities, DisciplineDescriptor } from "@/types/discipline.types";
+
 /**
  * The public site's navigation tree — the single definition.
  *
@@ -21,6 +23,8 @@ import {
  * Two shapes: `NAV_GROUPS` are the disclosure menus (header dropdown, sheet
  * group), `NAV_LINKS` are the flat links that sit beside them. Every entry is
  * public — the admin entry is permission-gated and lives in the account menu.
+ * An entry that `requires` a game capability is offered only while some game
+ * of the viewed scope declares it (`navItemAvailable`).
  */
 
 export type NavGroupKey = "tournaments" | "users";
@@ -29,6 +33,8 @@ export interface NavItem {
   key: string;
   href: string;
   icon: LucideIcon;
+  /** A game capability the page needs (e.g. `analytics`): without a game declaring it, the page has nothing to show. */
+  requires?: keyof DisciplineCapabilities;
 }
 
 export interface NavGroup {
@@ -42,7 +48,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { key: "tournaments", href: "/tournaments", icon: Trophy },
       { key: "encounters", href: "/encounters", icon: Swords },
-      { key: "analytics", href: "/tournaments/analytics", icon: ChartColumn }
+      { key: "analytics", href: "/tournaments/analytics", icon: ChartColumn, requires: "analytics" }
     ]
   },
   {
@@ -63,6 +69,20 @@ export const NAV_GROUPS: readonly NavGroup[] = [
 export const NAV_LINKS: readonly NavItem[] = [
   { key: "mixes", href: "/balancer/mix", icon: Shuffle }
 ];
+
+/**
+ * Whether a nav entry is offered for the viewed scope's games: an entry without `requires` always is; one with it
+ * while some enabled game declares that capability. An unknown list (`undefined`: still loading, or failed) keeps
+ * the entry — absence is only concluded from a loaded list.
+ */
+export function navItemAvailable(
+  item: Pick<NavItem, "requires">,
+  games: readonly Pick<DisciplineDescriptor, "enabled" | "capabilities">[] | undefined
+): boolean {
+  const capability = item.requires;
+  if (!capability || games === undefined) return true;
+  return games.some((game) => game.enabled && game.capabilities[capability]);
+}
 
 /**
  * The href of the item the reader is on: the longest item href that is the

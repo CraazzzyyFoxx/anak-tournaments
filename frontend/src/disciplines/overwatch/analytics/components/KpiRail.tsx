@@ -3,10 +3,10 @@
 
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
-import { KpiId, KpiTone, KpiVM } from "@/app/(site)/tournaments/analytics/analytics.helpers";
-import { GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
-import InfoDot from "@/app/(site)/tournaments/analytics/components/InfoDot";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import { KpiId, KpiTone, KpiVM } from "@/disciplines/overwatch/analytics/analytics.helpers";
+import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface KpiRailProps {
   kpis: KpiVM[];

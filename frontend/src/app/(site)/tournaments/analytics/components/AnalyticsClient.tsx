@@ -1,42 +1,41 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+
 import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import AnalyticsPicker from "@/app/(site)/tournaments/analytics/components/AnalyticsPicker";
 import TournamentHero from "@/app/(site)/tournaments/analytics/components/TournamentHero";
-import VerdictBanner from "@/app/(site)/tournaments/analytics/components/VerdictBanner";
-import KpiRail from "@/app/(site)/tournaments/analytics/components/KpiRail";
-import MasterDetail from "@/app/(site)/tournaments/analytics/components/MasterDetail";
-import { type StandingsMode } from "@/app/(site)/tournaments/analytics/components/StandingsList";
-import HowItWorksCard from "@/app/(site)/tournaments/analytics/components/HowItWorksCard";
-import BottomSheet, {
-  type SheetState
-} from "@/app/(site)/tournaments/analytics/components/BottomSheet";
-import { type GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
-import OrganizerTools from "@/app/(site)/tournaments/analytics/components/OrganizerTools";
 import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
-import {
-  canShowAnalyticsAdminToolbar,
-  getPreferredAnalyticsAlgorithmId,
-  sortAnalyticsAlgorithms,
-  type KpiId
-} from "@/app/(site)/tournaments/analytics/analytics.helpers";
-import { useAnalyticsViewModel } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
-import { cn } from "@/lib/utils";
-import { usePermissions } from "@/hooks/usePermissions";
+import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import { loadAnalyticsUI } from "@/disciplines/registry/analytics";
+import type { AnalyticsHeroParts } from "@/disciplines/types";
+import { useDisciplineMetadata, useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
-import { useTranslations } from "next-intl";
-import tournamentService from "@/services/tournament.service";
-import analyticsService from "@/services/analytics.service";
-import { useWorkspaceStore } from "@/stores/workspace.store";
-import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
-import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { usePermissions } from "@/hooks/usePermissions";
+import { cn } from "@/lib/utils";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import tournamentService from "@/services/tournament.service";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
+function parseId(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * The tournament analytics page (P7 §7 `analytics` slot host). The page owns what is game-neutral: the tournament
+ * picker (the viewing scope's tournaments of games that declare analytics), the selected tournament as owner (its
+ * workspace and game metadata, never the browsing filter), the viewer's analytics permissions and the page shell.
+ * The board itself — rankings, forecasts, standings — is the tournament's game module's. A game without an analytics
+ * capability gets an explicit unsupported state and no analytics read.
+ */
 const AnalyticsPage = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -45,226 +44,92 @@ const AnalyticsPage = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const t = useTranslations();
   const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
-  const parseId = useCallback((value: string | null) => {
-    if (!value) return null;
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return parsed;
-  }, []);
-
-  const tournamentId = useMemo(() => parseId(searchParams.get("tournamentId")), [parseId, searchParams]);
-  const algorithmId = useMemo(() => parseId(searchParams.get("algorithm")), [parseId, searchParams]);
+  const tournamentId = parseId(searchParams.get("tournamentId"));
 
   // Resolve the selected tournament's owner without changing the viewing filter.
-  const {
-    data: selectedTournamentOverview,
-    isLoading: loadingSelectedTournament,
-    isError: isErrorSelectedTournament,
-    refetch: refetchSelectedTournament
-  } = useQuery({
+  const ownerQuery = useQuery({
     queryKey: tournamentQueryKeys.overview(tournamentId),
     queryFn: () => tournamentService.getPublicOverview(tournamentId!),
     enabled: tournamentId != null,
     staleTime: 5 * 60_000
   });
-  const selectedWorkspaceId = selectedTournamentOverview?.workspace_id ?? null;
-  useEntityWorkspace(selectedWorkspaceId);
-  const pickerWorkspaceId = scope === "all" ? "all" : currentWorkspaceId;
+  const owner = ownerQuery.data;
+  const ownerWorkspaceId = owner?.workspace_id ?? null;
+  useEntityWorkspace(ownerWorkspaceId);
+  const metadataQuery = useDisciplineMetadata(ownerWorkspaceId ?? "all", owner?.discipline ?? null);
+  const metadata = metadataQuery.data;
 
-  const {
-    data: tournamentsData,
-    isSuccess: isSuccessTournaments,
-    isLoading: loadingTournaments,
-    isError: isErrorTournaments
-  } = useQuery({
-    // The picker follows the viewing filter; the selected event keeps its owner.
+  // The picker follows the viewing filter; the selected event keeps its owner.
+  const pickerWorkspaceId = scope === "all" ? "all" : currentWorkspaceId;
+  const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.byWorkspace(pickerWorkspaceId ?? "global"),
     queryFn: () => tournamentService.getAll(null, pickerWorkspaceId)
   });
-
-  const availableTournaments = useMemo(() => {
-    const results = tournamentsData?.results ?? [];
-    return selectedTournamentOverview && !results.some((item) => item.id === selectedTournamentOverview.id)
-      ? [selectedTournamentOverview, ...results]
-      : results;
-  }, [tournamentsData?.results, selectedTournamentOverview]);
-
-  const {
-    data: algorithmData,
-    isSuccess: isSuccessAlgorithm,
-    isLoading: loadingAlgorithms,
-    isError: isErrorAlgorithms
-  } = useQuery({
-    // Keyed by tournament so each list carries `has_data` for that tournament,
-    // letting the default prefer "OpenSkill + ML" only when it is populated.
-    // Keep the previous list while refetching on a tournament switch so the
-    // algorithm stays "known" (no stale-id analytics flash before has_data lands).
-    queryKey: analyticsQueryKeys.algorithms(tournamentId),
-    queryFn: () => analyticsService.getAlgorithms(tournamentId),
-    placeholderData: (previousData) => previousData
-  });
-
-  const availableAlgorithms = useMemo(
-    () => sortAnalyticsAlgorithms(algorithmData?.results ?? []),
-    [algorithmData?.results]
+  const gamesQuery = useDisciplines(pickerWorkspaceId ?? "all");
+  const analyticsGames = useMemo(
+    () => new Set((gamesQuery.data ?? []).filter((game) => game.capabilities.analytics).map((game) => game.code)),
+    [gamesQuery.data]
   );
-  const isKnownAlgorithmId =
-    algorithmId != null && availableAlgorithms.some((algorithm) => algorithm.id === algorithmId);
-  const canQueryAnalytics =
-    tournamentId != null && selectedWorkspaceId != null && algorithmId != null && (!isSuccessAlgorithm || isKnownAlgorithmId);
-  const canRecalculateAnalytics = canShowAnalyticsAdminToolbar(hasPermission("analytics.update"));
-  // v2 ML reads (performance, Monte-Carlo distribution, match quality, SHAP) are
-  // permission-gated server-side. Gate the fetches too so the public/community
-  // baseline (v1 + derived impact) never fires a 403 query.
-  const canReadV2 = selectedWorkspaceId != null && canAccessPermission("analytics.read", selectedWorkspaceId);
-
-  const {
-    data: analytics,
-    isLoading: loadingAnalytics,
-    isError: isErrorAnalytics,
-    refetch: refetchAnalytics
-  } = useQuery({
-    queryKey: analyticsQueryKeys.performance(selectedWorkspaceId ?? "global", tournamentId, algorithmId),
-    queryFn: () => analyticsService.getAnalytics(tournamentId!, algorithmId!, selectedWorkspaceId),
-    enabled: canQueryAnalytics
-  });
-
-  const {
-    data: performanceRows
-  } = useQuery({
-    queryKey: analyticsQueryKeys.performanceV2(tournamentId),
-    queryFn: () => analyticsService.getPerformanceV2(tournamentId!),
-    enabled: tournamentId != null && canReadV2
-  });
-
-  const performanceByPlayer = useMemo(
-    () =>
-      new Map(
-        (performanceRows ?? []).map((row) => [row.player_id, row])
-      ),
-    [performanceRows]
+  // Only tournaments whose game has an analytics board are offered; one opened by URL is listed whatever its game.
+  const offered = useMemo(
+    () => (tournamentsQuery.data?.results ?? []).filter((tournament) => analyticsGames.has(tournament.discipline)),
+    [tournamentsQuery.data?.results, analyticsGames]
   );
-
-  // Monte Carlo standings distribution — woven into the team detail (and the
-  // organizer table view); gated to analytics.read viewers.
-  const { data: standingsRows } = useQuery({
-    queryKey: analyticsQueryKeys.standingsDistribution(tournamentId),
-    queryFn: () => analyticsService.getStandingsDistribution(tournamentId!),
-    enabled: tournamentId != null && canReadV2,
-    staleTime: 60_000
-  });
-
-  const distributionByTeam = useMemo(
-    () => new Map((standingsRows ?? []).map((row) => [row.team_id, row])),
-    [standingsRows]
+  const tournaments = useMemo(
+    () => (owner && !offered.some((item) => item.id === owner.id) ? [owner, ...offered] : offered),
+    [offered, owner]
   );
+  const activeTournament = tournaments.find((tournament) => tournament.id === tournamentId) ?? null;
 
-  // Fan-facing view model: per-player impact, the six KPIs, the verdict and the
-  // group count. Derived from the public v1 payload (+ v2 impact when allowed).
-  const viewModel = useAnalyticsViewModel(analytics, performanceByPlayer, canReadV2);
-
-  // Glossary / how-it-works explainer sheet, opened by info dots + the help card.
-  const [sheet, setSheet] = useState<SheetState | null>(null);
-  const explain = useCallback((term: GlossaryTerm) => setSheet({ kind: "term", term }), []);
-  const showHow = useCallback(() => setSheet({ kind: "how" }), []);
-  const closeSheet = useCallback(() => setSheet(null), []);
-
-  // Standings sort/filter is lifted so the KPI cards can drive it (triage folds
-  // into the standings instead of a separate section).
-  const [standingsMode, setStandingsMode] = useState<StandingsMode>("standings");
-  const standingsRef = React.useRef<HTMLDivElement | null>(null);
-  const onKpiSelect = useCallback((id: KpiId) => {
-    setStandingsMode(id === "watch" ? "watch" : "movers");
-    standingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-
-  const activeTournament = useMemo(() => {
-    if (!tournamentId) return null;
-    return availableTournaments.find((tournament) => tournament.id === tournamentId) ?? null;
-  }, [tournamentId, availableTournaments]);
-
-  const activeAlgorithm = useMemo(() => {
-    if (!algorithmId) return null;
-    return availableAlgorithms.find((algorithm) => algorithm.id === algorithmId) ?? null;
-  }, [algorithmId, availableAlgorithms]);
-
+  const listsReady = tournamentsQuery.isSuccess && gamesQuery.isSuccess;
+  const firstOfferedId = offered[0]?.id ?? null;
   useEffect(() => {
-    const nextParams = new URLSearchParams(searchParams);
+    const next = new URLSearchParams(searchParams.toString());
     let changed = false;
-
-    if (nextParams.get("tab")) {
-      nextParams.delete("tab");
+    if (next.get("tab")) {
+      next.delete("tab");
       changed = true;
     }
-
-    if (tournamentId == null && isSuccessTournaments && tournamentsData?.results?.[0]?.id) {
-      nextParams.set("tournamentId", String(tournamentsData.results[0].id));
+    if (tournamentId == null && listsReady && firstOfferedId !== null) {
+      next.set("tournamentId", String(firstOfferedId));
       changed = true;
     }
+    if (changed) router.replace(`${pathname}?${next.toString()}`);
+  }, [pathname, router, searchParams, tournamentId, listsReady, firstOfferedId]);
 
-    const preferredAlgorithmId = getPreferredAnalyticsAlgorithmId(availableAlgorithms);
-    if (
-      isSuccessAlgorithm &&
-      preferredAlgorithmId != null &&
-      (algorithmId == null || !isKnownAlgorithmId)
-    ) {
-      nextParams.set("algorithm", String(preferredAlgorithmId));
-      changed = true;
-    }
-
-    if (changed) {
-      router.replace(`${pathname}?${nextParams.toString()}`);
-    }
-  }, [
-    pathname,
-    router,
-    searchParams,
-    isSuccessTournaments,
-    tournamentsData?.results,
-    isSuccessAlgorithm,
-    availableAlgorithms,
-    tournamentId,
-    algorithmId,
-    isKnownAlgorithmId
-  ]);
-
-  const pushTournamentId = (newTournamentId: string) => {
-    const newSearchParams = new URLSearchParams(searchParams || undefined);
-    newSearchParams.set("tournamentId", newTournamentId);
-    router.push(`${pathname}?${newSearchParams.toString()}`);
+  // Algorithm ids are global: a ranking picked for one tournament stays chosen for the next one when it has it
+  // (the board replaces an id the new tournament's list does not offer).
+  const pushTournamentId = (value: string) => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("tournamentId", value);
+    router.push(`${pathname}?${next.toString()}`);
   };
 
-  const pushAlgorithm = (newAlgorithm: string) => {
-    const newSearchParams = new URLSearchParams(searchParams || undefined);
-    newSearchParams.set("algorithm", newAlgorithm);
-    router.push(`${pathname}?${newSearchParams.toString()}`);
-  };
-
-  const isFiltersReady = !loadingTournaments && !loadingAlgorithms && !loadingSelectedTournament;
-  const isEmptyTeams = canQueryAnalytics && !!analytics && analytics.teams.length === 0;
-  const picker = (
-    <AnalyticsPicker
-      tournaments={availableTournaments}
-      algorithms={availableAlgorithms}
-      tournamentId={tournamentId}
-      algorithmId={algorithmId}
-      loadingTournaments={loadingTournaments}
-      loadingAlgorithms={loadingAlgorithms}
-      isErrorTournaments={isErrorTournaments}
-      isErrorAlgorithms={isErrorAlgorithms}
-      onTournamentChange={pushTournamentId}
-      onAlgorithmChange={pushAlgorithm}
+  const hero = (parts: AnalyticsHeroParts) => (
+    <TournamentHero
+      tournament={activeTournament}
+      algorithmName={parts.rankedBy}
+      totals={
+        parts.counts && activeTournament ? { ...parts.counts, stages: activeTournament.stages?.length ?? 0 } : null
+      }
+      controlsSlot={
+        <AnalyticsPicker
+          tournaments={tournaments}
+          tournamentId={tournamentId}
+          loadingTournaments={tournamentsQuery.isPending || gamesQuery.isPending}
+          isErrorTournaments={tournamentsQuery.isError || gamesQuery.isError}
+          onTournamentChange={pushTournamentId}
+          controls={parts.controls}
+        />
+      }
     />
   );
 
-  // One body per state, in priority order: the filters have to settle before
-  // "nothing selected" means anything, and a failed fetch outranks a pending
-  // one so a retry is offered instead of a skeleton that will never resolve.
-  const renderAnalyticsBody = () => {
-    if (!isFiltersReady) {
+  const renderPage = () => {
+    if (!listsReady && !tournamentsQuery.isError && !gamesQuery.isError) {
       return <AnalyticsContentSkeleton />;
     }
-    if (tournamentId == null || algorithmId == null) {
+    if (tournamentId == null) {
       return (
         <PageStateCard
           state="empty"
@@ -273,80 +138,63 @@ const AnalyticsPage = ({ scope }: Readonly<{ scope: StatsScope }>) => {
         />
       );
     }
-    if (isErrorSelectedTournament || isErrorAnalytics) {
+    if (ownerQuery.isError || metadataQuery.isError) {
       return (
         <PageStateCard
           state="error"
           title={t("analytics.page.unavailable")}
           description={t("analytics.page.unavailableDesc")}
-          onAction={() => void (isErrorSelectedTournament ? refetchSelectedTournament() : refetchAnalytics())}
+          onAction={() => void (ownerQuery.isError ? ownerQuery.refetch() : metadataQuery.refetch())}
         />
       );
     }
-    if (loadingAnalytics || !analytics) {
-      return <AnalyticsContentSkeleton />;
-    }
-    if (isEmptyTeams) {
+    if (!owner || !metadata) return <AnalyticsContentSkeleton />;
+    if (!metadata.discipline.capabilities.analytics) {
       return (
         <PageStateCard
           state="empty"
-          title={t("analytics.page.noTeams")}
-          description={t("analytics.page.noTeamsDesc")}
+          title={t("analytics.page.unsupported", { game: metadata.discipline.name })}
+          description={t("analytics.page.unsupportedDesc")}
         />
       );
     }
-    if (!viewModel) {
-      return null;
-    }
-    return (
-      <>
-        <VerdictBanner verdict={viewModel.verdict} onExplain={explain} />
-        <KpiRail kpis={viewModel.kpis} onExplain={explain} onSelect={onKpiSelect} />
-        <div ref={standingsRef}>
-          <MasterDetail
-            key={`${tournamentId}-${algorithmId}`}
-            tournamentId={tournamentId}
-            teams={viewModel.teams}
-            canReadV2={canReadV2}
-            mode={standingsMode}
-            onModeChange={setStandingsMode}
-            performanceByPlayer={performanceByPlayer}
-            distributionByTeam={distributionByTeam}
-            onExplain={explain}
-          />
-        </div>
-        <HowItWorksCard onOpen={showHow} />
-      </>
-    );
+    return null;
   };
 
+  const blocked = renderPage();
   return (
     <div className={cn(styles.surface, styles.cRoot)}>
-      {/* Persistent header: tournament identity + stat blocks + the analytics
-          picker, which sits in the right rail under the KPI stat blocks. */}
-      <TournamentHero
-        tournament={activeTournament}
-        algorithmName={activeAlgorithm?.name}
-        totals={
-          analytics && activeTournament
-            ? {
-                teams: analytics.summary.total_teams,
-                players: analytics.summary.total_players,
-                groups: viewModel?.groupCount ?? 0,
-                stages: activeTournament.stages?.length ?? 0
-              }
-            : null
-        }
-        controlsSlot={picker}
-      />
-
-      {canRecalculateAnalytics && tournamentId != null ? (
-        <OrganizerTools tournamentId={tournamentId} workspaceId={currentWorkspaceId} />
-      ) : null}
-
-      {renderAnalyticsBody()}
-
-      <BottomSheet state={sheet} onClose={closeSheet} />
+      {blocked !== null || !owner || !metadata ? (
+        <>
+          {hero({})}
+          {blocked}
+        </>
+      ) : (
+        <DisciplineWidget
+          discipline={metadata.discipline.code}
+          load={loadAnalyticsUI}
+          slot="analytics"
+          capabilities={metadata.discipline.capabilities}
+          requires="analytics"
+          props={{
+            tournamentId: owner.id,
+            workspaceId: owner.workspace_id,
+            metadata,
+            // v2 ML reads (performance, Monte-Carlo distribution, match quality, SHAP) are permission-gated
+            // server-side; gating the board's fetches keeps the public baseline from firing a 403.
+            canReadV2: canAccessPermission("analytics.read", owner.workspace_id),
+            canUpdate: hasPermission("analytics.update"),
+            hero
+          }}
+          fallback={null}
+          pending={
+            <>
+              {hero({})}
+              <AnalyticsContentSkeleton />
+            </>
+          }
+        />
+      )}
     </div>
   );
 };

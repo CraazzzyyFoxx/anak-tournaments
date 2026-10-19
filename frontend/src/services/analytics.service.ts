@@ -32,8 +32,10 @@ export default class analyticsService {
     id: number,
     algorithm: number,
     workspaceId?: number | null,
+    { signal }: { signal?: AbortSignal } = {},
   ): Promise<TournamentAnalytics> {
     return apiFetch(`/api/v1/analytics`, {
+      signal,
       query: {
         tournament_id: id,
         algorithm: algorithm,
@@ -59,8 +61,10 @@ export default class analyticsService {
 
   static async getAlgorithms(
     tournamentId?: number | null,
+    { signal }: { signal?: AbortSignal } = {},
   ): Promise<PaginatedResponse<AlgorithmAnalytics>> {
     return apiFetch(`/api/v1/analytics/algorithms`, {
+      signal,
       query: {
         page: 1,
         per_page: -1,
@@ -93,8 +97,10 @@ export default class analyticsService {
   static async getPerformanceV2(
     tournamentId: number,
     algorithmId?: number,
+    { signal }: { signal?: AbortSignal } = {},
   ): Promise<PerformanceV2[]> {
     return apiFetch("/api/v1/analytics/performance", {
+      signal,
       query: { tournament_id: tournamentId, algorithm_id: algorithmId },
     }).then((response) => response.json());
   }
@@ -102,8 +108,10 @@ export default class analyticsService {
   static async getStandingsDistribution(
     tournamentId: number,
     algorithmId?: number,
+    { signal }: { signal?: AbortSignal } = {},
   ): Promise<StandingsDistribution[]> {
     return apiFetch("/api/v1/analytics/standings/distribution", {
+      signal,
       query: { tournament_id: tournamentId, algorithm_id: algorithmId },
     }).then((response) => response.json());
   }

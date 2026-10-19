@@ -1,21 +1,23 @@
 "use client";
 
 import { ArrowDown, ArrowRight, ArrowUp, Minus } from "lucide-react";
-import { roleOf } from "@/lib/roster/role-ref";
 
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { PlayerVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
-import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/AnomalyTooltip";
-import ImpactBar from "@/app/(site)/tournaments/analytics/components/community/ImpactBar";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+import AnomalyTooltip from "@/disciplines/overwatch/analytics/components/AnomalyTooltip";
+import ImpactBar from "@/disciplines/overwatch/analytics/components/community/ImpactBar";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface RosterRowProps {
   player: PlayerVM;
   tournamentGrid?: DivisionGridVersion | null;
+  /** The tournament's own role dictionary (null while it loads: the glyph stays neutral). */
+  ontology: RoleOntology | null;
   onSelect: () => void;
 }
 
@@ -60,7 +62,7 @@ function MoveChip({
  * tag), impact bar, optional watch-flag chip, and the predicted move. Selecting
  * it opens the player detail.
  */
-export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly<RosterRowProps>) {
+export default function RosterRow({ player, tournamentGrid, ontology, onSelect }: Readonly<RosterRowProps>) {
   const t = useTranslations();
   const isNew = player.is_newcomer || player.is_newcomer_role;
   const flag = player.anomalies[0];
@@ -70,7 +72,7 @@ export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly
     // carries the full button reset, and Enter/Space come for free.
     <button type="button" className={styles.cRosterRow} onClick={onSelect}>
       <span className={styles.cRoleChip}>
-        <PlayerRoleIcon role={roleOf(player.role)} size={19} />
+        <PlayerRoleIcon role={player.role} ontology={ontology} size={19} />
       </span>
       <span className={styles.cBadgeWrap}>
         <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={30} height={30} />

@@ -19,6 +19,8 @@ interface DisciplineWidgetProps<F extends DisciplineSlot, K extends F> {
   props: SlotProps[K];
   /** Working generic view (facts table etc.). */
   fallback: ReactNode;
+  /** Shown while the family's module (and its lazy slot) loads; nothing by default. Never the generic fallback. */
+  pending?: ReactNode;
 }
 
 type Loaded = { code: string; ui: DisciplineUI | null };
@@ -37,7 +39,8 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   requires,
   applicable = true,
   props,
-  fallback
+  fallback,
+  pending = null
 }: Readonly<DisciplineWidgetProps<F, K>>): ReactNode {
   const t = useTranslations("common.discipline");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -61,9 +64,9 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   }
   if (!applicable) return fallback;
 
-  // Still resolving the family's module: neutral (nothing), never the caller's fallback — the fallback says "this
-  // game has no renderer", which is only known once the loader has answered.
-  if (loaded?.code !== discipline) return null;
+  // Still resolving the family's module: the caller's neutral `pending` view, never its fallback — the fallback says
+  // "this game has no renderer", which is only known once the loader has answered.
+  if (loaded?.code !== discipline) return pending;
   const Slot = loaded.ui?.slots[slot] as ComponentType<SlotProps[K]> | undefined;
   if (!Slot) {
     return requires === undefined ? (
@@ -74,5 +77,5 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
       </p>
     );
   }
-  return <Suspense fallback={null}>{createElement(Slot, props)}</Suspense>;
+  return <Suspense fallback={pending}>{createElement(Slot, props)}</Suspense>;
 }

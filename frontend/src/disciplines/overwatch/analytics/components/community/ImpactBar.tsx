@@ -1,7 +1,7 @@
 "use client";
 
 import { getImpactColor } from "@/lib/colors";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface ImpactBarProps {
   /** 0–100 impact / percentile. */

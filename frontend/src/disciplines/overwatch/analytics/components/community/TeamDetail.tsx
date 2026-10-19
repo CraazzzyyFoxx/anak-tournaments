@@ -9,13 +9,13 @@ import { useTranslations, useLocale } from "next-intl";
 import { useTeamOntology } from "@/hooks/useTeamOntology";
 import { sortTeamPlayers } from "@/lib/player";
 import { StandingsDistribution } from "@/types/analytics.types";
-import { formatPlace } from "@/app/(site)/tournaments/analytics/analytics.helpers";
-import { TeamVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
-import { GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
-import DeltaPill from "@/app/(site)/tournaments/analytics/components/DeltaPill";
-import InfoDot from "@/app/(site)/tournaments/analytics/components/InfoDot";
-import RosterRow from "@/app/(site)/tournaments/analytics/components/community/RosterRow";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import { formatPlace } from "@/disciplines/overwatch/analytics/analytics.helpers";
+import { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import DeltaPill from "@/disciplines/overwatch/analytics/components/DeltaPill";
+import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
+import RosterRow from "@/disciplines/overwatch/analytics/components/community/RosterRow";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface TeamDetailProps {
   team: TeamVM;
@@ -149,6 +149,7 @@ export default function TeamDetail({
             key={player.id}
             player={player}
             tournamentGrid={tournamentGrid}
+            ontology={ontology}
             onSelect={() => onSelectPlayer(player.id)}
           />
         ))}

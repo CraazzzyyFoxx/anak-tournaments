@@ -12,7 +12,7 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
-import { NAV_GROUPS, NAV_LINKS, currentNavHref } from "@/components/site/site-nav-groups";
+import { NAV_GROUPS, NAV_LINKS, currentNavHref, navItemAvailable } from "@/components/site/site-nav-groups";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,10 +25,13 @@ import { WorkspaceAvatar, type WorkspaceAvatarSource } from "@/components/worksp
 import WorkspaceSwitcher from "@/components/workspace/WorkspaceSwitcher";
 import { BRAND_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth/redirect";
 import { cn } from "@/lib/utils";
 import { PLATFORM_ZONE } from "@/lib/site/host";
+import { resolveWorkspaceAxis } from "@/lib/site/discipline-scope";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /** Mock `.btn.btn--outline.btn--icon`: the plate's square 36px controls. */
 const ICON_BUTTON_CLASS =
@@ -71,6 +74,17 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
   // Below `md` the inline combobox has no room; the search is a toggle that
   // drops a full-width row under the plate (mock `openMobileSearch`).
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // The viewed scope's games decide which capability-bound entries (analytics) have anything to show.
+  const hostLockedWorkspaceId = useWorkspaceStore((state) => state.hostLockedWorkspaceId);
+  const statsScope = useWorkspaceStore((state) => state.statsScope);
+  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const { data: games } = useDisciplines(
+    resolveWorkspaceAxis({ hostLockedWorkspaceId, ownerWorkspaceId: null, statsScope, currentWorkspaceId })
+  );
+  const navGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => navItemAvailable(item, games))
+  }));
 
   const tenant = tenantMode ? tenantWorkspace : undefined;
 
@@ -144,7 +158,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 </SheetClose>
               </div>
 
-              {NAV_GROUPS.map((group) => (
+              {navGroups.map((group) => (
                 <div key={group.key} className="mt-[18px]">
                   <p className={EYEBROW_CLASS}>{t(`nav.groups.${group.key}`)}</p>
                   {group.items.map((item) => (
@@ -259,7 +273,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
           )}
 
           <nav aria-label={t("nav.label")} className="hidden min-w-0 items-center gap-0.5 lg:flex">
-            {NAV_GROUPS.map((group) => {
+            {navGroups.map((group) => {
               const isCurrent = group.items.some((item) => item.href === current);
               return (
                 <DropdownMenu key={group.key}>

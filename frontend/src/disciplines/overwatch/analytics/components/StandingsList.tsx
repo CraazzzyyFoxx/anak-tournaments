@@ -6,14 +6,14 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TeamName from "@/components/TeamName";
 import { useTranslations, useLocale } from "next-intl";
-import { TeamVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
+import { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
 import {
   formatPlace,
   standingsRank,
-} from "@/app/(site)/tournaments/analytics/analytics.helpers";
-import DeltaPill from "@/app/(site)/tournaments/analytics/components/DeltaPill";
+} from "@/disciplines/overwatch/analytics/analytics.helpers";
+import DeltaPill from "@/disciplines/overwatch/analytics/components/DeltaPill";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 export type StandingsMode = "standings" | "movers" | "watch";
 

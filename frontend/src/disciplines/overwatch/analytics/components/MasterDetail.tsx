@@ -5,18 +5,19 @@ import { ChevronLeft } from "lucide-react";
 
 import { useTranslations } from "next-intl";
 import { PerformanceV2, StandingsDistribution } from "@/types/analytics.types";
-import { TeamVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
-import { useMasterDetailSelection } from "@/app/(site)/tournaments/analytics/useMasterDetailSelection";
-import { GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+import { useMasterDetailSelection } from "@/disciplines/overwatch/analytics/useMasterDetailSelection";
+import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
 import StandingsList, {
   type StandingsMode,
-} from "@/app/(site)/tournaments/analytics/components/StandingsList";
-import AnalyticsStandings from "@/app/(site)/tournaments/analytics/components/AnalyticsStandings";
-import MatchQualityCard from "@/app/(site)/tournaments/analytics/components/MatchQualityCard";
-import TeamDetail from "@/app/(site)/tournaments/analytics/components/community/TeamDetail";
-import PlayerDetail from "@/app/(site)/tournaments/analytics/components/community/PlayerDetail";
+} from "@/disciplines/overwatch/analytics/components/StandingsList";
+import AnalyticsStandings from "@/disciplines/overwatch/analytics/components/AnalyticsStandings";
+import MatchQualityCard from "@/disciplines/overwatch/analytics/components/MatchQualityCard";
+import TeamDetail from "@/disciplines/overwatch/analytics/components/community/TeamDetail";
+import PlayerDetail from "@/disciplines/overwatch/analytics/components/community/PlayerDetail";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface MasterDetailProps {
   tournamentId: number;
@@ -26,6 +27,8 @@ interface MasterDetailProps {
   onModeChange: (mode: StandingsMode) => void;
   performanceByPlayer: Map<number, PerformanceV2>;
   distributionByTeam?: Map<number, StandingsDistribution>;
+  /** The tournament's own role dictionary (its game's metadata), for player role names and glyphs. */
+  ontology: RoleOntology;
   onExplain?: (term: GlossaryTerm) => void;
 }
 
@@ -58,6 +61,7 @@ export default function MasterDetail({
   onModeChange,
   performanceByPlayer,
   distributionByTeam,
+  ontology,
   onExplain,
 }: Readonly<MasterDetailProps>) {
   const t = useTranslations();
@@ -137,6 +141,7 @@ export default function MasterDetail({
         player={player}
         teamName={team.name}
         tournamentGrid={team.tournament?.division_grid_version}
+        ontology={ontology}
         canReadV2={canReadV2}
         onExplain={onExplain}
       />

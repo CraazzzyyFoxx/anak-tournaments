@@ -3,7 +3,7 @@
 import { ChevronRight } from "lucide-react";
 
 import { useTranslations } from "next-intl";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface HowItWorksCardProps {
   onOpen: () => void;

@@ -27,7 +27,7 @@ const MatchRow = ({ match }: { match: AchievementMatchLink }) => {
   const [home, away] = match.participants;
   return (
     <HoverPrefetchLink
-      href={`/encounters/${match.encounter_id}`}
+      href={`/matches/${match.id}`}
       className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] py-2 text-caption transition-colors last:border-b-0 hover:text-[color:var(--aqt-teal)]"
     >
       <span className="truncate">
@@ -54,8 +54,8 @@ interface Props {
   onClose: () => void;
 }
 
-/** Detail modal for a single achievement: shows where/when the player earned it
- *  (tournaments + matches with dates), or a locked state if not yet earned. */
+/** Detail modal for a single achievement: where the player earned it (each tournament and match linking to its
+ *  own page; a match shows its participants, score line and length), or a locked state if not yet earned. */
 export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
   const tr = useTranslations();
   const locale = useLocale();
@@ -115,9 +115,14 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                         </h3>
                         <div className="flex flex-wrap gap-1.5">
                           {ach.tournaments.map((t) => (
-                            <span key={t.id} className="aqt-stage-pill" title={t.name}>
+                            <HoverPrefetchLink
+                              key={t.id}
+                              href={`/tournaments/${t.id}`}
+                              className="aqt-stage-pill transition-colors hover:text-[color:var(--aqt-teal)]"
+                              title={t.name}
+                            >
                               {t.name}
-                            </span>
+                            </HoverPrefetchLink>
                           ))}
                         </div>
                       </section>

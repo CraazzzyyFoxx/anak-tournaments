@@ -3,28 +3,31 @@
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { roleOf } from "@/lib/roster/role-ref";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 
 import { getImpactColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useRoleName } from "@/hooks/useRoleName";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { normalizeRoleTint } from "@/lib/roster/player-role";
-import { PlayerVM } from "@/app/(site)/tournaments/analytics/useAnalyticsViewModel";
-import { GlossaryTerm, isAnomalyGlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
-import InfoDot from "@/app/(site)/tournaments/analytics/components/InfoDot";
-import ImpactBar from "@/app/(site)/tournaments/analytics/components/community/ImpactBar";
-import ChangeShiftDialog from "@/app/(site)/tournaments/analytics/components/community/ChangeShiftDialog";
-import ExplanationPopover from "@/app/(site)/tournaments/analytics/components/ExplanationPopover";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+import { GlossaryTerm, isAnomalyGlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
+import ImpactBar from "@/disciplines/overwatch/analytics/components/community/ImpactBar";
+import ChangeShiftDialog from "@/disciplines/overwatch/analytics/components/community/ChangeShiftDialog";
+import ExplanationPopover from "@/disciplines/overwatch/analytics/components/ExplanationPopover";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface PlayerDetailProps {
   player: PlayerVM;
   teamName: string;
   tournamentGrid?: DivisionGridVersion | null;
+  /** The tournament's own role dictionary: the role's name and glyph come from it. */
+  ontology: RoleOntology;
   canReadV2?: boolean;
   onExplain?: (term: GlossaryTerm) => void;
 }
@@ -33,10 +36,12 @@ export default function PlayerDetail({
   player,
   teamName,
   tournamentGrid,
+  ontology,
   canReadV2 = false,
   onExplain,
 }: Readonly<PlayerDetailProps>) {
   const t = useTranslations();
+  const nameOf = useRoleName();
   const { hasPermission } = usePermissions();
   const [editing, setEditing] = useState(false);
   const canEdit = hasPermission("analytics.update");
@@ -51,8 +56,13 @@ export default function PlayerDetail({
       ? t("analytics.community.player.drop")
       : t("analytics.community.player.hold");
 
-  const rk = normalizeRoleTint(roleOf(player.role));
-  const roleLabel = rk ? t(`analytics.community.role.${rk}`) : roleOf(player.role) ?? "";
+  const roleCode = roleOf(player.role);
+  const roleNode = findRole(ontology, player.role);
+  const roleLabel = roleNode
+    ? nameOf(roleNode)
+    : roleCode === null || roleCode.toLowerCase() === "flex"
+      ? t("common.roles.flex")
+      : roleCode;
   const roleLower = roleLabel.toLowerCase();
   const confPct = Math.round(player.confidence * 100);
   const predictedDivision = player.predicted_division ?? player.division;
@@ -110,7 +120,7 @@ export default function PlayerDetail({
             ) : null}
           </div>
           <div className={styles.cPlayerRole}>
-            <PlayerRoleIcon role={roleOf(player.role)} size={15} decorative />
+            <PlayerRoleIcon role={player.role} ontology={ontology} size={15} decorative />
             <span>
               {t("analytics.community.player.roleLine", {
                 role: roleLabel,

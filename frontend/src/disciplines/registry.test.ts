@@ -2,11 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { createDisciplineLoader } from "./registry/create";
 import { loadAdminUI } from "./registry/admin";
+import { loadAnalyticsUI } from "./registry/analytics";
 import { loadPregameUI } from "./registry/pregame";
 import { loadProfileUI } from "./registry/profile";
 import { loadRankUI } from "./registry/rank";
 
-const FAMILIES = { rank: loadRankUI, pregame: loadPregameUI, admin: loadAdminUI, profile: loadProfileUI };
+const FAMILIES = {
+  rank: loadRankUI,
+  pregame: loadPregameUI,
+  admin: loadAdminUI,
+  profile: loadProfileUI,
+  analytics: loadAnalyticsUI
+};
 
 describe("slot-family loaders", () => {
   it("resolve an unknown code to null, never to another game's module", async () => {
@@ -36,6 +43,7 @@ describe("slot-family loaders", () => {
       "topCharacters",
       "tournamentSummary"
     ]);
+    expect(await slotsOf(loadAnalyticsUI)).toEqual(["analytics"]);
     for (const load of Object.values(FAMILIES)) expect((await load("overwatch"))?.code).toBe("overwatch");
   });
 

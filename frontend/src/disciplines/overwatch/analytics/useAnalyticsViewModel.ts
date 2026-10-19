@@ -15,7 +15,7 @@ import {
   KpiVM,
   resolveImpact,
   standingsRank,
-} from "@/app/(site)/tournaments/analytics/analytics.helpers";
+} from "@/disciplines/overwatch/analytics/analytics.helpers";
 
 /** A player enriched with a resolved 0–100 impact (v2 score or derived). */
 export interface PlayerVM extends PlayerAnalytics {

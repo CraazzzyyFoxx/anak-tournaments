@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
-import MLAdminToolbar from "@/app/(site)/tournaments/analytics/components/MLAdminToolbar";
+import MLAdminToolbar from "@/disciplines/overwatch/analytics/components/MLAdminToolbar";
 
 interface OrganizerToolsProps {
   tournamentId: number;

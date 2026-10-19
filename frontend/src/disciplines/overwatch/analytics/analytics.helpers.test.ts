@@ -13,7 +13,7 @@ import {
   ordinal,
   resolveImpact,
   standingsRank,
-} from "@/app/(site)/tournaments/analytics/analytics.helpers";
+} from "@/disciplines/overwatch/analytics/analytics.helpers";
 
 describe("formatAnalyticsNumber", () => {
   it("keeps trailing zeros of whole numbers (impact 100 is not '1')", () => {

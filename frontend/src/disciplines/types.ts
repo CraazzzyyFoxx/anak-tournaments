@@ -78,6 +78,16 @@ export interface CharacterCompareProps {
   metadata: DisciplineMetadata;
 }
 
+/** What a game's analytics board hands back to the host's tournament hero (slice 9 amendment). */
+export interface AnalyticsHeroParts {
+  /** The ranking the board shows ("ranked by …"). */
+  rankedBy?: string | null;
+  /** The loaded result's bracket counts; absent until it has loaded. */
+  counts?: { teams: number; players: number; groups: number } | null;
+  /** The board's own controls (its ranking picker), rendered beside the host's tournament picker. */
+  controls?: ReactNode;
+}
+
 export type SlotProps = {
   /**
    * A character's hover card on a profile (8b amendment: the host passes the figures it already read — the maps
@@ -128,7 +138,21 @@ export type SlotProps = {
   matchRowBadge: { match: MatchWithUserStats; metadata: DisciplineMetadata };
   /** The characters one player (by global `userId`) played in a match; the pick/ban target board's previous-map list (8a addition). */
   matchCharacters: { match: MatchWithStats; userId: number | null; metadata: DisciplineMetadata };
-  analytics: { tournamentId: number; workspaceId: number; metadata: DisciplineMetadata };
+  /**
+   * One tournament's analytics board (slice 9 amendment): the host resolves the owner tournament, its workspace and
+   * game metadata and the viewer's analytics permissions; the module reads its own analytics wire, owns the ranking
+   * choice (`?algorithm=`) and renders the host's tournament hero through `hero`, so the page keeps one header.
+   */
+  analytics: {
+    tournamentId: number;
+    workspaceId: number;
+    metadata: DisciplineMetadata;
+    /** The viewer may read the permission-gated ML reads of the owner workspace. */
+    canReadV2: boolean;
+    /** The viewer may recalculate / edit analytics. */
+    canUpdate: boolean;
+    hero: (parts: AnalyticsHeroParts) => ReactNode;
+  };
   nativeRankEditor: {
     ladder: NativeTier[];
     value: NativeRankRange | null;
@@ -178,6 +202,7 @@ export type ProfileSlot =
 export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";
 export type PregameSlot = "pregameCharacterBans";
 export type AdminSlot = "nativeRankEditor" | "rankMapping";
+export type AnalyticsSlot = "analytics";
 
 /** One module's lazy renderers for the slots of family `S`. */
 export interface DisciplineUI<S extends DisciplineSlot = DisciplineSlot> {

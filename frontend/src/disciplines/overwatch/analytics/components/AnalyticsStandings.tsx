@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronRight, Minus } from "lucide-react";
 import { roleOf } from "@/lib/roster/role-ref";
+import { findRole } from "@/lib/roster/ontology";
 import {
   AnalyticsAnomaly,
   PerformanceV2,
@@ -15,14 +16,15 @@ import {
   formatAnalyticsNumber,
   formatConfidencePercent,
   standingsRank
-} from "@/app/(site)/tournaments/analytics/analytics.helpers";
-import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/AnomalyTooltip";
-import ExplanationPopover from "@/app/(site)/tournaments/analytics/components/ExplanationPopover";
-import ForecastChip from "@/app/(site)/tournaments/analytics/components/ForecastChip";
-import MetricTooltip from "@/app/(site)/tournaments/analytics/components/MetricTooltip";
+} from "@/disciplines/overwatch/analytics/analytics.helpers";
+import AnomalyTooltip from "@/disciplines/overwatch/analytics/components/AnomalyTooltip";
+import ExplanationPopover from "@/disciplines/overwatch/analytics/components/ExplanationPopover";
+import ForecastChip from "@/disciplines/overwatch/analytics/components/ForecastChip";
+import MetricTooltip from "@/disciplines/overwatch/analytics/components/MetricTooltip";
 import TeamName from "@/components/TeamName";
 import { useTranslations } from "next-intl";
 import { useTeamOntology } from "@/hooks/useTeamOntology";
+import { useRoleName } from "@/hooks/useRoleName";
 import { sortTeamPlayers } from "@/lib/player";
 import { groupDisplayName } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
@@ -212,6 +214,11 @@ const TeamDetail = ({
   const canEdit = hasPermission("analytics.update");
   const tournamentGrid = team.tournament?.division_grid_version;
   const ontology = useTeamOntology(team);
+  const nameOf = useRoleName();
+  const roleText = (ref: PlayerAnalytics["role"]) => {
+    const node = ontology ? findRole(ontology, ref) : null;
+    return node ? nameOf(node) : (roleOf(ref) ?? "");
+  };
   const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
 
   return (
@@ -276,8 +283,8 @@ const TeamDetail = ({
                 <tr key={player.id}>
                   <td>
                     <div className="flex items-center gap-2">
-                      <PlayerRoleIcon role={roleOf(player.role)} size={18} decorative />
-                      <span className="text-muted-foreground">{roleOf(player.role)}</span>
+                      <PlayerRoleIcon role={player.role} ontology={ontology} size={18} decorative />
+                      <span className="text-muted-foreground">{roleText(player.role)}</span>
                     </div>
                   </td>
                   <td>
@@ -407,7 +414,7 @@ const RoleLane = ({ team }: { team: TeamAnalytics }) => {
           )}
           title={player.name}
         >
-          <PlayerRoleIcon role={roleOf(player.role)} size={14} />
+          <PlayerRoleIcon role={player.role} ontology={ontology} size={14} />
           <DivisionBadge division={player.division} tournamentGrid={tournamentGrid} size={22} />
           <span className={styles.roleName}>{player.name.split("#")[0]}</span>
         </div>

@@ -10,7 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
+import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
 
 export type SheetState = { kind: "term"; term: GlossaryTerm } | { kind: "how" };
 

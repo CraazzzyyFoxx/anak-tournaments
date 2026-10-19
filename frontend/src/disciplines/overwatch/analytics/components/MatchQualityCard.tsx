@@ -12,8 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import AnomalyLegend from "@/app/(site)/tournaments/analytics/components/AnomalyLegend";
-import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/AnomalyTooltip";
+import AnomalyLegend from "@/disciplines/overwatch/analytics/components/AnomalyLegend";
+import AnomalyTooltip from "@/disciplines/overwatch/analytics/components/AnomalyTooltip";
 import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { duelSeats } from "@/lib/encounter/seats";
@@ -88,7 +88,8 @@ function anomalyTone(kind: AnomalyKind): string {
     case "throw":
       return "border-[color:color-mix(in_srgb,var(--aqt-violet)_50%,transparent)] text-[color:var(--aqt-violet)]";
     case "sandbag":
-      return "border-[color:color-mix(in_srgb,var(--aqt-damage)_50%,transparent)] text-[color:var(--aqt-damage)]";
+      // The same pink it always had, no longer borrowed from a role's colour token.
+      return "border-[color:color-mix(in_srgb,hsl(337_81%_66%)_50%,transparent)] text-[color:hsl(337_81%_66%)]";
     default:
       return "";
   }

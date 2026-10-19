@@ -3,10 +3,10 @@
 import React from "react";
 
 import { useTranslations, useLocale } from "next-intl";
-import { CommunityVerdict, formatPlace } from "@/app/(site)/tournaments/analytics/analytics.helpers";
-import { GlossaryTerm } from "@/app/(site)/tournaments/analytics/analytics-glossary";
-import InfoDot from "@/app/(site)/tournaments/analytics/components/InfoDot";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
+import { CommunityVerdict, formatPlace } from "@/disciplines/overwatch/analytics/analytics.helpers";
+import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
+import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
 
 interface VerdictBannerProps {
   verdict: CommunityVerdict;

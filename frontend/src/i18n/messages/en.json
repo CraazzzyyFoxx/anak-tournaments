@@ -1920,7 +1920,9 @@
       "unavailable": "Analytics unavailable",
       "unavailableDesc": "Failed to load analytics for the selected parameters.",
       "noTeams": "No teams",
-      "noTeamsDesc": "No teams found for the selected tournament."
+      "noTeamsDesc": "No teams found for the selected tournament.",
+      "unsupported": "Analytics is not available for {game}",
+      "unsupportedDesc": "This game has no analytics module, so no forecast, ranking or standings are computed for its tournaments."
     },
     "horizon": {
       "title": "Predicted vs actual horizon",
@@ -2245,12 +2247,6 @@
         "holdInBand": "Performing about where a Div {division} player should — no move expected.",
         "holdThin": "Sample is still thin, so confidence is only {pct}%.",
         "holdSteady": "Steady, in-band results across the bracket."
-      },
-      "role": {
-        "tank": "Tank",
-        "damage": "Damage",
-        "support": "Support",
-        "flex": "Flex"
       }
     },
     "howItWorks": {
