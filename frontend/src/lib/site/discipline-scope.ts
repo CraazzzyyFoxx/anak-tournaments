@@ -144,10 +144,13 @@ export function resolvePageGame(input: {
       ? resolution({ kind: "empty" }, { kind: "dimmed" })
       : resolution({ kind: "game", code: ownerGame, source: "owner" }, { kind: "game", code: ownerGame, locked: true });
   }
-  if (pageClass === "none") {
-    return resolution({ kind: "all" }, enabled.length > 1 ? { kind: "dimmed" } : { kind: "hidden" });
-  }
   const first = enabled[0];
+  if (pageClass === "none") {
+    if (first !== undefined && enabled.length === 1) {
+      return resolution({ kind: "game", code: first, source: explicit === first ? "url" : "default" }, { kind: "hidden" });
+    }
+    return resolution({ kind: "all" }, first === undefined ? { kind: "hidden" } : { kind: "dimmed" });
+  }
   if (first === undefined) return resolution({ kind: "empty" }, { kind: "hidden" });
 
   const several = enabled.length > 1;

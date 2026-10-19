@@ -154,7 +154,18 @@ describe("resolvePageGame", () => {
         source: "url"
       });
     }
-    expect(resolve({ pageClass: "none", games: [OW] }).pill).toEqual({ kind: "hidden" });
+    expect(resolve({ pageClass: "none", games: [OW, OFF], stored: "lol" })).toEqual({
+      game: { kind: "game", code: "overwatch", source: "default" },
+      pill: { kind: "hidden" },
+      tabs: false,
+      scope: "all"
+    });
+    expect(resolve({ pageClass: "none", games: [OW], explicit: "overwatch" })).toEqual({
+      game: { kind: "game", code: "overwatch", source: "url" },
+      pill: { kind: "hidden" },
+      tabs: false,
+      scope: "all"
+    });
   });
 
   it("keeps an explicit code that is not installed or not enabled as an error, never a corrected game", () => {
