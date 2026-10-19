@@ -43,6 +43,7 @@ from shared.core import http_status as status
 from shared.core.enums import EncounterGameState, EncounterStatus, MapVetoSessionStatus, PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline as discipline_spec
+from shared.disciplines import rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
@@ -88,9 +89,6 @@ def _source_of(viewer: int | None) -> str:
 
 
 _CAPTAIN_ACTIONS = ("ban", "pick", "protect", "side_pick")
-#: Roster reading order of a target board: the three roles in team order, mains
-#: before the substitutes that cover them, then by name.
-_ROLE_ORDER = {"tank": 0, "damage": 1, "support": 2}
 
 
 # ── serialization ────────────────────────────────────────────────────────────
@@ -162,11 +160,6 @@ def serialize_target(player: Player, grid: DivisionGrid) -> dict[str, Any]:
         # Against the tournament's own grid, exactly as `PlayerRead.division`.
         "division": resolve_tournament_division(player.rank, tournament_grid=grid),
     }
-
-
-def _target_sort_key(player: Player) -> tuple[int, int, str]:
-    rank = _ROLE_ORDER.get(player.role, len(_ROLE_ORDER))
-    return (rank, 1 if player.is_substitution else 0, player.name or "")
 
 
 def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[str, Any]:
@@ -259,7 +252,7 @@ class PickBanActionService:
         )
         rosters: dict[int, list[Player]] = {}
         if any(step.target is not None for step in steps):
-            rosters = await self._load_rosters(session, teams)
+            rosters = await self._load_rosters(session, teams, encounter.discipline)
         return _Runtime(
             pick_ban=pick_ban,
             encounter=encounter,
@@ -271,9 +264,13 @@ class PickBanActionService:
             rosters=rosters,
         )
 
-    async def _load_rosters(self, session: AsyncSession, teams: list[EncounterTeam]) -> dict[int, list[Player]]:
-        """Every seat's roster rows, in the room's reading order. One query: a
-        target step needs them all at once (each seat bans for the others)."""
+    async def _load_rosters(
+        self, session: AsyncSession, teams: list[EncounterTeam], discipline: str
+    ) -> dict[int, list[Player]]:
+        """Every seat's roster rows, in the room's reading order: the game's rated roles in declaration order, mains
+        before the substitutes that cover them, then by name. One query: a target step needs them all at once (each
+        seat bans for the others)."""
+        role_order = {code: index for index, code in enumerate(rated_role_codes(discipline))}
         by_source = {team.team_id: team.id for team in teams if team.team_id is not None}
         rosters: dict[int, list[Player]] = {team.id: [] for team in teams}
         if not by_source:
@@ -283,7 +280,11 @@ class PickBanActionService:
             participation = by_source.get(row.team_id)
             if participation is not None:
                 rosters[participation].append(row)
-        return {team_id: sorted(players, key=_target_sort_key) for team_id, players in rosters.items()}
+
+        def key(player: Player) -> tuple[int, int, str]:
+            return (role_order.get(player.role, len(role_order)), 1 if player.is_substitution else 0, player.name or "")
+
+        return {team_id: sorted(players, key=key) for team_id, players in rosters.items()}
 
     def _ctx(self, rt: _Runtime, step: pbr.ResolvedStep) -> pbr.RuntimeCtx:
         """The rules' view of the room for ONE step. ``available_item_ids`` is

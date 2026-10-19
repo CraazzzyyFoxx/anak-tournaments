@@ -49,6 +49,11 @@ jobs:
             uv run coverage run --parallel-mode --source="$src" -m pytest "$svc/tests"
             echo "::endgroup::"
           done
+          # The cross-service gates (module boundaries, D99 literals, repository
+          # boundaries, migration/script tests) live in the root suite.
+          echo "::group::pytest backend/tests"
+          uv run coverage run --parallel-mode --source=scripts -m pytest tests
+          echo "::endgroup::"
           uv run coverage combine
           uv run coverage report
           uv run coverage json -o coverage.json

@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from shared.disciplines import discipline
+from shared.disciplines import discipline, rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
@@ -764,11 +764,11 @@ class UserOverviewQueries(DisciplineQueries):
                 (RoleRef.of(discipline(discipline_code).rated_dimension.code, role, sub_role), rank, version_id)
             )
 
-        # OW-shaped read (wire fields name these roles); P7 makes it data-driven.
-        role_order = {"tank": 0, "damage": 1, "support": 2}
+        # The game's rated roles in declaration order; a role it does not declare sorts last.
+        role_order = {code: index for index, code in enumerate(rated_role_codes(self.discipline))}
 
         for user_id in payload:
-            payload[user_id].sort(key=lambda row: role_order.get(row[0].parent or row[0].role, 99))
+            payload[user_id].sort(key=lambda row: role_order.get(row[0].parent or row[0].role, len(role_order)))
 
         return dict(payload)
 

@@ -1,0 +1,3325 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "path": "backend/analytics-service/scripts/convert_discipline_artifacts.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "DISCIPLINE = \"overwatch\"",
+      "count": 1,
+      "reason": "P6 one-off model artifact converter (old -> shared.disciplines.overwatch class paths)",
+      "owner": "P9",
+      "remove_when": "analytics artifacts are converted"
+    },
+    {
+      "path": "backend/analytics-service/scripts/convert_discipline_artifacts.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "_NEW = \"shared.disciplines.overwatch.analytics.models.\"",
+      "count": 1,
+      "reason": "P6 one-off model artifact converter (old -> shared.disciplines.overwatch class paths)",
+      "owner": "P9",
+      "remove_when": "analytics artifacts are converted"
+    },
+    {
+      "path": "backend/analytics-service/src/services/analytics/flows.py",
+      "rule": "stat-code",
+      "token": "performance_points",
+      "context": "\"performance_points\": row[\"performance_points\"],",
+      "count": 2,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/analytics-service/src/services/analytics/flows.py",
+      "rule": "stat-code",
+      "token": "performance_points",
+      "context": "\"log_available\": 1.0 if row[\"performance_points\"] is not None else 0.0,",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/analytics-service/src/services/analytics/service.py",
+      "rule": "stat-code",
+      "token": "performance_points",
+      "context": "sa.func.avg(facts.c.value).label(\"performance_points\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/analytics-service/src/services/analytics/service.py",
+      "rule": "stat-code",
+      "token": "performance_points",
+      "context": ").cte(\"performance_points\")",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/analytics-service/src/services/analytics/service.py",
+      "rule": "stat-code",
+      "token": "performance_points",
+      "context": "performance_points.c.performance_points.label(\"performance_points\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/analytics-service/src/services/ml/training/drift.py",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "\"hero_id\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "Tank",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "Damage",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/domain/notification_render.py",
+      "rule": "role-vocabulary",
+      "token": "Support",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/schemas/workspace.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "disciplines_enabled: list[str] = [\"overwatch\"]",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/app-service/src/services/catalog_legacy.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "_LEGACY_KINDS = frozenset({\"hero\", \"map\", \"gamemode\"})",
+      "count": 1,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "backend/app-service/src/services/catalog_legacy.py",
+      "rule": "catalog-label",
+      "token": "gamemode",
+      "context": "_LEGACY_KINDS = frozenset({\"hero\", \"map\", \"gamemode\"})",
+      "count": 1,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "backend/app-service/src/services/hero/queries.py",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "self._facts.c.entity_id.label(\"hero_id\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/hero/queries.py",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "hero_match.c.hero_id.label(\"hero_id\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/hero/service.py",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "__all__ = (\"HeroService\", \"heroes\")",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/statistics/queries.py",
+      "rule": "stat-code",
+      "token": "impact_rank",
+      "context": ").label(\"impact_rank\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/user/queries/compare.py",
+      "rule": "stat-code",
+      "token": "impact_rank",
+      "context": ").label(\"impact_rank\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/user/queries/encounters.py",
+      "rule": "stat-code",
+      "token": "impact_rank",
+      "context": ").label(\"impact_rank\"),",
+      "count": 3,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/user/queries/encounters.py",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "self._facts.c.entity_id.label(\"hero_id\"),",
+      "count": 2,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/user/queries/overview.py",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "self._facts.c.entity_id.label(\"hero_id\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/user/queries/profile.py",
+      "rule": "stat-code",
+      "token": "impact_rank",
+      "context": ").label(\"impact_rank\"),",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/app-service/src/services/workspace/service.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "RESERVED_SLUGS = RESERVED_SUBDOMAINS | {\"docs\", \"status\", \"support\"}",
+      "count": 1,
+      "reason": "not a game assumption: product repository URL / docs search keywords / reserved subdomain",
+      "owner": "P9",
+      "remove_when": "the product is renamed"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "SHAPE = RosterShape(entries=tuple({\"tank\": 1, \"damage\": 2, \"support\": 2}.items()))",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "SHAPE = RosterShape(entries=tuple({\"tank\": 1, \"damage\": 2, \"support\": 2}.items()))",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "SHAPE = RosterShape(entries=tuple({\"tank\": 1, \"damage\": 2, \"support\": 2}.items()))",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "ROLES = (\"tank\", \"damage\", \"support\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "ROLES = (\"tank\", \"damage\", \"support\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "ROLES = (\"tank\", \"damage\", \"support\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "CatalogEntity.discipline == \"overwatch\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "discipline=\"overwatch\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "attrs={\"class\": \"damage\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "provider=\"battlenet\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "f\" · {emoji('tank')} {counts['tank']}\"",
+      "count": 2,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "f\" · {emoji('damage')} {counts['damage']}\"",
+      "count": 2,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "f\" · {emoji('support')} {counts['support']}\"",
+      "count": 2,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/domain/mix_self_service.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "elif \"battlenet\" in missing_links:",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"tank\": RoleSettings(impact=1.4, line_gap_weight=0.8, line_std_weight=1.5, mix_weight=1.0)",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "\"damage\": RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "\"support\": RoleSettings(impact=1.1, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "rule.role: rule.hard_min for rule in DISCIPLINES[\"overwatch\"].preset().rules if rule.hard_",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/presets.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"role_settings\": {\"tank\": {\"line_gap_weight\": 0.25, \"line_std_weight\": 0.75}},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/presets.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"role_settings\": {\"tank\": {\"line_gap_weight\": 1.0, \"line_std_weight\": 1.5}},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/config/presets.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"role_settings\": {\"tank\": {\"line_gap_weight\": 0.8}},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/balancer/jobs.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline=\"ov",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/custom_game.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "discipline: str = \"overwatch\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/rank_overview.py",
+      "rule": "ow-prefix",
+      "token": "ow_division",
+      "context": "(ow_division if ow_division is not None else _null(sa.String)).label(\"ow_division\"),",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/rank_overview.py",
+      "rule": "ow-prefix",
+      "token": "ow_tier",
+      "context": "(ow_tier if ow_tier is not None else _null(sa.Integer)).label(\"ow_tier\"),",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/rank_overview.py",
+      "rule": "ow-prefix",
+      "token": "ow_division",
+      "context": "\"ow_division\": row.ow_division,",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/balancer-service/src/services/rank_overview.py",
+      "rule": "ow-prefix",
+      "token": "ow_tier",
+      "context": "\"ow_tier\": row.ow_tier,",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "OW_ROLE_DIMENSION = DISCIPLINES[\"overwatch\"].rated_dimension.code",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "Tank",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "Damage",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/discord-service/src/interactions/copy.py",
+      "rule": "role-vocabulary",
+      "token": "Support",
+      "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/identity-service/src/schemas/oauth.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "BATTLENET = \"battlenet\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "provider_name = \"battlenet\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "or user_data.get(\"battle_tag\")",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "\"battlenet\": {",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "\"battlenet\": BattleNetOAuthProvider(self.http),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/players.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "providers=[\"discord\", \"battlenet\"],",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/players.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "battlenet_conn = next((conn for conn in connections if conn.provider == \"battlenet\"), None",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/players.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "(battlenet_conn.provider_data or {}).get(\"battle_tag\"),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "role-vocabulary",
+      "token": "Tank",
+      "context": "tank = \"Tank\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "role-vocabulary",
+      "token": "Damage",
+      "context": "damage = \"Damage\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "role-vocabulary",
+      "token": "Support",
+      "context": "support = \"Support\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "eliminations",
+      "context": "Eliminations = \"eliminations\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "final_blows",
+      "context": "FinalBlows = \"final_blows\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "all_damage_dealt",
+      "context": "AllDamageDealt = \"all_damage_dealt\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "barrier_damage_dealt",
+      "context": "BarrierDamageDealt = \"barrier_damage_dealt\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "hero_damage_dealt",
+      "context": "HeroDamageDealt = \"hero_damage_dealt\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "healing_dealt",
+      "context": "HealingDealt = \"healing_dealt\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "healing_received",
+      "context": "HealingReceived = \"healing_received\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "self_healing",
+      "context": "SelfHealing = \"self_healing\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "damage_taken",
+      "context": "DamageTaken = \"damage_taken\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "damage_blocked",
+      "context": "DamageBlocked = \"damage_blocked\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "defensive_assists",
+      "context": "DefensiveAssists = \"defensive_assists\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "offensive_assists",
+      "context": "OffensiveAssists = \"offensive_assists\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "ultimates_earned",
+      "context": "UltimatesEarned = \"ultimates_earned\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "ultimates_used",
+      "context": "UltimatesUsed = \"ultimates_used\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "multikill_best",
+      "context": "MultikillBest = \"multikill_best\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "multikills",
+      "context": "Multikills = \"multikills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "solo_kills",
+      "context": "SoloKills = \"solo_kills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "objective_kills",
+      "context": "ObjectiveKills = \"objective_kills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "environmental_kills",
+      "context": "EnvironmentalKills = \"environmental_kills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "environmental_deaths",
+      "context": "EnvironmentalDeaths = \"environmental_deaths\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "critical_hits",
+      "context": "CriticalHits = \"critical_hits\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "critical_hit_accuracy",
+      "context": "CriticalHitAccuracy = \"critical_hit_accuracy\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "scoped_accuracy",
+      "context": "ScopedAccuracy = \"scoped_accuracy\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "scoped_critical_hit_accuracy",
+      "context": "ScopedCriticalHitAccuracy = \"scoped_critical_hit_accuracy\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "scoped_critical_hit_kills",
+      "context": "ScopedCriticalHitKills = \"scoped_critical_hit_kills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "shots_fired",
+      "context": "ShotsFired = \"shots_fired\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "shots_hit",
+      "context": "ShotsHit = \"shots_hit\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "shots_missed",
+      "context": "ShotsMissed = \"shots_missed\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "scoped_shots_fired",
+      "context": "ScopedShotsFired = \"scoped_shots_fired\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "scoped_shots_hit",
+      "context": "ScopedShotsHit = \"scoped_shots_hit\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "weapon_accuracy",
+      "context": "WeaponAccuracy = \"weapon_accuracy\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "hero_time_played",
+      "context": "HeroTimePlayed = \"hero_time_played\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "first_picks",
+      "context": "FirstPicks = \"first_picks\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "first_deaths",
+      "context": "FirstDeaths = \"first_deaths\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "ultimate_kills",
+      "context": "UltimateKills = \"ultimate_kills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "support_kills",
+      "context": "SupportKills = \"support_kills\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "performance_points",
+      "context": "PerformancePoints = \"performance_points\"  # self calculated",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "damage_delta",
+      "context": "DamageDelta = \"damage_delta\"  # self calculated",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "fbe",
+      "context": "FBE = \"fbe\"  # self calculated",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "damage_fb",
+      "context": "DamageFB = \"damage_fb\"  # self calculated",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "impact_points",
+      "context": "ImpactPoints = \"impact_points\"  # self calculated (impact formula)",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "impact_rank",
+      "context": "ImpactRank = \"impact_rank\"  # self calculated (1 = MVP)",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "overperformance_score",
+      "context": "OverperformanceScore = \"overperformance_score\"  # self calculated (role x rank baseline)",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "HERO = \"hero\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "offensive_assist",
+      "context": "OffensiveAssist = \"offensive_assist\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "defensive_assist",
+      "context": "DefensiveAssist = \"defensive_assist\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "ultimate_charged",
+      "context": "UltimateCharged = \"ultimate_charged\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "ultimate_start",
+      "context": "UltimateStart = \"ultimate_start\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "ultimate_end",
+      "context": "UltimateEnd = \"ultimate_end\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "hero_swap",
+      "context": "HeroSwap = \"hero_swap\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "mercy_rez",
+      "context": "MercyRez = \"mercy_rez\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "echo_duplicate_start",
+      "context": "EchoDuplicateStart = \"echo_duplicate_start\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/enums.py",
+      "rule": "stat-code",
+      "token": "echo_duplicate_end",
+      "context": "EchoDuplicateEnd = \"echo_duplicate_end\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/core/social.py",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "BATTLENET = \"battlenet\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/core/social.py",
+      "rule": "identity",
+      "token": "riot",
+      "context": "RIOT = \"riot\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/core/social.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "oauth_primary_fields=(\"battletag\", \"battle_tag\"),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/core/social.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "oauth_alias_fields=(\"battletag\", \"battle_tag\", \"preferred_username\"),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/domain/discord_ui.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "\"tank\": \"🛡️\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/discord_ui.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "\"damage\": \"⚔️\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/discord_ui.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "\"support\": \"💉\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/discord_ui.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
+      "count": 2,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/discord_ui.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
+      "count": 2,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/discord_ui.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
+      "count": 2,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/pick_ban_rules/compile.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "if kind == \"hero\":",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/domain/pick_ban_rules/preview.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "if kind == \"hero\" and groups:",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/domain/pick_ban_rules/registry.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kinds: tuple[str, ...] = (\"map\", \"hero\"),",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/domain/pick_ban_rules/registry.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "@leaf(type=\"target_role_match\", contexts=(\"item\",), kinds=(\"hero\",), requires_target=True)",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/domain/pick_ban_rules/registry.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "\"hero\": list(resolved.get(\"hero\") or ()),",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/domain/pick_ban_rules/validate.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "if kind != \"hero\":",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/domain/player_sub_roles.py",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "REGISTRATION_ROLE_CODES: tuple[str, ...] = (\"tank\", \"damage\", \"support\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/player_sub_roles.py",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "REGISTRATION_ROLE_CODES: tuple[str, ...] = (\"tank\", \"damage\", \"support\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/domain/player_sub_roles.py",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "REGISTRATION_ROLE_CODES: tuple[str, ...] = (\"tank\", \"damage\", \"support\")",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/shared/models/achievements/achievement.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "hero = \"hero\"",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "backend/shared/models/custom_game.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "default=\"overwatch\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/custom_game.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "server_default=\"overwatch\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/division_grid/division_grid.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "default=\"overwatch\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/division_grid/division_grid.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "server_default=\"overwatch\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/ranks/overwatch_rank.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "RANK_SCHEMA = \"overwatch_rank\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/registration/registration.py",
+      "rule": "identity",
+      "token": "battle_tag_normalized",
+      "context": "\"battle_tag_normalized\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/tenancy/workspace.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "ARRAY(String(32)), nullable=False, default=lambda: [\"overwatch\"], server_default=text(\"'{o",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/tournament/player_role.py",
+      "rule": "role-vocabulary",
+      "token": "player_role",
+      "context": "__tablename__ = \"player_role\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/models/tournament/tournament.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "String(32), ForeignKey(\"catalog.discipline.code\"), default=\"overwatch\", server_default=\"ov",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/repository/catalog.py",
+      "rule": "catalog-label",
+      "token": "gamemode",
+      "context": "return [selectinload(models.CatalogEntity.parent)] if \"gamemode\" in entities else []",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/shared/repository/ranks.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "columns = [\"social_account_id\", \"battle_tag\", \"player_id_slug\"]",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/repository/ranks.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "acc.username.label(\"battle_tag\"),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "first_picks",
+      "context": "\"first_picks\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "first_deaths",
+      "context": "\"first_deaths\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "ultimate_kills",
+      "context": "\"ultimate_kills\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "support_kills",
+      "context": "\"support_kills\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "impact_points",
+      "context": "\"impact_points\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "impact_rank",
+      "context": "\"impact_rank\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/shared/services/stats_evidence.py",
+      "rule": "stat-code",
+      "token": "overperformance_score",
+      "context": "\"overperformance_score\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/rpc/impact.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "return await DISCIPLINES[\"overwatch\"].collection_handlers[\"impact.recompute_baselines\"](se",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/rpc/rank.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "_DISCIPLINE = \"overwatch\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/schemas/admin/achievement_rule.py",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "if isinstance(data, dict) and \"hero_id\" in data:",
+      "count": 1,
+      "reason": "P6 portable-v1 achievement import refusal of hero_id rules",
+      "owner": "P9",
+      "remove_when": "portable v1 achievement import is retired"
+    },
+    {
+      "path": "backend/stats-service/src/services/catalog_aliases.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "DISCIPLINE = \"overwatch\"",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/services/match_logs/objectiveless.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "models.Encounter.discipline == \"overwatch\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/services/match_logs/objectiveless.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "match.discipline == \"overwatch\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/services/match_logs/objectiveless.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "scores_relation = team_scores(discipline=\"overwatch\", stat_code=\"score\")",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/services/match_logs/objectiveless.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "discipline=\"overwatch\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/services/tournament/service.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "assert_discipline_enabled(workspace, \"overwatch\")",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/services/tournament/service.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "discipline=\"overwatch\",",
+      "count": 1,
+      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
+      "owner": "P9",
+      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/tournament-service/src/domain/registration/mapping_catalog.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "PARSER_BATTLE_TAG = \"battle_tag\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/domain/registration/sheet_parsing.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "targets[\"source_record_key\"] = {\"mode\": \"columns\", \"columns\": [column], \"parser\": \"battle_",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/domain/registration/sheet_parsing.py",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "if parser == \"battle_tag\":",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/rpc/public_rpc.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "if raw not in (\"map\", \"hero\"):",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/rpc/reads.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "\"hero\": await pick_ban_config.group_vocabulary(session, PickBanKind.HERO, discipline),",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/admin/balancer.py",
+      "rule": "ow-prefix",
+      "token": "ow_first",
+      "context": "RankAutofillMode = Literal[\"ow_first\", \"balancer_first\"]",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/admin/balancer.py",
+      "rule": "ow-prefix",
+      "token": "ow_first",
+      "context": "mode: RankAutofillMode = \"ow_first\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/admin/tournament.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "discipline: str = \"overwatch\"",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/division_grid.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "converted = {**data, \"schema_version\": \"division-grid/v2\", \"discipline\": \"overwatch\"}",
+      "count": 1,
+      "reason": "P3 portable division-grid v1 reader/writer (ow_rank_* keys, implicit overwatch)",
+      "owner": "P9",
+      "remove_when": "portable division-grid v1 is retired"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/division_grid.py",
+      "rule": "ow-prefix",
+      "token": "ow_rank_min",
+      "context": "for old, new in ((\"ow_rank_min\", \"native_rank_min\"), (\"ow_rank_max\", \"native_rank_max\")):",
+      "count": 1,
+      "reason": "P3 portable division-grid v1 reader/writer (ow_rank_* keys, implicit overwatch)",
+      "owner": "P9",
+      "remove_when": "portable division-grid v1 is retired"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/division_grid.py",
+      "rule": "ow-prefix",
+      "token": "ow_rank_max",
+      "context": "for old, new in ((\"ow_rank_min\", \"native_rank_min\"), (\"ow_rank_max\", \"native_rank_max\")):",
+      "count": 1,
+      "reason": "P3 portable division-grid v1 reader/writer (ow_rank_* keys, implicit overwatch)",
+      "owner": "P9",
+      "remove_when": "portable division-grid v1 is retired"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/pregame_rooms.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "PregamePhase = Literal[\"teams_unknown\", \"readiness\", \"map\", \"hero\", \"report\", \"done\", \"idl",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/schemas/pregame_rooms.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind: Literal[\"map\", \"hero\"] | None = None",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/services/division_grid/marketplace.py",
+      "rule": "ow-prefix",
+      "token": "ow_rank_min",
+      "context": "\"ow_rank_min\": tier.native_rank_min,",
+      "count": 1,
+      "reason": "P3 portable division-grid v1 reader/writer (ow_rank_* keys, implicit overwatch)",
+      "owner": "P9",
+      "remove_when": "portable division-grid v1 is retired"
+    },
+    {
+      "path": "backend/tournament-service/src/services/division_grid/marketplace.py",
+      "rule": "ow-prefix",
+      "token": "ow_rank_max",
+      "context": "\"ow_rank_max\": tier.native_rank_max,",
+      "count": 1,
+      "reason": "P3 portable division-grid v1 reader/writer (ow_rank_* keys, implicit overwatch)",
+      "owner": "P9",
+      "remove_when": "portable division-grid v1 is retired"
+    },
+    {
+      "path": "backend/tournament-service/src/services/encounter/pregame_rooms.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "return \"hero\"",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/services/encounter/realtime_commit.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "_DOMAIN_BY_KIND = {\"map\": \"map-veto\", \"hero\": \"pick-ban:hero\"}",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/services/encounter/realtime_commit.py",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "_EVENT_TYPE_BY_KIND = {\"map\": \"map_veto.updated\", \"hero\": \"pick_ban.updated\"}",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "backend/tournament-service/src/services/map/service.py",
+      "rule": "catalog-label",
+      "token": "gamemode",
+      "context": "if \"gamemode\" in in_entities:",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_rank_value",
+      "context": "\"ow_rank_value\": None,",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_current_rank_value",
+      "context": "\"ow_current_rank_value\": None,",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_peak_rank_value",
+      "context": "\"ow_peak_rank_value\": None,",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_rank_value",
+      "context": "\"ow_rank_value\": getattr(snapshot, \"ow_rank_value\", None),",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_current_rank_value",
+      "context": "\"ow_current_rank_value\": getattr(snapshot, \"ow_current_rank_value\", None),",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_peak_rank_value",
+      "context": "\"ow_peak_rank_value\": getattr(snapshot, \"ow_peak_rank_value\", None),",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_first",
+      "context": "\"ow_first\": (\"ow\", \"division_history\", \"analytics\"),",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_value",
+      "context": "ow_value=getattr(stage, \"ow_value\", \"composite\"),",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_first",
+      "context": "order = _DEFAULT_STAGE_ORDER_BY_MODE.get(mode or \"ow_first\", _DEFAULT_STAGE_ORDER_BY_MODE[",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_first",
+      "context": "mode: str = \"ow_first\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "backend/tournament-service/src/services/registration/rank_autofill.py",
+      "rule": "ow-prefix",
+      "token": "ow_value",
+      "context": "\"ow_value\": ow_value,",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/auth/battlenet/login/route.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "return await startOAuthLogin(request, \"battlenet\");",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/app/(site)/docs/dev/schema/page.tsx",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "const ERD_URL = \"https://github.com/CraazzzyyFoxx/overwatch-tournaments/blob/master/docs/d",
+      "count": 1,
+      "reason": "not a game assumption: product repository URL / docs search keywords / reserved subdomain",
+      "owner": "P9",
+      "remove_when": "the product is renamed"
+    },
+    {
+      "path": "frontend/src/app/(site)/docs/nav.ts",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "ru: \"допуск подписка открытый профиль overwatch discord twitch код\",",
+      "count": 1,
+      "reason": "not a game assumption: product repository URL / docs search keywords / reserved subdomain",
+      "owner": "P9",
+      "remove_when": "the product is renamed"
+    },
+    {
+      "path": "frontend/src/app/(site)/docs/nav.ts",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "en: \"admission subscription public overwatch profile discord twitch code\",",
+      "count": 1,
+      "reason": "not a game assumption: product repository URL / docs search keywords / reserved subdomain",
+      "owner": "P9",
+      "remove_when": "the product is renamed"
+    },
+    {
+      "path": "frontend/src/app/(site)/encounters/[id]/components/EncounterPregamePanel.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const heroQuery = usePregameState(\"hero\", encounterId);",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/encounters/[id]/components/EncounterPregamePanel.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "{ kind: \"hero\" as const, state: heroQuery.data, title: t(\"encounters.detail.pregameHero\") ",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/encounters/[id]/components/PregameRoomLink.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "queryFn: () => pickBanService.getPickBanState(\"hero\", encounterId)",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/encounters/[id]/page.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "queryKey: encounterQueryKeys.pregameState(encounterId, \"hero\"),",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/encounters/[id]/page.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "queryFn: () => pickBanService.getPickBanState(\"hero\", encounterId)",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/scrims/_components/ScrimPoolEditor.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const base = emptyRuleset(\"hero\");",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/scrims/_components/ScrimPoolEditor.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "): { kind: \"map\" | \"hero\"; issue: PickBanValidationIssue }[] {",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/scrims/_components/ScrimPoolEditor.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "...validatePickBanDraft(pool.hero).map((issue) => ({ kind: \"hero\" as const, issue }))",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/scrims/_components/ScrimPoolEditor.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "...emptyPickBanDraft(\"hero\"),",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/_components/TournamentSkeletons.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "variant: \"shell\" | \"overview\" | \"bracket\" | \"teams\" | \"participants\" | \"schedule\" | \"match",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/_components/TournamentSkeletons.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "<SkeletonRegion variant=\"heroes\" message={t(\"tournamentDetail.loading.pages.heroes\")}>",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "export const STATS_TABS = [\"heroes\", \"maps\"] as const;",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "const tab = readViewParam(searchParams, \"tab\", STATS_TABS, \"heroes\");",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "{ value: \"heroes\", label: t(\"common.characters\") },",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/_views/TournamentStatsPage.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "defaultValue=\"heroes\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameAdminControls.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "<span>{t(kind === \"hero\" ? \"admin.cancelHeroHint\" : \"admin.cancelMapHint\")}</span>",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameAdminPanel.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const KINDS: readonly PickBanKind[] = [\"map\", \"hero\"];",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameHeader.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export type PregamePhase = \"map\" | \"hero\" | \"report\" | \"done\";",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoom.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "loop.statesByKind[loop.phase === \"hero\" || !loop.mapApplies ? \"hero\" : \"map\"].session",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoom.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const activeKind: PickBanKind = loop.phase === \"hero\" ? \"hero\" : \"map\";",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoom.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind=\"hero\"",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoomHistory.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "(id) => itemsByKind[entry.kind === \"hero\" ? \"hero\" : \"map\"][id]?.name ?? `#${id}`",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/pregameRoom.model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const cancelledKinds = ([\"map\", \"hero\"] as PickBanKind[]).filter(",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/pregameRoom.model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const heroApplies = applicable(\"hero\");",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/pregameRoom.model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "([\"map\", \"hero\"] as PickBanKind[]).some(",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/pregameRoom.model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "? \"hero\"",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/pregameRoom.model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "...(heroApplies ? [{ phase: \"hero\" as const, done: !heroPhaseOpen }] : []),",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/usePregameRoomData.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const heroKey = [\"pregame-state\", encounterId, \"hero\"];",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/usePregameRoomData.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "queryFn: () => pickBanService.getPickBanState(\"hero\", encounterId),",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/[slug]/page.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "const USER_TABS = [\"overview\", \"tournaments\", \"matches\", \"heroes\", \"maps\", \"achievements\"]",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/[slug]/page.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "case \"heroes\":",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/[slug]/page.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "value: \"heroes\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/compare/components/CompareFiltersPanel.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const isHeroScope = scope === \"hero\";",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/compare/components/CompareFiltersPanel.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "<ToggleGroupItem value=\"hero\">",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/compare/components/ComparePageHero.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "model.scope === \"hero\" ? t(\"users.compare.hero.heroMap\") : t(\"users.compare.hero.overall\")",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/compare/hooks/useUserCompareSearchParams.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const isHeroScope = scope === \"hero\";",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/compare/types.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export type CompareScope = \"overall\" | \"hero\";",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/compare/utils.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "if (value === \"hero\") return \"hero\";",
+      "count": 2,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
+      "rule": "stat-code",
+      "token": "hero_damage_dealt",
+      "context": "{ key: \"hero_damage_dealt\", labelKey: \"users.overview.lastTournament.stat.dmgPerMap\" },",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
+      "rule": "stat-code",
+      "token": "eliminations",
+      "context": "{ key: \"eliminations\", labelKey: \"users.overview.lastTournament.stat.elims\" },",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
+      "rule": "stat-code",
+      "token": "damage_delta",
+      "context": "{ key: \"damage_delta\", labelKey: \"users.overview.lastTournament.stat.dmgDelta\" }",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
+      "rule": "stat-code",
+      "token": "damage_delta",
+      "context": "const isDelta = def.key === \"damage_delta\";",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/components/shared/UserProfileEmpty.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "{ key: \"heroes\", icon: Sparkles },",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/components/tabs/UserProfileTabList.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "<TabsTrigger value=\"heroes\" badge={badges?.heroes}>",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/heroes-compare/components/HeroLeaderboardContent.tsx",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "const PAGE_PARAMS = [\"discipline\", \"hero_id\", \"tournament_id\"];",
+      "count": 1,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "frontend/src/app/(site)/users/heroes-compare/components/HeroLeaderboardContent.tsx",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "const heroId = searchParams.get(\"hero_id\") ? Number(searchParams.get(\"hero_id\")) : undefin",
+      "count": 2,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "frontend/src/app/admin/achievements/_hooks/useAchievementRuleActions.ts",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": ": problem.kind === \"hero_id\"",
+      "count": 1,
+      "reason": "P6 portable-v1 achievement import refusal of hero_id rules",
+      "owner": "P9",
+      "remove_when": "portable v1 achievement import is retired"
+    },
+    {
+      "path": "frontend/src/app/admin/achievements/achievement-import.ts",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "| { kind: \"hero_id\"; slug: string };",
+      "count": 1,
+      "reason": "P6 portable-v1 achievement import refusal of hero_id rules",
+      "owner": "P9",
+      "remove_when": "portable v1 achievement import is retired"
+    },
+    {
+      "path": "frontend/src/app/admin/achievements/achievement-import.ts",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "if (rule !== null && typeof rule === \"object\" && \"hero_id\" in rule) {",
+      "count": 1,
+      "reason": "P6 portable-v1 achievement import refusal of hero_id rules",
+      "owner": "P9",
+      "remove_when": "portable v1 achievement import is retired"
+    },
+    {
+      "path": "frontend/src/app/admin/achievements/achievement-import.ts",
+      "rule": "catalog-label",
+      "token": "hero_id",
+      "context": "return { kind: \"hero_id\", slug: \"slug\" in rule ? String(rule.slug) : \"\" };",
+      "count": 1,
+      "reason": "P6 portable-v1 achievement import refusal of hero_id rules",
+      "owner": "P9",
+      "remove_when": "portable v1 achievement import is retired"
+    },
+    {
+      "path": "frontend/src/app/admin/achievements/achievement-meta.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "\"hero\",",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/CataloguePicker.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const searchPlaceholder = kind === \"hero\" ? t(\"searchHeroes\") : t(\"searchMaps\");",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/CataloguePicker.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const addLabel = kind === \"hero\" ? t(\"poolAddHeroes\") : t(\"poolAddMaps\");",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/PoolStep.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const isHero = kind === \"hero\";",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/page.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const kind: PickBanKind = kindParam === \"hero\" ? \"hero\" : \"map\";",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/page.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const heroesQuery = useCatalogEntities(discipline, \"character\", { enabled: kind === \"hero\"",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/pre-game-scope.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export const PRE_GAME_KINDS = [\"map\", \"hero\"] as const;",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/app/admin/tournaments/[id]/settings/pre-game/rules/StepInspector.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "{kind === \"hero\" ? (",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/AuthModal.tsx",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "? [\"discord\", \"twitch\", \"battlenet\"].map((provider) => (",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/AuthModal.tsx",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "className={provider === \"battlenet\" ? \"brightness-125\" : \"\"}",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/Footer.tsx",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "const REPO_URL = \"https://github.com/CraazzzyyFoxx/overwatch-tournaments\";",
+      "count": 1,
+      "reason": "not a game assumption: product repository URL / docs search keywords / reserved subdomain",
+      "owner": "P9",
+      "remove_when": "the product is renamed"
+    },
+    {
+      "path": "frontend/src/components/account-settings/MyAccountSection.tsx",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"discord\", \"twitch\"] as const;",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "role-vocabulary",
+      "token": "player_role",
+      "context": "{conditionType === \"player_role\" && (",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "role-vocabulary",
+      "token": "Damage",
+      "context": "<Select value={(params.role as string) ?? \"Damage\"} onValueChange={(v) => setParam(\"role\",",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "role-vocabulary",
+      "token": "Tank",
+      "context": "<SelectItem value=\"Tank\">{t(\"fields.tank\")}</SelectItem>",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "role-vocabulary",
+      "token": "Damage",
+      "context": "<SelectItem value=\"Damage\">{t(\"fields.damage\")}</SelectItem>",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "role-vocabulary",
+      "token": "Support",
+      "context": "<SelectItem value=\"Support\">{t(\"fields.support\")}</SelectItem>",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "<SelectItem value=\"hero\">{t(\"fields.hero\")}</SelectItem>",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "{(params.field as string) === \"hero\" && (",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "{([\"role\", \"division\", \"team\", \"hero\"] as const).map((f) => {",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/admin/admin-navigation.ts",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "\"heroes\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/components/admin/admin-navigation.ts",
+      "rule": "catalog-label",
+      "token": "gamemodes",
+      "context": "\"gamemodes\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/components/admin/admin-navigation.ts",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "{ key: \"heroes\", label: \"nav.characters\", href: \"/admin/content/heroes\" },",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/components/admin/admin-navigation.ts",
+      "rule": "catalog-label",
+      "token": "gamemodes",
+      "context": "{ key: \"gamemodes\", label: \"nav.modes\", href: \"/admin/content/gamemodes\" },",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/components/admin/collectors/rank-history.tsx",
+      "rule": "identity",
+      "token": "battle_tag",
+      "context": "accessorKey: \"battle_tag\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/pregame-rooms/model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "): { kind: \"map\" | \"hero\"; summary: PregameKindSummary } | null {",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/admin/pregame-rooms/model.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "for (const kind of [\"map\", \"hero\"] as const) {",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/admin/pregame-rooms/useRoomColumns.tsx",
+      "rule": "catalog-label",
+      "token": "heroes",
+      "context": "<span>{kind === \"map\" ? t(\"maps\") : t(\"heroes\")}</span>",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/components/kit/audit-log.ts",
+      "rule": "catalog-label",
+      "token": "gamemode",
+      "context": "\"gamemode\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/components/kit/audit-log.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "\"hero\",",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanDraftTray.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const slotShape = kind === \"hero\" ? \"w-[30px] rounded-full\" : \"w-10 rounded-md\";",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanDraftTray.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind === \"hero\" ? \"rounded-full\" : \"rounded-md\"",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanGrid.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind === \"hero\" && roundGroups ? (currentRound ?? roundGroups.at(-1)?.round ?? null) : nul",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanGrid.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind === \"hero\"",
+      "count": 2,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanGrid.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind === \"hero\" && classFilter !== null",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanGrid.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "const renderTile = kind === \"hero\" ? heroTile : tile;",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanItemThumb.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "if (kind === \"hero\") {",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/PickBanTargetBoard.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "<PickBanItemThumb kind=\"hero\" item={assigned} name={assignedName} size={32} />",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/lib/auth/oauth-callback.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "\"battlenet\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/catalog/legacy-redirect.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export type LegacyKind = \"hero\" | \"map\";",
+      "count": 1,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "frontend/src/lib/catalog/legacy-redirect.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "{ path: /^\\/users\\/heroes-compare\\/?$/, params: { hero_id: \"hero\" }, browsing: true },",
+      "count": 1,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "frontend/src/lib/catalog/legacy-redirect.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "params: { left_hero_id: \"hero\", right_hero_id: \"hero\", map_id: \"map\" },",
+      "count": 2,
+      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
+      "owner": "P9",
+      "remove_when": "discipline02 retires legacy catalog ids"
+    },
+    {
+      "path": "frontend/src/lib/encounters/query-keys.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "pregameHeroState: (encounterId: KeyPart) => [\"pregame-state\", encounterId, \"hero\"] as cons",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/lib/forms/builtin-keys.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "\"battlenet\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/forms/builtin-keys.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "\"riot\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/logs/browser-directory.ts",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "picked = await browser.showDirectoryPicker({ mode: \"read\", id: \"overwatch-workshop\", start",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/lib/logs/browser-directory.ts",
+      "rule": "discipline-code",
+      "token": "Overwatch",
+      "context": "const WORKSHOP_PATH = [\"Overwatch\", \"Workshop\"];",
+      "count": 1,
+      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "owner": "P9",
+      "remove_when": "P9 moves it behind the registry/ontology"
+    },
+    {
+      "path": "frontend/src/lib/social/providers.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "\"battlenet\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/social/providers.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "\"riot\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/social/providers.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "value: \"battlenet\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/social/providers.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "value: \"riot\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/achievement.types.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export type AchievementCategory = \"overall\" | \"hero\" | \"division\" | \"team\" | \"standing\" | ",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/types/admin.types.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "kind: \"map\" | \"hero\" | null;",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/types/admin.types.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "| \"hero\"",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/types/admin.types.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export type AchievementCategory = \"overall\" | \"hero\" | \"division\" | \"team\" | \"standing\" | ",
+      "count": 1,
+      "reason": "persisted identifier: achievement category / condition field 'hero'",
+      "owner": "P9",
+      "remove_when": "achievement category is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/types/auth.types.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/balancer-admin.types.ts",
+      "rule": "ow-prefix",
+      "token": "ow_first",
+      "context": "type RegistrationRankAutofillMode = \"ow_first\" | \"balancer_first\";",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/types/balancer-admin.types.ts",
+      "rule": "ow-prefix",
+      "token": "ow_rank_value",
+      "context": "\"is_declared_active\" | \"rank_source\" | \"ow_rank_value\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
+      "path": "frontend/src/types/rbac.types.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"google\" | \"github\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/tournament.types.ts",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "export type PickBanKind = \"map\" | \"hero\";",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/types/user.types.ts",
+      "rule": "identity",
+      "token": "battlenet",
+      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/user.types.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    }
+  ]
+}

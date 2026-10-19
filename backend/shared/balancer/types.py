@@ -45,10 +45,6 @@ class RoleMask:
     def team_size(self) -> int:
         return sum(self.slots.values())
 
-    @classmethod
-    def overwatch_5v5(cls) -> RoleMask:
-        return cls(slots={"tank": 1, "damage": 2, "support": 2})
-
     def to_dict(self) -> dict[str, int]:
         return dict(self.slots)
 

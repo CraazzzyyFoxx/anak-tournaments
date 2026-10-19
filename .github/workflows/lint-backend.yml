@@ -63,3 +63,17 @@ jobs:
       - name: Every routed RPC subject is documented
         run: uv run python scripts/check_rpc_docs.py
         working-directory: backend
+      # D83/D99: core reaches a discipline module only through the registry
+      # (shared.disciplines). The services' own `src` trees are covered by
+      # tests/test_discipline_module_boundary.py in the test workflow.
+      - name: Discipline import boundaries
+        run: uv run lint-imports --config .importlinter
+        working-directory: backend
+      # D99: a game's vocabulary (codes, roles, catalog labels, identity, stat
+      # codes, asset folders) is written only inside its module, across the
+      # Python, TS/TSX, Go and JSON runtime roots. Every deliberate exception is
+      # exact (path, token, context, count) with an owner and removal event in
+      # scripts/discipline_literal_exceptions.json; a new occurrence fails.
+      - name: Discipline literals stay in their module
+        run: uv run python scripts/check_discipline_literals.py
+        working-directory: backend
