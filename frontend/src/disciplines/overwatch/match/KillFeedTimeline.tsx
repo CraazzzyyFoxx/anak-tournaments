@@ -3,15 +3,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Swords, Zap, ZapOff, Plus, Skull, Crosshair } from "lucide-react";
-import type { MatchStatsTeam } from "@/lib/match-stats";
-import { KillFeedEntry, MatchKillFeed, MatchTimelineEvent } from "@/types/killfeed.types";
+import type { MatchEvents } from "@/types/killfeed.types";
+import type { MatchWithStats } from "@/types/encounter.types";
 import encounterService from "@/services/encounter.service";
 import HeroImage from "@/components/hero/HeroImage";
+import { readTimeline, type TimelineKill, type TimelineMark } from "./timeline";
+import type { OwTeam } from "./view";
 
-interface MatchKillFeedTimelineProps {
+interface KillFeedTimelineProps {
   matchId: number;
-  home: MatchStatsTeam | null;
-  away: MatchStatsTeam | null;
+  /** The match's observed members: the timeline names actors by workspace member. */
+  members: MatchWithStats["statistics"]["members"];
+  home: OwTeam;
+  away: OwTeam;
 }
 
 type Side = "home" | "away";
@@ -19,8 +23,8 @@ type Side = "home" | "away";
 const sideColor = (side: Side | null) =>
   side === "home" ? "var(--aqt-teal)" : side === "away" ? "var(--aqt-rose)" : "var(--aqt-fg-muted)";
 
-const teamSide = (teamId: number | null, homeId: number | null, awayId: number | null): Side | null => {
-  if (teamId == null || homeId === awayId) return null;
+/** Events name `encounter_team_id`s; the duel's two participations are the only sides there are. */
+const teamSide = (teamId: number | null, homeId: number, awayId: number): Side | null => {
   if (teamId === homeId) return "home";
   if (teamId === awayId) return "away";
   return null;
@@ -33,8 +37,8 @@ const formatClock = (seconds: number) => {
 };
 
 type Item =
-  | { kind: "kill"; time: number; fight: number | null; kill: KillFeedEntry }
-  | { kind: "event"; time: number; event: MatchTimelineEvent };
+  | { kind: "kill"; time: number; fight: number | null; kill: TimelineKill }
+  | { kind: "event"; time: number; event: TimelineMark };
 
 interface FightScore {
   home: number | null;
@@ -82,9 +86,9 @@ const ScoreSplit = ({ home, away }: FightScore) => {
   );
 };
 
-const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelineProps) => {
+const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProps) => {
   const t = useTranslations();
-  const [data, setData] = useState<MatchKillFeed | null>(null);
+  const [data, setData] = useState<MatchEvents | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
@@ -105,25 +109,19 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
     };
   }, [matchId]);
 
-  const nameByUserId = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const team of [home, away]) {
-      if (team == null) continue;
-      for (const player of team.players) {
-        if (player.user_id != null) map.set(player.user_id, player.name.split("#")[0]);
-      }
-    }
-    return map;
-  }, [home, away]);
+  const nameByMemberId = useMemo(
+    () => new Map(members.map((member) => [member.workspace_member_id, member.handle_snapshot.split("#")[0]])),
+    [members]
+  );
 
-  // The kill-feed wire still names nullable source teams, not participations.
-  const homeTeamId = home?.team_id ?? null;
-  const awayTeamId = away?.team_id ?? null;
-  const nameOf = (userId: number | null) => userId == null ? "—" : nameByUserId.get(userId) ?? "—";
+  const homeTeamId = home.id;
+  const awayTeamId = away.id;
+  const nameOf = (memberId: number | null) => (memberId == null ? "—" : (nameByMemberId.get(memberId) ?? "—"));
   const sideOf = (teamId: number | null) => teamSide(teamId, homeTeamId, awayTeamId);
+  const timeline = useMemo(() => (data ? readTimeline(data.events, data.entities) : null), [data]);
 
   const rounds = useMemo<RoundData[]>(() => {
-    if (!data) return [];
+    if (!timeline) return [];
     const byRound = new Map<number, RoundData>();
     const ensure = (round: number): RoundData => {
       const existing = byRound.get(round);
@@ -133,8 +131,8 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         items: [],
         fightScores: new Map(),
         fightOrder: new Map(),
-        home: homeTeamId == null ? null : 0,
-        away: awayTeamId == null ? null : 0,
+        home: 0,
+        away: 0,
         multiFight: false
       };
       byRound.set(round, created);
@@ -144,7 +142,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
     // RoundStart marker, i.e. lead-up to round 1 — NOT a whole-match aggregate).
     // Fold that pre-round bucket into round 1 so we don't render a phantom round.
     const roundOf = (raw: number) => Math.max(raw, 1);
-    for (const kill of data.kills) {
+    for (const kill of timeline.kills) {
       const block = ensure(roundOf(kill.round));
       block.items.push({ kind: "kill", time: kill.time, fight: kill.fight, kill });
       const side = teamSide(kill.killer_team_id, homeTeamId, awayTeamId);
@@ -157,8 +155,8 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
       // A missing fight is not fight zero; retain the observation without a divider.
       if (kill.fight != null) {
         const score = block.fightScores.get(kill.fight) ?? {
-          home: homeTeamId == null ? null : 0,
-          away: awayTeamId == null ? null : 0
+          home: 0,
+          away: 0
         };
         if (side == null) {
           score.home = null;
@@ -169,7 +167,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         block.fightScores.set(kill.fight, score);
       }
     }
-    for (const event of data.events) {
+    for (const event of timeline.marks) {
       ensure(roundOf(event.round)).items.push({ kind: "event", time: event.time, event });
     }
     for (const block of byRound.values()) {
@@ -182,11 +180,11 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         .forEach((fightId, index) => block.fightOrder.set(fightId, index + 1));
     }
     return [...byRound.values()].sort((a, b) => a.round - b.round);
-  }, [data, homeTeamId, awayTeamId]);
+  }, [timeline, homeTeamId, awayTeamId]);
 
   const multiRound = rounds.length > 1;
 
-  const totalKills = data?.kills.length ?? 0;
+  const totalKills = timeline?.kills.length ?? 0;
   const hasEvents = rounds.length > 0;
 
   const legend = (
@@ -218,7 +216,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
     </div>
   );
 
-  const renderKill = (kill: KillFeedEntry, key: string) => {
+  const renderKill = (kill: TimelineKill, key: string) => {
     const killerSide = sideOf(kill.killer_team_id);
     const isUltKill = kill.ability === "Ultimate";
     return (
@@ -235,19 +233,19 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
           {formatClock(kill.time)}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {kill.killer_hero ? <HeroImage hero={kill.killer_hero} size="sm" /> : null}
+          {kill.killer_entity ? <HeroImage hero={kill.killer_entity} size="sm" /> : null}
           <span className="truncate text-caption font-semibold" style={{ color: sideColor(killerSide) }}>
-            {nameOf(kill.killer_user_id)}
+            {nameOf(kill.killer_member_id)}
           </span>
         </div>
         <Swords className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
           <span className="truncate text-right text-label text-[color:var(--aqt-fg-dim)]">
-            {nameOf(kill.victim_user_id)}
+            {nameOf(kill.victim_member_id)}
           </span>
-          {kill.victim_hero ? (
+          {kill.victim_entity ? (
             <span className="opacity-70">
-              <HeroImage hero={kill.victim_hero} size="sm" />
+              <HeroImage hero={kill.victim_entity} size="sm" />
             </span>
           ) : null}
         </div>
@@ -276,7 +274,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
     );
   };
 
-  const renderEvent = (event: MatchTimelineEvent, key: string) => {
+  const renderEvent = (event: TimelineMark, key: string) => {
     const side = sideOf(event.team_id);
     const isRez = event.name === "mercy_rez";
     const isUltEnd = event.name === "ultimate_end";
@@ -298,20 +296,20 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
           {formatClock(event.time)}
         </span>
         <Icon className="h-3 w-3 shrink-0" style={{ color }} aria-hidden="true" />
-        {event.hero ? (
+        {event.entity ? (
           <span className="opacity-80">
-            <HeroImage hero={event.hero} size="sm" />
+            <HeroImage hero={event.entity} size="sm" />
           </span>
         ) : null}
         <span className="truncate text-label font-medium" style={{ color: sideColor(side) }}>
-          {nameOf(event.user_id)}
+          {nameOf(event.member_id)}
         </span>
         <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">{label}</span>
-        {isRez && event.related_user_id != null ? (
+        {isRez && event.related_member_id != null ? (
           <span className="truncate text-label text-[color:var(--aqt-fg-faint)]">
             {/* Relation separator between reviver and target, not an icon — the
                 event type already has its own lucide glyph above. */}
-            <span aria-hidden>→</span> {nameOf(event.related_user_id)}
+            <span aria-hidden>→</span> {nameOf(event.related_member_id)}
           </span>
         ) : null}
       </div>
@@ -396,4 +394,4 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
   );
 };
 
-export default MatchKillFeedTimeline;
+export default KillFeedTimeline;

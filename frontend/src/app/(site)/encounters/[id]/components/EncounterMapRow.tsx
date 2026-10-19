@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import MatchLogIndicator, { RawLogStatus } from "@/components/match/MatchLogIndicator";
-import MatchStatsSection from "@/app/(site)/matches/[id]/components/MatchStatsSection";
+import MatchStatistics from "@/components/match/MatchStatistics";
 import encounterService from "@/services/encounter.service";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import { formatSeriesClock, type SeriesSlot } from "@/lib/encounter/detail";
@@ -90,7 +90,7 @@ export default function EncounterMapRow({
   // names the same map later. Prefer the match's object when both exist.
   const map = match?.map ?? game?.map ?? null;
   const mapName = map?.name ?? t("encounters.match.mapAlt");
-  const duration = match != null ? formatSeriesClock(match.time, clockUnits) : null;
+  const duration = match != null ? formatSeriesClock(match.duration_s, clockUnits) : null;
   const shown = accepted ?? (game == null ? parsed : null);
   // The log's own score is news only when it is not the score above: a map no
   // one confirmed yet, or a log that disagrees with the confirmed result.
@@ -112,8 +112,8 @@ export default function EncounterMapRow({
     <div className={cn(styles.mapRow, slot.isLive && styles.mapRowLive)}>
       <span className={styles.mapIndex}>{slot.index}</span>
 
-      <span className={cn(styles.mapThumb, !map && styles.mapThumbPlaceholder)}>
-        {map ? (
+      <span className={cn(styles.mapThumb, !map?.image_path && styles.mapThumbPlaceholder)}>
+        {map?.image_path ? (
           <Image src={map.image_path} alt="" fill sizes="80px" className={styles.mapThumbImage} />
         ) : (
           <ImageOff aria-hidden width={18} height={18} />
@@ -123,10 +123,12 @@ export default function EncounterMapRow({
       <span className={styles.mapIdentity}>
         <span className={styles.mapName}>{mapName}</span>
         <span className={styles.mapMode}>
-          {map?.gamemode ? (
+          {map?.parent ? (
             <>
-              <Image src={map.gamemode.image_path} alt="" width={14} height={14} aria-hidden />
-              {map.gamemode.name}
+              {map.parent.image_path ? (
+                <Image src={map.parent.image_path} alt="" width={14} height={14} aria-hidden />
+              ) : null}
+              {map.parent.name}
             </>
           ) : (
             t("encounters.match.gamemodeAlt")
@@ -144,7 +146,7 @@ export default function EncounterMapRow({
               </span>
             </span>
           ) : null}
-          {map?.in_competitive === false ? (
+          {map?.attrs.in_competitive === false ? (
             <span className={styles.metaWarn}>· {t("encounters.match.nonCompetitive")}</span>
           ) : null}
         </span>
@@ -200,9 +202,9 @@ export default function EncounterMapRow({
           <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-[1100px] flex-col gap-0 overflow-hidden p-0">
             <DialogHeader className={cn(styles.dialogHead, "space-y-0")}>
               <DialogTitle className={styles.dialogTitle}>
-                {match.map?.gamemode ? (
+                {match.map?.parent?.image_path ? (
                   <Image
-                    src={match.map.gamemode.image_path}
+                    src={match.map.parent.image_path}
                     alt=""
                     width={26}
                     height={26}
@@ -271,7 +273,7 @@ export default function EncounterMapRow({
               {matchQuery.isError ? (
                 <PageStateCard state="error" onAction={() => void matchQuery.refetch()} />
               ) : matchQuery.data ? (
-                <MatchStatsSection match={matchQuery.data} />
+                <MatchStatistics match={matchQuery.data} />
               ) : (
                 <div className="flex flex-col gap-2" aria-busy>
                   {Array.from({ length: 8 }).map((_, index) => (

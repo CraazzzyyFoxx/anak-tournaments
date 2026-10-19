@@ -159,5 +159,5 @@ export function formatPercent(value: number | null | undefined, fallback = "-"):
 }
 
 export function getSeriesDuration(encounter: Encounter): number {
-  return encounter.matches?.reduce((sum, match) => sum + (match.time || 0), 0) ?? 0;
+  return encounter.matches?.reduce((sum, match) => sum + (match.duration_s || 0), 0) ?? 0;
 }

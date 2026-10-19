@@ -1,8 +1,9 @@
 // Admin CRUD Types
 
-import type { CaptainReport, RawSourceStatus, ReplayCode } from "@/types/encounter.types";
+import type { CaptainReport, MatchParticipant, RawSourceStatus, ReplayCode } from "@/types/encounter.types";
 import type { RoleRef } from "@/lib/roster/role-ref";
-import type { CatalogKind } from "@/types/catalog.types";
+import type { Schema } from "@/types/api";
+import type { CatalogEntityRead, CatalogKind } from "@/types/catalog.types";
 
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
 
@@ -968,23 +969,15 @@ export interface LogRecordRef {
   finished_at: string | null;
 }
 
-/** One parsed match — a single played map, as the log parser produced it. */
-export interface AdminMatchRow {
-  id: number;
-  encounter_id: number;
-  encounter_name: string;
-  tournament_id: number;
-  tournament_name: string;
-  map_id: number;
-  map_name: string;
-  home_team: { id: number; name: string | null } | null;
-  away_team: { id: number; name: string | null } | null;
-  home_score: number;
-  away_score: number;
-  /** Map duration in seconds. */
-  time: number | null;
-  log_name: string | null;
-  created_at: string;
+/**
+ * One parsed match — a single played map, as the log parser produced it. `participants` carries every seat with
+ * its official result and observed team facts (`team_facts.score`); a deleted source team is `tournament_team_id: null`.
+ */
+export interface AdminMatchRow
+  extends Omit<Schema<"tournament.AdminMatchRow">, "map" | "raw_status" | "log_record" | "participants"> {
+  map: CatalogEntityRead;
+  participants: MatchParticipant[];
+  raw_status: RawSourceStatus | null;
   /** Null when no raw-log ingestion job is linked; not a processing failure. */
   log_record: LogRecordRef | null;
 }
@@ -1046,11 +1039,12 @@ export interface EncounterUpdateInput {
   scheduled_at?: string | null;
 }
 
+/** The observed score is the only editable team fact; participants are addressed by `encounter_team_id`. */
 export interface MatchUpdateInput {
-  home_score?: number;
-  away_score?: number;
   map_id?: number;
-  time?: number;
+  /** Seconds. */
+  duration_s?: number | null;
+  team_facts?: { encounter_team_id: number; stat_code: "score"; value: number }[];
 }
 
 // ─── Standing ────────────────────────────────────────────────────────────────

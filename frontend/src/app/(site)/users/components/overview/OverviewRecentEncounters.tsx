@@ -5,7 +5,7 @@ import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
-import { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
@@ -49,14 +49,13 @@ const OverviewRecentEncounters = async ({ encounters, userId, userName, tourname
           .join(" · ");
 
         // The viewer's unique heroes across this encounter's matches
-        // (match `heroes` are already the viewer's). Deduped by image/name;
+        // (`viewer.characters` are already the viewer's). Deduped by entity;
         // no popover — match-history heroes have no per-hero user stats
         // (design-book §11).
-        const heroMap = new Map<string, Hero>();
+        const heroMap = new Map<number, CatalogEntityRead>();
         for (const m of enc.matches ?? []) {
-          for (const h of m.heroes ?? []) {
-            const heroKey = h.image_path || h.name;
-            if (!heroMap.has(heroKey)) heroMap.set(heroKey, h);
+          for (const character of m.viewer?.characters ?? []) {
+            if (!heroMap.has(character.id)) heroMap.set(character.id, character);
           }
         }
         const encHeroes = Array.from(heroMap.values());

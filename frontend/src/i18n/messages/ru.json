@@ -2503,6 +2503,13 @@
     "logName": "Имя лога",
     "allMatch": "Весь матч",
     "teamLabel": "Команда {name}",
+    "native": {
+      "player": "Игрок",
+      "noMembers": "Нет наблюдаемых игроков",
+      "noStats": "Для этого матча статистика не записана.",
+      "segmentLabel": "Сегмент",
+      "segment": "{kind} {n}"
+    },
     "meta": {
       "matchTitle": "{home} vs {away}",
       "matchDescription": "Обзор матча {home} vs {away} на {siteName}."

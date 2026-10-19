@@ -3,7 +3,7 @@
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useLocale, useTranslations } from "next-intl";
-import { useFormatter } from "@/lib/datetime/client";
+import { formatSeriesClock, observedScore } from "@/lib/encounter/detail";
 import {
   Dialog,
   DialogContent,
@@ -16,25 +16,35 @@ import { cn } from "@/lib/utils";
 import { classifyRarity, localizedText, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
 const MatchRow = ({ match }: { match: AchievementMatchLink }) => {
-  const format = useFormatter();
-  // Older rows store seconds, newer ones milliseconds.
-  const ms = match.time ? (match.time > 1e12 ? match.time : match.time * 1000) : null;
-  const at = ms === null ? null : new Date(ms);
-  const date =
-    at && !Number.isNaN(at.getTime())
-      ? format.dateTime(at, { year: "numeric", month: "short", day: "numeric" })
-      : "";
-  const home = match.home_team?.name ?? "?";
-  const away = match.away_team?.name ?? "?";
+  const t = useTranslations();
+  // The link carries the map's length in seconds, never a date.
+  const duration = formatSeriesClock(match.duration_s, {
+    h: t("common.duration.h"),
+    m: t("common.duration.m"),
+    s: t("common.duration.s")
+  });
+  const scores = match.participants.map((participant) => observedScore(participant) ?? "?");
+  const [home, away] = match.participants;
   return (
     <HoverPrefetchLink
       href={`/encounters/${match.encounter_id}`}
       className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] py-2 text-caption transition-colors last:border-b-0 hover:text-[color:var(--aqt-teal)]"
     >
       <span className="truncate">
-        {home} <span className="aqt-tnum opacity-80">{match.score.home}:{match.score.away}</span> {away}
+        {match.participants.length === 2 ? (
+          <>
+            {home.name} <span className="aqt-tnum opacity-80">{scores.join(":")}</span> {away.name}
+          </>
+        ) : (
+          <>
+            {match.participants.map((participant) => participant.name).join(" · ")}{" "}
+            <span className="aqt-tnum opacity-80">{scores.join(":")}</span>
+          </>
+        )}
       </span>
-      {date ? <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">{date}</span> : null}
+      {duration ? (
+        <span className="aqt-tnum shrink-0 text-label text-[color:var(--aqt-fg-muted)]">{duration}</span>
+      ) : null}
     </HoverPrefetchLink>
   );
 };

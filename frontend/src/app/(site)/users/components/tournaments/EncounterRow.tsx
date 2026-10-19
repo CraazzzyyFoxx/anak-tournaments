@@ -4,10 +4,10 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { EncounterWithUserStats } from "@/types/user.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { type ScoreKind } from "@/components/match/cells";
-import MvpOrdinal from "@/app/(site)/users/components/shared/MvpOrdinal";
+import MatchRowBadge from "@/components/match/MatchRowBadge";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { encounterPerspective, mapKind } from "@/app/(site)/users/components/shared/encounter-perspective";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -43,14 +43,13 @@ const EncounterRow = ({
   const mapsLost = mapPips.filter((k) => k === "loss").length;
 
   // Unique heroes across all maps in the encounter.
-  const heroes: Hero[] = [];
-  const seen = new Set<string>();
+  const heroes: CatalogEntityRead[] = [];
+  const seen = new Set<number>();
   for (const m of enc.matches ?? []) {
-    for (const h of m.heroes ?? []) {
-      const key = h.image_path || h.name;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        heroes.push(h);
+    for (const character of m.viewer?.characters ?? []) {
+      if (!seen.has(character.id)) {
+        seen.add(character.id);
+        heroes.push(character);
       }
     }
   }
@@ -77,7 +76,7 @@ const EncounterRow = ({
       <div className="hidden items-center gap-1 md:flex">
         <TooltipProvider delayDuration={150}>
           {(enc.matches ?? []).map((m) => (
-            <MvpOrdinal key={m.id} match={m} />
+            <MatchRowBadge key={m.id} match={m} />
           ))}
         </TooltipProvider>
       </div>

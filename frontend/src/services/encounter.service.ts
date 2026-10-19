@@ -5,7 +5,7 @@ import {
   EncounterSavedView,
   MatchWithStats
 } from "@/types/encounter.types";
-import { MatchKillFeed } from "@/types/killfeed.types";
+import { MatchEvents } from "@/types/killfeed.types";
 import { PaginatedResponse } from "@/types/pagination.types";
 import { apiFetch } from "@/lib/api/fetch";
 
@@ -17,9 +17,9 @@ export default class encounterService {
         entities: [
           "matches",
           "matches.map",
-          // The detail page names each map's gamemode; without this the nested
-          // `map.gamemode` comes back null.
-          "matches.map.gamemode",
+          // The detail page names each map's mode; without this the nested
+          // `map.parent` comes back null.
+          "matches.map.parent",
           "teams",
           "teams.players",
           "teams.placement",
@@ -41,12 +41,13 @@ export default class encounterService {
       skipWorkspace: true,
       query: {
         entities: [
-          "teams",
-          "teams.players",
-          "teams.players.user",
           "map",
-          "map.gamemode",
+          "map.parent",
+          // The seats' source teams carry the logos the header draws; their rosters resolve a registration
+          // (a pick/ban target) to the global player an observed member is.
           "encounter",
+          "encounter.teams",
+          "encounter.teams.players",
           "encounter.tournament",
           "encounter.stage",
           "encounter.stage_item"
@@ -54,7 +55,7 @@ export default class encounterService {
       }
     }).then((res) => res.json());
   }
-  static async getMatchKillFeed(match_id: number): Promise<MatchKillFeed> {
+  static async getMatchKillFeed(match_id: number): Promise<MatchEvents> {
     return apiFetch(`/api/v1/matches/${match_id}/kill-feed`, { skipWorkspace: true }).then((res) => res.json());
   }
   static async getAll(

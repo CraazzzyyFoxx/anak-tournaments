@@ -1,4 +1,4 @@
-import { Score } from "./encounter.types";
+import type { Schema } from "@/types/api";
 import { User } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
@@ -40,22 +40,15 @@ interface AchievementTournamentLink {
   is_league: boolean;
 }
 
-interface AchievementMatchTeamRef {
-  id: number;
-  name: string;
-  /** Uploaded team image (S3 URL); `null` when the team has none. */
-  image_url: string | null;
-}
-
+/** The match an achievement was earned in and every participant of it, in slot order (`score` is `result?.score`/`team_facts.score`). */
 export interface AchievementMatchLink {
   id: number;
   encounter_id: number;
   map_id: number;
-  score: Score;
   log_name: string | null;
-  time: number | null;
-  home_team: AchievementMatchTeamRef | null;
-  away_team: AchievementMatchTeamRef | null;
+  /** Seconds. The link carries no timestamp: a duration is never a date. */
+  duration_s: number | null;
+  participants: Schema<"app.MatchParticipantRead">[];
 }
 
 export interface AchievementRarity extends Achievement {

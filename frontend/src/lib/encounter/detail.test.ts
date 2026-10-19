@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type {
-  Encounter, Match, MatchWithStats, MatchObservedPlayer, MatchParticipationWithStats
-} from "@/types/encounter.types";
-import { LogStatsName } from "@/types/stats.types";
+import type { Encounter, Match } from "@/types/encounter.types";
 import {
-  aggregateSeriesStats,
   buildSeriesSlots,
   countMapWins,
   encounterSeatScore,
@@ -14,7 +10,6 @@ import {
   getSeriesSeconds,
   getSeriesVerdict
 } from "@/lib/encounter/detail";
-import { teamTotal } from "@/lib/match-stats";
 import { duelWinner } from "@/lib/encounter/seats";
 
 /** The encounter's two seats (participations 1 and 2, teams 1 and 2), with a standing each. */
@@ -25,27 +20,29 @@ function duelOf(scoreOne: number, scoreTwo: number): Encounter["teams"] {
   ];
 }
 
+/** A parsed map: participations 1 and 2 (the encounter's seats) with the log's observed scores, `time` seconds long. */
 function match(id: number, home: number, away: number, time: number | null = 600): Match {
   return {
     id,
-    created_at: new Date(0),
+    created_at: "1970-01-01T00:00:00Z",
     updated_at: null,
-    home_team_id: 1,
-    away_team_id: 2,
-    home_participation: duelOf(0, 0)[0],
-    away_participation: duelOf(0, 0)[1],
-    score: { home, away },
-    time,
+    played_at: null,
+    workspace_id: 1,
+    discipline: "overwatch",
     encounter_id: 10,
-    map_id: id,
+    encounter_game_id: null,
     map_index: id,
+    map_id: id,
+    map: null,
+    encounter: null,
+    duration_s: time,
     log_name: null,
     raw_status: null,
     raw_available: false,
-    map: null,
-    home_team: null,
-    away_team: null,
-    encounter: null
+    participants: [
+      { encounter_team_id: 1, slot: 1, source_position: 0, tournament_team_id: 1, name: "A", result: null, team_facts: { score: home } },
+      { encounter_team_id: 2, slot: 2, source_position: 1, tournament_team_id: 2, name: "B", result: null, team_facts: { score: away } }
+    ]
   };
 }
 
@@ -91,12 +88,12 @@ describe("duelWinner", () => {
 });
 
 describe("parsed scores from the encounter's seats", () => {
-  // The lobby put the encounter's slot-2 team first: the log's home is team 2.
-  const flipped = (id: number, home: number, away: number): Match => ({
-    ...match(id, home, away),
-    home_team_id: 2,
-    away_team_id: 1
-  });
+  // The lobby put the encounter's slot-2 team first: the log lists participation 2 first.
+  const flipped = (id: number, home: number, away: number): Match => {
+    const base = match(id, away, home);
+    // Participation 2 is listed first and scored `home`; participation 1 scored `away`.
+    return { ...base, participants: [...base.participants].reverse().map((p, i) => ({ ...p, source_position: i })) };
+  };
 
   it("turns a log recorded with the sides flipped around", () => {
     expect(encounterSeatScore(flipped(1, 0, 3), encounter())).toEqual({ one: 3, two: 0 });
@@ -322,344 +319,5 @@ describe("formatCloseness", () => {
     expect(formatCloseness(0.72)).toBe("72%");
     expect(formatCloseness(0)).toBe("0%");
     expect(formatCloseness(null)).toBeNull();
-  });
-});
-
-// ─── aggregateSeriesStats ───────────────────────────────────────────────────
-
-function player(
-  id: number,
-  stats: Partial<Record<LogStatsName, number>>,
-  heroIds: number[]
-): MatchObservedPlayer {
-  return {
-    workspace_member_id: id,
-    user_id: id,
-    name: `P${id}#1`,
-    stats: { 0: stats } as MatchObservedPlayer["stats"],
-    heroes: { 0: heroIds.map((heroId) => ({ id: heroId })) } as unknown as MatchObservedPlayer["heroes"]
-  };
-}
-
-function team(id: number, name: string, players: MatchObservedPlayer[]): MatchParticipationWithStats {
-  return {
-    id, name, slot: id, team_id: id, seed: null, score: 0,
-    placement: null, active: true, team: null, players
-  };
-}
-
-function statMatch(
-  id: number,
-  home: MatchParticipationWithStats,
-  away: MatchParticipationWithStats,
-  score = { home: 2, away: 1 }
-): MatchWithStats {
-  return {
-    ...match(id, score.home, score.away),
-    rounds: 1,
-    home_team_id: home.team_id,
-    away_team_id: away.team_id,
-    home_participation: home,
-    away_participation: away
-  };
-}
-
-describe("aggregateSeriesStats", () => {
-  it("sums additive stats across maps and counts maps played per player", () => {
-    const mapOne = statMatch(
-      1,
-      team(1, "A", [
-        player(11, { [LogStatsName.Eliminations]: 10, [LogStatsName.Deaths]: 2 }, [100])
-      ]),
-      team(2, "B", [player(21, { [LogStatsName.Eliminations]: 4 }, [200])])
-    );
-    const mapTwo = statMatch(
-      2,
-      team(1, "A", [
-        player(11, { [LogStatsName.Eliminations]: 6, [LogStatsName.Deaths]: 3 }, [101])
-      ]),
-      team(2, "B", [player(21, { [LogStatsName.Eliminations]: 5 }, [200])])
-    );
-
-    const result = aggregateSeriesStats([mapOne, mapTwo]);
-    expect(result).not.toBeNull();
-    const row = result!.participations[0].players[0].stats[0];
-    expect(row[LogStatsName.Eliminations]).toBe(16);
-    expect(row[LogStatsName.Deaths]).toBe(5);
-    expect(result!.participations[0].meta[11].mapsPlayed).toBe(2);
-    expect(result!.mapsCounted).toBe(2);
-    expect(result!.round).toBe(0);
-  });
-
-  it("unions heroes across maps without duplicating a repeated pick", () => {
-    const result = aggregateSeriesStats(
-      [
-        statMatch(
-          1,
-          team(1, "A", [player(11, {}, [100, 101])]),
-          team(2, "B", [player(21, {}, [200])])
-        ),
-        statMatch(
-          2,
-          team(1, "A", [player(11, {}, [101, 102])]),
-          team(2, "B", [player(21, {}, [200])])
-        )
-      ]
-    );
-    const heroes = result!.participations[0].players[0].heroes[0] as { id: number }[];
-    expect(heroes.map((hero) => hero.id).sort()).toEqual([100, 101, 102]);
-  });
-
-  it("recomputes ratio stats from summed components rather than averaging maps", () => {
-    // Map 1: 10 elims / 2 deaths (kd 5). Map 2: 0 elims / 8 deaths (kd 0).
-    // Averaging per-map kd gives 2.5; the series truth is 10/10 = 1.
-    const result = aggregateSeriesStats(
-      [
-        statMatch(
-          1,
-          team(1, "A", [
-            player(
-              11,
-              {
-                [LogStatsName.Eliminations]: 10,
-                [LogStatsName.Deaths]: 2,
-                [LogStatsName.Assists]: 4,
-                [LogStatsName.KD]: 5
-              },
-              [100]
-            )
-          ]),
-          team(2, "B", [player(21, {}, [200])])
-        ),
-        statMatch(
-          2,
-          team(1, "A", [
-            player(
-              11,
-              {
-                [LogStatsName.Eliminations]: 0,
-                [LogStatsName.Deaths]: 8,
-                [LogStatsName.Assists]: 2,
-                [LogStatsName.KD]: 0
-              },
-              [100]
-            )
-          ]),
-          team(2, "B", [player(21, {}, [200])])
-        )
-      ]
-    );
-    const row = result!.participations[0].players[0].stats[0];
-    expect(row[LogStatsName.KD]).toBe(1);
-    expect(row[LogStatsName.KDA]).toBeCloseTo(1.6, 5);
-  });
-
-  it("keeps the best single-map multikill instead of summing it", () => {
-    const result = aggregateSeriesStats(
-      [
-        statMatch(
-          1,
-          team(1, "A", [player(11, { [LogStatsName.MultikillBest]: 4 }, [100])]),
-          team(2, "B", [player(21, {}, [200])])
-        ),
-        statMatch(
-          2,
-          team(1, "A", [player(11, { [LogStatsName.MultikillBest]: 3 }, [100])]),
-          team(2, "B", [player(21, {}, [200])])
-        )
-      ]
-    );
-    expect(result!.participations[0].players[0].stats[0][LogStatsName.MultikillBest]).toBe(4);
-  });
-
-  it("derives accuracy from shot counts and omits it when nothing was fired", () => {
-    const result = aggregateSeriesStats(
-      [
-        statMatch(
-          1,
-          team(1, "A", [
-            player(
-              11,
-              {
-                [LogStatsName.ShotsFired]: 100,
-                [LogStatsName.ShotsHit]: 40,
-                [LogStatsName.CriticalHits]: 10
-              },
-              [100]
-            ),
-            player(12, { [LogStatsName.Eliminations]: 3 }, [110])
-          ]),
-          team(2, "B", [player(21, {}, [200])])
-        ),
-        statMatch(
-          2,
-          team(1, "A", [
-            player(11, { [LogStatsName.ShotsFired]: 100, [LogStatsName.ShotsHit]: 20 }, [100]),
-            player(12, { [LogStatsName.Eliminations]: 2 }, [110])
-          ]),
-          team(2, "B", [player(21, {}, [200])])
-        )
-      ]
-    );
-    const shooter = result!.participations[0].players.find((entry) => entry.workspace_member_id === 11)!.stats[0];
-    const abstainer = result!.participations[0].players.find((entry) => entry.workspace_member_id === 12)!.stats[0];
-    expect(shooter[LogStatsName.WeaponAccuracy]).toBeCloseTo(0.3, 5);
-    expect(shooter[LogStatsName.CriticalHitAccuracy]).toBeCloseTo(10 / 60, 5);
-    expect(abstainer[LogStatsName.WeaponAccuracy]).toBeUndefined();
-  });
-
-  it("drops model-only stats no series value can be derived for", () => {
-    const result = aggregateSeriesStats(
-      [
-        statMatch(
-          1,
-          team(1, "A", [
-            player(11, { [LogStatsName.ImpactPoints]: 42, [LogStatsName.ImpactRank]: 1 }, [100])
-          ]),
-          team(2, "B", [player(21, {}, [200])])
-        )
-      ]
-    );
-    const row = result!.participations[0].players[0].stats[0];
-    expect(row[LogStatsName.ImpactPoints]).toBeUndefined();
-    expect(row[LogStatsName.ImpactRank]).toBeUndefined();
-  });
-
-  it("ranks series MVPs across both rosters by summed performance points", () => {
-    const strong = player(11, { [LogStatsName.Eliminations]: 30 }, [100]);
-    const weak = player(12, { [LogStatsName.Eliminations]: 1 }, [110]);
-    const middle = player(21, { [LogStatsName.Eliminations]: 10 }, [200]);
-    const result = aggregateSeriesStats(
-      [statMatch(1, team(1, "A", [strong, weak]), team(2, "B", [middle]))]
-    );
-    expect(result!.participations[0].meta[11].seriesPlacement).toBe(1);
-    expect(result!.participations[1].meta[21].seriesPlacement).toBe(2);
-    expect(result!.participations[0].meta[12].seriesPlacement).toBe(3);
-    expect(
-      result!.participations[0].players.find((entry) => entry.workspace_member_id === 11)!.stats[0][LogStatsName.Performance]
-    ).toBe(1);
-  });
-
-  it("groups by observed participation even when a map records the sides flipped", () => {
-    const home = team(1, "A", [player(11, { [LogStatsName.Eliminations]: 7 }, [100])]);
-    const away = team(2, "B", [player(21, { [LogStatsName.Eliminations]: 3 }, [200])]);
-    const result = aggregateSeriesStats([statMatch(1, home, away), statMatch(2, away, home)]);
-    expect(result!.participations[0].name).toBe("A");
-    expect(result!.participations[0].players[0].stats[0][LogStatsName.Eliminations]).toBe(14);
-    expect(result!.participations[1].players[0].stats[0][LogStatsName.Eliminations]).toBe(6);
-  });
-
-  it("counts event-only observed players without inventing heroes or an MVP placement", () => {
-    const result = aggregateSeriesStats(
-      [
-        statMatch(
-          1,
-          team(1, "A", [player(11, { [LogStatsName.Eliminations]: 5 }, [100]), player(12, {}, [])]),
-          team(2, "B", [player(21, {}, [200])])
-        )
-      ]
-    );
-    expect(result!.participations[0].meta[11].mapsPlayed).toBe(1);
-    expect(result!.participations[0].meta[12].mapsPlayed).toBe(1);
-    expect(result!.participations[0].meta[12].seriesPlacement).toBeNull();
-    expect(result!.participations[0].players[1].heroes[0]).toEqual([]);
-    expect(result!.participations[0].players[1].stats[0]).toEqual({});
-  });
-
-  it("includes retired-only unbound observations without any live roster seats", () => {
-    const home = team(7, "Renamed source", [
-      player(11, { [LogStatsName.Eliminations]: 10, [LogStatsName.HeroDamageDealt]: 125.25 }, [])
-    ]);
-    const away = team(8, "Other renamed source", [
-      player(21, { [LogStatsName.Eliminations]: 4 }, [200])
-    ]);
-    const observation = {
-      ...statMatch(70, home, away),
-      map_index: null,
-      home_team_id: null,
-      away_team_id: null,
-      home_team: null,
-      away_team: null,
-      home_participation: {
-        ...home,
-        id: 107,
-        name: "Archived A",
-        active: false,
-        team_id: null,
-      },
-      away_participation: {
-        ...away,
-        id: 108,
-        name: "Archived B",
-        active: false,
-        team_id: null,
-      }
-    };
-
-    const result = aggregateSeriesStats([observation]);
-
-    expect(result?.participations.map(({ id, name, active }) => ({ id, name, active }))).toEqual([
-      { id: 107, name: "Archived A", active: false },
-      { id: 108, name: "Archived B", active: false }
-    ]);
-    expect(result!.participations[0].players[0].stats[0][LogStatsName.Eliminations]).toBe(10);
-    expect(result!.participations[0].players[0].stats[0][LogStatsName.HeroDamageDealt]).toBe(125.25);
-    expect(result!.participations[1].players[0].stats[0][LogStatsName.Eliminations]).toBe(4);
-    expect(result!.participations[0].meta[11].mapsPlayed).toBe(1);
-    expect(teamTotal(result!.participations[0], 0, LogStatsName.HeroDamageDealt)).toBe(125.25);
-    expect(result!.mapsCounted).toBe(1);
-    expect(observation.map_index).toBeNull();
-  });
-
-  it("keeps historical and live participations distinct even when their source team and player repeat", () => {
-    const home = team(1, "Current source name", [
-      player(11, { [LogStatsName.Eliminations]: 7, [LogStatsName.HeroDamageDealt]: 10.25 }, [100])
-    ]);
-    const away = team(2, "B", [player(21, { [LogStatsName.Eliminations]: 3 }, [200])]);
-    const historical = {
-      ...statMatch(70, home, away),
-      map_index: null,
-      home_participation: {
-        ...home,
-        id: 101, name: "Old A", active: false,
-      },
-      away_participation: {
-        ...away,
-        id: 102, name: "Old B", active: false,
-      }
-    };
-    const current = {
-      ...statMatch(4, home, away),
-      home_participation: {
-        ...home,
-        id: 201, name: "Current A", active: true,
-        players: [player(11, { [LogStatsName.Eliminations]: 2, [LogStatsName.HeroDamageDealt]: 1.5 }, [100])]
-      },
-      away_participation: {
-        ...away,
-        id: 202, name: "Current B", active: true,
-      }
-    };
-    const before = structuredClone({ historical, current });
-
-    const result = aggregateSeriesStats([historical, current, { ...historical, id: 71 }]);
-
-    expect(result!.participations.map(({ id, name, active }) => ({ id, name, active }))).toEqual([
-      { id: 101, name: "Old A", active: false },
-      { id: 102, name: "Old B", active: false },
-      { id: 201, name: "Current A", active: true },
-      { id: 202, name: "Current B", active: true }
-    ]);
-    const oldA = result!.participations[0];
-    const currentA = result!.participations[2];
-    expect(oldA.players[0].stats[0][LogStatsName.Eliminations]).toBe(14);
-    expect(oldA.players[0].stats[0][LogStatsName.HeroDamageDealt]).toBe(20.5);
-    expect(currentA.players[0].stats[0][LogStatsName.Eliminations]).toBe(2);
-    expect(currentA.players[0].stats[0][LogStatsName.HeroDamageDealt]).toBe(1.5);
-    expect(oldA.meta[11].mapsPlayed).toBe(2);
-    expect(currentA.meta[11].mapsPlayed).toBe(1);
-    expect(oldA.meta[11].seriesPlacement).not.toBe(currentA.meta[11].seriesPlacement);
-    expect(result!.mapsCounted).toBe(3);
-    expect({ historical, current }).toEqual(before);
   });
 });

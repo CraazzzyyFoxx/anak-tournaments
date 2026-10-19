@@ -3,10 +3,10 @@
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { LogStatsName } from "@/types/stats.types";
-import { COMPARISON_STATS, STAT_META, formatStat, teamTotal, type MatchStatsTeam } from "@/lib/match-stats";
+import { COMPARISON_STATS, STAT_META, formatStat, teamTotal, type MatchStatsTeam } from "./stats";
 import TeamName from "@/components/TeamName";
 
-interface MatchTeamComparisonProps {
+interface TeamComparisonProps {
   home: MatchStatsTeam;
   away: MatchStatsTeam;
   round: number;
@@ -23,7 +23,7 @@ interface Row {
   winner: "home" | "away" | "tie";
 }
 
-const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) => {
+const TeamComparison = ({ home, away, round }: TeamComparisonProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
 
@@ -125,4 +125,4 @@ const MatchTeamComparison = ({ home, away, round }: MatchTeamComparisonProps) =>
   );
 };
 
-export default MatchTeamComparison;
+export default TeamComparison;

@@ -19,6 +19,7 @@ import {
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import { scoreLine } from "@/lib/encounter/detail";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 import { EmptyNote } from "@/components/kit/EmptyNote";
@@ -159,8 +160,8 @@ export function ParsedMatchesBrowser({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="min-w-0 max-w-[20rem]">
-            <p className="truncate font-medium text-foreground" title={row.original.map_name}>
-              {row.original.map_name}
+            <p className="truncate font-medium text-foreground" title={row.original.map.name}>
+              {row.original.map.name}
             </p>
             <p
               className="truncate text-xs text-muted-foreground"
@@ -183,7 +184,7 @@ export function ParsedMatchesBrowser({
         enableSorting: false,
         cell: ({ row }) => (
           <span className="font-mono text-sm tabular-nums text-foreground">
-            {row.original.home_score} &ndash; {row.original.away_score}
+            {scoreLine(row.original.participants)}
           </span>
         )
       },
@@ -263,11 +264,11 @@ export function ParsedMatchesBrowser({
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{row.original.map_name}</p>
+                <p className="truncate text-sm font-medium">{row.original.map.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {row.original.encounter_name} ·{" "}
                   <span className="font-mono tabular-nums">
-                    {row.original.home_score}&ndash;{row.original.away_score}
+                    {scoreLine(row.original.participants)}
                   </span>
                 </p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
@@ -309,7 +310,7 @@ export function ParsedMatchesBrowser({
         <Inspector
           openId={openRow ? openId : null}
           onClose={() => setParams({ id: null })}
-          title={openRow?.map_name ?? ""}
+          title={openRow?.map.name ?? ""}
           subtitle={
             openRow ? `${openRow.encounter_name} · ${openRow.tournament_name}` : undefined
           }

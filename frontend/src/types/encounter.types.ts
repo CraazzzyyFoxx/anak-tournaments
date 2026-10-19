@@ -1,7 +1,6 @@
-import { MapRead } from "@/types/map.types";
+import type { Schema } from "@/types/api";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Team } from "@/types/team.types";
-import { LogStatsName } from "@/types/stats.types";
-import { Hero } from "@/types/hero.types";
 import {
   EncounterGame,
   EncounterResultSource,
@@ -10,12 +9,6 @@ import {
   StageItem,
   Tournament,
 } from "@/types/tournament.types";
-
-/** A parsed log's own two-sided score (`matches.match`, V4 keeps it) — never an encounter's. */
-export interface Score {
-  home: number;
-  away: number;
-}
 
 /**
  * One incoming advancement edge: place `source_position` of `encounter_id`
@@ -195,54 +188,41 @@ export const DEFAULT_MATCH_REPORT_BUILT_INS: MatchReportForm["built_in_fields"] 
 
 export type RawSourceStatus = "available" | "missing" | "conflict" | "unverified";
 
-export interface Match {
-  id: number;
-  created_at: Date;
-  updated_at: Date | null;
-  /** The observation's own owner context, same as its encounter's. */
-  workspace_id: number;
-  discipline: string;
-  home_team_id: number | null;
-  away_team_id: number | null;
-  score: Score;
-  time: number | null;
-  encounter_id: number;
-  map_id: number;
+/** One seat of a match: the encounter participation, its official result line and its observed whole-match team facts. */
+export type MatchParticipant = Schema<"tournament.MatchParticipantRead">;
+
+/** What a parsed log OBSERVED, with every participant (any number, `slot` order). Scores live in `participants`. */
+export interface Match extends Omit<Schema<"tournament.MatchRead">, "map" | "encounter" | "raw_status"> {
   /**
    * Proven game's 1-based series position, never source order or an array
    * index. Null means the observation has no confirmed game binding.
    */
   map_index: number | null;
-  log_name: string | null;
   raw_status: RawSourceStatus | null;
-  raw_available: boolean;
-
-  map: MapRead | null;
-  home_participation: EncounterTeam;
-  away_participation: EncounterTeam;
-  home_team: Team | null;
-  away_team: Team | null;
+  /** Expanded by `entities=map`; its mode is `map.parent` (`entities=map.parent`). */
+  map: CatalogEntityRead | null;
+  /** Expanded by `entities=encounter`. */
   encounter: Encounter | null;
 }
 
-/** A parsed identity, not a current roster row or a tournament registration. */
-export interface MatchObservedPlayer {
-  workspace_member_id: number;
-  user_id: number | null;
-  /** Exact handle recorded by the observation. */
-  name: string;
-  stats: Record<number, Record<LogStatsName, number>>;
-  heroes: Record<number, Hero[]>;
-}
+/** One native observation of a stat: `workspace_member_id` null is a team fact, `entity_id` null has no entity grain. */
+export type NativeFact = Schema<"tournament.NativeFact">;
+export type NativeMatchMember = Schema<"tournament.NativeMatchMember">;
+/** A child segment (a round); segment 0 is the whole match and has no row. */
+export type NativeSegment = Schema<"tournament.NativeSegment">;
 
-export interface MatchParticipationWithStats extends EncounterTeam {
-  players: MatchObservedPlayer[];
+export interface NativeMatchStatistics {
+  /** Every observed member, event-only ones included. */
+  members: NativeMatchMember[];
+  segments: NativeSegment[];
+  /** Facts at every grain; pick one with `selectFacts`, never add grains together. */
+  facts: NativeFact[];
+  /** Every catalog entity the facts name. */
+  entities: CatalogEntityRead[];
 }
 
 export interface MatchWithStats extends Match {
-  rounds: number;
-  home_participation: MatchParticipationWithStats;
-  away_participation: MatchParticipationWithStats;
+  statistics: NativeMatchStatistics;
 }
 
 type EncounterScope = "all" | "my_team";

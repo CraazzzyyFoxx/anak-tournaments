@@ -88,8 +88,8 @@ export function buildMapPlayedCounts(
     for (const match of encounter.matches ?? []) {
       const entry = totals.get(match.map_id) ?? { played: 0, durationSec: 0, timed: 0 };
       entry.played += 1;
-      if (match.time != null) {
-        entry.durationSec += match.time;
+      if (match.duration_s != null) {
+        entry.durationSec += match.duration_s;
         entry.timed += 1;
       }
       totals.set(match.map_id, entry);

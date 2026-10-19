@@ -45,8 +45,8 @@ export function MatchRow({
   const t = useTranslations();
   const completed = isEncounterCompleted(encounter);
   const seatScoreLabel = (map: Match) => {
-    const { one, two } = encounterSeatScore(map, encounter);
-    return `${one} : ${two}`;
+    const score = encounterSeatScore(map, encounter);
+    return score ? `${score.one} : ${score.two}` : "—";
   };
   const scoreOne = seatAt(encounter.teams, 1)?.score ?? 0;
   const scoreTwo = seatAt(encounter.teams, 2)?.score ?? 0;
@@ -167,13 +167,13 @@ export function MatchRow({
             className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] items-center gap-2 py-1"
           >
             <span className="truncate font-semibold">{map.map?.name ?? "—"}</span>
-            <span className="truncate text-[color:var(--aqt-fg-muted)]">{map.map?.gamemode?.name ?? "—"}</span>
+            <span className="truncate text-[color:var(--aqt-fg-muted)]">{map.map?.parent?.name ?? "—"}</span>
             <span className="text-right tabular-nums">
-              {map.score ? seatScoreLabel(map) : "—"}
+              {seatScoreLabel(map)}
             </span>
             <span className="text-right tabular-nums">
-              {map.time != null
-                ? `${Math.floor(map.time / 60)}:${String(Math.round(map.time % 60)).padStart(2, "0")}`
+              {map.duration_s != null
+                ? `${Math.floor(map.duration_s / 60)}:${String(Math.round(map.duration_s % 60)).padStart(2, "0")}`
                 : "—"}
             </span>
             <span className="flex justify-end gap-2 text-label">

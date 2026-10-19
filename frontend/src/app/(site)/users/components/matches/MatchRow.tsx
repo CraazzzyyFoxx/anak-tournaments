@@ -3,14 +3,14 @@
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ResTag, ScoreCell, resolveMvpPlacement } from "@/components/match/cells";
+import { ResTag, ScoreCell } from "@/components/match/cells";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import MvpOrdinal from "@/app/(site)/users/components/shared/MvpOrdinal";
+import MatchRowBadge from "@/components/match/MatchRowBadge";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 import { EncounterWithUserStats } from "@/types/user.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { tournamentHref } from "@/lib/tournament/url";
 
 interface MatchRowProps {
@@ -25,20 +25,20 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
   const resKind = scoreKind === "win" ? "w" : scoreKind === "loss" ? "l" : "d";
   const opponentName = opponent?.name;
   const tournamentName = enc.tournament?.name ?? `#${enc.tournament_id}`;
-  const heroSet = new Set<string>();
-  const heroList: Pick<Hero, "name" | "image_path" | "role">[] = [];
+  const heroSet = new Set<number>();
+  const heroList: CatalogEntityRead[] = [];
   (enc.matches ?? []).forEach((match) => {
-    // MatchWithUserStats.heroes is already the viewer's heroes for
-    // this match (computed server-side from native character facts).
-    (match.heroes ?? []).forEach((h) => {
-      if (!heroSet.has(h.name)) {
-        heroSet.add(h.name);
-        heroList.push({ name: h.name, image_path: h.image_path, role: h.type ?? h.role });
+    // `viewer.characters` is already the viewer's characters for this match (the module's eligibility rule is
+    // applied server-side from native character facts).
+    (match.viewer?.characters ?? []).forEach((character) => {
+      if (!heroSet.has(character.id)) {
+        heroSet.add(character.id);
+        heroList.push(character);
       }
     });
   });
 
-  const mvpMatches = (enc.matches ?? []).filter((m) => resolveMvpPlacement(m) != null);
+  const observedMatches = (enc.matches ?? []).filter((m) => m.viewer != null);
 
   return (
     <tr
@@ -77,11 +77,11 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
         <HeroStrip heroes={heroList} size="sm" limit={4} />
       </td>
       <td className="px-3.5 py-3">
-        {mvpMatches.length > 0 ? (
+        {observedMatches.length > 0 ? (
           <TooltipProvider delayDuration={150}>
             <span className="inline-flex items-center gap-2">
-              {mvpMatches.map((m) => (
-                <MvpOrdinal key={m.id} match={m} />
+              {observedMatches.map((m) => (
+                <MatchRowBadge key={m.id} match={m} />
               ))}
             </span>
           </TooltipProvider>

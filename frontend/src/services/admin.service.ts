@@ -14,7 +14,7 @@ import {
   TournamentImageSlot
 } from "@/types/tournament.types";
 import { Team, Player } from "@/types/team.types";
-import { Encounter } from "@/types/encounter.types";
+import { Encounter, Match } from "@/types/encounter.types";
 import { User } from "@/types/user.types";
 import type {
   CatalogEntityRead,
@@ -658,20 +658,7 @@ class AdminService {
     return response.json();
   }
 
-  async updateMatch(
-    matchId: number,
-    data: MatchUpdateInput
-  ): Promise<{
-    id: number;
-    encounter_id: number;
-    home_team_id: number | null;
-    away_team_id: number | null;
-    home_score: number;
-    away_score: number;
-    map_id: number;
-    time: number | null;
-    log_name: string | null;
-  }> {
+  async updateMatch(matchId: number, data: MatchUpdateInput): Promise<Match> {
     const response = await apiFetch(`/api/v1/admin/encounters/matches/${matchId}`, {
       method: "PATCH",
       body: data

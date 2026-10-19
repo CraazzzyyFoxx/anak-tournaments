@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { tournamentMapPips } from "@/app/(site)/users/components/overview/map-results";
 import type { EncounterWithUserStats } from "@/types/user.types";
 
-/** The viewer's team is `userTeamId`; the log's `home_team_id` is whichever team the uploader listed first. */
+/** The viewer's team is `userTeamId`; `homeTeamId` is whichever team the uploader listed first (its score is `home`). */
 const encounter = (
   id: number,
   userTeamId: number,
@@ -17,12 +17,16 @@ const encounter = (
       { id: id * 100 + 1, slot: 1, team_id: userTeamId, name: "Us", score: 0, placement: null, players: [] },
       { id: id * 100 + 2, slot: 2, team_id: 999, name: "Them", score: 0, placement: null, players: [] }
     ],
-    matches: maps.map((score, index) => ({
-      id: id * 10 + index,
-      home_team_id: homeTeamId,
-      score,
-      map_id: index + 1
-    }))
+    matches: maps.map((score, index) => {
+      const usFirst = homeTeamId === userTeamId;
+      const participant = (encounterTeamId: number, value: number) => ({
+        encounter_team_id: encounterTeamId,
+        team_facts: { score: value }
+      });
+      const us = participant(id * 100 + 1, usFirst ? score.home : score.away);
+      const them = participant(id * 100 + 2, usFirst ? score.away : score.home);
+      return { id: id * 10 + index, map_id: index + 1, participants: usFirst ? [us, them] : [them, us] };
+    })
   }) as EncounterWithUserStats;
 
 describe("tournamentMapPips", () => {

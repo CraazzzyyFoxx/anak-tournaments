@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { Swords, Trophy } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -79,9 +79,12 @@ const AchievementUsers = ({ achievement, scope }: { achievement: Achievement; sc
                       >
                         <Swords size={12} aria-hidden />
                         <span className="inline-flex min-w-0 items-center gap-1 truncate">
-                          <TeamName team={earned.last_match.home_team} size="xs" fallback="?" />
-                          {t("common.vs")}
-                          <TeamName team={earned.last_match.away_team} size="xs" fallback="?" />
+                          {earned.last_match.participants.map((participant, index) => (
+                            <Fragment key={participant.encounter_team_id}>
+                              {index > 0 ? t("common.vs") : null}
+                              <TeamName team={{ name: participant.name }} size="xs" fallback="?" />
+                            </Fragment>
+                          ))}
                         </span>
                       </Link>
                     ) : null}

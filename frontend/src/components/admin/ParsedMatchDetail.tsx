@@ -11,6 +11,8 @@ import { formatDate } from "@/components/kit/format-time";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import { observedScore } from "@/lib/encounter/detail";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
@@ -62,16 +64,21 @@ export function ParsedMatchDetail({
 
   const detail = detailQuery.data;
   const record = row.log_record;
-  const duration = row.time == null
+  const duration = row.duration_s == null
     ? "—"
-    : `${Math.floor(row.time / 60)}m ${String(Math.round(row.time % 60)).padStart(2, "0")}s`;
+    : `${Math.floor(row.duration_s / 60)}m ${String(Math.round(row.duration_s % 60)).padStart(2, "0")}s`;
+  const seats = seatsBySlot(row.participants);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Field
           label={t("score")}
-          value={`${row.home_team?.name ?? "?"} ${row.home_score} – ${row.away_score} ${row.away_team?.name ?? "?"}`}
+          value={
+            seats.length === 2
+              ? `${seats[0].name} ${observedScore(seats[0]) ?? "—"} – ${observedScore(seats[1]) ?? "—"} ${seats[1].name}`
+              : seats.map((seat) => `${seat.name} ${observedScore(seat) ?? "—"}`).join(" – ")
+          }
         />
         <Field label={t("duration")} value={duration} />
         <Field label={t("rounds")} value={detailQuery.isLoading ? "…" : (detail?.rounds ?? "—")} />

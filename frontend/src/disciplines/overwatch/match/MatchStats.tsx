@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
-import { MatchWithStats } from "@/types/encounter.types";
+import type { SlotProps } from "@/disciplines/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -19,23 +19,27 @@ import {
   PresetKey,
   availableRounds,
   columnMaxima
-} from "@/lib/match-stats";
-import MatchTeamTable from "@/app/(site)/matches/[id]/components/MatchTeamTable";
-import MatchTeamComparison from "@/app/(site)/matches/[id]/components/MatchTeamComparison";
-import MatchLeaders from "@/app/(site)/matches/[id]/components/MatchLeaders";
+} from "./stats";
+import { owMatchView, type OwTeam } from "./view";
+import TeamTable from "./TeamTable";
+import TeamComparison from "./TeamComparison";
+import Leaders from "./Leaders";
 import { Skeleton } from "@/components/ui/skeleton";
-import MatchKillFeedTimeline from "@/app/(site)/matches/[id]/components/MatchKillFeedTimeline";
+import KillFeedTimeline from "./KillFeedTimeline";
+import type { MatchWithStats } from "@/types/encounter.types";
 
 // recharts is ~100 kB of the client bundle and only the "comparison" tab ever
 // renders it, so it loads on demand. The placeholder matches the chart's own
 // minimum height (220px + the stat toggles) so the tab does not jump.
-const MatchContributionChart = dynamic(
-  () => import("@/app/(site)/matches/[id]/components/MatchContributionChart"),
+const ContributionChart = dynamic(
+  () => import("./ContributionChart"),
   { ssr: false, loading: () => <Skeleton className="h-70 w-full rounded-lg" /> }
 );
 
-interface MatchStatsSectionProps {
+interface MatchStatsViewProps {
   match: MatchWithStats;
+  home: OwTeam;
+  away: OwTeam;
 }
 
 type ViewMode = "simple" | "extended";
@@ -47,10 +51,8 @@ const ControlLabel = ({ children }: { children: React.ReactNode }) => (
   </span>
 );
 
-const MatchStatsSection = ({ match }: MatchStatsSectionProps) => {
+const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
   const t = useTranslations<never>();
-  const home = match.home_participation;
-  const away = match.away_participation;
 
   const rounds = useMemo(() => availableRounds(home, away), [home, away]);
   const [mode, setMode] = useState<ViewMode>("simple");
@@ -97,14 +99,14 @@ const MatchStatsSection = ({ match }: MatchStatsSectionProps) => {
     <div className="overflow-hidden rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
       <div className="relative w-full overflow-auto">
         <table className="w-full caption-bottom text-sm">
-          <MatchTeamTable
+          <TeamTable
             team={home}
             isHome={true}
             matchRound={activeRound}
             columns={columns}
             columnMax={columnMax}
           />
-          <MatchTeamTable
+          <TeamTable
             team={away}
             isHome={false}
             matchRound={activeRound}
@@ -164,14 +166,14 @@ const MatchStatsSection = ({ match }: MatchStatsSectionProps) => {
 
           <TabsContent value="comparison" className="flex flex-col gap-5">
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <MatchTeamComparison home={home} away={away} round={activeRound} />
-              <MatchContributionChart home={home} away={away} round={activeRound} />
+              <TeamComparison home={home} away={away} round={activeRound} />
+              <ContributionChart home={home} away={away} round={activeRound} />
             </div>
-            <MatchLeaders home={home} away={away} round={activeRound} />
+            <Leaders home={home} away={away} round={activeRound} />
           </TabsContent>
 
           <TabsContent value="timeline">
-            <MatchKillFeedTimeline matchId={match.id} home={home} away={away} />
+            <KillFeedTimeline matchId={match.id} members={match.statistics.members} home={home} away={away} />
           </TabsContent>
         </Tabs>
       )}
@@ -179,4 +181,12 @@ const MatchStatsSection = ({ match }: MatchStatsSectionProps) => {
   );
 };
 
-export default MatchStatsSection;
+/**
+ * The Overwatch scoreboard of a duel: summary and extended tables, team comparison, contribution chart, leaders
+ * and the kill timeline. The host renders it only for a match with exactly two participants.
+ */
+export default function MatchStats({ match }: Readonly<SlotProps["matchStats"]>) {
+  const view = useMemo(() => owMatchView(match), [match]);
+  if (!view) return null;
+  return <MatchStatsView match={match} home={view.home} away={view.away} />;
+}

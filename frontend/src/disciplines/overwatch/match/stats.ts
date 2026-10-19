@@ -1,20 +1,18 @@
-import type { NumberFormatOptions } from "next-intl";
-
+import { formatStat as formatStatValue, type StatFormatter } from "@/lib/stats/format";
 import { LogStatsName } from "@/types/stats.types";
-import type { MatchWithStats } from "@/types/encounter.types";
+import type { OwPlayer, OwTeam } from "./view";
 
-export type MatchStatsTeam = MatchWithStats["home_participation"];
-export type MatchStatsPlayer = MatchStatsTeam["players"][number];
+export type MatchStatsTeam = OwTeam;
+export type MatchStatsPlayer = OwPlayer;
 
 /**
- * Single source of truth for the match-statistics surface.
+ * Single source of truth for the Overwatch match-statistics surface.
  *
- * The match API (`/api/v1/matches/{id}`) returns a *passthrough* dict of every
- * stat name stored for a player/round (the backend query filters only on
- * `hero_id IS NULL`, not on stat name), so ~40 stats are already on the client.
- * The tables/charts historically rendered ~20 of them — this module drives the
- * expanded views (column presets, team comparison, leader cards, contribution
- * chart) from one declarative catalogue so formatting/labels stay consistent.
+ * A native match carries every fact at every grain; `owMatchView` re-keys a duel's member facts by segment and
+ * stat code, and this module drives the expanded views (column presets, team comparison, leader cards,
+ * contribution chart) from one declarative catalogue so formatting/labels stay consistent. The catalogue is the
+ * module's own: which stats read as a column, their shorthand and which direction is better is Overwatch
+ * presentation, not platform vocabulary.
  */
 
 type StatFormat = "int" | "float" | "thousands" | "percent" | "duration";
@@ -106,53 +104,22 @@ export const GROUP_COLOR: Record<StatGroup, string> = {
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
-/**
- * The slice of next-intl's formatter this module needs.
- *
- * A plain module cannot call `useFormatter()`, and a module-level
- * `Intl.NumberFormat` has to pin a locale — which printed `1,557` in a UI whose
- * default locale is `ru` and expects `1 557`. So the caller supplies it:
- * client components pass `useFormatter()`, server components
- * `await getFormatter()`. Both satisfy this shape.
- */
-export interface StatNumberFormatter {
-  number: (value: number, options?: NumberFormatOptions) => string;
-}
-
-function formatDuration(secondsRaw: number): string {
-  const seconds = Math.max(0, Math.floor(secondsRaw));
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
+/** The module's display shorthands onto the platform's `value_format`s (`thousands` is an integer). */
+const VALUE_FORMAT = {
+  int: "integer",
+  float: "decimal",
+  thousands: "integer",
+  percent: "percent",
+  duration: "duration"
+} as const satisfies Record<StatFormat, "integer" | "decimal" | "percent" | "duration">;
 
 /**
- * Format a stat value for display. Accuracy stats are stored as a 0–1 fraction
- * (mirrors the heroes stat table convention); values > 1 are treated as absent.
+ * Format a stat value for display through the platform formatter (`lib/stats/format`): accuracy stats are
+ * 0–1 fractions (values > 1 read as absent), durations are seconds. A stat the catalogue does not know prints
+ * as an integer. The caller supplies its locale's formatter (`useFormatter()` / `await getFormatter()`).
  */
-export function formatStat(
-  name: LogStatsName,
-  value: number | undefined | null,
-  formatter: StatNumberFormatter
-): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  const format = STAT_META[name]?.format ?? "int";
-  const num = (v: number) => formatter.number(v, { maximumFractionDigits: 2 });
-  switch (format) {
-    case "percent":
-      if (value > 1.0001) return "—";
-      return `${(value * 100).toFixed(1)}%`;
-    case "duration":
-      return formatDuration(value);
-    case "thousands":
-      return num(Math.round(value));
-    case "float":
-      return num(Number(value.toFixed(2)));
-    case "int":
-    default:
-      return num(Math.round(value));
-  }
+export function formatStat(name: LogStatsName, value: number | undefined | null, formatter: StatFormatter): string {
+  return formatStatValue({ value_format: VALUE_FORMAT[STAT_META[name]?.format ?? "int"] }, value, formatter);
 }
 
 // ── Column presets ────────────────────────────────────────────────────────────
@@ -296,9 +263,8 @@ export function playerStat(player: Pick<MatchStatsPlayer, "stats">, round: numbe
 
 /** Official per-map MVP placement: impact rank when the impact-scoring pipeline
  * computed it for this map, legacy performance rank otherwise. Mirrors
- * `resolveMvpPlacement` in `components/match/cells.tsx` (used by the Users →
- * Matches tab for the same two `LogStatsName` columns) so a player's MVP badge
- * agrees everywhere it appears. */
+ * `resolveMvpPlacement` in `./mvp` (used by the Users → Matches tab for the
+ * same two stat codes) so a player's MVP badge agrees everywhere it appears. */
 export function resolveMatchMvpPlacement(player: Pick<MatchStatsPlayer, "stats">, round: number): number | null {
   const row = player.stats?.[round];
   const impactRank = row?.[LogStatsName.ImpactRank];

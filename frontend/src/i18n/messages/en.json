@@ -2503,6 +2503,13 @@
     "logName": "Log name",
     "allMatch": "All Match",
     "teamLabel": "Team {name}",
+    "native": {
+      "player": "Player",
+      "noMembers": "No observed players",
+      "noStats": "No statistics were recorded for this match.",
+      "segmentLabel": "Segment",
+      "segment": "{kind} {n}"
+    },
     "meta": {
       "matchTitle": "{home} vs {away}",
       "matchDescription": "Overview for {home} vs {away} on {siteName}."

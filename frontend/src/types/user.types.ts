@@ -1,7 +1,8 @@
 import type { PlayerRoleOption } from "@/lib/roster/player-role";
 import type { RoleRef } from "@/lib/roster/role-ref";
 import { Hero, HeroPlaytime } from "@/types/hero.types";
-import { Score } from "@/types/encounter.types";
+import type { Schema } from "@/types/api";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RawSourceStatus } from "@/types/encounter.types";
 import { MapRead } from "@/types/map.types";
 import { LogStatsName } from "@/types/stats.types";
@@ -137,26 +138,32 @@ interface UserEncounterTeamSummary {
   players: UserEncounterTeamPlayerRef[];
 }
 
-export interface MatchWithUserStats {
-  id: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
-  score: Score;
-  time: number | null;
-  log_name: string | null;
+/** One native observation of a stat; `segment` 0 with null member/entity is a member's whole-match total when `workspace_member_id` is set. */
+export type UserNativeFact = Schema<"app.NativeFact">;
+
+/** The viewer's own seat and whole-match totals in one match; absent when the viewer's seat was not observed. */
+export interface UserMatchViewer {
+  encounter_team_id: number;
+  workspace_member_id: number;
+  /** Segment-0, no-entity facts of the viewer by stat code; an absent key is missing, never zero. */
+  facts: Record<string, number>;
+  /** The characters the viewer played in this match (module eligibility rule applied by the server). */
+  characters: CatalogEntityRead[];
+}
+
+/**
+ * A match inside a user-scoped encounter: the native header (participants with official result and observed
+ * team facts) plus the viewer's facts and EVERY observed member's whole-match totals. No derived value
+ * (placement, badge) rides on the wire: a discipline's renderer derives them from `viewer.facts` against
+ * `member_totals`.
+ */
+export interface MatchWithUserStats
+  extends Omit<Schema<"app.MatchReadWithUserStats">, "map" | "raw_status" | "viewer" | "member_totals"> {
   raw_status: RawSourceStatus | null;
-  raw_available: boolean;
-  encounter_id: number;
-  map_id: number;
-  map_index: number | null;
-  code: string | null;
-  map: MapRead | null;
-  performance: number | null;
-  impact_rank?: number | null;
-  impact_points?: number | null;
-  overperformance_score?: number | null;
-  overperformance_badge?: boolean;
-  heroes: Hero[];
+  /** Always expanded, with its mode as `map.parent`. */
+  map: CatalogEntityRead;
+  viewer: UserMatchViewer | null;
+  member_totals: UserNativeFact[];
 }
 
 export interface EncounterWithUserStats {

@@ -1,4 +1,5 @@
 import type { ScoreKind } from "@/components/match/cells";
+import { observedScore } from "@/lib/encounter/detail";
 import { seatsBySlot } from "@/lib/encounter/seats";
 import type { EncounterWithUserStats, MatchWithUserStats } from "@/types/user.types";
 
@@ -46,8 +47,14 @@ export function encounterPerspective(
   return { own, opponent, userScore, oppScore, kind: kindOf(userScore, oppScore) };
 }
 
-/** A parsed map's result for the viewer's seat; a log records its own two sides (V4). */
-export function mapKind(match: Pick<MatchWithUserStats, "score" | "home_team_id">, own: Seat | null): ScoreKind {
-  const userIsLogHome = own?.team_id != null && match.home_team_id === own.team_id;
-  return userIsLogHome ? kindOf(match.score.home, match.score.away) : kindOf(match.score.away, match.score.home);
+/**
+ * A parsed map's result for the viewer's seat: its own participation's observed score against the best of the
+ * others'. A draw when the viewer has no seat in the match or a score was not recorded — unknown is not a win.
+ */
+export function mapKind(match: Pick<MatchWithUserStats, "participants">, own: Seat | null): ScoreKind {
+  const mine = match.participants.find((participant) => participant.encounter_team_id === own?.id);
+  const mineScore = mine ? observedScore(mine) : null;
+  const others = match.participants.filter((participant) => participant !== mine).map(observedScore);
+  if (mineScore == null || others.length === 0 || others.some((score) => score == null)) return "draw";
+  return kindOf(mineScore, Math.max(...(others as number[])));
 }

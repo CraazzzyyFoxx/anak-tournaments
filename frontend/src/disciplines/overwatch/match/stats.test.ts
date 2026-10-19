@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { LogStatsName } from "@/types/stats.types";
-import { formatStat, resolveMatchMvpPlacement, type StatNumberFormatter } from "@/lib/match-stats";
+import type { StatFormatter } from "@/lib/stats/format";
+import { formatStat, resolveMatchMvpPlacement } from "./stats";
 
 const playerWith = (stats: Partial<Record<LogStatsName, number>>) => ({
-  stats: { 0: stats as Record<LogStatsName, number> }
+  stats: { 0: stats as Record<string, number> }
 });
 
 /**
@@ -11,7 +12,7 @@ const playerWith = (stats: Partial<Record<LogStatsName, number>>) => ({
  * because the point of the injected formatter is that `formatStat` no longer
  * picks one: whatever the caller's locale is, is what gets rendered.
  */
-const formatterFor = (locale: string): StatNumberFormatter => ({
+const formatterFor = (locale: string): StatFormatter => ({
   number: (value, options) => new Intl.NumberFormat(locale, options).format(value)
 });
 
@@ -54,7 +55,7 @@ describe("formatStat", () => {
 
   it("delegates every numeric render to the formatter", () => {
     const seen: number[] = [];
-    const recorder: StatNumberFormatter = {
+    const recorder: StatFormatter = {
       number: (value) => {
         seen.push(value);
         return String(value);
@@ -67,7 +68,7 @@ describe("formatStat", () => {
   });
 
   it("formats percent and duration without the formatter", () => {
-    const never: StatNumberFormatter = {
+    const never: StatFormatter = {
       number: () => {
         throw new Error("formatter must not be used for percent/duration stats");
       }
@@ -79,7 +80,7 @@ describe("formatStat", () => {
   });
 
   it("returns an em dash for absent values", () => {
-    const never: StatNumberFormatter = {
+    const never: StatFormatter = {
       number: () => {
         throw new Error("formatter must not be used for absent values");
       }

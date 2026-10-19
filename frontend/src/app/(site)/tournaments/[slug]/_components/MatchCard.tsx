@@ -112,7 +112,7 @@ export function MatchCard({
       {size === "md" && encounter.matches?.length > 0 ? (
         <ul className="flex flex-wrap gap-1 border-t border-[color:var(--aqt-border)] px-2.5 py-1.5">
           {encounter.matches.map((map) => {
-            const mapScore = map.score ? encounterSeatScore(map, encounter) : null;
+            const mapScore = encounterSeatScore(map, encounter);
             const played = mapScore && (mapScore.one !== 0 || mapScore.two !== 0);
             return (
               <li

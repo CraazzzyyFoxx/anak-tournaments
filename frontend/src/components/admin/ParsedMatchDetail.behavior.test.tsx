@@ -64,12 +64,20 @@ function row(overrides: Partial<AdminMatchRow> = {}): AdminMatchRow {
     tournament_id: 3,
     tournament_name: "Cup",
     map_id: 8,
-    map_name: "Ilios",
-    home_team: { id: 1, name: "A" },
-    away_team: { id: 2, name: "B" },
-    home_score: 2,
-    away_score: 1,
-    time: 612.5,
+    map: { id: 8, name: "Ilios", discipline: "overwatch", kind: "map", slug: "ilios", image_path: null, parent_id: null, parent: null, attrs: {}, active: true, aliases: [], created_at: "2026-01-01T00:00:00Z", updated_at: null },
+    participants: [
+      { encounter_team_id: 1, slot: 1, source_position: 0, tournament_team_id: 1, name: "A", result: null, team_facts: { score: 2 } },
+      { encounter_team_id: 2, slot: 2, source_position: 1, tournament_team_id: 2, name: "B", result: null, team_facts: { score: 1 } }
+    ],
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    map_index: 1,
+    played_at: null,
+    updated_at: null,
+    raw_status: null,
+    raw_available: false,
+    duration_s: 612.5,
     log_name: "Log-2026-04-20.txt",
     created_at: "2026-05-01T00:00:00Z",
     log_record: record(),
@@ -93,8 +101,9 @@ describe("ParsedMatchDetail", () => {
     { time: null, duration: "—" },
     { time: 0, duration: "0m 00s" }
   ])("preserves statistics with unavailable raw logs and duration $time", async ({ time, duration }) => {
+    const duration_s = time;
     const scope = await mount(
-      <ParsedMatchDetail row={row({ time, log_name: null, log_record: null })} workspaceId={1} />
+      <ParsedMatchDetail row={row({ duration_s, log_name: null, log_record: null })} workspaceId={1} />
     );
     const durationLabel = Array.from(scope.querySelectorAll("p")).find(
       (element) => element.textContent === "Duration"
@@ -126,14 +135,18 @@ describe("ParsedMatchDetail", () => {
     expect(scope.textContent).not.toContain("failed");
   });
 
-  it("keeps historical scores and job details when team references and filename are absent", async () => {
+  it("keeps historical scores and job details when source teams and filename are absent", async () => {
+    const base = row();
     const scope = await mount(
       <ParsedMatchDetail
-        row={row({ home_team: null, away_team: null, log_record: record({ filename: null }) })}
+        row={row({
+          participants: base.participants.map((participant) => ({ ...participant, tournament_team_id: null })),
+          log_record: record({ filename: null })
+        })}
         workspaceId={1}
       />
     );
-    expect(scope.textContent).toContain("? 2 – 1 ?");
+    expect(scope.textContent).toContain("A 2 – 1 B");
     expect(scope.textContent).toContain("#77");
     expect(scope.textContent).toContain("done");
     expect(scope.textContent).toContain("120");

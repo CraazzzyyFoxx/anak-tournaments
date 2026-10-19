@@ -1,13 +1,25 @@
+import { Fragment } from "react";
 import encounterService from "@/services/encounter.service";
+import { cn } from "@/lib/utils";
 import { Metadata } from "next";
 import Image from "next/image";
-import MatchStatsSection from "@/app/(site)/matches/[id]/components/MatchStatsSection";
+import MatchStatistics from "@/components/match/MatchStatistics";
+import { observedScore } from "@/lib/encounter/detail";
 import { Card, CardHeader } from "@/components/ui/card";
 import TeamName from "@/components/TeamName";
 import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import { getTranslations } from "next-intl/server";
 import { SITE_NAME, SITE_URL } from "@/config/site";
+import { seatsBySlot } from "@/lib/encounter/seats";
+
+/** One accent per participant, in seat order; a lobby cycles through them. Full literals so Tailwind sees them. */
+const ACCENT_CLASSES = [
+  "text-[color:var(--aqt-teal)]",
+  "text-[color:var(--aqt-rose)]",
+  "text-[color:var(--aqt-amber)]",
+  "text-[color:var(--aqt-violet)]"
+];
 
 export const dynamic = 'force-dynamic';
 
@@ -18,13 +30,11 @@ export async function generateMetadata(props: {
   const match = await encounterService.getMatch(params.id);
   const t = await getTranslations();
 
-  const matchTitle = t("matches.meta.matchTitle", {
-    home: match.home_participation.name,
-    away: match.away_participation.name
-  });
+  const [home, away] = seatsBySlot(match.participants);
+  const matchTitle = t("matches.meta.matchTitle", { home: home?.name ?? "—", away: away?.name ?? "—" });
   const matchDescription = t("matches.meta.matchDescription", {
-    home: match.home_participation.name,
-    away: match.away_participation.name,
+    home: home?.name ?? "—",
+    away: away?.name ?? "—",
     siteName: SITE_NAME
   });
 
@@ -54,6 +64,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const match = await encounterService.getMatch(params.id);
   const t = await getTranslations();
 
+  const participants = seatsBySlot(match.participants);
   const tournament_name = match?.encounter?.tournament.name;
   const stageLabel =
     match?.encounter?.stage_item?.name ??
@@ -68,45 +79,46 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
           <div className="flex flex-row gap-8 items-center">
             <div className="flex flex-row gap-4 items-center">
               <Image
-                src={match.map?.gamemode.image_path || ""}
-                alt={match.map?.gamemode.name || t("matches.gamemode")}
+                src={match.map?.parent?.image_path || ""}
+                alt={match.map?.parent?.name || t("matches.gamemode")}
                 height={40}
                 width={40}
               />
               <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.map?.name}</h4>
             </div>
-            <div className="flex flex-row gap-4">
-              <div className="flex flex-col text-right">
-                <TeamName
-                  team={{ name: match.home_participation.name, image_url: match.home_team?.image_url }}
-                  size="sm"
-                  className="justify-end"
-                  nameClassName="leading-7 text-[color:var(--aqt-teal)]"
-                />
-                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight text-[color:var(--aqt-teal)]">
-                  {match.score.home}
-                </h4>
-              </div>
-              <div className="flex items-end">
-                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">:</h4>
-              </div>
-              <div className="flex flex-col text-left">
-                <TeamName
-                  team={{ name: match.away_participation.name, image_url: match.away_team?.image_url }}
-                  size="sm"
-                  nameClassName="leading-7 text-[color:var(--aqt-rose)]"
-                />
-                <h4 className="scroll-m-20 text-xl font-semibold tracking-tight text-[color:var(--aqt-rose)]">
-                  {match.score.away}
-                </h4>
-              </div>
+            <div className="flex flex-row flex-wrap gap-4">
+              {participants.map((participant, index) => {
+                const accent = ACCENT_CLASSES[index % ACCENT_CLASSES.length];
+                const logo = match.encounter?.teams?.find((seat) => seat.id === participant.encounter_team_id)?.team
+                  ?.image_url;
+                return (
+                  <Fragment key={participant.encounter_team_id}>
+                    {index > 0 ? (
+                      <div className="flex items-end">
+                        <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">:</h4>
+                      </div>
+                    ) : null}
+                    <div className={cn("flex flex-col", index === 0 ? "text-right" : "text-left")}>
+                      <TeamName
+                        team={{ name: participant.name, image_url: logo }}
+                        size="sm"
+                        className={index === 0 ? "justify-end" : undefined}
+                        nameClassName={cn("leading-7", accent)}
+                      />
+                      <h4 className={cn("scroll-m-20 text-xl font-semibold tracking-tight", accent)}>
+                        {observedScore(participant) ?? "—"}
+                      </h4>
+                    </div>
+                  </Fragment>
+                );
+              })}
             </div>
             <div className="flex flex-row gap-4">
               <div className="flex flex-col text-right">
                 <p className="leading-7">{t("matches.playtime")}</p>
                 <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
-                  {match.time != null
-                    ? `${Math.floor(match.time / 60)}m ${(match.time % 60).toFixed(0)}s`
+                  {match.duration_s != null
+                    ? `${Math.floor(match.duration_s / 60)}m ${(match.duration_s % 60).toFixed(0)}s`
                     : "—"}
                 </h4>
               </div>
@@ -131,7 +143,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
           <p><RawLogStatus raw_status={match.raw_status} raw_available={match.raw_available} /></p>
         </div>
       </Card>
-      <MatchStatsSection match={match} />
+      <MatchStatistics match={match} />
     </div>
   );
 };

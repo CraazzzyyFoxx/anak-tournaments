@@ -46,7 +46,7 @@ export function tournamentEncountersQueryOptions(
             // mode; the nested relations only serialise when named.
             "matches",
             "matches.map",
-            "matches.map.gamemode"
+            "matches.map.parent"
           ]
         }
       )

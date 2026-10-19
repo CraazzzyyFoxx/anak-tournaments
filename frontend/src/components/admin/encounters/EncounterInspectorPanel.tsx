@@ -18,6 +18,7 @@ import adminService from "@/services/admin.service";
 import type { AdminMatchRow } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { scoreLine } from "@/lib/encounter/detail";
 import { isLobby, seatsBySlot, seatTeam } from "@/lib/encounter/seats";
 
 import { EncounterStatusCell, InspectorField } from "./EncounterCells";
@@ -134,9 +135,9 @@ export function EncounterInspectorPanel({
           <ul className="mt-2 space-y-1 text-sm">
             {(parsedMapsQuery.data?.results ?? []).map((map: AdminMatchRow) => (
               <li key={map.id} className="flex items-center justify-between gap-2">
-                <span className="truncate">{map.map_name}</span>
+                <span className="truncate">{map.map.name}</span>
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {map.home_score}&ndash;{map.away_score}
+                  {scoreLine(map.participants)}
                 </span>
               </li>
             ))}

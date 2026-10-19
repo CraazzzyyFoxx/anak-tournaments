@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import { Button } from "@/components/ui/button";
+import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import { loadMatchUI } from "@/disciplines/registry/match";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import encounterService from "@/services/encounter.service";
 
@@ -19,71 +20,56 @@ export function PickBanPlayerHeroes({
     queryFn: () => encounterService.getMatch(matchId!),
     enabled: matchId != null
   });
-  const heroes = useMemo(() => {
-    const match = history.data;
-    // The target id is a tournament registration, not an observed member/user.
-    const userId = [match?.home_team, match?.away_team]
-      .flatMap((team) => team?.players ?? [])
-      .find((candidate) => candidate.id === playerId)?.user_id;
-    const player =
-      userId == null
-        ? undefined
-        : [match?.home_participation, match?.away_participation]
-            .flatMap((participation) => participation?.players ?? [])
-            .find((candidate) => candidate.user_id === userId);
-    return [
-      ...new Map(
-        Object.values(player?.heroes ?? {})
-          .flat()
-          .map((hero) => [hero.id, hero])
-      ).values()
-    ];
-  }, [history.data, playerId]);
+  const match = history.data;
+  const metadata = useDisciplineMetadata(match?.workspace_id ?? "all", match?.discipline ?? null);
+  // The target id is a tournament registration, not an observed member: it names the global player through the
+  // roster of the source team its participation drew from.
+  const userId =
+    match?.encounter?.teams
+      ?.flatMap((seat) => seat.team?.players ?? [])
+      .find((candidate) => candidate.id === playerId)?.user_id ?? null;
 
-  return (
-    <div className="min-w-0 px-3 pb-2.5">
-      {matchId == null ? (
-        <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("noLog")}</p>
-      ) : history.isPending ? (
-        <p role="status" className="text-xs text-[color:var(--aqt-fg-muted)]">
-          {t("loading")}
-        </p>
-      ) : history.isError ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <p role="status" className="text-xs text-[color:var(--aqt-fg-muted)]">
-            {t("error")}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={history.isFetching}
-            onClick={() => void history.refetch()}
-          >
-            {t("retry")}
-          </Button>
-        </div>
-      ) : heroes.length === 0 ? (
-        <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("empty")}</p>
-      ) : (
-        <ul
-          aria-label={t("title")}
-          tabIndex={0}
-          className="flex max-h-32 flex-wrap gap-2 overflow-y-auto"
-        >
-          {heroes.map((hero) => (
-            <li
-              key={hero.id}
-              className="flex max-w-full items-center gap-2 rounded-lg bg-[color:var(--aqt-card-2)] px-2 py-1.5"
-            >
-              <PickBanItemThumb kind="hero" item={hero} name={hero.name} size={24} />
-              <span className="min-w-0 break-words text-xs font-medium text-[color:var(--aqt-fg)]">
-                {hero.name}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+  const status = (text: string) => (
+    <p role="status" className="text-xs text-[color:var(--aqt-fg-muted)]">
+      {text}
+    </p>
+  );
+  const retry = (refetch: () => unknown, busy: boolean) => (
+    <div className="flex flex-wrap items-center gap-2">
+      {status(t("error"))}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        onClick={() => void refetch()}
+      >
+        {t("retry")}
+      </Button>
     </div>
   );
+
+  let body;
+  if (matchId == null) {
+    body = <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("noLog")}</p>;
+  } else if (history.isPending || (match && metadata.isPending)) {
+    body = status(t("loading"));
+  } else if (history.isError) {
+    body = retry(history.refetch, history.isFetching);
+  } else if (metadata.isError) {
+    body = retry(metadata.refetch, metadata.isFetching);
+  } else if (match && metadata.data) {
+    body = (
+      <DisciplineWidget
+        discipline={match.discipline}
+        load={loadMatchUI}
+        slot="matchCharacters"
+        capabilities={metadata.data.discipline.capabilities}
+        props={{ match, userId, metadata: metadata.data }}
+        fallback={<p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("empty")}</p>}
+      />
+    );
+  }
+
+  return <div className="min-w-0 px-3 pb-2.5">{body}</div>;
 }

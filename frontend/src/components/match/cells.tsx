@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
  * Small match/encounter presentational primitives shared across pages
  * (player profile, encounters, teams). Styled with the global `aqt-*`
  * classes + `--aqt-*` tokens (promoted to :root), so they work anywhere.
+ * A game's own placement/badge rules live in its discipline module.
  */
 
 export type ResTagKind = "w" | "l" | "d";
@@ -14,51 +15,12 @@ export const ResTag = ({ kind, className }: { kind: ResTagKind; className?: stri
 
 export type ScoreKind = "win" | "loss" | "draw";
 
-export const ScoreCell = ({ kind, value, className }: { kind: ScoreKind; value: string; className?: string }) => (
-  <span className={cn("aqt-score-cell", kind, className)}>{value}</span>
-);
-
-export type MvpRank = "gold" | "silver" | "bronze" | "default";
-
-export const MvpPill = ({ rank, label, className }: { rank: MvpRank; label: string; className?: string }) => (
-  <span className={cn("aqt-mvp-pill", rank !== "default" && rank, className)}>{label}</span>
-);
-
-/** Map a 1-based per-match performance placement to an MvpPill rank. */
-export const mvpRank = (performance: number | null | undefined): MvpRank => {
-  if (performance === 1) return "gold";
-  if (performance === 2) return "silver";
-  if (performance === 3) return "bronze";
-  return "default";
-};
-
-/** Official MVP placement: impact rank when computed, legacy performance otherwise. */
-export const resolveMvpPlacement = (m: { impact_rank?: number | null; performance?: number | null }): number | null =>
-  m.impact_rank ?? m.performance ?? null;
-
-/**
- * Signed, 1-decimal display for the overperformance score (z-composite vs the
- * player's role×rank baseline): how much better/worse than expected they
- * played. `raised` drives the up/down + positive/negative styling. Returns
- * null when there is no score (legacy match / not computed).
- */
-export const formatOverperformance = (
-  score: number | null | undefined
-): { text: string; raised: boolean } | null => {
-  if (score == null || Number.isNaN(score)) return null;
-  const raised = score >= 0;
-  return { text: `${raised ? "+" : "−"}${Math.abs(score).toFixed(1)}`, raised };
-};
-
-const ORDINAL_PLURAL_RULES = new Intl.PluralRules("en-US", { type: "ordinal" });
-const ORDINAL_SUFFIXES: Partial<Record<Intl.LDMLPluralRule, string>> = {
-  one: "st",
-  two: "nd",
-  few: "rd"
-};
-
-/** Ordinal for a positive integer ("1st", "2nd", "13th"), shown in every locale. */
-export const ordinal = (n: number): string => {
-  if (!Number.isFinite(n)) return String(n);
-  return `${n}${ORDINAL_SUFFIXES[ORDINAL_PLURAL_RULES.select(n)] ?? "th"}`;
-};
+export const ScoreCell = ({
+  kind,
+  value,
+  className
+}: {
+  kind: ScoreKind;
+  value: string;
+  className?: string;
+}) => <span className={cn("aqt-score-cell", kind, className)}>{value}</span>;

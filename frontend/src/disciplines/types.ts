@@ -74,8 +74,11 @@ export type SlotProps = {
     metadata: DisciplineMetadata;
   };
   matchStats: { match: MatchWithStats; metadata: DisciplineMetadata };
-  seriesStats: { matches: MatchWithStats[]; metadata: DisciplineMetadata };
+  /** `view`: `overview` compares the observed sides; `players` is the totals grouped by participation (8a amendment). */
+  seriesStats: { matches: MatchWithStats[]; metadata: DisciplineMetadata; view: "overview" | "players" };
   matchRowBadge: { match: MatchWithUserStats; metadata: DisciplineMetadata };
+  /** The characters one player (by global `userId`) played in a match; the pick/ban target board's previous-map list (8a addition). */
+  matchCharacters: { match: MatchWithStats; userId: number | null; metadata: DisciplineMetadata };
   analytics: { tournamentId: number; workspaceId: number; metadata: DisciplineMetadata };
   nativeRankEditor: {
     ladder: NativeTier[];
@@ -115,6 +118,7 @@ export type DisciplineSlot = keyof SlotProps;
  * catch-all one.
  */
 export type RankSlot = "rankHistory";
+export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";
 export type PregameSlot = "pregameCharacterBans";
 export type AdminSlot = "nativeRankEditor" | "rankMapping";
 

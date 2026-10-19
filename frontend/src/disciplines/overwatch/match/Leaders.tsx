@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { LEADER_STATS, STAT_META, findLeader, formatStat, type MatchStatsTeam } from "@/lib/match-stats";
+import { LEADER_STATS, STAT_META, findLeader, formatStat, type MatchStatsTeam } from "./stats";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { getPlayerSlug } from "@/lib/player";
 import { cn } from "@/lib/utils";
 
-interface MatchLeadersProps {
+interface LeadersProps {
   home: MatchStatsTeam;
   away: MatchStatsTeam;
   round: number;
@@ -16,7 +16,7 @@ interface MatchLeadersProps {
   gridClassName?: string;
 }
 
-const MatchLeaders = ({ home, away, round, gridClassName }: MatchLeadersProps) => {
+const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
 
@@ -51,20 +51,14 @@ const MatchLeaders = ({ home, away, round, gridClassName }: MatchLeadersProps) =
               </span>
               <div className="mt-auto flex items-center gap-2">
                 <HeroStrip heroes={heroes} size="sm" limit={2} />
-                {leader.player.user_id != null ? (
-                  <Link
-                    href={`/users/${getPlayerSlug(leader.player.name)}`}
-                    className="truncate text-label font-semibold hover:underline"
-                    style={{ color: accent }}
-                    title={displayName}
-                  >
-                    {displayName}
-                  </Link>
-                ) : (
-                  <span className="truncate text-label font-semibold" style={{ color: accent }} title={leader.player.name}>
-                    {displayName}
-                  </span>
-                )}
+                <Link
+                  href={`/users/${getPlayerSlug(leader.player.name)}`}
+                  className="truncate text-label font-semibold hover:underline"
+                  style={{ color: accent }}
+                  title={displayName}
+                >
+                  {displayName}
+                </Link>
               </div>
             </div>
           );
@@ -74,4 +68,4 @@ const MatchLeaders = ({ home, away, round, gridClassName }: MatchLeadersProps) =
   );
 };
 
-export default MatchLeaders;
+export default Leaders;

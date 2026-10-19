@@ -184,14 +184,22 @@ const DELTA = team(14, "Delta");
 function mapRow(id: number, encounterId: number, home: Team, away: Team): Match {
   return {
     id,
-    created_at: new Date(0),
+    created_at: "1970-01-01T00:00:00Z",
     updated_at: null,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    home_participation: seat(1, home, 0),
-    away_participation: seat(2, away, 0),
-    score: { home: 2, away: 1 },
-    time: 680,
+    played_at: null,
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    participants: [seat(1, home, 0), seat(2, away, 0)].map((participation, index) => ({
+      encounter_team_id: participation.id,
+      slot: participation.slot,
+      source_position: index,
+      tournament_team_id: participation.team_id,
+      name: participation.name,
+      result: null,
+      team_facts: { score: index === 0 ? 2 : 1 }
+    })),
+    duration_s: 680,
     encounter_id: encounterId,
     map_id: 52,
     map_index: 1,
@@ -199,8 +207,6 @@ function mapRow(id: number, encounterId: number, home: Team, away: Team): Match 
     raw_status: null,
     raw_available: false,
     map: null,
-    home_team: null,
-    away_team: null,
     encounter: null
   };
 }

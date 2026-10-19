@@ -55,7 +55,7 @@ vi.mock("next/navigation", () => ({
 // whether the browser handed it a row.
 vi.mock("@/components/admin/ParsedMatchDetail", () => ({
   ParsedMatchDetail: ({ row }: { row: AdminMatchRow }) => (
-    <div data-testid="detail">{row.map_name}</div>
+    <div data-testid="detail">{row.map.name}</div>
   )
 }));
 
@@ -182,12 +182,20 @@ function row(overrides: Partial<AdminMatchRow> = {}): AdminMatchRow {
     tournament_id: 3,
     tournament_name: "Spring Cup",
     map_id: 5,
-    map_name: "Ilios",
-    home_team: { id: 1, name: "Alpha" },
-    away_team: { id: 2, name: "Beta" },
-    home_score: 2,
-    away_score: 1,
-    time: 600,
+    map: { id: 8, name: "Ilios", discipline: "overwatch", kind: "map", slug: "ilios", image_path: null, parent_id: null, parent: null, attrs: {}, active: true, aliases: [], created_at: "2026-01-01T00:00:00Z", updated_at: null },
+    participants: [
+      { encounter_team_id: 1, slot: 1, source_position: 0, tournament_team_id: 1, name: "Alpha", result: null, team_facts: { score: 2 } },
+      { encounter_team_id: 2, slot: 2, source_position: 1, tournament_team_id: 2, name: "Beta", result: null, team_facts: { score: 1 } }
+    ],
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    map_index: 1,
+    played_at: null,
+    updated_at: null,
+    raw_status: null,
+    raw_available: false,
+    duration_s: 600,
     log_name: "alpha-beta-ilios.txt",
     created_at: "2026-01-01T00:00:00Z",
     log_record: record(),
@@ -302,7 +310,7 @@ describe("ParsedMatchesBrowser", () => {
   });
 
   it("keeps maps without raw logs available for inspection", async () => {
-    listAdminMatches.mockResolvedValue(pageOf([row({ time: null, log_name: null, log_record: null })]));
+    listAdminMatches.mockResolvedValue(pageOf([row({ duration_s: null, log_name: null, log_record: null })]));
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const first = await waitFor(() => dataRows(container)[0], "the parsed map row");
     expect(first.textContent).toContain("Ilios");

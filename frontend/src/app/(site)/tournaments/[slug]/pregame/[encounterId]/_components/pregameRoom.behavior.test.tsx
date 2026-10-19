@@ -878,24 +878,47 @@ describe("phase selection", () => {
       games: hasGames ? [game({ position: 1, map_id: 21 }), game({ position: 2, map_id: 22 })] : [],
       // Stats matches are logs; official results and replay codes belong to games.
       matches: [
-        { id: 501, map_id: 21, map_index: 1, score: { home: 0, away: 0 } },
-        { id: 504, map_id: 23, map_index: 3, score: { home: 0, away: 0 } },
-        ...(hasLog
-          ? [{ id: 502, map_id: 22, map_index: 2, score: { home: 0, away: 0 } }]
-          : [])
+        { id: 501, map_id: 21, map_index: 1, participants: [] },
+        { id: 504, map_id: 23, map_index: 3, participants: [] },
+        ...(hasLog ? [{ id: 502, map_id: 22, map_index: 2, participants: [] }] : [])
       ]
     });
-    getMatch.mockImplementation(async (id: number) => ({
-      home_team: { players: [{ id: 57, heroes: { 0: [loggedHeroes[2]] } }] },
-      away_team: {
-        players: [{
-          id: 55,
-          heroes: id === 502
-            ? { 0: [loggedHeroes[0]], 1: [loggedHeroes[0], loggedHeroes[1]] }
-            : { 0: [loggedHeroes[2]] }
-        }]
-      }
-    }));
+    // Registrations 57 and 55 are the global players 57 and 55 through their seats' source-team rosters; the
+    // observed members played the characters (above a minute) in the segments listed.
+    getMatch.mockImplementation(async (id: number) => {
+      const played = (team: number, member: number, segments: [number, number][]) =>
+        segments.map(([segment, hero]) => ({
+          encounter_team_id: team,
+          workspace_member_id: member,
+          entity_id: loggedHeroes[hero].id,
+          segment,
+          stat_code: "hero_time_played",
+          value: 120
+        }));
+      return {
+        id,
+        workspace_id: 1,
+        discipline: "overwatch",
+        encounter: {
+          teams: [
+            { id: HOME, team: { players: [{ id: 57, user_id: 57 }] } },
+            { id: AWAY, team: { players: [{ id: 55, user_id: 55 }] } }
+          ]
+        },
+        statistics: {
+          members: [
+            { encounter_team_id: HOME, workspace_member_id: 570, player_id: 57, handle_snapshot: "Home", observed_role: null },
+            { encounter_team_id: AWAY, workspace_member_id: 550, player_id: 55, handle_snapshot: "Away", observed_role: null }
+          ],
+          segments: [],
+          entities: loggedHeroes,
+          facts: [
+            ...played(HOME, 570, [[0, 2]]),
+            ...played(AWAY, 550, id === 502 ? [[0, 0], [1, 0], [1, 1]] : [[0, 2]])
+          ]
+        }
+      };
+    });
     mockStates(
       unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
       readyState({
@@ -915,7 +938,10 @@ describe("phase selection", () => {
     await render();
     const row = document.body.querySelector('[data-target-player="55"]')!.closest("li")!;
     if (hasLog) {
-      expect(Array.from(row.querySelectorAll("ul img")).map((image) => image.getAttribute("alt"))).toEqual(["Tank A", "Tank B"]);
+      // The game's module renders the list once its lazy renderer has loaded.
+      await vi.waitFor(() =>
+        expect(Array.from(row.querySelectorAll("ul img")).map((image) => image.getAttribute("alt"))).toEqual(["Tank A", "Tank B"])
+      );
     } else {
       expect(row.textContent).toContain(ROOM.playerHeroes.noLog);
       expect(row.querySelector("ul")).toBeNull();

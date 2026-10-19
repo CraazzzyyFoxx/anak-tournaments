@@ -164,7 +164,9 @@ export const avgMvpPlacement = (entries: UserTournament[]): number | null => {
   for (const t of entries) {
     for (const enc of t.encounters ?? []) {
       for (const match of enc.matches ?? []) {
-        const placement = match.impact_rank ?? match.performance ?? null;
+        // The viewer's whole-match placement facts: impact rank when computed, legacy performance otherwise.
+        const facts = match.viewer?.facts;
+        const placement = facts?.impact_rank ?? facts?.performance ?? null;
         if (placement != null) {
           sum += placement;
           count += 1;

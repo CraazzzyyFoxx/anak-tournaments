@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatOverperformance, resolveMvpPlacement, mvpRank } from "@/components/match/cells";
+import { formatOverperformance, resolveMvpPlacement, mvpRank } from "./mvp";
 
 describe("resolveMvpPlacement", () => {
   it("prefers impact_rank over legacy performance", () => {

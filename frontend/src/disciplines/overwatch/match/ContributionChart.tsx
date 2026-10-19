@@ -14,9 +14,9 @@ import {
   Cell
 } from "recharts";
 import { LogStatsName } from "@/types/stats.types";
-import { STAT_META, activePlayers, formatStat, playerStat, type MatchStatsTeam } from "@/lib/match-stats";
+import { STAT_META, activePlayers, formatStat, playerStat, type MatchStatsTeam } from "./stats";
 
-interface MatchContributionChartProps {
+interface ContributionChartProps {
   home: MatchStatsTeam;
   away: MatchStatsTeam;
   round: number;
@@ -40,7 +40,7 @@ interface Datum {
   side: "home" | "away";
 }
 
-const MatchContributionChart = ({ home, away, round }: MatchContributionChartProps) => {
+const ContributionChart = ({ home, away, round }: ContributionChartProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
   const [metric, setMetric] = useState<LogStatsName>(LogStatsName.HeroDamageDealt);
@@ -139,4 +139,4 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
   );
 };
 
-export default MatchContributionChart;
+export default ContributionChart;

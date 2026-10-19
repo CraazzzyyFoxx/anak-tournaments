@@ -433,7 +433,7 @@ export function EncountersDataTable({
                     aria-hidden
                     className={cn(
                       styles.pip,
-                      duelWinner(encounterSeatScore(match, encounter)) === 1
+                      duelWinner(encounterSeatScore(match, encounter) ?? { one: 0, two: 0 }) === 1
                         ? styles.pipOne
                         : styles.pipTwo
                     )}

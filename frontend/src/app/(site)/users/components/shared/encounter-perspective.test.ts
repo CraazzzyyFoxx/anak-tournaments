@@ -50,11 +50,27 @@ describe("encounterPerspective", () => {
 });
 
 describe("mapKind", () => {
-  it("orients a log's own two sides to the viewer's team", () => {
+  const participant = (encounter_team_id: number, score?: number) => ({
+    encounter_team_id,
+    team_facts: score == null ? {} : { score }
+  });
+  const logOf = (...participants: ReturnType<typeof participant>[]) =>
+    ({ participants }) as unknown as Parameters<typeof mapKind>[0];
+
+  it("reads the viewer's own participation, whichever side the log listed first", () => {
     const own = seat(2, 20, 0);
 
-    expect(mapKind({ home_team_id: 20, score: { home: 3, away: 1 } }, own)).toBe("win");
-    expect(mapKind({ home_team_id: 10, score: { home: 3, away: 1 } }, own)).toBe("loss");
-    expect(mapKind({ home_team_id: 10, score: { home: 2, away: 2 } }, own)).toBe("draw");
+    expect(mapKind(logOf(participant(2, 3), participant(1, 1)), own)).toBe("win");
+    expect(mapKind(logOf(participant(1, 3), participant(2, 1)), own)).toBe("loss");
+    expect(mapKind(logOf(participant(1, 2), participant(2, 2)), own)).toBe("draw");
+  });
+
+  it("compares against the best of several opponents", () => {
+    expect(mapKind(logOf(participant(1, 2), participant(2, 3), participant(3, 5)), seat(2, 20, 0))).toBe("loss");
+  });
+
+  it("is a draw when the viewer has no seat in the match or a score was not recorded", () => {
+    expect(mapKind(logOf(participant(1, 3), participant(2, 1)), null)).toBe("draw");
+    expect(mapKind(logOf(participant(1, 3), participant(2)), seat(1, 10, 0))).toBe("draw");
   });
 });

@@ -189,14 +189,17 @@ function config(overrides: Partial<PickBanConfig>): PickBanConfig {
 function match(id: number, mapId: number, time: number | null): Match {
   return {
     id,
-    created_at: new Date("2025-02-02T00:00:00Z"),
+    created_at: "2025-02-02T00:00:00Z",
     updated_at: null,
-    home_team_id: 1,
-    away_team_id: 2,
-    home_participation: { id: 11, slot: 1, team_id: 1, name: "A", seed: null, score: 2, placement: null, active: true },
-    away_participation: { id: 12, slot: 2, team_id: 2, name: "B", seed: null, score: 1, placement: null, active: true },
-    score: { home: 2, away: 1 },
-    time,
+    played_at: null,
+    workspace_id: 1,
+    discipline: "overwatch",
+    encounter_game_id: null,
+    participants: [
+      { encounter_team_id: 11, slot: 1, source_position: 0, tournament_team_id: 1, name: "A", result: null, team_facts: { score: 2 } },
+      { encounter_team_id: 12, slot: 2, source_position: 1, tournament_team_id: 2, name: "B", result: null, team_facts: { score: 1 } }
+    ],
+    duration_s: time,
     encounter_id: 500,
     map_id: mapId,
     map_index: null,
@@ -204,8 +207,6 @@ function match(id: number, mapId: number, time: number | null): Match {
     raw_status: null,
     raw_available: false,
     map: null,
-    home_team: null,
-    away_team: null,
     encounter: null
   };
 }

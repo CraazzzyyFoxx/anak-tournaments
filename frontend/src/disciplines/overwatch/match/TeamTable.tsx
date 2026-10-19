@@ -16,9 +16,9 @@ import {
   activePlayers,
   resolveMatchMvpPlacement,
   type MatchStatsTeam
-} from "@/lib/match-stats";
+} from "./stats";
 
-interface MatchTeamTableProps {
+interface TeamTableProps {
   team: MatchStatsTeam;
   isHome: boolean;
   matchRound: number;
@@ -58,13 +58,13 @@ const StatCell = ({ name, value, max }: { name: LogStatsName; value: number; max
  * with its own horizontal scroll container: scrolling to a stat column on one
  * left the other behind, defeating the side-by-side comparison this panel is for.
  */
-const MatchTeamTable = ({
+const TeamTable = ({
   team,
   isHome,
   matchRound,
   columns,
   columnMax
-}: MatchTeamTableProps) => {
+}: TeamTableProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
   const teamAccent = isHome ? "var(--aqt-teal)" : "var(--aqt-rose)";
@@ -120,11 +120,7 @@ const MatchTeamTable = ({
                 background: `linear-gradient(to right, color-mix(in srgb, ${teamAccent} 22%, var(--aqt-card)), var(--aqt-card) 60%)`
               }}
             >
-              {player.user_id != null ? (
-                <PlayerName player={player} includeSpecialization={false} />
-              ) : (
-                <span title={player.name}>{player.name}</span>
-              )}
+              <PlayerName player={player} includeSpecialization={false} />
             </TableCell>
             <TableCell>
               <div className="flex justify-center">
@@ -159,4 +155,4 @@ const MatchTeamTable = ({
   );
 };
 
-export default MatchTeamTable;
+export default TeamTable;
