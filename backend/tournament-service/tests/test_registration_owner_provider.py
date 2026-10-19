@@ -44,6 +44,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.services.social_identity import social_identity_service  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from src import models  # noqa: E402
@@ -72,6 +73,9 @@ BATTLENET = SocialProvider.BATTLENET
 
 
 async def _seed(session: Any, *, discipline: str) -> SimpleNamespace:
+    # The modules' role ontologies reach ``catalog.*`` through ``project_disciplines`` at app-service startup; a
+    # fresh test database has none, so the test projects them itself (idempotent) instead of reading ambient state.
+    await project_disciplines(session)
     suffix = uuid.uuid4().hex[:12]
     workspace = Workspace(
         slug=f"ownprov-{suffix}", name=f"Owner provider {suffix}", disciplines_enabled=["overwatch", "lol"]
