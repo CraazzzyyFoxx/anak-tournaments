@@ -510,7 +510,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_pick_ban_reopen": {
         "summary": "Reopen the last revealed step",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened `side_pick` starts with an empty draft, takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.",
     },
     "rpc.tournament.admin_pick_ban_elect_opener": {
         "summary": "Elect a round's opener for a side",
@@ -1190,9 +1190,11 @@ DOCS: dict[str, dict] = {
             "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
             "Records the calling captain's consent to undo the session's last action and applies it the "
             "moment the opposing captain consents too; `consent=false` withdraws an open request (either "
-            "side may). Returns the resulting undo block. 400 when the session is not "
+            "side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting "
+            "undo block. 400 when the session is not "
             "initialized or cancelled, when there is nothing left to undo, or when the target is a map pick "
-            "whose hero round has already started -- undo those hero actions first."
+            "whose hero round has already started -- undo those hero actions first; 409 `side_locked` when "
+            "the undo would take back a side whose game already has a claim or a confirmed result."
         ),
     },
     "rpc.tournament.captain_report_game": {

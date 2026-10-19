@@ -81,6 +81,7 @@ from src.services.encounter.veto_session import (
     SLOT_CANDIDATE_FLOOR,
     resolve_seeds,
     rounds_are_progressive,
+    side_codes,
 )
 
 _encounters = EncounterRepository()
@@ -878,6 +879,11 @@ class PickBanSessionService:
         OLD veto keep collecting claims (and counting into the live score) under
         a pool that no longer names it.
 
+        A reset also takes back the sides the scrapped session's ``side_pick``
+        steps handed out on positions nobody has played yet: left behind, they
+        would satisfy ``side_pick_required`` for a game whose side is about to be
+        picked again. A played position keeps its sides (history).
+
         ``source`` defaults to the organizer who normally asks for this; the
         seat-change hook passes ``system``, having no human behind it."""
         if kind == PickBanKind.MAP:
@@ -890,6 +896,15 @@ class PickBanSessionService:
             )
         existing = await self.get_pick_ban_session(session, encounter.id, kind)
         if existing is not None:
+            if side_codes(encounter):
+                picked = {
+                    step.get("round") or 1
+                    for step in existing.resolved_sequence_json or []
+                    if step.get("action") == "side_pick"
+                }
+                await self.games.clear_sides(
+                    session, encounter.id, picked - await self.games.played_positions(session, encounter.id)
+                )
             await self.session_repo.delete_by_id(session, existing.id)
             # Only when there WAS a session: the journal records what was
             # scrapped, and resetting a room that never opened scrapped nothing.

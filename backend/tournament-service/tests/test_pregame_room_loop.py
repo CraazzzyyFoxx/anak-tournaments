@@ -1081,6 +1081,93 @@ class SideLessStateTests(PositionCase):
         self.assertEqual([(self.slot1, [{"item_id": FIRST_HERO, "target_player_id": None}])], drafts)
 
 
+# ── a played side is never rewound ──────────────────────────────────────────
+
+
+class SideRewindTests(PositionCase):
+    discipline = SIDED.code
+
+    async def frozen(self, game_id: int) -> tuple:
+        return await self.sides(game_id), await self.submissions(), await self.events()
+
+    async def test_undoing_an_unplayed_side_pick_takes_both_sides_back(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 1, action="side_pick")
+        game_id = await self.game_id(1)
+        self.assertEqual({self.slot1: "defence", self.slot2: "attack"}, await self.sides(game_id))
+        for seat in self.seats:
+            await self.undo(seat)
+        self.assertEqual({self.slot1: None, self.slot2: None}, await self.sides(game_id))
+        self.assertEqual([], (await self.state())["starting_sides"])
+        self.assertTrue(all(step.is_unbound for step in (await self.steps())[1:]))
+
+    async def test_a_side_somebody_played_on_cannot_be_undone(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        game_id = await self.game_id(1)
+        await self.undo(self.slot1)  # asked while nobody had played: fine
+
+        async def assert_locked() -> None:
+            frozen = await self.frozen(game_id)
+            # The consent that would apply it, and a fresh request.
+            self.assertEqual("side_locked", await self.refused(self.undo(self.slot2)))
+            self.assertEqual("side_locked", await self.refused(self.undo(self.slot1)))
+            self.assertEqual(frozen, await self.frozen(game_id))
+
+        await self.claim(game_id, claimant=self.slot1, winner=self.slot1)
+        await assert_locked()
+        await self.record(game_id, winner=self.slot1)
+        await assert_locked()
+
+    async def test_an_organizer_reopening_a_side_pick_starts_it_empty_and_binds_the_new_choice(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 1, action="side_pick")  # defence: the later `side:attack` ban is slot 2's
+        self.assertEqual([self.slot2], (await self.state())["acting_team_ids"])
+        game_id = await self.game_id(1)
+
+        await self.admin_reopen()
+        self.assertEqual({self.slot1: None, self.slot2: None}, await self.sides(game_id))
+        self.assertTrue(all(step.is_unbound for step in (await self.steps())[1:]))
+        drafts = [
+            (index, team, items) for _id, index, team, state, items in await self.submissions() if state == pbr.DRAFT
+        ]
+        self.assertEqual([(0, self.slot1, [])], drafts)
+
+        await self.act(self.slot1, 0, action="side_pick")  # attack this time
+        self.assertEqual({self.slot1: "attack", self.slot2: "defence"}, await self.sides(game_id))
+        with self.assertRaises(BaseAPIException):
+            await self.act(self.slot2, FIRST_HERO)
+        await self.act(self.slot1, FIRST_HERO)
+
+    async def test_an_organizer_cannot_reopen_a_side_somebody_played_on(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        game_id = await self.game_id(1)
+        await self.claim(game_id, claimant=self.slot1, winner=self.slot1)
+        frozen = await self.frozen(game_id)
+        self.assertEqual("side_locked", await self.refused(self.admin_reopen()))
+        self.assertEqual(frozen, await self.frozen(game_id))
+
+    async def test_a_hero_reset_takes_back_unplayed_sides_and_keeps_a_played_games(self) -> None:
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 0, action="side_pick")
+        await self.play_round()
+        await self.confirm_position(1, winner=self.slot1)
+        await self.reconcile()
+        await self.act(self.slot1, 1, action="side_pick")  # the FIXED opener picks round 2's side too
+        first, second = await self.game_id(1), await self.game_id(2)
+        played = {self.slot1: "attack", self.slot2: "defence"}
+        self.assertEqual({self.slot1: "defence", self.slot2: "attack"}, await self.sides(second))
+
+        await self.reset(enums.PickBanKind.HERO)
+        self.assertEqual(played, await self.sides(first))
+        self.assertEqual({self.slot1: None, self.slot2: None}, await self.sides(second))
+
+        # The replayed round-1 pick chooses the OTHER side; the game it was played on keeps its own.
+        await self.act(self.slot1, 1, action="side_pick")
+        self.assertEqual(played, await self.sides(first))
+
+
 # ── League of Legends: the real side-selection preset ───────────────────────
 
 LOL_CHAMPION_ID_BASE = 1_920_000_000

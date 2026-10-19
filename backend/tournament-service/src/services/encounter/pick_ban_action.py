@@ -328,6 +328,10 @@ class PickBanActionService:
         ``uq_game_team_side`` is the backstop: two participations cannot start
         one game on the same side, so a concurrent writer that got there first
         makes this transaction fail rather than quietly overwrite it.
+
+        A PLAYED position keeps the sides it was played on: only a round replayed
+        after a reset gets here for one, and a no-op keeps that room's tick from
+        failing on every pass.
         """
         sides = side_codes(rt.encounter)
         if side not in sides:
@@ -336,6 +340,8 @@ class PickBanActionService:
                 detail=f"{rt.encounter.discipline} has no side {side!r}",
             )
         position = step.round or 1
+        if position in await self.games.played_positions(session, rt.encounter.id):
+            return
         game = next(
             (game for game in await self.games.list_games(session, rt.encounter.id) if game.position == position),
             None,
@@ -704,18 +710,21 @@ class PickBanActionService:
     async def _blocked_rounds(self, session: AsyncSession, encounter: Encounter) -> frozenset[int]:
         """Series positions that already carry a claim or an accepted result --
         the rounds a dispute may no longer reopen, whichever kind asks."""
-        games = await self.games.list_games(session, encounter.id)
-        claims = await self.games.claims_by_game(session, games)
-        return frozenset(
-            game.position for game in games if game.state == EncounterGameState.CONFIRMED or claims.get(game.id)
-        )
+        return await self.games.played_positions(session, encounter.id)
 
     # -- reopening ---------------------------------------------------------
-    def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
+    async def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
         """Void the step's current attempt and open the next one, each actor's
         draft prefilled with what they had. The clock restarts; a session that
-        had run out of sequence comes back to life."""
+        had run out of sequence comes back to life.
+
+        A ``side_pick`` is the exception: its new drafts start EMPTY -- a
+        prefilled one would simply re-apply the old side on the next action --
+        the round's side-bound steps are unbound, and the position's sides are
+        taken back, so the re-choice binds everything afresh. Callers refuse a
+        played position first."""
         attempt = pbr.current_attempt(rt.submissions, step.index)
+        side_pick = step.action == "side_pick"
         previous: dict[int, list[dict[str, Any]]] = {}
         for row in rt.submissions:
             if row.step_index != step.index or row.attempt != attempt or row.state == pbr.VOIDED:
@@ -731,10 +740,17 @@ class PickBanActionService:
                 encounter_team_id=actor,
                 attempt=attempt + 1,
                 state=pbr.DRAFT,
-                items_json=previous.get(actor, []),
+                items_json=[] if side_pick else previous.get(actor, []),
             )
             session.add(row)
             rt.submissions.append(row)
+        if side_pick:
+            # The `apply_undo` rule: `_bind_side_actors` rebinds only unbound steps.
+            rt.steps = [
+                other.unbound() if other.round == step.round and other.is_bound_to_side else other for other in rt.steps
+            ]
+            rt.pick_ban.resolved_sequence_json = [other.to_json() for other in rt.steps]
+            await self.games.clear_sides(session, rt.encounter.id, {step.round or 1})
         pbr.project_entries(rt.entries, rt.steps, rt.submissions)
         rt.pick_ban.current_step_started_at = step_clock(rt.pick_ban)
         if str(rt.pick_ban.status) == MapVetoSessionStatus.COMPLETED:
@@ -976,7 +992,7 @@ class PickBanActionService:
             )
         step = next(candidate for candidate in rt.steps if candidate.index == state.step_index)
         attempt = pbr.current_attempt(rt.submissions, step.index)
-        self._reopen(session, rt, step)
+        await self._reopen(session, rt, step)
         await record_room_event(
             session,
             encounter_id,
@@ -1008,7 +1024,9 @@ class PickBanActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="There is no settled step to reopen",
             )
-        self._reopen(session, rt, step)
+        if step.action == "side_pick" and (step.round or 1) in await self.games.played_positions(session, encounter.id):
+            raise pick_ban_undo.side_locked()
+        await self._reopen(session, rt, step)
         await record_room_event(
             session,
             encounter_id,

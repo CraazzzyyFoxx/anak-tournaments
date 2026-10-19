@@ -16,7 +16,7 @@ result writer, which re-scores the whole series through the encounter's own
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -224,6 +224,16 @@ class EncounterGameService:
         """Is the encounter over on the games already confirmed?"""
         return (await self.standing(session, encounter)).ended
 
+    async def played_positions(self, session: AsyncSession, encounter_id: int) -> frozenset[int]:
+        """Positions whose game is CONFIRMED or already carries a claim: the ones
+        a room may no longer rewind into -- a dispute, an undo, a reopen -- and
+        whose sides are history."""
+        games = await self.list_games(session, encounter_id)
+        claims = await self.claims_by_game(session, games)
+        return frozenset(
+            game.position for game in games if game.state == EncounterGameState.CONFIRMED or claims.get(game.id)
+        )
+
     # -- opening positions -------------------------------------------------
     async def open_game(
         self,
@@ -356,6 +366,20 @@ class EncounterGameService:
         return changes, stale
 
     # -- commands ----------------------------------------------------------
+    async def clear_sides(self, session: AsyncSession, encounter_id: int, positions: Iterable[int]) -> None:
+        """Take back both seats' ``starting_side`` on these positions' live games.
+
+        The caller vouches the positions are unplayed: a cancelled game is
+        history and is never touched, and a played side is never rewound
+        (:meth:`played_positions`)."""
+        wanted = set(positions)
+        if not wanted:
+            return
+        games = [game for game in await self.list_games(session, encounter_id) if game.position in wanted]
+        for row in await self.line_repo.list_for_games(session, [game.id for game in games]):
+            row.starting_side = None
+        await session.flush()
+
     async def assert_side_settled(self, session: AsyncSession, encounter: Encounter, game: EncounterGame) -> None:
         """409 unless the position's sides are decided, wherever the room decides them.
 
