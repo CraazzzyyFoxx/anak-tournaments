@@ -138,9 +138,24 @@ export function PregameAdminControls({
   const [resetOpen, setResetOpen] = useState(false);
   const [override, setOverride] = useState<{ step: number | null; teamId: number } | null>(null);
   const teamId = override?.step === (step?.index ?? null) ? override.teamId : defaultTeamId;
-  // The side an organizer chose for a `side_pick` step, by index — kept with its step like the team override.
-  const [sidePick, setSidePick] = useState<{ step: number | null; index: number } | null>(null);
-  const sideIndex = sidePick?.step === (step?.index ?? null) ? sidePick.index : null;
+  // The side an organizer chose, by index, belongs to exactly one turn: this kind's session, this step and action
+  // as it was (re)opened and its attempt, and the team it is chosen FOR. Any change discards it — a choice made
+  // for one team must never be confirmed for the other, nor survive a reopen.
+  const attempt =
+    state.submissions.find((entry) => entry.step_index === step?.index && entry.encounter_team_id === teamId)
+      ?.attempt ?? 0;
+  const sideKey = [
+    kind,
+    state.session?.id,
+    step?.index,
+    step?.action,
+    state.session?.current_step_started_at,
+    attempt,
+    teamId
+  ].join(":");
+  const [sidePick, setSidePick] = useState<{ key: string; index: number | null }>({ key: sideKey, index: null });
+  if (sidePick.key !== sideKey) setSidePick({ key: sideKey, index: null });
+  const sideIndex = sidePick.key === sideKey ? sidePick.index : null;
   const sideChoiceId = useId();
   const [lockSubmission, setLockSubmission] = useState(true);
   const itemName = (itemId: number) =>
@@ -382,7 +397,7 @@ export function PregameAdminControls({
                       labels={sideLabels}
                       value={sideIndex}
                       disabled={pending}
-                      onChange={(index) => setSidePick({ step: step?.index ?? null, index })}
+                      onChange={(index) => setSidePick({ key: sideKey, index })}
                     />
                   </div>
                   <Button

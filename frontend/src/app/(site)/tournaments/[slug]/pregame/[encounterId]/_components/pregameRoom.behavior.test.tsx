@@ -2565,6 +2565,38 @@ describe("side selection", () => {
     expect(performPickBanAction).not.toHaveBeenCalled();
   });
 
+  it("forgets the chosen side when its step closes and is undone back open, under the same step index", async () => {
+    // Custom side → ban room: the captain picks Red locally, the step is answered elsewhere, then mutually undone
+    // before any ban. The reopened step has the very same index and attempt; the old choice must not come back.
+    const side = sideStep({ index: 0 });
+    const ban = step({ index: 1, actors: [AWAY] });
+    const open = sideRoom({ sequence: [side, ban] });
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), open);
+    await render();
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    expect(confirmSide(SIDE.red)).toBeTruthy();
+
+    await nextAnswer(
+      sideRoom({
+        sequence: [side, ban],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: ban,
+        current_step_index: 1,
+        acting_team_ids: [AWAY],
+        expected_action: "ban",
+        viewer_can_act: false,
+        allowed_actions: []
+      })
+    );
+    await nextAnswer(open);
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(confirmSide("—")?.disabled).toBe(true);
+    expect(confirmSide(SIDE.red)).toBeUndefined();
+  });
+
   it("keeps a champion picked on the step before out of the side step, and sends the side's index", async () => {
     const ban = step({ index: 0 });
     mockStates(
@@ -2701,6 +2733,41 @@ describe("side selection", () => {
         item_id: 0,
         action: "side_pick"
       });
+    });
+
+    it("drops the organizer's side when the team it was chosen for changes, and when the step is reopened", async () => {
+      const open = sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] });
+      mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), open);
+      await render();
+      await showAdminUi();
+      const panel = adminSection();
+      const adminSides = () => choiceGroup(ROOM.admin.sideChoiceLabel);
+      const perform = () =>
+        Array.from(panel.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+          button.textContent?.trim().startsWith(ROOM.admin.confirm)
+        )!;
+
+      // Chosen for the team on the clock, then the override moves to the other team: the choice is gone.
+      await act(async () => buttonIn(adminSides(), SIDE.blue)!.click());
+      await settle();
+      expect(perform().textContent?.trim()).toBe(`${ROOM.admin.confirm}: ${SIDE.blue}`);
+      await act(async () => buttonIn(panel, "Quiet Foxes")!.click());
+      await settle();
+      expect(adminSides().querySelector('[aria-pressed="true"]')).toBeNull();
+      expect(perform().disabled).toBe(true);
+
+      // Chosen again, then an organizer reopens the step (a new attempt, a new clock): gone again.
+      await act(async () => buttonIn(adminSides(), SIDE.red)!.click());
+      await settle();
+      expect(perform().disabled).toBe(false);
+      await nextAnswer({
+        ...open,
+        session: session({ kind: "hero", current_step_started_at: "2026-08-01T10:05:00Z" }),
+        submissions: [submission({ step_index: 0, encounter_team_id: AWAY, attempt: 2, state: "draft", items: [] })]
+      });
+      expect(adminSides().querySelector('[aria-pressed="true"]')).toBeNull();
+      expect(perform().disabled).toBe(true);
+      expect(adminPickBanAct).not.toHaveBeenCalled();
     });
 
     it("corrects a hero-only room's games, and names a correction the next game already depends on", async () => {

@@ -146,11 +146,17 @@ export function PickBanPanel({
       ? pickedItemId
       : null;
 
-  // A side step chooses an index into `state.sides`, never a catalog item: its own state, keyed by the step
-  // and attempt like the draft, so a new step, round or reopen drops it — and never filtered through the pool.
+  // A side step chooses an index into `state.sides`, never a catalog item: its own state, never filtered through
+  // the pool. It belongs to one turn — this step as it was (re)opened — and is DISCARDED the moment the turn
+  // changes, so an undo back to the same step index starts with no side chosen instead of resurrecting one.
   const isSideStep = step?.action === "side_pick";
-  const [pickedSide, setPickedSide] = useState<{ key: string; index: number } | null>(null);
-  const selectedSide = isSideStep && pickedSide?.key === stepKey ? pickedSide.index : null;
+  const sideKey = `${session.id}:${stepKey}:${session.current_step_started_at ?? ""}`;
+  const [pickedSide, setPickedSide] = useState<{ key: string; index: number | null }>({
+    key: sideKey,
+    index: null
+  });
+  if (pickedSide.key !== sideKey) setPickedSide({ key: sideKey, index: null });
+  const selectedSide = isSideStep && pickedSide.key === sideKey ? pickedSide.index : null;
   const sideLabelOf = useSideLabel();
   const sideLabel = (code: string) => sideLabelOf(encounter.discipline, code);
   const sideLabels = state.sides.map(sideLabel);
@@ -161,7 +167,7 @@ export function PickBanPanel({
       pickBanService.performPickBanAction(kind, encounterId, input),
     onSuccess: (next) => {
       setSelectedItemId(null);
-      setPickedSide(null);
+      setPickedSide((current) => ({ ...current, index: null }));
       setSelectedTargetId(null);
       queryClient.setQueryData(queryKey, next);
     },
@@ -414,7 +420,7 @@ export function PickBanPanel({
                   size="lg"
                   disabled={captainAction !== "side_pick" || actionMutation.isPending}
                   onChange={(index) =>
-                    setPickedSide(selectedSide === index ? null : { key: stepKey, index })
+                    setPickedSide({ key: sideKey, index: selectedSide === index ? null : index })
                   }
                 />
               </CardContent>
@@ -535,7 +541,11 @@ export function PickBanPanel({
               ...(step?.target != null ? { target_player_id: selectedTargetId } : {})
             });
           }}
-          onCancel={() => (isSideStep ? setPickedSide(null) : setSelectedItemId(null))}
+          onCancel={() =>
+            isSideStep
+              ? setPickedSide((current) => ({ ...current, index: null }))
+              : setSelectedItemId(null)
+          }
         />
       ) : null}
 
