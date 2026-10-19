@@ -16,7 +16,7 @@
 //   Z5  every zone layout mounts its own i18n bundle
 //   Z6  outside src/disciplines, only disciplines/{types,DisciplineWidget,registry/<family>} are importable
 //   Z7  only disciplines/registry/** imports a module (disciplines/<code>/<family>); a module never imports
-//       another module or anything under src/app (root entries included; components/admin is Z3's)
+//       another module, anything under src/app (root entries included) or components/admin
 // Test code — exactly `*.test.ts(x)` and src/test/** — is exempt from Z6/Z7's "who may import a module":
 // parity oracles reproduce module helpers. Runtime code (harnesses and fixtures included) never is.
 //
@@ -122,6 +122,9 @@ function disciplineFinding(from, to) {
   }
   if (fromModule !== null && to.startsWith("app/")) {
     return { rule: "Z7", from, to, what: "a discipline module imports src/app" };
+  }
+  if (fromModule !== null && to.startsWith("components/admin/")) {
+    return { rule: "Z7", from, to, what: "a discipline module imports components/admin" };
   }
   if (isTestCode(from) || !to.startsWith("disciplines/")) return null;
   if (toModule !== null && toModule === fromModule) return null;

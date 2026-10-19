@@ -24,10 +24,11 @@ const TREE: Record<string, string> = {
   "disciplines/overwatch/rank.ts": 'import { helper } from "./ladder/helper";\nexport default helper;',
   "disciplines/overwatch/ladder/helper.ts": "export const helper = 1;",
   "disciplines/overwatch/bad.ts":
-    'import { x } from "../lol/x";\nimport "@/app/actions/save";\nimport NotFound from "@/app/not-found";\nexport { x, NotFound };',
+    'import { x } from "../lol/x";\nimport "@/app/actions/save";\nimport NotFound from "@/app/not-found";\nimport { Panel } from "@/components/admin/Panel";\nexport { x, NotFound, Panel };',
   "disciplines/lol/x.ts": "export const x = 1;",
   "app/actions/save.ts": "export {};",
   "app/not-found.tsx": "export default function NotFound() { return null; }",
+  "components/admin/Panel.tsx": "export const Panel = 1;",
   "lib/ports.ts": [
     'import { loadRankUI } from "@/disciplines/registry/rank";',
     'import type { Slot } from "@/disciplines/types";',
@@ -73,9 +74,11 @@ describe("discipline import boundaries (Z6/Z7)", () => {
       "Z6 lib/lazy -> disciplines/overwatch/rank",
       "Z6 lib/session.behavior -> disciplines/overwatch/ladder/helper",
       "Z6 lib/session.spec -> disciplines/overwatch/ladder/helper",
-      // a module into another module or anything under src/app (a root entry too); the registry past an entrypoint
+      // a module into another module, anything under src/app (a root entry too) or components/admin; the registry
+      // past an entrypoint
       "Z7 disciplines/overwatch/bad -> app/actions/save",
       "Z7 disciplines/overwatch/bad -> app/not-found",
+      "Z7 disciplines/overwatch/bad -> components/admin/Panel",
       "Z7 disciplines/overwatch/bad -> disciplines/lol/x",
       "Z7 disciplines/registry/deep -> disciplines/overwatch/ladder/helper"
     ]);
