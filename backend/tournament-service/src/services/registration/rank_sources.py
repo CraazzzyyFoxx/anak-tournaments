@@ -559,11 +559,13 @@ class RankSourcesService:
         *,
         user_id: int,
         workspace_id: int,
+        discipline_code: str,
     ) -> list[dict[str, Any]]:
-        """Per (tournament, role) ranks from a user's past balancer registrations in a workspace.
+        """Per (tournament, role) ranks from a user's past balancer registrations of one game in a workspace.
 
-        Newest tournament first; only active, ranked roles. Powers the balancer step of the
-        PlayerEditSheet "Load from history" preview (source = "balancer").
+        Newest tournament first; only active, ranked roles of tournaments of ``discipline_code`` -- a rank earned in
+        another game of the same workspace is never this game's rank, even under an identical role code. Powers the
+        balancer step of the PlayerEditSheet "Load from history" preview (source = "balancer").
         """
         rows = (
             await session.execute(
@@ -591,6 +593,7 @@ class RankSourcesService:
                 .where(
                     models.WorkspaceMember.player_id == user_id,
                     models.Tournament.workspace_id == workspace_id,
+                    models.Tournament.discipline == discipline_code,
                     models.BalancerRegistration.deleted_at.is_(None),
                     models.BalancerRegistrationRole.is_active.is_(True),
                     models.BalancerRegistrationRole.rank_value.is_not(None),

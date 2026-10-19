@@ -559,7 +559,9 @@ export async function fetchPlayerRankHistoryPreview(
   /** The game the preview is for: tournaments of any other game are never read as this game's ranks. */
   discipline: string,
   /** The game's selectable role codes in declared order: the roles a history can seed, listed in this order. */
-  roleCodes: readonly BalancerRoleCode[]
+  roleCodes: readonly BalancerRoleCode[],
+  /** The game's rated role dimension: a history row of any other dimension is not one of this game's roles. */
+  ratedDimension: string
 ): Promise<PlayerRankHistoryPreview | null> {
   try {
     const lookupName = identity.replace("#", "-");
@@ -576,9 +578,13 @@ export async function fetchPlayerRankHistoryPreview(
       try {
         const balancerHistory = await balancerAdminService.getUserBalancerRankHistory(
           user.id,
-          balancerWorkspaceId
+          balancerWorkspaceId,
+          discipline
         );
         for (const entry of balancerHistory) {
+          // The receiver already reads this game's registrations only; the dimension check keeps a role of another
+          // game from ever standing in for one of this game's under an identical code.
+          if (entry.role.dimension !== ratedDimension) continue;
           const code = normalizeApplicationRole(roleOf(entry.role));
           if (!code || latestPerRole.has(code)) continue; // newest already kept
           latestPerRole.set(code, {

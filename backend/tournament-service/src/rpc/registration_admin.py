@@ -53,7 +53,7 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.disciplines import identity_provider
+from shared.disciplines import DISCIPLINES, identity_provider
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.roster import roster_engine
 from src import models, schemas
@@ -1273,7 +1273,7 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    # GET /balancer/users/{user_id}/registration-rank-history?workspace_id=
+    # GET /balancer/users/{user_id}/registration-rank-history?workspace_id=&discipline=
     #   require_workspace_permission("registration", "read")  -> ws from query workspace_id
     @broker.subscriber("rpc.tournament.reg_user_rank_history")
     async def _reg_user_rank_history(data: dict, msg: RabbitMessage) -> dict:
@@ -1283,11 +1283,19 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _q1(data, "workspace_id", int)
             if workspace_id is None:
                 raise HTTPException(status_code=422, detail="workspace_id is required")
+            # A history is one game's: another game's rank under the same role code is not this one's, so the game
+            # is named by the caller (never implied) and must be installed (a disabled game's history still reads).
+            discipline_code = _q1(data, "discipline")
+            if not discipline_code:
+                raise HTTPException(status_code=422, detail="discipline is required")
+            if discipline_code not in DISCIPLINES:
+                raise HTTPException(status_code=422, detail=f"discipline_not_installed: {discipline_code!r}")
             ensure_workspace_permission(user, workspace_id, "registration", "read")
             entries = await rank_sources.rank_sources_service.load_user_balancer_rank_history(
                 session,
                 user_id=user_id,
                 workspace_id=workspace_id,
+                discipline_code=discipline_code,
             )
             return _dump(schemas.BalancerRegistrationRankHistoryResponse(entries=entries))
 

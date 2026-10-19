@@ -1056,6 +1056,7 @@ describe("a League roster", () => {
         null,
         "lol",
         ["top", "jungle", "mid", "bot", "support"],
+        "position",
       );
 
       expect(preview?.entries.map((row) => [row.role, row.rank_value])).toEqual([
@@ -1067,5 +1068,62 @@ describe("a League roster", () => {
       byName.mockRestore();
       tournaments.mockRestore();
     }
+  });
+
+  describe("the balancer-history step", () => {
+    const LOL_ROLES = ["top", "jungle", "mid", "bot", "support"];
+    const entry = (tournament_id: number, dimension: string, role: string, rank_value: number) => ({
+      tournament_id,
+      tournament_name: `T${tournament_id}`,
+      role: { dimension, role },
+      rank_value,
+    });
+
+    it("asks for the previewed game's history in the chosen workspace and keeps its own rank", async () => {
+      const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
+      const history = vi
+        .spyOn(balancerAdminService, "getUserBalancerRankHistory")
+        .mockResolvedValue([entry(9, "position", "support", 2200), entry(8, "position", "support", 1000)]);
+      const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue([] as never);
+
+      try {
+        const preview = await fetchPlayerRankHistoryPreview(
+          "Name#EUW", null, NO_TIERS, 3, null, "lol", LOL_ROLES, "position",
+        );
+
+        expect(history).toHaveBeenCalledWith(7, 3, "lol");
+        expect(preview?.entries).toMatchObject([
+          { role: "support", rank_value: 2200, tournament_id: 9, source: "balancer" },
+        ]);
+      } finally {
+        byName.mockRestore();
+        history.mockRestore();
+        tournaments.mockRestore();
+      }
+    });
+
+    it("never lets another game's rank under the same role code stand in for a position, or hide its fallback", async () => {
+      const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
+      // A response that still carries Overwatch's `support` (same code, other dimension).
+      const history = vi
+        .spyOn(balancerAdminService, "getUserBalancerRankHistory")
+        .mockResolvedValue([entry(9, "player_role", "support", 4100)]);
+      const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue([
+        { id: 5, name: "T5", discipline: "lol", role: { dimension: "position", role: "support" }, division_grid_version: null, players: [{ user_id: 7, rank: 1700 }] },
+      ] as never);
+
+      try {
+        const preview = await fetchPlayerRankHistoryPreview(
+          "Name#EUW", null, NO_TIERS, 3, null, "lol", LOL_ROLES, "position",
+        );
+
+        // The League analytics rank fills `support`; Overwatch's 4100 is nowhere in the preview.
+        expect(preview?.entries).toMatchObject([{ role: "support", rank_value: 1700, source: "analytics" }]);
+      } finally {
+        byName.mockRestore();
+        history.mockRestore();
+        tournaments.mockRestore();
+      }
+    });
   });
 });

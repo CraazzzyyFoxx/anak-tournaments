@@ -9,7 +9,7 @@ import {
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/components/balancer/workspace-helpers";
-import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension, registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import {
   useCurrentWorkspaceId,
   useDivisionGrid,
@@ -196,7 +196,9 @@ export function usePlayerEditForm({
   }, [player, registration]);
 
   const readHistory = async (workspaceValue: string) => {
-    if (discipline === undefined) return;
+    // Without the game's rated dimension there is no role dictionary to read a history against.
+    const dimension = ontology ? (ratedDimension(ontology)?.code ?? null) : null;
+    if (discipline === undefined || dimension === null) return;
     setLoadingHistory(true);
     setHistoryLoadError(null);
     try {
@@ -207,7 +209,8 @@ export function usePlayerEditForm({
         getHistoryWorkspaceIdParam(workspaceValue),
         workspaceId,
         discipline,
-        selectableRoleCodes
+        selectableRoleCodes,
+        dimension
       );
       setHistoryPreview(preview);
     } catch (error) {
