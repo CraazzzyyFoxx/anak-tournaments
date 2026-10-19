@@ -55,7 +55,6 @@ vi.mock("@/services/registration-team.service", () => ({
 vi.mock("@/services/me.service", () => ({
   default: { getSocialAccounts: async () => ({ id: 7, social_accounts: [] }) }
 }));
-vi.mock("@/services/hero.service", () => ({ default: { getAll: async () => ({ results: [] }) } }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), apiError: vi.fn() }
 }));

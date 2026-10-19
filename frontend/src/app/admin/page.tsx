@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { apiFetch } from "@/lib/api/fetch";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -85,11 +86,19 @@ export default function AdminDashboard() {
 
   // Aggregated counts from backend (single lightweight query). `workspace_id` is
   // injected by apiFetch, so it MUST be part of the key or a workspace switch
-  // serves the previous workspace's numbers.
+  // serves the previous workspace's numbers. The counts shown are workspace-wide;
+  // the route also sizes one named game's catalog (not shown here), so it is read
+  // for the workspace's first enabled game — never a guessed one.
+  const disciplinesQuery = useDisciplines(workspaceId ?? "all");
+  const game =
+    disciplinesQuery.data?.find((descriptor) => descriptor.enabled)?.code ?? disciplinesQuery.data?.[0]?.code ?? null;
   const statsQuery = useQuery({
-    queryKey: adminQueryKeys.dashboardStats(workspaceId),
-    queryFn: () =>
-      apiFetch("/api/v1/statistics/dashboard").then((r) => r.json() as Promise<DashboardStats>)
+    queryKey: adminQueryKeys.dashboardStats(workspaceId, game),
+    queryFn: ({ signal }) =>
+      apiFetch("/api/v1/statistics/dashboard", { query: { discipline: game ?? "" }, signal }).then(
+        (r) => r.json() as Promise<DashboardStats>
+      ),
+    enabled: game !== null
   });
 
   // Tournaments still needed for Active Tournament Card & Recent Tournaments display
@@ -190,7 +199,7 @@ export default function AdminDashboard() {
     return items;
   }, [stats, canReadMatches, canReadTeams, canReadTournaments, canReadUsers, t]);
 
-  if (statsQuery.isLoading || tournamentsQuery.isLoading) {
+  if (disciplinesQuery.isLoading || statsQuery.isLoading || tournamentsQuery.isLoading) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-12 rounded-xl" />
@@ -215,7 +224,7 @@ export default function AdminDashboard() {
     );
   }
 
-  const statsFailed = statsQuery.isError;
+  const statsFailed = disciplinesQuery.isError || statsQuery.isError;
   const tournamentsFailed = tournamentsQuery.isError;
 
   return (

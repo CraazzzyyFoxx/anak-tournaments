@@ -172,7 +172,7 @@ export function DraftWorkspace({
     () => (fitScores ? fitByPlayer(fitScores, viewParams.role) : null),
     [fitScores, viewParams.role]
   );
-  const prefetchCard = useDraftPlayerCardPrefetch();
+  const prefetchCard = useDraftPlayerCardPrefetch(board.session.discipline);
 
   // "My list" is a captain's; a shared link carrying `pool=shortlist` shows
   // everyone else the available players instead of an empty, tab-less list.

@@ -1,12 +1,11 @@
 import type { CatalogEntityChip } from "@/types/catalog.types";
-import { Hero } from "@/types/hero.types";
 import { User, UserProfile } from "@/types/user.types";
 import { rosterRoleRank, type RoleOntology } from "@/lib/roster/ontology";
 import { subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /**
  * Fields `sortTeamPlayers` actually reads. Display-only roster fields
- * (`heroes`, `avg_mvp`, …) are intentionally excluded from the sort constraint.
+ * (`characters`, `avg_mvp`, …) are intentionally excluded from the sort constraint.
  */
 export interface SortableRosterPlayer {
   id: number;
@@ -27,8 +26,8 @@ export interface TeamRosterPlayer extends SortableRosterPlayer {
   user_id?: number;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature heroes: per-match `Hero` rows, or catalog entries for a declared pick. */
-  heroes?: Array<Hero | CatalogEntityChip>;
+  /** Player's top signature characters (catalog rows, or chips of a declared pick). */
+  characters?: CatalogEntityChip[];
 }
 
 type PlayerRoleInfo = {
@@ -107,16 +106,9 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[], on
   return roots.flatMap(flatten);
 };
 
-export const getPlayerImage = (profile: UserProfile, user: User) => {
-  // A user-uploaded avatar takes precedence over the derived hero art.
-  if (user.avatar_url) {
-    return user.avatar_url;
-  }
-  if (profile.most_played_hero === null) {
-    return `/avatar/${user.id % 10}.png`;
-  }
-  return `/avatar/${profile.most_played_hero.slug}.jpg`;
-};
+export const getPlayerImage = (profile: UserProfile, user: User) =>
+  // A user-uploaded avatar takes precedence over the most played character's portrait.
+  user.avatar_url ?? profile.most_played_character?.image_path ?? `/avatar/${user.id % 10}.png`;
 
 export const getPlayerSlug = (battleTag: string | null | undefined) => {
   if (!battleTag) {

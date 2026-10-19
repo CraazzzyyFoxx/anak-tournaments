@@ -1,7 +1,7 @@
 import { memo } from "react";
 import Link from "next/link";
 
-import { HeroLeaderboardEntry } from "@/types/hero.types";
+import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { getPlayerSlug } from "@/lib/player";
 
 import { StatColumnDef } from "../config/stat-columns";
@@ -20,7 +20,7 @@ export interface StatCellSpec {
 }
 
 interface BarRowProps {
-  entry: HeroLeaderboardEntry;
+  entry: CharacterLeaderboardEntry;
   rank: number;
   cells: StatCellSpec[];
   isHighlighted: boolean;

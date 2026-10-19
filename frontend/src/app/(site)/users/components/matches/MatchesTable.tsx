@@ -42,7 +42,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
     t("users.matches.colStage"),
     t("users.matches.colMatch"),
     t("users.matches.colScore"),
-    t("common.heroes"),
+    t("common.characters"),
     t("users.matches.colMvp"),
     t("users.matches.colCloseness"),
     t("users.matches.colLogs")

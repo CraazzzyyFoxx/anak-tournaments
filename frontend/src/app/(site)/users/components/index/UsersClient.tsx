@@ -1,5 +1,8 @@
 "use client";
 
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 import { useUsersIndexParams } from "./useUsersIndexParams";
@@ -11,22 +14,33 @@ import { UsersCatalogView } from "./UsersCatalogView";
 import { UsersCompareBar, useCompareSelection } from "./UsersCompareBar";
 
 /**
- * The player index. Both views share one set of URL-backed filters; only the
- * one on screen fetches its own list, and the compare selection survives a
- * switch between them.
+ * The player index of one game (§2.3 concrete browsing). Both views share one set of URL-backed filters; only the
+ * one on screen fetches its own list, and the compare selection survives a switch between them.
  *
  * `scope` is resolved on the server (the cross-workspace mode does not exist
  * on a tenant host).
  */
-const UsersClient = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const UsersClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: BrowsingDisciplineInit }>) => {
   const controls = useUsersIndexParams(scope);
-  const data = useUsersIndexData(controls.params);
+  const browsing = useBrowsingDiscipline({ allowsAll: false, initial });
+  const { resolved, disciplines } = browsing;
+  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
+  const data = useUsersIndexData(controls.params, discipline);
   const compare = useCompareSelection();
   const { view } = controls.params;
+
+  if ((resolved?.kind === "invalid" || resolved?.kind === "empty") && disciplines) {
+    return <DisciplineUnavailable resolved={resolved} disciplines={disciplines} allowsAll={false} onSelect={browsing.select} />;
+  }
 
   return (
     // Bottom padding leaves room for the fixed compare bar.
     <div className="space-y-4 pb-24">
+      {disciplines && discipline ? (
+        <div className="flex justify-end">
+          <DisciplineSelector disciplines={disciplines} value={discipline} allowsAll={false} onSelect={browsing.select} />
+        </div>
+      ) : null}
       <UsersIndexHero stats={data.statsQuery.data} />
       <UsersIndexFilters
         controls={controls}

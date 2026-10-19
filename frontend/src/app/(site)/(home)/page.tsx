@@ -47,9 +47,13 @@ async function tenantWorkspace() {
  * platform landing: every section fetches its own data behind its own Suspense
  * boundary, so a slow statistics read holds back one block, never the page.
  */
-export default async function Home() {
+export default async function Home({
+  searchParams
+}: Readonly<{ searchParams: Promise<{ discipline?: string | string[] }> }>) {
   const workspace = await tenantWorkspace();
-  if (workspace) return <CommunityPage workspace={workspace} ownHost />;
+  if (workspace) {
+    return <CommunityPage workspace={workspace} ownHost discipline={(await searchParams).discipline} />;
+  }
 
   return (
     <SectionStack className="mx-auto w-full max-w-7xl gap-[clamp(56px,7vw,96px)] pt-5">

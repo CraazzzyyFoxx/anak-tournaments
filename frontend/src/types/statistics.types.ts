@@ -1,3 +1,5 @@
+import type { Schema } from "@/types/api";
+
 export interface TournamentStatistics {
   id: number;
   name: string;
@@ -40,3 +42,6 @@ export interface UserTournamentStat {
   rank: number;
   total: number;
 }
+
+/** One player's row on a character's leaderboard (per-10 averages over the player's eligible matches). */
+export type CharacterLeaderboardEntry = Schema<"app.CharacterLeaderboardEntry">;

@@ -24,6 +24,7 @@ vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
   useDivisionGrid: () => OW_REFERENCE_GRID
 }));
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 // `vi.mock` factories are hoisted above module scope, so the spy they close
 // over has to be hoisted with them.
@@ -38,7 +39,7 @@ const { getDraftCard } = vi.hoisted(() => ({
     best_placement: 2,
     avg_placement: 4,
     roles: [{ role: { dimension: "player_role", role: "tank" }, maps: 40, maps_won: 24 }],
-    heroes: [],
+    characters: [],
     recent_tournaments: [
       { id: 3, name: "OWT Cup 12", date: null, role: null, rank: null, placement: 2, teams_count: 16 }
     ]
@@ -67,7 +68,7 @@ vi.mock("@/services/user.service", () => ({
             avg_group_placement: 5,
             avg_closeness: 0.5
           },
-          top_heroes: []
+          top_characters: []
         }
       ],
       total: 1,
@@ -130,7 +131,10 @@ const renderIndex = async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
-          <UsersClient scope="workspace" />
+          <UsersClient
+            scope="workspace"
+            initial={{ stored: null, axis: 1, hostLockedWorkspaceId: null, disciplines: null }}
+          />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -160,7 +164,8 @@ it("loads the draft card only once a row is expanded", async () => {
   await act(async () => expand?.click());
   await settle();
 
-  expect(getDraftCard).toHaveBeenCalledWith(7, 1);
+  // The card is read in the index's resolved game (the first installed one here), in its workspace.
+  expect(getDraftCard).toHaveBeenCalledWith(7, "overwatch", 1);
   expect(container.textContent).toContain("OWT Cup 12");
   expect(container.textContent).toContain(en.users.list.expanded.openProfile);
 });

@@ -66,6 +66,7 @@
     "participants": "Участники",
     "matches": "Матчи",
     "heroes": "Герои",
+    "characters": "Персонажи",
     "maps": "Карты",
     "schedule": "Расписание",
     "standings": "Таблица",
@@ -3524,7 +3525,7 @@
       "divisions": "Средний дивизион по ролям",
       "topHeroes": "Чаще всего играют",
       "topHeroesSub": "доля времени",
-      "heroAlt": "{name}: {share}, {role}"
+      "heroAlt": "{name}: {share}"
     },
     "about": {
       "rubric": "Сообщество",

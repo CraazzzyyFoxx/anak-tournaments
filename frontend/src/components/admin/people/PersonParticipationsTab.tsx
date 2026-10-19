@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { ArrowLeftRight, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { DataTable, columnMeta, createKebabColumn } from "@/components/data-table";
@@ -26,7 +26,7 @@ import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useDisciplineMetadata, useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
@@ -37,6 +37,7 @@ import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
 import userService from "@/services/user.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { UserTournament } from "@/types/user.types";
 import { formatSubRoleLabel } from "@/lib/player";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -60,6 +61,18 @@ interface ParticipationRow {
   team_id: number;
   team_name: string;
   division_grid_version: DivisionGridVersion | null;
+}
+
+/** Every installed game's career read as one list (module level: a stable `combine` keeps the merged identity). */
+function mergeCareers(results: UseQueryResult<UserTournament[]>[]) {
+  return {
+    data: results.flatMap((result) => result.data ?? []),
+    isError: results.some((result) => result.isError),
+    isLoading: results.some((result) => result.isLoading),
+    refetchFailed: () => {
+      for (const result of results) if (result.isError) void result.refetch();
+    }
+  };
 }
 
 /**
@@ -107,11 +120,25 @@ export function PersonParticipationsTab({
   const [saveError, setSaveError] = useState<string | undefined>();
   const [pendingDelete, setPendingDelete] = useState<ParticipationRow | null>(null);
 
-  const participationsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(personId, workspaceId),
-    queryFn: () => userService.getUserTournaments(personId, workspaceId)
+  // The server reads one game's career per call: every installed game's (history of a game the workspace no
+  // longer runs included), merged.
+  const installedQuery = useDisciplines("all");
+  const careers = useQueries({
+    queries: (installedQuery.data ?? []).map((game) => ({
+      queryKey: userQueryKeys.tournaments(personId, workspaceId, game.code),
+      queryFn: () => userService.getUserTournaments(personId, game.code, workspaceId)
+    })),
+    combine: mergeCareers
   });
-
+  const participations = careers.data;
+  const participationsQuery = {
+    isError: installedQuery.isError || careers.isError,
+    isLoading: installedQuery.isLoading || careers.isLoading,
+    refetch: () => {
+      void installedQuery.refetch();
+      careers.refetchFailed();
+    }
+  };
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.list(),
@@ -144,7 +171,7 @@ export function PersonParticipationsTab({
 
   const rows = useMemo<ParticipationRow[]>(
     () =>
-      (participationsQuery.data ?? []).flatMap((entry) => {
+      participations.flatMap((entry) => {
         const player = entry.players.find((candidate) => candidate.user_id === personId);
         if (!player) return [];
         return [
@@ -166,11 +193,11 @@ export function PersonParticipationsTab({
           }
         ];
       }),
-    [participationsQuery.data, personId]
+    [participations, personId]
   );
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: userQueryKeys.tournamentsAll(personId) });
+    void queryClient.invalidateQueries({ queryKey: userQueryKeys.statsAll(personId) });
     void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.teamsAll() });
   };
 

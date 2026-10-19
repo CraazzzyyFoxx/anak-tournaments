@@ -19,6 +19,7 @@ import type { StatsScope } from "@/lib/site/stats-scope";
 interface Props {
   userId: number;
   scope: StatsScope;
+  discipline: string;
 }
 
 const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assault"] as const;
@@ -26,7 +27,7 @@ const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assaul
 type SortKey = "winrate" | "count" | "name";
 type OrderKey = "asc" | "desc";
 
-const MapsView = ({ userId, scope }: Props) => {
+const MapsView = ({ userId, scope, discipline }: Props) => {
   const t = useTranslations();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -48,15 +49,16 @@ const MapsView = ({ userId, scope }: Props) => {
   }
 
   const tournamentsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(userId, scope),
-    queryFn: () => userService.getUserTournaments(userId, scope === "all" ? "all" : undefined),
+    queryKey: userQueryKeys.tournaments(userId, scope, discipline),
+    queryFn: () => userService.getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined),
     staleTime: 5 * 60 * 1000
   });
 
+  const mapFilters = { query: debouncedSearch, minCount, tournamentId };
   const mapsQuery = useQuery({
-    queryKey: userQueryKeys.maps(userId, debouncedSearch, minCount, tournamentId, scope),
+    queryKey: userQueryKeys.maps(userId, scope, discipline, mapFilters),
     queryFn: () =>
-      userService.getUserMaps(userId, {
+      userService.getUserMaps(userId, discipline, {
         page: 1,
         perPage: -1,
         sort: "winrate",
@@ -70,9 +72,9 @@ const MapsView = ({ userId, scope }: Props) => {
   });
 
   const summaryQuery = useQuery({
-    queryKey: userQueryKeys.mapsSummary(userId, debouncedSearch, minCount, tournamentId, scope),
+    queryKey: userQueryKeys.mapsSummary(userId, scope, discipline, mapFilters),
     queryFn: () =>
-      userService.getUserMapsSummary(userId, {
+      userService.getUserMapsSummary(userId, discipline, {
         query: debouncedSearch.trim(),
         minCount,
         tournamentId,
@@ -91,7 +93,7 @@ const MapsView = ({ userId, scope }: Props) => {
       { mode: string; maps: Set<number>; games: number; win: number; loss: number; draw: number }
     >();
     allMaps.forEach((row) => {
-      const mode = row.map.gamemode?.name ?? t("common.unknown");
+      const mode = row.map.parent?.name ?? t("common.unknown");
       const b = buckets.get(mode) ?? { mode, maps: new Set<number>(), games: 0, win: 0, loss: 0, draw: 0 };
       b.maps.add(row.map.id);
       b.games += row.count;
@@ -109,7 +111,7 @@ const MapsView = ({ userId, scope }: Props) => {
 
   const sortedMaps = useMemo(() => {
     let rows = [...allMaps];
-    if (modeFilter) rows = rows.filter((r) => r.map.gamemode?.name === modeFilter);
+    if (modeFilter) rows = rows.filter((r) => r.map.parent?.name === modeFilter);
     rows.sort((a, b) => {
       let cmp = 0;
       if (sort === "winrate") cmp = a.win_rate - b.win_rate;
@@ -155,7 +157,7 @@ const MapsView = ({ userId, scope }: Props) => {
             }
             sub={
               summary?.most_played
-                ? [summary.most_played.map.name, summary.most_played.map.gamemode?.name].filter(Boolean).join(" · ")
+                ? [summary.most_played.map.name, summary.most_played.map.parent?.name].filter(Boolean).join(" · ")
                 : "—"
             }
           />
@@ -252,7 +254,7 @@ const MapsView = ({ userId, scope }: Props) => {
           <div />
           <div>{t("users.maps.colMap")}</div>
           <div>{t("users.maps.colWinrate")}</div>
-          <div>{t("common.heroes")}</div>
+          <div>{t("common.characters")}</div>
           <div className="text-right">{t("users.maps.colRecord")}</div>
           <div className="text-right">{t("users.maps.colGames")}</div>
         </div>

@@ -84,7 +84,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
   const { showTargets, target, onTargetChange, queue, divisionGrid, ontology } = props;
   const t = useTranslations("draftRedesign");
   const [announcement, setAnnouncement] = useState("");
-  const cardQuery = useDraftPlayerCardQuery(player?.user_id ?? null);
+  const cardQuery = useDraftPlayerCardQuery(player?.user_id ?? null, board.session.discipline);
   // Held here, not per player: the island outlives every card, so a captain
   // comparing players keeps the view they chose.
   const [view, setView] = useState<CardView>("info");

@@ -68,33 +68,6 @@ vi.mock("@/services/registration.service", () => ({
   }
 }));
 
-vi.mock("@/services/hero.service", () => ({
-  default: {
-    getAll: () =>
-      Promise.resolve({
-        results: [
-          {
-            id: 1,
-            name: "Ana",
-            slug: "ana",
-            image_path: "/ana.png",
-            role: "support",
-            type: "support"
-          },
-          {
-            id: 2,
-            name: "Genji",
-            slug: "genji",
-            image_path: "/genji.png",
-            role: "damage",
-            type: "damage"
-          },
-          { id: 3, name: "Rein", slug: "rein", image_path: "/rein.png", role: "tank", type: "tank" }
-        ]
-      })
-  }
-}));
-
 // Anonymous visitor: the pool is a public surface and the check-in card must
 // not be part of what these cases assert.
 vi.mock("@/hooks/useAuthProfile", () => ({

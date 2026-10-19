@@ -58,12 +58,6 @@ vi.mock("@/services/registration.service", () => ({
   }
 }));
 
-// The `top_heroes` column is visible by default, so the hero catalogue is
-// fetched on mount. It backs nothing this test asserts.
-vi.mock("@/services/hero.service", () => ({
-  default: { getAll: () => Promise.resolve({ results: [] }) }
-}));
-
 // Pulled in by the self-edit dialog, for the identity questions' suggestions.
 vi.mock("@/services/me.service", () => ({
   default: { getSocialAccounts: () => Promise.resolve(null) }

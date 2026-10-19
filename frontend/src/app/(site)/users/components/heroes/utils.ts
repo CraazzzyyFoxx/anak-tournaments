@@ -1,7 +1,7 @@
 import type { Formatter } from "@/lib/datetime";
 
 import { LogStatsName } from "@/types/stats.types";
-import { HeroWithUserStats } from "@/types/hero.types";
+import type { CharacterStat, CharacterWithUserStats } from "@/types/user.types";
 
 /** Only `number` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
 export type NumberFormatter = Pick<Formatter, "number">;
@@ -24,12 +24,12 @@ export const formatStatValue = (format: NumberFormatter, name: string, value: nu
   return format.number(value, STAT_NUMBER_OPTIONS);
 };
 
-export const isRevertedStat = (name: LogStatsName) => {
+export const isRevertedStat = (name: string) => {
   return [
     LogStatsName.Deaths,
     LogStatsName.DamageTaken,
     LogStatsName.EnvironmentalDeaths
-  ].includes(name);
+  ].includes(name as LogStatsName);
 };
 
 export const computeDelta = (userAvg: number, globalAvg: number, reversed: boolean) => {
@@ -46,8 +46,8 @@ export const formatDelta = (delta: number) => {
   return `${sign}${(delta * 100).toFixed(0)}%`;
 };
 
-export const getOverall = (hero: HeroWithUserStats, name: LogStatsName) => {
-  return hero.stats.find((s) => s.name === name)?.overall ?? 0;
+export const getOverall = (row: CharacterWithUserStats, name: LogStatsName) => {
+  return row.stats.find((s) => s.name === name)?.overall ?? 0;
 };
 
 // Winrate can arrive as a 0..1 fraction or an already-scaled percent; normalize
@@ -58,7 +58,7 @@ export const toFraction = (value: number | null | undefined): number | null => {
 };
 
 
-export const statAvg10 = (stats: HeroWithUserStats["stats"], name: LogStatsName): number | null => {
+export const statAvg10 = (stats: CharacterStat[], name: LogStatsName): number | null => {
   const stat = stats.find((s) => s.name === name);
   return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
 };

@@ -45,7 +45,7 @@ vi.mock("@/services/catalog.service", () => ({
 }));
 vi.mock("@/services/user.service", () => ({
   default: {
-    getUserHeroCompare: (...args: unknown[]) => mocks.heroCompare(...args),
+    getUserCharacterCompare: (...args: unknown[]) => mocks.heroCompare(...args),
     getUserCompare: (...args: unknown[]) => mocks.compare(...args),
     search: async () => ({ results: [], total: 0 })
   }
@@ -129,6 +129,10 @@ describe("compare selection", () => {
     await mount(`/users/compare?${HERO_QUERY}&discipline=overwatch`);
 
     expect(mocks.heroCompare).toHaveBeenCalled();
+    // The comparison is read in the scoped game, with the hero as the left entity.
+    expect(mocks.heroCompare.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ discipline: "overwatch", leftEntityId: 7 })
+    );
     expect(container.textContent).not.toContain("That selection is not in this game");
   });
 

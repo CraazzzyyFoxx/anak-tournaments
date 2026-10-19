@@ -288,7 +288,12 @@ beforeEach(() => {
   permitted = true;
   replace.mockClear();
   getUsers.mockReset().mockResolvedValue({ results: [PERSON], total: 1, page: 1, per_page: -1 });
-  getUserTournaments.mockReset().mockResolvedValue(PARTICIPATIONS);
+  // The server answers one game's career per read.
+  getUserTournaments
+    .mockReset()
+    .mockImplementation(async (_id: number, discipline: string) =>
+      PARTICIPATIONS.filter((row) => row.discipline === discipline)
+    );
   getUserAchievements.mockReset().mockResolvedValue([]);
   getPlayerSubRoles.mockReset().mockResolvedValue([]);
   updatePlayer.mockReset().mockResolvedValue({});
@@ -345,7 +350,9 @@ describe("person hub", () => {
     await waitFor(() => container.textContent?.includes("MoonRise Mix Vol.4"), "the participation");
 
     expect(activeTab()).toBe("Participations");
-    expect(getUserTournaments).toHaveBeenCalledWith(42, 1);
+    // One read per installed game, in the person's workspace.
+    expect(getUserTournaments).toHaveBeenCalledWith(42, "overwatch", 1);
+    expect(getUserTournaments).toHaveBeenCalledWith(42, "lol", 1);
   });
 
   it("falls back to Profile for a tab that does not exist", async () => {
@@ -402,9 +409,11 @@ describe("person hub", () => {
 
   it("names a participation's role in the game of its own tournament", async () => {
     const mid = { dimension: "position", role: "mid" };
-    getUserTournaments.mockResolvedValue([
-      { ...PARTICIPATIONS[0], discipline: "lol", role: mid, players: [{ ...PARTICIPATIONS[0].players[0], role: mid }] }
-    ]);
+    getUserTournaments.mockImplementation(async (_id: number, discipline: string) =>
+      discipline === "lol"
+        ? [{ ...PARTICIPATIONS[0], discipline: "lol", role: mid, players: [{ ...PARTICIPATIONS[0].players[0], role: mid }] }]
+        : []
+    );
     window.history.replaceState(null, "", "/admin/people/42?tab=participations");
     const { container } = await mount();
     await waitFor(() => container.querySelector('tbody [title="Mid"]'), "the League position");

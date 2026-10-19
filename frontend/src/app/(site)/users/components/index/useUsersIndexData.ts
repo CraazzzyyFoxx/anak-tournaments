@@ -20,13 +20,16 @@ export interface UsersIndexData {
   availableLetters: Set<string>;
   /** `workspace_id` every read on this page is pinned to. */
   workspaceId: number | "all" | null;
+  /** The game every read is in; `null` while unresolved or invalid. */
+  discipline: string | null;
 }
 
 /**
- * The three reads behind the index. Only the view on screen pays for its own
- * list — the stats strip is shared by both, so it always runs.
+ * The three reads behind the index, all in the browsed game (`discipline`, `null` while unresolved or invalid —
+ * nothing is read then). Only the view on screen pays for its own list — the stats strip is shared by both, so
+ * it always runs. A previous result is kept on screen while a filter changes, never across games.
  */
-export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
+export function useUsersIndexData(params: UsersIndexParams, discipline: string | null): UsersIndexData {
   const currentWorkspaceId = useCurrentWorkspaceId();
   const { page, perPage, query, sort, order, role, divisions, hasLogs, minEncounters, letter, view, scope } =
     params;
@@ -35,10 +38,15 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
   const workspaceId = scope === "all" ? "all" : currentWorkspaceId;
   // Query keys take scalars only, and the array identity changes every render.
   const divisionsKey = divisions.join(",");
+  const game = discipline ?? "";
+  // Every index key carries the game at position 2.
+  const sameGame = <T,>(previous: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
+    previousQuery?.queryKey[2] === discipline ? previous : undefined;
 
   const overviewQuery = useQuery({
     queryKey: userQueryKeys.overview(
       workspaceId,
+      game,
       page,
       perPage,
       query,
@@ -49,8 +57,9 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
       hasLogs,
       minEncounters
     ),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       userService.getUsersOverview({
+        discipline: game,
         page,
         perPage,
         sort,
@@ -60,31 +69,36 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
         divisions,
         hasLogs,
         minEncounters,
-        workspaceId
+        workspaceId,
+        signal
       }),
-    placeholderData: (previousData) => previousData,
+    placeholderData: sameGame,
     staleTime: 30_000,
-    enabled: view === "table"
+    enabled: view === "table" && discipline !== null
   });
 
   const statsQuery = useQuery({
-    queryKey: userQueryKeys.overviewStats(workspaceId, query, role, divisionsKey, hasLogs),
-    queryFn: () =>
+    queryKey: userQueryKeys.overviewStats(workspaceId, game, query, role, divisionsKey, hasLogs),
+    queryFn: ({ signal }) =>
       userService.getUsersOverviewStats({
+        discipline: game,
         query: query || undefined,
         role,
         divisions,
         hasLogs,
-        workspaceId
+        workspaceId,
+        signal
       }),
-    placeholderData: (previousData) => previousData,
-    staleTime: 30_000
+    placeholderData: sameGame,
+    staleTime: 30_000,
+    enabled: discipline !== null
   });
 
   const catalogQuery = useQuery({
-    queryKey: userQueryKeys.overviewCatalog(workspaceId, query, role, divisionsKey, hasLogs, letter),
-    queryFn: () =>
+    queryKey: userQueryKeys.overviewCatalog(workspaceId, game, query, role, divisionsKey, hasLogs, letter),
+    queryFn: ({ signal }) =>
       userService.getUsersCatalog({
+        discipline: game,
         query: query || undefined,
         role,
         // A pinned letter is the "show more" affordance: one bucket, deeper.
@@ -92,11 +106,12 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
         hasLogs,
         letter,
         maxLetters: 27,
-        workspaceId
+        workspaceId,
+        signal
       }),
-    placeholderData: (previousData) => previousData,
+    placeholderData: sameGame,
     staleTime: 30_000,
-    enabled: view === "catalog"
+    enabled: view === "catalog" && discipline !== null
   });
 
   const data = overviewQuery.data;
@@ -116,5 +131,5 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
     [catalogQuery.data]
   );
 
-  return { overviewQuery, statsQuery, catalogQuery, maxPage, range, availableLetters, workspaceId };
+  return { overviewQuery, statsQuery, catalogQuery, maxPage, range, availableLetters, workspaceId, discipline };
 }

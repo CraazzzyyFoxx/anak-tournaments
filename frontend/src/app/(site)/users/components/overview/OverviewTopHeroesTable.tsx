@@ -2,9 +2,9 @@ import { getTranslations } from "next-intl/server";
 import { getFormatter } from "@/lib/datetime/server";
 import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { HeroWithUserStats } from "@/types/hero.types";
-import { UserMapRead } from "@/types/user.types";
+import { CharacterWithUserStats, UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
+import { characterClass } from "@/lib/catalog/attrs";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { normalizeRole, type AqtRoleKey } from "@/lib/roster/player-role";
 import { formatSeconds } from "@/lib/format";
@@ -16,7 +16,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { heroPopoverStats, type HeroPopoverStat } from "@/lib/hero/popover-stats";
 
 interface Props {
-  heroes: HeroWithUserStats[];
+  characters: CharacterWithUserStats[];
   /** User maps (with per-hero stats) — the only source of a real per-hero game
    *  count, which drives the low-sample gate (design-book §5/§6). */
   maps: UserMapRead[];
@@ -50,7 +50,7 @@ const ROLE_COLOR: Record<AqtRoleKey, string> = {
 
 interface Row {
   id: number;
-  hero: HeroWithUserStats["hero"];
+  hero: CharacterWithUserStats["character"];
   /** Per-hero stats narrowed to what the hover popover reads (design-book §11).
    *  The full array would be serialized into the RSC payload once per row. */
   stats: HeroPopoverStat[];
@@ -76,8 +76,8 @@ const numHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.
 const textHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const numCell = "aqt-tnum px-3 py-2.5 text-right text-caption text-[color:var(--aqt-fg-muted)]";
 
-const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_LIMIT }: Props) => {
-  if (heroes.length === 0) return null;
+const OverviewTopHeroesTable = async ({ characters, maps, userSlug, limit = DEFAULT_LIMIT }: Props) => {
+  if (characters.length === 0) return null;
 
   const t = await getTranslations();
   const format = await getFormatter();
@@ -87,12 +87,12 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
   const hasGamesData = maps.length > 0;
   const gamesByHero = new Map<number, number>();
   for (const m of maps) {
-    for (const hs of m.hero_stats ?? []) {
-      gamesByHero.set(hs.hero.id, (gamesByHero.get(hs.hero.id) ?? 0) + (hs.games ?? 0));
+    for (const hs of m.character_stats ?? []) {
+      gamesByHero.set(hs.character.id, (gamesByHero.get(hs.character.id) ?? 0) + (hs.games ?? 0));
     }
   }
 
-  const withPlaytime = heroes.map((h) => ({ h, playtime: getOverall(h, LogStatsName.HeroTimePlayed) }));
+  const withPlaytime = characters.map((h) => ({ h, playtime: getOverall(h, LogStatsName.HeroTimePlayed) }));
   const totalPlaytime = withPlaytime.reduce((sum, x) => sum + x.playtime, 0);
 
   const rows: Row[] = withPlaytime
@@ -102,13 +102,13 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
       const winStat = h.stats.find((s) => s.name === LogStatsName.Winrate);
       const winFrac = toFraction(winStat?.avg_10);
       const globalFrac = winStat && winStat.avg_10_all > 0 ? toFraction(winStat.avg_10_all) : null;
-      const games = gamesByHero.get(h.hero.id) ?? 0;
+      const games = gamesByHero.get(h.character.id) ?? 0;
       const lowSample = hasGamesData && games < LOW_SAMPLE_GAMES;
       return {
-        id: h.hero.id,
-        hero: h.hero,
+        id: h.character.id,
+        hero: h.character,
         stats: heroPopoverStats(h.stats) ?? [],
-        roleKey: normalizeRole(h.hero.type ?? h.hero.role),
+        roleKey: normalizeRole(characterClass(h.character)),
         games,
         playtime,
         share: totalPlaytime > 0 ? playtime / totalPlaytime : null,
@@ -140,10 +140,10 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
   return (
     <CardSurface
       title={t("users.overview.topHeroes.title")}
-      subtitle={t("users.overview.topHeroes.playedByTime", { count: heroes.length })}
+      subtitle={t("users.overview.topHeroes.playedByTime", { count: characters.length })}
       action={
         <HoverPrefetchLink href={`/users/${userSlug}?tab=heroes`} className="aqt-pf-link">
-          {t("common.all")} {heroes.length}
+          {t("common.all")} {characters.length}
           <ArrowRight aria-hidden className="size-3" />
         </HoverPrefetchLink>
       }
@@ -171,7 +171,7 @@ const OverviewTopHeroesTable = async ({ heroes, maps, userSlug, limit = DEFAULT_
             {rows.map((r) => {
               const roleName = r.roleKey
                 ? t(ROLE_NAME_KEY[r.roleKey] as Parameters<typeof t>[0])
-                : (r.hero.type ?? r.hero.role);
+                : (characterClass(r.hero) ?? "");
               return (
                 <tr
                   key={r.id}

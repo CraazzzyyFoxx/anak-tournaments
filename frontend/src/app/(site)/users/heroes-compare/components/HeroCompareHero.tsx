@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { HeroLeaderboardEntry } from "@/types/hero.types";
+import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { characterClass } from "@/lib/catalog/attrs";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { heroVariantFromRole } from "@/lib/roster/player-role";
@@ -26,7 +26,7 @@ interface SummaryStat {
 
 interface HeroCompareHeroProps {
   selectedHero: CatalogEntityRead | undefined;
-  rows: HeroLeaderboardEntry[];
+  rows: CharacterLeaderboardEntry[];
 }
 
 const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {

@@ -4,7 +4,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
 
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
@@ -89,7 +89,7 @@ export function UsersTableView({
   const t = useTranslations();
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const { page, perPage, minEncounters } = controls.params;
-  const { overviewQuery, maxPage, range, workspaceId } = data;
+  const { overviewQuery, maxPage, range, workspaceId, discipline } = data;
   const response = overviewQuery.data;
 
   const toggleRow = (id: number) =>
@@ -201,12 +201,13 @@ export function UsersTableView({
                   expanded={expanded.has(user.id)}
                   onToggle={() => toggleRow(user.id)}
                 />
-                {expanded.has(user.id) ? (
+                {expanded.has(user.id) && discipline !== null ? (
                   <tr className="border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)]">
                     <td colSpan={11} className="p-0">
                       <UserExpandedRow
                         user={user}
                         workspaceId={workspaceId}
+                        discipline={discipline}
                         compareSelected={compare.isSelected(user.id)}
                         compareDisabled={compare.isFull}
                         onToggleCompare={() => compare.toggle(user)}
@@ -320,7 +321,7 @@ function PlayerRow({
       <td className="px-2 py-2 text-center tabular-nums">{user.achievements_count}</td>
       <td className="px-2 py-2">
         <div className="flex justify-center">
-          <HeroStrip heroes={user.top_heroes.slice(0, 3).map((entry) => entry.hero)} limit={3} />
+          <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
         </div>
       </td>
       <td className="pr-3">

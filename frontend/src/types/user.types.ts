@@ -1,14 +1,28 @@
 import type { PlayerRoleOption } from "@/lib/roster/player-role";
 import type { RoleRef } from "@/lib/roster/role-ref";
-import { Hero, HeroPlaytime } from "@/types/hero.types";
 import type { Schema } from "@/types/api";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RawSourceStatus } from "@/types/encounter.types";
-import { MapRead } from "@/types/map.types";
-import { LogStatsName } from "@/types/stats.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
+
+/** One character's share (0..1) of the observed playtime of the returned set — a fraction, not a duration. */
+export interface CharacterPlaytime {
+  entity: CatalogEntityRead;
+  playtime: number;
+}
+
+/** A stat's best single-match value, with where it happened. */
+export type CharacterStatBest = Schema<"app.CharacterStatBest">;
+
+/** One stat of one character for a player: career total, best match and per-10 averages (player and everyone). */
+export type CharacterStat = Schema<"app.CharacterStat">;
+
+export interface CharacterWithUserStats {
+  character: CatalogEntityRead;
+  stats: CharacterStat[];
+}
 
 export type SocialProvider =
   "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube" | "riot";
@@ -64,7 +78,7 @@ export interface UserTournamentWithStats {
   maps: number;
   playtime: number;
 
-  stats: Record<LogStatsName, UserTournamentStat>;
+  stats: Record<string, UserTournamentStat>;
 }
 
 /**
@@ -98,8 +112,8 @@ interface UserTournamentPlayer {
   relative_player?: number | null;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature heroes (same shape as per-match `heroes`). */
-  heroes?: Hero[];
+  /** Player's top signature characters (same shape as per-match `characters`). */
+  characters?: CatalogEntityRead[];
 }
 
 interface UserEncounterTournament {
@@ -227,8 +241,8 @@ export interface UserDraftCard {
   best_placement: number | null;
   avg_placement: number | null;
   roles: { role: RoleRef | null; maps: number; maps_won: number }[];
-  /** Every hero played, most maps first. */
-  heroes: { hero: Hero; role: "tank" | "damage" | "support"; maps: number; maps_won: number }[];
+  /** Every character played, most maps first. */
+  characters?: { character: CatalogEntityRead; maps: number; maps_won: number }[];
   /** Newest first, at most five. */
   recent_tournaments: {
     id: number;
@@ -250,27 +264,27 @@ export interface UserProfile {
   avg_placement: number | null;
   avg_playoff_placement: number | null;
   avg_group_placement: number | null;
-  most_played_hero: Hero;
-  heroes_count?: number;
+  most_played_character: CatalogEntityRead | null;
+  characters_count: number;
 
   roles: UserRole[];
-  hero_statistics: HeroPlaytime[];
+  character_statistics: CharacterPlaytime[];
   tournaments: UserTournamentSummary[];
 }
 
 export interface UserMapRead {
-  map: MapRead;
+  map: CatalogEntityRead;
   count: number;
   win: number;
   loss: number;
   draw: number;
   win_rate: number;
-  heroes?: HeroPlaytime[];
-  hero_stats?: UserMapHeroStats[] | null;
+  characters?: CharacterPlaytime[];
+  character_stats?: UserMapCharacterStats[] | null;
 }
 
-export interface UserMapHeroStats {
-  hero: Hero;
+export interface UserMapCharacterStats {
+  character: CatalogEntityRead;
   games: number;
   win: number;
   loss: number;
@@ -281,7 +295,7 @@ export interface UserMapHeroStats {
 }
 
 interface UserMapHighlight {
-  map: MapRead;
+  map: CatalogEntityRead;
   count: number;
   win: number;
   loss: number;
@@ -310,7 +324,7 @@ export interface UserBestTeammate {
   tournaments: number;
   maps: number;
   winrate: number;
-  stats: Record<LogStatsName, number>;
+  stats: Record<string, number | null>;
 }
 
 interface UserOpponentStat {
@@ -366,8 +380,8 @@ export interface UserOverviewRoleDivision {
   division_grid_version_id: number | null;
 }
 
-export interface UserOverviewHero {
-  hero: Hero;
+export interface UserOverviewCharacter {
+  character: CatalogEntityRead;
   playtime_seconds: number;
 }
 
@@ -384,7 +398,7 @@ interface UserOverviewBase {
   name: string;
   avatar_url: string | null;
   roles: UserOverviewRoleDivision[];
-  top_heroes: UserOverviewHero[];
+  top_characters: UserOverviewCharacter[];
   tournaments_count: number;
   achievements_count: number;
   maps_won: number;
@@ -484,8 +498,8 @@ export interface UserCompareResponse {
   metrics: UserCompareMetric[];
 }
 
-interface UserHeroCompareMetric {
-  stat: LogStatsName;
+interface UserCharacterCompareMetric {
+  stat: string;
   left_value: number;
   right_value: number;
   delta: number;
@@ -494,14 +508,14 @@ interface UserHeroCompareMetric {
   higher_is_better: boolean;
 }
 
-export interface UserHeroCompareResponse {
+export interface UserCharacterCompareResponse {
   subject: UserCompareUser;
   target: UserCompareUser | null;
   baseline: UserCompareBaselineInfo;
-  subject_hero: Hero | null;
-  target_hero: Hero | null;
-  map: MapRead | null;
+  subject_character: CatalogEntityRead | null;
+  target_character: CatalogEntityRead | null;
+  map: CatalogEntityRead | null;
   left_playtime_seconds: number;
   right_playtime_seconds: number;
-  metrics: UserHeroCompareMetric[];
+  metrics: UserCharacterCompareMetric[];
 }

@@ -22,6 +22,7 @@ interface UserHeaderProps {
   profile: UserProfile;
   user: User;
   scope: StatsScope;
+  discipline: string;
 }
 
 const formatPlace = (value: number | null | undefined) => {
@@ -31,10 +32,11 @@ const formatPlace = (value: number | null | undefined) => {
   return value.toFixed(1);
 };
 
-const deriveFormStreak = async (userId: number, scope: StatsScope): Promise<FormResult[]> => {
+const deriveFormStreak = async (userId: number, discipline: string, scope: StatsScope): Promise<FormResult[]> => {
   try {
     const encounters = await userService.getUserEncounters(
       userId,
+      discipline,
       1,
       10,
       "played_at",
@@ -57,7 +59,7 @@ const primaryRoleOf = (profile: UserProfile) => {
   return profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best));
 };
 
-const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
+const UserHeader = async ({ profile, user, scope, discipline }: UserHeaderProps) => {
   const t = await getTranslations();
   const [name, tag] = user.name.split("#");
   const primaryRole = primaryRoleOf(profile);
@@ -73,7 +75,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
   // The form streak and the last-tournament fetch are independent — run them
   // in parallel instead of awaiting sequentially.
   const [formStreak, lastTournament] = await Promise.all([
-    deriveFormStreak(user.id, scope),
+    deriveFormStreak(user.id, discipline, scope),
     lastSummary
       ? userService.getUserTournament(user.id, lastSummary.id).catch(() => null)
       : Promise.resolve(null)

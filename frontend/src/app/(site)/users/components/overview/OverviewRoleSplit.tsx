@@ -1,8 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import { aggregateRoleStats, roleOf } from "@/lib/roster/role-ref";
-import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";
-import { HeroWithUserStats } from "@/types/hero.types";
+import { CharacterWithUserStats, UserProfile, UserRole, UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
+import { characterClass } from "@/lib/catalog/attrs";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { getOverall, statAvg10, toFraction } from "@/app/(site)/users/components/heroes/utils";
 import { winrateColor } from "@/lib/colors";
@@ -61,7 +61,7 @@ interface Bucket {
 
 interface Signature {
   key: AqtRoleKey;
-  hero: HeroWithUserStats["hero"];
+  hero: CharacterWithUserStats["character"];
   /** Per-hero stats narrowed to what the hover popover reads (design-book §11).
    *  The full array would be serialized into the RSC payload once per row. */
   stats: HeroPopoverStat[];
@@ -72,13 +72,13 @@ interface Signature {
 
 interface Props {
   profile: UserProfile;
-  /** Aggregate per-hero stats (already fetched) — source for the signature hero. */
-  heroes?: HeroWithUserStats[];
+  /** Aggregate per-character stats (already fetched) — source for the signature character. */
+  characters?: CharacterWithUserStats[];
   /** User maps with per-hero games — the only real per-hero game count. */
   maps?: UserMapRead[];
 }
 
-const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => {
+const OverviewRoleSplit = async ({ profile, characters = [], maps = [] }: Props) => {
   if (!profile.roles.length) return null;
 
   const t = await getTranslations();
@@ -108,8 +108,8 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
   const hasGamesData = maps.length > 0;
   const gamesByHero = new Map<number, number>();
   for (const m of maps) {
-    for (const hs of m.hero_stats ?? []) {
-      gamesByHero.set(hs.hero.id, (gamesByHero.get(hs.hero.id) ?? 0) + (hs.games ?? 0));
+    for (const hs of m.character_stats ?? []) {
+      gamesByHero.set(hs.character.id, (gamesByHero.get(hs.character.id) ?? 0) + (hs.games ?? 0));
     }
   }
   const signatures: Signature[] = [];
@@ -118,7 +118,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
     // Signatures come from a hero's CLASS, which is never "flex" — filtering by
     // it would silently list the player's damage heroes under the flex bucket.
     if (key === "flex") continue;
-    const roleHeroes = heroes.filter((h) => normalizeRole(h.hero.type ?? h.hero.role) === key);
+    const roleHeroes = characters.filter((h) => normalizeRole(characterClass(h.character)) === key);
     if (roleHeroes.length === 0) continue;
     const top = roleHeroes.reduce((best, h) =>
       getOverall(h, LogStatsName.HeroTimePlayed) > getOverall(best, LogStatsName.HeroTimePlayed) ? h : best
@@ -127,9 +127,9 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
     const winFrac = toFraction(statAvg10(top.stats, LogStatsName.Winrate));
     signatures.push({
       key,
-      hero: top.hero,
+      hero: top.character,
       stats: heroPopoverStats(top.stats) ?? [],
-      games: gamesByHero.get(top.hero.id) ?? 0,
+      games: gamesByHero.get(top.character.id) ?? 0,
       kda: statAvg10(top.stats, LogStatsName.KDA),
       winPct: winFrac == null ? null : winFrac * 100
     });

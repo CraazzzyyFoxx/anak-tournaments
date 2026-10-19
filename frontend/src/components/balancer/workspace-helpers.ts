@@ -608,11 +608,10 @@ export async function fetchPlayerRankHistoryPreview(
     // most recent tournaments first.
     const missingRoles = roleCodes.filter((role) => !latestPerRole.has(role));
     if (missingRoles.length > 0) {
-      const tournaments = await userService.getUserTournaments(user.id, workspaceId);
+      // The read is this game's tournaments only.
+      const tournaments = await userService.getUserTournaments(user.id, discipline, workspaceId);
       if (tournaments?.length) {
-        const sorted = [...tournaments]
-          .filter((tournament) => tournament.discipline === discipline)
-          .sort((a, b) => b.id - a.id);
+        const sorted = [...tournaments].sort((a, b) => b.id - a.id);
 
         const sourceVersionsById = new Map<number, DivisionGridVersion>();
         for (const tournament of sorted) {

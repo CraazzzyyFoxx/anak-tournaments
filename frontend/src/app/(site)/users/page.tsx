@@ -1,15 +1,16 @@
 import { Suspense } from "react";
 
+import { loadBrowsingDisciplineInit } from "@/lib/site/discipline-server";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
 
 import UsersClient from "./components/index/UsersClient";
 
 const UsersPage = async () => {
-  const scope = await resolveStatsScope();
+  const [scope, initial] = await Promise.all([resolveStatsScope(), loadBrowsingDisciplineInit()]);
 
   return (
     <Suspense fallback={null}>
-      <UsersClient scope={scope} />
+      <UsersClient scope={scope} initial={initial} />
     </Suspense>
   );
 };

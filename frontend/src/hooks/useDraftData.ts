@@ -195,16 +195,16 @@ export function useDraftJournalQuery(sessionId: number | null, enabled: boolean)
   });
 }
 
-const draftPlayerCard = (userId: number) =>
+const draftPlayerCard = (userId: number, discipline: string) =>
   queryOptions({
-    queryKey: tournamentQueryKeys.draftPlayerCard(userId),
-    queryFn: () => userService.getDraftCard(userId),
+    queryKey: tournamentQueryKeys.draftPlayerCard(userId, discipline),
+    queryFn: () => userService.getDraftCard(userId, discipline),
     staleTime: 5 * 60_000
   });
 
-/** Career stats for the player card; keyed by the domain user id, cached across sessions. */
-export function useDraftPlayerCardQuery(userId: number | null) {
-  return useQuery({ ...draftPlayerCard(userId ?? 0), enabled: userId != null });
+/** Career stats (in the draft session's game) for the player card; keyed by the domain user id, cached across sessions. */
+export function useDraftPlayerCardQuery(userId: number | null, discipline: string) {
+  return useQuery({ ...draftPlayerCard(userId ?? 0, discipline), enabled: userId != null });
 }
 
 /**
@@ -213,7 +213,7 @@ export function useDraftPlayerCardQuery(userId: number | null) {
  * delay keeps a pointer sweeping across the list from fetching every row it
  * crosses. `null` cancels the pending warm-up.
  */
-export function useDraftPlayerCardPrefetch() {
+export function useDraftPlayerCardPrefetch(discipline: string) {
   const client = useQueryClient();
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -221,9 +221,9 @@ export function useDraftPlayerCardPrefetch() {
     (userId: number | null) => {
       window.clearTimeout(timer.current);
       if (userId == null) return;
-      timer.current = window.setTimeout(() => void client.prefetchQuery(draftPlayerCard(userId)), 120);
+      timer.current = window.setTimeout(() => void client.prefetchQuery(draftPlayerCard(userId, discipline)), 120);
     },
-    [client]
+    [client, discipline]
   );
 }
 

@@ -48,10 +48,10 @@ vi.mock("@/hooks/useCurrentWorkspace", () => ({
 
 const getDraftCard = vi.fn();
 vi.mock("@/hooks/useDraftData", () => ({
-  useDraftPlayerCardQuery: (userId: number | null) =>
+  useDraftPlayerCardQuery: (userId: number | null, discipline: string) =>
     useQuery({
-      queryKey: ["card", userId],
-      queryFn: () => getDraftCard(userId),
+      queryKey: ["card", userId, discipline],
+      queryFn: () => getDraftCard(userId, discipline),
       enabled: userId != null
     })
 }));
@@ -281,8 +281,8 @@ function card(overrides: Partial<UserDraftCard> = {}): UserDraftCard {
       { role: { dimension: "player_role", role: "support_main", parent: "support" }, maps: 20, maps_won: 10 },
       { role: { dimension: "player_role", role: "support_flex", parent: "support" }, maps: 20, maps_won: 16 }
     ],
-    heroes: [
-      { hero: { id: 1, slug: "ana", name: "Ana", image_path: null } as never, role: "support", maps: 30, maps_won: 20 }
+    characters: [
+      { character: { id: 1, slug: "ana", name: "Ana", image_path: null } as never, maps: 30, maps_won: 20 }
     ],
     recent_tournaments: [
       { id: 9, name: "Spring Cup", date: "2026-05-01", role: { dimension: "player_role", role: "support" }, rank: 3100, placement: 2, teams_count: 16 },
@@ -518,7 +518,8 @@ describe("career stats", () => {
     expect(tile("support")?.textContent).toContain("65%");
     await showStats();
 
-    expect(getDraftCard).toHaveBeenCalledWith(42);
+    // The card is read in the draft session's own game.
+    expect(getDraftCard).toHaveBeenCalledWith(42, "overwatch");
     expect(body.textContent).toContain("60%");
     expect(body.textContent).toContain("30–20");
     // Newest 3100 against oldest 2900.
@@ -536,7 +537,7 @@ describe("career stats", () => {
   });
 
   it("says it is the player's first tournament when there is no history", async () => {
-    getDraftCard.mockResolvedValue(card({ tournaments: 0, maps: 0, heroes: [], recent_tournaments: [], roles: [] }));
+    getDraftCard.mockResolvedValue(card({ tournaments: 0, maps: 0, characters: [], recent_tournaments: [], roles: [] }));
     const { body } = await open({ subject: player({ user_id: 42 }) });
     await showStats();
 

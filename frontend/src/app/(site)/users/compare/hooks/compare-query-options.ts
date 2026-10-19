@@ -1,4 +1,3 @@
-import type { LogStatsName } from "@/types/stats.types";
 import type { UserCompareBaselineMode, UserRoleType } from "@/types/user.types";
 import { userQueryKeys } from "@/lib/users/query-keys";
 
@@ -18,34 +17,43 @@ interface CompareFilters {
 }
 
 interface OverallCompareRequest extends CompareFilters {
+  discipline: string;
   signal?: AbortSignal;
 }
 
-interface HeroCompareRequest extends CompareFilters {
-  leftHeroId?: number;
-  rightHeroId?: number;
+interface CharacterCompareRequest extends CompareFilters {
+  discipline: string;
+  leftEntityId?: number;
+  rightEntityId?: number;
   mapId?: number;
-  stats: LogStatsName[];
+  stats: string[];
   signal?: AbortSignal;
 }
 
 interface OverallOptions<TData> extends CompareFilters {
   isHeroScope: boolean;
   subjectUserId?: number;
+  /** The browsed game; `null` (unresolved or invalid) reads nothing. */
+  discipline: string | null;
   fetchCompare: (userId: number, request: OverallCompareRequest) => Promise<TData>;
 }
 
-interface HeroOptions<TData> extends CompareFilters {
+interface CharacterOptions<TData> extends CompareFilters {
   isHeroScope: boolean;
   subjectUserId?: number;
-  leftHeroId?: number;
-  rightHeroId?: number;
+  discipline: string | null;
+  leftEntityId?: number;
+  rightEntityId?: number;
   mapId?: number;
-  stats: LogStatsName[];
-  fetchCompare: (userId: number, request: HeroCompareRequest) => Promise<TData>;
+  stats: string[];
+  fetchCompare: (userId: number, request: CharacterCompareRequest) => Promise<TData>;
 }
 
-export const keepPreviousCompareData = <TData>(previous: TData | undefined) => previous;
+/** Keeps the previous result on screen while a filter changes — never one of another game (key position 3). */
+export const keepPreviousCompareData =
+  <TData>(discipline: string | null) =>
+  (previous: TData | undefined, previousQuery?: { queryKey: readonly unknown[] }) =>
+    previousQuery?.queryKey[3] === discipline ? previous : undefined;
 
 export const shouldLoadHeroCatalogs = (isHeroScope: boolean) => isHeroScope;
 
@@ -63,6 +71,7 @@ export const getCompareActivity = ({
 export const buildOverallCompareQueryOptions = <TData>({
   isHeroScope,
   subjectUserId,
+  discipline,
   baseline,
   targetUserId,
   role,
@@ -72,11 +81,19 @@ export const buildOverallCompareQueryOptions = <TData>({
   workspaceId,
   fetchCompare
 }: OverallOptions<TData>) => ({
-  queryKey: userQueryKeys.compare(subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, workspaceId),
-  enabled: !isHeroScope && subjectUserId !== undefined,
-  placeholderData: keepPreviousCompareData<TData>,
+  queryKey: userQueryKeys.compare(subjectUserId, workspaceId ?? "all", discipline ?? "", {
+    baseline,
+    targetUserId,
+    role,
+    divMin,
+    divMax,
+    tournamentId
+  }),
+  enabled: !isHeroScope && subjectUserId !== undefined && discipline !== null,
+  placeholderData: keepPreviousCompareData<TData>(discipline),
   queryFn: ({ signal }: QueryContext) =>
     fetchCompare(subjectUserId!, {
+      discipline: discipline!,
       baseline,
       targetUserId,
       role,
@@ -91,6 +108,7 @@ export const buildOverallCompareQueryOptions = <TData>({
 export const buildHeroCompareQueryOptions = <TData>({
   isHeroScope,
   subjectUserId,
+  discipline,
   baseline,
   targetUserId,
   role,
@@ -98,21 +116,32 @@ export const buildHeroCompareQueryOptions = <TData>({
   divMax,
   tournamentId,
   workspaceId,
-  leftHeroId,
-  rightHeroId,
+  leftEntityId,
+  rightEntityId,
   mapId,
   stats,
   fetchCompare
-}: HeroOptions<TData>) => ({
-  queryKey: userQueryKeys.heroCompare(subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, leftHeroId, rightHeroId, mapId, workspaceId),
-  enabled: isHeroScope && subjectUserId !== undefined,
-  placeholderData: keepPreviousCompareData<TData>,
+}: CharacterOptions<TData>) => ({
+  queryKey: userQueryKeys.characterCompare(subjectUserId, workspaceId ?? "all", discipline ?? "", {
+    baseline,
+    targetUserId,
+    role,
+    divMin,
+    divMax,
+    tournamentId,
+    leftEntityId,
+    rightEntityId,
+    mapId
+  }),
+  enabled: isHeroScope && subjectUserId !== undefined && discipline !== null,
+  placeholderData: keepPreviousCompareData<TData>(discipline),
   queryFn: ({ signal }: QueryContext) =>
     fetchCompare(subjectUserId!, {
+      discipline: discipline!,
       baseline,
       targetUserId,
-      leftHeroId,
-      rightHeroId,
+      leftEntityId,
+      rightEntityId,
       mapId,
       role,
       divMin,

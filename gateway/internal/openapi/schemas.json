@@ -1432,188 +1432,6 @@
       },
       "summary": "Get a discipline's native metadata"
     },
-    "rpc.app.heroes.leaderboard": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated per-hero player leaderboard resolved against the workspace context and its division grid.",
-      "query_params": [
-        {
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "tournament_id",
-          "required": false,
-          "schema": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Tournament Id"
-          }
-        },
-        {
-          "name": "stat",
-          "required": false,
-          "schema": {
-            "$ref": "#/components/schemas/app.LogStatsName",
-            "default": "eliminations"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.Paginated_HeroLeaderboardEntry_"
-      },
-      "summary": "Hero leaderboard"
-    },
-    "rpc.app.heroes.playtime": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns paginated aggregated hero-playtime statistics, optionally scoped to a workspace.",
-      "query_params": [
-        {
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "sort",
-          "required": false,
-          "schema": {
-            "default": "playtime",
-            "enum": [
-              "id",
-              "name",
-              "slug",
-              "playtime"
-            ],
-            "title": "Sort",
-            "type": "string"
-          }
-        },
-        {
-          "name": "order",
-          "required": false,
-          "schema": {
-            "$ref": "#/components/schemas/app.SortOrder",
-            "default": "asc"
-          }
-        },
-        {
-          "name": "user_id",
-          "required": false,
-          "schema": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "const": "all",
-                "type": "string"
-              }
-            ],
-            "default": "all",
-            "title": "User Id"
-          }
-        },
-        {
-          "name": "tournament_id",
-          "required": false,
-          "schema": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Tournament Id"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.Paginated_HeroPlaytime_"
-      },
-      "summary": "Hero playtime stats"
-    },
     "rpc.app.matches.log": {
       "description": "Permission: any authenticated user \u2014 the gateway route requires a session and the handler performs no further permission or ownership check. Returns the raw match-log file bytes for a match (base64 from the worker, decoded by the gateway); 404 if the match or log is missing.",
       "summary": "Download match log"
@@ -1899,7 +1717,7 @@
       "summary": "List achievements"
     },
     "rpc.app.statistics.champion": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -1963,6 +1781,14 @@
             "$ref": "#/components/schemas/app.SortOrder",
             "default": "asc"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
@@ -1971,8 +1797,207 @@
       },
       "summary": "Most-champion players"
     },
+    "rpc.app.statistics.character_leaderboard": {
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tournament Id"
+          }
+        },
+        {
+          "name": "stat",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.LogStatsName",
+            "default": "eliminations"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CharacterLeaderboardEntry_"
+      },
+      "summary": "Character leaderboard"
+    },
+    "rpc.app.statistics.character_playtime": {
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns one discipline's paginated character playtime shares (fractions of the returned set, not seconds), optionally scoped to a user, tournament and workspace. 404 `discipline_not_installed` for an unknown game.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "playtime",
+            "enum": [
+              "id",
+              "name",
+              "slug",
+              "playtime"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "user_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "const": "all",
+                "type": "string"
+              }
+            ],
+            "default": "all",
+            "title": "User Id"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tournament Id"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CharacterPlaytime_"
+      },
+      "summary": "Character playtime shares"
+    },
     "rpc.app.statistics.dashboard": {
-      "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace.",
+      "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace; the catalog counts are the required `discipline`'s.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
       "response": {
         "array": false,
         "ref": "app.DashboardStats"
@@ -1988,7 +2013,7 @@
       "summary": "Tournament readiness checklist"
     },
     "rpc.app.statistics.winrate": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -2051,6 +2076,14 @@
           "schema": {
             "$ref": "#/components/schemas/app.SortOrder",
             "default": "asc"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
           }
         }
       ],
@@ -2061,7 +2094,7 @@
       "summary": "Top winrate players"
     },
     "rpc.app.statistics.won_maps": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -2124,6 +2157,14 @@
           "schema": {
             "$ref": "#/components/schemas/app.SortOrder",
             "default": "asc"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
           }
         }
       ],
@@ -2200,6 +2241,89 @@
         "ref": "app.UserRead"
       },
       "summary": "Get user by name"
+    },
+    "rpc.app.users.characters": {
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
+        },
+        {
+          "name": "stats",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CharacterWithUserStats_"
+      },
+      "summary": "User characters"
     },
     "rpc.app.users.compare": {
       "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).",
@@ -2302,6 +2426,14 @@
             "default": null,
             "title": "Tournament Id"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
@@ -2310,8 +2442,8 @@
       },
       "summary": "Compare users"
     },
-    "rpc.app.users.compare_heroes": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).",
+    "rpc.app.users.compare_characters": {
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404.",
       "query_params": [
         {
           "name": "baseline",
@@ -2345,7 +2477,7 @@
           }
         },
         {
-          "name": "left_hero_id",
+          "name": "left_entity_id",
           "required": false,
           "schema": {
             "anyOf": [
@@ -2358,11 +2490,11 @@
               }
             ],
             "default": null,
-            "title": "Left Hero Id"
+            "title": "Left Entity Id"
           }
         },
         {
-          "name": "right_hero_id",
+          "name": "right_entity_id",
           "required": false,
           "schema": {
             "anyOf": [
@@ -2375,7 +2507,7 @@
               }
             ],
             "default": null,
-            "title": "Right Hero Id"
+            "title": "Right Entity Id"
           }
         },
         {
@@ -2470,7 +2602,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/app.LogStatsName"
+                  "type": "string"
                 },
                 "type": "array"
               },
@@ -2481,13 +2613,21 @@
             "default": null,
             "title": "Stats"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
         "array": false,
-        "ref": "app.UserHeroCompareResponse"
+        "ref": "app.UserCharacterCompareResponse"
       },
-      "summary": "Compare user heroes"
+      "summary": "Compare user characters"
     },
     "rpc.app.users.discord_add": {
       "description": "Adds a Discord identity to a player; requires the global user.update permission.",
@@ -2502,7 +2642,24 @@
       "summary": "Update Discord identity"
     },
     "rpc.app.users.draft_card": {
-      "description": "Permission: public; no authentication required. Returns the draft room's player card for a user: career record, per-role and per-hero map records, MVP maps and the last five tournaments, scoped to the workspace.",
+      "description": "Permission: public; no authentication required. Returns the draft room's player card for a user in the required `discipline`: career record, per-role and per-character map records, MVP maps and the last five tournaments, scoped to the workspace.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
       "response": {
         "array": false,
         "ref": "app.UserDraftCard"
@@ -2578,6 +2735,14 @@
           }
         },
         {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
+        },
+        {
           "name": "result",
           "required": false,
           "schema": {
@@ -2620,72 +2785,14 @@
       "summary": "User encounters"
     },
     "rpc.app.users.get_profile": {
-      "description": "Permission: public; no authentication required. Returns a player's full profile resolved against the workspace context and division grid.",
-      "response": {
-        "array": false,
-        "ref": "app.UserProfile"
-      },
-      "summary": "User profile"
-    },
-    "rpc.app.users.heroes": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-hero stats for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
+      "description": "Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.",
       "query_params": [
         {
-          "name": "page",
-          "required": false,
+          "name": "discipline",
+          "required": true,
           "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "stats",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        {
-          "name": "tournament_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
+            "description": "Installed discipline code",
+            "type": "string"
           }
         },
         {
@@ -2698,9 +2805,9 @@
       ],
       "response": {
         "array": false,
-        "ref": "app.Paginated_HeroWithUserStats_"
+        "ref": "app.UserProfile"
       },
-      "summary": "User heroes"
+      "summary": "User profile"
     },
     "rpc.app.users.list": {
       "description": "Permission: public; no authentication required. Returns a paginated, sortable, name-searchable list of players.",
@@ -2805,7 +2912,7 @@
           }
         },
         {
-          "name": "gamemode_id",
+          "name": "mode_id",
           "required": false,
           "schema": {
             "anyOf": [
@@ -2817,7 +2924,7 @@
               }
             ],
             "default": null,
-            "title": "Gamemode Id"
+            "title": "Mode Id"
           }
         },
         {
@@ -2834,6 +2941,14 @@
             ],
             "default": null,
             "title": "Tournament Id"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
           }
         }
       ],
@@ -2942,7 +3057,7 @@
           }
         },
         {
-          "name": "gamemode_id",
+          "name": "mode_id",
           "required": false,
           "schema": {
             "anyOf": [
@@ -2954,7 +3069,7 @@
               }
             ],
             "default": null,
-            "title": "Gamemode Id"
+            "title": "Mode Id"
           }
         },
         {
@@ -2972,6 +3087,14 @@
             "default": null,
             "title": "Tournament Id"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
@@ -2982,6 +3105,23 @@
     },
     "rpc.app.users.matches_summary": {
       "description": "Permission: public; no authentication required. Returns aggregate match totals for a player, optionally workspace-scoped.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
       "response": {
         "array": false,
         "ref": "app.UserMatchesSummary"
@@ -3200,6 +3340,14 @@
             "title": "Min Encounters",
             "type": "integer"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
@@ -3303,6 +3451,14 @@
             "title": "Max Letters",
             "type": "integer"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
@@ -3365,6 +3521,14 @@
             ],
             "default": null,
             "title": "Query"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
           }
         }
       ],
@@ -3511,6 +3675,14 @@
             "$ref": "#/components/schemas/app.SortOrder",
             "default": "asc"
           }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
         }
       ],
       "response": {
@@ -3553,7 +3725,24 @@
       "summary": "Tournament stat leaderboard"
     },
     "rpc.app.users.tournaments": {
-      "description": "Permission: public; no authentication required. Returns the tournaments a player participated in, scoped to the workspace context and grid.",
+      "description": "Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "Installed discipline code",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "app.UserTournament"
@@ -14430,6 +14619,426 @@
       "title": "CatalogLegacyRead",
       "type": "object"
     },
+    "app.CharacterLeaderboardEntry": {
+      "properties": {
+        "avg_crit_accuracy": {
+          "title": "Avg Crit Accuracy",
+          "type": "number"
+        },
+        "avg_weapon_accuracy": {
+          "title": "Avg Weapon Accuracy",
+          "type": "number"
+        },
+        "div": {
+          "title": "Div",
+          "type": "integer"
+        },
+        "games_played": {
+          "title": "Games Played",
+          "type": "integer"
+        },
+        "kd": {
+          "title": "Kd",
+          "type": "number"
+        },
+        "kda": {
+          "title": "Kda",
+          "type": "number"
+        },
+        "per10_all_damage": {
+          "title": "Per10 All Damage",
+          "type": "number"
+        },
+        "per10_crit_hits": {
+          "title": "Per10 Crit Hits",
+          "type": "number"
+        },
+        "per10_damage": {
+          "title": "Per10 Damage",
+          "type": "number"
+        },
+        "per10_damage_blocked": {
+          "title": "Per10 Damage Blocked",
+          "type": "number"
+        },
+        "per10_damage_taken": {
+          "title": "Per10 Damage Taken",
+          "type": "number"
+        },
+        "per10_deaths": {
+          "title": "Per10 Deaths",
+          "type": "number"
+        },
+        "per10_defensive_assists": {
+          "title": "Per10 Defensive Assists",
+          "type": "number"
+        },
+        "per10_eliminations": {
+          "title": "Per10 Eliminations",
+          "type": "number"
+        },
+        "per10_env_kills": {
+          "title": "Per10 Env Kills",
+          "type": "number"
+        },
+        "per10_final_blows": {
+          "title": "Per10 Final Blows",
+          "type": "number"
+        },
+        "per10_healing": {
+          "title": "Per10 Healing",
+          "type": "number"
+        },
+        "per10_multikills": {
+          "title": "Per10 Multikills",
+          "type": "number"
+        },
+        "per10_obj_kills": {
+          "title": "Per10 Obj Kills",
+          "type": "number"
+        },
+        "per10_offensive_assists": {
+          "title": "Per10 Offensive Assists",
+          "type": "number"
+        },
+        "per10_self_healing": {
+          "title": "Per10 Self Healing",
+          "type": "number"
+        },
+        "per10_solo_kills": {
+          "title": "Per10 Solo Kills",
+          "type": "number"
+        },
+        "per10_ultimates_used": {
+          "title": "Per10 Ultimates Used",
+          "type": "number"
+        },
+        "player_name": {
+          "title": "Player Name",
+          "type": "string"
+        },
+        "playtime_seconds": {
+          "title": "Playtime Seconds",
+          "type": "number"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "team": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "integer"
+        },
+        "username": {
+          "title": "Username",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rank",
+        "user_id",
+        "username",
+        "player_name",
+        "div",
+        "games_played",
+        "playtime_seconds",
+        "per10_eliminations",
+        "per10_healing",
+        "per10_deaths",
+        "per10_damage",
+        "per10_final_blows",
+        "per10_damage_blocked",
+        "per10_solo_kills",
+        "per10_obj_kills",
+        "per10_defensive_assists",
+        "per10_offensive_assists",
+        "per10_all_damage",
+        "per10_damage_taken",
+        "per10_self_healing",
+        "per10_ultimates_used",
+        "per10_multikills",
+        "per10_env_kills",
+        "per10_crit_hits",
+        "avg_weapon_accuracy",
+        "avg_crit_accuracy",
+        "kd",
+        "kda"
+      ],
+      "title": "CharacterLeaderboardEntry",
+      "type": "object"
+    },
+    "app.CharacterLeaderboardQueryParams": {
+      "properties": {
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "stat": {
+          "$ref": "#/components/schemas/app.LogStatsName",
+          "default": "eliminations"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
+        }
+      },
+      "title": "CharacterLeaderboardQueryParams",
+      "type": "object"
+    },
+    "app.CharacterPlaytime": {
+      "description": "One character's share of the observed playtime (a fraction of the returned set), not a duration.",
+      "properties": {
+        "entity": {
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
+        },
+        "playtime": {
+          "title": "Playtime",
+          "type": "number"
+        }
+      },
+      "required": [
+        "entity",
+        "playtime"
+      ],
+      "title": "CharacterPlaytime",
+      "type": "object"
+    },
+    "app.CharacterPlaytimeQueryPaginationParams": {
+      "properties": {
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "sort": {
+          "default": "playtime",
+          "enum": [
+            "id",
+            "name",
+            "slug",
+            "playtime"
+          ],
+          "title": "Sort",
+          "type": "string"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "const": "all",
+              "type": "string"
+            }
+          ],
+          "default": "all",
+          "title": "User Id"
+        }
+      },
+      "title": "CharacterPlaytimeQueryPaginationParams",
+      "type": "object"
+    },
+    "app.CharacterStat": {
+      "properties": {
+        "avg_10": {
+          "title": "Avg 10",
+          "type": "number"
+        },
+        "avg_10_all": {
+          "title": "Avg 10 All",
+          "type": "number"
+        },
+        "best": {
+          "$ref": "#/components/schemas/app.CharacterStatBest"
+        },
+        "best_all": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CharacterStatBest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "overall": {
+          "title": "Overall",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "overall",
+        "best",
+        "avg_10",
+        "best_all",
+        "avg_10_all"
+      ],
+      "title": "CharacterStat",
+      "type": "object"
+    },
+    "app.CharacterStatBest": {
+      "properties": {
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "map_image_path": {
+          "title": "Map Image Path",
+          "type": "string"
+        },
+        "map_name": {
+          "title": "Map Name",
+          "type": "string"
+        },
+        "player_name": {
+          "title": "Player Name",
+          "type": "string"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "encounter_id",
+        "tournament_name",
+        "map_name",
+        "map_image_path",
+        "value",
+        "player_name"
+      ],
+      "title": "CharacterStatBest",
+      "type": "object"
+    },
+    "app.CharacterWithUserStats": {
+      "properties": {
+        "character": {
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
+        },
+        "stats": {
+          "items": {
+            "$ref": "#/components/schemas/app.CharacterStat"
+          },
+          "title": "Stats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "character",
+        "stats"
+      ],
+      "title": "CharacterWithUserStats",
+      "type": "object"
+    },
     "app.DashboardActiveTournamentStats": {
       "properties": {
         "encounters_missing_logs": {
@@ -14513,6 +15122,10 @@
             }
           ]
         },
+        "characters_total": {
+          "title": "Characters Total",
+          "type": "integer"
+        },
         "encounters_completed": {
           "title": "Encounters Completed",
           "type": "integer"
@@ -14521,19 +15134,15 @@
           "title": "Encounters Total",
           "type": "integer"
         },
-        "gamemodes_total": {
-          "title": "Gamemodes Total",
-          "type": "integer"
-        },
-        "heroes_total": {
-          "title": "Heroes Total",
-          "type": "integer"
-        },
         "issues": {
           "$ref": "#/components/schemas/app.DashboardIssues"
         },
         "maps_total": {
           "title": "Maps Total",
+          "type": "integer"
+        },
+        "modes_total": {
+          "title": "Modes Total",
           "type": "integer"
         },
         "players_total": {
@@ -14565,8 +15174,8 @@
         "encounters_total",
         "tournaments_registration_open",
         "encounters_completed",
-        "heroes_total",
-        "gamemodes_total",
+        "characters_total",
+        "modes_total",
         "maps_total",
         "active_tournament_stats",
         "issues"
@@ -15139,518 +15748,6 @@
       "title": "FormatRuleWire",
       "type": "object"
     },
-    "app.GamemodeRead": {
-      "properties": {
-        "aliases": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Aliases",
-          "type": "array"
-        },
-        "description": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Description"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "image_path": {
-          "title": "Image Path",
-          "type": "string"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "slug": {
-          "title": "Slug",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "slug",
-        "name",
-        "image_path",
-        "description"
-      ],
-      "title": "GamemodeRead",
-      "type": "object"
-    },
-    "app.HeroLeaderboardEntry": {
-      "properties": {
-        "avg_crit_accuracy": {
-          "title": "Avg Crit Accuracy",
-          "type": "number"
-        },
-        "avg_weapon_accuracy": {
-          "title": "Avg Weapon Accuracy",
-          "type": "number"
-        },
-        "div": {
-          "title": "Div",
-          "type": "integer"
-        },
-        "games_played": {
-          "title": "Games Played",
-          "type": "integer"
-        },
-        "kd": {
-          "title": "Kd",
-          "type": "number"
-        },
-        "kda": {
-          "title": "Kda",
-          "type": "number"
-        },
-        "per10_all_damage": {
-          "title": "Per10 All Damage",
-          "type": "number"
-        },
-        "per10_crit_hits": {
-          "title": "Per10 Crit Hits",
-          "type": "number"
-        },
-        "per10_damage": {
-          "title": "Per10 Damage",
-          "type": "number"
-        },
-        "per10_damage_blocked": {
-          "title": "Per10 Damage Blocked",
-          "type": "number"
-        },
-        "per10_damage_taken": {
-          "title": "Per10 Damage Taken",
-          "type": "number"
-        },
-        "per10_deaths": {
-          "title": "Per10 Deaths",
-          "type": "number"
-        },
-        "per10_defensive_assists": {
-          "title": "Per10 Defensive Assists",
-          "type": "number"
-        },
-        "per10_eliminations": {
-          "title": "Per10 Eliminations",
-          "type": "number"
-        },
-        "per10_env_kills": {
-          "title": "Per10 Env Kills",
-          "type": "number"
-        },
-        "per10_final_blows": {
-          "title": "Per10 Final Blows",
-          "type": "number"
-        },
-        "per10_healing": {
-          "title": "Per10 Healing",
-          "type": "number"
-        },
-        "per10_multikills": {
-          "title": "Per10 Multikills",
-          "type": "number"
-        },
-        "per10_obj_kills": {
-          "title": "Per10 Obj Kills",
-          "type": "number"
-        },
-        "per10_offensive_assists": {
-          "title": "Per10 Offensive Assists",
-          "type": "number"
-        },
-        "per10_self_healing": {
-          "title": "Per10 Self Healing",
-          "type": "number"
-        },
-        "per10_solo_kills": {
-          "title": "Per10 Solo Kills",
-          "type": "number"
-        },
-        "per10_ultimates_used": {
-          "title": "Per10 Ultimates Used",
-          "type": "number"
-        },
-        "player_name": {
-          "title": "Player Name",
-          "type": "string"
-        },
-        "playtime_seconds": {
-          "title": "Playtime Seconds",
-          "type": "number"
-        },
-        "rank": {
-          "title": "Rank",
-          "type": "integer"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.RoleRef"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "team": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Team"
-        },
-        "team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Team Id"
-        },
-        "user_id": {
-          "title": "User Id",
-          "type": "integer"
-        },
-        "username": {
-          "title": "Username",
-          "type": "string"
-        }
-      },
-      "required": [
-        "rank",
-        "user_id",
-        "username",
-        "player_name",
-        "div",
-        "games_played",
-        "playtime_seconds",
-        "per10_eliminations",
-        "per10_healing",
-        "per10_deaths",
-        "per10_damage",
-        "per10_final_blows",
-        "per10_damage_blocked",
-        "per10_solo_kills",
-        "per10_obj_kills",
-        "per10_defensive_assists",
-        "per10_offensive_assists",
-        "per10_all_damage",
-        "per10_damage_taken",
-        "per10_self_healing",
-        "per10_ultimates_used",
-        "per10_multikills",
-        "per10_env_kills",
-        "per10_crit_hits",
-        "avg_weapon_accuracy",
-        "avg_crit_accuracy",
-        "kd",
-        "kda"
-      ],
-      "title": "HeroLeaderboardEntry",
-      "type": "object"
-    },
-    "app.HeroLeaderboardQueryParams": {
-      "properties": {
-        "entities": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entities",
-          "type": "array"
-        },
-        "only_count": {
-          "default": false,
-          "title": "Only Count",
-          "type": "boolean"
-        },
-        "page": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "default": 10,
-          "maximum": 100,
-          "minimum": -1,
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "stat": {
-          "$ref": "#/components/schemas/app.LogStatsName",
-          "default": "eliminations"
-        },
-        "tournament_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tournament Id"
-        }
-      },
-      "title": "HeroLeaderboardQueryParams",
-      "type": "object"
-    },
-    "app.HeroPlaytime": {
-      "properties": {
-        "hero": {
-          "$ref": "#/components/schemas/app.HeroRead"
-        },
-        "playtime": {
-          "title": "Playtime",
-          "type": "number"
-        }
-      },
-      "required": [
-        "hero",
-        "playtime"
-      ],
-      "title": "HeroPlaytime",
-      "type": "object"
-    },
-    "app.HeroPlaytimeQueryPaginationParams": {
-      "properties": {
-        "entities": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entities",
-          "type": "array"
-        },
-        "only_count": {
-          "default": false,
-          "title": "Only Count",
-          "type": "boolean"
-        },
-        "order": {
-          "$ref": "#/components/schemas/app.SortOrder",
-          "default": "asc"
-        },
-        "page": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "default": 10,
-          "maximum": 100,
-          "minimum": -1,
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "sort": {
-          "default": "playtime",
-          "enum": [
-            "id",
-            "name",
-            "slug",
-            "playtime"
-          ],
-          "title": "Sort",
-          "type": "string"
-        },
-        "tournament_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tournament Id"
-        },
-        "user_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "const": "all",
-              "type": "string"
-            }
-          ],
-          "default": "all",
-          "title": "User Id"
-        }
-      },
-      "title": "HeroPlaytimeQueryPaginationParams",
-      "type": "object"
-    },
-    "app.HeroRead": {
-      "properties": {
-        "aliases": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Aliases",
-          "type": "array"
-        },
-        "color": {
-          "title": "Color",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "image_path": {
-          "title": "Image Path",
-          "type": "string"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "slug": {
-          "title": "Slug",
-          "type": "string"
-        },
-        "type": {
-          "title": "Type",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "slug",
-        "name",
-        "image_path",
-        "type",
-        "color"
-      ],
-      "title": "HeroRead",
-      "type": "object"
-    },
-    "app.HeroStat": {
-      "properties": {
-        "avg_10": {
-          "title": "Avg 10",
-          "type": "number"
-        },
-        "avg_10_all": {
-          "title": "Avg 10 All",
-          "type": "number"
-        },
-        "best": {
-          "$ref": "#/components/schemas/app.HeroStatBest"
-        },
-        "best_all": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.HeroStatBest"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "name": {
-          "$ref": "#/components/schemas/app.LogStatsName"
-        },
-        "overall": {
-          "title": "Overall",
-          "type": "number"
-        }
-      },
-      "required": [
-        "name",
-        "overall",
-        "best",
-        "avg_10",
-        "best_all",
-        "avg_10_all"
-      ],
-      "title": "HeroStat",
-      "type": "object"
-    },
-    "app.HeroStatBest": {
-      "properties": {
-        "encounter_id": {
-          "title": "Encounter Id",
-          "type": "integer"
-        },
-        "map_image_path": {
-          "title": "Map Image Path",
-          "type": "string"
-        },
-        "map_name": {
-          "title": "Map Name",
-          "type": "string"
-        },
-        "player_name": {
-          "title": "Player Name",
-          "type": "string"
-        },
-        "tournament_name": {
-          "title": "Tournament Name",
-          "type": "string"
-        },
-        "value": {
-          "title": "Value",
-          "type": "number"
-        }
-      },
-      "required": [
-        "encounter_id",
-        "tournament_name",
-        "map_name",
-        "map_image_path",
-        "value",
-        "player_name"
-      ],
-      "title": "HeroStatBest",
-      "type": "object"
-    },
-    "app.HeroWithUserStats": {
-      "properties": {
-        "hero": {
-          "$ref": "#/components/schemas/app.HeroRead"
-        },
-        "stats": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroStat"
-          },
-          "title": "Stats",
-          "type": "array"
-        }
-      },
-      "required": [
-        "hero",
-        "stats"
-      ],
-      "title": "HeroWithUserStats",
-      "type": "object"
-    },
     "app.LobbyLeaderboard": {
       "description": "Full ranked list of every player in a tournament for one stat.\n\nExposes the whole ranked population behind a single user's\n``UserTournamentWithStats.stats[stat].{rank,total}`` so the frontend can\nrender a per-stat \"lobby leaderboard\" modal.",
       "properties": {
@@ -15662,7 +15759,8 @@
           "type": "array"
         },
         "stat": {
-          "$ref": "#/components/schemas/app.LogStatsName"
+          "title": "Stat",
+          "type": "string"
         },
         "total_players": {
           "title": "Total Players",
@@ -15776,58 +15874,6 @@
         "name"
       ],
       "title": "LookupItem",
-      "type": "object"
-    },
-    "app.MapRead": {
-      "properties": {
-        "aliases": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Aliases",
-          "type": "array"
-        },
-        "gamemode": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.GamemodeRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "gamemode_id": {
-          "title": "Gamemode Id",
-          "type": "integer"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "image_path": {
-          "title": "Image Path",
-          "type": "string"
-        },
-        "in_competitive": {
-          "default": true,
-          "title": "In Competitive",
-          "type": "boolean"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "id",
-        "gamemode_id",
-        "name",
-        "image_path",
-        "gamemode"
-      ],
-      "title": "MapRead",
       "type": "object"
     },
     "app.MatchParticipantRead": {
@@ -17055,6 +17101,99 @@
       "title": "Paginated[CatalogEntityRead]",
       "type": "object"
     },
+    "app.Paginated_CharacterLeaderboardEntry_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.CharacterLeaderboardEntry"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[CharacterLeaderboardEntry]",
+      "type": "object"
+    },
+    "app.Paginated_CharacterPlaytime_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.CharacterPlaytime"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[CharacterPlaytime]",
+      "type": "object"
+    },
+    "app.Paginated_CharacterWithUserStats_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.CharacterWithUserStats"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[CharacterWithUserStats]",
+      "type": "object"
+    },
     "app.Paginated_EncounterReadWithUserStats_": {
       "properties": {
         "page": {
@@ -17084,99 +17223,6 @@
         "results"
       ],
       "title": "Paginated[EncounterReadWithUserStats]",
-      "type": "object"
-    },
-    "app.Paginated_HeroLeaderboardEntry_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroLeaderboardEntry"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[HeroLeaderboardEntry]",
-      "type": "object"
-    },
-    "app.Paginated_HeroPlaytime_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroPlaytime"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[HeroPlaytime]",
-      "type": "object"
-    },
-    "app.Paginated_HeroWithUserStats_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroWithUserStats"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[HeroWithUserStats]",
       "type": "object"
     },
     "app.Paginated_NotificationAdminItem_": {
@@ -19083,9 +19129,6 @@
               }
             ]
           },
-          "propertyNames": {
-            "$ref": "#/components/schemas/app.LogStatsName"
-          },
           "title": "Stats",
           "type": "object"
         },
@@ -19189,11 +19232,11 @@
           "title": "Roles",
           "type": "array"
         },
-        "top_heroes": {
+        "top_characters": {
           "items": {
-            "$ref": "#/components/schemas/app.UserOverviewHero"
+            "$ref": "#/components/schemas/app.UserOverviewCharacter"
           },
-          "title": "Top Heroes",
+          "title": "Top Characters",
           "type": "array"
         },
         "tournaments_count": {
@@ -19205,7 +19248,7 @@
         "id",
         "name",
         "roles",
-        "top_heroes",
+        "top_characters",
         "tournaments_count",
         "achievements_count",
         "maps_won",
@@ -19349,6 +19392,281 @@
         "available_letters"
       ],
       "title": "UserCatalogResponse",
+      "type": "object"
+    },
+    "app.UserCharacterCompareMetric": {
+      "properties": {
+        "better_worse": {
+          "anyOf": [
+            {
+              "enum": [
+                "better",
+                "worse",
+                "equal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Better Worse"
+        },
+        "delta": {
+          "title": "Delta",
+          "type": "number"
+        },
+        "delta_percent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Delta Percent"
+        },
+        "higher_is_better": {
+          "title": "Higher Is Better",
+          "type": "boolean"
+        },
+        "left_value": {
+          "title": "Left Value",
+          "type": "number"
+        },
+        "right_value": {
+          "title": "Right Value",
+          "type": "number"
+        },
+        "stat": {
+          "title": "Stat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stat",
+        "left_value",
+        "right_value",
+        "delta",
+        "delta_percent",
+        "better_worse",
+        "higher_is_better"
+      ],
+      "title": "UserCharacterCompareMetric",
+      "type": "object"
+    },
+    "app.UserCharacterCompareQueryParams": {
+      "properties": {
+        "baseline": {
+          "default": "global",
+          "enum": [
+            "target_user",
+            "global",
+            "cohort"
+          ],
+          "title": "Baseline",
+          "type": "string"
+        },
+        "div_max": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Div Max"
+        },
+        "div_min": {
+          "anyOf": [
+            {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Div Min"
+        },
+        "left_entity_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Left Entity Id"
+        },
+        "map_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Id"
+        },
+        "right_entity_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Right Entity Id"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "stats": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stats"
+        },
+        "target_user_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target User Id"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
+        }
+      },
+      "title": "UserCharacterCompareQueryParams",
+      "type": "object"
+    },
+    "app.UserCharacterCompareResponse": {
+      "properties": {
+        "baseline": {
+          "$ref": "#/components/schemas/app.UserCompareBaselineInfo"
+        },
+        "left_playtime_seconds": {
+          "title": "Left Playtime Seconds",
+          "type": "number"
+        },
+        "map": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/components/schemas/app.UserCharacterCompareMetric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "right_playtime_seconds": {
+          "title": "Right Playtime Seconds",
+          "type": "number"
+        },
+        "subject": {
+          "$ref": "#/components/schemas/app.UserCompareUser"
+        },
+        "subject_character": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.UserCompareUser"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_character": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "subject",
+        "target",
+        "baseline",
+        "subject_character",
+        "target_character",
+        "map",
+        "left_playtime_seconds",
+        "right_playtime_seconds",
+        "metrics"
+      ],
+      "title": "UserCharacterCompareResponse",
       "type": "object"
     },
     "app.UserCompareBaselineInfo": {
@@ -19702,11 +20020,11 @@
           "default": null,
           "title": "Best Placement"
         },
-        "heroes": {
+        "characters": {
           "items": {
-            "$ref": "#/components/schemas/app.UserDraftCardHero"
+            "$ref": "#/components/schemas/app.UserDraftCardCharacter"
           },
-          "title": "Heroes",
+          "title": "Characters",
           "type": "array"
         },
         "maps": {
@@ -19766,11 +20084,11 @@
       "title": "UserDraftCard",
       "type": "object"
     },
-    "app.UserDraftCardHero": {
-      "description": "One of the player's signature heroes on the draft-room player card.",
+    "app.UserDraftCardCharacter": {
+      "description": "One of the player's signature characters on the draft-room player card.",
       "properties": {
-        "hero": {
-          "$ref": "#/components/schemas/app.HeroRead"
+        "character": {
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
         },
         "maps": {
           "title": "Maps",
@@ -19779,19 +20097,14 @@
         "maps_won": {
           "title": "Maps Won",
           "type": "integer"
-        },
-        "role": {
-          "title": "Role",
-          "type": "string"
         }
       },
       "required": [
-        "hero",
-        "role",
+        "character",
         "maps",
         "maps_won"
       ],
-      "title": "UserDraftCardHero",
+      "title": "UserDraftCardCharacter",
       "type": "object"
     },
     "app.UserDraftCardRole": {
@@ -20069,162 +20382,13 @@
       "title": "UserEncounterTournament",
       "type": "object"
     },
-    "app.UserHeroCompareMetric": {
+    "app.UserMap": {
       "properties": {
-        "better_worse": {
-          "anyOf": [
-            {
-              "enum": [
-                "better",
-                "worse",
-                "equal"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Better Worse"
-        },
-        "delta": {
-          "title": "Delta",
-          "type": "number"
-        },
-        "delta_percent": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Delta Percent"
-        },
-        "higher_is_better": {
-          "title": "Higher Is Better",
-          "type": "boolean"
-        },
-        "left_value": {
-          "title": "Left Value",
-          "type": "number"
-        },
-        "right_value": {
-          "title": "Right Value",
-          "type": "number"
-        },
-        "stat": {
-          "$ref": "#/components/schemas/app.LogStatsName"
-        }
-      },
-      "required": [
-        "stat",
-        "left_value",
-        "right_value",
-        "delta",
-        "delta_percent",
-        "better_worse",
-        "higher_is_better"
-      ],
-      "title": "UserHeroCompareMetric",
-      "type": "object"
-    },
-    "app.UserHeroCompareQueryParams": {
-      "properties": {
-        "baseline": {
-          "default": "global",
-          "enum": [
-            "target_user",
-            "global",
-            "cohort"
-          ],
-          "title": "Baseline",
-          "type": "string"
-        },
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
-        },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
-        },
-        "left_hero_id": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Left Hero Id"
-        },
-        "map_id": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Map Id"
-        },
-        "right_hero_id": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Right Hero Id"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.RoleRef"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "stats": {
+        "character_stats": {
           "anyOf": [
             {
               "items": {
-                "$ref": "#/components/schemas/app.LogStatsName"
+                "$ref": "#/components/schemas/app.UserMapCharacterStats"
               },
               "type": "array"
             },
@@ -20233,118 +20397,15 @@
             }
           ],
           "default": null,
-          "title": "Stats"
+          "title": "Character Stats"
         },
-        "target_user_id": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Target User Id"
-        },
-        "tournament_id": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tournament Id"
-        }
-      },
-      "title": "UserHeroCompareQueryParams",
-      "type": "object"
-    },
-    "app.UserHeroCompareResponse": {
-      "properties": {
-        "baseline": {
-          "$ref": "#/components/schemas/app.UserCompareBaselineInfo"
-        },
-        "left_playtime_seconds": {
-          "title": "Left Playtime Seconds",
-          "type": "number"
-        },
-        "map": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.MapRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "metrics": {
+        "characters": {
           "items": {
-            "$ref": "#/components/schemas/app.UserHeroCompareMetric"
+            "$ref": "#/components/schemas/app.CharacterPlaytime"
           },
-          "title": "Metrics",
+          "title": "Characters",
           "type": "array"
         },
-        "right_playtime_seconds": {
-          "title": "Right Playtime Seconds",
-          "type": "number"
-        },
-        "subject": {
-          "$ref": "#/components/schemas/app.UserCompareUser"
-        },
-        "subject_hero": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.HeroRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "target": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.UserCompareUser"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "target_hero": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.HeroRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "subject",
-        "target",
-        "baseline",
-        "subject_hero",
-        "target_hero",
-        "map",
-        "left_playtime_seconds",
-        "right_playtime_seconds",
-        "metrics"
-      ],
-      "title": "UserHeroCompareResponse",
-      "type": "object"
-    },
-    "app.UserMap": {
-      "properties": {
         "count": {
           "title": "Count",
           "type": "integer"
@@ -20353,34 +20414,12 @@
           "title": "Draw",
           "type": "integer"
         },
-        "hero_stats": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/components/schemas/app.UserMapHeroStats"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Hero Stats"
-        },
-        "heroes": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroPlaytime"
-          },
-          "title": "Heroes",
-          "type": "array"
-        },
         "loss": {
           "title": "Loss",
           "type": "integer"
         },
         "map": {
-          "$ref": "#/components/schemas/app.MapRead"
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
         },
         "win": {
           "title": "Win",
@@ -20398,13 +20437,16 @@
         "loss",
         "draw",
         "win_rate",
-        "heroes"
+        "characters"
       ],
       "title": "UserMap",
       "type": "object"
     },
-    "app.UserMapHeroStats": {
+    "app.UserMapCharacterStats": {
       "properties": {
+        "character": {
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
+        },
         "draw": {
           "title": "Draw",
           "type": "integer"
@@ -20412,9 +20454,6 @@
         "games": {
           "title": "Games",
           "type": "integer"
-        },
-        "hero": {
-          "$ref": "#/components/schemas/app.HeroRead"
         },
         "loss": {
           "title": "Loss",
@@ -20438,7 +20477,7 @@
         }
       },
       "required": [
-        "hero",
+        "character",
         "games",
         "win",
         "loss",
@@ -20447,7 +20486,7 @@
         "playtime_seconds",
         "playtime_share_on_map"
       ],
-      "title": "UserMapHeroStats",
+      "title": "UserMapCharacterStats",
       "type": "object"
     },
     "app.UserMapHighlight": {
@@ -20465,7 +20504,7 @@
           "type": "integer"
         },
         "map": {
-          "$ref": "#/components/schemas/app.MapRead"
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
         },
         "win": {
           "title": "Win",
@@ -20541,18 +20580,6 @@
           "title": "Fields",
           "type": "array"
         },
-        "gamemode_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Gamemode Id"
-        },
         "min_count": {
           "anyOf": [
             {
@@ -20565,6 +20592,18 @@
           ],
           "default": null,
           "title": "Min Count"
+        },
+        "mode_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode Id"
         },
         "only_count": {
           "default": false,
@@ -21214,6 +21253,23 @@
       "title": "UserOverviewAverages",
       "type": "object"
     },
+    "app.UserOverviewCharacter": {
+      "properties": {
+        "character": {
+          "$ref": "#/components/schemas/app.CatalogEntityRead"
+        },
+        "playtime_seconds": {
+          "title": "Playtime Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "character",
+        "playtime_seconds"
+      ],
+      "title": "UserOverviewCharacter",
+      "type": "object"
+    },
     "app.UserOverviewDivisionCount": {
       "properties": {
         "count": {
@@ -21230,23 +21286,6 @@
         "count"
       ],
       "title": "UserOverviewDivisionCount",
-      "type": "object"
-    },
-    "app.UserOverviewHero": {
-      "properties": {
-        "hero": {
-          "$ref": "#/components/schemas/app.HeroRead"
-        },
-        "playtime_seconds": {
-          "title": "Playtime Seconds",
-          "type": "number"
-        }
-      },
-      "required": [
-        "hero",
-        "playtime_seconds"
-      ],
-      "title": "UserOverviewHero",
       "type": "object"
     },
     "app.UserOverviewQueryParams": {
@@ -21486,11 +21525,11 @@
           "title": "Roles",
           "type": "array"
         },
-        "top_heroes": {
+        "top_characters": {
           "items": {
-            "$ref": "#/components/schemas/app.UserOverviewHero"
+            "$ref": "#/components/schemas/app.UserOverviewCharacter"
           },
-          "title": "Top Heroes",
+          "title": "Top Characters",
           "type": "array"
         },
         "tournaments_count": {
@@ -21502,7 +21541,7 @@
         "id",
         "name",
         "roles",
-        "top_heroes",
+        "top_characters",
         "tournaments_count",
         "achievements_count",
         "maps_won",
@@ -21679,15 +21718,15 @@
           ],
           "title": "Avg Playoff Placement"
         },
-        "hero_statistics": {
+        "character_statistics": {
           "items": {
-            "$ref": "#/components/schemas/app.HeroPlaytime"
+            "$ref": "#/components/schemas/app.CharacterPlaytime"
           },
-          "title": "Hero Statistics",
+          "title": "Character Statistics",
           "type": "array"
         },
-        "heroes_count": {
-          "title": "Heroes Count",
+        "characters_count": {
+          "title": "Characters Count",
           "type": "integer"
         },
         "maps_total": {
@@ -21698,10 +21737,10 @@
           "title": "Maps Won",
           "type": "integer"
         },
-        "most_played_hero": {
+        "most_played_character": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroRead"
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
             },
             {
               "type": "null"
@@ -21740,11 +21779,11 @@
         "avg_placement",
         "avg_playoff_placement",
         "avg_group_placement",
-        "most_played_hero",
-        "heroes_count",
+        "most_played_character",
+        "characters_count",
         "roles",
         "tournaments",
-        "hero_statistics"
+        "character_statistics"
       ],
       "title": "UserProfile",
       "type": "object"
@@ -22032,16 +22071,16 @@
           "default": null,
           "title": "Avg Mvp"
         },
+        "characters": {
+          "items": {
+            "$ref": "#/components/schemas/app.CatalogEntityRead"
+          },
+          "title": "Characters",
+          "type": "array"
+        },
         "division": {
           "title": "Division",
           "type": "integer"
-        },
-        "heroes": {
-          "items": {
-            "$ref": "#/components/schemas/app.HeroRead"
-          },
-          "title": "Heroes",
-          "type": "array"
         },
         "id": {
           "title": "Id",

@@ -7,8 +7,8 @@ const UserHeroesContainer = dynamic(
   () => import("@/app/(site)/users/components/heroes/UserHeroesContainer")
 );
 
-const UserHeroesPage = ({ user, scope }: { user: User; scope: StatsScope }) => {
-  return <UserHeroesContainer userId={user.id} scope={scope} />;
+const UserHeroesPage = ({ user, scope, discipline }: { user: User; scope: StatsScope; discipline: string }) => {
+  return <UserHeroesContainer userId={user.id} scope={scope} discipline={discipline} />;
 };
 
 export default UserHeroesPage;

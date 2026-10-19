@@ -203,7 +203,7 @@ const HISTORY_ROW = `${HISTORY_GRID} min-h-[30px] py-1`;
 const SKELETON_ROWS = [0, 1, 2, 3, 4];
 
 /**
- * Top heroes and recent tournaments; nothing until the card has history. While
+ * Top characters and recent tournaments; nothing until the card has history. While
  * the card loads, a stand-in with the rows' own geometry holds their space.
  */
 export function CareerTables({
@@ -258,11 +258,12 @@ export function CareerTables({
   }
 
   if (!card || card.tournaments === 0) return null;
-  if (card.heroes.length === 0 && card.recent_tournaments.length === 0) return null;
+  const characters = card.characters ?? [];
+  if (characters.length === 0 && card.recent_tournaments.length === 0) return null;
 
   return (
     <div className={TABLES_GRID}>
-      {card.heroes.length > 0 && (
+      {characters.length > 0 && (
         <section className={TABLE_SECTION} aria-label={t("island.heroes.heading")}>
           <div className={`${HERO_GRID} pb-1.5 ${EYEBROW}`} aria-hidden>
             <span />
@@ -271,23 +272,22 @@ export function CareerTables({
             <span className="text-right">{t("island.heroes.winrate")}</span>
           </div>
           <ul>
-            {card.heroes.slice(0, 5).map((entry) => {
+            {characters.slice(0, 5).map((entry) => {
               const share = entry.maps > 0 ? entry.maps_won / entry.maps : 0;
               const low = entry.maps < MIN_WINRATE_MAPS;
               const color = winrateColor(share, entry.maps);
               return (
-                <li key={`${entry.hero.id}-${entry.role}`} className={`${HERO_GRID} py-1`}>
+                <li key={entry.character.id} className={`${HERO_GRID} py-1`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={getHeroIconUrl(entry.hero.slug, entry.hero.image_path)}
+                    src={getHeroIconUrl(entry.character.slug, entry.character.image_path)}
                     alt=""
                     width={28}
                     height={28}
                     className="h-7 w-7 rounded-full object-cover"
                   />
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-[13px] font-medium">{entry.hero.name}</span>
-                    <PlayerRoleIcon role={entry.role} ontology={ontology} size={14} />
+                    <span className="truncate text-[13px] font-medium">{entry.character.name}</span>
                   </span>
                   <span className="text-right text-[13px] tabular-nums text-[color:var(--aqt-fg-muted)]">
                     {entry.maps}
@@ -339,7 +339,7 @@ export function CareerTables({
                     )}
                   </span>
                   <span className="flex justify-center">
-                    {entry.role && <PlayerRoleIcon role={roleOf(entry.role)} size={16} />}
+                    {entry.role && <PlayerRoleIcon role={roleOf(entry.role)} ontology={ontology} size={16} />}
                   </span>
                   <span className="flex items-center justify-end gap-1.5" title={crestLabel ?? undefined}>
                     {division != null && (

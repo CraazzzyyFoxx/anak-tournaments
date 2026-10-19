@@ -1,4 +1,4 @@
-import { HeroLeaderboardEntry } from "@/types/hero.types";
+import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 
 export type StatKey = string;
 
@@ -32,12 +32,12 @@ export interface StatColumnDef {
   formatValue: (v: number) => string;
   barColor: string;
   accentColor: string;
-  getValue: (e: HeroLeaderboardEntry) => number;
+  getValue: (e: CharacterLeaderboardEntry) => number;
 }
 
 const _k =
-  (field: keyof HeroLeaderboardEntry) =>
-  (e: HeroLeaderboardEntry): number =>
+  (field: keyof CharacterLeaderboardEntry) =>
+  (e: CharacterLeaderboardEntry): number =>
     e[field] as number;
 
 const _fmt = {

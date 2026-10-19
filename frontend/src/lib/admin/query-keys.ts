@@ -19,7 +19,8 @@ export const adminQueryKeys = {
     ["admin", "challonge-sync-log", tournamentId] as const,
   challongeTeamSyncPreview: (tournamentId: KeyPart) =>
     ["admin", "challonge-team-sync-preview", tournamentId] as const,
-  dashboardStats: (workspaceId: KeyPart) => ["admin", "dashboard", "stats", workspaceId] as const,
+  dashboardStats: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "dashboard", "stats", workspaceId, discipline] as const,
   dashboardTournaments: (workspaceId: KeyPart) =>
     ["admin", "dashboard", "tournaments", workspaceId] as const,
   personAchievements: (personId: KeyPart) =>

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import heroService from "@/services/hero.service";
+import statisticsService from "@/services/statistics.service";
 import tournamentService from "@/services/tournament.service";
 import { type SearchableImageOption } from "@/components/ui/searchable-image-select";
 
@@ -19,7 +19,7 @@ import {
 import HeroCompareHero from "./HeroCompareHero";
 import HeroLeaderboardFiltersCard from "./HeroLeaderboardFiltersCard";
 import HeroLeaderboardTable from "./HeroLeaderboardTable";
-import { heroQueryKeys } from "@/lib/heroes/query-keys";
+import { characterStatsQueryKeys } from "@/lib/characters/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { Spinner } from "@/components/ui/spinner";
@@ -68,14 +68,16 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { axis } = browsing;
   const leaderboardQuery = useQuery({
-    queryKey: heroQueryKeys.leaderboard(heroId, tournamentId, scope),
-    enabled: heroId !== undefined && heroSelection.status === "valid",
-    queryFn: () =>
-      heroService.getHeroLeaderboard(heroId!, {
+    queryKey: characterStatsQueryKeys.leaderboard(axis, discipline ?? "", heroId, { stat: null, tournamentId }),
+    enabled: discipline !== null && heroId !== undefined && heroSelection.status === "valid",
+    queryFn: ({ signal }) =>
+      statisticsService.getCharacterLeaderboard(discipline!, heroId!, {
+        axis,
         tournamentId,
         perPage: -1,
-        scope,
+        signal,
       }),
   });
 

@@ -3,9 +3,9 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { HeroWithUserStats } from "@/types/hero.types";
-import type { UserMapRead } from "@/types/user.types";
+import type { CharacterWithUserStats, UserMapRead } from "@/types/user.types";
 import { LogStatsName } from "@/types/stats.types";
+import { characterClass } from "@/lib/catalog/attrs";
 import { getHumanizedStats } from "@/lib/stats";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { heroVariantFromRole, type AqtRoleKey } from "@/lib/roster/player-role";
@@ -31,16 +31,16 @@ import RadarAxisPicker from "@/app/(site)/users/components/heroes/RadarAxisPicke
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 
 interface Props {
-  heroes: HeroWithUserStats[];
+  characters: CharacterWithUserStats[];
   filterSlot?: React.ReactNode;
-  /** User maps (with per-hero stats) — powers the "Maps for [Hero]" panel. */
+  /** User maps (with per-character stats) — powers the "Maps for [character]" panel. */
   maps?: UserMapRead[];
 }
 
-const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
+const HeroesView = ({ characters, filterSlot, maps }: Props) => {
   const t = useTranslations();
   const format = useFormatter();
-  const safeHeroes = Array.isArray(heroes) ? heroes : [];
+  const safeHeroes = Array.isArray(characters) ? characters : [];
 
   // Compact label for spotlight quick-stats (falls back to humanized stat name).
   const quickLabel = useCallback(
@@ -76,17 +76,17 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
     share: totalSeconds > 0 ? i.playtime / totalSeconds : 0
   }));
 
-  const [selectedId, setSelectedId] = useState<number>(enriched[0]?.hero.hero.id ?? 0);
+  const [selectedId, setSelectedId] = useState<number>(enriched[0]?.hero.character.id ?? 0);
   const [insightsMode, setInsightsMode] = useState<"highlights" | "all">("highlights");
   const [statSort, setStatSort] = useState<StatSortKey>("delta");
   const [statSearch, setStatSearch] = useState("");
   const [radarStats, setRadarStats] = useState<LogStatsName[]>(RADAR_STATS);
 
-  const selected = useMemo(() => enriched.find((i) => i.hero.hero.id === selectedId) ?? enriched[0], [enriched, selectedId]);
+  const selected = useMemo(() => enriched.find((i) => i.hero.character.id === selectedId) ?? enriched[0], [enriched, selectedId]);
 
   // Cross-hero overview rows (one per tracked hero) for the leaderboard table.
   const overviewRows = useMemo<HeroRow[]>(() => {
-    const avg = (stats: HeroWithUserStats["stats"], name: LogStatsName) => {
+    const avg = (stats: CharacterWithUserStats["stats"], name: LogStatsName) => {
       const v = stats.find((s) => s.name === name)?.avg_10;
       return v != null && Number.isFinite(v) ? v : null;
     };
@@ -102,9 +102,9 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
         if (isRevertedStat(s.name) ? s.avg_10 < s.avg_10_all : s.avg_10 > s.avg_10_all) positive++;
       }
       return {
-        id: it.hero.hero.id,
-        hero: it.hero.hero,
-        role: it.hero.hero.type ?? it.hero.hero.role,
+        id: it.hero.character.id,
+        hero: it.hero.character,
+        role: characterClass(it.hero.character),
         playtime: it.playtime,
         share: it.share,
         winratePct: wr == null ? null : wr <= 1 ? wr * 100 : wr,
@@ -145,7 +145,7 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
     return selected.hero.stats
       .filter((s) => s.name !== LogStatsName.HeroTimePlayed)
       .filter((s) => Number.isFinite(s.avg_10) && Number.isFinite(s.avg_10_all) && s.avg_10_all > 0)
-      .map((s) => s.name);
+      .map((s) => s.name as LogStatsName);
   }, [selected]);
 
   const toggleRadarStat = (name: LogStatsName) => {
@@ -169,8 +169,8 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
         const reversed = isRevertedStat(s.name);
         const delta = computeDelta(s.avg_10, s.avg_10_all, reversed) ?? 0;
         return {
-          name: s.name,
-          label: getHumanizedStats(s.name),
+          name: s.name as LogStatsName,
+          label: getHumanizedStats(s.name as LogStatsName),
           value: formatStatValue(format, s.name, s.avg_10),
           delta
         };
@@ -214,8 +214,8 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
           Number.isFinite(s.best_all.value) &&
           s.best.value === s.best_all.value;
         return {
-          name: s.name,
-          label: getHumanizedStats(s.name),
+          name: s.name as LogStatsName,
+          label: getHumanizedStats(s.name as LogStatsName),
           overall: s.overall,
           bestYou: s.best?.value,
           avg10: s.avg_10,
@@ -238,11 +238,11 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
   // Maps the selected hero was played on, with the user's record on each.
   const heroMaps = useMemo(() => {
     if (!selected || !maps || maps.length === 0) return [];
-    const heroId = selected.hero.hero.id;
+    const heroId = selected.hero.character.id;
     const rows = maps
       .map((m) => {
-        const hs = (m.hero_stats ?? []).find((h) => h.hero.id === heroId);
-        return hs ? { id: m.map.id, name: m.map.name, mode: m.map.gamemode?.name ?? "—", winRate: hs.win_rate, win: hs.win, loss: hs.loss } : null;
+        const hs = (m.character_stats ?? []).find((h) => h.character.id === heroId);
+        return hs ? { id: m.map.id, name: m.map.name, mode: m.map.parent?.name ?? "—", winRate: hs.win_rate, win: hs.win, loss: hs.loss } : null;
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
     rows.sort((a, b) => b.winRate - a.winRate || b.win + b.loss - (a.win + a.loss));
@@ -259,7 +259,7 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
     );
   }
 
-  const heroVariant = heroVariantFromRole(selected.hero.hero.type ?? selected.hero.hero.role) as AqtRoleKey;
+  const heroVariant = heroVariantFromRole(characterClass(selected.hero.character)) as AqtRoleKey;
 
   return (
     <div className="aqt-player flex flex-col gap-3.5">
@@ -273,7 +273,7 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
           {/* Radar + insights */}
           <CardSurface
             title={t("users.heroes.insights")}
-            subtitle={t("users.heroes.insightsSubtitle", { hero: selected.hero.hero.name })}
+            subtitle={t("users.heroes.insightsSubtitle", { hero: selected.hero.character.name })}
             action={
               <>
                 {filterSlot ? <div className="flex justify-end">{filterSlot}</div> : null}
@@ -346,9 +346,9 @@ const HeroesView = ({ heroes, filterSlot, maps }: Props) => {
           <HeroBestGames hero={selected.hero} />
 
           {/* Maps the selected hero was played on (best → worst) */}
-          <MapsForHero heroName={selected.hero.hero.name} heroMaps={heroMaps} />
+          <MapsForHero heroName={selected.hero.character.name} heroMaps={heroMaps} />
         </div>
-        <HeroRail rows={overviewRows} selectedId={selected.hero.hero.id} onSelect={setSelectedId} />
+        <HeroRail rows={overviewRows} selectedId={selected.hero.character.id} onSelect={setSelectedId} />
       </div>
     </div>
   );

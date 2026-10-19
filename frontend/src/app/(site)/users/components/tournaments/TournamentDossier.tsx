@@ -8,6 +8,7 @@ import { Trophy } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { UserTournament } from "@/types/user.types";
 import { TournamentTeamTable } from "@/components/TournamentTeamCard";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import EncounterRow from "@/app/(site)/users/components/tournaments/EncounterRow";
@@ -134,6 +135,8 @@ const EventBody = ({
   loadingEncounters?: boolean;
 }) => {
   const tr = useTranslations();
+  // The roster is drawn in the tournament's own game, whatever game the profile browses.
+  const ontology = useDisciplineMetadata(t.workspace_id, t.discipline).data ?? null;
   const stages = groupEncountersByStage(t, selfUserId);
   const hasEncounters = (t.encounters ?? []).length > 0;
 
@@ -144,7 +147,8 @@ const EventBody = ({
         <TournamentTeamTable
           players={t.players ?? []}
           tournamentGrid={t.division_grid_version}
-          discipline="overwatch"
+          discipline={t.discipline}
+          ontology={ontology}
           highlightUserId={selfUserId}
         />
       </div>

@@ -2512,50 +2512,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/heroes/statistics/playtime": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Hero playtime stats
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns paginated aggregated hero-playtime statistics, optionally scoped to a workspace.
-         *
-         *     RPC subject: `rpc.app.heroes.playtime`
-         */
-        get: operations["get__api_v1_heroes_statistics_playtime"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/heroes/{hero_id}/leaderboard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Hero leaderboard
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated per-hero player leaderboard resolved against the workspace context and its division grid.
-         *
-         *     RPC subject: `rpc.app.heroes.leaderboard`
-         */
-        get: operations["get__api_v1_heroes__hero_id__leaderboard"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/matches": {
         parameters: {
             query?: never;
@@ -3221,7 +3177,7 @@ export interface paths {
         };
         /**
          * Most-champion players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.champion`
          */
@@ -3243,7 +3199,7 @@ export interface paths {
         };
         /**
          * Dashboard stats
-         * @description Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace.
+         * @description Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace; the catalog counts are the required `discipline`'s.
          *
          *     RPC subject: `rpc.app.statistics.dashboard`
          */
@@ -3265,7 +3221,7 @@ export interface paths {
         };
         /**
          * Top winrate players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.winrate`
          */
@@ -3287,11 +3243,55 @@ export interface paths {
         };
         /**
          * Top won-maps players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.won_maps`
          */
         get: operations["get__api_v1_statistics_won_maps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/statistics/{discipline}/characters/playtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Character playtime shares
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns one discipline's paginated character playtime shares (fractions of the returned set, not seconds), optionally scoped to a user, tournament and workspace. 404 `discipline_not_installed` for an unknown game.
+         *
+         *     RPC subject: `rpc.app.statistics.character_playtime`
+         */
+        get: operations["get__api_v1_statistics__discipline__characters_playtime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Character leaderboard
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.
+         *
+         *     RPC subject: `rpc.app.statistics.character_leaderboard`
+         */
+        get: operations["get__api_v1_statistics__discipline__characters__entity_id__leaderboard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4048,6 +4048,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{id}/characters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * User characters
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.
+         *
+         *     RPC subject: `rpc.app.users.characters`
+         */
+        get: operations["get__api_v1_users__id__characters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}/compare": {
         parameters: {
             query?: never;
@@ -4070,7 +4092,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/users/{id}/compare/heroes": {
+    "/api/v1/users/{id}/compare/characters": {
         parameters: {
             query?: never;
             header?: never;
@@ -4078,12 +4100,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Compare user heroes
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-hero head-to-head comparison for the given user against others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).
+         * Compare user characters
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404.
          *
-         *     RPC subject: `rpc.app.users.compare_heroes`
+         *     RPC subject: `rpc.app.users.compare_characters`
          */
-        get: operations["get__api_v1_users__id__compare_heroes"];
+        get: operations["get__api_v1_users__id__compare_characters"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4123,7 +4145,7 @@ export interface paths {
         };
         /**
          * User draft card
-         * @description Permission: public; no authentication required. Returns the draft room's player card for a user: career record, per-role and per-hero map records, MVP maps and the last five tournaments, scoped to the workspace.
+         * @description Permission: public; no authentication required. Returns the draft room's player card for a user in the required `discipline`: career record, per-role and per-character map records, MVP maps and the last five tournaments, scoped to the workspace.
          *
          *     RPC subject: `rpc.app.users.draft_card`
          */
@@ -4150,28 +4172,6 @@ export interface paths {
          *     RPC subject: `rpc.app.users.encounters`
          */
         get: operations["get__api_v1_users__id__encounters"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/users/{id}/heroes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * User heroes
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-hero stats for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.
-         *
-         *     RPC subject: `rpc.app.users.heroes`
-         */
-        get: operations["get__api_v1_users__id__heroes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4255,7 +4255,7 @@ export interface paths {
         };
         /**
          * User profile
-         * @description Permission: public; no authentication required. Returns a player's full profile resolved against the workspace context and division grid.
+         * @description Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.
          *
          *     RPC subject: `rpc.app.users.get_profile`
          */
@@ -4321,7 +4321,7 @@ export interface paths {
         };
         /**
          * User tournaments
-         * @description Permission: public; no authentication required. Returns the tournaments a player participated in, scoped to the workspace context and grid.
+         * @description Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.
          *
          *     RPC subject: `rpc.app.users.tournaments`
          */
@@ -12220,6 +12220,120 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** CharacterLeaderboardEntry */
+        "app.CharacterLeaderboardEntry": {
+            /** Avg Crit Accuracy */
+            avg_crit_accuracy: number;
+            /** Avg Weapon Accuracy */
+            avg_weapon_accuracy: number;
+            /** Div */
+            div: number;
+            /** Games Played */
+            games_played: number;
+            /** Kd */
+            kd: number;
+            /** Kda */
+            kda: number;
+            /** Per10 All Damage */
+            per10_all_damage: number;
+            /** Per10 Crit Hits */
+            per10_crit_hits: number;
+            /** Per10 Damage */
+            per10_damage: number;
+            /** Per10 Damage Blocked */
+            per10_damage_blocked: number;
+            /** Per10 Damage Taken */
+            per10_damage_taken: number;
+            /** Per10 Deaths */
+            per10_deaths: number;
+            /** Per10 Defensive Assists */
+            per10_defensive_assists: number;
+            /** Per10 Eliminations */
+            per10_eliminations: number;
+            /** Per10 Env Kills */
+            per10_env_kills: number;
+            /** Per10 Final Blows */
+            per10_final_blows: number;
+            /** Per10 Healing */
+            per10_healing: number;
+            /** Per10 Multikills */
+            per10_multikills: number;
+            /** Per10 Obj Kills */
+            per10_obj_kills: number;
+            /** Per10 Offensive Assists */
+            per10_offensive_assists: number;
+            /** Per10 Self Healing */
+            per10_self_healing: number;
+            /** Per10 Solo Kills */
+            per10_solo_kills: number;
+            /** Per10 Ultimates Used */
+            per10_ultimates_used: number;
+            /** Player Name */
+            player_name: string;
+            /** Playtime Seconds */
+            playtime_seconds: number;
+            /** Rank */
+            rank: number;
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
+            /**
+             * Team
+             * @default null
+             */
+            team: string | null;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+        };
+        /**
+         * CharacterPlaytime
+         * @description One character's share of the observed playtime (a fraction of the returned set), not a duration.
+         */
+        "app.CharacterPlaytime": {
+            entity: components["schemas"]["app.CatalogEntityRead"];
+            /** Playtime */
+            playtime: number;
+        };
+        /** CharacterStat */
+        "app.CharacterStat": {
+            /** Avg 10 */
+            avg_10: number;
+            /** Avg 10 All */
+            avg_10_all: number;
+            best: components["schemas"]["app.CharacterStatBest"];
+            best_all: components["schemas"]["app.CharacterStatBest"] | null;
+            /** Name */
+            name: string;
+            /** Overall */
+            overall: number;
+        };
+        /** CharacterStatBest */
+        "app.CharacterStatBest": {
+            /** Encounter Id */
+            encounter_id: number;
+            /** Map Image Path */
+            map_image_path: string;
+            /** Map Name */
+            map_name: string;
+            /** Player Name */
+            player_name: string;
+            /** Tournament Name */
+            tournament_name: string;
+            /** Value */
+            value: number;
+        };
+        /** CharacterWithUserStats */
+        "app.CharacterWithUserStats": {
+            character: components["schemas"]["app.CatalogEntityRead"];
+            /** Stats */
+            stats: components["schemas"]["app.CharacterStat"][];
+        };
         /** DashboardActiveTournamentStats */
         "app.DashboardActiveTournamentStats": {
             /** Encounters Missing Logs */
@@ -12251,17 +12365,17 @@ export interface components {
         /** DashboardStats */
         "app.DashboardStats": {
             active_tournament_stats: components["schemas"]["app.DashboardActiveTournamentStats"] | null;
+            /** Characters Total */
+            characters_total: number;
             /** Encounters Completed */
             encounters_completed: number;
             /** Encounters Total */
             encounters_total: number;
-            /** Gamemodes Total */
-            gamemodes_total: number;
-            /** Heroes Total */
-            heroes_total: number;
             issues: components["schemas"]["app.DashboardIssues"];
             /** Maps Total */
             maps_total: number;
+            /** Modes Total */
+            modes_total: number;
             /** Players Total */
             players_total: number;
             /** Teams Total */
@@ -12481,154 +12595,6 @@ export interface components {
             recommended_min: number | null;
             role: components["schemas"]["app.RoleRef"];
         };
-        /** GamemodeRead */
-        "app.GamemodeRead": {
-            /**
-             * Aliases
-             * @default []
-             */
-            aliases: string[];
-            /** Description */
-            description: string | null;
-            /** Id */
-            id: number;
-            /** Image Path */
-            image_path: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-        };
-        /** HeroLeaderboardEntry */
-        "app.HeroLeaderboardEntry": {
-            /** Avg Crit Accuracy */
-            avg_crit_accuracy: number;
-            /** Avg Weapon Accuracy */
-            avg_weapon_accuracy: number;
-            /** Div */
-            div: number;
-            /** Games Played */
-            games_played: number;
-            /** Kd */
-            kd: number;
-            /** Kda */
-            kda: number;
-            /** Per10 All Damage */
-            per10_all_damage: number;
-            /** Per10 Crit Hits */
-            per10_crit_hits: number;
-            /** Per10 Damage */
-            per10_damage: number;
-            /** Per10 Damage Blocked */
-            per10_damage_blocked: number;
-            /** Per10 Damage Taken */
-            per10_damage_taken: number;
-            /** Per10 Deaths */
-            per10_deaths: number;
-            /** Per10 Defensive Assists */
-            per10_defensive_assists: number;
-            /** Per10 Eliminations */
-            per10_eliminations: number;
-            /** Per10 Env Kills */
-            per10_env_kills: number;
-            /** Per10 Final Blows */
-            per10_final_blows: number;
-            /** Per10 Healing */
-            per10_healing: number;
-            /** Per10 Multikills */
-            per10_multikills: number;
-            /** Per10 Obj Kills */
-            per10_obj_kills: number;
-            /** Per10 Offensive Assists */
-            per10_offensive_assists: number;
-            /** Per10 Self Healing */
-            per10_self_healing: number;
-            /** Per10 Solo Kills */
-            per10_solo_kills: number;
-            /** Per10 Ultimates Used */
-            per10_ultimates_used: number;
-            /** Player Name */
-            player_name: string;
-            /** Playtime Seconds */
-            playtime_seconds: number;
-            /** Rank */
-            rank: number;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /**
-             * Team
-             * @default null
-             */
-            team: string | null;
-            /**
-             * Team Id
-             * @default null
-             */
-            team_id: number | null;
-            /** User Id */
-            user_id: number;
-            /** Username */
-            username: string;
-        };
-        /** HeroPlaytime */
-        "app.HeroPlaytime": {
-            hero: components["schemas"]["app.HeroRead"];
-            /** Playtime */
-            playtime: number;
-        };
-        /** HeroRead */
-        "app.HeroRead": {
-            /**
-             * Aliases
-             * @default []
-             */
-            aliases: string[];
-            /** Color */
-            color: string;
-            /** Id */
-            id: number;
-            /** Image Path */
-            image_path: string;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-            /** Type */
-            type: string;
-        };
-        /** HeroStat */
-        "app.HeroStat": {
-            /** Avg 10 */
-            avg_10: number;
-            /** Avg 10 All */
-            avg_10_all: number;
-            best: components["schemas"]["app.HeroStatBest"];
-            best_all: components["schemas"]["app.HeroStatBest"] | null;
-            name: components["schemas"]["app.LogStatsName"];
-            /** Overall */
-            overall: number;
-        };
-        /** HeroStatBest */
-        "app.HeroStatBest": {
-            /** Encounter Id */
-            encounter_id: number;
-            /** Map Image Path */
-            map_image_path: string;
-            /** Map Name */
-            map_name: string;
-            /** Player Name */
-            player_name: string;
-            /** Tournament Name */
-            tournament_name: string;
-            /** Value */
-            value: number;
-        };
-        /** HeroWithUserStats */
-        "app.HeroWithUserStats": {
-            hero: components["schemas"]["app.HeroRead"];
-            /** Stats */
-            stats: components["schemas"]["app.HeroStat"][];
-        };
         /**
          * LobbyLeaderboard
          * @description Full ranked list of every player in a tournament for one stat.
@@ -12640,7 +12606,8 @@ export interface components {
         "app.LobbyLeaderboard": {
             /** Entries */
             entries: components["schemas"]["app.LobbyLeaderboardEntry"][];
-            stat: components["schemas"]["app.LogStatsName"];
+            /** Stat */
+            stat: string;
             /** Total Players */
             total_players: number;
         };
@@ -12663,28 +12630,6 @@ export interface components {
          * @enum {string}
          */
         "app.LogStatsName": AppLogStatsName;
-        /** MapRead */
-        "app.MapRead": {
-            /**
-             * Aliases
-             * @default []
-             */
-            aliases: string[];
-            gamemode: components["schemas"]["app.GamemodeRead"] | null;
-            /** Gamemode Id */
-            gamemode_id: number;
-            /** Id */
-            id: number;
-            /** Image Path */
-            image_path: string;
-            /**
-             * In Competitive
-             * @default true
-             */
-            in_competitive: boolean;
-            /** Name */
-            name: string;
-        };
         /** MatchParticipantRead */
         "app.MatchParticipantRead": {
             /** Encounter Team Id */
@@ -13036,6 +12981,39 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Paginated[CharacterLeaderboardEntry] */
+        "app.Paginated_CharacterLeaderboardEntry_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.CharacterLeaderboardEntry"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[CharacterPlaytime] */
+        "app.Paginated_CharacterPlaytime_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.CharacterPlaytime"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[CharacterWithUserStats] */
+        "app.Paginated_CharacterWithUserStats_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.CharacterWithUserStats"][];
+            /** Total */
+            total: number;
+        };
         /** Paginated[EncounterReadWithUserStats] */
         "app.Paginated_EncounterReadWithUserStats_": {
             /** Page */
@@ -13044,39 +13022,6 @@ export interface components {
             per_page: number;
             /** Results */
             results: components["schemas"]["app.EncounterReadWithUserStats"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[HeroLeaderboardEntry] */
-        "app.Paginated_HeroLeaderboardEntry_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.HeroLeaderboardEntry"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[HeroPlaytime] */
-        "app.Paginated_HeroPlaytime_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.HeroPlaytime"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[HeroWithUserStats] */
-        "app.Paginated_HeroWithUserStats_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.HeroWithUserStats"][];
             /** Total */
             total: number;
         };
@@ -13387,8 +13332,8 @@ export interface components {
             name: string;
             /** Roles */
             roles: components["schemas"]["app.UserOverviewRoleDivision"][];
-            /** Top Heroes */
-            top_heroes: components["schemas"]["app.UserOverviewHero"][];
+            /** Top Characters */
+            top_characters: components["schemas"]["app.UserOverviewCharacter"][];
             /** Tournaments Count */
             tournaments_count: number;
         };
@@ -13411,6 +13356,38 @@ export interface components {
             letters: components["schemas"]["app.UserCatalogLetter"][];
             /** Total */
             total: number;
+        };
+        /** UserCharacterCompareMetric */
+        "app.UserCharacterCompareMetric": {
+            /** Better Worse */
+            better_worse: AppUserCharacterCompareMetricBetter_worseAnyOf0 | null;
+            /** Delta */
+            delta: number;
+            /** Delta Percent */
+            delta_percent: number | null;
+            /** Higher Is Better */
+            higher_is_better: boolean;
+            /** Left Value */
+            left_value: number;
+            /** Right Value */
+            right_value: number;
+            /** Stat */
+            stat: string;
+        };
+        /** UserCharacterCompareResponse */
+        "app.UserCharacterCompareResponse": {
+            baseline: components["schemas"]["app.UserCompareBaselineInfo"];
+            /** Left Playtime Seconds */
+            left_playtime_seconds: number;
+            map: components["schemas"]["app.CatalogEntityRead"] | null;
+            /** Metrics */
+            metrics: components["schemas"]["app.UserCharacterCompareMetric"][];
+            /** Right Playtime Seconds */
+            right_playtime_seconds: number;
+            subject: components["schemas"]["app.UserCompareUser"];
+            subject_character: components["schemas"]["app.CatalogEntityRead"] | null;
+            target: components["schemas"]["app.UserCompareUser"] | null;
+            target_character: components["schemas"]["app.CatalogEntityRead"] | null;
         };
         /** UserCompareBaselineInfo */
         "app.UserCompareBaselineInfo": {
@@ -13485,8 +13462,8 @@ export interface components {
              * @default null
              */
             best_placement: number | null;
-            /** Heroes */
-            heroes?: components["schemas"]["app.UserDraftCardHero"][];
+            /** Characters */
+            characters?: components["schemas"]["app.UserDraftCardCharacter"][];
             /** Maps */
             maps: number;
             /** Maps Lost */
@@ -13508,17 +13485,15 @@ export interface components {
             tournaments_won: number;
         };
         /**
-         * UserDraftCardHero
-         * @description One of the player's signature heroes on the draft-room player card.
+         * UserDraftCardCharacter
+         * @description One of the player's signature characters on the draft-room player card.
          */
-        "app.UserDraftCardHero": {
-            hero: components["schemas"]["app.HeroRead"];
+        "app.UserDraftCardCharacter": {
+            character: components["schemas"]["app.CatalogEntityRead"];
             /** Maps */
             maps: number;
             /** Maps Won */
             maps_won: number;
-            /** Role */
-            role: string;
         };
         /**
          * UserDraftCardRole
@@ -13652,65 +13627,34 @@ export interface components {
             /** @default null */
             status: components["schemas"]["app.TournamentStatus"] | null;
         };
-        /** UserHeroCompareMetric */
-        "app.UserHeroCompareMetric": {
-            /** Better Worse */
-            better_worse: AppUserHeroCompareMetricBetter_worseAnyOf0 | null;
-            /** Delta */
-            delta: number;
-            /** Delta Percent */
-            delta_percent: number | null;
-            /** Higher Is Better */
-            higher_is_better: boolean;
-            /** Left Value */
-            left_value: number;
-            /** Right Value */
-            right_value: number;
-            stat: components["schemas"]["app.LogStatsName"];
-        };
-        /** UserHeroCompareResponse */
-        "app.UserHeroCompareResponse": {
-            baseline: components["schemas"]["app.UserCompareBaselineInfo"];
-            /** Left Playtime Seconds */
-            left_playtime_seconds: number;
-            map: components["schemas"]["app.MapRead"] | null;
-            /** Metrics */
-            metrics: components["schemas"]["app.UserHeroCompareMetric"][];
-            /** Right Playtime Seconds */
-            right_playtime_seconds: number;
-            subject: components["schemas"]["app.UserCompareUser"];
-            subject_hero: components["schemas"]["app.HeroRead"] | null;
-            target: components["schemas"]["app.UserCompareUser"] | null;
-            target_hero: components["schemas"]["app.HeroRead"] | null;
-        };
         /** UserMap */
         "app.UserMap": {
+            /**
+             * Character Stats
+             * @default null
+             */
+            character_stats: components["schemas"]["app.UserMapCharacterStats"][] | null;
+            /** Characters */
+            characters: components["schemas"]["app.CharacterPlaytime"][];
             /** Count */
             count: number;
             /** Draw */
             draw: number;
-            /**
-             * Hero Stats
-             * @default null
-             */
-            hero_stats: components["schemas"]["app.UserMapHeroStats"][] | null;
-            /** Heroes */
-            heroes: components["schemas"]["app.HeroPlaytime"][];
             /** Loss */
             loss: number;
-            map: components["schemas"]["app.MapRead"];
+            map: components["schemas"]["app.CatalogEntityRead"];
             /** Win */
             win: number;
             /** Win Rate */
             win_rate: number;
         };
-        /** UserMapHeroStats */
-        "app.UserMapHeroStats": {
+        /** UserMapCharacterStats */
+        "app.UserMapCharacterStats": {
+            character: components["schemas"]["app.CatalogEntityRead"];
             /** Draw */
             draw: number;
             /** Games */
             games: number;
-            hero: components["schemas"]["app.HeroRead"];
             /** Loss */
             loss: number;
             /** Playtime Seconds */
@@ -13730,7 +13674,7 @@ export interface components {
             draw: number;
             /** Loss */
             loss: number;
-            map: components["schemas"]["app.MapRead"];
+            map: components["schemas"]["app.CatalogEntityRead"];
             /** Win */
             win: number;
             /** Win Rate */
@@ -13810,18 +13754,18 @@ export interface components {
             /** Avg Playoff Placement */
             avg_playoff_placement: number | null;
         };
+        /** UserOverviewCharacter */
+        "app.UserOverviewCharacter": {
+            character: components["schemas"]["app.CatalogEntityRead"];
+            /** Playtime Seconds */
+            playtime_seconds: number;
+        };
         /** UserOverviewDivisionCount */
         "app.UserOverviewDivisionCount": {
             /** Count */
             count: number;
             /** Division */
             division: number;
-        };
-        /** UserOverviewHero */
-        "app.UserOverviewHero": {
-            hero: components["schemas"]["app.HeroRead"];
-            /** Playtime Seconds */
-            playtime_seconds: number;
         };
         /**
          * UserOverviewResponse
@@ -13877,8 +13821,8 @@ export interface components {
             name: string;
             /** Roles */
             roles: components["schemas"]["app.UserOverviewRoleDivision"][];
-            /** Top Heroes */
-            top_heroes: components["schemas"]["app.UserOverviewHero"][];
+            /** Top Characters */
+            top_characters: components["schemas"]["app.UserOverviewCharacter"][];
             /** Tournaments Count */
             tournaments_count: number;
         };
@@ -13921,15 +13865,15 @@ export interface components {
             avg_placement: number | null;
             /** Avg Playoff Placement */
             avg_playoff_placement: number | null;
-            /** Hero Statistics */
-            hero_statistics: components["schemas"]["app.HeroPlaytime"][];
-            /** Heroes Count */
-            heroes_count: number;
+            /** Character Statistics */
+            character_statistics: components["schemas"]["app.CharacterPlaytime"][];
+            /** Characters Count */
+            characters_count: number;
             /** Maps Total */
             maps_total: number;
             /** Maps Won */
             maps_won: number;
-            most_played_hero: components["schemas"]["app.HeroRead"] | null;
+            most_played_character: components["schemas"]["app.CatalogEntityRead"] | null;
             /** Roles */
             roles: components["schemas"]["app.UserRole"][];
             /** Tournaments */
@@ -14049,10 +13993,10 @@ export interface components {
              * @default null
              */
             avg_mvp: number | null;
+            /** Characters */
+            characters?: components["schemas"]["app.CatalogEntityRead"][];
             /** Division */
             division: number;
-            /** Heroes */
-            heroes?: components["schemas"]["app.HeroRead"][];
             /** Id */
             id: number;
             /** Is Newcomer */
@@ -37986,140 +37930,6 @@ export interface operations {
             };
         };
     };
-    get__api_v1_heroes_statistics_playtime: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                sort?: PathsApiV1HeroesStatisticsPlaytimeGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
-                user_id?: number | "all";
-                tournament_id?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.Paginated_HeroPlaytime_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_heroes__hero_id__leaderboard: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                tournament_id?: number | null;
-                stat?: components["schemas"]["app.LogStatsName"];
-            };
-            header?: never;
-            path: {
-                hero_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.Paginated_HeroLeaderboardEntry_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     get__api_v1_matches: {
         parameters: {
             query?: {
@@ -40558,13 +40368,14 @@ export interface operations {
     };
     get__api_v1_statistics_champion: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsChampionGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -40623,8 +40434,9 @@ export interface operations {
     };
     get__api_v1_statistics_dashboard: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                discipline: string;
+                workspace_id?: number;
             };
             header?: never;
             path?: never;
@@ -40683,13 +40495,14 @@ export interface operations {
     };
     get__api_v1_statistics_winrate: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWinrateGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -40748,13 +40561,14 @@ export interface operations {
     };
     get__api_v1_statistics_won_maps: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWonMapsGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -40769,6 +40583,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app.Paginated_PlayerStatistics_"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_statistics__discipline__characters_playtime: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                sort?: PathsApiV1StatisticsDisciplineCharactersPlaytimeGetParametersQuerySort;
+                order?: components["schemas"]["app.SortOrder"];
+                user_id?: number | "all";
+                tournament_id?: number | null;
+            };
+            header?: never;
+            path: {
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_CharacterPlaytime_"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_statistics__discipline__characters__entity_id__leaderboard: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                tournament_id?: number | null;
+                stat?: components["schemas"]["app.LogStatsName"];
+            };
+            header?: never;
+            path: {
+                discipline: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_CharacterLeaderboardEntry_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43012,7 +42963,7 @@ export interface operations {
     };
     get__api_v1_users_overview: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
@@ -43025,6 +42976,7 @@ export interface operations {
                 divisions?: number[];
                 has_logs?: boolean;
                 min_encounters?: number;
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -43083,7 +43035,7 @@ export interface operations {
     };
     get__api_v1_users_overview_catalog: {
         parameters: {
-            query?: {
+            query: {
                 role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
@@ -43091,6 +43043,7 @@ export interface operations {
                 letter?: string | null;
                 per_letter?: number;
                 max_letters?: number;
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -43149,11 +43102,12 @@ export interface operations {
     };
     get__api_v1_users_overview_stats: {
         parameters: {
-            query?: {
+            query: {
                 role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -43270,15 +43224,85 @@ export interface operations {
             };
         };
     };
+    get__api_v1_users__id__characters: {
+        parameters: {
+            query: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                discipline: string;
+                stats?: string[];
+                tournament_id?: number;
+                workspace_id?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_CharacterWithUserStats_"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_users__id__compare: {
         parameters: {
-            query?: {
+            query: {
                 baseline?: PathsApiV1UsersIdCompareGetParametersQueryBaseline;
                 target_user_id?: number | null;
                 role?: components["schemas"]["app.RoleRef"] | null;
                 div_min?: number | null;
                 div_max?: number | null;
                 tournament_id?: number | null;
+                discipline: string;
             };
             header?: never;
             path: {
@@ -43337,19 +43361,20 @@ export interface operations {
             };
         };
     };
-    get__api_v1_users__id__compare_heroes: {
+    get__api_v1_users__id__compare_characters: {
         parameters: {
-            query?: {
-                baseline?: PathsApiV1UsersIdCompareHeroesGetParametersQueryBaseline;
+            query: {
+                baseline?: PathsApiV1UsersIdCompareCharactersGetParametersQueryBaseline;
                 target_user_id?: number | null;
-                left_hero_id?: number | null;
-                right_hero_id?: number | null;
+                left_entity_id?: number | null;
+                right_entity_id?: number | null;
                 map_id?: number | null;
                 role?: components["schemas"]["app.RoleRef"] | null;
                 div_min?: number | null;
                 div_max?: number | null;
                 tournament_id?: number | null;
-                stats?: components["schemas"]["app.LogStatsName"][] | null;
+                stats?: string[] | null;
+                discipline: string;
             };
             header?: never;
             path: {
@@ -43365,7 +43390,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserHeroCompareResponse"];
+                    "application/json": components["schemas"]["app.UserCharacterCompareResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43472,8 +43497,9 @@ export interface operations {
     };
     get__api_v1_users__id__draft_card: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                discipline: string;
+                workspace_id?: number;
             };
             header?: never;
             path: {
@@ -43534,13 +43560,14 @@ export interface operations {
     };
     get__api_v1_users__id__encounters: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersIdEncountersGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                discipline: string;
                 result?: string;
                 stage?: string;
                 mvp1?: boolean;
@@ -43604,77 +43631,9 @@ export interface operations {
             };
         };
     };
-    get__api_v1_users__id__heroes: {
-        parameters: {
-            query?: {
-                page?: number;
-                per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                stats?: string[];
-                tournament_id?: number;
-                workspace_id?: number;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.Paginated_HeroWithUserStats_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     get__api_v1_users__id__maps: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
@@ -43684,8 +43643,9 @@ export interface operations {
                 query?: string;
                 fields?: string[];
                 min_count?: number | null;
-                gamemode_id?: number | null;
+                mode_id?: number | null;
                 tournament_id?: number | null;
+                discipline: string;
             };
             header?: never;
             path: {
@@ -43746,7 +43706,7 @@ export interface operations {
     };
     get__api_v1_users__id__maps_summary: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
@@ -43756,8 +43716,9 @@ export interface operations {
                 query?: string;
                 fields?: string[];
                 min_count?: number | null;
-                gamemode_id?: number | null;
+                mode_id?: number | null;
                 tournament_id?: number | null;
+                discipline: string;
             };
             header?: never;
             path: {
@@ -43818,8 +43779,9 @@ export interface operations {
     };
     get__api_v1_users__id__matches_summary: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                discipline: string;
+                workspace_id?: number;
             };
             header?: never;
             path: {
@@ -43880,8 +43842,9 @@ export interface operations {
     };
     get__api_v1_users__id__profile: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                discipline: string;
+                workspace_id?: number;
             };
             header?: never;
             path: {
@@ -44009,13 +43972,14 @@ export interface operations {
     };
     get__api_v1_users__id__teammates: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersIdTeammatesGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                discipline: string;
             };
             header?: never;
             path: {
@@ -44076,8 +44040,9 @@ export interface operations {
     };
     get__api_v1_users__id__tournaments: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                discipline: string;
+                workspace_id?: number;
             };
             header?: never;
             path: {
@@ -74147,12 +74112,6 @@ export enum PathsApiV1EncountersOverviewGetParametersQueryScope {
     all = "all",
     my_team = "my_team"
 }
-export enum PathsApiV1HeroesStatisticsPlaytimeGetParametersQuerySort {
-    id = "id",
-    name = "name",
-    slug = "slug",
-    playtime = "playtime"
-}
 export enum PathsApiV1StatisticsChampionGetParametersQuerySort {
     id = "id",
     name = "name",
@@ -74167,6 +74126,12 @@ export enum PathsApiV1StatisticsWonMapsGetParametersQuerySort {
     id = "id",
     name = "name",
     value = "value"
+}
+export enum PathsApiV1StatisticsDisciplineCharactersPlaytimeGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    slug = "slug",
+    playtime = "playtime"
 }
 export enum PathsApiV1TournamentsGetParametersQuerySort {
     id = "id",
@@ -74190,7 +74155,7 @@ export enum PathsApiV1UsersIdCompareGetParametersQueryBaseline {
     global = "global",
     cohort = "cohort"
 }
-export enum PathsApiV1UsersIdCompareHeroesGetParametersQueryBaseline {
+export enum PathsApiV1UsersIdCompareCharactersGetParametersQueryBaseline {
     target_user = "target_user",
     global = "global",
     cohort = "cohort"
@@ -74407,17 +74372,17 @@ export enum AppTournamentStatus {
     completed = "completed",
     archived = "archived"
 }
+export enum AppUserCharacterCompareMetricBetter_worseAnyOf0 {
+    better = "better",
+    worse = "worse",
+    equal = "equal"
+}
 export enum AppUserCompareBaselineInfoMode {
     target_user = "target_user",
     global = "global",
     cohort = "cohort"
 }
 export enum AppUserCompareMetricBetter_worseAnyOf0 {
-    better = "better",
-    worse = "worse",
-    equal = "equal"
-}
-export enum AppUserHeroCompareMetricBetter_worseAnyOf0 {
     better = "better",
     worse = "worse",
     equal = "equal"

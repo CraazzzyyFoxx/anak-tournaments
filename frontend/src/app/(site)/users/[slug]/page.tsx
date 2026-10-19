@@ -27,7 +27,9 @@ import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderS
 import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-jsonld";
 import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEmpty";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
+import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
 
 // The route still renders dynamically (api-fetch reads the workspace cookie),
 // but we no longer force `fetchCache: force-no-store` — public, workspace-scoped
@@ -39,6 +41,7 @@ type UserTab = (typeof USER_TABS)[number];
 
 type UserPageSearchParams = {
   tab?: string;
+  discipline?: string | string[];
   tournamentId?: string;
   page?: string;
   selectedTournamentId?: string;
@@ -50,6 +53,9 @@ type UserPageSearchParams = {
   mLogs?: string;
   mOpp?: string;
 };
+
+/** What every tab reads with: the viewing scope and the one game the profile shows (§2.3 concrete browsing). */
+type ProfileScope = { scope: StatsScope; discipline: string };
 
 const isUserTab = (value: string): value is UserTab => {
   return USER_TABS.includes(value as UserTab);
@@ -107,10 +113,10 @@ export async function generateMetadata(props: {
   }
 }
 
-const getUserAndProfile = cache(async (slug: string, scope: StatsScope) => {
+const getUserAndProfile = cache(async (slug: string, scope: StatsScope, discipline: string) => {
   try {
     const user = await userService.getUserByName(decodePlayerSlug(slug));
-    const profile = await userService.getUserProfile(user.id, scope);
+    const profile = await userService.getUserProfile(user.id, discipline, scope);
     return { user, profile };
   } catch (error) {
     if (isNotFoundError(error)) {
@@ -125,18 +131,18 @@ type UserAndProfile = Awaited<ReturnType<typeof getUserAndProfile>>;
 const UserHeaderSection = async ({
   userAndProfile,
   slug,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
   slug: string;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
   const { user, profile } = await userAndProfile;
   const canonical = new URL(`/users/${slug}`, SITE_URL_OBJ).toString();
   return (
     <>
       <ProfileJsonLd user={user} profile={profile} url={canonical} />
-      <UserHeader user={user} profile={profile} scope={scope} />
+      <UserHeader user={user} profile={profile} {...profileScope} />
     </>
   );
 };
@@ -144,76 +150,81 @@ const UserHeaderSection = async ({
 const UserOverviewTab = async ({
   userAndProfile,
   tournamentId,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
   tournamentId?: number;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
   const { user, profile } = await userAndProfile;
-  return <UserOverviewPage user={user} profile={profile} tournamentId={tournamentId} scope={scope} />;
+  return <UserOverviewPage user={user} profile={profile} tournamentId={tournamentId} {...profileScope} />;
 };
 
 const UserTournamentsTab = async ({
   userAndProfile,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
-  const { user } = await userAndProfile;
-  return <UserTournamentsPage user={user} scope={scope} />;
+  const { user, profile } = await userAndProfile;
+  return <UserTournamentsPage user={user} profile={profile} {...profileScope} />;
 };
 
 const UserMatchesTab = async ({
   userAndProfile,
   page,
   filters,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
   page: number;
   filters?: MatchesFilters;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
   const { user } = await userAndProfile;
-  return <UserEncountersPage user={user} page={page} filters={filters} scope={scope} />;
+  return <UserEncountersPage user={user} page={page} filters={filters} {...profileScope} />;
 };
 
 const UserMapsTab = async ({
   userAndProfile,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
   const { user } = await userAndProfile;
-  return <UserMapsPage user={user} scope={scope} />;
+  return <UserMapsPage user={user} {...profileScope} />;
 };
 
 const UserHeroesTab = async ({
   userAndProfile,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
   const { user } = await userAndProfile;
-  return <UserHeroesPage user={user} scope={scope} />;
+  return <UserHeroesPage user={user} {...profileScope} />;
 };
 
 const UserAchievementsTab = async ({
   userAndProfile,
   selectedTournamentId,
-  scope
+  profileScope
 }: {
   userAndProfile: Promise<UserAndProfile>;
   selectedTournamentId?: string;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
-  const { user } = await userAndProfile;
+  const { user, profile } = await userAndProfile;
   return (
-    <UserAchievementPage user={user} selectedTournamentId={selectedTournamentId} scope={scope} />
+    <UserAchievementPage
+      user={user}
+      tournaments={profile.tournaments}
+      selectedTournamentId={selectedTournamentId}
+      scope={profileScope.scope}
+    />
   );
 };
 
@@ -224,7 +235,7 @@ const resolveTabContent = ({
   pageNumber,
   achievementTournamentId,
   matchFilters,
-  scope
+  profileScope
 }: {
   activeTab: UserTab;
   userAndProfile: Promise<UserAndProfile>;
@@ -232,7 +243,7 @@ const resolveTabContent = ({
   pageNumber: number;
   achievementTournamentId?: string;
   matchFilters?: MatchesFilters;
-  scope: StatsScope;
+  profileScope: ProfileScope;
 }) => {
   switch (activeTab) {
     case "overview":
@@ -243,7 +254,7 @@ const resolveTabContent = ({
           <UserOverviewTab
             userAndProfile={userAndProfile}
             tournamentId={tournamentId}
-            scope={scope}
+            profileScope={profileScope}
           />
         )
       };
@@ -251,7 +262,7 @@ const resolveTabContent = ({
       return {
         value: "tournaments",
         fallback: <UserTournamentsPageSkeleton />,
-        content: <UserTournamentsTab userAndProfile={userAndProfile} scope={scope} />
+        content: <UserTournamentsTab userAndProfile={userAndProfile} profileScope={profileScope} />
       };
     case "matches":
       return {
@@ -262,7 +273,7 @@ const resolveTabContent = ({
             userAndProfile={userAndProfile}
             page={pageNumber}
             filters={matchFilters}
-            scope={scope}
+            profileScope={profileScope}
           />
         )
       };
@@ -270,13 +281,13 @@ const resolveTabContent = ({
       return {
         value: "maps",
         fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
-        content: <UserMapsTab userAndProfile={userAndProfile} scope={scope} />
+        content: <UserMapsTab userAndProfile={userAndProfile} profileScope={profileScope} />
       };
     case "heroes":
       return {
         value: "heroes",
         fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
-        content: <UserHeroesTab userAndProfile={userAndProfile} scope={scope} />
+        content: <UserHeroesTab userAndProfile={userAndProfile} profileScope={profileScope} />
       };
     case "achievements":
       return {
@@ -286,7 +297,7 @@ const resolveTabContent = ({
           <UserAchievementsTab
             userAndProfile={userAndProfile}
             selectedTournamentId={achievementTournamentId}
-            scope={scope}
+            profileScope={profileScope}
           />
         )
       };
@@ -315,7 +326,7 @@ const ProfileBody = async ({
     return <UserProfileEmpty name={user.name} />;
   }
 
-  const heroesCount = profile.heroes_count ?? null;
+  const charactersCount = profile.characters_count;
   const tournamentsCount = profile.tournaments_count ?? null;
   // Maps badge: not always available — approximate via maps_total
   const mapsTotal = profile.maps_total ?? null;
@@ -325,7 +336,7 @@ const ProfileBody = async ({
       activeTab={activeTab}
       badges={{
         tournaments: tournamentsCount,
-        heroes: heroesCount,
+        heroes: charactersCount,
         maps: mapsTotal
       }}
     >
@@ -343,8 +354,18 @@ export default async function UserPage({
 }>) {
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
-  const scope = await resolveStatsScope();
-  const userAndProfile = getUserAndProfile(resolvedParams.slug, scope);
+  const [scope, browsing] = await Promise.all([
+    resolveStatsScope(),
+    resolveServerBrowsingDiscipline(resolvedSearchParams.discipline)
+  ]);
+  // Without the installed games there is no game to read: an error, never a guessed one.
+  if (browsing.resolved === null) throw new Error("The installed games could not be read.");
+  if (browsing.resolved.kind !== "concrete") {
+    // Invalid/empty: the named value and the selector stand in for the profile; no game request is made.
+    return <ServerBrowsingDiscipline initial={browsing.init} />;
+  }
+  const profileScope: ProfileScope = { scope, discipline: browsing.resolved.code };
+  const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, profileScope.discipline);
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";
   const activeTab: UserTab = isUserTab(requestedTab) ? requestedTab : "overview";
@@ -367,16 +388,18 @@ export default async function UserPage({
     pageNumber,
     achievementTournamentId,
     matchFilters,
-    scope
+    profileScope
   });
-
   return (
     <>
+      <div className="flex justify-end">
+        <ServerBrowsingDiscipline initial={browsing.init} />
+      </div>
       <Suspense fallback={<UserHeaderSkeleton />}>
         <UserHeaderSection
           userAndProfile={userAndProfile}
           slug={resolvedParams.slug}
-          scope={scope}
+          profileScope={profileScope}
         />
       </Suspense>
       <Suspense

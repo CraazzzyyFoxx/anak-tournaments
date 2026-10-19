@@ -36,7 +36,6 @@ vi.mock("@/components/ui/switch", () => ({
 }));
 vi.mock("@/hooks/useAuthProfile", () => ({ useAuthProfile: () => ({ user: null }) }));
 vi.mock("@/services/me.service", () => ({ default: { getSocialAccounts: async () => null } }));
-vi.mock("@/services/hero.service", () => ({ default: { getAll: async () => ({ results: [] }) } }));
 vi.mock("@/services/registration.service", () => ({
   default: {
     getMySubscriptionStatus: async () => ({ required: false, verdicts: {} }),

@@ -1,15 +1,16 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import { LogStatsName } from "@/types/stats.types";
+import { characterClass } from "@/lib/catalog/attrs";
 import { normalizeRole, type AqtRoleKey } from "@/lib/roster/player-role";
 import HeroImage from "@/components/hero/HeroImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Progress } from "@/components/ui/progress";
 import { formatPercent, formatSeconds } from "@/lib/format";
 import { getWinrateColor } from "@/lib/colors";
-import type { UserMapHeroStats } from "@/types/user.types";
+import type { UserMapCharacterStats } from "@/types/user.types";
 import type { HeroPopoverStat } from "@/lib/hero/popover-stats";
 
 // Localized role name (reuses the shared role labels).
@@ -47,7 +48,7 @@ const avg10 = (stats: HeroPopoverStat[] | undefined, name: LogStatsName): number
 const compact = (value: number): string =>
   Math.abs(value) >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toFixed(0);
 
-type HeroLike = Pick<Hero, "name" | "image_path" | "role"> & { type?: string; color?: string };
+type HeroLike = Pick<CatalogEntityChip, "name" | "image_path" | "attrs">;
 
 interface Cell {
   label: string;
@@ -69,7 +70,7 @@ interface Props {
    * playtime share of that map. Absorbed from the former, unlocalized
    * `HeroStatsPopover`.
    */
-  mapStats?: UserMapHeroStats;
+  mapStats?: UserMapCharacterStats;
 }
 
 /**
@@ -81,8 +82,8 @@ interface Props {
  */
 const HeroUserStatsPopover = ({ hero, stats, playtimeShare, mapStats }: Props) => {
   const t = useTranslations();
-  const roleKey = normalizeRole(hero.type ?? hero.role);
-  const roleName = roleKey ? t(ROLE_LABEL_KEY[roleKey] as Parameters<typeof t>[0]) : (hero.type ?? hero.role ?? "");
+  const roleKey = normalizeRole(characterClass(hero));
+  const roleName = roleKey ? t(ROLE_LABEL_KEY[roleKey] as Parameters<typeof t>[0]) : (characterClass(hero) ?? "");
 
   const cells: Cell[] = [];
   if (mapStats) {

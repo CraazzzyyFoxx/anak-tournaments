@@ -42,8 +42,8 @@ vi.mock("@/services/catalog.service", () => ({
     list: (...args: unknown[]) => mocks.listEntities(...args)
   }
 }));
-vi.mock("@/services/hero.service", () => ({
-  default: { getHeroLeaderboard: (...args: unknown[]) => mocks.leaderboard(...args) }
+vi.mock("@/services/statistics.service", () => ({
+  default: { getCharacterLeaderboard: (...args: unknown[]) => mocks.leaderboard(...args) }
 }));
 vi.mock("@/services/tournament.service", () => ({
   default: { getAll: async () => ({ results: [], total: 0, page: 1, per_page: -1 }) }
@@ -112,7 +112,8 @@ describe("hero leaderboard selection", () => {
     await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
 
     expect(mocks.leaderboard).toHaveBeenCalledTimes(1);
-    expect(mocks.leaderboard.mock.calls[0]?.[0]).toBe(7);
+    // The scoped game's statistics route, for the checked entity.
+    expect(mocks.leaderboard.mock.calls[0]?.slice(0, 2)).toEqual(["overwatch", 7]);
     expect(container.textContent).not.toContain("That hero is not in this game");
   });
 

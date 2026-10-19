@@ -6,9 +6,8 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Column, ColumnHead, LoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
-import heroService from "@/services/hero.service";
 import statisticsService from "@/services/statistics.service";
-import type { HeroPlaytime } from "@/types/hero.types";
+import type { CharacterPlaytime } from "@/types/user.types";
 import type { TournamentDivisionStatistics, TournamentStatistics } from "@/types/statistics.types";
 import type { Workspace } from "@/types/workspace.types";
 
@@ -17,7 +16,7 @@ import { ScopedMoreLink } from "./WorkspaceScopeLink";
 const TITLE_ID = "cs-title";
 /** How many tournaments fit the activity chart before the bars get unreadable. */
 const ACTIVITY_SPAN = 24;
-const TOP_HEROES = 5;
+const TOP_CHARACTERS = 5;
 
 const ROLES = [
   { key: "Tank", color: "var(--aqt-tank)", avg: "tank_avg_div" },
@@ -77,7 +76,7 @@ export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace
         <Column>
           <ColumnHead title={<Skeleton className="h-3 w-36" />} />
           <div className="mt-4 grid gap-2.5">
-            {Array.from({ length: TOP_HEROES }, (_, row) => (
+            {Array.from({ length: TOP_CHARACTERS }, (_, row) => (
               <Skeleton key={row} className="h-8 w-full" />
             ))}
           </div>
@@ -87,18 +86,25 @@ export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace
   );
 }
 
-/** Three readings of the community's whole history: turnout, skill, heroes. */
-export async function CommunityStats({ workspace }: Readonly<{ workspace: Workspace }>) {
+/** Three readings of the community's whole history: turnout, skill, and (of the browsed game) characters. */
+export async function CommunityStats({
+  workspace,
+  discipline
+}: Readonly<{ workspace: Workspace; discipline: string | null }>) {
   const workspaceId = workspace.id;
   const t = await getTranslations("workspace");
 
-  const [history, division, heroes] = await Promise.all([
+  const [history, division, characters] = await Promise.all([
     statisticsService.getTournaments({ workspaceId }).catch(() => null),
     statisticsService.getTournamentsDivision({ workspaceId }).catch(() => null),
-    heroService.getHeroPlaytime(1, TOP_HEROES, "all", null, { workspaceId }).catch(() => null)
+    discipline
+      ? statisticsService
+          .getCharacterPlaytime(discipline, { axis: workspaceId, perPage: TOP_CHARACTERS })
+          .catch(() => null)
+      : null
   ]);
 
-  if (history === null && division === null && heroes === null) {
+  if (history === null && division === null && characters === null) {
     return (
       <Shell workspace={workspace}>
         <LoadError what={t("stats.what")} dashed />
@@ -111,7 +117,7 @@ export async function CommunityStats({ workspace }: Readonly<{ workspace: Worksp
       <StatsGrid>
         <ActivityColumn history={history} />
         <DivisionColumn workspace={workspace} division={division} />
-        <HeroesColumn heroes={heroes?.results ?? null} />
+        {discipline ? <CharactersColumn characters={characters?.results ?? null} /> : null}
       </StatsGrid>
     </Shell>
   );
@@ -262,21 +268,21 @@ async function DivisionColumn({
   );
 }
 
-/** Which heroes the community's matches are actually spent on. */
-async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null }>) {
+/** Which characters the community's matches are actually spent on. */
+async function CharactersColumn({ characters }: Readonly<{ characters: CharacterPlaytime[] | null }>) {
   const [t, format] = await Promise.all([getTranslations("workspace"), getFormatter()]);
 
-  if (heroes === null || heroes.length === 0) {
+  if (characters === null || characters.length === 0) {
     return (
       <Column>
         <ColumnHead title={t("stats.topHeroes")} sub={t("stats.topHeroesSub")} />
-        {heroes === null ? <LoadError /> : null}
+        {characters === null ? <LoadError /> : null}
       </Column>
     );
   }
 
   // `playtime` is already a share of the community's total play time.
-  const top = heroes.slice(0, TOP_HEROES);
+  const top = characters.slice(0, TOP_CHARACTERS);
   const leader = Math.max(...top.map((row) => row.playtime));
 
   return (
@@ -284,8 +290,8 @@ async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null
       <ColumnHead title={t("stats.topHeroes")} sub={t("stats.topHeroesSub")} />
       <ol className="mt-4 grid gap-2.5">
         {top.map((row) => {
-          const role = row.hero.type ?? row.hero.role;
-          const color = ROLES.find((entry) => entry.key === role)?.color ?? "var(--aqt-fg-muted)";
+          // The character's own catalog colour, else the neutral ink — never a hue borrowed from a role.
+          const color = typeof row.entity.attrs.color === "string" ? row.entity.attrs.color : "var(--aqt-fg-muted)";
           const share = format.number(row.playtime, {
             style: "percent",
             minimumFractionDigits: 1,
@@ -293,27 +299,21 @@ async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null
           });
           return (
             <li
-              key={row.hero.id}
+              key={row.entity.id}
               className="grid min-h-8 grid-cols-[28px_84px_minmax(0,1fr)_52px] items-center gap-2.5 text-caption"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- hero portraits live on the asset host next/image is not configured for */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- character portraits live on the asset host next/image is not configured for */}
               <img
-                src={row.hero.image_path}
+                src={row.entity.image_path ?? undefined}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] object-cover"
               />
-              <span className="truncate text-[color:var(--aqt-fg)]">{row.hero.name}</span>
+              <span className="truncate text-[color:var(--aqt-fg)]">{row.entity.name}</span>
               <span
                 role="img"
-                aria-label={t("stats.heroAlt", {
-                  name: row.hero.name,
-                  share,
-                  role: role
-                    ? t(`roles.${role as "Tank" | "Damage" | "Support"}`).toLowerCase()
-                    : ""
-                })}
+                aria-label={t("stats.heroAlt", { name: row.entity.name, share })}
                 className="h-2 overflow-hidden rounded-[4px] bg-[color:var(--aqt-overlay-3)]"
               >
                 <i

@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import { AvatarStack } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useHoverIntent } from "@/hooks/useHoverIntent";
 import { catalogInitials } from "@/lib/catalog/initials";
@@ -141,5 +142,36 @@ function HoverPopover({
         {content}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * Several entities as one overlapping stack (a player's characters), collapsing to "+N" after `limit`. Each portrait
+ * may carry its own hover card through `renderPopover`.
+ */
+export function CatalogEntityStrip<E extends ImageEntity>({
+  entities,
+  size = "sm",
+  limit = 5,
+  className,
+  renderPopover
+}: Readonly<{
+  entities: readonly E[];
+  size?: CatalogEntityImageSize | number;
+  limit?: number;
+  className?: string;
+  renderPopover?: (entity: E, index: number) => React.ReactNode;
+}>) {
+  return (
+    <AvatarStack max={limit} size={typeof size === "number" ? size : SIZE_PX[size]} className={className}>
+      {entities.map((entity, index) => (
+        <CatalogEntityImage
+          key={`${entity.name}-${index}`}
+          entity={entity}
+          size={size}
+          popover={renderPopover?.(entity, index)}
+        />
+      ))}
+    </AvatarStack>
   );
 }

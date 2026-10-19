@@ -41,7 +41,7 @@ interface RoleTilesProps {
   ontology: RoleOntology | null;
 }
 
-/** One tile per role the player plays: rank, crest, sub-role, maps/WR on the role, top heroes with their WR. */
+/** One tile per role the player plays: rank, crest, sub-role, maps/WR on the role, top characters with their WR. */
 export function RoleTiles({
   player,
   selection,
@@ -63,7 +63,7 @@ export function RoleTiles({
   const interactive = team != null;
   // Stats lines render whenever a card exists or is coming, so arriving data fills them in place.
   const withStats = card != null || cardPending;
-  const heroRecords = new Map(card?.heroes.map((entry) => [entry.hero.slug, entry]) ?? []);
+  const characterRecords = new Map(card?.characters?.map((entry) => [entry.character.slug, entry]) ?? []);
   const roleTotals = aggregateRoleStats(card?.roles ?? []);
 
   if (roles.length === 0) {
@@ -161,8 +161,8 @@ export function RoleTiles({
                 {heroes.length > 0 && (
                   <span className="flex items-start gap-1">
                     {heroes.map((hero) => {
-                      const record = heroRecords.get(hero.slug);
-                      const name = record?.hero.name ?? hero.slug;
+                      const record = characterRecords.get(hero.slug);
+                      const name = record?.character.name ?? hero.slug;
                       const heroShare = record && record.maps > 0 ? record.maps_won / record.maps : 0;
                       const heroLow = record == null || record.maps < MIN_WINRATE_MAPS;
                       const heroTitle =

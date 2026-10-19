@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,7 +60,7 @@ export function PlayerCard({
 
       <div className="flex items-center justify-between gap-2">
         <RolesCrests roles={user.roles} grids={grids} size={26} />
-        <HeroStrip heroes={user.top_heroes.slice(0, 3).map((entry) => entry.hero)} limit={3} />
+        <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
       </div>
 
       <div className="grid grid-cols-3 gap-2 border-t border-[color:var(--aqt-border)] pt-2.5">

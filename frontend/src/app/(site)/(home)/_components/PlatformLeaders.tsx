@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { LeadersContent, LeadersSkeleton, type KpiKey } from "@/components/site/leaders";
 import { MoreLink, Section, SectionHead } from "@/components/site/open-layout";
 import statisticsService from "@/services/statistics.service";
+import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 
 import { getPublicWorkspaces } from "./home-data";
 
@@ -22,13 +23,16 @@ const SECONDARY_KEYS = [
   "champions"
 ] as const satisfies readonly KpiKey[];
 
-/** Platform scale first, followed by the two all-time player leaderboards. */
+/** Platform scale first, followed by the two all-time player leaderboards of the browsing game (§2.3 composite). */
 export async function PlatformLeaders() {
+  const { resolved } = await resolveServerBrowsingDiscipline(undefined);
+  // The leaderboards are one game's; with no game to read there are none (the totals are game-neutral).
+  const game = resolved?.kind === "concrete" ? resolved.code : null;
   const [t, overall, champions, winrate, workspaces] = await Promise.all([
     getTranslations("home.leaders"),
     statisticsService.getOverallStatistics({ skipWorkspace: true }).catch(() => null),
-    statisticsService.getChampions({ skipWorkspace: true }).catch(() => null),
-    statisticsService.getTopWinratePlayers({ skipWorkspace: true }).catch(() => null),
+    game ? statisticsService.getChampions(game, { skipWorkspace: true }).catch(() => null) : null,
+    game ? statisticsService.getTopWinratePlayers(game, { skipWorkspace: true }).catch(() => null) : null,
     getPublicWorkspaces().catch(() => null)
   ]);
 
@@ -51,21 +55,23 @@ export async function PlatformLeaders() {
         totals,
         primaryKeys: PRIMARY_KEYS,
         secondaryKeys: SECONDARY_KEYS,
-        boards: [
-          {
-            title: t("mostWins"),
-            sub: t("winsSub"),
-            rows: champions ? champions.results.slice(0, 5) : null,
-            value: "wins"
-          },
-          {
-            title: t("bestWinrate"),
-            sub: t("winrateSub"),
-            hint: t("winrateTitle"),
-            rows: winrate ? winrate.results.slice(0, 5) : null,
-            value: "winrate"
-          }
-        ]
+        boards: game
+          ? [
+              {
+                title: t("mostWins"),
+                sub: t("winsSub"),
+                rows: champions ? champions.results.slice(0, 5) : null,
+                value: "wins"
+              },
+              {
+                title: t("bestWinrate"),
+                sub: t("winrateSub"),
+                hint: t("winrateTitle"),
+                rows: winrate ? winrate.results.slice(0, 5) : null,
+                value: "winrate"
+              }
+            ]
+          : []
       })}
     </Section>
   );

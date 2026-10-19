@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { roleOf } from "@/lib/roster/role-ref";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import HeroImage from "@/components/hero/HeroImage";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,20 +46,23 @@ function Winrate({ won, total }: Readonly<{ won: number; total: number }>) {
 export function UserExpandedRow({
   user,
   workspaceId,
+  discipline,
   compareSelected,
   compareDisabled,
   onToggleCompare
 }: Readonly<{
   user: PlayerIdentity;
   workspaceId: number | "all" | null;
+  /** The index's game: the drawer's career is that game's. */
+  discipline: string;
   compareSelected: boolean;
   compareDisabled: boolean;
   onToggleCompare: () => void;
 }>) {
   const t = useTranslations();
   const { data, isPending, isError } = useQuery({
-    queryKey: userQueryKeys.draftCard(user.id, workspaceId),
-    queryFn: () => userService.getDraftCard(user.id, workspaceId),
+    queryKey: userQueryKeys.draftCard(user.id, workspaceId, discipline),
+    queryFn: () => userService.getDraftCard(user.id, discipline, workspaceId),
     staleTime: 60_000
   });
 
@@ -150,16 +153,16 @@ export function UserExpandedRow({
 
         <section className="space-y-2">
           <Label>{t("users.list.expanded.heroes")}</Label>
-          {data.heroes.length === 0 ? (
+          {!data.characters?.length ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noHeroData")}
             </p>
           ) : (
             <ul className="space-y-1.5">
-              {data.heroes.slice(0, 5).map((entry) => (
-                <li key={entry.hero.id} className="flex items-center gap-2 text-caption">
-                  <HeroImage hero={entry.hero} size="sm" />
-                  <span className="truncate text-[color:var(--aqt-fg-muted)]">{entry.hero.name}</span>
+              {data.characters.slice(0, 5).map((entry) => (
+                <li key={entry.character.id} className="flex items-center gap-2 text-caption">
+                  <CatalogEntityImage entity={entry.character} size="sm" decorative />
+                  <span className="truncate text-[color:var(--aqt-fg-muted)]">{entry.character.name}</span>
                   <span className="ml-auto flex items-center gap-3">
                     <Winrate won={entry.maps_won} total={entry.maps} />
                     <span className="tabular-nums text-[color:var(--aqt-fg-faint)]">
@@ -181,7 +184,7 @@ export function UserExpandedRow({
           {t("common.matches")}
         </HoverPrefetchLink>
         <HoverPrefetchLink href={`/users/${slug}?tab=heroes`} className="aqt-filter-chip no-underline">
-          {t("common.heroes")}
+          {t("common.characters")}
         </HoverPrefetchLink>
         <button
           type="button"

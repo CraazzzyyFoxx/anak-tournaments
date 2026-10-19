@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import HeroImage from "@/components/hero/HeroImage";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { normalizeRole, type AqtRoleKey } from "@/lib/roster/player-role";
@@ -22,8 +22,8 @@ import { SearchField } from "@/components/ui/search-field";
 
 export interface HeroRow {
   id: number;
-  hero: Hero;
-  role: string;
+  hero: CatalogEntityRead;
+  role: string | undefined;
   playtime: number;
   share: number;
   winratePct: number | null;

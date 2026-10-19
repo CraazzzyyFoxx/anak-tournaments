@@ -9,7 +9,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { seatAt } from "@/lib/encounter/seats";
 import { getEncounterWinner } from "@/lib/encounter/status";
 import type { Encounter, EncounterTeam } from "@/types/encounter.types";
-import type { HeroPlaytime } from "@/types/hero.types";
+import type { CharacterPlaytime } from "@/types/user.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, Standings, Tournament } from "@/types/tournament.types";
 
@@ -24,11 +24,11 @@ import {
 import { CardLink, OverviewCard } from "./OverviewCards";
 import { StatTile } from "./RegistrationSummary";
 
-/** The five heroes the tournament was actually played on, by share of playtime. */
+/** The five characters the tournament was actually played on, by share of playtime. */
 function TopHeroesCard({
   topHeroes,
   overviewHref
-}: Readonly<{ topHeroes: readonly HeroPlaytime[]; overviewHref: string }>) {
+}: Readonly<{ topHeroes: readonly CharacterPlaytime[]; overviewHref: string }>) {
   const t = useTranslations();
   const format = useFormatter();
 
@@ -48,23 +48,23 @@ function TopHeroesCard({
           return (
             <li
               className="grid grid-cols-[1rem_1.5rem_minmax(0,1fr)_auto_2.75rem] items-center gap-2"
-              key={entry.hero.id}
+              key={entry.entity.id}
             >
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]" aria-hidden>
                 {String(index + 1).padStart(2, "0")}
               </span>
               <Avatar className="size-6 border-none bg-transparent">
-                {entry.hero.image_path ? (
+                {entry.entity.image_path ? (
                   <AvatarImage
-                    src={entry.hero.image_path}
-                    alt={entry.hero.name}
+                    src={entry.entity.image_path}
+                    alt={entry.entity.name}
                     className="object-contain"
                   />
                 ) : null}
                 <AvatarFallback className="bg-transparent" />
               </Avatar>
-              <span className="min-w-0 truncate text-caption" title={entry.hero.name}>
-                {entry.hero.name}
+              <span className="min-w-0 truncate text-caption" title={entry.entity.name}>
+                {entry.entity.name}
               </span>
               <span
                 aria-hidden
@@ -115,7 +115,7 @@ export function OverviewCompletedView({
   encounters: readonly Encounter[];
   standings: readonly Standings[];
   teams: readonly Team[];
-  topHeroes: readonly HeroPlaytime[];
+  topHeroes: readonly CharacterPlaytime[];
   stage: StageSummary | null;
   stageId: number | null;
   roundShape: BracketRoundShape;

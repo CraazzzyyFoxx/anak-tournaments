@@ -268,7 +268,7 @@ export const TournamentTeamTable = ({
   // Each dossier column renders only when at least one row carries its data;
   // other callers (team cards) pass rosters without these fields.
   const showMvp = players.some((p) => p.avg_mvp != null);
-  const showHeroes = players.some((p) => (p.heroes?.length ?? 0) > 0);
+  const showHeroes = players.some((p) => (p.characters?.length ?? 0) > 0);
   const signatureTitle = t("users.tournaments.roster.signatureHeroes");
 
   return (
@@ -338,9 +338,9 @@ export const TournamentTeamTable = ({
                   ) : null}
                   {showHeroes ? (
                     <td>
-                      {player.heroes && player.heroes.length > 0 ? (
+                      {player.characters && player.characters.length > 0 ? (
                         <div title={signatureTitle} aria-label={signatureTitle}>
-                          <HeroStrip heroes={player.heroes} size="sm" limit={3} />
+                          <HeroStrip heroes={player.characters} size="sm" limit={3} />
                         </div>
                       ) : (
                         <span className="text-[color:var(--aqt-fg-dim)]">—</span>

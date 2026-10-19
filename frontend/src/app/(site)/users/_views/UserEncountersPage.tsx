@@ -26,12 +26,14 @@ export const UserEncountersPage = async ({
   user,
   page,
   filters,
-  scope
+  scope,
+  discipline
 }: {
   user: User;
   page: number;
   filters?: MatchesFilters;
   scope: StatsScope;
+  discipline: string;
 }) => {
   const perPage = 15;
   const t = await getTranslations();
@@ -44,6 +46,7 @@ export const UserEncountersPage = async ({
     [encounters, summary] = await Promise.all([
       userService.getUserEncounters(
         user.id,
+        discipline,
         page,
         perPage,
         undefined,
@@ -52,7 +55,7 @@ export const UserEncountersPage = async ({
         filters,
         scope
       ),
-      userService.getUserMatchesSummary(user.id, scope).catch(() => null)
+      userService.getUserMatchesSummary(user.id, discipline, scope).catch(() => null)
     ]);
   } catch {
     return (

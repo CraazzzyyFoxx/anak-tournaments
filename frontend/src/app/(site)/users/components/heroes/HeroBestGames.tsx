@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { Crown } from "lucide-react";
 import { LogStatsName } from "@/types/stats.types";
-import type { HeroBestStat, HeroWithUserStats } from "@/types/hero.types";
+import type { CharacterStatBest, CharacterWithUserStats } from "@/types/user.types";
 import { getHumanizedStats } from "@/lib/stats";
 import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
 import { formatStatValue } from "@/app/(site)/users/components/heroes/utils";
@@ -29,7 +29,7 @@ const RECORD_STATS: LogStatsName[] = [
 
 interface Record {
   name: LogStatsName;
-  best: HeroBestStat;
+  best: CharacterStatBest;
   /** The player's best is also the all-players best for this hero+stat. */
   isGlobalRecord: boolean;
 }
@@ -37,7 +37,7 @@ interface Record {
 /** Career-best single-game performances for the selected hero, built from
  *  `HeroStat.best`. Each record links to the encounter where it happened and
  *  shows the map/tournament on hover; a crown marks an all-time (global) best. */
-const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
+const HeroBestGames = ({ hero }: { hero: CharacterWithUserStats }) => {
   const t = useTranslations();
   const format = useFormatter();
   const records: Record[] = RECORD_STATS.map((name) => {
@@ -55,7 +55,7 @@ const HeroBestGames = ({ hero }: { hero: HeroWithUserStats }) => {
   return (
     <CardSurface
       title={t("users.heroes.careerBest")}
-      subtitle={t("users.heroes.bestGamesSubtitle", { hero: hero.hero.name })}
+      subtitle={t("users.heroes.bestGamesSubtitle", { hero: hero.character.name })}
     >
       <TooltipProvider delayDuration={120}>
         <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">

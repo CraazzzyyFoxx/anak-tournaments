@@ -114,7 +114,7 @@ describe("useInvalidation", () => {
     expect(invalidatedKeys).toContain(JSON.stringify(["balancer-public", "balance", 42]));
     // tournament.standings
     expect(invalidatedKeys).toContain(JSON.stringify(["standings", 42]));
-    expect(invalidatedKeys).toContain(JSON.stringify(["hero-playtime", "tournament", 42]));
+    expect(invalidatedKeys).toContain(JSON.stringify(["character-playtime", "tournament", 42]));
     expect(new Set(invalidatedKeys).size).toBe(invalidatedKeys.length);
   });
 

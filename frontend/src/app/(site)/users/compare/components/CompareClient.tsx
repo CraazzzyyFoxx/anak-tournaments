@@ -200,21 +200,21 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           isTargetBaseline={compareParams.isTargetBaseline}
           subjectHero={{
             name:
-              heroCompareQuery.data?.subject_hero?.name ??
+              heroCompareQuery.data?.subject_character?.name ??
               leftHero?.name ??
               t("users.compare.allHeroes"),
-            imagePath: heroCompareQuery.data?.subject_hero?.image_path ?? imageOf(leftHero),
-            dominantColor: heroCompareQuery.data?.subject_hero?.color ?? colorOf(leftHero),
+            imagePath: heroCompareQuery.data?.subject_character?.image_path ?? imageOf(leftHero),
+            dominantColor: colorOf(heroCompareQuery.data?.subject_character ?? leftHero),
             playtimeSeconds: heroCompareQuery.data?.left_playtime_seconds ?? 0,
             playtimeLabel: t("users.compare.playtime")
           }}
           baselineHero={{
             name:
-              heroCompareQuery.data?.target_hero?.name ??
+              heroCompareQuery.data?.target_character?.name ??
               rightHero?.name ??
               t("users.compare.allHeroes"),
-            imagePath: heroCompareQuery.data?.target_hero?.image_path ?? imageOf(rightHero),
-            dominantColor: heroCompareQuery.data?.target_hero?.color ?? colorOf(rightHero),
+            imagePath: heroCompareQuery.data?.target_character?.image_path ?? imageOf(rightHero),
+            dominantColor: colorOf(heroCompareQuery.data?.target_character ?? rightHero),
             playtimeSeconds: heroCompareQuery.data?.right_playtime_seconds ?? 0,
             playtimeLabel: t("users.compare.avgPlaytime")
           }}

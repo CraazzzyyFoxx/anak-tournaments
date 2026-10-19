@@ -34,15 +34,18 @@ export function HallOfFameSkeleton() {
   );
 }
 
-/** Community-scoped totals and leaders, using the landing page's presentation. */
-export async function HallOfFame({ workspace }: Readonly<{ workspace: Workspace }>) {
+/** Community-scoped totals and leaders (of the browsed game; none without one), using the landing page's presentation. */
+export async function HallOfFame({
+  workspace,
+  discipline
+}: Readonly<{ workspace: Workspace; discipline: string | null }>) {
   const t = await getTranslations("workspace");
   const workspaceId = workspace.id;
 
   const [totals, champions, winrate] = await Promise.all([
     statisticsService.getOverallStatistics({ workspaceId }).catch(() => null),
-    statisticsService.getChampions({ workspaceId }).catch(() => null),
-    statisticsService.getTopWinratePlayers({ workspaceId }).catch(() => null)
+    discipline ? statisticsService.getChampions(discipline, { workspaceId }).catch(() => null) : null,
+    discipline ? statisticsService.getTopWinratePlayers(discipline, { workspaceId }).catch(() => null) : null
   ]);
 
   return (
@@ -51,22 +54,24 @@ export async function HallOfFame({ workspace }: Readonly<{ workspace: Workspace 
         totals,
         primaryKeys: PRIMARY_KEYS,
         secondaryKeys: SECONDARY_KEYS,
-        boards: [
-          {
-            title: t("hof.mostWins"),
-            sub: t("hof.mostWinsSub"),
-            rows: champions === null ? null : champions.results.slice(0, TOP),
-            value: "wins"
-          },
-          {
-            title: t("hof.bestWinrate"),
-            sub: t("hof.winrateSub"),
-            hint: t("hof.winrateHint"),
-            rows: winrate === null ? null : winrate.results.slice(0, TOP),
-            value: "winrate",
-            empty: t("hof.winrateEmpty")
-          }
-        ]
+        boards: discipline
+          ? [
+              {
+                title: t("hof.mostWins"),
+                sub: t("hof.mostWinsSub"),
+                rows: champions === null ? null : champions.results.slice(0, TOP),
+                value: "wins"
+              },
+              {
+                title: t("hof.bestWinrate"),
+                sub: t("hof.winrateSub"),
+                hint: t("hof.winrateHint"),
+                rows: winrate === null ? null : winrate.results.slice(0, TOP),
+                value: "winrate",
+                empty: t("hof.winrateEmpty")
+              }
+            ]
+          : []
       })}
     </Shell>
   );

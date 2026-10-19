@@ -1,5 +1,4 @@
-import { getTranslations } from "next-intl/server";
-import { User } from "@/types/user.types";
+import { User, UserTournamentSummary } from "@/types/user.types";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import userService from "@/services/user.service";
 import { AchievementRarity } from "@/types/achievement.types";
@@ -7,6 +6,8 @@ import AchievementsView from "@/app/(site)/users/components/achievements/Achieve
 
 interface UserAchievementPageProps {
   user: User;
+  /** The profile's tournaments (of the browsed game): the tournament filter's options. */
+  tournaments: UserTournamentSummary[];
   selectedTournamentId?: string;
   scope: StatsScope;
 }
@@ -28,40 +29,26 @@ const parseAchievementFilter = (selectedTournamentId?: string) => {
 
 const UserAchievementPage = async ({
   user,
+  tournaments,
   selectedTournamentId,
   scope
 }: UserAchievementPageProps) => {
   const { tournamentId, withoutTournament } = parseAchievementFilter(selectedTournamentId);
-  const t = await getTranslations();
-
-  let achievements: AchievementRarity[];
-  let profile: Awaited<ReturnType<typeof userService.getUserProfile>>;
-  try {
-    [achievements, profile] = await Promise.all([
-      userService
-        .getUserAchievements(user.id, {
-          tournamentId,
-          withoutTournament,
-          // Locked achievements only make sense for the global (all-tournaments) view.
-          includeLocked: tournamentId === undefined && !withoutTournament,
-          scope
-        })
-        .catch(() => [] as AchievementRarity[]),
-      userService.getUserProfile(user.id, scope)
-    ]);
-  } catch {
-    return (
-      <div className="aqt-player rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-6 py-10 text-center text-caption text-[color:var(--aqt-fg-muted)]">
-        {t("users.matches.achievementsLoadError")}
-      </div>
-    );
-  }
+  const achievements = await userService
+    .getUserAchievements(user.id, {
+      tournamentId,
+      withoutTournament,
+      // Locked achievements only make sense for the global (all-tournaments) view.
+      includeLocked: tournamentId === undefined && !withoutTournament,
+      scope
+    })
+    .catch(() => [] as AchievementRarity[]);
 
   return (
     <div className="aqt-player flex w-full flex-col gap-3.5">
       <AchievementsView
         achievements={achievements}
-        tournaments={profile.tournaments}
+        tournaments={tournaments}
         selectedTournament={withoutTournament ? "none" : tournamentId}
       />
     </div>

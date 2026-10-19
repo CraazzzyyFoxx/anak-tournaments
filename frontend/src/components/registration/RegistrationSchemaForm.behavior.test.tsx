@@ -32,7 +32,6 @@ vi.mock("@/components/ui/select", () => ({
 vi.mock("@/components/ui/switch", () => ({
   Switch: () => <button type="button" role="switch" aria-checked="false" />,
 }));
-vi.mock("@/services/hero.service", () => ({ default: { getAll: async () => ({ results: [] }) } }));
 vi.mock("@/services/registration.service", () => ({
   default: { getMySubscriptionStatus: async () => ({ required: false, verdicts: {} }) },
 }));

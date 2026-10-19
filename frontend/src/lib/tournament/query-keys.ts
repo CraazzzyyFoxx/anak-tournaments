@@ -22,8 +22,9 @@ export const tournamentQueryKeys = {
       ? (["teams", tournamentId] as const)
       : (["teams", tournamentId, workspaceId] as const),
   teamsCount: (tournamentId: number) => ["teams", tournamentId, "count"] as const,
-  heroPlaytime: (tournamentId: number) =>
-    ["hero-playtime", "tournament", tournamentId] as const,
+  /** The tournament's character playtime (its own game and workspace, so the id names the whole scope). */
+  characterPlaytime: (tournamentId: number) =>
+    ["character-playtime", "tournament", tournamentId] as const,
   standings: (tournamentId: number, workspaceId?: number | null) =>
     workspaceId == null
       ? (["standings", tournamentId] as const)
@@ -116,7 +117,7 @@ export const tournamentQueryKeys = {
   draftTeamQueue: (sessionId: number, teamId: number) =>
     ["draft", "session", sessionId, "queue", teamId] as const,
   draftJournal: (sessionId: number) => ["draft", "session", sessionId, "journal"] as const,
-  draftPlayerCard: (userId: number) => ["draft", "player-card", userId] as const,
+  draftPlayerCard: (userId: number, discipline: string) => ["draft", "player-card", userId, discipline] as const,
   /** One discipline's constructor catalog: the engine's leaf/constraint registry plus that game's item groups and
    *  presets. The discipline is part of the key, so another game's presets never answer for this one. */
   pickBanRulesCatalog: (discipline: KeyPart) => ["pick-ban-rules", "catalog", discipline] as const,

@@ -1,7 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { HeroWithUserStats } from "@/types/hero.types";
+import type { CharacterWithUserStats } from "@/types/user.types";
+import { characterClass } from "@/lib/catalog/attrs";
 import { LogStatsName } from "@/types/stats.types";
 import type { AqtRoleKey } from "@/lib/roster/player-role";
 import HeroImage from "@/components/hero/HeroImage";
@@ -26,7 +27,7 @@ interface QuickStatData {
 }
 
 interface SpotlightHero {
-  hero: HeroWithUserStats;
+  hero: CharacterWithUserStats;
   playtime: number;
   share: number;
 }
@@ -48,15 +49,15 @@ const HeroSpotlight = ({
   quickStats: QuickStatData[];
 }) => {
   const t = useTranslations();
-  const roleName = selected.hero.hero.type ?? selected.hero.hero.role;
+  const roleName = characterClass(selected.hero.character);
   return (
     <CardSurface>
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-4">
-          <HeroImage hero={selected.hero.hero} size={80} rounded="lg" />
+          <HeroImage hero={selected.hero.character} size={80} rounded="lg" />
           <div className="flex min-w-0 flex-col gap-1.5">
             <h2 className="aqt-display m-0 truncate text-headline font-bold leading-tight text-[color:var(--aqt-fg)]">
-              {selected.hero.hero.name}
+              {selected.hero.character.name}
             </h2>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-[color:var(--aqt-fg-muted)]">
               <span className="inline-flex items-center gap-1.5">

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Statistics is what only exists once matches have been played: which heroes
+// Statistics is what only exists once matches have been played: which characters
 // were played, and which maps were played. The pool itself is not here — it has
 // its own `maps` section, open before the tournament starts.
 //
@@ -14,7 +14,7 @@
 //     tell them apart. Rows are ordered by plays;
 //  3. counts and mean duration come from the tournament's own series, and
 //     "matches →" leads to the matches section filtered by that map;
-//  4. an empty pool, a failed read and no hero data are different cards, all
+//  4. an empty pool, a failed read and no character data are different cards, all
 //     from `TournamentPageState`.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Encounter, Match } from "@/types/encounter.types";
-import { catalogMap, catalogMode } from "@/test/catalog";
+import { catalogEntity, catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanConfig, Stage, Tournament } from "@/types/tournament.types";
 
@@ -38,14 +38,19 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const TOURNAMENT_ID = 88;
 const WORKSPACE_ID = 3;
 
-const getHeroPlaytime = vi.fn();
+const getCharacterPlaytime = vi.fn();
 const getEncounters = vi.fn();
 const listPublicConfigs = vi.fn();
 const getAllMaps = vi.fn();
 const getStages = vi.fn();
 
-vi.mock("@/services/hero.service", () => ({
-  default: { getHeroPlaytime: (...args: unknown[]) => getHeroPlaytime(...args) }
+vi.mock("@/services/statistics.service", () => ({
+  default: { getCharacterPlaytime: (...args: unknown[]) => getCharacterPlaytime(...args) }
+}));
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    metadata: async () => ({ discipline: { code: "overwatch", character_classes: ["tank", "damage", "support"] } })
+  }
 }));
 vi.mock("@/services/encounter.service", () => ({
   default: { getAll: (...args: unknown[]) => getEncounters(...args) }
@@ -262,25 +267,25 @@ beforeEach(() => {
   tournament = makeTournament();
   tournamentIsError = false;
 
-  getHeroPlaytime.mockReset().mockResolvedValue({
+  getCharacterPlaytime.mockReset().mockResolvedValue({
     results: [
       {
-        hero: {
+        entity: catalogEntity({
           id: 7,
-          created_at: new Date("2025-01-01T00:00:00Z"),
-          updated_at: null,
+          kind: "character",
           name: "Reinhardt",
           slug: "reinhardt",
           image_path: "/heroes/reinhardt.png",
-          type: "Tank",
-          role: "Tank",
-          color: "#9a9a9a",
-          aliases: []
-        },
+          attrs: { class: "tank" }
+        }),
         playtime: 0.42
+      },
+      {
+        entity: catalogEntity({ id: 9, kind: "character", name: "Ana", slug: "ana", attrs: { class: "support" } }),
+        playtime: 0.5
       }
     ],
-    total: 1,
+    total: 2,
     page: 1,
     per_page: -1
   });
@@ -333,7 +338,7 @@ async function render(query?: string) {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en}>
-          <TournamentStatsPage tournamentId={TOURNAMENT_ID} slug="anak-open" />
+          <TournamentStatsPage slug="anak-open" />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -364,14 +369,24 @@ function mapRows() {
 }
 
 describe("the tab is the URL", () => {
-  it("opens on heroes when no tab is named", async () => {
+  it("opens on characters when no tab is named", async () => {
     await render();
 
     expect(tabButtons()).toEqual([
-      { label: en.common.heroes, selected: true },
+      { label: en.common.characters, selected: true },
       { label: en.common.maps, selected: false }
     ]);
     expect(container.textContent).toContain("Reinhardt");
+    // The tournament's own game and workspace, the whole tournament.
+    expect(getCharacterPlaytime).toHaveBeenCalledWith(
+      "overwatch",
+      expect.objectContaining({ axis: WORKSPACE_ID, tournamentId: TOURNAMENT_ID, perPage: -1 })
+    );
+    // One column per character class, in the game's declared order (tank before support).
+    const columns = [...container.querySelectorAll("[aria-label]")]
+      .map((node) => node.getAttribute("aria-label"))
+      .filter((label) => label === en.common.roles.tank || label === en.common.roles.support);
+    expect(columns).toEqual([en.common.roles.tank, en.common.roles.support]);
     expect(container.querySelector("tbody")).toBeNull();
     expect(getEncounters).not.toHaveBeenCalled();
   });
@@ -508,8 +523,8 @@ describe("nothing to show", () => {
     expect(container.querySelector("tbody")).toBeNull();
   });
 
-  it("says there is no hero data yet", async () => {
-    getHeroPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
+  it("says there is no character data yet", async () => {
+    getCharacterPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
 
     await render();
 

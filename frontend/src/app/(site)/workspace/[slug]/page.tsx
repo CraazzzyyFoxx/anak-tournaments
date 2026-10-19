@@ -33,8 +33,12 @@ export async function generateMetadata({
 }
 
 export default async function WorkspacePage({
-  params
-}: Readonly<{ params: Promise<{ slug: string }> }>) {
-  const { slug } = await params;
-  return <CommunityPage workspace={await resolveWorkspace(slug)} ownHost={false} />;
+  params,
+  searchParams
+}: Readonly<{
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ discipline?: string | string[] }>;
+}>) {
+  const [{ slug }, { discipline }] = await Promise.all([params, searchParams]);
+  return <CommunityPage workspace={await resolveWorkspace(slug)} ownHost={false} discipline={discipline} />;
 }

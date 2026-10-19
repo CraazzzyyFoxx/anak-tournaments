@@ -46,7 +46,7 @@ const listRegistrations = vi.fn();
 const getStandings = vi.fn();
 const getStages = vi.fn();
 const getTeams = vi.fn();
-const getHeroPlaytime = vi.fn();
+const getCharacterPlaytime = vi.fn();
 const listPublicConfigs = vi.fn();
 const getAllMaps = vi.fn();
 const getTournamentStreams = vi.fn();
@@ -67,8 +67,8 @@ vi.mock("@/services/tournament.service", () => ({
 vi.mock("@/services/team.service", () => ({
   default: { getAll: (...args: unknown[]) => getTeams(...args) }
 }));
-vi.mock("@/services/hero.service", () => ({
-  default: { getHeroPlaytime: (...args: unknown[]) => getHeroPlaytime(...args) }
+vi.mock("@/services/statistics.service", () => ({
+  default: { getCharacterPlaytime: (...args: unknown[]) => getCharacterPlaytime(...args) }
 }));
 vi.mock("@/services/pickBan.service", () => ({
   default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
@@ -423,7 +423,7 @@ beforeEach(() => {
   getStandings.mockResolvedValue([]);
   getStages.mockResolvedValue([] as Stage[]);
   getTeams.mockResolvedValue({ results: [ALPHA, BETA, GAMMA, DELTA], total: 4, page: 1, per_page: -1 });
-  getHeroPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
+  getCharacterPlaytime.mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   listPublicConfigs.mockResolvedValue({ configs: [POOL_CONFIG] });
   getAllMaps.mockResolvedValue({ results: MAPS, total: MAPS.length, page: 1, per_page: -1 });
   getTournamentStreams.mockResolvedValue({ official: [], participants: [] });
@@ -897,8 +897,8 @@ describe("once it is over (§3C)", () => {
   });
 
   it("counts the tournament up and links onward to the statistics", async () => {
-    getHeroPlaytime.mockResolvedValue({
-      results: [{ hero: { id: 1, name: "Kiriko", image_path: "/heroes/kiriko.png" }, playtime: 0.091 }],
+    getCharacterPlaytime.mockResolvedValue({
+      results: [{ entity: { id: 1, name: "Kiriko", image_path: "/heroes/kiriko.png", attrs: {} }, playtime: 0.091 }],
       total: 1,
       page: 1,
       per_page: -1

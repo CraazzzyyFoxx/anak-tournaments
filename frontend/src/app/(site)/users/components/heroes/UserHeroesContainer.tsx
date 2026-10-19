@@ -13,32 +13,32 @@ import type { StatsScope } from "@/lib/site/stats-scope";
 interface UserHeroesContainerProps {
   userId: number;
   scope: StatsScope;
+  discipline: string;
 }
 
-const UserHeroesContainer = ({ userId, scope }: UserHeroesContainerProps) => {
+const UserHeroesContainer = ({ userId, scope, discipline }: UserHeroesContainerProps) => {
   const [tournamentId, setTournamentId] = useState<number | undefined>(undefined);
 
   const tournamentsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(userId, scope),
-    queryFn: () => userService.getUserTournaments(userId, scope === "all" ? "all" : undefined),
+    queryKey: userQueryKeys.tournaments(userId, scope, discipline),
+    queryFn: () => userService.getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined),
     staleTime: 5 * 60 * 1000
   });
 
-  const heroesQuery = useQuery({
-    queryKey: userQueryKeys.heroes(userId, tournamentId, scope),
-    queryFn: () => userService.getUserHeroes(userId, undefined, tournamentId, scope),
+  const charactersQuery = useQuery({
+    queryKey: userQueryKeys.characters(userId, scope, discipline, tournamentId),
+    queryFn: ({ signal }) => userService.getUserCharacters(userId, discipline, { tournamentId, scope, signal }),
     staleTime: 5 * 60 * 1000
   });
 
-  // Maps (with per-hero stats) power the "Maps for [Hero]" panel in HeroesView.
+  // Maps (with per-character stats) power the "Maps for [character]" panel in HeroesView.
   const mapsQuery = useQuery({
-    queryKey: userQueryKeys.heroMaps(userId, tournamentId, scope),
-    queryFn: () =>
-      userService.getUserMaps(userId, { perPage: -1, minCount: 1, tournamentId, scope }),
+    queryKey: userQueryKeys.characterMaps(userId, scope, discipline, tournamentId),
+    queryFn: () => userService.getUserMaps(userId, discipline, { perPage: -1, minCount: 1, tournamentId, scope }),
     staleTime: 5 * 60 * 1000
   });
 
-  if (heroesQuery.isLoading) {
+  if (charactersQuery.isLoading) {
     return (
       <div className="aqt-player flex flex-col gap-3.5">
         <div className="flex justify-end">
@@ -54,7 +54,7 @@ const UserHeroesContainer = ({ userId, scope }: UserHeroesContainerProps) => {
     );
   }
 
-  const heroes = heroesQuery.data?.results ?? [];
+  const characters = charactersQuery.data?.results ?? [];
 
   const filterSlot = (
     <div className="w-60">
@@ -68,7 +68,7 @@ const UserHeroesContainer = ({ userId, scope }: UserHeroesContainerProps) => {
     </div>
   );
 
-  return <HeroesView heroes={heroes} filterSlot={filterSlot} maps={mapsQuery.data?.results ?? []} />;
+  return <HeroesView characters={characters} filterSlot={filterSlot} maps={mapsQuery.data?.results ?? []} />;
 };
 
 export default UserHeroesContainer;

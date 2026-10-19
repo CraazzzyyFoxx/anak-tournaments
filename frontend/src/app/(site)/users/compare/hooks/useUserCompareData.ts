@@ -9,6 +9,7 @@ import userService from "@/services/user.service";
 import { UserRoleType, UserCompareBaselineMode } from "@/types/user.types";
 import { CompareRow } from "@/app/(site)/users/compare/types";
 import { getHumanizedStats } from "@/lib/stats";
+import type { LogStatsName } from "@/types/stats.types";
 import { HERO_COMPARE_STATS } from "@/app/(site)/users/compare/constants";
 import { getMapIconSrc, normalizeNumber, roleLabelKey } from "@/app/(site)/users/compare/utils";
 import {
@@ -62,7 +63,7 @@ export const useUserCompareData = ({
   // division grid and the population from it, so the picker's tiers must come
   // from the same place. All communities read the reference grid.
   const currentWorkspaceId = useCurrentWorkspaceId();
-  const workspaceGrid = useDivisionGrid("overwatch");
+  const workspaceGrid = useDivisionGrid(discipline ?? undefined);
   const workspaceId = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
   const divisionGrid = scope === "all" ? OW_REFERENCE_GRID : workspaceGrid;
 
@@ -70,6 +71,7 @@ export const useUserCompareData = ({
     buildOverallCompareQueryOptions({
       isHeroScope,
       subjectUserId,
+      discipline,
       baseline: effectiveBaseline,
       targetUserId,
       role,
@@ -111,6 +113,7 @@ export const useUserCompareData = ({
   const heroCompareOptions = buildHeroCompareQueryOptions({
       isHeroScope,
       subjectUserId,
+      discipline,
       baseline: effectiveBaseline,
       targetUserId,
       role,
@@ -118,11 +121,11 @@ export const useUserCompareData = ({
       divMax,
       tournamentId,
       workspaceId,
-      leftHeroId,
-      rightHeroId,
+      leftEntityId: leftHeroId,
+      rightEntityId: rightHeroId,
       mapId,
       stats: HERO_COMPARE_STATS,
-      fetchCompare: userService.getUserHeroCompare
+      fetchCompare: userService.getUserCharacterCompare
     });
   const heroCompareQuery = useQuery({
     ...heroCompareOptions,
@@ -165,7 +168,7 @@ export const useUserCompareData = ({
       if (!heroCompareData) return [];
       return heroCompareData.metrics.map((metric) => ({
         key: metric.stat,
-        label: getHumanizedStats(metric.stat),
+        label: getHumanizedStats(metric.stat as LogStatsName),
         subjectValue: normalizeNumber(metric.left_value),
         baselineValue: normalizeNumber(metric.right_value),
         delta: normalizeNumber(metric.delta),

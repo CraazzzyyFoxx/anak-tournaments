@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Sword } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { HeroLeaderboardEntry } from "@/types/hero.types";
+import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { characterClass } from "@/lib/catalog/attrs";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import HeroImage from "@/components/hero/HeroImage";
@@ -28,7 +28,7 @@ interface HeroLeaderboardTableProps {
   selectedHero: CatalogEntityRead | undefined;
   selectedTournamentName: string | undefined;
   tournamentId: number | undefined;
-  rows: HeroLeaderboardEntry[];
+  rows: CharacterLeaderboardEntry[];
   isLoading: boolean;
   columnKeys: StatKey[];
   /** Index into `columnKeys` of the column that drives the shared row order. */

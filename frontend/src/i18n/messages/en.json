@@ -66,6 +66,7 @@
     "participants": "Participants",
     "matches": "Matches",
     "heroes": "Heroes",
+    "characters": "Characters",
     "maps": "Maps",
     "schedule": "Schedule",
     "standings": "Standings",
@@ -3524,7 +3525,7 @@
       "divisions": "Average division by role",
       "topHeroes": "Most played",
       "topHeroesSub": "share of time",
-      "heroAlt": "{name}: {share}, {role}"
+      "heroAlt": "{name}: {share}"
     },
     "about": {
       "rubric": "Community",
