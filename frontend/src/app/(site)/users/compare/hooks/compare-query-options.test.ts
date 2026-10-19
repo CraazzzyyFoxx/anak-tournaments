@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LogStatsName } from "@/types/stats.types";
-
 import {
   buildHeroCompareQueryOptions,
   buildOverallCompareQueryOptions,
@@ -38,7 +36,7 @@ describe("compare query options", () => {
       subjectUserId: 42,
       discipline: "overwatch",
       baseline: "cohort",
-      stats: [LogStatsName.Eliminations, LogStatsName.Deaths],
+      stats: ["eliminations", "deaths"],
       fetchCompare
     });
     const controller = new AbortController();
@@ -50,7 +48,7 @@ describe("compare query options", () => {
       expect.objectContaining({
         discipline: "overwatch",
         baseline: "cohort",
-        stats: [LogStatsName.Eliminations, LogStatsName.Deaths],
+        stats: ["eliminations", "deaths"],
         signal: controller.signal
       })
     );

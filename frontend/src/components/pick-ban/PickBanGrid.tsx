@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
-import HeroImage from "@/components/hero/HeroImage";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import type { PickBanEntry, PickBanEntryStatus, PickBanKind } from "@/types/tournament.types";
 
 import {
@@ -25,8 +25,7 @@ import {
   type PickBanSeat
 } from "./pick-ban-model";
 
-/** Generic catalog entry the grid needs to render one item's tile — either a
- * `MapRead` or a `Hero`, reduced to the fields both shapes carry. */
+/** The catalog entity (character or map) a tile renders, reduced to the fields every entity carries. */
 export interface PickBanItemLike {
   name: string;
   image_path?: string | null;
@@ -319,8 +318,8 @@ export function PickBanGrid({
           expired ? "opacity-45" : null
         )}
       >
-        <HeroImage
-          hero={{ name, image_path: item?.image_path ?? "", attrs: item?.attrs }}
+        <CatalogEntityImage
+          entity={{ name, image_path: item?.image_path ?? null }}
           size={38}
           className={cn(
             "transition-opacity",

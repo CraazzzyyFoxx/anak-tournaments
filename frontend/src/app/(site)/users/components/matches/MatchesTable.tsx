@@ -6,7 +6,7 @@ import { useDebounce } from "use-debounce";
 import { EncounterWithUserStats } from "@/types/user.types";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import MatchRow from "@/app/(site)/users/components/matches/MatchRow";
 import MatchesFilterBar, { type Filter } from "@/app/(site)/users/components/matches/MatchesFilterBar";
 import MatchesSidebars, {

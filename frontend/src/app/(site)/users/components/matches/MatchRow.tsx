@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ResTag, ScoreCell } from "@/components/match/cells";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import MatchRowBadge from "@/components/match/MatchRowBadge";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
@@ -74,7 +74,7 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
         <ScoreCell kind={scoreKind} value={`${userScore}-${oppScore}`} />
       </td>
       <td className="px-3.5 py-3">
-        <HeroStrip heroes={heroList} size="sm" limit={4} />
+        <CatalogEntityStrip entities={heroList} size="sm" limit={4} />
       </td>
       <td className="px-3.5 py-3">
         {observedMatches.length > 0 ? (

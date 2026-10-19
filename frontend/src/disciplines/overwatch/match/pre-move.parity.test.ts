@@ -15,7 +15,7 @@ import {
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { Encounter, Match, MatchWithStats, NativeFact } from "@/types/encounter.types";
 import type { EncounterWithUserStats } from "@/types/user.types";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 
 import {
   COLUMN_PRESETS,

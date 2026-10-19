@@ -1,6 +1,5 @@
 import type { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
-import { playerRoleTint } from "@/lib/roster/player-role";
 
 /** League grouping key: the prefix before " | " in the tournament name. */
 export const leagueKey = (t: UserTournament): string => t.name.split(" | ")[0];
@@ -106,10 +105,6 @@ export const placementMedal = (placement: number | null | undefined): PlacementM
   return "none";
 };
 
-/** Role → the `--aqt-*` colour token used for role icons/accents. Flex is a
- *  real roster role, so it gets its own token rather than the damage default. */
-export const roleColorVar = (role: string | null): string => `var(--aqt-${playerRoleTint(role) ?? "damage"})`;
-
 /** Map winrate as a 0–100 percentage; null when the player played no maps. */
 export const mapsWinratePct = (mapsWon: number, mapsLost: number): number | null => {
   const total = mapsWon + mapsLost;
@@ -154,25 +149,4 @@ export const groupEncountersByStage = (t: UserTournament, selfUserId: number): S
     else group.drawn += 1;
   }
   return order.map((key) => byKey.get(key) as StageGroup);
-};
-
-/** Mean MVP placement across the user's matches in a tournament (impact rank →
- *  legacy performance), or null when nothing is recorded. */
-export const avgMvpPlacement = (entries: UserTournament[]): number | null => {
-  let sum = 0;
-  let count = 0;
-  for (const t of entries) {
-    for (const enc of t.encounters ?? []) {
-      for (const match of enc.matches ?? []) {
-        // The viewer's whole-match placement facts: impact rank when computed, legacy performance otherwise.
-        const facts = match.viewer?.facts;
-        const placement = facts?.impact_rank ?? facts?.performance ?? null;
-        if (placement != null) {
-          sum += placement;
-          count += 1;
-        }
-      }
-    }
-  }
-  return count > 0 ? sum / count : null;
 };

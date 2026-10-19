@@ -11,7 +11,7 @@ import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { Encounter, MatchWithStats } from "@/types/encounter.types";
 import type { MatchEvent, MatchEvents } from "@/types/killfeed.types";
 import messages from "@/i18n/messages/en.json";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import type { OwTeam } from "./view";
 
 const { getMatchKillFeed } = vi.hoisted(() => ({ getMatchKillFeed: vi.fn() }));

@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { createDisciplineLoader } from "./registry/create";
 import { loadAdminUI } from "./registry/admin";
 import { loadPregameUI } from "./registry/pregame";
+import { loadProfileUI } from "./registry/profile";
 import { loadRankUI } from "./registry/rank";
 
-const FAMILIES = { rank: loadRankUI, pregame: loadPregameUI, admin: loadAdminUI };
+const FAMILIES = { rank: loadRankUI, pregame: loadPregameUI, admin: loadAdminUI, profile: loadProfileUI };
 
 describe("slot-family loaders", () => {
   it("resolve an unknown code to null, never to another game's module", async () => {
@@ -19,13 +20,20 @@ describe("slot-family loaders", () => {
   });
 
   it("load Overwatch's slots of exactly their own family, memoised", async () => {
-    const slotsOf = async (load: typeof loadRankUI | typeof loadPregameUI | typeof loadAdminUI) =>
+    const slotsOf = async (load: (code: string) => Promise<{ slots: object } | null>) =>
       Object.keys((await load("overwatch"))?.slots ?? {}).sort();
 
     expect(loadRankUI("overwatch")).toBe(loadRankUI("overwatch"));
     expect(await slotsOf(loadRankUI)).toEqual(["rankHistory"]);
     expect(await slotsOf(loadPregameUI)).toEqual(["pregameCharacterBans"]);
     expect(await slotsOf(loadAdminUI)).toEqual(["nativeRankEditor", "rankMapping"]);
+    expect(await slotsOf(loadProfileUI)).toEqual([
+      "characterPopover",
+      "characterStats",
+      "roleSignatures",
+      "topCharacters",
+      "tournamentSummary"
+    ]);
     for (const load of Object.values(FAMILIES)) expect((await load("overwatch"))?.code).toBe("overwatch");
   });
 

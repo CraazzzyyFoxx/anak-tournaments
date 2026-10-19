@@ -5,11 +5,12 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { CatalogEntityRead } from "@/types/catalog.types";
-import HeroImage from "@/components/hero/HeroImage";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { normalizeRole, type AqtRoleKey } from "@/lib/roster/player-role";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { CardSurface } from "@/components/profile/atoms";
 import { formatSeconds } from "@/lib/format";
-import { formatStatValue, type NumberFormatter } from "@/app/(site)/users/components/heroes/utils";
+import { formatStatValue, type NumberFormatter } from "./utils";
+import { useHeroClass } from "./classes";
 import {
   Select,
   SelectContent,
@@ -36,9 +37,6 @@ export interface HeroRow {
 type SortKey = "playtime" | "winratePct" | "kda" | "dmg10" | "impact";
 
 const SORT_OPTIONS: SortKey[] = ["playtime", "winratePct", "kda", "dmg10", "impact"];
-
-const ROLE_FILTERS: ("all" | AqtRoleKey)[] = ["all", "tank", "damage", "support"];
-
 const num = (v: number | null) => (v == null || !Number.isFinite(v) ? -Infinity : v);
 
 const metricValue = (format: NumberFormatter, key: SortKey, r: HeroRow): string => {
@@ -60,16 +58,19 @@ interface Props {
   rows: HeroRow[];
   selectedId: number;
   onSelect: (id: number) => void;
+  metadata: DisciplineMetadata;
 }
 
 /** Sticky, sortable hero rail. Left column of the Heroes tab: ranks every
  *  tracked hero by the chosen metric (so cross-hero comparison stays possible)
  *  while keeping the detail panel beside it — switching heroes needs no scroll. */
-const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
+const HeroRail = ({ rows, selectedId, onSelect, metadata }: Props) => {
   const t = useTranslations();
   const format = useFormatter();
+  const heroClass = useHeroClass(metadata);
   const [sort, setSort] = useState<SortKey>("playtime");
-  const [role, setRole] = useState<"all" | AqtRoleKey>("all");
+  // `null` = every class; otherwise one of the game's declared character classes.
+  const [role, setRole] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   const sortLabel = (key: SortKey): string => {
@@ -87,22 +88,9 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
     }
   };
 
-  const roleLabel = (key: "all" | AqtRoleKey): string => {
-    switch (key) {
-      case "all":
-        return t("common.all");
-      case "tank":
-        return t("common.roles.tank");
-      case "damage":
-        return t("common.roles.damage");
-      case "support":
-        return t("common.roles.support");
-    }
-  };
-
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let filtered = role === "all" ? rows : rows.filter((r) => normalizeRole(r.role) === role);
+    let filtered = role === null ? rows : rows.filter((r) => r.role === role);
     if (q) filtered = filtered.filter((r) => r.hero.name.toLowerCase().includes(q));
     return [...filtered].sort((a, b) => num(b[sort]) - num(a[sort]));
   }, [rows, role, query, sort]);
@@ -116,9 +104,12 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
     >
       <div className="flex flex-col gap-2 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
         <FilterChipGroup label={t("common.filters")}>
-          {ROLE_FILTERS.map((rf) => (
-            <FilterChip key={rf} active={role === rf} onClick={() => setRole(rf)}>
-              {roleLabel(rf)}
+          <FilterChip active={role === null} onClick={() => setRole(null)}>
+            {t("common.all")}
+          </FilterChip>
+          {metadata.discipline.character_classes.map((cls) => (
+            <FilterChip key={cls} active={role === cls} onClick={() => setRole(cls)}>
+              {heroClass.label(cls)}
             </FilterChip>
           ))}
         </FilterChipGroup>
@@ -161,11 +152,11 @@ const HeroRail = ({ rows, selectedId, onSelect }: Props) => {
                 active && "border-l-2 border-l-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)] pl-[10px]"
               )}
             >
-              <HeroImage hero={r.hero} size="md" />
+              <CatalogEntityImage entity={r.hero} size="md" />
               <div className="min-w-0">
                 <div className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">{r.hero.name}</div>
                 <div className="flex min-w-0 items-center gap-2 text-label text-[color:var(--aqt-fg-dim)]">
-                  <span className="truncate capitalize">{r.role}</span>
+                  <span className="truncate">{heroClass.label(r.role)}</span>
                   {r.winratePct == null ? null : (
                     <span className="aqt-tnum shrink-0">
                       {t("users.heroes.wr", { value: `${r.winratePct.toFixed(0)}%` })}

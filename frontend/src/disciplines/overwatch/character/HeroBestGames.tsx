@@ -5,11 +5,11 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { Crown } from "lucide-react";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import type { CharacterStatBest, CharacterWithUserStats } from "@/types/user.types";
-import { getHumanizedStats } from "@/lib/stats";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { formatStatValue } from "@/app/(site)/users/components/heroes/utils";
+import { getHumanizedStats } from "../stat-names";
+import { CardSurface } from "@/components/profile/atoms";
+import { formatStatValue } from "./utils";
 import {
   Tooltip,
   TooltipContent,

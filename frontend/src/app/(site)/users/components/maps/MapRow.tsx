@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import { UserMapRead } from "@/types/user.types";
-import HeroImage from "@/components/hero/HeroImage";
-import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import CharacterCard from "@/components/profile/CharacterCard";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import { AvatarStack } from "@/components/ui/avatar";
 import { winrateColor } from "@/lib/colors";
 
-const MapRow = ({ row }: { row: UserMapRead }) => {
+const MapRow = ({ row, discipline }: { row: UserMapRead; discipline: string }) => {
   const wr = row.win_rate * 100;
   const wrColor = winrateColor(wr);
   const characterStats = row.character_stats ?? [];
@@ -37,11 +38,18 @@ const MapRow = ({ row }: { row: UserMapRead }) => {
       {characterStats.length > 0 ? (
         <AvatarStack max={8} size={26}>
           {characterStats.map((hs) => (
-            <HeroImage
+            <CatalogEntityImage
               key={`${row.map.id}:${hs.character.id}`}
-              hero={hs.character}
+              entity={hs.character}
               size="sm"
-              popover={<HeroUserStatsPopover hero={hs.character} mapStats={hs} />}
+              popover={
+                <ProfileWidget
+                  discipline={discipline}
+                  slot="characterPopover"
+                  props={{ entity: hs.character, mapStats: hs }}
+                  fallback={<CharacterCard entity={hs.character} mapStats={hs} />}
+                />
+              }
             />
           ))}
         </AvatarStack>

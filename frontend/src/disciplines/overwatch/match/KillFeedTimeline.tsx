@@ -6,7 +6,7 @@ import { Swords, Zap, ZapOff, Plus, Skull, Crosshair } from "lucide-react";
 import type { MatchEvents } from "@/types/killfeed.types";
 import type { MatchWithStats } from "@/types/encounter.types";
 import encounterService from "@/services/encounter.service";
-import HeroImage from "@/components/hero/HeroImage";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { readTimeline, type TimelineKill, type TimelineMark } from "./timeline";
 import type { OwTeam } from "./view";
 
@@ -233,7 +233,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
           {formatClock(kill.time)}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {kill.killer_entity ? <HeroImage hero={kill.killer_entity} size="sm" /> : null}
+          {kill.killer_entity ? <CatalogEntityImage entity={kill.killer_entity} size="sm" /> : null}
           <span className="truncate text-caption font-semibold" style={{ color: sideColor(killerSide) }}>
             {nameOf(kill.killer_member_id)}
           </span>
@@ -245,7 +245,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
           </span>
           {kill.victim_entity ? (
             <span className="opacity-70">
-              <HeroImage hero={kill.victim_entity} size="sm" />
+              <CatalogEntityImage entity={kill.victim_entity} size="sm" />
             </span>
           ) : null}
         </div>
@@ -298,7 +298,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
         <Icon className="h-3 w-3 shrink-0" style={{ color }} aria-hidden="true" />
         {event.entity ? (
           <span className="opacity-80">
-            <HeroImage hero={event.entity} size="sm" />
+            <CatalogEntityImage entity={event.entity} size="sm" />
           </span>
         ) : null}
         <span className="truncate text-label font-medium" style={{ color: sideColor(side) }}>

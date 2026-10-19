@@ -24,6 +24,12 @@ export interface CharacterWithUserStats {
   stats: CharacterStat[];
 }
 
+/** A character's stats without their per-stat best-match records: what an overview card reads (smaller RSC props). */
+export interface CharacterSummary {
+  character: CatalogEntityRead;
+  stats: Omit<CharacterStat, "best" | "best_all">[];
+}
+
 export type SocialProvider =
   "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube" | "riot";
 

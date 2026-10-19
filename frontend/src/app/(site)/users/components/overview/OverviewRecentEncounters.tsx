@@ -1,9 +1,9 @@
 import { getTranslations } from "next-intl/server";
 import { ArrowRight } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { cn } from "@/lib/utils";
@@ -75,7 +75,7 @@ const OverviewRecentEncounters = async ({ encounters, userId, userName, tourname
               </div>
             </div>
             <span className="hidden items-center sm:inline-flex">
-              {encHeroes.length > 0 ? <HeroStrip heroes={encHeroes} size="sm" limit={4} /> : null}
+              {encHeroes.length > 0 ? <CatalogEntityStrip entities={encHeroes} size="sm" limit={4} /> : null}
             </span>
             <span
               className={cn(

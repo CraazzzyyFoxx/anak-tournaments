@@ -1,6 +1,6 @@
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { MatchWithStats } from "@/types/encounter.types";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import { owMatchView, type OwPlayer, type OwTeam } from "./view";
 
 // ─── Series statistics aggregation ──────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import type { StatFormatter } from "@/lib/stats/format";
 import { formatStat, resolveMatchMvpPlacement } from "./stats";
 

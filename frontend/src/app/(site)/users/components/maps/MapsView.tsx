@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 import userService from "@/services/user.service";
 import { UserMapsSummary } from "@/types/user.types";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
 import { DataPagination } from "@/components/ui/data-pagination";
@@ -259,7 +259,7 @@ const MapsView = ({ userId, scope, discipline }: Props) => {
           <div className="text-right">{t("users.maps.colGames")}</div>
         </div>
         {pageMaps.map((row) => (
-          <MapRow key={row.map.id} row={row} />
+          <MapRow key={row.map.id} row={row} discipline={discipline} />
         ))}
         {pageMaps.length === 0 ? (
           <div className="py-10 text-center text-[color:var(--aqt-fg-dim)]">

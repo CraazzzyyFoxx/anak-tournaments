@@ -1,5 +1,5 @@
 import { formatStat as formatStatValue, type StatFormatter } from "@/lib/stats/format";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import type { OwPlayer, OwTeam } from "./view";
 
 export type MatchStatsTeam = OwTeam;

@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { answerFlag } from "@/lib/forms/answers";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
@@ -250,7 +250,7 @@ function PoolRow({
         </span>
       ) : null}
       {showHeroes ? (
-        <HeroStrip heroes={heroes} size={20} limit={3} className="justify-self-end" />
+        <CatalogEntityStrip entities={heroes} size={20} limit={3} className="justify-self-end" />
       ) : null}
     </li>
   );

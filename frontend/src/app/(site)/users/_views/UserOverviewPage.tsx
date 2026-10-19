@@ -1,5 +1,5 @@
 import { Suspense, cache } from "react";
-import { User, UserProfile } from "@/types/user.types";
+import type { CharacterSummary, CharacterWithUserStats, User, UserMapRead, UserProfile } from "@/types/user.types";
 import { AchievementRarity } from "@/types/achievement.types";
 import userService from "@/services/user.service";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +8,8 @@ import OverviewRoleSplit from "@/app/(site)/users/components/overview/OverviewRo
 import OverviewRecentEncounters from "@/app/(site)/users/components/overview/OverviewRecentEncounters";
 import OverviewCareerList from "@/app/(site)/users/components/overview/OverviewCareerList";
 import OverviewTeammatesSynergy from "@/app/(site)/users/components/overview/OverviewTeammatesSynergy";
-import OverviewTopHeroesTable from "@/app/(site)/users/components/overview/OverviewTopHeroesTable";
+import CharacterStatsTable from "@/components/profile/CharacterStatsTable";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import OverviewAchievementsPreview from "@/app/(site)/users/components/overview/OverviewAchievementsPreview";
 import { tournamentMapPips } from "@/app/(site)/users/components/overview/map-results";
 import { getPlayerSlug } from "@/lib/player";
@@ -93,16 +94,38 @@ const CareerListSection = async ({ user, profile, scope, discipline }: SectionPr
   <OverviewCareerList profile={profile} tournaments={await getTournaments(user.id, scope, discipline)} />
 );
 
+/**
+ * What the overview's character cards read: each character's stats without its per-stat best-match records (they
+ * would ride the RSC payload once per row), and per-character game counts summed over the player's maps (`null`
+ * without map data).
+ */
+const characterCards = (characters: CharacterWithUserStats[], maps: UserMapRead[]) => {
+  const games: Record<number, number> = {};
+  for (const map of maps) {
+    for (const row of map.character_stats ?? []) games[row.character.id] = (games[row.character.id] ?? 0) + row.games;
+  }
+  return {
+    characters: characters.map<CharacterSummary>(({ character, stats }) => ({
+      character,
+      stats: stats.map(({ name, overall, avg_10, avg_10_all }) => ({ name, overall, avg_10, avg_10_all }))
+    })),
+    games: maps.length > 0 ? games : null
+  };
+};
+
 const TopHeroesSection = async ({ user, userSlug, scope, discipline }: SectionProps & { userSlug: string }) => {
   const [charactersRes, mapsRes] = await Promise.all([
     getCharacters(user.id, scope, discipline),
     getMaps(user.id, scope, discipline)
   ]);
+  const { characters, games } = characterCards(charactersRes?.results ?? [], mapsRes?.results ?? []);
+  if (characters.length === 0) return null;
   return (
-    <OverviewTopHeroesTable
-      characters={charactersRes?.results ?? []}
-      maps={mapsRes?.results ?? []}
-      userSlug={userSlug}
+    <ProfileWidget
+      discipline={discipline}
+      slot="topCharacters"
+      props={{ characters, games, userSlug }}
+      fallback={<CharacterStatsTable discipline={discipline} characters={characters} limit={8} />}
     />
   );
 };
@@ -139,13 +162,8 @@ const RoleSplitSection = async ({ user, profile, scope, discipline }: SectionPro
     getCharacters(user.id, scope, discipline),
     getMaps(user.id, scope, discipline)
   ]);
-  return (
-    <OverviewRoleSplit
-      profile={profile}
-      characters={charactersRes?.results ?? []}
-      maps={mapsRes?.results ?? []}
-    />
-  );
+  const { characters, games } = characterCards(charactersRes?.results ?? [], mapsRes?.results ?? []);
+  return <OverviewRoleSplit profile={profile} discipline={discipline} characters={characters} games={games} />;
 };
 
 const AchievementsSection = async ({ user, userSlug, scope }: Omit<SectionProps, "discipline"> & { userSlug: string }) => {

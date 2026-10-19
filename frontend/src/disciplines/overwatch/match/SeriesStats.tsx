@@ -7,10 +7,10 @@ import { useFormatter } from "@/lib/datetime/client";
 import PlayerName from "@/components/PlayerName";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import TeamName from "@/components/TeamName";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { SlotProps } from "@/disciplines/types";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import styles from "@/components/match/EncounterDetail.module.css";
 import {
   COLUMN_PRESETS,
@@ -181,7 +181,7 @@ function SeriesPlayerRow({
       </td>
       <td>
         <span className={styles.rosterCell}>
-          <HeroStrip heroes={heroes} size="sm" limit={6} />
+          <CatalogEntityStrip entities={heroes} size="sm" limit={6} />
         </span>
       </td>
       <td>{mapsPlayed > 0 ? mapsPlayed : "—"}</td>

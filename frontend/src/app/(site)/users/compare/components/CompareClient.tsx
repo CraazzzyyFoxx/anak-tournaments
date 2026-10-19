@@ -4,7 +4,7 @@ import { Suspense, useEffect } from "react";
 import { Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import ComparePageHero from "@/app/(site)/users/compare/components/ComparePageHero";
 import CompareFiltersPanel from "@/app/(site)/users/compare/components/CompareFiltersPanel";
 import CompareUnifiedTable from "@/app/(site)/users/compare/components/CompareUnifiedTable";
@@ -67,7 +67,8 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     rightHeroId: compareParams.rightHeroId,
     mapId: compareParams.mapId,
     scope,
-    discipline
+    discipline,
+    metadata: roleMetadata.data ?? null
   });
 
   useEffect(() => {

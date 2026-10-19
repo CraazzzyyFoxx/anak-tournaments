@@ -34,7 +34,14 @@ vi.mock("@/services/discipline.service", () => ({
     list: async () => [
       { code: "overwatch", name: "Overwatch", enabled: true, kinds: { character: "Hero", map: "Map", mode: "Mode" } },
       { code: "lol", name: "League of Legends", enabled: true, kinds: { character: "Champion", map: "Map" } }
-    ]
+    ],
+    // The browsed game's per-character vocabulary is what the character comparison requests.
+    metadata: async () => ({
+      ...(await import("@/test/discipline-metadata")).OW_METADATA,
+      stat_defs: [
+        { id: 1, code: "eliminations", name: "Eliminations", value_format: "integer", aggregation: "sum", group: null, active: true, sort_order: 1 }
+      ]
+    })
   }
 }));
 vi.mock("@/services/catalog.service", () => ({

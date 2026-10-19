@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { AchievementRarity } from "@/types/achievement.types";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import { classifyRarity, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
 interface Props {

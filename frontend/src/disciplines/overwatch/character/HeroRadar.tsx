@@ -1,8 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { LogStatsName } from "@/types/stats.types";
-import { getHumanizedStats } from "@/lib/stats";
+import { LogStatsName } from "../stat-names";
+import { getHumanizedStats } from "../stat-names";
 
 export const RADAR_STATS: LogStatsName[] = [
   LogStatsName.HeroDamageDealt,

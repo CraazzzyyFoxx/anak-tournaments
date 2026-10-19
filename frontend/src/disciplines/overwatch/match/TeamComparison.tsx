@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import { COMPARISON_STATS, STAT_META, formatStat, teamTotal, type MatchStatsTeam } from "./stats";
 import TeamName from "@/components/TeamName";
 

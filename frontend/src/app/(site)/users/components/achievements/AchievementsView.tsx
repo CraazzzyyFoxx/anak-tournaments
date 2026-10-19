@@ -20,7 +20,7 @@ import { RarityStrip } from "@/components/achievements/RarityStrip";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";

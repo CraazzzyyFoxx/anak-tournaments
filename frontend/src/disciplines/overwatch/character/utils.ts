@@ -1,7 +1,7 @@
 import type { Formatter } from "@/lib/datetime";
 
-import { LogStatsName } from "@/types/stats.types";
-import type { CharacterStat, CharacterWithUserStats } from "@/types/user.types";
+import { LogStatsName } from "../stat-names";
+import type { CharacterSummary } from "@/types/user.types";
 
 /** Only `number` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
 export type NumberFormatter = Pick<Formatter, "number">;
@@ -46,7 +46,7 @@ export const formatDelta = (delta: number) => {
   return `${sign}${(delta * 100).toFixed(0)}%`;
 };
 
-export const getOverall = (row: CharacterWithUserStats, name: LogStatsName) => {
+export const getOverall = (row: CharacterSummary, name: LogStatsName) => {
   return row.stats.find((s) => s.name === name)?.overall ?? 0;
 };
 
@@ -58,7 +58,7 @@ export const toFraction = (value: number | null | undefined): number | null => {
 };
 
 
-export const statAvg10 = (stats: CharacterStat[], name: LogStatsName): number | null => {
+export const statAvg10 = (stats: CharacterSummary["stats"], name: LogStatsName): number | null => {
   const stat = stats.find((s) => s.name === name);
   return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
 };

@@ -13,7 +13,7 @@ import PlayerName from "@/components/PlayerName";
 import { Team } from "@/types/team.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import TeamName from "@/components/TeamName";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PlaceBadge } from "@/components/ui/place-badge";
@@ -340,7 +340,7 @@ export const TournamentTeamTable = ({
                     <td>
                       {player.characters && player.characters.length > 0 ? (
                         <div title={signatureTitle} aria-label={signatureTitle}>
-                          <HeroStrip heroes={player.characters} size="sm" limit={3} />
+                          <CatalogEntityStrip entities={player.characters} size="sm" limit={3} />
                         </div>
                       ) : (
                         <span className="text-[color:var(--aqt-fg-dim)]">—</span>

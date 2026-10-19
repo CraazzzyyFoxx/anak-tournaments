@@ -1,57 +1,28 @@
-import { getTranslations } from "next-intl/server";
-import { aggregateRoleStats, roleOf } from "@/lib/roster/role-ref";
-import { CharacterWithUserStats, UserProfile, UserRole, UserMapRead } from "@/types/user.types";
-import { LogStatsName } from "@/types/stats.types";
-import { characterClass } from "@/lib/catalog/attrs";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { getOverall, statAvg10, toFraction } from "@/app/(site)/users/components/heroes/utils";
-import { winrateColor } from "@/lib/colors";
+"use client";
+
+import { useTranslations } from "next-intl";
+
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import HeroImage from "@/components/hero/HeroImage";
-import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
-import { heroPopoverStats, type HeroPopoverStat } from "@/lib/hero/popover-stats";
-import {
-  normalizeRole,
-  PLAYER_ROLE_LABEL_KEY,
-  playerRoleTint,
-  type AqtRoleKey,
-  type PlayerRoleTint
-} from "@/lib/roster/player-role";
+import { CardSurface } from "@/components/profile/atoms";
+import ProfileWidget, { PROFILE_METADATA_AXIS } from "@/components/profile/ProfileWidget";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
+import { winrateColor } from "@/lib/colors";
+import { findRole, ratedDimension, roleTint, rosterRoleRank } from "@/lib/roster/ontology";
+import { aggregateRoleStats } from "@/lib/roster/role-ref";
+import type { CharacterSummary, UserProfile, UserRole } from "@/types/user.types";
 
-// Canonical English role names used ONLY for icon selection in PlayerRoleIcon.
-const ROLE_ICON: Record<PlayerRoleTint, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex"
-};
-
-// A tint-keyed view of the one shared role-label map (common.roles); no message
-// key is restated here — `@/lib/roster/player-role` owns them.
-const ROLE_LABEL_KEY = {
-  tank: PLAYER_ROLE_LABEL_KEY.Tank,
-  damage: PLAYER_ROLE_LABEL_KEY.Damage,
-  support: PLAYER_ROLE_LABEL_KEY.Support,
-  flex: PLAYER_ROLE_LABEL_KEY.Flex
-} satisfies Record<PlayerRoleTint, string>;
-
-const ROLE_COLOR: Record<PlayerRoleTint, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)",
-  flex: "var(--aqt-flex)"
-};
-
-// Unassigned participation is the Flex presentation bucket, not an ontology role.
-const ROLE_ORDER: PlayerRoleTint[] = ["tank", "damage", "support", "flex"];
+/** The unassigned bucket's hue: the open roster slot's, never a role's. */
+const UNASSIGNED_COLOR = "var(--aqt-flex)";
 
 const formatPercent = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
 
 interface Bucket {
   id: string;
-  key: PlayerRoleTint;
   role: UserRole;
+  label: string;
+  color: string;
   maps: number;
   won: number;
   lost: number;
@@ -59,81 +30,52 @@ interface Bucket {
   share: number;
 }
 
-interface Signature {
-  key: AqtRoleKey;
-  hero: CharacterWithUserStats["character"];
-  /** Per-hero stats narrowed to what the hover popover reads (design-book §11).
-   *  The full array would be serialized into the RSC payload once per row. */
-  stats: HeroPopoverStat[];
-  games: number;
-  kda: number | null;
-  winPct: number | null;
-}
-
 interface Props {
   profile: UserProfile;
-  /** Aggregate per-character stats (already fetched) — source for the signature character. */
-  characters?: CharacterWithUserStats[];
-  /** User maps with per-hero games — the only real per-hero game count. */
-  maps?: UserMapRead[];
+  /** The profile's game: its ontology names and paints the roles, its module may add signature characters. */
+  discipline: string;
+  /** The player's characters in that game (no per-stat best records) — the signature source. */
+  characters: CharacterSummary[];
+  /** Per-character game counts over the player's maps; `null` without map data. */
+  games: Record<number, number> | null;
 }
 
-const OverviewRoleSplit = async ({ profile, characters = [], maps = [] }: Props) => {
+/**
+ * The overview's role split: each role the player was rated in (parent totals, game ontology order) plus the
+ * unassigned bucket, by maps played and won. The roles' names, glyphs and hues come from the game's ontology; the
+ * game's module may add a signature character per role (`roleSignatures` slot).
+ */
+const OverviewRoleSplit = ({ profile, discipline, characters, games }: Props) => {
+  const t = useTranslations();
+  const nameOf = useRoleName();
+  const ontology = useDisciplineMetadata(PROFILE_METADATA_AXIS, discipline).data ?? null;
   if (!profile.roles.length) return null;
 
-  const t = await getTranslations();
   const totalMaps = profile.maps_total;
-  const buckets = aggregateRoleStats(profile.roles).map<Bucket | null>((role) => {
-    const roleKey = role.role === null ? "flex" : playerRoleTint(roleOf(role.role));
-    if (!roleKey) return null;
-    return {
-      id: role.role ? `${role.role.dimension}:${role.role.role}` : "unassigned",
-      key: roleKey,
-      role,
-      maps: role.maps,
-      won: role.maps_won,
-      lost: role.maps - role.maps_won,
-      winrate: role.maps > 0 ? role.maps_won / role.maps : 0,
-      share: totalMaps > 0 ? role.maps / totalMaps : 0
-    };
-  }).filter((b): b is Bucket => b !== null)
-    .sort((a, b) => ROLE_ORDER.indexOf(a.key) - ROLE_ORDER.indexOf(b.key));
+  const rank = rosterRoleRank(ontology);
+  const buckets: Bucket[] = aggregateRoleStats(profile.roles)
+    .sort((a, b) => (a.role === null ? 1 : 0) - (b.role === null ? 1 : 0) || rank(a.role) - rank(b.role))
+    .map((role) => {
+      const node = ontology && role.role ? findRole(ontology, role.role) : null;
+      return {
+        id: role.role ? `${role.role.dimension}:${role.role.role}` : "unassigned",
+        role,
+        label: role.role === null ? t("common.roles.flex") : node ? nameOf(node) : role.role.role,
+        color: role.role === null ? UNASSIGNED_COLOR : roleTint(ontology, role.role.role),
+        maps: role.maps,
+        won: role.maps_won,
+        lost: role.maps - role.maps_won,
+        winrate: role.maps > 0 ? role.maps_won / role.maps : 0,
+        share: totalMaps > 0 ? role.maps / totalMaps : 0
+      };
+    });
 
-  const primary: Bucket | undefined = buckets.reduce<Bucket | undefined>(
+  const primary = buckets.reduce<Bucket | undefined>(
     (best, current) => (best === undefined || current.role.tournaments > best.role.tournaments ? current : best),
     undefined
   );
-
-  // Signature hero per role: the most-played hero the player owns in that role.
-  const hasGamesData = maps.length > 0;
-  const gamesByHero = new Map<number, number>();
-  for (const m of maps) {
-    for (const hs of m.character_stats ?? []) {
-      gamesByHero.set(hs.character.id, (gamesByHero.get(hs.character.id) ?? 0) + (hs.games ?? 0));
-    }
-  }
-  const signatures: Signature[] = [];
-  for (const key of ROLE_ORDER) {
-    if (!buckets.some((b) => b.key === key && b.role.role?.dimension === "player_role")) continue;
-    // Signatures come from a hero's CLASS, which is never "flex" — filtering by
-    // it would silently list the player's damage heroes under the flex bucket.
-    if (key === "flex") continue;
-    const roleHeroes = characters.filter((h) => normalizeRole(characterClass(h.character)) === key);
-    if (roleHeroes.length === 0) continue;
-    const top = roleHeroes.reduce((best, h) =>
-      getOverall(h, LogStatsName.HeroTimePlayed) > getOverall(best, LogStatsName.HeroTimePlayed) ? h : best
-    );
-    if (getOverall(top, LogStatsName.HeroTimePlayed) <= 0) continue;
-    const winFrac = toFraction(statAvg10(top.stats, LogStatsName.Winrate));
-    signatures.push({
-      key,
-      hero: top.character,
-      stats: heroPopoverStats(top.stats) ?? [],
-      games: gamesByHero.get(top.character.id) ?? 0,
-      kda: statAvg10(top.stats, LogStatsName.KDA),
-      winPct: winFrac == null ? null : winFrac * 100
-    });
-  }
+  const rated = ontology ? ratedDimension(ontology)?.code : undefined;
+  const ratedRoles = buckets.flatMap((b) => (b.role.role && b.role.role.dimension === rated ? [b.role.role.role] : []));
 
   return (
     <CardSurface
@@ -152,8 +94,8 @@ const OverviewRoleSplit = async ({ profile, characters = [], maps = [] }: Props)
               b.share > 0 ? (
                 <div
                   key={b.id}
-                  style={{ width: `${b.share * 100}%`, background: ROLE_COLOR[b.key] }}
-                  title={`${t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])} · ${Math.round(b.share * 100)}%`}
+                  style={{ width: `${b.share * 100}%`, background: b.color }}
+                  title={`${b.label} · ${Math.round(b.share * 100)}%`}
                 />
               ) : null
             )}
@@ -161,8 +103,8 @@ const OverviewRoleSplit = async ({ profile, characters = [], maps = [] }: Props)
           <div className="flex flex-wrap gap-x-3.5 gap-y-1">
             {buckets.map((b) => (
               <span key={b.id} className="inline-flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]">
-                <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: ROLE_COLOR[b.key] }} aria-hidden />
-                {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
+                <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: b.color }} aria-hidden />
+                {b.label}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{b.maps}</span>
                 <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">{Math.round(b.share * 100)}%</span>
               </span>
@@ -180,8 +122,8 @@ const OverviewRoleSplit = async ({ profile, characters = [], maps = [] }: Props)
               />
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 font-onest text-base font-bold leading-none text-[color:var(--aqt-fg)]">
-                  <PlayerRoleIcon role={ROLE_ICON[b.key]} size={14} color={ROLE_COLOR[b.key]} decorative />
-                  {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
+                  <PlayerRoleIcon role={b.role.role} ontology={ontology} size={14} color={b.color} decorative />
+                  {b.label}
                   {primary && b.id === primary.id ? (
                     <span className="ml-1 text-label font-semibold text-[color:var(--aqt-fg-muted)]">
                       · {t("users.overview.roleSplit.main")}
@@ -206,46 +148,14 @@ const OverviewRoleSplit = async ({ profile, characters = [], maps = [] }: Props)
             </div>
           ))}
         </div>
-        {signatures.length > 0 ? (
-          <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3.5">
-            <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {t("users.overview.roleSplit.signatureTitle")}
-            </span>
-            {signatures.map((sig) => {
-              const roleName = t(ROLE_LABEL_KEY[sig.key] as Parameters<typeof t>[0]);
-              return (
-                <div key={sig.key} className="grid grid-cols-[16px_26px_1fr_auto] items-center gap-2.5">
-                  <div className="flex justify-center" title={roleName}>
-                    <PlayerRoleIcon role={ROLE_ICON[sig.key]} size={14} color={ROLE_COLOR[sig.key]} />
-                  </div>
-                  <HeroImage
-                    hero={sig.hero}
-                    size={26}
-                    title={sig.hero.name}
-                    popover={<HeroUserStatsPopover hero={sig.hero} stats={sig.stats} />}
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate text-caption font-bold text-[color:var(--aqt-fg)]">{sig.hero.name}</div>
-                    <div className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
-                      {hasGamesData && sig.games > 0 ? <>{t("users.overview.roleSplit.games", { count: sig.games })} · </> : null}
-                      {sig.kda != null ? t("users.overview.roleSplit.kda", { value: sig.kda.toFixed(2) }) : "—"}
-                    </div>
-                  </div>
-                  {/* Empty when the hero has no winrate sample: an `auto` track
-                      collapses to nothing, where a placeholder dash printed a
-                      column of three bare em dashes down the card. */}
-                  {sig.winPct != null ? (
-                    <div
-                      className="aqt-display aqt-tnum text-ui font-bold"
-                      style={{ color: winrateColor(sig.winPct) }}
-                    >
-                      {sig.winPct.toFixed(0)}%
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+        {ratedRoles.length > 0 ? (
+          <ProfileWidget
+            axis={PROFILE_METADATA_AXIS}
+            discipline={discipline}
+            slot="roleSignatures"
+            props={{ characters, games, roles: ratedRoles }}
+            fallback={null}
+          />
         ) : null}
       </div>
     </CardSurface>

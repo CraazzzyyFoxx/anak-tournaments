@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-import HeroImage from "@/components/hero/HeroImage";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { cn } from "@/lib/utils";
 import type { PickBanKind } from "@/types/tournament.types";
 
@@ -21,17 +21,16 @@ interface PickBanItemThumbProps {
 }
 
 /**
- * One pool item at a glance: a hero portrait or a map still, wherever the room
+ * One pool item at a glance: a character portrait or a map still, wherever the room
  * would otherwise print the item's name as bare text (step timeline, play
- * order, the command bar's confirmation). Heroes go through `HeroImage` — the
- * app's canonical hero renderer, initials fallback included — so only the map
- * shape is implemented here.
+ * order, the command bar's confirmation). Characters go through `CatalogEntityImage`
+ * (initials fallback included), so only the map shape is implemented here.
  */
 export function PickBanItemThumb({ kind, item, name, size = 28, muted }: Readonly<PickBanItemThumbProps>) {
   if (kind === "hero") {
     return (
-      <HeroImage
-        hero={{ name, image_path: item?.image_path ?? "", attrs: item?.attrs }}
+      <CatalogEntityImage
+        entity={{ name, image_path: item?.image_path ?? null }}
         size={size}
         title={name}
         className={cn("shrink-0", muted ? "opacity-45 grayscale" : null)}

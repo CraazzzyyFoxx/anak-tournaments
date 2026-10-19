@@ -4,8 +4,8 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { ArrowDown, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LogStatsName } from "@/types/stats.types";
-import { formatDelta, formatStatValue } from "@/app/(site)/users/components/heroes/utils";
+import { LogStatsName } from "../stat-names";
+import { formatDelta, formatStatValue } from "./utils";
 import { SearchField } from "@/components/ui/search-field";
 
 export type StatSortKey = "delta" | "overall" | "avg10" | "name";

@@ -9,7 +9,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UserTournamentWithStats, UserTournamentSummary } from "@/types/user.types";
 import { type MapResultPip } from "@/app/(site)/users/components/overview/map-results";
 import { UserTournamentStat } from "@/types/statistics.types";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY, playerRoleTint } from "@/lib/roster/player-role";

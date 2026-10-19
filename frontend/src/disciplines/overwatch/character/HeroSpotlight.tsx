@@ -2,14 +2,14 @@
 
 import { useTranslations } from "next-intl";
 import type { CharacterWithUserStats } from "@/types/user.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import { characterClass } from "@/lib/catalog/attrs";
-import { LogStatsName } from "@/types/stats.types";
-import type { AqtRoleKey } from "@/lib/roster/player-role";
-import HeroImage from "@/components/hero/HeroImage";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { LogStatsName } from "../stat-names";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import { formatSeconds } from "@/lib/format";
-import { formatDelta } from "@/app/(site)/users/components/heroes/utils";
+import { formatDelta } from "./utils";
+import { useHeroClass } from "./classes";
 
 // Quick-stats shown in the spotlight (first 4 present, in this order).
 export const QUICK_CANDIDATES: LogStatsName[] = [
@@ -31,43 +31,31 @@ interface SpotlightHero {
   playtime: number;
   share: number;
 }
-
-/** Canonical English role names used ONLY to pick the PlayerRoleIcon glyph. */
-const ROLE_ICON_NAME: Record<AqtRoleKey, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support"
-};
-
 const HeroSpotlight = ({
   selected,
-  heroVariant,
+  metadata,
   quickStats
 }: {
   selected: SpotlightHero;
-  heroVariant: AqtRoleKey;
+  metadata: DisciplineMetadata;
   quickStats: QuickStatData[];
 }) => {
   const t = useTranslations();
-  const roleName = characterClass(selected.hero.character);
+  const heroClass = useHeroClass(metadata);
+  const cls = characterClass(selected.hero.character);
   return (
     <CardSurface>
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-4">
-          <HeroImage hero={selected.hero.character} size={80} rounded="lg" />
+          <CatalogEntityImage entity={selected.hero.character} size={80} rounded="lg" />
           <div className="flex min-w-0 flex-col gap-1.5">
             <h2 className="aqt-display m-0 truncate text-headline font-bold leading-tight text-[color:var(--aqt-fg)]">
               {selected.hero.character.name}
             </h2>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-[color:var(--aqt-fg-muted)]">
-              <span className="inline-flex items-center gap-1.5">
-                <PlayerRoleIcon
-                  role={ROLE_ICON_NAME[heroVariant]}
-                  size={14}
-                  color={`var(--aqt-${heroVariant})`}
-                  decorative
-                />
-                <span className="capitalize">{roleName}</span>
+              <span className="inline-flex items-center gap-1.5" style={{ color: heroClass.color(cls) }}>
+                {heroClass.icon(cls, 14)}
+                <span className="text-[color:var(--aqt-fg-muted)]">{heroClass.label(cls)}</span>
               </span>
               <span className="aqt-tnum">{t("users.heroes.played", { time: formatSeconds(selected.playtime) })}</span>
               <span className="aqt-tnum">

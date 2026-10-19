@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import type { PlayerRoleTint } from "@/lib/roster/player-role";
 import { initials } from "@/lib/utils";
-import type { FormResult } from "@/app/(site)/users/components/shared/atoms";
+import type { FormResult } from "@/components/profile/atoms";
 import type { Translate } from "@/app/(site)/users/components/shared/list-utils";
 
 /** Serializable data needed to render the shareable player card. */

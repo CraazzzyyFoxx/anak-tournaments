@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import userService from "@/services/user.service";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
-import HeroesView from "@/app/(site)/users/components/heroes/HeroesView";
+import CharacterStatsTable from "@/components/profile/CharacterStatsTable";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import { Skeleton } from "@/components/ui/skeleton";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -68,7 +69,14 @@ const UserHeroesContainer = ({ userId, scope, discipline }: UserHeroesContainerP
     </div>
   );
 
-  return <HeroesView characters={characters} filterSlot={filterSlot} maps={mapsQuery.data?.results ?? []} />;
+  return (
+    <ProfileWidget
+      discipline={discipline}
+      slot="characterStats"
+      props={{ characters, maps: mapsQuery.data?.results ?? [], filterSlot }}
+      fallback={<CharacterStatsTable discipline={discipline} characters={characters} action={filterSlot} />}
+    />
+  );
 };
 
 export default UserHeroesContainer;

@@ -1,43 +1,26 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import type { CharacterWithUserStats, UserMapRead } from "@/types/user.types";
-import { LogStatsName } from "@/types/stats.types";
+import type { SlotProps } from "@/disciplines/types";
+import type { CharacterWithUserStats } from "@/types/user.types";
+import { LogStatsName, getHumanizedStats } from "../stat-names";
 import { characterClass } from "@/lib/catalog/attrs";
-import { getHumanizedStats } from "@/lib/stats";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { heroVariantFromRole, type AqtRoleKey } from "@/lib/roster/player-role";
+import { CardSurface } from "@/components/profile/atoms";
 import { formatPercent } from "@/lib/format";
-import {
-  computeDelta,
-  formatDelta,
-  formatStatValue,
-  getOverall,
-  isRevertedStat
-} from "@/app/(site)/users/components/heroes/utils";
-import HeroRadar, { RADAR_STATS, type RadarPoint } from "@/app/(site)/users/components/heroes/HeroRadar";
-import HeroSpotlight, {
-  QUICK_CANDIDATES
-} from "@/app/(site)/users/components/heroes/HeroSpotlight";
-import HeroStatsTable, {
-  type StatSortKey
-} from "@/app/(site)/users/components/heroes/HeroStatsTable";
-import MapsForHero from "@/app/(site)/users/components/heroes/MapsForHero";
-import HeroRail, { type HeroRow } from "@/app/(site)/users/components/heroes/HeroRail";
-import HeroBestGames from "@/app/(site)/users/components/heroes/HeroBestGames";
-import RadarAxisPicker from "@/app/(site)/users/components/heroes/RadarAxisPicker";
+import { computeDelta, formatDelta, formatStatValue, getOverall, isRevertedStat } from "./utils";
+import HeroRadar, { RADAR_STATS, type RadarPoint } from "./HeroRadar";
+import HeroSpotlight, { QUICK_CANDIDATES } from "./HeroSpotlight";
+import HeroStatsTable, { type StatSortKey } from "./HeroStatsTable";
+import MapsForHero from "./MapsForHero";
+import HeroRail, { type HeroRow } from "./HeroRail";
+import HeroBestGames from "./HeroBestGames";
+import RadarAxisPicker from "./RadarAxisPicker";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 
-interface Props {
-  characters: CharacterWithUserStats[];
-  filterSlot?: React.ReactNode;
-  /** User maps (with per-character stats) — powers the "Maps for [character]" panel. */
-  maps?: UserMapRead[];
-}
-
-const HeroesView = ({ characters, filterSlot, maps }: Props) => {
+/** Overwatch's characters tab (the profile's `characterStats` slot). */
+const HeroesView = ({ characters, filterSlot, maps, metadata }: SlotProps["characterStats"]) => {
   const t = useTranslations();
   const format = useFormatter();
   const safeHeroes = Array.isArray(characters) ? characters : [];
@@ -259,8 +242,6 @@ const HeroesView = ({ characters, filterSlot, maps }: Props) => {
     );
   }
 
-  const heroVariant = heroVariantFromRole(characterClass(selected.hero.character)) as AqtRoleKey;
-
   return (
     <div className="aqt-player flex flex-col gap-3.5">
       {/* Sticky hero rail (cross-hero compare) + detail, side by side so
@@ -268,7 +249,7 @@ const HeroesView = ({ characters, filterSlot, maps }: Props) => {
       <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_360px] xl:items-start">
         <div className="flex min-w-0 flex-col gap-3.5">
           {/* Spotlight */}
-          <HeroSpotlight selected={selected} heroVariant={heroVariant} quickStats={quickStats} />
+          <HeroSpotlight selected={selected} metadata={metadata} quickStats={quickStats} />
 
           {/* Radar + insights */}
           <CardSurface
@@ -348,7 +329,12 @@ const HeroesView = ({ characters, filterSlot, maps }: Props) => {
           {/* Maps the selected hero was played on (best → worst) */}
           <MapsForHero heroName={selected.hero.character.name} heroMaps={heroMaps} />
         </div>
-        <HeroRail rows={overviewRows} selectedId={selected.hero.character.id} onSelect={setSelectedId} />
+        <HeroRail
+          rows={overviewRows}
+          selectedId={selected.hero.character.id}
+          onSelect={setSelectedId}
+          metadata={metadata}
+        />
       </div>
     </div>
   );

@@ -116,3 +116,23 @@ export const ProfileStat = ({
     {children}
   </div>
 );
+
+/** One cell of a dossier's hairline summary strip: uppercase label over an Onest figure. `color` encodes quality. */
+export const SummaryCellBox = ({
+  label,
+  value,
+  color
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  color?: string;
+}) => (
+  <div className="flex flex-col gap-1 border-l border-[color:var(--aqt-border)] px-3 py-2.5 first:border-l-0">
+    <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+      {label}
+    </span>
+    <span className="aqt-display aqt-tnum text-base font-bold leading-none" style={{ color: color ?? "var(--aqt-fg)" }}>
+      {value}
+    </span>
+  </div>
+);

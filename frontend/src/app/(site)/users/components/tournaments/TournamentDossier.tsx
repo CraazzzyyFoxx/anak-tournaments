@@ -1,13 +1,13 @@
 "use client";
 
 import React from "react";
-import { roleOf } from "@/lib/roster/role-ref";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { tournamentHref } from "@/lib/tournament/url";
 import { Trophy } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { UserTournament } from "@/types/user.types";
 import { TournamentTeamTable } from "@/components/TournamentTeamCard";
+import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -21,7 +21,6 @@ import {
 } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
 import {
   type TournamentGroup,
-  avgMvpPlacement,
   divisionLabel,
   groupAggregate,
   groupBestPlacement,
@@ -31,7 +30,6 @@ import {
   isLeagueGroup,
   mapsWinratePct,
   placementMedal,
-  roleColorVar,
   winrateColor
 } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 
@@ -68,7 +66,6 @@ const summaryCells = (
     mapsWon: number;
     mapsLost: number;
     closeness: number | null;
-    avgMvp: number | null;
   }
 ): SummaryCell[] => {
   const wr = mapsWinratePct(args.mapsWon, args.mapsLost);
@@ -115,14 +112,20 @@ const summaryCells = (
       key: "closeness",
       label: t("users.tournaments.dossier.summary.closeness"),
       value: args.closeness != null ? `${Math.round(args.closeness * 100)}%` : "—"
-    },
-    {
-      key: "avgMvp",
-      label: t("users.tournaments.dossier.summary.avgMvp"),
-      value: args.avgMvp != null ? args.avgMvp.toFixed(1) : "—"
     }
   ];
 };
+
+/** The game module's own trailing summary cell (Overwatch: average MVP placement), drawn in the entries' game. */
+const ModuleSummaryCell = ({ entries }: { entries: UserTournament[] }) => (
+  <ProfileWidget
+    axis={entries[0].workspace_id}
+    discipline={entries[0].discipline}
+    slot="tournamentSummary"
+    props={{ entries }}
+    fallback={null}
+  />
+);
 
 /** Roster table + per-stage "run" for one tournament entry. */
 const EventBody = ({
@@ -206,6 +209,7 @@ const SingleDossier = ({
   loadingEncounters?: boolean;
 }) => {
   const tr = useTranslations();
+  const ontology = useDisciplineMetadata(t.workspace_id, t.discipline).data ?? null;
   const agg = groupAggregate(t);
   const cells = summaryCells(tr, {
     placement: t.placement ?? null,
@@ -215,8 +219,7 @@ const SingleDossier = ({
     draw: agg.draw,
     mapsWon: agg.mapsWon,
     mapsLost: agg.mapsLost,
-    closeness: t.closeness ?? null,
-    avgMvp: avgMvpPlacement([t])
+    closeness: t.closeness ?? null
   });
 
   return (
@@ -237,13 +240,7 @@ const SingleDossier = ({
               ) : null}
             </div>
             <div className="mt-1.5 flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
-              <span className="inline-flex" title={roleOf(t.role) ?? undefined}>
-                <PlayerRoleIcon
-                  role={roleOf(t.role)}
-                  size={15}
-                  color={roleColorVar(roleOf(t.role))}
-                />
-              </span>
+              <PlayerRoleIcon role={t.role} ontology={ontology} size={15} />
               <span className="aqt-tnum truncate">
                 {tr("users.tournaments.teamName", { name: String(t.team) })}
               </span>
@@ -257,7 +254,7 @@ const SingleDossier = ({
           </div>
         </div>
       </div>
-      <SummaryStrip cells={cells} />
+      <SummaryStrip cells={cells} extra={<ModuleSummaryCell entries={[t]} />} />
       <div className="p-4">
         <EventBody t={t} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />
       </div>
@@ -326,8 +323,7 @@ const LeagueDossier = ({
     draw: agg.draw,
     mapsWon: agg.mapsWon,
     mapsLost: agg.mapsLost,
-    closeness: avgCloseness,
-    avgMvp: avgMvpPlacement(entries)
+    closeness: avgCloseness
   });
 
   return (
@@ -348,7 +344,7 @@ const LeagueDossier = ({
           </div>
         </div>
       </div>
-      <SummaryStrip cells={cells} />
+      <SummaryStrip cells={cells} extra={<ModuleSummaryCell entries={entries} />} />
       <div className="p-4">
         <SectionLabel>{tr("users.tournaments.dossier.divisions")}</SectionLabel>
         <div className="divide-y divide-[color:var(--aqt-border)]">

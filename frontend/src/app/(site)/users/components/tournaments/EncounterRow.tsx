@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { type ScoreKind } from "@/components/match/cells";
 import MatchRowBadge from "@/components/match/MatchRowBadge";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
@@ -69,7 +69,7 @@ const EncounterRow = ({
 
       {/* Heroes */}
       <div className="hidden items-center md:flex">
-        <HeroStrip heroes={heroes} size="sm" limit={6} />
+        <CatalogEntityStrip entities={heroes} size="sm" limit={6} />
       </div>
 
       {/* MVP pills (per map) — hover shows the map it was earned on */}

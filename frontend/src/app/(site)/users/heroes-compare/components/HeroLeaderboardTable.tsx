@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 import { characterClass } from "@/lib/catalog/attrs";
 import type { CatalogEntityRead } from "@/types/catalog.types";
-import HeroImage from "@/components/hero/HeroImage";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { heroVariantFromRole } from "@/lib/roster/player-role";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -92,7 +92,7 @@ const HeroLeaderboardTable = ({
     <section className="overflow-hidden rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
       {/* Board head */}
       <div className="flex items-center gap-3.5 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-5 py-4">
-        {selectedHero && <HeroImage hero={selectedHero} size={44} rounded="lg" />}
+        {selectedHero && <CatalogEntityImage entity={selectedHero} size={44} rounded="lg" />}
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             <h2

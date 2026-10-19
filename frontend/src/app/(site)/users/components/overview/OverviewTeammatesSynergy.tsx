@@ -5,10 +5,9 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
 import { ArrowRight } from "lucide-react";
 import { UserBestTeammate } from "@/types/user.types";
-import { LogStatsName } from "@/types/stats.types";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import { winrateColor } from "@/lib/colors";
-import { heroInitials } from "@/components/hero/heroRole";
+import { catalogInitials } from "@/lib/catalog/initials";
 import { getPlayerSlug } from "@/lib/player";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { SearchField } from "@/components/ui/search-field";
@@ -99,7 +98,7 @@ const TeammateRows = ({
               className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[color:var(--aqt-card-2)] font-onest text-label font-bold text-[color:var(--aqt-fg-muted)]"
               aria-hidden
             >
-              {heroInitials(nm)}
+              {catalogInitials(nm)}
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
@@ -145,6 +144,10 @@ const AllTeammatesTable = ({
   onSearchChange: (value: string) => void;
 }) => {
   const t = useTranslations();
+  // The teammate read's per-match averages (`kda`, MVP `performance`) exist only for games that record them: a
+  // column shows when some teammate has a value, never as a column of dashes for a game without that vocabulary.
+  const hasKda = teammates.some((tm) => tm.stats?.kda != null);
+  const hasMvp = teammates.some((tm) => tm.stats?.performance != null);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = [...teammates].sort((a, b) => b.tournaments - a.tournaments);
@@ -183,8 +186,8 @@ const AllTeammatesTable = ({
                 { id: "played", label: t("users.overview.teammates.col.played"), left: false },
                 { id: "maps", label: t("users.overview.teammates.col.maps"), left: false },
                 { id: "wr", label: t("users.overview.teammates.col.wr"), left: false },
-                { id: "kda", label: t("users.overview.teammates.col.kda"), left: false },
-                { id: "mvp", label: t("users.overview.teammates.col.mvp"), left: false }
+                ...(hasKda ? [{ id: "kda", label: t("users.overview.teammates.col.kda"), left: false }] : []),
+                ...(hasMvp ? [{ id: "mvp", label: t("users.overview.teammates.col.mvp"), left: false }] : [])
               ].map((h) => (
                 <th key={h.id} className={cnHeader(h.left)}>
                   {h.label}
@@ -211,18 +214,22 @@ const AllTeammatesTable = ({
                   >
                     {(tm.winrate * 100).toFixed(0)}%
                   </td>
-                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
-                    {formatStat(tm.stats?.[LogStatsName.KDA], 2)}
-                  </td>
-                  <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
-                    {formatStat(tm.stats?.[LogStatsName.Performance], 1)}
-                  </td>
+                  {hasKda ? (
+                    <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                      {formatStat(tm.stats?.kda, 2)}
+                    </td>
+                  ) : null}
+                  {hasMvp ? (
+                    <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">
+                      {formatStat(tm.stats?.performance, 1)}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
+                <td colSpan={4 + Number(hasKda) + Number(hasMvp)} className="px-3 py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
                   {t("users.overview.teammates.noMatch")}
                 </td>
               </tr>

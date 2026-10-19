@@ -1,60 +1,29 @@
-import { getTranslations } from "next-intl/server";
-import { getFormatter } from "@/lib/datetime/server";
+"use client";
+
+import { useTranslations } from "next-intl";
+import { useFormatter } from "@/lib/datetime/client";
 import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { CharacterWithUserStats, UserMapRead } from "@/types/user.types";
-import { LogStatsName } from "@/types/stats.types";
+import type { SlotProps } from "@/disciplines/types";
+import { LogStatsName } from "../stat-names";
 import { characterClass } from "@/lib/catalog/attrs";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import { normalizeRole, type AqtRoleKey } from "@/lib/roster/player-role";
+import { CardSurface } from "@/components/profile/atoms";
 import { formatSeconds } from "@/lib/format";
-import { formatStatValue, getOverall, statAvg10, toFraction } from "@/app/(site)/users/components/heroes/utils";
+import { formatStatValue, getOverall, statAvg10, toFraction } from "./utils";
 import { winrateColor } from "@/lib/colors";
-import HeroImage from "@/components/hero/HeroImage";
-import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { heroPopoverStats, type HeroPopoverStat } from "@/lib/hero/popover-stats";
-
-interface Props {
-  characters: CharacterWithUserStats[];
-  /** User maps (with per-hero stats) — the only source of a real per-hero game
-   *  count, which drives the low-sample gate (design-book §5/§6). */
-  maps: UserMapRead[];
-  userSlug: string;
-  limit?: number;
-}
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import HeroUserStatsPopover from "./HeroUserStatsPopover";
+import { useHeroClass } from "./classes";
 
 // design-book §5/§6: percentile / vs-avg is noise under this many games.
 const LOW_SAMPLE_GAMES = 10;
-const DEFAULT_LIMIT = 8;
-
-// Canonical English role names used ONLY to pick the PlayerRoleIcon glyph.
-const ROLE_ICON_NAME: Record<AqtRoleKey, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support"
-};
-
-// Localized role name (icon-only in the table; name lives in title/aria-label).
-const ROLE_NAME_KEY: Record<AqtRoleKey, string> = {
-  tank: "common.roles.tank",
-  damage: "common.roles.damage",
-  support: "common.roles.support"
-};
-
-const ROLE_COLOR: Record<AqtRoleKey, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)"
-};
+const LIMIT = 8;
 
 interface Row {
   id: number;
-  hero: CharacterWithUserStats["character"];
-  /** Per-hero stats narrowed to what the hover popover reads (design-book §11).
-   *  The full array would be serialized into the RSC payload once per row. */
-  stats: HeroPopoverStat[];
-  roleKey: AqtRoleKey | null;
+  hero: SlotProps["topCharacters"]["characters"][number]["character"];
+  stats: SlotProps["topCharacters"]["characters"][number]["stats"];
+  heroClass: string | undefined;
   games: number;
   /** Total seconds on the hero — this is what the table is ordered by. */
   playtime: number;
@@ -76,39 +45,34 @@ const numHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.
 const textHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const numCell = "aqt-tnum px-3 py-2.5 text-right text-caption text-[color:var(--aqt-fg-muted)]";
 
-const OverviewTopHeroesTable = async ({ characters, maps, userSlug, limit = DEFAULT_LIMIT }: Props) => {
+/** Overwatch's most-played heroes on the profile overview (the `topCharacters` slot). */
+const TopHeroesTable = ({ characters, games: gamesByHero, userSlug, metadata }: SlotProps["topCharacters"]) => {
+  const t = useTranslations();
+  const format = useFormatter();
+  const heroClass = useHeroClass(metadata);
   if (characters.length === 0) return null;
 
-  const t = await getTranslations();
-  const format = await getFormatter();
-
-  // Real per-hero game count (and wins) aggregated across every map the hero
-  // was played on. This is the only place the profile exposes a games count.
-  const hasGamesData = maps.length > 0;
-  const gamesByHero = new Map<number, number>();
-  for (const m of maps) {
-    for (const hs of m.character_stats ?? []) {
-      gamesByHero.set(hs.character.id, (gamesByHero.get(hs.character.id) ?? 0) + (hs.games ?? 0));
-    }
-  }
+  // Real per-hero game count summed over every map the hero was played on (`null` without map data). This is
+  // the only place the profile exposes a games count.
+  const hasGamesData = gamesByHero !== null;
 
   const withPlaytime = characters.map((h) => ({ h, playtime: getOverall(h, LogStatsName.HeroTimePlayed) }));
   const totalPlaytime = withPlaytime.reduce((sum, x) => sum + x.playtime, 0);
 
   const rows: Row[] = withPlaytime
     .sort((a, b) => b.playtime - a.playtime)
-    .slice(0, limit)
+    .slice(0, LIMIT)
     .map(({ h, playtime }) => {
       const winStat = h.stats.find((s) => s.name === LogStatsName.Winrate);
       const winFrac = toFraction(winStat?.avg_10);
       const globalFrac = winStat && winStat.avg_10_all > 0 ? toFraction(winStat.avg_10_all) : null;
-      const games = gamesByHero.get(h.character.id) ?? 0;
+      const games = gamesByHero?.[h.character.id] ?? 0;
       const lowSample = hasGamesData && games < LOW_SAMPLE_GAMES;
       return {
         id: h.character.id,
         hero: h.character,
-        stats: heroPopoverStats(h.stats) ?? [],
-        roleKey: normalizeRole(characterClass(h.character)),
+        stats: h.stats,
+        heroClass: characterClass(h.character),
         games,
         playtime,
         share: totalPlaytime > 0 ? playtime / totalPlaytime : null,
@@ -169,9 +133,7 @@ const OverviewTopHeroesTable = async ({ characters, maps, userSlug, limit = DEFA
           </thead>
           <tbody>
             {rows.map((r) => {
-              const roleName = r.roleKey
-                ? t(ROLE_NAME_KEY[r.roleKey] as Parameters<typeof t>[0])
-                : (characterClass(r.hero) ?? "");
+              const roleName = heroClass.label(r.heroClass);
               return (
                 <tr
                   key={r.id}
@@ -179,11 +141,11 @@ const OverviewTopHeroesTable = async ({ characters, maps, userSlug, limit = DEFA
                 >
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">
-                      <HeroImage
-                        hero={r.hero}
+                      <CatalogEntityImage
+                        entity={r.hero}
                         size="sm"
                         title={r.hero.name}
-                        popover={<HeroUserStatsPopover hero={r.hero} stats={r.stats} />}
+                        popover={<HeroUserStatsPopover entity={r.hero} stats={r.stats} metadata={metadata} />}
                       />
                       <div className="min-w-0">
                         <div className="truncate text-caption font-bold text-[color:var(--aqt-fg)]">
@@ -202,11 +164,8 @@ const OverviewTopHeroesTable = async ({ characters, maps, userSlug, limit = DEFA
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex justify-center" title={roleName}>
-                      <PlayerRoleIcon
-                        role={r.roleKey ? ROLE_ICON_NAME[r.roleKey] : null}
-                        size={16}
-                        color={r.roleKey ? ROLE_COLOR[r.roleKey] : "var(--aqt-fg-muted)"}
-                      />
+                      {heroClass.icon(r.heroClass, 16)}
+                      <span className="sr-only">{roleName}</span>
                     </div>
                   </td>
                   {columns.games ? <td className={numCell}>{r.games}</td> : null}
@@ -283,4 +242,4 @@ const OverviewTopHeroesTable = async ({ characters, maps, userSlug, limit = DEFA
   );
 };
 
-export default OverviewTopHeroesTable;
+export default TopHeroesTable;

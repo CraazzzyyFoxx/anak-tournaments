@@ -11,7 +11,7 @@ import achievementsService from "@/services/achievements.service";
 import PlayerName from "@/components/PlayerName";
 import TeamName from "@/components/TeamName";
 import { DataPagination } from "@/components/ui/data-pagination";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import { Skeleton } from "@/components/ui/skeleton";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";

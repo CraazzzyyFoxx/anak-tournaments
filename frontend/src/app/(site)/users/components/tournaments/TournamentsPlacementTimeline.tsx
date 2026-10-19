@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { CardSurface, ProfileStat } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import { UserProfile, UserTournament } from "@/types/user.types";
 
 interface Props {

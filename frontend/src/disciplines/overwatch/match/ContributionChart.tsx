@@ -13,7 +13,7 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import { STAT_META, activePlayers, formatStat, playerStat, type MatchStatsTeam } from "./stats";
 
 interface ContributionChartProps {

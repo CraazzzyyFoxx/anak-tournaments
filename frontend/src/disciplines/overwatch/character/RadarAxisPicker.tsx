@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LogStatsName } from "@/types/stats.types";
-import { getHumanizedStats } from "@/lib/stats";
+import { LogStatsName } from "../stat-names";
+import { getHumanizedStats } from "../stat-names";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchField } from "@/components/ui/search-field";
 

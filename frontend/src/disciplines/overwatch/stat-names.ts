@@ -53,3 +53,13 @@ export enum LogStatsName {
 
   Winrate = "winrate"
 }
+
+/** A stat code as a label (`hero_damage_dealt` → `Hero damage dealt`). */
+export const getHumanizedStats = (stats: LogStatsName) => {
+  return stats
+    .replace(/^[\s_]+|[\s_]+$/g, "")
+    .replace(/[_\s]+/g, " ")
+    .replace(/^[a-z]/, function (m) {
+      return m.toUpperCase();
+    });
+};

@@ -9,7 +9,14 @@ import type {
   NativeTier
 } from "@/types/discipline.types";
 import type { EncounterTeam, MatchWithStats } from "@/types/encounter.types";
-import type { MatchWithUserStats } from "@/types/user.types";
+import type {
+  CharacterSummary,
+  CharacterWithUserStats,
+  MatchWithUserStats,
+  UserMapCharacterStats,
+  UserMapRead,
+  UserTournament
+} from "@/types/user.types";
 
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
@@ -17,9 +24,6 @@ export type { DisciplineCapabilities };
 
 /** A run of native ranks as indices into the discipline's native ladder (0 = top rank), `from <= to`. */
 export type NativeRankRange = { from: number; to: number };
-
-/** One side of a two-player comparison (§7 leaves the body to the compare owner; the player is the stable part). */
-export type CompareSide = { userId: number };
 
 /** One committed action of a round's character-ban phase, resolved against the catalog. */
 export interface PregameCharacterAction {
@@ -65,14 +69,40 @@ export interface PregameCharacterRound extends PregameCharacterBoard {
 }
 
 export type SlotProps = {
-  characterPopover: { entity: CatalogEntityRead; userId: number | null; axis: WorkspaceAxis };
-  characterStats: { userId: number; axis: WorkspaceAxis; metadata: DisciplineMetadata };
-  characterCompare: {
-    left: CompareSide;
-    right: CompareSide;
-    axis: WorkspaceAxis;
+  /**
+   * A character's hover card on a profile (8b amendment: the host passes the figures it already read — the maps
+   * tab's per-map record — and the module draws its game's presentation of them).
+   */
+  characterPopover: { entity: CatalogEntityRead; mapStats: UserMapCharacterStats; metadata: DisciplineMetadata };
+  /**
+   * The profile's characters tab (8b amendment: the host reads the player's characters and maps once, in the
+   * profile's game, and owns the tournament filter it passes as `filterSlot`).
+   */
+  characterStats: {
+    characters: CharacterWithUserStats[];
+    maps: UserMapRead[];
+    filterSlot?: ReactNode;
     metadata: DisciplineMetadata;
   };
+  /**
+   * The overview's most-played characters (8b addition). `games` is the per-character game count summed over the
+   * player's maps (`null` when the maps read failed); `characters` carry no per-stat best records.
+   */
+  topCharacters: {
+    characters: CharacterSummary[];
+    games: Record<number, number> | null;
+    userSlug: string;
+    metadata: DisciplineMetadata;
+  };
+  /** Under the overview's role split: one signature character per listed rated-dimension role code (8b addition). */
+  roleSignatures: {
+    characters: CharacterSummary[];
+    games: Record<number, number> | null;
+    roles: string[];
+    metadata: DisciplineMetadata;
+  };
+  /** An extra cell of a tournament (or league) dossier's summary strip, over the player's entries (8b addition). */
+  tournamentSummary: { entries: UserTournament[]; metadata: DisciplineMetadata };
   matchStats: { match: MatchWithStats; metadata: DisciplineMetadata };
   /** `view`: `overview` compares the observed sides; `players` is the totals grouped by participation (8a amendment). */
   seriesStats: { matches: MatchWithStats[]; metadata: DisciplineMetadata; view: "overview" | "players" };
@@ -118,6 +148,7 @@ export type DisciplineSlot = keyof SlotProps;
  * catch-all one.
  */
 export type RankSlot = "rankHistory";
+export type ProfileSlot = "characterPopover" | "characterStats" | "topCharacters" | "roleSignatures" | "tournamentSummary";
 export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";
 export type PregameSlot = "pregameCharacterBans";
 export type AdminSlot = "nativeRankEditor" | "rankMapping";

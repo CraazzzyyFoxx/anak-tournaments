@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { Encounter, MatchWithStats, NativeFact } from "@/types/encounter.types";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 
 import { aggregateSeriesStats } from "./series";
 import { teamTotal } from "./stats";

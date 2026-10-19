@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { LEADER_STATS, STAT_META, findLeader, formatStat, type MatchStatsTeam } from "./stats";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { getPlayerSlug } from "@/lib/player";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +51,7 @@ const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
                 {formatStat(name, leader.value, format)}
               </span>
               <div className="mt-auto flex items-center gap-2">
-                <HeroStrip heroes={heroes} size="sm" limit={2} />
+                <CatalogEntityStrip entities={heroes} size="sm" limit={2} />
                 {leader.player.profile_name ? (
                   <Link
                     href={`/users/${getPlayerSlug(leader.player.profile_name)}`}

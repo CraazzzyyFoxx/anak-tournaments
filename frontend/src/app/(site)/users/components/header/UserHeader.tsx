@@ -8,7 +8,7 @@ import { roleOf } from "@/lib/roster/role-ref";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getPlayerImage } from "@/lib/player";
 import DivisionIcon from "@/components/DivisionIcon";
-import { FormStreak, ProfileStat, type FormResult } from "@/app/(site)/users/components/shared/atoms";
+import { FormStreak, ProfileStat, type FormResult } from "@/components/profile/atoms";
 import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar";
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";

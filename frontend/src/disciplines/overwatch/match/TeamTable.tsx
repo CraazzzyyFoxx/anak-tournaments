@@ -2,11 +2,11 @@
 
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { LogStatsName } from "@/types/stats.types";
+import { LogStatsName } from "../stat-names";
 import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import PlayerName from "@/components/PlayerName";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TeamLogo } from "@/components/TeamName";
 import {
   STAT_META,
@@ -125,7 +125,7 @@ const TeamTable = ({ team, isHome, matchRound, columns, columnMax }: TeamTablePr
             </TableCell>
             <TableCell>
               <div className="flex justify-center">
-                <HeroStrip heroes={heroes} size="sm" limit={6} />
+                <CatalogEntityStrip entities={heroes} size="sm" limit={6} />
               </div>
             </TableCell>
             <TableCell className="text-center">

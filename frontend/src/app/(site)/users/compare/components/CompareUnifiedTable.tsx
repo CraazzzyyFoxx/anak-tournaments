@@ -2,8 +2,8 @@
 
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
-import HeroImage from "@/components/hero/HeroImage";
+import { CardSurface } from "@/components/profile/atoms";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompareRow } from "@/app/(site)/users/compare/types";
 import { formatDuration, formatMetricValue } from "@/app/(site)/users/compare/utils";
@@ -204,8 +204,8 @@ const ColumnIdentity = ({
       className={`flex min-w-0 items-center gap-2.5 ${align === "right" ? "flex-row-reverse text-right" : "text-left"}`}
     >
       {hero?.imagePath ? (
-        <HeroImage
-          hero={{ name: heroName, image_path: hero.imagePath, role: "" }}
+        <CatalogEntityImage
+          entity={{ name: heroName, image_path: hero.imagePath }}
           size={36}
           rounded="lg"
           title={heroName}

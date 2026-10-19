@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { placementMedal, type PlacementMedal } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
+import { SummaryCellBox } from "@/components/profile/atoms";
 
 // ─── Master-detail (Event dossier) atoms ────────────────────────────────────────
 
@@ -93,24 +94,15 @@ export interface SummaryCell {
   color?: string;
 }
 
-/** Open hairline summary strip — top+bottom border only, cells hairline-divided.
- *  Scrolls horizontally inside its own container on narrow screens (§7). */
-export const SummaryStrip = ({ cells }: { cells: SummaryCell[] }) => (
+/** Open hairline summary strip — top+bottom border only, cells hairline-divided; `extra` is a game module's
+ *  own trailing cell (or nothing). Scrolls horizontally inside its own container on narrow screens (§7). */
+export const SummaryStrip = ({ cells, extra }: { cells: SummaryCell[]; extra?: React.ReactNode }) => (
   <div className="overflow-x-auto border-y border-[color:var(--aqt-border)]">
-    <div className="grid min-w-[540px] grid-cols-6">
+    <div className="grid min-w-[540px] auto-cols-fr grid-flow-col">
       {cells.map((cell) => (
-        <div
-          key={cell.key}
-          className="flex flex-col gap-1 border-l border-[color:var(--aqt-border)] px-3 py-2.5 first:border-l-0"
-        >
-          <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {cell.label}
-          </span>
-          <span className="aqt-display aqt-tnum text-base font-bold leading-none" style={{ color: cell.color ?? "var(--aqt-fg)" }}>
-            {cell.value}
-          </span>
-        </div>
+        <SummaryCellBox key={cell.key} label={cell.label} value={cell.value} color={cell.color} />
       ))}
+      {extra}
     </div>
   </div>
 );

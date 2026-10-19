@@ -19,7 +19,7 @@ import { findRole, rolePresentation, type RoleOntology } from "@/lib/roster/onto
 import { cn } from "@/lib/utils";
 import type { RegistrationRole } from "@/types/registration.types";
 import type { CatalogEntityChip } from "@/types/catalog.types";
-import { HeroStrip } from "@/components/hero/HeroImage";
+import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { useTranslations } from "next-intl";
 import { formatSubroleSlug } from "@/lib/roster/roles";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
@@ -163,7 +163,7 @@ export function TopHeroesCell({
               <span className="sr-only">{roleLabel(roleOf(role.role))}</span>
               <PlayerRoleIcon role={role.role} ontology={ontology} size={14} aria-hidden />
             </span>
-            <HeroStrip heroes={heroes} size="sm" />
+            <CatalogEntityStrip entities={heroes} size="sm" />
           </div>
         );
       })}

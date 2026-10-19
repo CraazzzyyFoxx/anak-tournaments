@@ -7,10 +7,8 @@ import { useTranslations } from "next-intl";
 import tournamentService from "@/services/tournament.service";
 import userService from "@/services/user.service";
 import { UserRoleType, UserCompareBaselineMode } from "@/types/user.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import { CompareRow } from "@/app/(site)/users/compare/types";
-import { getHumanizedStats } from "@/lib/stats";
-import type { LogStatsName } from "@/types/stats.types";
-import { HERO_COMPARE_STATS } from "@/app/(site)/users/compare/constants";
 import { getMapIconSrc, normalizeNumber, roleLabelKey } from "@/app/(site)/users/compare/utils";
 import {
   buildHeroCompareQueryOptions,
@@ -22,7 +20,6 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 interface UseUserCompareDataParams {
@@ -40,6 +37,8 @@ interface UseUserCompareDataParams {
   scope: StatsScope;
   /** The resolved browsing game; `null` while unresolved or invalid — no catalog is read then. */
   discipline: string | null;
+  /** The browsed game's metadata: its per-character stat vocabulary (and native ladder for all communities). */
+  metadata: DisciplineMetadata | null;
 }
 
 export const useUserCompareData = ({
@@ -55,7 +54,8 @@ export const useUserCompareData = ({
   rightHeroId,
   mapId,
   scope,
-  discipline
+  discipline,
+  metadata
 }: UseUserCompareDataParams) => {
   const t = useTranslations();
 
@@ -65,7 +65,17 @@ export const useUserCompareData = ({
   const currentWorkspaceId = useCurrentWorkspaceId();
   const workspaceGrid = useDivisionGrid(discipline ?? undefined);
   const workspaceId = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
-  const divisionGrid = scope === "all" ? OW_REFERENCE_GRID : workspaceGrid;
+  // All communities read the game's own native ladder (none → no division bounds), never another game's.
+  const divisionGrid = useMemo(
+    () => (scope === "all" ? { tiers: [...(metadata?.native_ladder ?? [])] } : workspaceGrid),
+    [scope, metadata, workspaceGrid]
+  );
+  // A character comparison compares per-character observations: the game's active stats, without its team-level
+  // (`group: "team"`) ones, which no character carries. No vocabulary → no comparison is requested.
+  const stats = useMemo(
+    () => (metadata?.stat_defs ?? []).filter((def) => def.active && def.group !== "team").map((def) => def.code),
+    [metadata]
+  );
 
   const compareQuery = useQuery(
     buildOverallCompareQueryOptions({
@@ -124,12 +134,12 @@ export const useUserCompareData = ({
       leftEntityId: leftHeroId,
       rightEntityId: rightHeroId,
       mapId,
-      stats: HERO_COMPARE_STATS,
+      stats,
       fetchCompare: userService.getUserCharacterCompare
     });
   const heroCompareQuery = useQuery({
     ...heroCompareOptions,
-    enabled: heroCompareOptions.enabled && selectionsSettled
+    enabled: heroCompareOptions.enabled && selectionsSettled && stats.length > 0
   });
 
   const heroes = heroesQuery.data ?? [];
@@ -168,7 +178,7 @@ export const useUserCompareData = ({
       if (!heroCompareData) return [];
       return heroCompareData.metrics.map((metric) => ({
         key: metric.stat,
-        label: getHumanizedStats(metric.stat as LogStatsName),
+        label: metadata?.stat_defs.find((def) => def.code === metric.stat)?.name ?? metric.stat,
         subjectValue: normalizeNumber(metric.left_value),
         baselineValue: normalizeNumber(metric.right_value),
         delta: normalizeNumber(metric.delta),
@@ -191,7 +201,7 @@ export const useUserCompareData = ({
       betterWorse: metric.better_worse,
       higherIsBetter: metric.higher_is_better
     }));
-  }, [isHeroScope, compareQuery.data, heroCompareData]);
+  }, [isHeroScope, compareQuery.data, heroCompareData, metadata]);
 
   const activeLoading = isHeroScope ? heroCompareQuery.isLoading : compareQuery.isLoading;
   const activeFetching = isHeroScope ? heroCompareQuery.isFetching : compareQuery.isFetching;

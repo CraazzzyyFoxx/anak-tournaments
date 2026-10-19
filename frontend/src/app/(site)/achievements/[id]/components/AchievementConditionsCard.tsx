@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import ConditionTreeView from "@/app/(site)/achievements/components/ConditionTreeView";
-import { CardSurface } from "@/app/(site)/users/components/shared/atoms";
+import { CardSurface } from "@/components/profile/atoms";
 import type { Achievement } from "@/types/achievement.types";
 
 import AchievementConditionFlow from "./AchievementConditionFlow";
