@@ -27,7 +27,6 @@ creates or drops infrastructure; its prerequisites come from idempotent helpers 
 from __future__ import annotations
 
 import asyncio
-import copy
 import hashlib
 import json
 import os
@@ -2600,6 +2599,3 @@ def test_source_catalog(live: Live, p8_ids: dict[str, Any]) -> None:
 
 def test_nothing_dead_lettered(live: Live, p8_ids: dict[str, Any]) -> None:
     _run("nothing_dead_lettered", live, p8_ids, nothing_dead_lettered)
-
-
-_ = copy  # kept for P9 callers that deep-copy documents
