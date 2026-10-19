@@ -211,6 +211,7 @@ def _get_encounters(rpc: RpcHarness, user_id: int, workspace_id: int) -> dict:
                     "sort": "id",
                     "order": "desc",
                     "workspace_id": workspace_id,
+                    "discipline": "overwatch",
                 }
             ),
         },

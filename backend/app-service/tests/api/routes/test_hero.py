@@ -1,4 +1,7 @@
-"""RPC-handler test for hero playtime (``rpc.app.heroes.playtime``); the catalog reads are ``test_public_catalog.py``."""
+"""RPC-handler test for one game's character playtime (``rpc.app.statistics.character_playtime``).
+
+The catalog reads are ``test_public_catalog.py``.
+"""
 
 import pytest
 
@@ -16,7 +19,7 @@ from tests.conftest import RpcHarness, build_query
         (79, 1, 10, "playtime", "desc", []),
     ],
 )
-def test_get_hero_playtime(
+def test_get_character_playtime(
     rpc: RpcHarness,
     user_id: int,
     page: int,
@@ -26,8 +29,9 @@ def test_get_hero_playtime(
     entities: list[str],
 ) -> None:
     env = rpc.call_sync(
-        "rpc.app.heroes.playtime",
+        "rpc.app.statistics.character_playtime",
         {
+            "discipline": "overwatch",
             "query": build_query(
                 {
                     "user_id": user_id,
@@ -37,7 +41,7 @@ def test_get_hero_playtime(
                     "order": order,
                     "entities": entities,
                 }
-            )
+            ),
         },
     )
     assert env["ok"] is True
@@ -46,3 +50,17 @@ def test_get_hero_playtime(
     assert content["per_page"] == per_page
     if content["results"]:
         assert content["results"][0]["playtime"]
+        assert content["results"][0]["entity"]["discipline"] == "overwatch"
+
+
+def test_character_playtime_never_defaults_the_game(rpc: RpcHarness) -> None:
+    absent = rpc.call_sync("rpc.app.statistics.character_playtime", {"query": build_query({"per_page": 1})})
+    assert absent["ok"] is False
+    assert absent["error"]["code"] == "unprocessable"
+
+    unknown = rpc.call_sync(
+        "rpc.app.statistics.character_playtime", {"discipline": "chess", "query": build_query({"per_page": 1})}
+    )
+    assert unknown["ok"] is False
+    assert unknown["error"]["code"] == "not_found"
+    assert unknown["error"]["details"]["fields"][0]["code"] == "discipline_not_installed"

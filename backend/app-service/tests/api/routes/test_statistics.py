@@ -39,6 +39,7 @@ def test_get_champions(
                     "sort": sort,
                     "order": order,
                     "entities": entities,
+                    "discipline": "overwatch",
                 }
             )
         },

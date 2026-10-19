@@ -107,9 +107,16 @@ def test_lol_first_public_statistics_keep_ow_divisions_with_and_without_lol_defa
                                 assert "division_grid_required" in exc.detail
                             else:
                                 raise AssertionError("generic LoL-first context must require its own grid")
+                    # The read names its game (contract §4.3): OW statistics keep the OW grid in a LoL-first workspace.
                     response = await rpc.call(
                         "rpc.app.users.overview_stats",
-                        {"query": {"workspace_id": [str(workspace_id)], "divisions": ["4"]}},
+                        {
+                            "query": {
+                                "workspace_id": [str(workspace_id)],
+                                "divisions": ["4"],
+                                "discipline": ["overwatch"],
+                            }
+                        },
                     )
                     assert response["ok"] is True, response
                     assert response["data"]["total_players"] == 1

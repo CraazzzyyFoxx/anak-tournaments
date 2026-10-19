@@ -7,7 +7,7 @@ of an HTTP client. Route -> topic mapping:
 - ``GET /users``                          -> ``rpc.app.users.list``
 - ``GET /users/overview``                 -> ``rpc.app.users.overview``
 - ``GET /users/{id}/compare``             -> ``rpc.app.users.compare``
-- ``GET /users/{id}/compare/heroes``      -> ``rpc.app.users.compare_heroes``
+- ``GET /users/{id}/compare/characters`` -> ``rpc.app.users.compare_characters``
 - ``GET /users/{name}``                   -> ``rpc.app.users.by_name``
 - ``GET /users/{id}/profile``             -> ``rpc.app.users.get_profile``
 - ``GET /users/{id}/tournaments``         -> ``rpc.app.users.tournaments``
@@ -15,12 +15,14 @@ of an HTTP client. Route -> topic mapping:
 - ``GET /users/{id}/maps``                -> ``rpc.app.users.maps``
 - ``GET /users/{id}/maps/summary``        -> ``rpc.app.users.maps_summary``
 - ``GET /users/{id}/encounters``          -> ``rpc.app.users.encounters``
-- ``GET /users/{id}/heroes``              -> ``rpc.app.users.heroes``
+- ``GET /users/{id}/characters``         -> ``rpc.app.users.characters``
 - ``GET /users/{id}/teammates``           -> ``rpc.app.users.teammates``
 
-Assertions mirror the old HTTP tests against the envelope ``data``. HTTP error
-statuses map to the envelope ``error.code`` (gateway mapping): 400->bad_request,
-404->not_found.
+Every statistics read names its game (``discipline=overwatch``) and reads across
+workspaces with the explicit ``workspace_id=all`` (see :func:`_q`); the owner-scoped
+``tournament`` read takes its tournament's game. Assertions mirror the old HTTP
+tests against the envelope ``data``. HTTP error statuses map to the envelope
+``error.code`` (gateway mapping): 400->bad_request, 404->not_found.
 """
 
 import json
@@ -43,6 +45,11 @@ _COMPARE_FIXTURE_IDS = {
     "subject_other_tournament": 9_100_000_102,
     "baseline_cohort_tournament": 9_100_000_103,
 }
+
+
+def _q(params: dict[str, object] | None = None) -> dict[str, list[str]]:
+    """Query of an Overwatch statistics read across every workspace."""
+    return build_query({"discipline": "overwatch", "workspace_id": "all", **(params or {})})
 
 
 def _get_compare_metric(payload: dict[str, object], key: str) -> dict[str, object]:
@@ -480,7 +487,7 @@ def test_get_users_overview(
     if divisions is not None:
         params["divisions"] = divisions
 
-    env = rpc.call_sync("rpc.app.users.overview", {"query": build_query(params)})
+    env = rpc.call_sync("rpc.app.users.overview", {"query": _q(params)})
     assert env["ok"] is True
 
     content = env["data"]
@@ -494,7 +501,7 @@ def test_get_users_overview(
         assert "name" in first
         assert "avatar_url" in first
         assert "roles" in first
-        assert "top_heroes" in first
+        assert "top_characters" in first
         assert "tournaments_count" in first
         assert "achievements_count" in first
         assert "maps_won" in first
@@ -503,9 +510,9 @@ def test_get_users_overview(
         assert "best_placement" in first
         assert "last_active_at" in first
         assert "averages" in first
-        assert len(first["top_heroes"]) <= 5
-        # top_heroes carries playtime only — the per-10 metrics are gone.
-        assert all(set(hero) == {"hero", "playtime_seconds"} for hero in first["top_heroes"])
+        assert len(first["top_characters"]) <= 5
+        # top_characters carries playtime only — the per-10 metrics are gone.
+        assert all(set(row) == {"character", "playtime_seconds"} for row in first["top_characters"])
 
         if query:
             assert query.lower() in first["name"].lower()
@@ -525,7 +532,7 @@ def test_get_users_overview(
 def test_get_users_overview_rejects_a_division_outside_the_grid(rpc: RpcHarness) -> None:
     env = rpc.call_sync(
         "rpc.app.users.overview",
-        {"query": build_query({"divisions": [3, 99]})},
+        {"query": _q({"divisions": [3, 99]})},
     )
     assert env["ok"] is False
     assert env["error"]["code"] == "unprocessable"
@@ -534,7 +541,7 @@ def test_get_users_overview_rejects_a_division_outside_the_grid(rpc: RpcHarness)
 @pytest.mark.parametrize(("user_id",), [(599,), (79,)])
 @pytest.mark.db
 def test_get_user_compare_global(rpc: RpcHarness, user_id: int) -> None:
-    env = rpc.call_sync("rpc.app.users.compare", {"id": user_id})
+    env = rpc.call_sync("rpc.app.users.compare", {"id": user_id, "query": _q()})
     assert env["ok"] is True
 
     content = env["data"]
@@ -549,7 +556,7 @@ def test_get_user_compare_global(rpc: RpcHarness, user_id: int) -> None:
 def test_get_user_compare_target_user(rpc: RpcHarness) -> None:
     env = rpc.call_sync(
         "rpc.app.users.compare",
-        {"id": 599, "query": build_query({"baseline": "target_user", "target_user_id": 79})},
+        {"id": 599, "query": _q({"baseline": "target_user", "target_user_id": 79})},
     )
     assert env["ok"] is True
 
@@ -568,7 +575,7 @@ def test_get_user_compare_cohort(rpc: RpcHarness) -> None:
         "rpc.app.users.compare",
         {
             "id": 599,
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "cohort",
                     "role": json.dumps({"dimension": "player_role", "role": "damage"}),
@@ -582,7 +589,7 @@ def test_get_user_compare_cohort(rpc: RpcHarness) -> None:
 
     content = env["data"]
     assert content["baseline"]["mode"] == "cohort"
-    assert content["baseline"]["role"] == "Damage"
+    assert content["baseline"]["role"] == {"dimension": "player_role", "role": "damage", "parent": None}
     assert content["baseline"]["div_min"] == 8
     assert content["baseline"]["div_max"] == 20
     assert content["baseline"]["sample_size"] >= 1
@@ -598,7 +605,7 @@ def test_get_user_compare_cohort_scopes_average_placement_to_matching_division(r
         "rpc.app.users.compare",
         {
             "id": fixture["subject_user_id"],
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "cohort",
                     "role": fixture["role"],
@@ -619,27 +626,27 @@ def test_get_user_compare_cohort_scopes_average_placement_to_matching_division(r
 
 
 @pytest.mark.db
-def test_get_user_hero_compare(rpc: RpcHarness) -> None:
-    left_env = rpc.call_sync("rpc.app.users.heroes", {"id": 599, "query": build_query({"per_page": 1})})
-    right_env = rpc.call_sync("rpc.app.users.heroes", {"id": 79, "query": build_query({"per_page": 1})})
+def test_get_user_character_compare(rpc: RpcHarness) -> None:
+    left_env = rpc.call_sync("rpc.app.users.characters", {"id": 599, "query": _q({"per_page": 1})})
+    right_env = rpc.call_sync("rpc.app.users.characters", {"id": 79, "query": _q({"per_page": 1})})
     assert left_env["ok"] is True
     assert right_env["ok"] is True
 
-    left_heroes = left_env["data"]["results"]
-    right_heroes = right_env["data"]["results"]
-    assert left_heroes
-    assert right_heroes
+    left_characters = left_env["data"]["results"]
+    right_characters = right_env["data"]["results"]
+    assert left_characters
+    assert right_characters
 
     env = rpc.call_sync(
-        "rpc.app.users.compare_heroes",
+        "rpc.app.users.compare_characters",
         {
             "id": 599,
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "target_user",
                     "target_user_id": 79,
-                    "left_hero_id": left_heroes[0]["hero"]["id"],
-                    "right_hero_id": right_heroes[0]["hero"]["id"],
+                    "left_entity_id": left_characters[0]["character"]["id"],
+                    "right_entity_id": right_characters[0]["character"]["id"],
                     "stats": ["eliminations", "final_blows", "hero_damage_dealt", "healing_dealt"],
                 }
             ),
@@ -653,30 +660,30 @@ def test_get_user_hero_compare(rpc: RpcHarness) -> None:
     assert content["target"]["id"] == 79
     assert content["baseline"]["mode"] == "target_user"
     assert content["baseline"]["sample_size"] == 1
-    assert content["subject_hero"] is not None
-    assert content["target_hero"] is not None
+    assert content["subject_character"] is not None
+    assert content["target_character"] is not None
     assert len(content["metrics"]) == 4
     assert "higher_is_better" in content["metrics"][0]
     assert "better_worse" in content["metrics"][0]
 
 
 @pytest.mark.db
-def test_get_user_hero_compare_cohort_scopes_stats_to_matching_division(rpc: RpcHarness, db: Session) -> None:
+def test_get_user_character_compare_cohort_scopes_stats_to_matching_division(rpc: RpcHarness, db: Session) -> None:
     _skip_if_compare_test_db_unavailable(db)
     fixture = _ensure_compare_division_fixture(db)
 
     env = rpc.call_sync(
-        "rpc.app.users.compare_heroes",
+        "rpc.app.users.compare_characters",
         {
             "id": fixture["subject_user_id"],
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "cohort",
                     "role": fixture["role"],
                     "div_min": fixture["division"],
                     "div_max": fixture["division"],
-                    "left_hero_id": fixture["hero_id"],
-                    "right_hero_id": fixture["hero_id"],
+                    "left_entity_id": fixture["hero_id"],
+                    "right_entity_id": fixture["hero_id"],
                     "stats": ["eliminations"],
                 }
             ),
@@ -694,15 +701,15 @@ def test_get_user_hero_compare_cohort_scopes_stats_to_matching_division(rpc: Rpc
 
 
 @pytest.mark.db
-def test_get_user_hero_compare_includes_performance_without_hero_filter(rpc: RpcHarness, db: Session) -> None:
+def test_get_user_character_compare_includes_performance_without_character_filter(rpc: RpcHarness, db: Session) -> None:
     _skip_if_compare_test_db_unavailable(db)
     fixture = _ensure_compare_division_fixture(db)
 
     env = rpc.call_sync(
-        "rpc.app.users.compare_heroes",
+        "rpc.app.users.compare_characters",
         {
             "id": fixture["subject_user_id"],
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "cohort",
                     "role": fixture["role"],
@@ -725,12 +732,12 @@ def test_get_user_hero_compare_includes_performance_without_hero_filter(rpc: Rpc
 
 
 @pytest.mark.db
-def test_get_user_hero_compare_global_baseline(rpc: RpcHarness) -> None:
+def test_get_user_character_compare_global_baseline(rpc: RpcHarness) -> None:
     env = rpc.call_sync(
-        "rpc.app.users.compare_heroes",
+        "rpc.app.users.compare_characters",
         {
             "id": 599,
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "global",
                     "stats": ["eliminations", "final_blows"],
@@ -749,12 +756,12 @@ def test_get_user_hero_compare_global_baseline(rpc: RpcHarness) -> None:
 
 
 @pytest.mark.db
-def test_get_user_hero_compare_ascending_stat_better_worse(rpc: RpcHarness) -> None:
+def test_get_user_character_compare_ascending_stat_better_worse(rpc: RpcHarness) -> None:
     env = rpc.call_sync(
-        "rpc.app.users.compare_heroes",
+        "rpc.app.users.compare_characters",
         {
             "id": 599,
-            "query": build_query(
+            "query": _q(
                 {
                     "baseline": "global",
                     "stats": ["deaths"],
@@ -819,7 +826,7 @@ def test_get_user_by_name(rpc: RpcHarness, name: str, entities: list[str]) -> No
     ],
 )
 def test_get_user_profile(rpc: RpcHarness, user_id: int) -> None:
-    env = rpc.call_sync("rpc.app.users.get_profile", {"id": user_id})
+    env = rpc.call_sync("rpc.app.users.get_profile", {"id": user_id, "query": _q()})
     assert env["ok"] is True
     content = env["data"]
     assert content["tournaments"].__len__() >= 0
@@ -835,7 +842,7 @@ def test_get_user_profile(rpc: RpcHarness, user_id: int) -> None:
     ],
 )
 def test_get_user_tournaments(rpc: RpcHarness, user_id: int) -> None:
-    env = rpc.call_sync("rpc.app.users.tournaments", {"id": user_id})
+    env = rpc.call_sync("rpc.app.users.tournaments", {"id": user_id, "query": _q()})
     assert env["ok"] is True
     content = env["data"]
     assert content.__len__() >= 0
@@ -876,13 +883,13 @@ def test_get_user_tournament_not_found(rpc: RpcHarness, user_id: int, tournament
     ("user_id", "page", "per_page", "sort", "order", "entities"),
     [
         (599, 1, 10, "id", "desc", []),
-        (599, 1, 25, "name", "desc", ["gamemode"]),
-        (599, 1, 10, "winrate", "desc", ["hero_stats"]),
+        (599, 1, 25, "name", "desc", ["parent"]),
+        (599, 1, 10, "winrate", "desc", ["character_stats"]),
         (79, 1, 10, "id", "desc", []),
         (461, 1, 10, "name", "desc", []),
-        (461, 1, 25, "gamemode_id", "desc", ["gamemode"]),
+        (461, 1, 25, "mode_id", "desc", ["parent"]),
         (583, 1, 10, "name", "desc", []),
-        (583, 1, 25, "slug", "desc", ["gamemode"]),
+        (583, 1, 25, "slug", "desc", ["parent"]),
     ],
 )
 def test_get_user_maps(
@@ -898,7 +905,7 @@ def test_get_user_maps(
         "rpc.app.users.maps",
         {
             "id": user_id,
-            "query": build_query(
+            "query": _q(
                 {
                     "page": page,
                     "per_page": per_page,
@@ -914,21 +921,21 @@ def test_get_user_maps(
     assert content["page"] == page
     assert content["per_page"] == per_page
 
-    if "gamemode" in entities:
-        assert content["results"][0]["map"]["gamemode"]
+    if "parent" in entities:
+        assert content["results"][0]["map"]["parent"]
     else:
         if content["results"]:
-            assert content["results"][0]["map"]["gamemode"] is None
+            assert content["results"][0]["map"]["parent"] is None
 
-    if "hero_stats" in entities and content["results"]:
-        assert content["results"][0]["hero_stats"] is not None
+    if "character_stats" in entities and content["results"]:
+        assert content["results"][0]["character_stats"] is not None
 
 
 @pytest.mark.parametrize(
     ("user_id", "entities", "min_count"),
     [
         (599, [], None),
-        (599, ["gamemode"], 3),
+        (599, ["parent"], 3),
         (79, [], 1),
     ],
 )
@@ -939,7 +946,7 @@ def test_get_user_maps_summary(rpc: RpcHarness, user_id: int, entities: list[str
     if min_count is not None:
         params["min_count"] = min_count
 
-    env = rpc.call_sync("rpc.app.users.maps_summary", {"id": user_id, "query": build_query(params)})
+    env = rpc.call_sync("rpc.app.users.maps_summary", {"id": user_id, "query": _q(params)})
     assert env["ok"] is True
     content = env["data"]
 
@@ -947,9 +954,9 @@ def test_get_user_maps_summary(rpc: RpcHarness, user_id: int, entities: list[str
     assert "total_maps" in content["overall"]
     assert "total_games" in content["overall"]
 
-    if "gamemode" in entities:
+    if "parent" in entities:
         if content.get("most_played") is not None:
-            assert content["most_played"]["map"]["gamemode"]
+            assert content["most_played"]["map"]["parent"]
 
 
 @pytest.mark.parametrize(
@@ -985,14 +992,13 @@ def test_get_user_encounters(
         "rpc.app.users.encounters",
         {
             "id": user_id,
-            "query": build_query(
+            "query": _q(
                 {
                     "page": page,
                     "per_page": per_page,
                     "sort": sort,
                     "order": order,
                     "entities": entities,
-                    "workspace_id": "all",
                 }
             ),
         },
@@ -1018,8 +1024,8 @@ def test_get_user_encounters(
 
 
 @pytest.mark.parametrize(("user_id",), [(599,), (79,), (461,), (583,)])
-def test_get_user_heroes(rpc: RpcHarness, user_id: int) -> None:
-    env = rpc.call_sync("rpc.app.users.heroes", {"id": user_id})
+def test_get_user_characters(rpc: RpcHarness, user_id: int) -> None:
+    env = rpc.call_sync("rpc.app.users.characters", {"id": user_id, "query": _q()})
     assert env["ok"] is True
 
 
@@ -1069,7 +1075,7 @@ def test_get_user_teammates(rpc: RpcHarness, user_id: int, page: int, per_page: 
         "rpc.app.users.teammates",
         {
             "id": user_id,
-            "query": build_query(
+            "query": _q(
                 {
                     "page": page,
                     "per_page": per_page,
@@ -1091,10 +1097,10 @@ def test_get_user_teammates(rpc: RpcHarness, user_id: int, page: int, per_page: 
             assert content["results"][0]["winrate"] <= content["results"][-1]["winrate"]
 
 
-def test_get_user_heroes_with_stats(rpc: RpcHarness) -> None:
+def test_get_user_characters_with_stats(rpc: RpcHarness) -> None:
     user_id = 599
     env = rpc.call_sync(
-        "rpc.app.users.heroes",
-        {"id": user_id, "query": build_query({"stats": ["deaths", "eliminations"]})},
+        "rpc.app.users.characters",
+        {"id": user_id, "query": _q({"stats": ["deaths", "eliminations"]})},
     )
     assert env["ok"] is True
