@@ -978,6 +978,114 @@ def test_the_player_sheet_patch_round_trips_a_roles_character_picks(db_session) 
     assert stale_spelling == []
 
 
+def test_an_organizer_save_without_roles_keeps_the_role_set_while_an_empty_list_replaces_it(db_session) -> None:
+    """``roles`` on the organizer receiver is a REPLACEMENT of the registration's whole role set. A save that
+    changes only a name or a note must therefore leave the key out (the edit form does, unless roles or ranks
+    changed): the assignments, ranks and picks stay. Sending ``[]`` is what removes them -- the contract the
+    form has to respect."""
+    suffix = uuid.uuid4().hex[:8]
+    slugs = [f"hero-{suffix}-{index}" for index in range(2)]
+
+    async def _run() -> tuple[tuple, tuple, tuple]:
+        await project_disciplines(db_session)
+        schema = _heroes_schema()
+        seeded = await _seed(db_session, schema=schema)
+        db_session.add_all(
+            models.CatalogEntity(
+                discipline="overwatch", kind="character", slug=slug, name=slug, image_path="x", attrs={"class": "tank"}
+            )
+            for slug in slugs
+        )
+        await db_session.commit()
+        try:
+            await registration_service.submit_public_registration(
+                db_session,
+                tournament_id=seeded["tournament_id"],
+                auth_user=seeded["auth_user"],
+                body=RegistrationSubmit(
+                    form_version_id=seeded["version_id"],
+                    answers={
+                        "identity_battlenet": [f"K{suffix}#1234"],
+                        "roles": [{"role": "tank", "is_primary": True, "top_heroes": slugs}],
+                    },
+                ),
+            )
+            registration = await registration_service.get_registration(
+                db_session, seeded["tournament_id"], seeded["auth_user"].id
+            )
+
+            async def patch(payload: dict[str, Any]) -> None:
+                body = BalancerRegistrationUpdateRequest.model_validate(payload)
+                await lifecycle_service.update_registration_profile(
+                    db_session,
+                    registration.id,
+                    display_name=body.display_name,
+                    admin_notes=body.admin_notes,
+                    answers=body.answers,
+                    status_value=body.status,
+                    balancer_status_value=body.balancer_status,
+                    roles=[role.model_dump() for role in body.roles] if body.roles is not None else None,
+                )
+
+            async def state() -> tuple:
+                ranks = (
+                    await db_session.execute(
+                        sa.select(models.BalancerRegistrationRole.rank_value)
+                        .where(models.BalancerRegistrationRole.registration_id == registration.id)
+                        .order_by(models.BalancerRegistrationRole.priority)
+                    )
+                ).scalars()
+                picks = (
+                    await db_session.scalars(
+                        sa.select(models.CatalogEntity.slug)
+                        .join(
+                            models.BalancerRegistrationRoleEntity,
+                            models.BalancerRegistrationRoleEntity.entity_id == models.CatalogEntity.id,
+                        )
+                        .join(
+                            models.BalancerRegistrationRole,
+                            models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
+                        )
+                        .where(models.BalancerRegistrationRole.registration_id == registration.id)
+                        .order_by(models.BalancerRegistrationRoleEntity.priority)
+                    )
+                ).all()
+                return tuple(ranks), tuple(picks)
+
+            await patch(
+                {
+                    "roles": [
+                        {
+                            "role": {"dimension": "player_role", "role": "tank"},
+                            "priority": 0,
+                            "is_primary": True,
+                            "rank_value": 3100,
+                            "is_active": True,
+                            "top_characters": slugs,
+                        }
+                    ]
+                }
+            )
+            rated = await state()
+            await patch({"display_name": "Renamed", "admin_notes": "seen twice"})
+            kept = await state()
+            await patch({"roles": []})
+            return rated, kept, await state()
+        finally:
+            await db_session.rollback()
+            await _drop(db_session, seeded["workspace_id"])
+            await db_session.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
+            await db_session.commit()
+
+    rated, kept, wiped = asyncio.run(_run())
+
+    assert rated == ((3100,), tuple(slugs))
+    # No `roles` key: the rank and both picks survive a save that only touched the name and the note.
+    assert kept == rated
+    # An explicit empty list is a replacement by nothing.
+    assert wiped == ((), ())
+
+
 def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_session) -> None:
     """The other two shapes of the same edit: the role SET moves, and a surviving
     role's pick list overlaps the one it replaces.
