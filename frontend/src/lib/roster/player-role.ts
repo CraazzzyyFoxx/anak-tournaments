@@ -1,17 +1,9 @@
-import type { PlayerSubRole } from "@/types/admin.types";
-
 /**
  * OW-shaped roster presentation names. Ontology codes are normalized at the
  * shared icon boundary. `Flex` displays an unassigned roster role, not an
  * ontology node, and never applies to a hero's tank/damage/support class.
  */
 export type PlayerRoleOption = "Tank" | "Damage" | "Support" | "Flex";
-
-/**
- * Selector order: tank, damage, support, flex — the order every roster table
- * sorts by. Flex sits last because it is the "plays anything" bucket.
- */
-export const PLAYER_ROLE_OPTIONS: PlayerRoleOption[] = ["Tank", "Damage", "Support", "Flex"];
 
 /**
  * Case-insensitive alias table shared by every normalizer below, so every
@@ -58,29 +50,6 @@ export function normalizePlayerRole(role: string | null | undefined): PlayerRole
 
 /** Canonical role as the `player_sub_role` catalog spells it. */
 export type SubRoleCatalogRole = "tank" | "damage" | "support";
-
-/**
- * Catalog role backing a player role, or `null` for `Flex`: the
- * `player_sub_role` catalog only has tank/damage/support rows, so a flex player
- * has no sub-role catalog to pick from.
- */
-export function subRoleCatalogRole(role: string | null | undefined): SubRoleCatalogRole | null {
-  const normalized = normalizePlayerRole(role);
-  if (normalized === "Flex") return null;
-  if (normalized === "Tank") return "tank";
-  if (normalized === "Support") return "support";
-  return "damage";
-}
-
-/** Sub-roles offered for a role — empty for `Flex`, which has no catalog. */
-export function filterSubRoleOptions(
-  subRoles: PlayerSubRole[] | undefined,
-  role: string | null | undefined
-): PlayerSubRole[] {
-  const catalogRole = subRoleCatalogRole(role);
-  if (catalogRole === null) return [];
-  return (subRoles ?? []).filter((subRole) => subRole.role === catalogRole);
-}
 
 /**
  * i18n message key per role. Single source of truth — `PlayerRoleIcon` and the

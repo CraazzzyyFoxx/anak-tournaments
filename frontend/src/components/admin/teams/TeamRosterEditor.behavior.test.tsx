@@ -5,9 +5,17 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { Player } from "@/types/team.types";
 import { TeamRosterEditor } from "./TeamRosterEditor";
+
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
+/** The tournament's own grid: this editor never reaches for another game's ladder. */
+const DIVISION_GRID = {
+  tiers: [
+    { number: 20, name: "Diamond 5", slug: "diamond-5", sort_order: 20, rank_min: 3000, rank_max: 3499, icon_url: "/divisions/diamond-5.png" }
+  ]
+};
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -41,7 +49,7 @@ vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />
 }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => OW_REFERENCE_GRID }));
+vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => DIVISION_GRID }));
 vi.mock("@/components/admin/UserSearchCombobox", () => ({
   UserSearchCombobox: () => <div data-testid="user-search" />
 }));
@@ -83,7 +91,7 @@ function tick() {
   return promise;
 }
 
-async function mount(props?: { canUpdatePlayer?: boolean; discipline?: string | null }) {
+async function mount(props?: { canUpdatePlayer?: boolean; discipline?: string | null; players?: Player[] }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -99,7 +107,7 @@ async function mount(props?: { canUpdatePlayer?: boolean; discipline?: string | 
             tournamentId={7}
             workspaceId={1}
             discipline={props?.discipline === undefined ? "overwatch" : props.discipline}
-            players={[SUPPORT, TANK, DAMAGE, TANK_SUB]}
+            players={props?.players ?? [SUPPORT, TANK, DAMAGE, TANK_SUB]}
             divisionGrid={null}
             canCreatePlayer
             canUpdatePlayer={props?.canUpdatePlayer ?? true}
@@ -208,12 +216,31 @@ describe("TeamRosterEditor", () => {
     expect(roleTriggers.map((trigger) => trigger.getAttribute("aria-label"))).toContain(
       "Role of Rein: Tank"
     );
-    expect(roleTriggers[0].querySelector("svg")).not.toBeNull();
+    // …drawn from the owner game's own presentation, never a bundled one.
+    expect(roleTriggers[0].querySelector('img[src="/test-roles/tank.svg"]')).not.toBeNull();
 
     // The supplied OW division stays visible beside the editable rank.
     const divisionIcon = scope.querySelector<HTMLImageElement>('img[alt="Diamond 5"]');
     expect(divisionIcon?.getAttribute("src")).toBe("/divisions/diamond-5.png");
     expect(rankFields(scope)[0].value).toBe("3300");
+  });
+
+  it("names and draws a League roster from its own positions, not Overwatch's", async () => {
+    const scope = await mount({
+      discipline: "lol",
+      players: [
+        player({ id: 5, name: "Faker", role: { dimension: "position", role: "mid" }, rank: 2900 }),
+        player({ id: 6, name: "Canyon", role: { dimension: "position", role: "jungle" }, rank: 2700 }),
+        player({ id: 7, name: "Flex One", role: null, rank: 2500 })
+      ]
+    });
+
+    const triggers = Array.from(scope.querySelectorAll<HTMLElement>('[aria-label^="Role of "]'));
+    expect(triggers.map((trigger) => trigger.getAttribute("aria-label"))).toEqual(
+      expect.arrayContaining(["Role of Faker: Mid", "Role of Canyon: Jungle", "Role of Flex One: Flex"])
+    );
+    expect(scope.querySelector('img[src="/test-roles/mid.svg"]')).not.toBeNull();
+    expect(scope.querySelector('img[src="/test-roles/tank.svg"]')).toBeNull();
   });
 
   it("persists a rank edit on blur", async () => {

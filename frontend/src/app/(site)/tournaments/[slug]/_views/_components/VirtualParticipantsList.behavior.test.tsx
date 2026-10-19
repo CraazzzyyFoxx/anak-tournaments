@@ -215,7 +215,7 @@ function registration(id: number): Registration {
 
 const registrations = Array.from({ length: 500 }, (_, index) => registration(index + 1));
 const imageColumn: ColumnDefinition = {
-  id: "identity_battlenet",
+  id: "_identity",
   label: "Player",
   category: "built_in",
   defaultVisible: true,
@@ -514,7 +514,7 @@ describe("VirtualParticipantsList mount budget", () => {
           columns={[imageColumn, statusColumn, heavyColumn]}
           onReset={() => {}}
           onToggle={(id) => toggled.push(id)}
-          visibility={{ identity_battlenet: true, _status: true, notes: false }}
+          visibility={{ _identity: true, _status: true, notes: false }}
         />
       );
     });

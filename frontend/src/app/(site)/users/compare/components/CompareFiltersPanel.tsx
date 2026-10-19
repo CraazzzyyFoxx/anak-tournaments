@@ -115,7 +115,7 @@ const CompareFiltersPanel = ({
   const roleOptions: SearchableImageOption[] = ROLE_FILTER_OPTIONS.map((option) => ({
     value: option.value,
     label: t(option.labelKey),
-    icon: <PlayerRoleIcon role={option.value === "Flex" ? null : { dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role: option.value.toLowerCase() }} ontology={ontology} size={20} decorative />
+    icon: <PlayerRoleIcon role={{ dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role: option.value.toLowerCase() }} ontology={ontology} size={20} decorative />
   }));
 
   const isHeroScope = scope === "hero";

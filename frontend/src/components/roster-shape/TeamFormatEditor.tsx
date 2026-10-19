@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { useTranslations } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { teamFormatPayload, type TeamFormatWrite, type TeamFormatDimension, type TeamFormatRule } from "@/lib/roster/team-format";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ export function TeamFormatEditor({ value, ontology, presets, onChange, disabled 
 }>) {
   const id = useId();
   const t = useTranslations("common.roleOntology");
+  const nameOf = useRoleName();
   if (!ratedDimension(ontology)) return <p role="alert">{t("metadataError")}</p>;
   const patch = (next: Partial<TeamFormatWrite>) => onChange({ ...value, ...next });
   const numberField = (label: string, current: number | null | undefined, update: (next: number | null) => void, min = 0) => (
@@ -64,7 +66,7 @@ export function TeamFormatEditor({ value, ontology, presets, onChange, disabled 
         {value.rules.map((rule, index) => {
           if (rule.role.dimension !== dimension.code) return null;
           const role = findRole(ontology, rule.role);
-          const name = role?.name ?? rule.role.role;
+          const name = role ? nameOf(role) : rule.role.role;
           return <fieldset key={rule.role.role} className="space-y-2 rounded-md border p-3">
             <legend className="flex items-center gap-2 px-1 text-sm"><PlayerRoleIcon role={rule.role} ontology={ontology} size={18} decorative />{name}</legend>
             <div className="flex flex-wrap gap-3">
@@ -82,7 +84,7 @@ export function TeamFormatEditor({ value, ontology, presets, onChange, disabled 
             if (!event.target.value) return;
             const dimensions = entry ? value.dimensions : [...value.dimensions, { dimension: dimension.code, mode: "off" as const }];
             patch({ dimensions, rules: [...value.rules, { role: { dimension: dimension.code, role: event.target.value } }] });
-          }}><option value="">{t("chooseRole")}</option>{selectableRoles(ontology, dimension.code).filter(role => !value.rules.some(rule => rule.role.dimension === dimension.code && rule.role.role === role.code)).map(role => <option key={role.id} value={role.code}>{role.name}</option>)}</select>
+          }}><option value="">{t("chooseRole")}</option>{selectableRoles(ontology, dimension.code).filter(role => !value.rules.some(rule => rule.role.dimension === dimension.code && rule.role.role === role.code)).map(role => <option key={role.id} value={role.code}>{nameOf(role)}</option>)}</select>
         </label>
       </fieldset>;
     })}

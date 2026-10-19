@@ -26,6 +26,17 @@ import TournamentParticipantsPage from "../TournamentParticipantsPage";
 
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
+// The owner game's grid is the workspace's effective version of THAT game; no grid is borrowed from another.
+vi.mock("@/hooks/useCurrentWorkspace", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useDivisionGrid: () => ({
+    tiers: [
+      { number: 1, name: "Gold", slug: "gold", sort_order: 1, rank_min: 0, rank_max: 3999, icon_url: "/divisions/gold.png" },
+      { number: 2, name: "Diamond", slug: "diamond", sort_order: 2, rank_min: 4000, rank_max: null, icon_url: "/divisions/diamond.png" }
+    ]
+  })
+}));
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -489,13 +500,13 @@ describe("participants pool", () => {
     const columns = (
       container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? ""
     ).split(",");
-    for (const id of ["public_notes", "identity_battlenet_extras"]) {
+    for (const id of ["public_notes", "_identity_extras"]) {
       expect(columns).not.toContain(id);
     }
     // The registration's own state is public: check-in, the subscription
     // verdict and the balancer status answer "am I in and what is still
     // missing", which is why the roster is opened at all.
-    for (const id of ["identity_battlenet", "_check_in", "_subscription", "_balancer_status"]) {
+    for (const id of ["_identity", "_check_in", "_subscription", "_balancer_status"]) {
       expect(columns).toContain(id);
     }
   });
@@ -509,7 +520,7 @@ describe("participants pool", () => {
     const columns = (
       container.querySelector('[data-testid="roster"]')?.getAttribute("data-columns") ?? ""
     ).split(",");
-    for (const id of ["public_notes", "identity_battlenet_extras"]) {
+    for (const id of ["public_notes", "_identity_extras"]) {
       expect(columns).toContain(id);
     }
   });

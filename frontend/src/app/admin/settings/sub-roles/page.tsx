@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
@@ -43,11 +44,12 @@ export default function WorkspaceSubRolesSettingsPage() {
 function SubRoleCatalog({ workspaceId, discipline, ontology }: Readonly<{ workspaceId: number; discipline: string; ontology: RoleOntology }>) {
   const t = useTranslations("adminSettings.subRoles");
   const roleT = useTranslations("common.roleOntology");
+  const nameOf = useRoleName();
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const [draftLabels, setDraftLabels] = useState<Record<string, string>>({});
   const rated = ratedDimension(ontology);
-  const roots = rated ? selectableRoles(ontology, rated.code).filter(role => role.parent_id === null) : [];
+  const roots = rated ? selectableRoles(ontology, rated.code).filter(role => role.parent_id === null).map(role => ({ ...role, name: nameOf(role) })) : [];
   const canEdit = canAccessPermission("player.update", workspaceId);
   const canCreate = canAccessPermission("player.create", workspaceId);
   const canDeactivate = canAccessPermission("player.delete", workspaceId);

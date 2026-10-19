@@ -124,6 +124,12 @@ async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
       </NextIntlClientProvider>,
     );
   });
+  // Slot names come from the owner game's metadata, which resolves after the first render.
+  await act(async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 0);
+    await promise;
+  });
   return { container, root };
 }
 

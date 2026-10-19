@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 
@@ -123,23 +123,10 @@ describe("RegistrationSchemaForm", () => {
     // so hiding it from the registrant would make it unanswerable by anyone.
     let submitted: { answers: Record<string, unknown> } | null = null;
 
-    container = testWindow.document.createElement("div");
-    testWindow.document.body.appendChild(container);
-    root = createRoot(container as unknown as Element);
-    act(() => {
-      root.render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <RegistrationSchemaForm
-            mode="public"
-            form={FORM}
-            tournamentId={7}
-            onSubmit={async (input) => {
-              submitted = input;
-            }}
-            onCancel={() => {}}
-          />
-        </QueryClientProvider>,
-      );
+    await mountForm({
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      }
     });
 
     const boxes = container.querySelectorAll("textarea");
@@ -168,9 +155,10 @@ describe("RegistrationSchemaForm", () => {
       JSON.stringify({ identity_battlenet: ["Player#1234"] })
     );
     let submitted: { answers: Record<string, unknown> } | null = null;
-    mountForm({
+    await mountForm({
       form: {
         ...FORM,
+        discipline: "lol",
         form_schema: {
           schema_version: 1,
           sections: [
@@ -218,32 +206,18 @@ describe("RegistrationSchemaForm", () => {
     testWindow.localStorage.clear();
     let submitted = false;
 
-    const mount = () => {
-      container = testWindow.document.createElement("div");
-      testWindow.document.body.appendChild(container);
-      root = createRoot(container as unknown as Element);
-      act(() => {
-        root.render(
-          <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-            <RegistrationSchemaForm
-              mode="public"
-              form={FORM}
-              tournamentId={7}
-              onSubmit={async () => {
-                submitted = true;
-              }}
-              onCancel={() => {}}
-            />
-          </QueryClientProvider>,
-        );
+    const mount = () =>
+      mountForm({
+        onSubmit: async () => {
+          submitted = true;
+        }
       });
-    };
 
-    mount();
+    await mount();
     type(container.querySelectorAll("textarea")[0], "half an answer");
     act(() => root.unmount());
 
-    mount();
+    await mount();
     expect(container.querySelectorAll("textarea")[0].value).toBe("half an answer");
 
     const buttons = container.querySelectorAll("button");
@@ -257,7 +231,7 @@ describe("RegistrationSchemaForm", () => {
 
     // …and a fresh registration after that one opens empty.
     act(() => root.unmount());
-    mount();
+    await mount();
     expect(container.querySelectorAll("textarea")[0].value).toBe("");
   });
 });
@@ -273,7 +247,11 @@ const STORED = {
   edit_writable_keys: ["public_notes"],
 } as unknown as Registration;
 
-function mountForm(props: Record<string, unknown>) {
+/**
+ * The form asks its owner game's metadata before anything renders (a role matrix is seeded from it), so
+ * every mount waits for that read to settle.
+ */
+async function mountForm(props: Record<string, unknown>) {
   container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   root = createRoot(container as unknown as Element);
@@ -291,7 +269,16 @@ function mountForm(props: Record<string, unknown>) {
       </QueryClientProvider>,
     );
   });
+  for (let attempt = 0; attempt < 20 && container.querySelectorAll("button").length === 0; attempt += 1) {
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 5);
+      await promise;
+    });
+  }
 }
+
+afterEach(() => act(() => root.unmount()));
 
 describe("RegistrationSchemaForm editing an existing registration", () => {
   it("renders every key outside the server's allowlist read-only", async () => {
@@ -299,7 +286,7 @@ describe("RegistrationSchemaForm editing an existing registration", () => {
     // plus the never-answered exception — so the form forwards it rather than
     // re-deriving anything from `field.editable`.
     testWindow.localStorage.clear();
-    mountForm({ initial: STORED, writableKeys: ["public_notes"] });
+    await mountForm({ initial: STORED, writableKeys: ["public_notes"] });
 
     const boxes = container.querySelectorAll("textarea");
     expect(boxes.length).toBe(2);
@@ -316,25 +303,12 @@ describe("RegistrationSchemaForm editing an existing registration", () => {
     // key, and the server refuses the whole request with `code: "locked"`.
     testWindow.localStorage.clear();
     let submitted: { answers: Record<string, unknown> } | null = null;
-    container = testWindow.document.createElement("div");
-    testWindow.document.body.appendChild(container);
-    root = createRoot(container as unknown as Element);
-    act(() => {
-      root.render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <RegistrationSchemaForm
-            mode="public"
-            form={FORM}
-            tournamentId={7}
-            initial={STORED}
-            writableKeys={["public_notes"]}
-            onSubmit={async (input) => {
-              submitted = input;
-            }}
-            onCancel={() => {}}
-          />
-        </QueryClientProvider>,
-      );
+    await mountForm({
+      initial: STORED,
+      writableKeys: ["public_notes"],
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      }
     });
 
     const buttons = container.querySelectorAll("button");
@@ -351,7 +325,7 @@ describe("RegistrationSchemaForm editing an existing registration", () => {
   it("drops a step with nothing writable on it", async () => {
     // A page of greyed-out controls to click Next through is not a step.
     testWindow.localStorage.clear();
-    mountForm({
+    await mountForm({
       form: {
         ...FORM,
         form_schema: {
@@ -398,23 +372,11 @@ describe("RegistrationSchemaForm on a late sign-up", () => {
     // and the `reserve` question stays theirs, untouched and unticked.
     testWindow.localStorage.clear();
     let submitted: { answers: Record<string, unknown> } | null = null;
-    container = testWindow.document.createElement("div");
-    testWindow.document.body.appendChild(container);
-    root = createRoot(container as unknown as Element);
-    act(() => {
-      root.render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <RegistrationSchemaForm
-            mode="public"
-            form={LATE_FORM}
-            tournamentId={7}
-            onSubmit={async (input) => {
-              submitted = input;
-            }}
-            onCancel={() => {}}
-          />
-        </QueryClientProvider>,
-      );
+    await mountForm({
+      form: LATE_FORM,
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      }
     });
 
     expect(container.textContent).toContain("registration.reserve.lateNotice");
@@ -430,7 +392,7 @@ describe("RegistrationSchemaForm on a late sign-up", () => {
 
   it("says nothing while the window is still open", async () => {
     testWindow.localStorage.clear();
-    mountForm({ form: { ...LATE_FORM, registration_late: false } as unknown as RegistrationForm });
+    await mountForm({ form: { ...LATE_FORM, registration_late: false } as unknown as RegistrationForm });
 
     expect(container.textContent).not.toContain("registration.reserve.lateNotice");
   });

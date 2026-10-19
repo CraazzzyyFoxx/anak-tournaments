@@ -31,16 +31,6 @@ export const ROLE_LABELS: Record<string, string> = {
   support: "Support",
 };
 
-/**
- * Known registration role codes. The codes and the canonical `HeroClass` names
- * are the same vocabulary now, so this table only validates membership.
- */
-export const REGISTRATION_TO_CANONICAL: Record<RoleCode, string> = {
-  tank: "tank",
-  damage: "damage",
-  support: "support",
-};
-
 const CANONICAL_TO_REGISTRATION: Record<string, RoleCode> = {
   tank: "tank",
   damage: "damage",
@@ -51,40 +41,6 @@ const CANONICAL_TO_REGISTRATION: Record<string, RoleCode> = {
 export function canonicalToRegistrationRole(role: string): RoleCode | null {
   return CANONICAL_TO_REGISTRATION[role.trim().toLowerCase()] ?? null;
 }
-
-export interface RoleAccent {
-  tile: string;
-  selectedCard: string;
-  indicator: string;
-  mutedIndicator: string;
-}
-
-export const ROLE_ACCENTS: Record<string, RoleAccent> = {
-  tank: {
-    tile: "bg-sky-500/18 text-sky-200",
-    selectedCard: "border-sky-400/75 bg-sky-500/10 shadow-[0_0_0_1px_rgba(56,189,248,0.14)]",
-    indicator: "border-sky-300",
-    mutedIndicator: "border-sky-300/45",
-  },
-  damage: {
-    tile: "bg-orange-500/18 text-orange-200",
-    selectedCard: "border-orange-400/75 bg-orange-500/10 shadow-[0_0_0_1px_rgba(251,146,60,0.14)]",
-    indicator: "border-orange-300",
-    mutedIndicator: "border-orange-300/45",
-  },
-  support: {
-    tile: "bg-emerald-500/18 text-emerald-200",
-    selectedCard: "border-emerald-400/75 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(52,211,153,0.14)]",
-    indicator: "border-emerald-300",
-    mutedIndicator: "border-emerald-300/45",
-  },
-  flex: {
-    tile: "bg-violet-500/18 text-violet-200",
-    selectedCard: "border-violet-400/75 bg-violet-500/10 shadow-[0_0_0_1px_rgba(167,139,250,0.14)]",
-    indicator: "border-violet-300",
-    mutedIndicator: "border-violet-300/45",
-  },
-};
 
 const ROLE_ICON_NAMES: Record<RoleCode, "Tank" | "Damage" | "Support"> = {
   tank: "Tank",

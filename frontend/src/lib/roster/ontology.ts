@@ -1,3 +1,4 @@
+import type { PlayerSubRole } from "@/types/admin.types";
 import type { DisciplineMetadata, OntologyRole, RoleDimension } from "@/types/discipline.types";
 import { OPEN_SLOT_CODE } from "./shape";
 import type { RoleRef } from "./team-format";
@@ -39,6 +40,15 @@ export function registrationRoles(ontology: RoleOntology | null | undefined): On
   return selectableRoles(ontology, rated.code).filter(role => role.parent_id === null && role.workspace_id === null);
 }
 
+/**
+ * What a roster editor's role picker offers: the game's selectable roles, the open slot last. A stored role the
+ * game's catalog no longer offers (retired, unknown) keeps an option, or the trigger would render empty.
+ */
+export function roleChoices(ontology: RoleOntology | null | undefined, current: string): string[] {
+  const codes = registrationRoles(ontology).map((role) => role.code);
+  return [...(current === OPEN_SLOT_CODE || codes.includes(current) ? codes : [...codes, current]), OPEN_SLOT_CODE];
+}
+
 /** Every slot code a roster of this game can show, history included, in declared order; the open slot is last. */
 export function slotCodeOrder(ontology: RoleOntology | null | undefined): string[] {
   const rated = ontology ? ratedDimension(ontology) : null;
@@ -62,15 +72,47 @@ export function slotRank(order: readonly string[], code: string | null | undefin
   return index === -1 ? order.length : index;
 }
 
+/** Maps a module-declared role code to its localized name, or `null` when the bundle has none. */
+export type RoleNameLocalizer = (code: string) => string | null;
+
 /**
- * A slot's display name: the game's own role name, the caller's open-slot label, or the raw code when this
- * scope does not know the role (never a guessed one).
+ * A role's display name: the bundle's localized name for a module-declared role code (`common.roles.<code>`) when
+ * it has one, else the ontology `name`, so a localized UI never falls back to the module's English name. Workspace
+ * children carry their organizer's own wording and are never looked up.
  */
-export function slotLabel(ontology: RoleOntology | null | undefined, code: string, openLabel: string): string {
+export function roleName(role: Pick<OntologyRole, "code" | "name" | "workspace_id">, localized?: RoleNameLocalizer): string {
+  return (role.workspace_id === null ? localized?.(role.code) : null) ?? role.name;
+}
+
+/**
+ * A slot's display name: the game's own role name (`nameOf`, localized when the bundle knows it), the caller's
+ * open-slot label, or the raw code when this scope does not know the role (never a guessed one).
+ */
+export function slotLabel(
+  ontology: RoleOntology | null | undefined,
+  code: string,
+  openLabel: string,
+  nameOf: (role: OntologyRole) => string = (role) => role.name
+): string {
   if (code === OPEN_SLOT_CODE) return openLabel;
   const rated = ontology ? ratedDimension(ontology) : null;
   const role = ontology && rated ? findRole(ontology, { dimension: rated.code, role: code }) : null;
-  return role?.name ?? code;
+  return role ? nameOf(role) : code;
+}
+
+/**
+ * The sub-roles the workspace catalog offers under one role of the rated `dimension`, as `{ slug, label }` with the
+ * LEAF code (`<role>_<slug>`, the spelling a participation's role reference stores). The open slot has no catalog.
+ */
+export function subRoleOptions(
+  subRoles: readonly PlayerSubRole[] | undefined,
+  dimension: string | undefined,
+  role: string
+): Array<{ slug: string; label: string }> {
+  if (role === OPEN_SLOT_CODE) return [];
+  return (subRoles ?? [])
+    .filter((subRole) => subRole.role === role && subRole.dimension === dimension)
+    .map((subRole) => ({ slug: `${role}_${subRole.slug}`, label: subRole.label }));
 }
 
 export function roleAncestors(ontology: RoleOntology, role: OntologyRole): OntologyRole[] {

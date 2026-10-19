@@ -41,6 +41,7 @@ import type {
 import type { User } from "@/types/user.types";
 import { Spinner } from "@/components/ui/spinner";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 
 import FieldLabel from "./FieldLabel";
@@ -318,6 +319,7 @@ function RegistrationSchemaFormBody({
 }: Readonly<RegistrationSchemaFormProps & { metadata: DisciplineMetadata }>) {
   const t = useTranslations();
   const roles = registrationRoles(metadata);
+  const nameOf = useRoleName();
   const roleCodes = roles.map((role) => role.code);
   const tErrors = useTranslations("forms.errors");
   const tOrganizer = useTranslations("registrationOrganizer");
@@ -635,7 +637,7 @@ function RegistrationSchemaFormBody({
         {roles.map((role) => (
           <TextField
             key={role.code}
-            label={t("registrationOrganizer.form.rank", { role: role.name })}
+            label={t("registrationOrganizer.form.rank", { role: nameOf(role) })}
             type="number"
             placeholder="—"
             value={ranks[role.code] ?? ""}

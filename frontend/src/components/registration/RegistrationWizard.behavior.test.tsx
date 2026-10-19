@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 
@@ -124,6 +124,14 @@ async function submitWith(error: unknown) {
       </QueryClientProvider>,
     );
   });
+  // The form reads its owner game's metadata before it renders; the submit button exists only after that.
+  for (let attempt = 0; attempt < 20 && container.querySelectorAll("button").length === 0; attempt += 1) {
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 5);
+      await promise;
+    });
+  }
   const buttons = container.querySelectorAll("button");
   await act(async () => {
     buttons[buttons.length - 1].dispatchEvent(
@@ -132,6 +140,7 @@ async function submitWith(error: unknown) {
   });
 }
 
+afterEach(() => act(() => root.unmount()));
 describe("RegistrationWizard", () => {
   it("leaves the banner to the form when the rejection names a field", async () => {
     // react-query runs a mutation's `onError` even though `RegistrationSchemaForm`

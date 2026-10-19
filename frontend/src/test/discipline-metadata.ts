@@ -67,17 +67,17 @@ function metadata(
 }
 
 export const OW_METADATA = metadata("overwatch", "Overwatch", "battlenet", "player_role", [
-  role(1, "player_role", "tank", "Tank", { attrs: { color: "#0ea5e9" } }),
-  role(2, "player_role", "damage", "Damage", { attrs: { color: "#f97316" } }),
-  role(3, "player_role", "support", "Support", { attrs: { color: "#10b981" } })
+  role(1, "player_role", "tank", "Tank", { attrs: { color: "#0ea5e9", icon: "/test-roles/tank.svg" } }),
+  role(2, "player_role", "damage", "Damage", { attrs: { color: "#f97316", icon: "/test-roles/damage.svg" } }),
+  role(3, "player_role", "support", "Support", { attrs: { color: "#10b981", icon: "/test-roles/support.svg" } })
 ]);
 
 export const LOL_METADATA = metadata("lol", "League of Legends", "riot", "position", [
-  role(11, "position", "top", "Top"),
-  role(12, "position", "jungle", "Jungle"),
-  role(13, "position", "mid", "Mid"),
-  role(14, "position", "bot", "Bot"),
-  role(15, "position", "support", "Support")
+  role(11, "position", "top", "Top", { attrs: { icon: "/test-roles/top.svg" } }),
+  role(12, "position", "jungle", "Jungle", { attrs: { icon: "/test-roles/jungle.svg" } }),
+  role(13, "position", "mid", "Mid", { attrs: { icon: "/test-roles/mid.svg" } }),
+  role(14, "position", "bot", "Bot", { attrs: { icon: "/test-roles/bot.svg" } }),
+  role(15, "position", "support", "Support", { attrs: { icon: "/test-roles/support.svg" } })
 ]);
 
 const ALL = [OW_METADATA, LOL_METADATA];

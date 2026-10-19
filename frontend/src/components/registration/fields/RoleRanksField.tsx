@@ -5,6 +5,7 @@ import { useId, useMemo } from "react";
 import DivisionIcon from "@/components/DivisionIcon";
 import type { FieldRendererProps } from "@/components/forms/types";
 import { NumberInput } from "@/components/ui/number-input";
+import { useRoleName } from "@/hooks/useRoleName";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { registrationRoles } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,7 @@ export default function RoleRanksField({
   context,
 }: Readonly<FieldRendererProps>) {
   const id = useId();
+  const nameOf = useRoleName();
   const errorId = `${id}-error`;
   const ranks = ranksOf(value);
   const roles = registrationRoles(context.metadata);
@@ -104,7 +106,7 @@ export default function RoleRanksField({
           return (
             <div key={role.code} className="space-y-2">
               <FieldLabel
-                label={role.name}
+                label={nameOf(role)}
                 htmlFor={controlId}
                 required={field.required && declared.includes(role.code)}
               />

@@ -1,42 +1,29 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { roleOf } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getDivisionLabel } from "@/lib/divisions/grid";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
-
-
-function getHistoryRoleLabel(
-  role: string,
-  t: ReturnType<typeof useTranslations<never>>,
-): string {
-  switch (role.toLowerCase()) {
-    case "tank":
-      return t("common.roles.tank");
-    case "damage":
-      return t("common.roles.damage");
-    case "support":
-      return t("common.roles.support");
-    case "flex":
-      return t("common.roles.flex");
-    default:
-      return role;
-  }
-}
 
 export default function TournamentHistoryCell({
   history,
   count,
+  ontology,
 }: Readonly<{
   history: TournamentHistoryEntry[];
   /** True total of past tournaments; `history` may be capped to a recent subset. */
   count?: number;
+  /** The viewed tournament's game. A past tournament of another game keeps its role neutral and by code. */
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations();
+  const slotLabel = useSlotLabel(ontology);
 
   if (!history || history.length === 0) {
     return (
@@ -74,9 +61,10 @@ export default function TournamentHistoryCell({
                     <div className="flex items-center gap-2 text-[color:var(--aqt-fg-dim)]">
                       {h.role ? (
                         <span className="inline-flex items-center">
-                          <span className="sr-only">{getHistoryRoleLabel(roleOf(h.role)!, t)}</span>
+                          <span className="sr-only">{slotLabel(roleOf(h.role))}</span>
                           <PlayerRoleIcon
-                            role={roleOf(h.role)}
+                            role={{ dimension: h.role.dimension, role: roleOf(h.role) }}
+                            ontology={ontology}
                             size={16}
                             aria-hidden
                           />

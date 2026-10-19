@@ -24,9 +24,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import ru from "@/i18n/messages/ru.json";
 
-import InviteHistorySection from "./InviteHistorySection";
+import { OW_METADATA } from "@/test/discipline-metadata";
 
-vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+import InviteHistorySection from "./InviteHistorySection";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -70,6 +70,7 @@ async function mount(
           <InviteHistorySection
             workspaceId={1}
             teamId={7}
+            ontology={OW_METADATA}
             open={open}
             onOpenChange={() => {}}
           />

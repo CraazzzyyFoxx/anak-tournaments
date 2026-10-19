@@ -21,6 +21,7 @@ import {
 import { ratedDimension, selectableRoles } from "@/lib/roster/ontology";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useRoleName } from "@/hooks/useRoleName";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { notify } from "@/lib/notify";
 import {
@@ -70,6 +71,7 @@ export default function MixBalancerSection() {
   const metadata = useDisciplineMetadata(browsing.axis, code);
   const rated = metadata.data ? ratedDimension(metadata.data) : null;
   const roleT = useTranslations("common.roleOntology");
+  const nameOf = useRoleName();
   const weightRoles = metadata.data && rated ? selectableRoles(metadata.data, rated.code).filter(role => role.workspace_id === null && role.parent_id === null) : [];
 
   const preferencesQuery = useQuery({
@@ -194,7 +196,7 @@ export default function MixBalancerSection() {
               <span>{t("mixBalancer.weights.label")}</span>
             </Label>
             <div className="flex flex-wrap gap-2">
-              {code && !metadata.isError && rated && [...weightRoles.map(role => ({ code: role.code, name: role.name })), { code: "flex", name: roleT("openSlot") }].map(({ code, name }) => (
+              {code && !metadata.isError && rated && [...weightRoles.map(role => ({ code: role.code, name: nameOf(role) })), { code: "flex", name: roleT("openSlot") }].map(({ code, name }) => (
                 <div key={code} className="flex items-center gap-2">
                   <Label
                     htmlFor={`mix-role-weight-${code}`}

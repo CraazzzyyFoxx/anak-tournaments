@@ -7962,8 +7962,7 @@
         "one_priority_or_flex": "Choose one priority role, or Flex.",
         "unknown_role": "This role does not exist.",
         "subrole_not_allowed": "This sub-role is not available for the chosen role.",
-        "too_many_heroes": "Too many heroes selected for one role.",
-        "hero_wrong_class": "This hero does not belong to the chosen role."
+        "too_many_heroes": "Too many heroes selected for one role."
       }
     }
   },
@@ -11868,9 +11867,6 @@
       "empty": "This team has no players. A team needs at least one to appear in a bracket.",
       "deleteDescription": "The roster record and its match statistics are removed permanently. This cannot be undone.",
       "rosterCount": "{starters, plural, one {# starter} other {# starters}} · {substitutes, plural, one {# substitute} other {# substitutes}}",
-      "roleTank": "Tank",
-      "roleDamage": "Damage",
-      "roleSupport": "Support",
       "cascadeMatchStats": "Match statistics for this player",
       "cascadeSubstitutes": "Substitutes linked to this slot"
     },

@@ -35,7 +35,7 @@ const previousGlobals = new Map<PropertyKey, PropertyDescriptor | undefined>();
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
 }));
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- test stand-in, never shipped

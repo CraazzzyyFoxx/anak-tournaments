@@ -12,7 +12,7 @@ import {
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,14 +33,11 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  PLAYER_ROLE_OPTIONS,
-  filterSubRoleOptions,
-  normalizePlayerRole,
-  subRoleCatalogRole,
-  type PlayerRoleOption
-} from "@/lib/roster/player-role";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { ratedDimension, roleChoices, subRoleOptions, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf, subRoleOf, toRoleRef } from "@/lib/roster/role-ref";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { PlayerCreateInput, PlayerUpdateInput } from "@/types/admin.types";
@@ -69,14 +66,14 @@ interface RosterDraft {
   userId: number;
   userName: string;
   name: string;
-  role: PlayerRoleOption;
+  role: string;
   rank: number;
   subRole: string;
 }
 
 const NO_SUB_ROLE = "none";
 
-function emptyDraft(parentId: number | null, role: PlayerRoleOption = "Damage"): RosterDraft {
+function emptyDraft(parentId: number | null, role: string = OPEN_SLOT_CODE): RosterDraft {
   return { parentId, userId: 0, userName: "", name: "", role, rank: 0, subRole: "" };
 }
 
@@ -182,32 +179,31 @@ function RoleSelect({
   value,
   onChange,
   label,
-  disabled
+  disabled,
+  ontology
 }: Readonly<{
-  value: PlayerRoleOption;
-  onChange: (role: PlayerRoleOption) => void;
+  /** A role code of the owner game's rated dimension, or `OPEN_SLOT_CODE` for none assigned. */
+  value: string;
+  onChange: (role: string) => void;
   /** Field name, e.g. `Role of Nickname`. */
   label: string;
   disabled?: boolean;
+  ontology: RoleOntology | null;
 }>) {
-  const t = useTranslations("adminPeople.roster");
+  const slotLabel = useSlotLabel(ontology);
   return (
-    <Select
-      value={value}
-      onValueChange={(next) => onChange(normalizePlayerRole(next))}
-      disabled={disabled}
-    >
-      <SelectTrigger aria-label={[label, value].join(": ")} className="h-8 w-[4.5rem] gap-1 px-2">
+    <Select value={value} onValueChange={onChange} disabled={disabled || !ontology}>
+      <SelectTrigger aria-label={[label, slotLabel(value)].join(": ")} className="h-8 w-[4.5rem] gap-1 px-2">
         <SelectValue>
-          <PlayerRoleIcon role={value} size={18} decorative />
+          <RosterSlotGlyph code={value} ontology={ontology} size={18} decorative />
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {PLAYER_ROLE_OPTIONS.map((role) => (
-          <SelectItem key={role} value={role}>
+        {roleChoices(ontology, value).map((code) => (
+          <SelectItem key={code} value={code}>
             <span className="flex items-center gap-2">
-              <PlayerRoleIcon role={role} size={16} decorative />
-              {t(`role${role}` as "roleTank" | "roleDamage" | "roleSupport")}
+              <RosterSlotGlyph code={code} ontology={ontology} size={16} decorative />
+              {slotLabel(code)}
             </span>
           </SelectItem>
         ))}
@@ -323,6 +319,12 @@ export function TeamRosterEditor({
   const [draft, setDraft] = useState<RosterDraft | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<Player | null>(null);
 
+  // The roles on offer are the roster's own game's: this team's tournament, never a fixed or browsing vocabulary.
+  const ownerMetadata = useDisciplineMetadata(workspaceId ?? "all", workspaceId != null ? discipline : null);
+  const ontology = ownerMetadata.data ?? null;
+  const ratedCode = ontology ? ratedDimension(ontology)?.code : undefined;
+  const metadataFailed = ownerMetadata.isError || (ontology !== null && !ratedCode);
+
   const subRolesQuery = useQuery({
     queryKey: adminQueryKeys.playerSubRoles(workspaceId, discipline),
     queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: workspaceId!, discipline: discipline! }, signal),
@@ -367,15 +369,12 @@ export function TeamRosterEditor({
   const patch = (player: Player, payload: PlayerUpdateInput) =>
     patchPlayer.mutate({ id: player.id, payload });
 
-  /**
-   * Flex has no rows in the `player_sub_role` catalog, so a Flex row offers
-   * nothing and its sub-role select renders inert rather than empty.
-   */
-  const subRoleOptionsFor = (role: string | null | undefined) =>
-    filterSubRoleOptions(playerSubRoles, role).map((subRole) => ({
-      slug: `${subRoleCatalogRole(role)}_${subRole.slug}`,
-      label: subRole.label
-    }));
+  /** The game's own role as a reference (`{dimension, role[, sub-role leaf]}`); the open slot is no role at all. */
+  const roleRef = (role: string, subRole: string | null) =>
+    toRoleRef(role === OPEN_SLOT_CODE ? null : role, subRole, ratedCode ?? "");
+
+  /** The open slot has no rows in the sub-role catalog, so its sub-role select renders inert rather than empty. */
+  const subRoleOptionsFor = (role: string) => subRoleOptions(playerSubRoles, ratedCode, role);
 
   const substituteCount = players.filter((player) => player.is_substitution).length;
   const draftIsValid = draft != null && draft.userId > 0 && draft.name.trim().length > 0;
@@ -387,7 +386,7 @@ export function TeamRosterEditor({
       user_id: draft.userId,
       team_id: teamId,
       tournament_id: tournamentId,
-      role: toRoleRef(draft.role === "Flex" ? null : draft.role.toLowerCase(), draft.subRole, "player_role"),
+      role: roleRef(draft.role, draft.subRole),
       rank: draft.rank,
       is_substitution: draft.parentId != null,
       related_player_id: draft.parentId
@@ -434,6 +433,8 @@ export function TeamRosterEditor({
         <RoleSelect
           value={draft.role}
           label={t("roleOf")}
+          disabled={!ratedCode}
+          ontology={ontology}
           onChange={(role) =>
             setDraft((current) => (current ? { ...current, role, subRole: "" } : current))
           }
@@ -457,7 +458,7 @@ export function TeamRosterEditor({
         <SubRoleSelect
           value={draft.subRole}
           options={subRoleOptionsFor(draft.role)}
-          disabled={subRolesQuery.isError || subRoleCatalogRole(draft.role) == null}
+          disabled={subRolesQuery.isError || draft.role === OPEN_SLOT_CODE}
           describedBy={subRolesQuery.isError ? subRoleErrorId : undefined}
           label={t("subRoleOf")}
           onChange={(subRole) =>
@@ -500,6 +501,7 @@ export function TeamRosterEditor({
   return (
     <div className="space-y-3">
       {subRolesQuery.isError && <p id={subRoleErrorId} role="status" className="text-sm text-muted-foreground">{roleT("roleLoadError")}</p>}
+      {metadataFailed && <p role="status" className="text-sm text-muted-foreground">{roleT("metadataError")}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm tabular-nums text-muted-foreground">
           {players.length
@@ -534,7 +536,7 @@ export function TeamRosterEditor({
           </TableHeader>
           <TableBody>
             {rows.map(({ player, depth }) => {
-              const role = player.role ? normalizePlayerRole(roleOf(player.role)) : "Flex";
+              const role = roleOf(player.role) ?? OPEN_SLOT_CODE;
               const saving = savingPlayerId === player.id;
 
               return (
@@ -569,8 +571,9 @@ export function TeamRosterEditor({
                     <RoleSelect
                       value={role}
                       label={t("roleOfPlayer", { name: player.name })}
-                      disabled={!canUpdatePlayer}
-                      onChange={(next) => patch(player, { role: toRoleRef(next === "Flex" ? null : next.toLowerCase(), null, player.role?.dimension ?? "player_role") })}
+                      disabled={!canUpdatePlayer || !ratedCode}
+                      ontology={ontology}
+                      onChange={(next) => patch(player, { role: roleRef(next, null) })}
                     />
                   </TableCell>
 
@@ -601,11 +604,11 @@ export function TeamRosterEditor({
                   <TableCell className={tableStyles.cell}>
                     <SubRoleSelect
                       value={subRoleOf(player.role) ?? ""}
-                      options={subRoleOptionsFor(roleOf(player.role))}
+                      options={subRoleOptionsFor(role)}
                       label={t("subRoleOfPlayer", { name: player.name })}
-                      disabled={subRolesQuery.isError || !canUpdatePlayer || subRoleCatalogRole(roleOf(player.role)) == null}
+                      disabled={subRolesQuery.isError || !canUpdatePlayer || role === OPEN_SLOT_CODE}
                       describedBy={subRolesQuery.isError ? subRoleErrorId : undefined}
-                      onChange={(subRole) => patch(player, { role: toRoleRef(roleOf(player.role), subRole, player.role?.dimension ?? "player_role") })}
+                      onChange={(subRole) => patch(player, { role: roleRef(role, subRole) })}
                     />
                   </TableCell>
 

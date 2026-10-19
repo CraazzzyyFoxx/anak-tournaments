@@ -22,13 +22,16 @@ import {
   type PlayerFormState
 } from "@/components/admin/people/PlayerForm";
 import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
+import { ratedDimension } from "@/lib/roster/ontology";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
@@ -57,6 +60,23 @@ interface ParticipationRow {
   team_id: number;
   team_name: string;
   division_grid_version: DivisionGridVersion | null;
+}
+
+/**
+ * A participation's role, named and drawn in the game of ITS tournament: a person's career spans games, so every row
+ * reads its own owner's metadata (one cached read per game and workspace).
+ */
+function ParticipationRole({ row, named = false }: Readonly<{ row: ParticipationRow; named?: boolean }>) {
+  const ontology = useDisciplineMetadata(row.workspace_id, row.discipline).data ?? null;
+  const slotLabel = useSlotLabel(ontology);
+  const code = row.role ? roleOf(row.role) : OPEN_SLOT_CODE;
+  return named ? (
+    <>{slotLabel(code)}</>
+  ) : (
+    <div className="flex items-center" title={slotLabel(code)}>
+      <RosterSlotGlyph code={code} ontology={ontology} size={18} />
+    </div>
+  );
 }
 
 /**
@@ -99,12 +119,17 @@ export function PersonParticipationsTab({
     enabled: canCreate
   });
 
-  const selectedOwner = editing?.tournament_id === form.tournament_id
-    ? editing
-    : tournamentsQuery.data?.results.find(tournament => tournament.id === form.tournament_id);
+  // Editing never moves a participation, so its owner is the participation's own tournament; a new one is owned
+  // by the tournament picked in the form.
+  const selectedOwner = editing ?? tournamentsQuery.data?.results.find(tournament => tournament.id === form.tournament_id);
   const discipline = selectedOwner?.discipline;
   const ownerWorkspaceId = selectedOwner?.workspace_id;
-  const ownerScopeMissing = form.tournament_id > 0 && (!discipline || ownerWorkspaceId == null);
+  const ownerScopeMissing = (editing != null || form.tournament_id > 0) && (!discipline || ownerWorkspaceId == null);
+  // The form's role choices are the owner game's: the selected participation's (edit) or tournament's (create).
+  const ownerMetadata = useDisciplineMetadata(ownerWorkspaceId ?? "all", ownerWorkspaceId != null ? discipline ?? null : null);
+  const ontology = ownerMetadata.data ?? null;
+  const ratedCode = ontology ? ratedDimension(ontology)?.code : undefined;
+  const metadataFailed = ownerMetadata.isError || (ontology !== null && !ratedCode);
   const subRolesQuery = useQuery({
     queryKey: adminQueryKeys.playerSubRolesPublic(ownerWorkspaceId, discipline),
     queryFn: ({ signal }) => adminService.getPlayerSubRoles({ workspace_id: ownerWorkspaceId!, discipline: discipline! }, signal),
@@ -157,10 +182,10 @@ export function PersonParticipationsTab({
 
   const saveMutation = useMutation({
     meta: { suppressErrorToast: true },
-    mutationFn: (payload: PlayerFormState) =>
+    mutationFn: ({ state, dimension }: { state: PlayerFormState; dimension: string }) =>
       editing
-        ? adminService.updatePlayer(editing.id, playerUpdatePayload(payload))
-        : adminService.createPlayer(playerCreatePayload(payload)),
+        ? adminService.updatePlayer(editing.id, playerUpdatePayload(state, dimension))
+        : adminService.createPlayer(playerCreatePayload(state, dimension)),
     onSuccess: () => {
       const created = editing == null;
       invalidate();
@@ -253,11 +278,7 @@ export function PersonParticipationsTab({
       {
         accessorKey: "role",
         header: t("role"),
-        cell: ({ row }) => (
-          <div className="flex items-center" title={(row.original.role ? normalizePlayerRole(roleOf(row.original.role)) : "Flex")}>
-            <PlayerRoleIcon role={(row.original.role ? normalizePlayerRole(roleOf(row.original.role)) : "Flex")} size={18} />
-          </div>
-        )
+        cell: ({ row }) => <ParticipationRole row={row.original} />
       },
       {
         // Division is derived from rank, so the two ride in one column and sort
@@ -359,7 +380,7 @@ export function PersonParticipationsTab({
               {row.original.team_name} · {row.original.tournament_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {(row.original.role ? normalizePlayerRole(roleOf(row.original.role)) : "Flex")} ·{" "}
+              <ParticipationRole row={row.original} named /> ·{" "}
               <span className="tabular-nums">{row.original.rank}</span>
               {subRoleOf(row.original.role) ? ` · ${formatSubRoleLabel(subRoleOf(row.original.role))}` : ""}
             </p>
@@ -380,7 +401,7 @@ export function PersonParticipationsTab({
         }
         isSubmitting={saveMutation.isPending}
         submittingLabel={formMode === "edit" ? t("updating") : t("adding")}
-        errorMessage={saveError ?? (formMode !== null && ownerScopeMissing ? roleT("ownerScopeError") : subRolesQuery.isError ? roleT("roleLoadError") : undefined)}
+        errorMessage={saveError ?? (formMode !== null && ownerScopeMissing ? roleT("ownerScopeError") : subRolesQuery.isError ? roleT("roleLoadError") : metadataFailed ? roleT("metadataError") : undefined)}
         isDirty={formMode != null && hasUnsavedChanges(form, formInitial)}
         onSubmit={(event) => {
           event.preventDefault();
@@ -393,7 +414,12 @@ export function PersonParticipationsTab({
             setSaveError(formT(invalid));
             return;
           }
-          saveMutation.mutate(form);
+          // Past this point the owner game is known; its metadata names the dimension the role is written in.
+          if (!ratedCode) {
+            setSaveError(roleT("metadataError"));
+            return;
+          }
+          saveMutation.mutate({ state: form, dimension: ratedCode });
         }}
       >
         <PlayerForm
@@ -401,6 +427,7 @@ export function PersonParticipationsTab({
           value={form}
           onChange={setForm}
           subRoles={subRolesQuery.data}
+          ontology={ontology}
           divisionGrid={
             editing?.division_grid_version ??
             (tournamentsQuery.data?.results.find(

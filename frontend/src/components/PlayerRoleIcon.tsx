@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import FlexIcon from "@/components/icons/FlexIcon";
+import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, ratedDimension, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
 import type { RoleRef } from "@/lib/roster/team-format";
 
@@ -19,6 +20,7 @@ export default function PlayerRoleIcon({
   "aria-hidden"?: boolean | "true" | "false";
 }>) {
   const t = useTranslations();
+  const nameOf = useRoleName();
   const [failedIcon, setFailedIcon] = useState<string | null>(null);
   const open = role === null || (typeof role === "string" && role.toLowerCase() === "flex");
   const ref = typeof role === "string"
@@ -26,7 +28,7 @@ export default function PlayerRoleIcon({
     : role;
   const node = ontology ? findRole(ontology, ref) : null;
   const retired = node && (!node.active || !ontology?.dimensions.some(d => d.code === node.dimension && d.active));
-  const name = open ? t("common.roles.flex") : node?.name ?? ref?.role ?? "";
+  const name = open ? t("common.roles.flex") : node ? nameOf(node) : ref?.role ?? "";
   const accessibleName = label ?? (open ? name : retired
     ? t("common.roleOntology.retired", { role: name })
     : node ? name : t("common.roleOntology.unknown", { role: name }));
@@ -48,7 +50,7 @@ export default function PlayerRoleIcon({
           <img src={presentation.icon} crossOrigin="anonymous" alt="" aria-hidden style={{ display: "none" }} onError={() => setFailedIcon(presentation.icon)} />
           <span aria-hidden style={{ width: size, height: size, backgroundColor: "currentColor", maskImage: `url("${presentation.icon}")`, WebkitMaskImage: `url("${presentation.icon}")`, maskSize: "contain", WebkitMaskSize: "contain", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat", maskPosition: "center", WebkitMaskPosition: "center" }} />
         </>
-      ) : <span aria-hidden className="text-[0.55em] font-medium">{node ? node.name.slice(0, 2).toUpperCase() : "?"}</span>}
+      ) : <span aria-hidden className="text-[0.55em] font-medium">{node ? name.slice(0, 2).toUpperCase() : "?"}</span>}
     </span>
   );
 }

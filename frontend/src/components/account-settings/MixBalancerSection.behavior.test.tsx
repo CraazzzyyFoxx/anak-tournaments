@@ -52,7 +52,7 @@ vi.mock("@/hooks/useDisciplineMetadata", () => ({
 
 // Labels come through as their message keys; this panel's contract is the
 // payload, not the copy.
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({ useTranslations: () => Object.assign((key: string) => key, { has: () => false }) }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
 }));

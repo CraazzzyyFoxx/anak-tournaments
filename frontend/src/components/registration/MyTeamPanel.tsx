@@ -367,6 +367,7 @@ export default function MyTeamPanel({
           <InviteHistorySection
             workspaceId={workspaceId}
             teamId={team.id}
+            ontology={ontology}
             open={historyOpen}
             onOpenChange={setHistoryOpen}
           />

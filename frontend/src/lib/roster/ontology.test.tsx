@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NextIntlClientProvider } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, quotaCount, registrationRoles, slotCodeOrder, slotLabel, slotRank } from "./ontology";
+import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, quotaCount, registrationRoles, roleChoices, roleName, slotCodeOrder, slotLabel, slotRank, subRoleOptions } from "./ontology";
 import { teamFormatPayload, teamFormatErrors, teamFormatsEqual } from "./team-format";
 import type { RoleOntology } from "./ontology";
+import type { PlayerSubRole } from "@/types/admin.types";
 
 const dimension = (code: string, rated = false, selection_mode: "single" | "multi" = "single") => ({ id: code.length, code, name: code, rated, selection_mode, active: true, sort_order: 0 });
 const role = (id: number, code: string, extra: Partial<RoleOntology["roles"][number]> = {}) => ({ id, code, dimension: "position", name: code, parent_id: null, workspace_id: null, active: true, selectable: true, sort_order: id, attrs: {}, ...extra });
@@ -82,6 +83,40 @@ describe("registration roles and slots", () => {
     expect(slotLabel(ontology, "flex", "Open")).toBe("Open");
     expect(slotLabel(ontology, "tank", "Open")).toBe("tank");
     expect(slotLabel(null, "top", "Open")).toBe("top");
+  });
+  it("shows the bundle's localized name for a module-declared role and the ontology name otherwise", () => {
+    const ru = (code: string) => (code === "support" ? "Саппорт" : null);
+    const declared = { code: "support", name: "Support", workspace_id: null };
+    expect(roleName(declared, ru)).toBe("Саппорт");
+    // No message for the code: the module's own name, never a guess.
+    expect(roleName({ code: "top", name: "Top", workspace_id: null }, ru)).toBe("Top");
+    // A workspace child keeps its organizer's wording even when its code collides with a message key.
+    expect(roleName({ code: "support", name: "Backline", workspace_id: 7 }, ru)).toBe("Backline");
+    expect(roleName(declared)).toBe("Support");
+    expect(slotLabel(ontology, "support", "Open", (found) => roleName(found, ru))).toBe("Саппорт");
+    expect(slotLabel(ontology, "flex", "Open", (found) => roleName(found, ru))).toBe("Open");
+  });
+  it("localizes the role glyph's accessible name from the bundle", () => {
+    const render = (messages: object) => renderToStaticMarkup(<NextIntlClientProvider locale="ru" messages={messages}><PlayerRoleIcon role={{ dimension: "position", role: "support" }} ontology={ontology} /></NextIntlClientProvider>);
+    expect(render({ common: { roles: { support: "Саппорт", flex: "Флекс" }, roleOntology: { unknown: "?", retired: "?" } } })).toContain('aria-label="Саппорт"');
+    expect(render({ common: { roles: { flex: "Флекс" }, roleOntology: { unknown: "?", retired: "?" } } })).toContain('aria-label="support"');
+  });
+  it("offers a role picker the game's roles with the open slot last, keeping a stored retired role selectable", () => {
+    const all = ["top", "jungle", "mid", "bottom", "support"];
+    expect(roleChoices(ontology, "mid")).toEqual([...all, "flex"]);
+    expect(roleChoices(ontology, "flex")).toEqual([...all, "flex"]);
+    expect(roleChoices(ontology, "old")).toEqual([...all, "old", "flex"]);
+    expect(roleChoices(null, "flex")).toEqual(["flex"]);
+  });
+  it("lists a role's sub-roles by leaf code, scoped to the rated dimension, none for the open slot", () => {
+    const catalog = [
+      { role: "support", dimension: "position", slug: "warden", label: "Warden" },
+      { role: "support", dimension: "communication", slug: "caller", label: "Caller" },
+      { role: "top", dimension: "position", slug: "split", label: "Split" }
+    ] as PlayerSubRole[];
+    expect(subRoleOptions(catalog, "position", "support")).toEqual([{ slug: "support_warden", label: "Warden" }]);
+    expect(subRoleOptions(catalog, "position", "flex")).toEqual([]);
+    expect(subRoleOptions(undefined, "position", "support")).toEqual([]);
   });
 });
 

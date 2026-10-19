@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import FlexIcon from "@/components/icons/FlexIcon";
+import { useRoleName } from "@/hooks/useRoleName";
 import { roleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
 import { getSubroleOptions } from "@/lib/roster/roles";
@@ -78,6 +79,7 @@ export default function RoleStep({
   lockedRole = null,
 }: Readonly<RoleStepProps>) {
   const t = useTranslations();
+  const nameOf = useRoleName();
   // One vocabulary for the matrix, the roster shortfall, the invite chips and the
   // slot picker: the game's own role names from its scoped ontology.
   const roles = registrationRoles(ontology);
@@ -212,7 +214,7 @@ export default function RoleStep({
   const priorityOptions: readonly SegmentedOption<RoleCode | "flex">[] = [
     ...roles.map((role) => ({
       value: role.code as RoleCode | "flex",
-      label: role.name,
+      label: nameOf(role),
       selectedStyle: accentOf(role).tile,
     })),
     {
@@ -307,7 +309,7 @@ export default function RoleStep({
           <RoleMatrixRow
             key={role.code}
             roleCode={role.code}
-            roleLabel={role.name}
+            roleLabel={nameOf(role)}
             ontology={ontology}
             selection={selections[role.code]}
             subroleOptions={subroleOptionsFor(role.code)}

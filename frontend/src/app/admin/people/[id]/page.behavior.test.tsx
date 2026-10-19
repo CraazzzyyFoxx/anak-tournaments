@@ -20,6 +20,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import PersonHubPage from "./page";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -164,7 +166,13 @@ const PARTICIPATIONS = [
     maps_won: 9,
     maps_lost: 5,
     division: 9,
-    division_grid_version: null,
+    // The tournament's own effective grid: the crest comes from it, never from a fallback ladder.
+    division_grid_version: {
+      id: 1,
+      tiers: [
+        { number: 9, name: "Gold 1", slug: "gold-1", sort_order: 9, rank_min: 1500, rank_max: 1999, icon_url: "/divisions/gold-1.png" }
+      ]
+    },
     role: { dimension: "player_role", role: "support" }
   }
 ];
@@ -390,6 +398,18 @@ describe("person hub", () => {
     const divisionCell = container.querySelectorAll("tbody tr td")[4];
     expect(divisionCell.querySelector("img")).not.toBeNull();
     expect(divisionCell.textContent).toContain("1800");
+  });
+
+  it("names a participation's role in the game of its own tournament", async () => {
+    const mid = { dimension: "position", role: "mid" };
+    getUserTournaments.mockResolvedValue([
+      { ...PARTICIPATIONS[0], discipline: "lol", role: mid, players: [{ ...PARTICIPATIONS[0].players[0], role: mid }] }
+    ]);
+    window.history.replaceState(null, "", "/admin/people/42?tab=participations");
+    const { container } = await mount();
+    await waitFor(() => container.querySelector('tbody [title="Mid"]'), "the League position");
+
+    expect(container.querySelector('tbody [title="Support"]')).toBeNull();
   });
 
   it("edits a participation through the shared form", async () => {
