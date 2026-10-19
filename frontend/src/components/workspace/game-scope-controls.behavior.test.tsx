@@ -104,7 +104,7 @@ describe("GameTabs", () => {
     expect(onSelect).toHaveBeenCalledWith("lol");
   });
 
-  it("is keyboard operable: arrows move between games and Enter picks one", async () => {
+  it("is keyboard operable: arrows move between games without picking, and Enter picks one", async () => {
     const onSelect = vi.fn();
     await render(<GameTabs games={[OW, LOL]} value="overwatch" onSelect={onSelect} label="Game" />);
 
@@ -114,11 +114,13 @@ describe("GameTabs", () => {
       await tick();
     });
     expect(document.activeElement).toBe(tabs()[1]);
+    expect(onSelect).not.toHaveBeenCalled();
 
     await act(async () => {
       tabs()[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
-    expect(onSelect).toHaveBeenLastCalledWith("lol");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith("lol");
   });
 });
 

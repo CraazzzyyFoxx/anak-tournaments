@@ -6,7 +6,8 @@ import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 /**
  * Local game tabs (spec §4.3): a one-game page or block under "all games", over the enabled games.
- * Keyboard operable (Radix roving focus); the caller decides what a pick writes.
+ * Keyboard operable (Radix roving focus); arrows only move focus and Enter/Space picks (manual
+ * activation), since a pick navigates. The caller decides what a pick writes.
  */
 export function GameTabs({
   games,
@@ -22,7 +23,7 @@ export function GameTabs({
   className?: string;
 }>) {
   return (
-    <Tabs value={value} onValueChange={onSelect} className={className}>
+    <Tabs value={value} onValueChange={onSelect} activationMode="manual" className={className}>
       <TabsList aria-label={label}>
         {games
           .filter((game) => game.enabled)
