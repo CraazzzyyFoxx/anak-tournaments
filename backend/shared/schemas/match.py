@@ -89,6 +89,9 @@ class NativeMatchMember(BaseModel):
     workspace_member_id: int
     #: The workspace member's global player; a member outside the match's workspace is never listed.
     player_id: int
+    #: The player's canonical, unique ``players.user.name``: what a profile link is built from.
+    player_name: str
+    #: The exact handle the observation recorded; display only, never a link target.
     handle_snapshot: str
     #: From ``observed_role_id`` through the owner ontology.
     observed_role: RoleRef | None

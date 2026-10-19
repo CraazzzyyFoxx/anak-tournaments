@@ -18023,6 +18023,8 @@ export interface components {
             observed_role: components["schemas"]["tournament.RoleRef"] | null;
             /** Player Id */
             player_id: number;
+            /** Player Name */
+            player_name: string;
             /** Workspace Member Id */
             workspace_member_id: number;
         };

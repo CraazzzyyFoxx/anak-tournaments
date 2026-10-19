@@ -101,6 +101,7 @@ async def match_statistics_read(session: AsyncSession, match_id: int) -> NativeM
                 encounter_team_id=row.encounter_team_id,
                 workspace_member_id=row.workspace_member_id,
                 player_id=row.player_id,
+                player_name=row.player_name,
                 handle_snapshot=row.handle_snapshot,
                 observed_role=None
                 if row.role_dimension is None

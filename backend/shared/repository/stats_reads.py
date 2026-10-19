@@ -213,13 +213,15 @@ async def get_match_reads(
 async def get_match_members(session: AsyncSession, *, match_ids: Sequence[int]) -> Sequence[sa.Row]:
     """Every ``stats.match_player`` row, event-only members included, ordered by ``(match, team, member)``.
 
-    Columns: ``match_id, encounter_team_id, workspace_member_id, player_id, handle_snapshot, role_dimension,
-    role_code, role_parent_code``. A member of another workspace is not a participant of this match and is dropped;
-    an observed role outside the owner's ontology reads as no role.
+    Columns: ``match_id, encounter_team_id, workspace_member_id, player_id, player_name, handle_snapshot,
+    role_dimension, role_code, role_parent_code``. ``player_name`` is the global player's canonical, unique
+    ``players.user.name`` (what a profile link is built from); ``handle_snapshot`` is only what the observation
+    recorded. A member of another workspace is not a participant of this match and is dropped; an observed role
+    outside the owner's ontology reads as no role.
     """
     if not match_ids:
         return []
-    p, m, wm = models.StatsMatchPlayer, models.StatsMatch, models.WorkspaceMember
+    p, m, wm, user = models.StatsMatchPlayer, models.StatsMatch, models.WorkspaceMember, models.User
     role, parent, dimension = aliased(models.CatalogRole), aliased(models.CatalogRole), models.RoleDimension
     return (
         await session.execute(
@@ -228,6 +230,7 @@ async def get_match_members(session: AsyncSession, *, match_ids: Sequence[int]) 
                 p.encounter_team_id,
                 p.workspace_member_id,
                 wm.player_id,
+                user.name.label("player_name"),
                 p.handle_snapshot,
                 dimension.code.label("role_dimension"),
                 role.code.label("role_code"),
@@ -236,6 +239,7 @@ async def get_match_members(session: AsyncSession, *, match_ids: Sequence[int]) 
             .select_from(p)
             .join(m, m.id == p.match_id)
             .join(wm, sa.and_(wm.id == p.workspace_member_id, wm.workspace_id == m.workspace_id))
+            .join(user, user.id == wm.player_id)
             .outerjoin(
                 role,
                 sa.and_(
