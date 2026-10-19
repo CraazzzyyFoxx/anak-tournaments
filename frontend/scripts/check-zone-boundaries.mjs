@@ -14,15 +14,24 @@
 //   Z3  src/components/admin is admin-private
 //   Z4  i18n zone bundles cover every namespace their zone can reach
 //   Z5  every zone layout mounts its own i18n bundle
+//   Z6  outside src/disciplines, only disciplines/{types,DisciplineWidget,registry/<family>} are importable
+//   Z7  only disciplines/registry/** imports a module (disciplines/<code>/<family>); a module never imports
+//       another module or src/app (components/admin is Z3's)
+// Test code (`*.test.ts(x)`, behaviour tests, src/test/**) is exempt from Z6/Z7's "who may import a module":
+// parity oracles reproduce module helpers. Runtime code never is.
 //
-// Usage: node scripts/check-zone-boundaries.mjs [--json] [--graph]
+// Usage: node scripts/check-zone-boundaries.mjs [--json] [--graph] [--src=<dir>]
 //        node scripts/check-zone-boundaries.mjs --write-i18n   # regenerate Z4's map
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SRC = fileURLToPath(new URL("../src/", import.meta.url)).replace(/[\\/]$/, "");
+const srcArg = process.argv.find((arg) => arg.startsWith("--src="));
+const SRC = (srcArg ? resolve(srcArg.slice("--src=".length)) : fileURLToPath(new URL("../src/", import.meta.url))).replace(
+  /[\\/]$/,
+  ""
+);
 const norm = (p) => p.replaceAll("\\", "/");
 const CODE = /\.(ts|tsx)$/;
 
@@ -97,7 +106,37 @@ const edges = new Map();
 
 const MESSAGES = join(SRC, "i18n/messages/en.json");
 const NAMESPACES = Object.keys(JSON.parse(readFileSync(MESSAGES, "utf8")));
-const isTest = (id) => /\.(test|spec)\.|\.behavior\./.test(id);
+/** Test code: `*.test`/`*.spec` and behaviour tests (and their harnesses), plus the shared test support in `src/test/`. */
+const isTest = (id) => /\.(test|spec|behavior)(\.|$)/.test(id) || id.startsWith("test/");
+
+/** `disciplines/<code>/…` -> `<code>`; the registry, types and host are not a module. */
+const moduleOf = (id) => /^disciplines\/(?!registry\/)([^/]+)\//.exec(id)?.[1] ?? null;
+
+/** Z6/Z7 for one runtime edge, or null. */
+function disciplineFinding(from, to) {
+  const fromModule = moduleOf(from);
+  const toModule = moduleOf(to);
+  if (fromModule !== null && toModule !== null && fromModule !== toModule) {
+    return { rule: "Z7", from, to, what: "a discipline module imports another module" };
+  }
+  if (fromModule !== null && SHARED_APP_DIRS.some((d) => to.startsWith(d))) {
+    return { rule: "Z7", from, to, what: "a discipline module imports src/app" };
+  }
+  if (isTest(from) || !to.startsWith("disciplines/")) return null;
+  if (toModule !== null && toModule === fromModule) return null;
+  if (!from.startsWith("disciplines/")) {
+    // What code outside `src/disciplines` may import from it: the types, the host and a family registry.
+    const port =
+      to === "disciplines/types" ||
+      to === "disciplines/DisciplineWidget" ||
+      (/^disciplines\/registry\/[^/]+$/.test(to) && to !== "disciplines/registry/create");
+    return port ? null : { rule: "Z6", from, to, what: "import disciplines/types, DisciplineWidget or registry/<family>" };
+  }
+  if (toModule !== null && !(from.startsWith("disciplines/registry/") && /^disciplines\/[^/]+\/[^/]+$/.test(to))) {
+    return { rule: "Z7", from, to, what: "only disciplines/registry/* imports a module's <family> entrypoint" };
+  }
+  return null;
+}
 
 /**
  * Deliberately loose. The dominant call-site idiom is a bare `useTranslations()`
@@ -130,6 +169,9 @@ for (const file of ALL) {
     if (to === null) continue;
     graph.push([from, to]);
     if (!isTest(to)) deps.add(to);
+
+    const discipline = disciplineFinding(from, to);
+    if (discipline !== null) findings.push(discipline);
 
     const inAdmin = from.startsWith("app/admin/") || from.startsWith("components/admin/");
     if (to.startsWith("components/admin/") && !inAdmin) {
@@ -266,6 +308,8 @@ if (process.argv.includes("--graph")) {
     ["Z3", "src/components/admin is admin-private"],
     ["Z4", "i18n zone bundles cover every reachable namespace"],
     ["Z5", "every zone layout mounts its own message bundle"],
+    ["Z6", "outside src/disciplines only types, DisciplineWidget and registry/<family> are importable"],
+    ["Z7", "only the registry imports a discipline module; modules stay apart"],
   ];
   for (const [id, what] of RULES) {
     const hits = findings.filter((f) => f.rule === id);

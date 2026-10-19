@@ -35,6 +35,12 @@ interface HeroFrameProps {
    */
   variant?: "default" | "profile" | "plain";
   /**
+   * The profile hairline's colours, left to right: the profile game's role
+   * colours in declared order. Core has no role palette of its own, so none
+   * (or an unknown game) draws the teal hairline.
+   */
+  spectrum?: readonly string[];
+  /**
    * Colour of the soft corner glow (any CSS colour). Defaults to teal; the
    * player profile passes its main-role hue. Ignored when `coverUrl` is set —
    * the cover already gives the header its colour.
@@ -96,6 +102,7 @@ export function HeroFrame({
   variant = "default",
   coverUrl,
   coverFade,
+  spectrum = [],
   tint = "var(--aqt-teal)",
 }: Readonly<HeroFrameProps>) {
   const isProfile = variant === "profile";
@@ -116,7 +123,12 @@ export function HeroFrame({
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-0.5 opacity-90"
-          style={{ background: "var(--aqt-spectrum)" }}
+          style={{
+            background:
+              spectrum.length > 1
+                ? `linear-gradient(90deg, ${spectrum.join(", ")})`
+                : (spectrum[0] ?? "var(--aqt-teal)")
+          }}
         />
       ) : !isPlain ? (
         <span

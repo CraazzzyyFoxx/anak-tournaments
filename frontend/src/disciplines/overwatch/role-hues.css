@@ -1,0 +1,10 @@
+/* Overwatch's role hues (design book: tank 209°, damage 337°, support 150°).
+   Core has no role colours — it reads a role's presentation from the owner
+   game's ontology (`catalog.role.attrs`). This module keeps its own charts and
+   match views on the palette they were designed with, so the tokens live here
+   and load with the module's chunks. */
+:root {
+  --aqt-tank: hsl(209 82% 65%);
+  --aqt-damage: hsl(337 81% 66%);
+  --aqt-support: hsl(150 57% 52%);
+}

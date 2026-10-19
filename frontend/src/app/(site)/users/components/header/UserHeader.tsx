@@ -97,7 +97,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
       ? roleName(roleNode, (code) => (tRoles.has(code as never) ? tRoles(code as never) : null))
       : primaryRole.role.role
     : null;
-  // The share card's spectrum is the game's own role colours in declared order.
+  // The header hairline's and share card's spectrum is the game's own role colours in declared order.
   const spectrum = metadata
     ? registrationRoles(metadata)
         .map((role) => rolePresentation(metadata.roles, role.id).color)
@@ -105,7 +105,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
     : [];
 
   return (
-    <HeroFrame className="aqt-player" variant="profile" tint={roleColor ?? undefined}>
+    <HeroFrame className="aqt-player" variant="profile" tint={roleColor ?? undefined} spectrum={spectrum}>
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-6 px-5 py-5 md:gap-x-6 md:px-8 md:py-7 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-x-10">
         <div className="relative size-[72px] shrink-0 md:size-[104px]">
           <div className="relative h-full w-full overflow-hidden rounded-[14px] border border-[color:var(--aqt-border-2)] md:rounded-[18px]">

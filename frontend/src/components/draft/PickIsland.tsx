@@ -361,6 +361,7 @@ function IslandFooter({
   // The action is about the card's player: a selection of somebody else is not confirmable from here.
   const chosen = selection?.playerId === player.id ? selection : null;
   const withRole = board.session.roster_shape.has_role_slots;
+  const dimension = board.session.roster_shape.dimension;
   const pickPending = mutations.makePick.isPending;
   const overridePending = mutations.override.isPending;
 
@@ -381,7 +382,7 @@ function IslandFooter({
   const confirm = () => {
     if (!canConfirm || pickPending || !current || !chosen) return;
     mutations.makePick.mutate(
-      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role },
+      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role, dimension },
       {
         onSuccess: () => {
           const message = t("pickSuccess", { player: displayName });
@@ -398,7 +399,7 @@ function IslandFooter({
     const reason = note.trim();
     if (!current || !chosen || reason.length === 0 || overridePending) return;
     mutations.override.mutate(
-      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role, note: reason },
+      { pickId: current.id, playerId: player.id, version: current.version, role: chosen.role, dimension, note: reason },
       {
         onSuccess: () => {
           const message = t("overrideSuccess", { player: displayName });

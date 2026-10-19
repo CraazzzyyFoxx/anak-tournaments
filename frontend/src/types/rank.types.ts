@@ -1,9 +1,6 @@
 // Rank history (OverFast) — mirrors stats-service src/schemas/rank_history.py
 
-import type { AqtRoleKey } from "@/lib/roster/player-role";
-
 type RankPlatform = "pc" | "console";
-type RankRoleKey = AqtRoleKey;
 
 interface RankHistoryPoint {
   captured_at: string;
@@ -52,7 +49,8 @@ export interface CurrentRanksResponse {
 
 export interface RankHistoryQuery {
   platform?: RankPlatform;
-  role?: RankRoleKey;
+  /** The collector's role code, as `rpc.stats.rank.user_history` takes it. */
+  role?: string;
   socialAccountId?: number;
   dateFrom?: string;
   dateTo?: string;

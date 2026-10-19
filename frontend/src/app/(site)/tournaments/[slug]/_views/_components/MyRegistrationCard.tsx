@@ -88,8 +88,9 @@ const STATUS_BAR_CONFIG: Record<RegistrationStatus, { icon: typeof Clock; color:
   },
   insufficient_data: {
     icon: AlertTriangle,
+    // The design book's pink, as a status colour of its own (role hues belong to a game's ontology).
     color:
-      "text-[color:var(--aqt-damage)] border-[color:color-mix(in_srgb,var(--aqt-damage)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-damage)_10%,transparent)]"
+      "text-[color:hsl(337_81%_66%)] border-[color:color-mix(in_srgb,hsl(337_81%_66%)_20%,transparent)] bg-[color:color-mix(in_srgb,hsl(337_81%_66%)_10%,transparent)]"
   }
 };
 

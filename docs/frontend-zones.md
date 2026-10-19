@@ -66,6 +66,37 @@ Two zones need the same thing. In order of preference:
 
 Never: a relative `../../admin/…` climb, and never a re-export shim to launder the direction.
 
+## Discipline modules (Z6, Z7)
+
+A game's frontend lives in `src/disciplines/<code>/` (the local registry of P7; no remote modules). Core
+reaches it only through three ports, so a game can be added, removed or moved without touching core:
+
+```
+src/disciplines/types.ts             slot props and module shapes (types only)
+src/disciplines/DisciplineWidget.tsx the host: renders a slot when capability and renderer allow it
+src/disciplines/registry/<family>.ts one loader per slot family (rank, pregame, admin, match, profile,
+                                     analytics); unknown code -> null, never another game
+src/disciplines/<code>/<family>.ts   a module's entrypoint for that family (no <code>/index.ts)
+```
+
+**Z6 — outside `src/disciplines`, only `types`, `DisciplineWidget` and `registry/<family>` are importable.**
+`registry/create.ts` is the registries' internal helper, not a port. Static, dynamic and `require` imports all
+count; `import type` is erased like everywhere else in the gate.
+
+**Z7 — only `registry/<family>.ts` imports a module, and only its `<code>/<family>.ts` entrypoint.** A module
+never imports another module or anything under `src/app` (Z2/Z3 already forbid routes and
+`components/admin`; Z7 adds `app/api|actions|bff`). Shared non-route code (`lib`, `components/*`, `services`,
+`hooks`) is fine.
+
+Test code — `*.test.ts(x)`, behaviour tests and `src/test/**` — is exempt from "who may import a module":
+parity oracles reproduce a module's pure helpers (`src/test/native-ladder.ts`, the users parity readers).
+Runtime code never is. `src/disciplines/zone-boundaries.test.ts` runs the gate on a built tree.
+
+The string side of the same boundary — a game code, role, catalog label, identity or stat token written
+outside its module — is the backend's D99 literal gate (`backend/scripts/check_discipline_literals.py`, run by
+`lint-backend.yml`), which scans `frontend/src` too. Its explicit exceptions, each with an owner and removal
+event, are `backend/scripts/discipline_literal_exceptions.json`.
+
 ## Why the tree is dynamic
 
 The root layout reads `cookies()` (locale, cookie-consent) and the proxy injects

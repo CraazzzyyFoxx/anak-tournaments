@@ -66,6 +66,7 @@ vi.mock("@/lib/notify", () => ({
 }));
 
 const SHAPE: RosterShape = {
+  dimension: "player_role",
   slots: { tank: 1, damage: 2, support: 2 },
   team_size: 5,
   flex_slots: 0,
@@ -354,7 +355,7 @@ describe("captain", () => {
     await click(confirm!);
 
     expect(m.makePick.mutate).toHaveBeenCalledWith(
-      { pickId: 11, playerId: 7, version: 4, role: "support" },
+      { pickId: 11, playerId: 7, version: 4, role: "support", dimension: "player_role" },
       expect.anything()
     );
     await act(async () => m.makePick.mutate.mock.calls[0][1].onSuccess());
@@ -429,7 +430,7 @@ describe("admin override", () => {
     await click(apply);
 
     expect(m.override.mutate).toHaveBeenCalledWith(
-      { pickId: 11, playerId: 7, version: 4, role: "support", note: "captain AFK" },
+      { pickId: 11, playerId: 7, version: 4, role: "support", dimension: "player_role", note: "captain AFK" },
       expect.anything()
     );
   });

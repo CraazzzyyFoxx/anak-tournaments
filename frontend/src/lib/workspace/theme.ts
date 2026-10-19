@@ -16,8 +16,9 @@
  * band to keep the (light) foreground readable; accents are clamped into a
  * usable band and their on-accent foreground is contrast-picked (WCAG).
  *
- * OW role colours (`--aqt-tank/-damage/-support`), status hues
- * (`--aqt-emerald/-amber/-gold`) and chart colours carry meaning and are never
+ * Role colours (ontology presentation; the Overwatch module's own
+ * `--aqt-tank/-damage/-support`), status hues (`--aqt-emerald/-amber/-gold`)
+ * and chart colours carry meaning and are never
  * overridden. Beyond the 4 seed colours, organisers may override a curated core
  * set (accent/foreground/muted/border/ring/destructive); an unset override
  * simply falls back to the derived value.

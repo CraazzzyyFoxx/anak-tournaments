@@ -393,11 +393,18 @@ export function useDraftMutations(tournamentId: number) {
     });
 
   const makePick = useMutation({
-    mutationFn: (v: { pickId: number; playerId: number; version: number; role?: DraftRole | null }) =>
+    // `dimension` is the session shape's own: a role ref names the owner game's rated dimension, never a fixed one.
+    mutationFn: (v: {
+      pickId: number;
+      playerId: number;
+      version: number;
+      role?: DraftRole | null;
+      dimension: string | null;
+    }) =>
       draftService.select(v.pickId, {
         player_id: v.playerId,
         expected_version: v.version,
-        target_role: toRoleRef(v.role, null, "player_role"),
+        target_role: v.dimension ? toRoleRef(v.role, null, v.dimension) : null,
       }),
     onSettled: invalidate,
   });
@@ -414,12 +421,13 @@ export function useDraftMutations(tournamentId: number) {
       playerId: number;
       version: number;
       role: DraftRole;
+      dimension: string | null;
       note: string;
     }) =>
       draftService.override(v.pickId, {
         player_id: v.playerId,
         expected_version: v.version,
-        target_role: toRoleRef(v.role, null, "player_role"),
+        target_role: v.dimension ? toRoleRef(v.role, null, v.dimension) : null,
         note: v.note
       }),
     onSettled: invalidate,
