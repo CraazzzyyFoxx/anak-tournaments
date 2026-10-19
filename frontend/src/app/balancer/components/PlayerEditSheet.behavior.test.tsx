@@ -458,3 +458,43 @@ describe("owner-grid nested crests", () => {
     );
   });
 });
+
+describe("owner game role and rank capabilities", () => {
+  const sheetFor = (
+    discipline: "overwatch" | "lol",
+    entry: Partial<BalancerPlayerRecord["role_entries_json"][number]> = {}
+  ) => (
+    <PlayerEditModal
+      player={{ ...player, role_entries_json: [{ ...player.role_entries_json[0], ...entry }] }}
+      discipline={discipline}
+      ontology={discipline === "lol" ? LOL_METADATA : OW_METADATA}
+      divisionGridVersionId={null}
+      open
+      onOpenChange={() => {}}
+      onSave={onSave}
+    />
+  );
+
+  it("shows a live native rank, named by its game, only for a game that collects one", async () => {
+    await render(sheetFor("overwatch", { ow_rank_value: 1500 }));
+    expect(document.body.textContent).toContain("Live rank (OverFast)");
+    expect(document.body.textContent).toContain("Overwatch");
+    expect(document.body.textContent).not.toContain("No live");
+
+    await render(sheetFor("lol"));
+    expect(document.body.textContent).toContain("Skill rating");
+    expect(document.body.textContent).not.toContain("Live rank");
+    expect(document.body.textContent).not.toContain("No live");
+  });
+
+  it("adds the first position of the League dictionary the player does not have", async () => {
+    await render(sheetFor("lol"));
+    await clickButton("Add role");
+    await clickButton("Save");
+
+    expect(onSave.mock.calls[0][1].role_entries_json.map((entry: { role: string }) => entry.role)).toEqual([
+      "support",
+      "top"
+    ]);
+  });
+});

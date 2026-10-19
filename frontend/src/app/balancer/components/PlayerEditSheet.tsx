@@ -31,7 +31,7 @@ import type {
   BalancerPlayerUpdateInput
 } from "@/types/balancer-admin.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import { getRegistrationBattleTags } from "@/components/balancer/balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import RankHistory from "@/components/RankHistory";
@@ -46,8 +46,8 @@ type PlayerEditModalProps = {
   player: BalancerPlayerRecord;
   registration?: AdminRegistration | null;
   discipline: string | undefined;
-  /** The owner game's role dictionary (role names, glyphs, tints); `null` while it loads. */
-  ontology?: RoleOntology | null;
+  /** The owner game's metadata (role names, glyphs, tints, capabilities); `null` while it loads. */
+  ontology?: DisciplineMetadata | null;
   divisionGridVersionId: number | null | undefined;
   divisionGridVersion?: DivisionGridVersion | null;
   statusOptions?: {
@@ -98,6 +98,10 @@ export function PlayerEditModal({
   const smurfTags = battleTags.slice(1);
   const computedReady = isComputedReady(roleEntries);
   const hasOverride = roleEntries.some((entry) => entry.rank_source === "registration");
+  // Only a game that collects native ranks has a live rank to show or to suggest: no other game gets a placeholder.
+  const nativeRankName = ontology?.discipline.capabilities.native_rank_collection
+    ? ontology.discipline.name
+    : null;
 
   return (
     <Sheet
@@ -274,23 +278,26 @@ export function PlayerEditModal({
                   onRemove={form.removeEntry}
                   subtypeOptions={form.subtypeOptions}
                   ontology={ontology}
+                  nativeRankName={nativeRankName}
                 />
               )}
             </SortableRows>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-              Live rank (OverFast)
-            </Label>
-            <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-              {player.user_id != null ? (
-                <RankHistory userId={player.user_id} discipline={discipline} />
-              ) : (
-                <RankHistory battleTag={primaryBattleTag} discipline={discipline} />
-              )}
+          {nativeRankName !== null ? (
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                Live rank (OverFast)
+              </Label>
+              <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
+                {player.user_id != null ? (
+                  <RankHistory userId={player.user_id} discipline={discipline} />
+                ) : (
+                  <RankHistory battleTag={primaryBattleTag} discipline={discipline} />
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className="space-y-1">
             <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Admin notes</Label>

@@ -45,6 +45,8 @@ type SortableRoleEntryProps = {
   subtypeOptions: Record<BalancerRoleCode, Array<{ value: string; label: string }>>;
   /** The owner game's role dictionary: role names, glyphs and tints. `null` while it loads. */
   ontology: RoleOntology | null;
+  /** The owner game's name when it collects native ranks (`native_rank_collection`), else `null`: no live-rank row. */
+  nativeRankName: string | null;
 };
 
 export function SortableRoleEntry({
@@ -57,7 +59,8 @@ export function SortableRoleEntry({
   onUpdate,
   onRemove,
   subtypeOptions,
-  ontology
+  ontology,
+  nativeRankName
 }: Readonly<SortableRoleEntryProps>) {
   const { ref, style, handleProps } = useSortableRow(id);
 
@@ -76,8 +79,8 @@ export function SortableRoleEntry({
     : null;
   const hasSubtypeOptions = roleSubtypeOptions.length > 0;
 
-  // Live OW rank (already mapped to the workspace grid) as a one-click suggestion.
-  // Always shown for the role; actionable when an OW rank is available.
+  // The game's live native rank (already mapped to the workspace grid) as a one-click suggestion. Only a game
+  // that collects native ranks has the row; for the others there is nothing to suggest and nothing to show.
   const owRankValue = entry.ow_rank_value ?? null;
   const owSuggestionDivision = owRankValue != null ? resolveDivision(owRankValue) : null;
   const owSuggestionName =
@@ -203,7 +206,7 @@ export function SortableRoleEntry({
           />
         </div>
 
-        {owRankValue != null ? (
+        {nativeRankName === null ? null : owRankValue != null ? (
           <button
             type="button"
             onClick={() =>
@@ -213,12 +216,12 @@ export function SortableRoleEntry({
                 division_number: owSuggestionDivision
               })
             }
-            title={`Apply live OW rank${owSuggestionName ? `: ${owSuggestionName}` : ""} (${owRankValue})`}
+            title={`Apply live ${nativeRankName} rank${owSuggestionName ? `: ${owSuggestionName}` : ""} (${owRankValue})`}
             className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left transition hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
             <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              OW
+              {nativeRankName}
             </span>
             {owSuggestionDivision != null ? (
               <DivisionIcon
@@ -245,9 +248,9 @@ export function SortableRoleEntry({
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />
             <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              OW
+              {nativeRankName}
             </span>
-            <span className="text-label text-[color:var(--aqt-fg-dim)]">No live OW rank</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">No live {nativeRankName} rank</span>
           </div>
         )}
       </div>
