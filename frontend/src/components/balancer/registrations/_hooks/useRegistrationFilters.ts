@@ -10,7 +10,8 @@ import {
   type FilterState,
   type FilterValue
 } from "@/components/kit/useFilters";
-import { ROLE_LABELS } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { AdmissionDecision } from "@/types/registration.types";
 
@@ -27,6 +28,8 @@ interface UseRegistrationFiltersInput {
   /** Gates the Subscription chip only; admission travels on each row. */
   requireSubscription: boolean;
   statusFilterOptions: { value: string; label: string }[];
+  /** The opened tournament's role dictionary, naming the role filter's options. `null` while it loads. */
+  ontology: RoleOntology | null;
 }
 
 interface RegistrationFilters {
@@ -46,12 +49,14 @@ interface RegistrationFilters {
 export function useRegistrationFilters({
   registrations,
   requireSubscription,
-  statusFilterOptions
+  statusFilterOptions,
+  ontology
 }: UseRegistrationFiltersInput): RegistrationFilters {
   // The only translated strings on this screen: reason codes are shared with the
   // public participants page, so they live in the message catalogue rather than
   // as English literals like the rest of this admin table.
   const t = useTranslations();
+  const slotLabel = useSlotLabel(ontology);
 
   const facets = useMemo(() => buildRegistrationFacets(registrations), [registrations]);
 
@@ -59,8 +64,8 @@ export function useRegistrationFilters({
     () =>
       [...facets.role.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([code, count]) => ({ value: code, label: ROLE_LABELS[code] ?? code, count })),
-    [facets]
+        .map(([code, count]) => ({ value: code, label: slotLabel(code), count })),
+    [facets, slotLabel]
   );
 
   const admissionOptions = useMemo(() => {

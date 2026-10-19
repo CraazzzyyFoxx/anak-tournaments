@@ -1,64 +1,12 @@
-import type { RosterRoleSlotCode } from "@/lib/roster/shape";
 import type { SubroleCatalog, SubroleOption } from "@/types/registration.types";
 
 /**
- * Single source of truth for registration role codes, display labels, accent
- * colors, and sub-role resolution. Sub-role *options* are data-driven from the
- * workspace `PlayerSubRole` catalog embedded in the form payload
+ * Sub-role resolution for registration. Sub-role *options* are data-driven from
+ * the workspace `PlayerSubRole` catalog embedded in the form payload
  * (`form.subrole_catalog`); the `roles` field's `params.subroles` only selects
- * which catalog slugs are offered.
+ * which catalog slugs are offered. Which roles a game has, and what they are
+ * called, is the owner game's ontology (`lib/roster/ontology.ts`).
  */
-
-export type RoleCode = RosterRoleSlotCode;
-
-export interface RoleDef {
-  code: RoleCode;
-  /** Short human label. */
-  display: string;
-  /** Icon name understood by PlayerRoleIcon. */
-  icon: "Tank" | "Damage" | "Support";
-}
-
-export const ROLES: readonly RoleDef[] = [
-  { code: "tank", display: "Tank", icon: "Tank" },
-  { code: "damage", display: "Damage", icon: "Damage" },
-  { code: "support", display: "Support", icon: "Support" },
-] as const;
-
-export const ROLE_LABELS: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-};
-
-const CANONICAL_TO_REGISTRATION: Record<string, RoleCode> = {
-  tank: "tank",
-  damage: "damage",
-  support: "support",
-};
-
-/** Narrow a free-form catalog role string to a known role code, or `null`. */
-export function canonicalToRegistrationRole(role: string): RoleCode | null {
-  return CANONICAL_TO_REGISTRATION[role.trim().toLowerCase()] ?? null;
-}
-
-const ROLE_ICON_NAMES: Record<RoleCode, "Tank" | "Damage" | "Support"> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-};
-
-/** A `flex` slot code has no icon of its own — narrow with `isRoleSlotCode` first. */
-export function getRoleIconName(roleCode: RoleCode): "Tank" | "Damage" | "Support" {
-  return ROLE_ICON_NAMES[roleCode];
-}
-
-/** Draft role accent colors (CSS custom properties) shared across the draft-room UI. */
-export const ROLE_ACCENT: Record<RoleCode, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)"
-};
 
 const SUBROLE_ACRONYMS = new Set(["pov", "vk"]);
 

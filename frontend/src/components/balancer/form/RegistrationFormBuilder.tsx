@@ -32,7 +32,6 @@ import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { makeUniqueFieldKey } from "@/lib/forms/keys";
 import { notify } from "@/lib/notify";
 import { toRegistrationFormUpsert } from "@/lib/registration/form-upsert";
-import { ROLES, canonicalToRegistrationRole } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -43,7 +42,7 @@ import type { FieldKind, FormField, FormSchema } from "@/types/forms.types";
 
 import { AddFieldMenu, newBuiltinField, newCustomField } from "./_components/AddFieldMenu";
 import { FieldEditor } from "./_components/FieldEditor";
-import type { CatalogEntry, SubroleCatalogByRole } from "./_components/RolesParamsEditor";
+import type { SubroleCatalogByRole } from "./_components/RolesParamsEditor";
 import { FIELD_DRAG_PREFIX, SECTION_DRAG_PREFIX, SectionList } from "./_components/SectionList";
 import { TemplateMenu } from "./_components/TemplateMenu";
 import {
@@ -462,6 +461,7 @@ export function SchemaEditor({
                         keyLocked={!unlockedKeys.has(field.key)}
                         serverError={fieldErrors[field.key] ?? null}
                         catalog={subroleCatalog}
+                        ontology={metadata}
                         catalogLoading={catalogLoading}
                         onChange={(next) => commit(replaceField(schema, field.key, next))}
                         onCommitKey={commitKey}
@@ -530,14 +530,9 @@ export function useSubroleCatalog(workspaceId: number | null, discipline: string
   });
 
   const catalog = useMemo<SubroleCatalogByRole>(() => {
-    const grouped: SubroleCatalogByRole = Object.fromEntries(
-      ROLES.map((role) => [role.code, [] as CatalogEntry[]])
-    );
+    const grouped: SubroleCatalogByRole = {};
     for (const row of catalogQuery.data ?? []) {
-      const code = canonicalToRegistrationRole(row.role);
-      if (code && grouped[code]) {
-        grouped[code].push({ id: row.id, slug: row.slug, label: row.label });
-      }
+      (grouped[row.role] ??= []).push({ id: row.id, slug: row.slug, label: row.label });
     }
     return grouped;
   }, [catalogQuery.data]);

@@ -42,6 +42,7 @@ import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { RegistrationForm } from "@/types/registration.types";
 import { cn } from "@/lib/utils";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -114,6 +115,9 @@ export default function RegistrationsTable({
     [publicFormQuery.data, tournament]
   );
   const subroleCatalog = roleForm?.subrole_catalog;
+  // The opened tournament's own game: role names, glyphs and the role filter come from its dictionary.
+  const ontology =
+    useDisciplineMetadata(tournament?.workspace_id ?? "all", tournament?.discipline ?? null).data ?? null;
 
   // `require_open_profile` is deliberately NOT read here any more: admission is
   // resolved server-side and travels on each row. This flag survives only
@@ -161,7 +165,7 @@ export default function RegistrationsTable({
     tableFilters,
     onTableFiltersChange,
     visibleRegistrations
-  } = useRegistrationFilters({ registrations, requireSubscription, statusFilterOptions });
+  } = useRegistrationFilters({ registrations, requireSubscription, statusFilterOptions, ontology });
 
   const {
     patchRegistrationInCache,
@@ -222,7 +226,8 @@ export default function RegistrationsTable({
         requireSubscription,
         schemaFields,
         statusFilterOptions,
-        adminNotesEdit
+        adminNotesEdit,
+        ontology
       ),
       createKebabColumn<AdminRegistration>(
         (registration) =>
@@ -252,6 +257,7 @@ export default function RegistrationsTable({
     ],
     [
       subroleCatalog,
+      ontology,
       requireSubscription,
       schemaFields,
       statusFilterOptions,
@@ -425,6 +431,7 @@ export default function RegistrationsTable({
           <RegistrationInspectorBody
             registration={inspected}
             discipline={tournamentQuery.data.discipline}
+            ontology={ontology}
             catalog={subroleCatalog}
             schemaFields={schemaFields}
             schemaKnown={schemaLoaded}

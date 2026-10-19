@@ -57,7 +57,3 @@ export function isRoleSlot(code: string): boolean {
 export function solverSlotCode(role: string): SlotCode {
   return role.trim().toLowerCase();
 }
-
-// ponytail: legacy Overwatch role union, kept only for `roles.ts::RoleCode` (the mix tree's remaining fixed role
-// vocabulary; UI-bal's mix migration deletes both); everything else speaks {@link SlotCode}.
-export type RosterRoleSlotCode = "tank" | "damage" | "support";

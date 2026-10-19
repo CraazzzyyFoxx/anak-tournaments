@@ -16,7 +16,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ROLES, ROLE_LABELS } from "@/lib/roster/roles";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { RolesParams } from "@/types/forms.types";
 
@@ -105,15 +106,19 @@ export function RolesParamsEditor({
   params,
   onChange,
   catalog,
+  ontology,
   catalogLoading = false
 }: Readonly<{
   params: RolesParams;
   onChange: (next: RolesParams) => void;
   catalog: SubroleCatalogByRole;
+  /** The tournament owner's role dictionary: which roles carry a sub-role row, and their names. `null` while it loads. */
+  ontology: RoleOntology | null;
   catalogLoading?: boolean;
 }>) {
   const t = useTranslations("registrationFormAdmin.roles");
   const tSub = useTranslations("registrationFormAdmin.subroles");
+  const slotLabel = useSlotLabel(ontology);
   const ids = useId();
 
   return (
@@ -177,11 +182,11 @@ export function RolesParamsEditor({
           </Button>
         </div>
 
-        {ROLES.map((role) => {
+        {registrationRoles(ontology).map((role) => {
           const options = catalog[role.code] ?? [];
           const selection = params.subroles[role.code];
           const allSlugs = options.map((option) => option.slug);
-          const roleLabel = ROLE_LABELS[role.code] ?? role.display;
+          const roleLabel = slotLabel(role.code);
 
           return (
             <div key={role.code} className="grid gap-1.5">

@@ -1,6 +1,7 @@
 "use client";
 
 import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
@@ -72,6 +73,8 @@ export function buildBalancerRegistrationColumns(
     save: (registration: AdminRegistration, next: string) => Promise<unknown>;
     canEdit: (registration: AdminRegistration) => boolean;
   },
+  /** The tournament owner's role dictionary the roles column names and draws roles from. */
+  ontology: RoleOntology | null = null,
 ): ColumnDef<AdminRegistration>[] {
   // Built apart from the list below only to keep its old place between check-in
   // and admission instead of being appended after the admin columns.
@@ -155,7 +158,9 @@ export function buildBalancerRegistrationColumns(
       // the roles here computed the same number a second time, which is the one
       // way it could ever disagree with the engine.
       accessorFn: (registration) => registration.best_rank ?? 0,
-      cell: ({ row }) => <RolesCell roles={row.original.roles} catalog={subroleCatalog} />,
+      cell: ({ row }) => (
+        <RolesCell roles={row.original.roles} catalog={subroleCatalog} ontology={ontology} />
+      ),
       meta: columnMeta<AdminRegistration>({
         category: "core",
         defaultHidden: false,

@@ -16,6 +16,7 @@ import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatAdmissionReason, type AdmissionTranslator } from "@/lib/registration/admission";
 import { getSubroleLabel } from "@/lib/roster/roles";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { FormField } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -25,10 +26,12 @@ import { SUBSCRIPTION_LABELS, formatSubmittedAt } from "../registrationsTable.mo
 function RolesCell({
   roles,
   discipline,
+  ontology,
   catalog
 }: Readonly<{
   roles: AdminRegistration["roles"];
   discipline: string;
+  ontology: RoleOntology | null;
   catalog?: SubroleCatalog;
 }>) {
   const grid = useDivisionGrid(discipline);
@@ -42,6 +45,7 @@ function RolesCell({
   return (
     <RoleRankList
       grid={grid}
+      ontology={ontology}
       entries={active
         .slice()
         .sort((left, right) => left.priority - right.priority)
@@ -61,6 +65,7 @@ function RolesCell({
 export default function RegistrationInspectorBody({
   registration,
   discipline,
+  ontology,
   catalog,
   schemaFields,
   schemaKnown,
@@ -68,6 +73,8 @@ export default function RegistrationInspectorBody({
 }: Readonly<{
   registration: AdminRegistration;
   discipline: string;
+  /** The tournament owner's role dictionary: role names and glyphs. `null` while it loads. */
+  ontology: RoleOntology | null;
   catalog?: SubroleCatalog;
   schemaFields: FormField[];
   /** Whether the tournament's schema has actually been read. While it has not,
@@ -117,7 +124,7 @@ export default function RegistrationInspectorBody({
 
       <section className="space-y-1.5">
         <h3 className={EYEBROW_CLASS}>{i18n("inspector.declaredRoles")}</h3>
-        <RolesCell roles={registration.roles} catalog={catalog} discipline={discipline} />
+        <RolesCell roles={registration.roles} catalog={catalog} discipline={discipline} ontology={ontology} />
       </section>
 
       {asked.length > 0 || orphaned.length > 0 ? (

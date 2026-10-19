@@ -24,6 +24,7 @@ import {
 import { getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
 import type { Condition, FormField, Visibility } from "@/types/forms.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import {
   RolesParamsEditor,
@@ -211,6 +212,7 @@ export function FieldEditor({
   keyLocked,
   serverError,
   catalog,
+  ontology,
   catalogLoading = false,
   onChange,
   onCommitKey
@@ -222,6 +224,8 @@ export function FieldEditor({
   /** A `schema_invalid` rejection the server filed against this field. */
   serverError: string | null;
   catalog: SubroleCatalogByRole;
+  /** The tournament owner's role dictionary: the roles the `roles` question offers sub-roles for. `null` while it loads. */
+  ontology: RoleOntology | null;
   catalogLoading?: boolean;
   onChange: (next: FormField) => void;
   onCommitKey: () => void;
@@ -572,6 +576,7 @@ export function FieldEditor({
             params={rolesParamsOf(field.params)}
             onChange={(params) => onChange({ ...field, params: { ...params } })}
             catalog={catalog}
+            ontology={ontology}
             catalogLoading={catalogLoading}
           />
         </Group>

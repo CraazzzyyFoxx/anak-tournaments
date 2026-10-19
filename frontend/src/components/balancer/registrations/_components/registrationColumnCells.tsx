@@ -11,7 +11,9 @@ import { TONE_CLASS } from "@/components/kit/tone";
 import { Badge } from "@/components/ui/badge";
 import { formatAdmissionReason, primaryAdmissionReason } from "@/lib/registration/admission";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS, getSubroleLabel } from "@/lib/roster/roles";
+import { getSubroleLabel } from "@/lib/roster/roles";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { answerList } from "@/lib/forms/answers";
 import type { AdminRegistration, AdminRegistrationRole } from "@/types/balancer-admin.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -153,11 +155,15 @@ export function ParticipantCell({
 export function RolesCell({
   roles,
   catalog,
+  ontology,
 }: Readonly<{
   roles: AdminRegistrationRole[];
   catalog?: SubroleCatalog;
+  /** The tournament owner's role dictionary: role names and glyphs. `null` while it loads. */
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("registrationsAdmin.columns");
+  const slotLabel = useSlotLabel(ontology);
   if (!roles || roles.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -183,7 +189,7 @@ export function RolesCell({
             key={`${roleOf(role.role)}-${subRoleSlugOf(role.role) ?? "base"}-${role.priority}`}
             className={cn("inline-flex min-w-8 flex-col items-center gap-0.5", !role.is_active && "opacity-50")}
             title={[
-              ROLE_LABELS[roleOf(role.role)] ?? roleOf(role.role),
+              slotLabel(roleOf(role.role)),
               subroleLabel,
               role.rank_value != null ? `${role.rank_value}` : t("noRank"),
               role.is_primary ? t("primary") : null,
@@ -199,7 +205,7 @@ export function RolesCell({
                   : "text-[color:var(--aqt-fg-muted)]",
               )}
             >
-              <PlayerRoleIcon role={roleOf(role.role)} size={20} />
+              <PlayerRoleIcon role={roleOf(role.role)} ontology={ontology} size={20} />
             </span>
             <span className="text-center text-label font-semibold uppercase leading-none tracking-label text-[color:var(--aqt-fg-dim)]">
               {subroleLabel ?? role.rank_value ?? ""}
