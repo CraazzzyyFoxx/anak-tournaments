@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import { resolveHost } from "@/lib/site/host";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -10,13 +11,30 @@ export default function WorkspaceBootstrap() {
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const statsScope = useWorkspaceStore((s) => s.statsScope);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const queryClient = useQueryClient();
   const router = useRouter();
   const previous = useRef({ currentWorkspaceId, statsScope });
+  const enabledSeen = useRef(new Map<number, string>());
 
   useEffect(() => {
     void fetchWorkspaces();
   }, [fetchWorkspaces]);
+
+  // Every refresh of the workspace records (a settings save re-reads them) is where a changed
+  // `disciplines_enabled` becomes known: that workspace's installed-games list — and the
+  // all-communities one — are stale from then on, whatever scope is being browsed.
+  useEffect(() => {
+    const seen = enabledSeen.current;
+    for (const workspace of workspaces) {
+      const enabled = workspace.disciplines_enabled.join(",");
+      const before = seen.get(workspace.id);
+      seen.set(workspace.id, enabled);
+      if (before === undefined || before === enabled) continue;
+      void queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.list(workspace.id) });
+      void queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.list("all") });
+    }
+  }, [workspaces, queryClient]);
 
   useEffect(() => {
     const before = previous.current;
