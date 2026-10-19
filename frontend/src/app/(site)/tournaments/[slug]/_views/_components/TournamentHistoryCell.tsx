@@ -5,30 +5,24 @@ import { useTranslations } from "next-intl";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+import { findRole } from "@/lib/roster/ontology";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
 
 export default function TournamentHistoryCell({
   history,
   count,
-  ontology,
+  workspaceId,
 }: Readonly<{
   history: TournamentHistoryEntry[];
   /** True total of past tournaments; `history` may be capped to a recent subset. */
   count?: number;
-  /** The viewed tournament's game. A past tournament of another game keeps its role neutral and by code. */
-  ontology: RoleOntology | null;
+  /** The roster's workspace: every past tournament in `history` is one of its own. */
+  workspaceId: number;
 }>) {
   const t = useTranslations();
-  const nameOf = useRoleName();
-  // The exact leaf the participation was played as (`damage_hitscan`, not its parent `damage`): the dictionary
-  // names it and carries its presentation overrides. A leaf this dictionary does not know keeps its own code.
-  const roleLabel = (ref: NonNullable<TournamentHistoryEntry["role"]>) => {
-    const node = ontology ? findRole(ontology, ref) : null;
-    return node ? nameOf(node) : ref.role;
-  };
 
   if (!history || history.length === 0) {
     return (
@@ -58,45 +52,9 @@ export default function TournamentHistoryCell({
           className="max-w-xs border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2 text-[color:var(--aqt-fg)] shadow-xl shadow-black/40"
         >
           <ul className="space-y-1 text-xs">
-            {history.map((h) => {
-              return (
-                <li key={h.tournament_id} className="space-y-1">
-                  <div className="text-[color:var(--aqt-fg)]">{h.tournament_name}</div>
-                  {(h.role || h.division != null) ? (
-                    <div className="flex items-center gap-2 text-[color:var(--aqt-fg-dim)]">
-                      {h.role ? (
-                        <span className="inline-flex items-center">
-                          <span className="sr-only">{roleLabel(h.role)}</span>
-                          <PlayerRoleIcon
-                            role={h.role}
-                            ontology={ontology}
-                            size={16}
-                            aria-hidden
-                          />
-                        </span>
-                      ) : null}
-                      {h.division != null ? (
-                        <span className="inline-flex items-center">
-                          <span className="sr-only">
-                            {getDivisionLabel(
-                              h.division_grid_version ?? { tiers: [] },
-                              h.division
-                            ) ?? t("common.divisionWithId", { id: h.division })}
-                          </span>
-                          <DivisionIcon
-                            division={h.division}
-                            width={20}
-                            height={20}
-                            tournamentGrid={h.division_grid_version}
-                            aria-hidden
-                          />
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
+            {history.map((h) => (
+              <HistoryItem key={h.tournament_id} entry={h} workspaceId={workspaceId} />
+            ))}
             {total > history.length && (
               <li className="text-[color:var(--aqt-fg-dim)]">
                 +{total - history.length} {t("common.more")}
@@ -105,5 +63,47 @@ export default function TournamentHistoryCell({
           </ul>
         </TooltipContent>
       </Tooltip>
+  );
+}
+
+/** One past tournament, drawn in ITS game's ontology (read on demand; the viewed game's is already cached). */
+function HistoryItem({ entry: h, workspaceId }: Readonly<{ entry: TournamentHistoryEntry; workspaceId: number }>) {
+  const t = useTranslations();
+  const nameOf = useRoleName();
+  // Until that game's metadata resolves (or when it is not installed) the role stays neutral and by code.
+  const ontology = useDisciplineMetadata(workspaceId, h.discipline).data ?? null;
+  // The exact leaf the participation was played as (`damage_hitscan`, not its parent `damage`).
+  const node = h.role && ontology ? findRole(ontology, h.role) : null;
+
+  return (
+    <li className="space-y-1">
+      <div className="text-[color:var(--aqt-fg)]">{h.tournament_name}</div>
+      {(h.role || h.division != null) ? (
+        <div className="flex items-center gap-2 text-[color:var(--aqt-fg-dim)]">
+          {h.role ? (
+            <span className="inline-flex items-center">
+              <span className="sr-only">{node ? nameOf(node) : h.role.role}</span>
+              <PlayerRoleIcon role={h.role} ontology={ontology} size={16} aria-hidden />
+            </span>
+          ) : null}
+          {h.division != null ? (
+            <span className="inline-flex items-center">
+              <span className="sr-only">
+                {getDivisionLabel(h.division_grid_version ?? { tiers: [] }, h.division) ??
+                  t("common.divisionWithId", { id: h.division })}
+              </span>
+              <DivisionIcon
+                division={h.division}
+                width={20}
+                height={20}
+                tournamentGrid={h.division_grid_version}
+                discipline={h.discipline}
+                aria-hidden
+              />
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
   );
 }

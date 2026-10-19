@@ -267,6 +267,8 @@ type BalancerStatus = string;
 export interface TournamentHistoryEntry {
   tournament_id: number;
   tournament_name: string;
+  /** The past tournament's own game: `role` is a leaf of THAT game's ontology, not the viewed one's. */
+  discipline: string;
   role: RoleRef | null;
   division: number | null;
   /** Reference into `RegistrationListResponse.division_grids`. */

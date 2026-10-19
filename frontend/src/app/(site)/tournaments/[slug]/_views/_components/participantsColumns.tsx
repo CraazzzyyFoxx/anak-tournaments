@@ -273,7 +273,7 @@ export function buildParticipantColumns(
       <TournamentHistoryCell
         history={reg.tournament_history ?? []}
         count={reg.tournament_history_count}
-        ontology={owner.ontology}
+        workspaceId={reg.workspace_id}
       />
     ),
   });

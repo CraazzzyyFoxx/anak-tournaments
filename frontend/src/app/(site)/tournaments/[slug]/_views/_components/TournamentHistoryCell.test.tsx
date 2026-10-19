@@ -1,9 +1,11 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { OW_METADATA } from "@/test/discipline-metadata";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
 
 import TournamentHistoryCell from "./TournamentHistoryCell";
@@ -20,10 +22,12 @@ const messages = {
   tournamentDetail: { newBadge: "New", previousTournaments: "{count} previous" }
 };
 
-/** The viewed game's dictionary plus one workspace child of `damage` with its own name and artwork. */
-const ontology = {
+const WORKSPACE = 7;
+
+/** The workspace's Overwatch dictionary plus one workspace child of `damage` with its own name and artwork. */
+const OW = {
   ...OW_METADATA,
-  workspace_id: 7,
+  workspace_id: WORKSPACE,
   roles: [
     ...OW_METADATA.roles,
     {
@@ -32,7 +36,7 @@ const ontology = {
       code: "damage_hitscan",
       name: "Hitscan",
       parent_id: 2,
-      workspace_id: 7,
+      workspace_id: WORKSPACE,
       active: true,
       selectable: true,
       sort_order: 20,
@@ -41,20 +45,26 @@ const ontology = {
   ]
 };
 
-function render(role: TournamentHistoryEntry["role"], dictionary: typeof ontology | null) {
+/** Metadata the workspace has already read: both installed games, nothing for anything else. */
+function render(discipline: string, role: TournamentHistoryEntry["role"]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(disciplineQueryKeys.metadata(WORKSPACE, "overwatch"), OW);
+  client.setQueryData(disciplineQueryKeys.metadata(WORKSPACE, "lol"), { ...LOL_METADATA, workspace_id: WORKSPACE });
   return renderToStaticMarkup(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <TournamentHistoryCell
-        history={[{ tournament_id: 1, tournament_name: "Autumn Cup", role, division: null }]}
-        ontology={dictionary}
-      />
-    </NextIntlClientProvider>
+    <QueryClientProvider client={client}>
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <TournamentHistoryCell
+          history={[{ tournament_id: 1, tournament_name: "Autumn Cup", discipline, role, division: null }]}
+          workspaceId={WORKSPACE}
+        />
+      </NextIntlClientProvider>
+    </QueryClientProvider>
   );
 }
 
 describe("TournamentHistoryCell", () => {
   it("names and draws the exact historical leaf, not its parent", () => {
-    const markup = render({ dimension: "player_role", role: "damage_hitscan", parent: "damage" }, ontology);
+    const markup = render("overwatch", { dimension: "player_role", role: "damage_hitscan", parent: "damage" });
 
     expect(markup).toContain("Hitscan");
     expect(markup).toContain("/test-roles/hitscan.svg");
@@ -64,16 +74,25 @@ describe("TournamentHistoryCell", () => {
   });
 
   it("still resolves a plain root assignment through the dictionary", () => {
-    const markup = render({ dimension: "player_role", role: "damage" }, ontology);
+    const markup = render("overwatch", { dimension: "player_role", role: "damage" });
 
     expect(markup).toContain(">Damage<");
     expect(markup).toContain("/test-roles/damage.svg");
   });
 
-  it("keeps a leaf the dictionary does not know visibly unknown, by its own code", () => {
-    const markup = render({ dimension: "position", role: "mid" }, ontology);
+  it("draws another game's past tournament in that game's own ontology", () => {
+    const markup = render("lol", { dimension: "position", role: "mid" });
+
+    expect(markup).toContain(">Mid<");
+    expect(markup).toContain("/test-roles/mid.svg");
+    expect(markup).not.toContain("Unknown role");
+  });
+
+  it("keeps a role of a game whose metadata is unknown neutral, by its own code", () => {
+    const markup = render("dota", { dimension: "position", role: "mid" });
 
     expect(markup).toContain(">mid<");
     expect(markup).toContain("Unknown role: mid");
+    expect(markup).not.toContain("/test-roles/");
   });
 });
