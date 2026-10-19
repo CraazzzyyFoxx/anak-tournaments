@@ -22,6 +22,7 @@ from shared import models  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.services import workspace_roster  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.services.social_identity import social_identity_service  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src.rpc import players  # noqa: E402
@@ -50,6 +51,8 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
         self.session = AsyncSession(
             bind=self.connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
         )
+        # The LoL ranked-position ontology is not ambient test-DB state: project it like the other DB tests do.
+        await project_disciplines(self.session)
         self.workspace = models.Workspace(
             slug=f"identity-{uuid4().hex}", name="Identity", disciplines_enabled=["overwatch", "lol"]
         )
