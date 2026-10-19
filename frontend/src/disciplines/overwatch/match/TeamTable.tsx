@@ -58,13 +58,7 @@ const StatCell = ({ name, value, max }: { name: LogStatsName; value: number; max
  * with its own horizontal scroll container: scrolling to a stat column on one
  * left the other behind, defeating the side-by-side comparison this panel is for.
  */
-const TeamTable = ({
-  team,
-  isHome,
-  matchRound,
-  columns,
-  columnMax
-}: TeamTableProps) => {
+const TeamTable = ({ team, isHome, matchRound, columns, columnMax }: TeamTableProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
   const teamAccent = isHome ? "var(--aqt-teal)" : "var(--aqt-rose)";
@@ -113,14 +107,21 @@ const TeamTable = ({
       {players.map((player) => {
         const heroes = player.heroes[matchRound] ?? [];
         return (
-          <TableRow key={player.workspace_member_id} className="hover:bg-[color:var(--aqt-overlay-1)]">
+          <TableRow
+            key={player.workspace_member_id}
+            className="hover:bg-[color:var(--aqt-overlay-1)]"
+          >
             <TableCell
               className="flex flex-row items-center gap-2 min-w-[220px] sticky left-0 z-10"
               style={{
                 background: `linear-gradient(to right, color-mix(in srgb, ${teamAccent} 22%, var(--aqt-card)), var(--aqt-card) 60%)`
               }}
             >
-              <PlayerName player={player} includeSpecialization={false} />
+              <PlayerName
+                player={player}
+                profileName={player.profile_name}
+                includeSpecialization={false}
+              />
             </TableCell>
             <TableCell>
               <div className="flex justify-center">

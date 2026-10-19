@@ -15,11 +15,18 @@ interface PlayerNameInput {
 const PlayerName = ({
   player,
   includeSpecialization,
-  excludeBadge
+  excludeBadge,
+  profileName
 }: {
   player: PlayerNameInput;
   includeSpecialization: boolean;
   excludeBadge?: boolean;
+  /**
+   * The name the profile link is built from. Omitted: `player.name` (a roster or user row, whose name is the
+   * player's own). A parsed observation's `name` is only the handle its log recorded, so it passes the player's
+   * canonical name here — or `null` when it has none, which leaves the handle unlinked.
+   */
+  profileName?: string | null;
 }) => {
   const name = player.name.split("#")[0];
   const tag = player.name.split("#")[1];
@@ -31,11 +38,17 @@ const PlayerName = ({
   return (
     <div className="flex min-w-0 flex-col">
       <div className="flex min-w-0 flex-row items-center gap-1">
-        <Link href={`/users/${getPlayerSlug(player.name)}`} className="min-w-0">
-          <span className="block truncate text-base font-semibold" title={name}>
+        {profileName === undefined || profileName ? (
+          <Link href={`/users/${getPlayerSlug(profileName ?? player.name)}`} className="min-w-0">
+            <span className="block truncate text-base font-semibold" title={name}>
+              {name}
+            </span>
+          </Link>
+        ) : (
+          <span className="block min-w-0 truncate text-base font-semibold" title={name}>
             {name}
           </span>
-        </Link>
+        )}
         {tag && !excludeBadge && (
           <Badge variant="secondary" className="shrink-0 px-1 text-xs">
             <p className="text-muted-foreground">{`#${tag}`}</p>

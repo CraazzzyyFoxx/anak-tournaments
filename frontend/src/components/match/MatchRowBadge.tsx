@@ -1,5 +1,9 @@
 "use client";
 
+import { RotateCw } from "lucide-react";
+import { useTranslations } from "next-intl";
+
+import { Skeleton } from "@/components/ui/skeleton";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadMatchUI } from "@/disciplines/registry/match";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -7,12 +11,34 @@ import type { MatchWithUserStats } from "@/types/user.types";
 
 /**
  * The viewer's per-match badge on a profile row (a game's placement chip), drawn by the match's own game's
- * `matchRowBadge` module slot. Nothing renders while the game's metadata loads or when its module has no badge
- * (or the viewer was not observed in the match). Rendered inside a `TooltipProvider`.
+ * `matchRowBadge` module slot. A match the viewer was not observed in has none, and a game whose module has no
+ * badge draws nothing; but the game's metadata is a required read, so while it loads the row holds a
+ * placeholder and when it fails the badge says so and offers a retry — never a silent absence. Rendered inside
+ * a `TooltipProvider`; the row it sits in may be a link or a click target, so the retry stops both.
  */
 export default function MatchRowBadge({ match }: Readonly<{ match: MatchWithUserStats }>) {
+  const t = useTranslations();
   const metadata = useDisciplineMetadata(match.workspace_id, match.discipline);
-  if (!match.viewer || !metadata.data) return null;
+  if (!match.viewer) return null;
+  if (metadata.isPending) return <Skeleton aria-hidden className="h-4 w-6 rounded" />;
+  if (metadata.isError) {
+    return (
+      <button
+        type="button"
+        title={t("matches.native.badgeError")}
+        aria-label={`${t("matches.native.badgeError")} ${t("common.retry")}`}
+        disabled={metadata.isFetching}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void metadata.refetch();
+        }}
+        className="inline-flex h-5 w-5 items-center justify-center rounded text-[color:var(--aqt-rose)] hover:bg-[color:var(--aqt-overlay-2)] disabled:opacity-50"
+      >
+        <RotateCw aria-hidden className="h-3 w-3" />
+      </button>
+    );
+  }
   return (
     <DisciplineWidget
       discipline={match.discipline}

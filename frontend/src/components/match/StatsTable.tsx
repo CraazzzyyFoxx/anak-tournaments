@@ -19,19 +19,28 @@ import type { StatDefinition } from "@/types/discipline.types";
 /**
  * A game-neutral statistics table: one section per participation (any number of them), one row per observed
  * member, one column per declared stat that was observed. Cells format by the stat's `value_format`; a stat the
- * member has no value for is an em dash, never a zero.
+ * member has no value for is an em dash, never a zero. A participation's team facts resolve their definitions
+ * from the discipline's full `definitions`, not from the member columns, so a team-only stat keeps its name and
+ * format. A handle links to its player's profile only through the canonical name (`playerName`).
  */
 export default function StatsTableView({
   table,
-  withMaps = false
+  definitions,
+  withMaps = false,
+  empty = "members"
 }: Readonly<{
   table: StatsTable;
-  /** Show how many matches each member was observed in (series tables). */ withMaps?: boolean;
+  /** Every stat the discipline declares (`metadata.stat_defs`). */
+  definitions: readonly StatDefinition[];
+  /** Show how many matches each member was observed in (series tables). */
+  withMaps?: boolean;
+  /** What a participation without rows says: it observed no one, or none has values at the selected grain. */
+  empty?: "members" | "values";
 }>) {
   const t = useTranslations();
   const format = useFormatter();
   const defs: Record<string, StatDefinition> = Object.fromEntries(
-    table.columns.map((def) => [def.code, def])
+    definitions.map((def) => [def.code, def])
   );
   const span = 1 + (withMaps ? 1 : 0) + table.columns.length;
 
@@ -79,7 +88,9 @@ export default function StatsTableView({
                         className="aqt-tnum text-label font-normal text-[color:var(--aqt-fg-muted)]"
                       >
                         {defs[code]?.name ?? code}:{" "}
-                        {defs[code] ? formatStat(defs[code], value, format) : value}
+                        {defs[code]
+                          ? formatStat(defs[code], value, format)
+                          : format.number(value, { maximumFractionDigits: 2 })}
                       </span>
                     ))}
                   </span>
@@ -88,14 +99,20 @@ export default function StatsTableView({
               {section.rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={span} className="text-center text-[color:var(--aqt-fg-dim)]">
-                    {t("matches.native.noMembers")}
+                    {t(
+                      empty === "members" ? "matches.native.noMembers" : "matches.native.noValues"
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
                 section.rows.map((row) => (
                   <TableRow key={row.key} className="hover:bg-[color:var(--aqt-overlay-1)]">
                     <TableCell>
-                      <PlayerName player={{ name: row.name }} includeSpecialization={false} />
+                      <PlayerName
+                        player={{ name: row.name }}
+                        profileName={row.playerName || null}
+                        includeSpecialization={false}
+                      />
                     </TableCell>
                     {withMaps ? (
                       <TableCell className="aqt-tnum text-center">

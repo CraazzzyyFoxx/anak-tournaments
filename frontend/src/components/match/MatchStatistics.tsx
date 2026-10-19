@@ -3,71 +3,101 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import LabelledSelect from "@/components/match/LabelledSelect";
+import MatchEventsTimeline from "@/components/match/MatchEventsTimeline";
+import { useSegmentLabel } from "@/components/match/segment-label";
 import StatsTableView from "@/components/match/StatsTable";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadMatchUI } from "@/disciplines/registry/match";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { buildMatchTable, matchSegments } from "@/lib/stats/table";
-import type { StatDefinition } from "@/types/discipline.types";
+import { buildMatchTable, hasMemberFacts, matchSegments, memberEntities } from "@/lib/stats/table";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { MatchWithStats } from "@/types/encounter.types";
+
+const TOTALS = "none";
 
 /**
  * The working generic view of a native match: every participation (any number) with its observed members, one
- * declared stat per column, for the selected segment. Used where no module renderer applies (another game, or
- * a match that is not a duel) and while a module's renderer loads.
+ * declared stat per column, for a selected segment and grain (the member totals, or one character's rows —
+ * never both added), plus the match's native event timeline. Used where no module renderer applies (another
+ * game, or a match that is not a duel) and while a module's renderer loads.
  */
 function GenericMatchStatistics({
   match,
-  defs
-}: Readonly<{ match: MatchWithStats; defs: readonly StatDefinition[] }>) {
+  metadata
+}: Readonly<{ match: MatchWithStats; metadata: DisciplineMetadata }>) {
   const t = useTranslations();
   const segments = matchSegments(match);
+  const segmentLabel = useSegmentLabel(match.statistics.segments);
+  const [tab, setTab] = useState<"statistics" | "timeline">("statistics");
   const [segment, setSegment] = useState(0);
-  const active = segments.includes(segment) ? segment : 0;
-  const table = useMemo(() => buildMatchTable(match, defs, active), [match, defs, active]);
+  const [entity, setEntity] = useState<string>(TOTALS);
 
-  const label = (value: number) => {
-    if (value === 0) return t("matches.allMatch");
-    const kind =
-      match.statistics.segments.find((candidate) => candidate.segment === value)?.kind ?? "";
-    return t("matches.native.segment", { kind, n: value });
-  };
+  const activeSegment = segments.includes(segment) ? segment : 0;
+  const entities = useMemo(() => memberEntities([match], activeSegment), [match, activeSegment]);
+  const activeEntity = entities.some((candidate) => String(candidate.id) === entity)
+    ? Number(entity)
+    : TOTALS;
+  const table = useMemo(
+    () =>
+      buildMatchTable(match, metadata.stat_defs, { segment: activeSegment, entity: activeEntity }),
+    [match, metadata.stat_defs, activeSegment, activeEntity]
+  );
 
   return (
-    <div className="flex flex-col gap-3">
-      {segments.length > 1 ? (
-        <div className="flex items-center gap-2">
-          <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("matches.native.segmentLabel")}
-          </span>
-          <Select value={String(active)} onValueChange={(value) => setSegment(Number(value))}>
-            <SelectTrigger className="h-8 w-[170px] text-caption">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {segments.map((value) => (
-                <SelectItem key={value} value={String(value)}>
-                  {label(value)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+    <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}>
+      <TabsList>
+        <TabsTrigger value="statistics">{t("matches.native.statistics")}</TabsTrigger>
+        <TabsTrigger value="timeline">{t("matches.tab.timeline")}</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="statistics" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {segments.length > 1 ? (
+            <LabelledSelect
+              label={t("matches.native.segmentLabel")}
+              value={String(activeSegment)}
+              onValueChange={(value) => setSegment(Number(value))}
+              options={segments.map((value) => ({
+                value: String(value),
+                label: segmentLabel(value)
+              }))}
+            />
+          ) : null}
+          {entities.length > 0 ? (
+            <LabelledSelect
+              label={t("matches.native.grainLabel")}
+              value={String(activeEntity)}
+              onValueChange={setEntity}
+              options={[
+                { value: TOTALS, label: t("matches.native.grainTotals") },
+                ...entities.map((candidate) => ({
+                  value: String(candidate.id),
+                  label: candidate.name
+                }))
+              ]}
+            />
+          ) : null}
         </div>
-      ) : null}
-      {table.columns.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("matches.native.noStats")}</p>
-      ) : null}
-      <StatsTableView table={table} />
-    </div>
+        {!hasMemberFacts(match) ? (
+          <p className="text-sm text-muted-foreground">{t("matches.native.noStats")}</p>
+        ) : table.columns.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("matches.native.noValues")}</p>
+        ) : null}
+        <StatsTableView
+          table={table}
+          definitions={metadata.stat_defs}
+          empty={activeSegment === 0 && activeEntity === TOTALS ? "members" : "values"}
+        />
+      </TabsContent>
+
+      <TabsContent value="timeline">
+        <MatchEventsTimeline match={match} eventTypes={metadata.event_types} />
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -91,7 +121,7 @@ export default function MatchStatistics({ match }: Readonly<{ match: MatchWithSt
       capabilities={metadata.data.discipline.capabilities}
       applicable={match.participants.length === 2}
       props={{ match, metadata: metadata.data }}
-      fallback={<GenericMatchStatistics match={match} defs={metadata.data.stat_defs} />}
+      fallback={<GenericMatchStatistics match={match} metadata={metadata.data} />}
     />
   );
 }

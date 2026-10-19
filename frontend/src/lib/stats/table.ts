@@ -1,18 +1,21 @@
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { StatDefinition } from "@/types/discipline.types";
 import type { MatchWithStats } from "@/types/encounter.types";
 
-import { aggregateFacts, selectFacts, type Observation } from "./facts";
+import { aggregateFacts, selectFacts, type FactGrain, type Observation } from "./facts";
 
 /** One observed member's row: `values` holds only the stats the match actually recorded for them (missing ≠ 0). */
 export interface StatsTableRow {
   key: string;
   workspaceMemberId: number;
   playerId: number;
-  /** The exact handle the observation recorded. */
+  /** The player's canonical name: what a profile link is built from. */
+  playerName: string;
+  /** The exact handle the observation recorded; display only. */
   name: string;
   /** stat code → value at the table's grain; an unobserved stat has no key. */
   values: Record<string, number>;
-  /** Series tables: how many of the folded matches observed the member. */
+  /** Series tables: how many of the folded matches observed the member at the table's grain. */
   mapsPlayed?: number;
 }
 
@@ -41,6 +44,38 @@ export function matchSegments(match: Pick<MatchWithStats, "statistics">): number
   return [0, ...match.statistics.segments.map((segment) => segment.segment).sort((a, b) => a - b)];
 }
 
+/** The member-total grain of the whole match: every member, no entity. */
+export const MEMBER_TOTALS: FactGrain = { segment: 0, entity: "none" };
+
+/**
+ * The entities (characters) that have member facts at `segment` in at least one of the matches, by name. Each is
+ * a grain of its own: its rows are never merged with the no-entity totals of the same members.
+ */
+export function memberEntities(
+  matches: readonly Pick<MatchWithStats, "statistics">[],
+  segment: number
+): CatalogEntityRead[] {
+  const named = new Map<number, CatalogEntityRead>();
+  const used = new Set<number>();
+  for (const { statistics } of matches) {
+    for (const entity of statistics.entities) named.set(entity.id, entity);
+    for (const fact of statistics.facts) {
+      if (fact.segment === segment && fact.workspace_member_id != null && fact.entity_id != null) {
+        used.add(fact.entity_id);
+      }
+    }
+  }
+  return [...used]
+    .map((id) => named.get(id))
+    .filter((entity): entity is CatalogEntityRead => entity !== undefined)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id - b.id);
+}
+
+/** Whether any member fact exists at any grain: the only honest reason to say a match recorded no statistics. */
+export function hasMemberFacts(match: Pick<MatchWithStats, "statistics">): boolean {
+  return match.statistics.facts.some((fact) => fact.workspace_member_id != null);
+}
+
 const byDeclaredOrder = (a: StatDefinition, b: StatDefinition) =>
   a.sort_order - b.sort_order || a.code.localeCompare(b.code);
 
@@ -64,26 +99,27 @@ const participationOf = (
 ): boolean | null =>
   match.encounter?.teams ? match.encounter.teams.some((seat) => seat.id === encounterTeamId) : null;
 
+/** The member-totals table lists every observed member (event-only ones included); any other grain only those with values. */
+const listsEveryMember = (grain: FactGrain) => grain.segment === 0 && grain.entity === "none";
+
 /**
- * One match as a generic statistics table at the member grain (no entity) of one segment. Every participant is
- * a section and every observed member a row, event-only members included; a child segment lists only the
- * members it has values for. Values are the native facts untouched.
+ * One match as a generic statistics table at one grain: a segment and either the member totals (no entity) or
+ * one entity's rows. Every participant is a section; values are the native facts untouched, and a grain's facts
+ * are never added to another's (segment 0 with its child segments, null-entity totals with per-entity rows).
  */
 export function buildMatchTable(
   match: Pick<MatchWithStats, "participants" | "statistics" | "encounter">,
   defs: readonly StatDefinition[],
-  segment: number
+  grain: FactGrain
 ): StatsTable {
   const { members, facts } = match.statistics;
-  const grain = selectFacts(facts, { segment, entity: "none" }).filter(
-    (fact) => fact.workspace_member_id != null
-  );
+  const selected = selectFacts(facts, grain).filter((fact) => fact.workspace_member_id != null);
   const sections = match.participants.map((participant): StatsTableSection => {
     const rows = members
       .filter((member) => member.encounter_team_id === participant.encounter_team_id)
       .map((member): StatsTableRow => {
         const values: Record<string, number> = {};
-        for (const fact of grain) {
+        for (const fact of selected) {
           if (
             fact.encounter_team_id === member.encounter_team_id &&
             fact.workspace_member_id === member.workspace_member_id
@@ -95,11 +131,12 @@ export function buildMatchTable(
           key: `${member.encounter_team_id}:${member.workspace_member_id}`,
           workspaceMemberId: member.workspace_member_id,
           playerId: member.player_id,
+          playerName: member.player_name,
           name: member.handle_snapshot,
           values
         };
       })
-      .filter((row) => segment === 0 || Object.keys(row.values).length > 0);
+      .filter((row) => listsEveryMember(grain) || Object.keys(row.values).length > 0);
     return {
       key: String(participant.encounter_team_id),
       encounterTeamId: participant.encounter_team_id,
@@ -114,18 +151,21 @@ export function buildMatchTable(
 
 /**
  * A series' generic statistics: every participation and member across the matches, each stat folded across the
- * matches that observed it by its own declared aggregation, at the whole-match member grain. `last` follows the
- * deterministic `(played_at ?? created_at, match id)` order. Participations are keyed by `encounter_team_id`:
- * a replacement seat is never paired with the participation it replaced.
+ * matches that observed it by its own declared aggregation, over the whole matches (segment 0) at either the
+ * member totals or one entity. `last` follows the deterministic `(played_at ?? created_at, match id)` order.
+ * Participations are keyed by `encounter_team_id`: a replacement seat is never paired with the participation it
+ * replaced.
  */
 export function buildSeriesTable(
   matches: readonly Pick<
     MatchWithStats,
     "id" | "participants" | "statistics" | "encounter" | "played_at" | "created_at"
   >[],
-  defs: readonly StatDefinition[]
+  defs: readonly StatDefinition[],
+  entity: FactGrain["entity"] = "none"
 ): StatsTable {
   const defByCode = new Map(defs.map((def) => [def.code, def]));
+  const grain: FactGrain = { segment: 0, entity };
   interface Fold {
     row: Omit<StatsTableRow, "values">;
     observations: Map<string, Observation[]>;
@@ -135,7 +175,7 @@ export function buildSeriesTable(
 
   for (const match of matches) {
     const at = match.played_at ?? match.created_at;
-    const grain = selectFacts(match.statistics.facts, { segment: 0, entity: "none" });
+    const selected = selectFacts(match.statistics.facts, grain);
     for (const participant of match.participants) {
       let entry = sections.get(participant.encounter_team_id);
       if (!entry) {
@@ -154,6 +194,13 @@ export function buildSeriesTable(
       }
       for (const member of match.statistics.members) {
         if (member.encounter_team_id !== participant.encounter_team_id) continue;
+        const own = selected.filter(
+          (fact) =>
+            fact.workspace_member_id === member.workspace_member_id &&
+            fact.encounter_team_id === member.encounter_team_id
+        );
+        // At an entity grain a match counts for the members it has that entity's values for.
+        if (entity !== "none" && own.length === 0) continue;
         let fold = entry.folds.get(member.workspace_member_id);
         if (!fold) {
           fold = {
@@ -161,6 +208,7 @@ export function buildSeriesTable(
               key: `${member.encounter_team_id}:${member.workspace_member_id}`,
               workspaceMemberId: member.workspace_member_id,
               playerId: member.player_id,
+              playerName: member.player_name,
               name: member.handle_snapshot
             },
             observations: new Map(),
@@ -169,14 +217,8 @@ export function buildSeriesTable(
           entry.folds.set(member.workspace_member_id, fold);
         }
         fold.maps += 1;
-        for (const fact of grain) {
-          if (
-            fact.workspace_member_id !== member.workspace_member_id ||
-            fact.encounter_team_id !== member.encounter_team_id ||
-            !defByCode.has(fact.stat_code)
-          ) {
-            continue;
-          }
+        for (const fact of own) {
+          if (!defByCode.has(fact.stat_code)) continue;
           const seen = fold.observations.get(fact.stat_code) ?? [];
           seen.push({ value: fact.value, at, matchId: match.id });
           fold.observations.set(fact.stat_code, seen);

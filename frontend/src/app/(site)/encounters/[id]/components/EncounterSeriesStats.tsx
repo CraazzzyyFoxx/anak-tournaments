@@ -1,18 +1,20 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import LabelledSelect from "@/components/match/LabelledSelect";
 import StatsTableView from "@/components/match/StatsTable";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadMatchUI } from "@/disciplines/registry/match";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import encounterService from "@/services/encounter.service";
 import type { MatchWithStats } from "@/types/encounter.types";
-import type { StatDefinition } from "@/types/discipline.types";
-import { buildSeriesTable } from "@/lib/stats/table";
+import type { DisciplineMetadata } from "@/types/discipline.types";
+import { buildSeriesTable, memberEntities } from "@/lib/stats/table";
 import styles from "@/components/match/EncounterDetail.module.css";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
@@ -83,7 +85,7 @@ export default function EncounterSeriesStats({
         capabilities={metadata.data.discipline.capabilities}
         applicable={loaded.every((match) => match.participants.length === 2)}
         props={{ matches: loaded, metadata: metadata.data, view }}
-        fallback={<GenericSeriesStatistics matches={loaded} defs={metadata.data.stat_defs} />}
+        fallback={<GenericSeriesStatistics matches={loaded} metadata={metadata.data} />}
       />
     </div>
   );
@@ -91,14 +93,20 @@ export default function EncounterSeriesStats({
 
 /**
  * The game-neutral series totals: each stat folded across the maps by its declared aggregation, grouped by
- * participation, for any number of participants.
+ * participation, for any number of participants, at the member totals or one character's rows (never both
+ * added).
  */
 function GenericSeriesStatistics({
   matches,
-  defs
-}: Readonly<{ matches: MatchWithStats[]; defs: readonly StatDefinition[] }>) {
+  metadata
+}: Readonly<{ matches: MatchWithStats[]; metadata: DisciplineMetadata }>) {
   const t = useTranslations();
-  const table = buildSeriesTable(matches, defs);
+  const [entity, setEntity] = useState("none");
+  const entities = useMemo(() => memberEntities(matches, 0), [matches]);
+  const active = entities.some((candidate) => String(candidate.id) === entity)
+    ? Number(entity)
+    : "none";
+  const table = buildSeriesTable(matches, metadata.stat_defs, active);
 
   return (
     <div className={styles.card}>
@@ -106,7 +114,28 @@ function GenericSeriesStatistics({
         <h3 className={styles.cardTitle}>{t("encounters.detail.seriesTableTitle")}</h3>
         <span className={styles.cardSub}>{t("encounters.detail.seriesTableSub")}</span>
       </div>
-      <StatsTableView table={table} withMaps />
+      {entities.length > 0 ? (
+        <div className="px-4 pb-3">
+          <LabelledSelect
+            label={t("matches.native.grainLabel")}
+            value={String(active)}
+            onValueChange={setEntity}
+            options={[
+              { value: "none", label: t("matches.native.grainTotals") },
+              ...entities.map((candidate) => ({
+                value: String(candidate.id),
+                label: candidate.name
+              }))
+            ]}
+          />
+        </div>
+      ) : null}
+      <StatsTableView
+        table={table}
+        definitions={metadata.stat_defs}
+        withMaps
+        empty={active === "none" ? "members" : "values"}
+      />
     </div>
   );
 }

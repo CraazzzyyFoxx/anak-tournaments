@@ -32,6 +32,8 @@ export const encounterQueryKeys = {
   byTournament: (tournamentId: KeyPart) => ["encounters", "by-tournament", tournamentId] as const,
   all: () => ["encounters"] as const,
   matchDetail: (matchId: KeyPart) => ["match-detail", matchId] as const,
+  /** One match's native event timeline (`/matches/{id}/kill-feed`), read when a timeline is opened. */
+  matchEvents: (matchId: KeyPart) => ["match-events", matchId] as const,
   pregameHeroState: (encounterId: KeyPart) => ["pregame-state", encounterId, "hero"] as const,
   pregameMapState: (encounterId: KeyPart) => ["pregame-state", encounterId, "map"] as const,
   /** The organizer's room journal, only read while the history panel is open. */

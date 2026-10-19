@@ -2506,9 +2506,20 @@
     "native": {
       "player": "Player",
       "noMembers": "No observed players",
+      "noValues": "No values at this grain",
       "noStats": "No statistics were recorded for this match.",
       "segmentLabel": "Segment",
-      "segment": "{kind} {n}"
+      "segmentN": "Segment {n}",
+      "grainLabel": "Values",
+      "grainTotals": "Member totals",
+      "statistics": "Statistics",
+      "badgeError": "Couldn't load the match badge.",
+      "timeline": {
+        "title": "Event timeline",
+        "loading": "Loading events…",
+        "error": "Couldn't load the events.",
+        "empty": "No events were recorded for this match."
+      }
     },
     "meta": {
       "matchTitle": "{home} vs {away}",

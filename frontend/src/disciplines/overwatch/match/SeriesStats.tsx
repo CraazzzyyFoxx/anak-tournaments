@@ -173,7 +173,11 @@ function SeriesPlayerRow({
   return (
     <tr>
       <td className={styles.seriesPlayerCell}>
-        <PlayerName player={player} includeSpecialization={false} />
+        <PlayerName
+          player={player}
+          profileName={player.profile_name}
+          includeSpecialization={false}
+        />
       </td>
       <td>
         <span className={styles.rosterCell}>

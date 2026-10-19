@@ -20,9 +20,10 @@ const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
 
-  const cards = LEADER_STATS.map((name) => ({ name, leader: findLeader(home, away, round, name) })).filter(
-    (entry) => entry.leader !== null
-  );
+  const cards = LEADER_STATS.map((name) => ({
+    name,
+    leader: findLeader(home, away, round, name)
+  })).filter((entry) => entry.leader !== null);
 
   if (cards.length === 0) return null;
 
@@ -51,14 +52,24 @@ const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
               </span>
               <div className="mt-auto flex items-center gap-2">
                 <HeroStrip heroes={heroes} size="sm" limit={2} />
-                <Link
-                  href={`/users/${getPlayerSlug(leader.player.name)}`}
-                  className="truncate text-label font-semibold hover:underline"
-                  style={{ color: accent }}
-                  title={displayName}
-                >
-                  {displayName}
-                </Link>
+                {leader.player.profile_name ? (
+                  <Link
+                    href={`/users/${getPlayerSlug(leader.player.profile_name)}`}
+                    className="truncate text-label font-semibold hover:underline"
+                    style={{ color: accent }}
+                    title={displayName}
+                  >
+                    {displayName}
+                  </Link>
+                ) : (
+                  <span
+                    className="truncate text-label font-semibold"
+                    style={{ color: accent }}
+                    title={displayName}
+                  >
+                    {displayName}
+                  </span>
+                )}
               </div>
             </div>
           );

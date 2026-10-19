@@ -12,8 +12,10 @@ export interface OwPlayer {
   workspace_member_id: number;
   /** The global player the member is. */
   user_id: number;
-  /** The exact handle the observation recorded. */
+  /** The exact handle the observation recorded; display only. */
   name: string;
+  /** The player's canonical name, what a profile link is built from; `null` leaves the handle unlinked. */
+  profile_name: string | null;
   /** segment (0 = whole match) → stat code → value, from the member's no-entity facts. */
   stats: Record<number, Record<string, number>>;
   /** segment → the characters the member played longer than `HERO_PLAYED_SECONDS` in it. */
@@ -58,6 +60,7 @@ export function owMatchView(match: MatchWithStats): OwMatchView | null {
       workspace_member_id: member.workspace_member_id,
       user_id: member.player_id,
       name: member.handle_snapshot,
+      profile_name: member.player_name || null,
       stats: {},
       heroes: {}
     };

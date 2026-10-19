@@ -65,6 +65,8 @@ function match(
         encounter_team_id: side.id,
         workspace_member_id: side.id * 10,
         player_id: side.id * 10,
+        // Side 102's player has no canonical name on the wire: its handle must stay unlinked.
+        player_name: side.id === 102 ? null : `Canonical ${side.id}`,
         handle_snapshot: `Observed ${side.id}#1`,
         observed_role: null
       })),
@@ -186,6 +188,36 @@ describe("historical observed participations", () => {
     expect(panel?.textContent).toContain("Archived B");
     expect(panel?.textContent).toContain("12");
     expect(panel?.textContent).toContain("5");
+  });
+
+  it("links observed handles through the canonical player name, never the handle, and leaves a nameless one unlinked", async () => {
+    const container = await mount(<MatchStats match={historical()} metadata={metadata} />);
+    const links = () =>
+      Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href^="/users/"]')).map(
+        (link) => [link.textContent, link.getAttribute("href")]
+      );
+    // The scoreboard: Archived B's member is shown, not linked.
+    expect(links()).toEqual([["Observed 101", "/users/Canonical 101"]]);
+    expect(container.textContent).toContain("Observed 102");
+
+    const extended = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === messages.matches.view.extended
+    )!;
+    await act(async () => extended.click());
+    const comparison = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    ).find((button) => button.textContent === messages.matches.tab.comparison)!;
+    await act(async () => {
+      comparison.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      comparison.click();
+    });
+    // The leader cards: the top eliminator (Archived A's) links the same way; B's leaders (if any) never link.
+    const panel = container.querySelector('[role="tabpanel"][data-state="active"]')!;
+    const leaderLinks = Array.from(panel.querySelectorAll<HTMLAnchorElement>('a[href^="/users/"]'));
+    expect(leaderLinks.length).toBeGreaterThan(0);
+    expect(new Set(leaderLinks.map((link) => link.getAttribute("href")))).toEqual(
+      new Set(["/users/Canonical 101"])
+    );
   });
 
   it("renders nothing for a match that is not a duel", () => {
