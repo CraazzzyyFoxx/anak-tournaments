@@ -185,15 +185,23 @@ UPLOAD_MATCH_LOG_DLQ = RabbitQueue(
 # ============================================================================
 # Match Log Result (stats worker -> discord)
 # ============================================================================
-# Fanout so every discord-service replica receives every result; the replica
-# holding the pending upload future resolves it and the rest no-op. This mirrors
-# the broadcast semantics of the pg LISTEN/NOTIFY channel it replaces, which
-# pgBouncer transaction pooling breaks. Consumers bind their own exclusive,
-# auto-deleted (server-named) queue to this exchange — no durable shared queue,
-# which would round-robin results to the wrong replica.
-MATCH_LOG_RESULT_EXCHANGE = RabbitExchange(
-    "match_log.result",
-    type=ExchangeType.FANOUT,
+# One durable work queue: the result names the Discord message it answers
+# (``channel_id``/``message_id``), so any replica can react on it -- there is no
+# in-process waiter to find. Replaced the fanout + per-replica exclusive queue
+# that mirrored pg LISTEN/NOTIFY and tied the result to one replica's memory.
+
+MATCH_LOG_RESULT_QUEUE = RabbitQueue(
+    "match_log_result",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "match_log_result.dlq",
+        "x-message-ttl": 300000,  # 5 minutes: past that the uploader has moved on
+    },
+)
+
+MATCH_LOG_RESULT_DLQ = RabbitQueue(
+    "match_log_result.dlq",
     durable=True,
 )
 
@@ -387,26 +395,18 @@ TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ = RabbitQueue(
     durable=True,
 )
 
-TOURNAMENT_REGISTRATION_REJECTED_QUEUE = RabbitQueue(
-    "tournament_registration_rejected",
-    durable=True,
-    routing_key="tournament.registration.rejected",
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "tournament_registration_rejected.dlq",
-        "x-message-ttl": 600000,  # 10 minutes
-    },
-)
+# Routing keys on ``tournament.events`` that more than one binding names (the
+# bot's per-replica channel-registry queue binds both); the rest are spelled at
+# their single producer/consumer pair.
+TOURNAMENT_STATE_CHANGED_ROUTING_KEY = "tournament.state.changed"
+TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY = "tournament.discord_channel.changed"
 
-TOURNAMENT_REGISTRATION_REJECTED_DLQ = RabbitQueue(
-    "tournament_registration_rejected.dlq",
-    durable=True,
-)
-
+# Owner: analytics-worker. A ``completed`` tournament gets its compute job
+# created from here instead of waiting for someone to press "recalculate".
 TOURNAMENT_STATE_CHANGED_QUEUE = RabbitQueue(
     "tournament_state_changed",
     durable=True,
-    routing_key="tournament.state.changed",
+    routing_key=TOURNAMENT_STATE_CHANGED_ROUTING_KEY,
     arguments={
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "tournament_state_changed.dlq",
@@ -431,6 +431,70 @@ TOURNAMENT_STANDINGS_INVALIDATED_QUEUE = RabbitQueue(
 
 TOURNAMENT_STANDINGS_INVALIDATED_DLQ = RabbitQueue(
     "tournament_standings_invalidated.dlq",
+    durable=True,
+)
+
+# Owner: tournament-service. The confirmed-result push to Challonge, taken out
+# of the confirming request: the request commits the result and this row, the
+# consumer talks to Challonge with the queue's retry instead of a swallowed
+# ``logger.error``.
+TOURNAMENT_CHALLONGE_PUSH_QUEUE = RabbitQueue(
+    "tournament_challonge_push",
+    durable=True,
+    routing_key="tournament.encounter.challonge_push_requested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_challonge_push.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_CHALLONGE_PUSH_DLQ = RabbitQueue(
+    "tournament_challonge_push.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Workspace membership changes (app-service -> identity-service)
+# ============================================================================
+# ``WorkspaceMemberChangedEvent`` through the outbox, straight onto the queue:
+# identity drops the cached RBAC payload of the listed users. Replaced
+# app-service deleting identity's Redis key by hand.
+
+WORKSPACE_MEMBER_CHANGED_QUEUE = RabbitQueue(
+    "workspace_member_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "workspace_member_changed.dlq",
+        "x-message-ttl": 120000,  # 2 minutes: the cache entry it drops lives 60 s anyway
+    },
+)
+
+WORKSPACE_MEMBER_CHANGED_DLQ = RabbitQueue(
+    "workspace_member_changed.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Discord guild member changes (discord-service -> stats-worker)
+# ============================================================================
+# ``DiscordMemberChangedEvent``, published straight from the gateway event (the
+# bot has no transaction to join). stats re-resolves the member's Boosty
+# entitlement; the scheduled sweep stays as the slow reconciliation.
+
+DISCORD_MEMBER_CHANGED_QUEUE = RabbitQueue(
+    "discord_member_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_member_changed.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+DISCORD_MEMBER_CHANGED_DLQ = RabbitQueue(
+    "discord_member_changed.dlq",
     durable=True,
 )
 
