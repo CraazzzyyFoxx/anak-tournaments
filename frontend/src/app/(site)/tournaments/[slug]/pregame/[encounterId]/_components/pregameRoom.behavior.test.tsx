@@ -1401,7 +1401,7 @@ describe("phase selection", () => {
     expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
   });
 
-  it("renders no bans board for a game whose module declares no renderer", async () => {
+  it("renders League's own bans board on the result screen, never Overwatch's", async () => {
     getEncounter.mockResolvedValue({ ...encounter(), discipline: "lol" } as Encounter);
     mockStates(
       readyState({
@@ -1418,11 +1418,16 @@ describe("phase selection", () => {
       })
     );
     await render();
-    await settle(10);
+    for (let tries = 0; tries < 100 && !document.body.querySelector("[data-character-bans]"); tries += 1) {
+      await settle(1);
+    }
 
-    // The room still reaches the map result; the OW-only board stays out and nothing claims support.
     expect(document.body.textContent).toContain(ROOM.mapResult.report);
+    expect(document.body.querySelector('[data-character-bans="1"]')?.textContent).toContain("Hero 101");
+    expect(document.body.textContent).toContain(ROOM.characterBans.eyebrow);
+    // The Overwatch board and its lobby copy stay out; nothing claims an error.
     expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+    expect(document.body.textContent).not.toContain(ROOM.heroBans.copy);
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
   });
 

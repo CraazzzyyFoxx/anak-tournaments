@@ -4096,6 +4096,9 @@
         "badge": "from map {n}",
         "tooltip": "Banned on map {n} and still in force here"
       },
+      "characterBans": {
+        "eyebrow": "Bans for this map"
+      },
       "sides": {
         "lol": {
           "blue": "Blue side",
