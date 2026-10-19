@@ -87,9 +87,9 @@
       "token": "tank",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -97,9 +97,9 @@
       "token": "damage",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -107,9 +107,9 @@
       "token": "support",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -117,9 +117,9 @@
       "token": "tank",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -127,9 +127,9 @@
       "token": "damage",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -137,9 +137,9 @@
       "token": "support",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -147,9 +147,9 @@
       "token": "Tank",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -157,9 +157,9 @@
       "token": "Damage",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/domain/notification_render.py",
@@ -167,19 +167,9 @@
       "token": "Support",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "copy debt: Discord/notification role label dictionary (RU/EN copy); a role it does not list keeps its own code",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/app-service/src/schemas/workspace.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "disciplines_enabled: list[str] = [\"overwatch\"]",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
       "path": "backend/app-service/src/services/catalog_legacy.py",
@@ -307,9 +297,9 @@
       "token": "tank",
       "context": "SHAPE = RosterShape(entries=tuple({\"tank\": 1, \"damage\": 2, \"support\": 2}.items()))",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -317,9 +307,9 @@
       "token": "damage",
       "context": "SHAPE = RosterShape(entries=tuple({\"tank\": 1, \"damage\": 2, \"support\": 2}.items()))",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -327,9 +317,9 @@
       "token": "support",
       "context": "SHAPE = RosterShape(entries=tuple({\"tank\": 1, \"damage\": 2, \"support\": 2}.items()))",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -337,9 +327,9 @@
       "token": "tank",
       "context": "ROLES = (\"tank\", \"damage\", \"support\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -347,9 +337,9 @@
       "token": "damage",
       "context": "ROLES = (\"tank\", \"damage\", \"support\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -357,9 +347,9 @@
       "token": "support",
       "context": "ROLES = (\"tank\", \"damage\", \"support\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -367,9 +357,9 @@
       "token": "overwatch",
       "context": "CatalogEntity.discipline == \"overwatch\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -377,9 +367,9 @@
       "token": "overwatch",
       "context": "discipline=\"overwatch\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -387,9 +377,9 @@
       "token": "damage",
       "context": "attrs={\"class\": \"damage\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/scripts/measure_draft_snapshot.py",
@@ -397,9 +387,9 @@
       "token": "battlenet",
       "context": "provider=\"battlenet\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 measurement-script debt: an OW fixture seeded by a one-off benchmark",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_discord.py",
@@ -407,9 +397,9 @@
       "token": "tank",
       "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the mix card counts the mix game's roles"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_discord.py",
@@ -417,9 +407,9 @@
       "token": "damage",
       "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the mix card counts the mix game's roles"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_discord.py",
@@ -427,9 +417,9 @@
       "token": "support",
       "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the mix card counts the mix game's roles"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_discord.py",
@@ -437,9 +427,9 @@
       "token": "tank",
       "context": "f\" · {emoji('tank')} {counts['tank']}\"",
       "count": 2,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the mix card counts the mix game's roles"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_discord.py",
@@ -447,9 +437,9 @@
       "token": "damage",
       "context": "f\" · {emoji('damage')} {counts['damage']}\"",
       "count": 2,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the mix card counts the mix game's roles"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_discord.py",
@@ -457,9 +447,9 @@
       "token": "support",
       "context": "f\" · {emoji('support')} {counts['support']}\"",
       "count": 2,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the mix card counts the mix game's roles"
     },
     {
       "path": "backend/balancer-service/src/domain/mix_self_service.py",
@@ -472,104 +462,14 @@
       "remove_when": "provider is removed"
     },
     {
-      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
-      "rule": "role-vocabulary",
-      "token": "tank",
-      "context": "\"tank\": RoleSettings(impact=1.4, line_gap_weight=0.8, line_std_weight=1.5, mix_weight=1.0)",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
-      "rule": "role-vocabulary",
-      "token": "damage",
-      "context": "\"damage\": RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
-      "rule": "role-vocabulary",
-      "token": "support",
-      "context": "\"support\": RoleSettings(impact=1.1, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/config/defaults.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "rule.role: rule.hard_min for rule in DISCIPLINES[\"overwatch\"].preset().rules if rule.hard_",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/config/presets.py",
-      "rule": "role-vocabulary",
-      "token": "tank",
-      "context": "\"role_settings\": {\"tank\": {\"line_gap_weight\": 0.25, \"line_std_weight\": 0.75}},",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/config/presets.py",
-      "rule": "role-vocabulary",
-      "token": "tank",
-      "context": "\"role_settings\": {\"tank\": {\"line_gap_weight\": 1.0, \"line_std_weight\": 1.5}},",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/config/presets.py",
-      "rule": "role-vocabulary",
-      "token": "tank",
-      "context": "\"role_settings\": {\"tank\": {\"line_gap_weight\": 0.8}},",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/balancer/jobs.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline=\"ov",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "backend/balancer-service/src/services/custom_game.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "discipline: str = \"overwatch\",",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
       "path": "backend/balancer-service/src/services/rank_overview.py",
       "rule": "ow-prefix",
       "token": "ow_division",
       "context": "(ow_division if ow_division is not None else _null(sa.String)).label(\"ow_division\"),",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
+      "owner": "module",
+      "remove_when": "the rank overview's native layer is served by the module"
     },
     {
       "path": "backend/balancer-service/src/services/rank_overview.py",
@@ -577,9 +477,9 @@
       "token": "ow_tier",
       "context": "(ow_tier if ow_tier is not None else _null(sa.Integer)).label(\"ow_tier\"),",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
+      "owner": "module",
+      "remove_when": "the rank overview's native layer is served by the module"
     },
     {
       "path": "backend/balancer-service/src/services/rank_overview.py",
@@ -587,9 +487,9 @@
       "token": "ow_division",
       "context": "\"ow_division\": row.ow_division,",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
+      "owner": "module",
+      "remove_when": "the rank overview's native layer is served by the module"
     },
     {
       "path": "backend/balancer-service/src/services/rank_overview.py",
@@ -597,9 +497,9 @@
       "token": "ow_tier",
       "context": "\"ow_tier\": row.ow_tier,",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
+      "owner": "module",
+      "remove_when": "the rank overview's native layer is served by the module"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -607,9 +507,9 @@
       "token": "overwatch",
       "context": "OW_ROLE_DIMENSION = DISCIPLINES[\"overwatch\"].rated_dimension.code",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -617,9 +517,9 @@
       "token": "tank",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -627,9 +527,9 @@
       "token": "damage",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -637,9 +537,9 @@
       "token": "support",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -647,9 +547,9 @@
       "token": "tank",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -657,9 +557,9 @@
       "token": "damage",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -667,9 +567,9 @@
       "token": "support",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -677,9 +577,9 @@
       "token": "Tank",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -687,9 +587,9 @@
       "token": "Damage",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/discord-service/src/interactions/copy.py",
@@ -697,9 +597,9 @@
       "token": "Support",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: the OW mix bot's role copy and its rated dimension",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the Discord mix bot reads roles from the mix game's ontology"
     },
     {
       "path": "backend/identity-service/src/schemas/oauth.py",
@@ -1387,9 +1287,9 @@
       "token": "tank",
       "context": "\"tank\": \"🛡️\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: OW role emoji names minted for the mix bot",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "role emoji come from the module's role presentation"
     },
     {
       "path": "backend/shared/domain/discord_ui.py",
@@ -1397,9 +1297,9 @@
       "token": "damage",
       "context": "\"damage\": \"⚔️\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: OW role emoji names minted for the mix bot",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "role emoji come from the module's role presentation"
     },
     {
       "path": "backend/shared/domain/discord_ui.py",
@@ -1407,9 +1307,9 @@
       "token": "support",
       "context": "\"support\": \"💉\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: OW role emoji names minted for the mix bot",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "role emoji come from the module's role presentation"
     },
     {
       "path": "backend/shared/domain/discord_ui.py",
@@ -1417,9 +1317,9 @@
       "token": "tank",
       "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
       "count": 2,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: OW role emoji names minted for the mix bot",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "role emoji come from the module's role presentation"
     },
     {
       "path": "backend/shared/domain/discord_ui.py",
@@ -1427,9 +1327,9 @@
       "token": "damage",
       "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
       "count": 2,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: OW role emoji names minted for the mix bot",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "role emoji come from the module's role presentation"
     },
     {
       "path": "backend/shared/domain/discord_ui.py",
@@ -1437,9 +1337,9 @@
       "token": "support",
       "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
       "count": 2,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy debt: OW role emoji names minted for the mix bot",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "role emoji come from the module's role presentation"
     },
     {
       "path": "backend/shared/domain/pick_ban_rules/compile.py",
@@ -1507,9 +1407,9 @@
       "token": "tank",
       "context": "REGISTRATION_ROLE_CODES: tuple[str, ...] = (\"tank\", \"damage\", \"support\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy / OW rank-collector debt: the role codes the mix bot minted and the OW collector stores",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the bot and the collector read roles from the OW module"
     },
     {
       "path": "backend/shared/domain/player_sub_roles.py",
@@ -1517,9 +1417,9 @@
       "token": "damage",
       "context": "REGISTRATION_ROLE_CODES: tuple[str, ...] = (\"tank\", \"damage\", \"support\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy / OW rank-collector debt: the role codes the mix bot minted and the OW collector stores",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the bot and the collector read roles from the OW module"
     },
     {
       "path": "backend/shared/domain/player_sub_roles.py",
@@ -1527,9 +1427,9 @@
       "token": "support",
       "context": "REGISTRATION_ROLE_CODES: tuple[str, ...] = (\"tank\", \"damage\", \"support\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "C21 Discord-copy / OW rank-collector debt: the role codes the mix bot minted and the OW collector stores",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "the bot and the collector read roles from the OW module"
     },
     {
       "path": "backend/shared/models/achievements/achievement.py",
@@ -1900,16 +1800,6 @@
       "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
       "owner": "P9",
       "remove_when": "identifier is migrated with its data/URL"
-    },
-    {
-      "path": "backend/tournament-service/src/schemas/admin/tournament.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "discipline: str = \"overwatch\"",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
     },
     {
       "path": "backend/tournament-service/src/schemas/division_grid.py",
@@ -2552,46 +2442,6 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
-      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
-      "rule": "stat-code",
-      "token": "hero_damage_dealt",
-      "context": "{ key: \"hero_damage_dealt\", labelKey: \"users.overview.lastTournament.stat.dmgPerMap\" },",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
-      "rule": "stat-code",
-      "token": "eliminations",
-      "context": "{ key: \"eliminations\", labelKey: \"users.overview.lastTournament.stat.elims\" },",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
-      "rule": "stat-code",
-      "token": "damage_delta",
-      "context": "{ key: \"damage_delta\", labelKey: \"users.overview.lastTournament.stat.dmgDelta\" }",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
-      "path": "frontend/src/app/(site)/users/components/overview/OverviewLastTournamentCard.tsx",
-      "rule": "stat-code",
-      "token": "damage_delta",
-      "context": "const isDelta = def.key === \"damage_delta\";",
-      "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
-    },
-    {
       "path": "frontend/src/app/(site)/users/components/shared/UserProfileEmpty.tsx",
       "rule": "catalog-label",
       "token": "heroes",
@@ -2797,9 +2647,9 @@
       "token": "player_role",
       "context": "{conditionType === \"player_role\" && (",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "persisted identifier: the P6 OW achievement `player_role` condition and its stored role values",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "OW achievement conditions move into the OW module's editor"
     },
     {
       "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
@@ -2807,9 +2657,9 @@
       "token": "Damage",
       "context": "<Select value={(params.role as string) ?? \"Damage\"} onValueChange={(v) => setParam(\"role\",",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "persisted identifier: the P6 OW achievement `player_role` condition and its stored role values",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "OW achievement conditions move into the OW module's editor"
     },
     {
       "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
@@ -2817,9 +2667,9 @@
       "token": "Tank",
       "context": "<SelectItem value=\"Tank\">{t(\"fields.tank\")}</SelectItem>",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "persisted identifier: the P6 OW achievement `player_role` condition and its stored role values",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "OW achievement conditions move into the OW module's editor"
     },
     {
       "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
@@ -2827,9 +2677,9 @@
       "token": "Damage",
       "context": "<SelectItem value=\"Damage\">{t(\"fields.damage\")}</SelectItem>",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "persisted identifier: the P6 OW achievement `player_role` condition and its stored role values",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "OW achievement conditions move into the OW module's editor"
     },
     {
       "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
@@ -2837,9 +2687,9 @@
       "token": "Support",
       "context": "<SelectItem value=\"Support\">{t(\"fields.support\")}</SelectItem>",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "persisted identifier: the P6 OW achievement `player_role` condition and its stored role values",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "OW achievement conditions move into the OW module's editor"
     },
     {
       "path": "frontend/src/components/admin/achievements/ConditionLeafFields.tsx",
@@ -2957,9 +2807,9 @@
       "token": "heroes",
       "context": "t(\"heroes\")",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
       "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "remove_when": "pick-ban kind is migrated to 'character'"
     },
     {
       "path": "frontend/src/components/kit/audit-log.ts",
@@ -3137,9 +2987,9 @@
       "token": "overwatch",
       "context": "picked = await browser.showDirectoryPicker({ mode: \"read\", id: \"overwatch-workshop\", start",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "reason": "authentic OW ingest source: the Workshop log folder the P5 upload reads",
+      "owner": "module",
+      "remove_when": "log upload sources are declared by the module"
     },
     {
       "path": "frontend/src/lib/logs/browser-directory.ts",
@@ -3147,9 +2997,9 @@
       "token": "Overwatch",
       "context": "const WORKSHOP_PATH = [\"Overwatch\", \"Workshop\"];",
       "count": 1,
-      "reason": "P7 leftover: game-specific core default/vocabulary not migrated in P7 (see slice-11-report)",
-      "owner": "P9",
-      "remove_when": "P9 moves it behind the registry/ontology"
+      "reason": "authentic OW ingest source: the Workshop log folder the P5 upload reads",
+      "owner": "module",
+      "remove_when": "log upload sources are declared by the module"
     },
     {
       "path": "frontend/src/lib/social/providers.ts",

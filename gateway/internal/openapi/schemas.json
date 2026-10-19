@@ -4203,6 +4203,23 @@
     },
     "rpc.balancer.balance": {
       "description": "Permission: workspace `team.create` on the given workspace_id; an API-key caller must also be scoped to that workspace and hold the `team.create` scope. Solves the posted pool and returns the ranked variants in the same response -- no job id, no polling, no realtime events. Everything the solver needs is in the body (`player_data`, optional per-team `role_mask`, optional `config_overrides`); nothing is read from the workspace. The solver budget is clamped to 60s, so a pool too large to settle in time answers 504 and belongs on the asynchronous job API instead. Rate limits, the per-key config policy and the concurrency slot are the job path's.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "description": "The installed game the pool is balanced for.",
+            "type": "string"
+          }
+        }
+      ],
       "request": {
         "array": false,
         "ref": "balancer.BalanceRequest"
@@ -4215,6 +4232,16 @@
     },
     "rpc.balancer.config": {
       "description": "Permission: public; no authentication required. Returns the public balancer configuration (ranks, roles, defaults).",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "Whose role weights the defaults and presets carry; absent: every role neutral. 404 `discipline_not_installed` for an unknown code.",
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": false,
         "ref": "balancer.BalancerConfigResponse"
@@ -4811,6 +4838,23 @@
     },
     "rpc.balancer.jobs.create": {
       "description": "Permission: workspace `team.create` on the given workspace_id; an API-key caller must also be scoped to that workspace and hold the `team.create` scope. Queues an asynchronous balance job from a multipart player-data upload plus optional config overrides, returning 202 with the job id.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "The game the upload is balanced for (enabled in the workspace); required without tournament_id, and must equal the tournament's game with one.",
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": false,
         "ref": "balancer.CreateJobResponse"
@@ -8183,6 +8227,13 @@
         },
         {
           "name": "challonge_slug",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "discipline",
           "required": true,
           "schema": {
             "type": "string"
@@ -23043,9 +23094,6 @@
           "title": "Description"
         },
         "disciplines_enabled": {
-          "default": [
-            "overwatch"
-          ],
           "items": {
             "type": "string"
           },
@@ -23214,7 +23262,8 @@
         "name",
         "description",
         "icon_url",
-        "is_active"
+        "is_active",
+        "disciplines_enabled"
       ],
       "title": "WorkspaceRead",
       "type": "object"
@@ -23781,26 +23830,19 @@
           "type": "object"
         },
         "role_mask": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "maximum": 20,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Per-team slot counts keyed by roster slot code, e.g. {\"tank\": 1, \"damage\": 2, \"support\": 2} -- the default when omitted. Team count is derived from it: floor(players / sum(slots)); the remainder is benched. Input role names are matched case-insensitively against these keys, so a pool written with \"Damage\" fills the \"damage\" slots.",
-          "title": "Role Mask"
+          "additionalProperties": {
+            "maximum": 20,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Per-team slot counts keyed by the game's role codes (open slot `flex`). Required: no game's shape is assumed. Team count is derived from it: floor(players / sum(slots)); the remainder is benched. Input role names are matched case-insensitively against these keys.",
+          "title": "Role Mask",
+          "type": "object"
         }
       },
       "required": [
-        "player_data"
+        "player_data",
+        "role_mask"
       ],
       "title": "BalanceRequest",
       "type": "object"
@@ -54048,7 +54090,6 @@
           "title": "Description"
         },
         "discipline": {
-          "default": "overwatch",
           "title": "Discipline",
           "type": "string"
         },
@@ -54149,6 +54190,7 @@
       },
       "required": [
         "workspace_id",
+        "discipline",
         "name",
         "start_date",
         "end_date"

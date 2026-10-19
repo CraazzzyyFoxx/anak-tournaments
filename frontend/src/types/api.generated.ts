@@ -14176,12 +14176,7 @@ export interface components {
             };
             /** Description */
             description: string | null;
-            /**
-             * Disciplines Enabled
-             * @default [
-             *       "overwatch"
-             *     ]
-             */
+            /** Disciplines Enabled */
             disciplines_enabled: string[];
             /**
              * Discord Guild Id
@@ -14307,12 +14302,11 @@ export interface components {
             };
             /**
              * Role Mask
-             * @description Per-team slot counts keyed by roster slot code, e.g. {"tank": 1, "damage": 2, "support": 2} -- the default when omitted. Team count is derived from it: floor(players / sum(slots)); the remainder is benched. Input role names are matched case-insensitively against these keys, so a pool written with "Damage" fills the "damage" slots.
-             * @default null
+             * @description Per-team slot counts keyed by the game's role codes (open slot `flex`). Required: no game's shape is assumed. Team count is derived from it: floor(players / sum(slots)); the remainder is benched. Input role names are matched case-insensitively against these keys.
              */
             role_mask: {
                 [key: string]: number;
-            } | null;
+            };
         };
         /** BalanceResponse */
         "balancer.BalanceResponse": {
@@ -28250,10 +28244,7 @@ export interface components {
              * @default null
              */
             description: string | null;
-            /**
-             * Discipline
-             * @default overwatch
-             */
+            /** Discipline */
             discipline: string;
             /**
              * Division Grid Version Id
@@ -32524,8 +32515,9 @@ export interface operations {
     };
     post__api_v1_balancer_balance: {
         parameters: {
-            query?: {
-                workspace_id?: string;
+            query: {
+                workspace_id: number;
+                discipline: string;
             };
             header?: never;
             path?: never;
@@ -32606,7 +32598,9 @@ export interface operations {
     };
     get__api_v1_balancer_config: {
         parameters: {
-            query?: never;
+            query?: {
+                discipline?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -35234,7 +35228,10 @@ export interface operations {
     };
     post__api_v1_balancer_jobs: {
         parameters: {
-            query?: never;
+            query: {
+                workspace_id: number;
+                discipline?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -73851,6 +73848,7 @@ export interface operations {
                 start_date: string;
                 end_date: string;
                 challonge_slug: string;
+                discipline: string;
                 is_league?: boolean;
                 division_grid_version_id?: number;
             };
