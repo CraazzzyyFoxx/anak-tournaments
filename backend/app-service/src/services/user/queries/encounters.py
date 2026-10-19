@@ -16,12 +16,15 @@ from sqlalchemy.orm import joinedload
 
 from shared.models.catalog.role import leaf_code
 from shared.repository.stats_queries import match_context, player_facts
-from shared.repository.stats_reads import MatchReadContext, duel_matches, get_match_reads
+from shared.repository.stats_reads import MatchReadContext, duel_matches, get_match_members, get_match_reads
+from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.match import NativeFact
 from shared.schemas.role import RoleRef
 from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
 from src.domain.encounter_seats import Seat
+from src.schemas.user import UserMatchViewer
 from src.services.user import _mappers
 
 _facts = player_facts(discipline="overwatch")
@@ -124,12 +127,7 @@ class UserEncounterQueries:
             models.Team | None,
             models.Encounter,
             MatchReadContext | None,
-            int | None,
-            list[dict] | None,
-            int | None,
-            float | None,
-            float | None,
-            int | None,
+            _mappers.UserMatchStats | None,
         ]
     ]:
         """All (team, encounter, match) rows the user participated in.
@@ -143,120 +141,12 @@ class UserEncounterQueries:
           - Encounter.tournament; the live seats, their roster snapshots and the
             bracket position come from :meth:`get_encounter_contexts`
 
-        Row shape: (team, encounter, match, performance, heroes, impact_rank,
-        impact_points, overperformance_score, overperf_pos). ``overperf_pos`` is
-        the viewer's rank (1 = best) among all match participants by
-        OverperformanceScore, used to compute the MVP-impact badge.
+        Row shape: (team, encounter, match, stats). ``stats`` is the viewer's seat and totals plus every observed
+        member's totals (:meth:`get_user_match_stats`), ``None`` for a row without a match.
         """
-        performance_cte = (
-            sa.select(
-                _facts.c.match_id.label("match_id"),
-                _facts.c.value.label("value"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.match_id == _matches.c.id,
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.Performance,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                )
-            )
-            .cte("performance_cte")
-        )
-
-        impact_rank_cte = (
-            sa.select(
-                _facts.c.match_id.label("match_id"),
-                _facts.c.value.label("value"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.match_id == _matches.c.id,
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.ImpactRank,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                )
-            )
-            .cte("impact_rank_cte")
-        )
-
-        impact_points_cte = (
-            sa.select(
-                _facts.c.match_id.label("match_id"),
-                _facts.c.value.label("value"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.match_id == _matches.c.id,
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.ImpactPoints,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                )
-            )
-            .cte("impact_points_cte")
-        )
-
-        overperf_cte = (
-            sa.select(
-                _facts.c.match_id.label("match_id"),
-                _facts.c.player_id.label("user_id"),
-                _facts.c.value.label("value"),
-                sa.func.rank()
-                .over(
-                    partition_by=_facts.c.match_id,
-                    order_by=_facts.c.value.desc(),
-                )
-                .label("pos"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.stat_code == enums.LogStatsName.OverperformanceScore,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                )
-            )
-            .cte("overperf_cte")
-        )
-
-        heroes_cte = (
-            sa.select(
-                _facts.c.match_id.label("match_id"),
-                sa.func.jsonb_agg(aggregate_order_by(_HERO_JSON, _facts.c.entity_id)).label("value"),
-            )
-            .select_from(_facts)
-            .join(models.CatalogEntity, _facts.c.entity_id == models.CatalogEntity.id)
-            .where(
-                sa.and_(
-                    models.CatalogEntity.kind == "character",
-                    models.CatalogEntity.discipline == "overwatch",
-                    _facts.c.match_id == _matches.c.id,
-                    _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                    _facts.c.player_id == user_id,
-                    _facts.c.entity_id.isnot(None),
-                    _facts.c.value > 60,
-                    _facts.c.segment == 0,
-                )
-            )
-            .group_by(_facts.c.match_id)
-            .cte("heroes_cte")
-        )
-
         seat = Seat()
         query = (
-            sa.select(
-                models.Team,
-                models.Encounter,
-                _matches.c.id,
-                performance_cte.c.value.label("performance"),
-                heroes_cte.c.value.label("heroes"),
-                impact_rank_cte.c.value.label("impact_rank"),
-                impact_points_cte.c.value.label("impact_points"),
-                overperf_cte.c.value.label("overperformance_score"),
-                overperf_cte.c.pos.label("overperf_pos"),
-            )
+            sa.select(models.Team, models.Encounter, _matches.c.id)
             .select_from(seat.team)
             .options(
                 joinedload(models.Encounter.tournament),
@@ -267,14 +157,6 @@ class UserEncounterQueries:
         )
         query = (
             query.join(_matches, models.Encounter.id == _matches.c.encounter_id, isouter=True)
-            .outerjoin(performance_cte, performance_cte.c.match_id == _matches.c.id)
-            .outerjoin(heroes_cte, heroes_cte.c.match_id == _matches.c.id)
-            .outerjoin(impact_rank_cte, impact_rank_cte.c.match_id == _matches.c.id)
-            .outerjoin(impact_points_cte, impact_points_cte.c.match_id == _matches.c.id)
-            .outerjoin(
-                overperf_cte,
-                sa.and_(overperf_cte.c.match_id == _matches.c.id, overperf_cte.c.user_id == user_id),
-            )
             .where(*([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []))
             .order_by(
                 _PLAYED_AT.asc(),
@@ -286,10 +168,12 @@ class UserEncounterQueries:
 
         result = await session.execute(query)
         rows = result.unique(_team_encounter_match_identity).all()
-        reads = await get_match_reads(session, match_ids=[row[2] for row in rows if row[2] is not None])
+        match_ids = [row[2] for row in rows if row[2] is not None]
+        reads = await get_match_reads(session, match_ids=match_ids)
+        stats = await self.get_user_match_stats(session, user_id, list(reads.values()))
         return [
-            (team, encounter, reads[match_id] if match_id is not None else None, *stats)
-            for team, encounter, match_id, *stats in rows
+            (team, encounter, reads[match_id] if match_id is not None else None, stats.get(match_id))
+            for team, encounter, match_id in rows
         ]
 
     async def get_user_encounters_paginated(
@@ -304,31 +188,15 @@ class UserEncounterQueries:
         mvp1: bool = False,
         has_logs: bool | None = None,
         opponent: str | None = None,
-    ) -> tuple[
-        typing.Sequence[
-            tuple[
-                models.Encounter,
-                MatchReadContext | None,
-                int | None,
-                list[dict] | None,
-                int | None,
-                float | None,
-                float | None,
-                int | None,
-            ]
-        ],
-        int,
-    ]:
-        """Paginated user encounters with the viewer's per-match performance + heroes.
+    ) -> tuple[typing.Sequence[tuple[models.Encounter, MatchReadContext | None, _mappers.UserMatchStats | None]], int]:
+        """Paginated user encounters with the viewer's per-match totals and every observed member's.
 
         Loads `Encounter.tournament` and `Match.map`; the seats, rosters and bracket
         position come from :meth:`get_encounter_contexts`, so the mapper can populate
         the narrow EncounterReadWithUserStats shape without any further round-trips.
 
-        Row shape: (encounter, match, performance, heroes, impact_rank,
-        impact_points, overperformance_score, overperf_pos). ``overperf_pos`` is
-        the viewer's rank (1 = best) among all match participants by
-        OverperformanceScore, used to compute the MVP-impact badge.
+        Row shape: (encounter, match, stats); ``stats`` is :meth:`get_user_match_stats`'s entry, ``None`` for an
+        encounter without a match.
         """
         seat = Seat()
         history_seats = _user_history_seats(user_id)
@@ -473,135 +341,14 @@ class UserEncounterQueries:
             encounters_query = params.apply_pagination_sort(encounters_query)
         encounters_query = encounters_query.subquery()
 
-        paginated_match_ids = (
-            sa.select(_matches.c.id.label("match_id"))
-            .select_from(encounters_query)
-            .join(_matches, _matches.c.encounter_id == encounters_query.c.id)
-            .cte("paginated_match_ids")
-        )
-
-        performance_cte = (
-            sa.select(
-                _facts.c.match_id,
-                _facts.c.value.label("performance"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.Performance,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                    _facts.c.match_id.in_(sa.select(paginated_match_ids.c.match_id)),
-                )
-            )
-            .cte("performance_cte")
-        )
-
-        heroes_cte = (
-            sa.select(
-                _facts.c.match_id,
-                sa.func.jsonb_agg(aggregate_order_by(_HERO_JSON, _facts.c.entity_id)).label("heroes"),
-            )
-            .join(models.CatalogEntity, _facts.c.entity_id == models.CatalogEntity.id)
-            .where(
-                sa.and_(
-                    models.CatalogEntity.kind == "character",
-                    models.CatalogEntity.discipline == "overwatch",
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                    _facts.c.entity_id.isnot(None),
-                    _facts.c.value > 60,
-                    _facts.c.segment == 0,
-                    _facts.c.match_id.in_(sa.select(paginated_match_ids.c.match_id)),
-                )
-            )
-            .group_by(_facts.c.match_id)
-            .cte("heroes_cte")
-        )
-
-        impact_rank_cte = (
-            sa.select(
-                _facts.c.match_id,
-                _facts.c.value.label("impact_rank"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.ImpactRank,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                    _facts.c.match_id.in_(sa.select(paginated_match_ids.c.match_id)),
-                )
-            )
-            .cte("impact_rank_cte")
-        )
-
-        impact_points_cte = (
-            sa.select(
-                _facts.c.match_id,
-                _facts.c.value.label("impact_points"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.player_id == user_id,
-                    _facts.c.stat_code == enums.LogStatsName.ImpactPoints,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                    _facts.c.match_id.in_(sa.select(paginated_match_ids.c.match_id)),
-                )
-            )
-            .cte("impact_points_cte")
-        )
-
-        overperf_cte = (
-            sa.select(
-                _facts.c.match_id.label("match_id"),
-                _facts.c.player_id.label("user_id"),
-                _facts.c.value.label("overperformance_score"),
-                sa.func.rank()
-                .over(
-                    partition_by=_facts.c.match_id,
-                    order_by=_facts.c.value.desc(),
-                )
-                .label("overperf_pos"),
-            )
-            .where(
-                sa.and_(
-                    _facts.c.stat_code == enums.LogStatsName.OverperformanceScore,
-                    _facts.c.entity_id.is_(None),
-                    _facts.c.segment == 0,
-                    _facts.c.match_id.in_(sa.select(paginated_match_ids.c.match_id)),
-                )
-            )
-            .cte("overperf_cte")
-        )
-
         query = (
-            sa.select(
-                models.Encounter,
-                _matches.c.id,
-                performance_cte.c.performance,
-                heroes_cte.c.heroes,
-                impact_rank_cte.c.impact_rank,
-                impact_points_cte.c.impact_points,
-                overperf_cte.c.overperformance_score,
-                overperf_cte.c.overperf_pos,
-            )
+            sa.select(models.Encounter, _matches.c.id)
             .select_from(encounters_query)
             .options(
                 joinedload(models.Encounter.tournament),
             )
             .join(models.Encounter, encounters_query.c.id == models.Encounter.id)
             .join(_matches, models.Encounter.id == _matches.c.encounter_id, isouter=True)
-            .join(performance_cte, performance_cte.c.match_id == _matches.c.id, isouter=True)
-            .join(heroes_cte, heroes_cte.c.match_id == _matches.c.id, isouter=True)
-            .join(impact_rank_cte, impact_rank_cte.c.match_id == _matches.c.id, isouter=True)
-            .join(impact_points_cte, impact_points_cte.c.match_id == _matches.c.id, isouter=True)
-            .join(
-                overperf_cte,
-                sa.and_(overperf_cte.c.match_id == _matches.c.id, overperf_cte.c.user_id == user_id),
-                isouter=True,
-            )
         )
         if params.sort in ("played_at", "round"):
             descending = params.order == pagination.SortOrder.DESC or params.order == "desc"
@@ -616,16 +363,94 @@ class UserEncounterQueries:
             query = params.apply_sort(query)
         result = await session.execute(query)
         total_result = await session.execute(total_query)
-        # Heroes contain unhashable JSON lists, so deduplicate on native ids.
         rows = result.unique(_encounter_match_identity).all()
         reads = await get_match_reads(session, match_ids=[row[1] for row in rows if row[1] is not None])
+        stats = await self.get_user_match_stats(session, user_id, list(reads.values()))
         return (
             [
-                (encounter, reads[match_id] if match_id is not None else None, *stats)
-                for encounter, match_id, *stats in rows
+                (encounter, reads[match_id] if match_id is not None else None, stats.get(match_id))
+                for encounter, match_id in rows
             ],
             total_result.scalar_one(),
         )
+
+    async def get_user_match_stats(
+        self, session: AsyncSession, user_id: int, reads: typing.Sequence[MatchReadContext]
+    ) -> dict[int, _mappers.UserMatchStats]:
+        """The viewer's seat and totals, and every observed member's whole-match totals, for a batch of matches.
+
+        Three reads for any number of matches: the observed members, their segment-0 NULL-entity facts (everyone's
+        totals, one query -- the discipline's badge ranks the viewer against the whole match), and the characters
+        the viewer played. A match the viewer was not observed in has totals but no ``viewer``.
+        """
+        ids = [read.match.id for read in reads]
+        if not ids:
+            return {}
+        viewer_members = {
+            row.match_id: row
+            for row in await get_match_members(session, match_ids=ids)
+            if row.player_id is not None and row.player_id == user_id
+        }
+        totals: dict[int, list[NativeFact]] = {}
+        for match_id, team_id, member_id, code, value in await session.execute(
+            sa.select(
+                _facts.c.match_id,
+                _facts.c.encounter_team_id,
+                _facts.c.workspace_member_id,
+                _facts.c.stat_code,
+                _facts.c.value,
+            )
+            .where(_facts.c.match_id.in_(ids), _facts.c.segment == 0, _facts.c.entity_id.is_(None))
+            .order_by(_facts.c.match_id, _facts.c.encounter_team_id, _facts.c.workspace_member_id, _facts.c.stat_code)
+        ):
+            totals.setdefault(match_id, []).append(
+                NativeFact(
+                    encounter_team_id=team_id,
+                    workspace_member_id=member_id,
+                    entity_id=None,
+                    segment=0,
+                    stat_code=code,
+                    value=float(value),
+                )
+            )
+        # The ``> 60`` playtime eligibility is the OW module's rule for "played this character".
+        characters: dict[int, list[CatalogEntityRead]] = {}
+        for match_id, entity in await session.execute(
+            sa.select(_facts.c.match_id, models.CatalogEntity)
+            .join(models.CatalogEntity, _facts.c.entity_id == models.CatalogEntity.id)
+            .where(
+                models.CatalogEntity.kind == "character",
+                models.CatalogEntity.discipline == "overwatch",
+                _facts.c.match_id.in_(ids),
+                _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                _facts.c.player_id == user_id,
+                _facts.c.entity_id.isnot(None),
+                _facts.c.value > 60,
+                _facts.c.segment == 0,
+            )
+            .order_by(_facts.c.match_id, _facts.c.entity_id)
+        ):
+            characters.setdefault(match_id, []).append(CatalogEntityRead.from_entity(entity, with_parent=False))
+        output = {}
+        for match_id in ids:
+            member = viewer_members.get(match_id)
+            member_totals = totals.get(match_id, [])
+            viewer = (
+                None
+                if member is None
+                else UserMatchViewer(
+                    encounter_team_id=member.encounter_team_id,
+                    workspace_member_id=member.workspace_member_id,
+                    facts={
+                        fact.stat_code: fact.value
+                        for fact in member_totals
+                        if fact.workspace_member_id == member.workspace_member_id
+                    },
+                    characters=characters.get(match_id, []),
+                )
+            )
+            output[match_id] = _mappers.UserMatchStats(viewer=viewer, member_totals=member_totals)
+        return output
 
     async def get_encounter_contexts(
         self, session: AsyncSession, encounter_ids: typing.Collection[int]

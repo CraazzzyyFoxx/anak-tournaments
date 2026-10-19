@@ -594,7 +594,7 @@ class AdminEncounterService:
         binding = (
             await session.execute(
                 select(models.StatsMatch.encounter_game_id, models.StatsMatch.encounter_id).where(
-                    models.StatsMatch.id == match_id, models.StatsMatch.discipline == "overwatch"
+                    models.StatsMatch.id == match_id
                 )
             )
         ).first()
@@ -628,19 +628,28 @@ class AdminEncounterService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stats_match_map_binding_conflict")
         scopes = owner_scopes("match", (match_id,))
         source = "admin" if actor is not None else "system"
+        participants = {participant.seat.id: participant for participant in read.participants}
         scores = {}
-        for side in ("home", "away"):
-            field = f"{side}_score"
-            if field in changes and changes[field] != getattr(read, field):
-                scores[getattr(read, f"{side}_participation").id] = changes[field]
+        for fact in changes.get("team_facts") or ():
+            participant = participants.get(fact["encounter_team_id"])
+            if participant is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="match_participant_unknown"
+                )
+            if fact["value"] != participant.team_facts.get("score"):
+                scores[participant.seat.id] = fact["value"]
         if scores:
             before = await capture_stats_evidence(session, scopes=scopes)
-            await self.match_repo.set_team_scores(
-                session,
-                match_id=match_id,
-                discipline=read.match.discipline,
-                scores=scores,
-            )
+            try:
+                await self.match_repo.set_team_scores(
+                    session,
+                    match_id=match_id,
+                    discipline=read.match.discipline,
+                    scores=scores,
+                )
+            except ValueError as error:
+                # The discipline declares no ``score`` statistic: nothing to edit, not a server fault.
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
             after = await capture_stats_evidence(session, scopes=scopes)
             await stage_stats_evidence(
                 session,
@@ -653,9 +662,9 @@ class AdminEncounterService:
                 source=source,
                 actor=actor,
             )
-        if "time" in changes and changes["time"] != read.match.duration_s:
+        if "duration_s" in changes and changes["duration_s"] != read.match.duration_s:
             before = await capture_stats_evidence(session, scopes=scopes)
-            read.match.duration_s = changes["time"]
+            read.match.duration_s = changes["duration_s"]
             await session.flush()
             after = await capture_stats_evidence(session, scopes=scopes)
             await stage_stats_evidence(

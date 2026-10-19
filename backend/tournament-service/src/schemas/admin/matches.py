@@ -21,11 +21,8 @@ from pydantic import BaseModel
 
 from shared.core import pagination
 from shared.models.stats.ingest import IngestJobStatus
-
-# The team ref is shared with the reports list rather than duplicated: both
-# surfaces mean the same thing by "a team, reduced to what a table cell shows",
-# and two identical models would drift.
-from src.schemas.admin.encounter_reports import EncounterTeamRef
+from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.match import MatchRead
 
 __all__ = (
     "AdminMatchDetail",
@@ -58,25 +55,15 @@ class LogRecordRef(BaseModel):
     finished_at: datetime | None
 
 
-class AdminMatchRow(BaseModel):
-    """One observed map. Deleted source teams and absent raw provenance stay null."""
+class AdminMatchRow(MatchRead):
+    """One observed map: the native match header (participants, official result lines, observed team facts) plus the
+    admin context. Deleted source teams and absent raw provenance stay null."""
 
-    id: int
-    encounter_id: int
+    #: Always expanded, with its mode as ``parent``.
+    map: CatalogEntityRead
     encounter_name: str
     tournament_id: int
     tournament_name: str
-    map_id: int
-    map_name: str
-    home_team: EncounterTeamRef | None
-    away_team: EncounterTeamRef | None
-    home_score: int
-    away_score: int
-    #: Map duration in seconds.
-    time: float | None
-    #: Display filename only; downloads resolve the job's actual raw_ref.
-    log_name: str | None
-    created_at: datetime
     #: None means no raw log is available for this observation.
     log_record: LogRecordRef | None
 

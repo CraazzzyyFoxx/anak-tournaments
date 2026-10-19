@@ -252,13 +252,19 @@ Wire/runtime changes:
 - Parsed matches belong directly to an authoritative encounter. A nullable unique `encounter_game_id`
   carries only a proven game association; `source_map_index` preserves the original claim separately.
   Obsolete match `source` and `code` fields are removed; replay codes and official result sources remain.
-- Public home/away fields follow historical encounter slots, not log array order. The original
-  7,348-match parity snapshot contained 3,691 reversed observations. Analytics retains original `source_position`;
-  observed scores never replace official results. Only a proven game determines map ordering;
-  unbound observations remain visible as unordered history and continue to contribute ordinary statistics.
-- Detailed statistics use native `home_participation` / `away_participation` and observed-player
-  snapshots, independently of nullable source-team metadata or current rosters. Deleted source teams
-  do not remove observed numbers, and a dossier includes each observation only once across historical seats.
+- A match lists every participant it observed (any number, `participants`), in historical encounter slot order,
+  not log array order; each carries its own `source_position`, optional `tournament_team_id`, the bound game's
+  official `result` and its observed segment-0 `team_facts` (an unobserved fact is an absent key, never zero). There
+  is no home/away pair. The original 7,348-match parity snapshot contained 3,691 reversed observations. Analytics
+  retains original `source_position`; observed scores never replace official results. Only a proven game determines
+  map ordering; unbound observations remain visible as unordered history and continue to contribute ordinary
+  statistics.
+- `GET /api/v1/matches/{id}` adds a `statistics` document of the match's members (event-only members included),
+  segments (positive only; segment 0 is the whole match) and every fact at every grain with the characters the facts
+  name, and `GET /api/v1/matches/{id}/kill-feed` serves the whole event timeline; both use the match's own discipline,
+  independently of nullable source-team metadata or current rosters. Deleted source teams do not remove observed
+  numbers, and a dossier includes each observation only once across historical seats. User match rows carry the
+  viewer's whole-match `facts` and every observed member's `member_totals`; achievement links carry `participants`.
 - Admin writes reject obsolete fields, arbitrary team rebinding and maps conflicting with the game.
   New uploads use real content hashes and stored object references; unresolved valid uploads remain
   `awaiting_link`, not falsely successful. Downloads use the exact stored key.

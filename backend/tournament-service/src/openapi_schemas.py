@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
+from shared.schemas.match import MatchEventsRead
 from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
 from shared.services.bracket.template import BracketTemplate
 from shared.services.chat import (
@@ -47,7 +48,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.get_team": Op(response=schemas.TeamRead, query_params=(_ENTITIES,)),
     "rpc.tournament.get_encounter": Op(response=schemas.EncounterRead, query_params=(_ENTITIES,)),
     "rpc.tournament.get_match": Op(response=schemas.MatchReadWithStats, query_params=(_ENTITIES, _WS)),
-    "rpc.tournament.get_match_kill_feed": Op(response=schemas.MatchKillFeedRead, query_params=(_WS,)),
+    "rpc.tournament.get_match_kill_feed": Op(response=MatchEventsRead, query_params=(_WS,)),
     "rpc.tournament.encounters_overview": Op(
         response=schemas.EncounterOverviewRead, query=schemas.EncounterSearchQueryParams
     ),
@@ -456,9 +457,7 @@ OPERATIONS: dict[str, Op] = {
     # Same shape as rpc.tournament.ffa_stage, minus the public_view trim.
     "rpc.tournament.ffa_stage_admin": Op(response=ffa_schemas.FfaLobbyRead, response_array=True),
     # ── per-map match edit (admin) ─────────────────────────────────────────
-    # Answers an ad-hoc dict of the match's own columns rather than MatchRead, so
-    # only the request body is mapped here.
-    "rpc.tournament.encounter_update_match": Op(request=schemas.MatchUpdate),
+    "rpc.tournament.encounter_update_match": Op(request=schemas.MatchUpdate, response=schemas.MatchRead),
     # ── captain pick/ban + map reporting (request bodies only) ─────────────
     # Each of these answers the room's ad-hoc state dict -- the pick-ban state,
     # one serialized entry, the undo block, the reconciliation verdict -- not a

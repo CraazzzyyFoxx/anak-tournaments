@@ -2,7 +2,7 @@ import typing
 
 from pydantic import BaseModel
 
-from .base import BaseRead, Score
+from .base import BaseRead
 
 __all__ = (
     "AchievementListQueryParams",
@@ -11,10 +11,10 @@ __all__ = (
     "AchievementEarned",
     "AchievementTournamentLink",
     "AchievementMatchLink",
-    "AchievementMatchTeamRef",
 )
 
 from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.match import MatchParticipantRead
 from src.core import pagination
 from src.schemas import UserRead
 
@@ -53,25 +53,16 @@ class AchievementTournamentLink(BaseModel):
     is_league: bool
 
 
-class AchievementMatchTeamRef(BaseModel):
-    """Bare team reference for `AchievementMatchLink.{home,away}_team`."""
-
-    id: int
-    name: str
-    image_url: str | None = None
-
-
 class AchievementMatchLink(BaseModel):
-    """Narrow match reference for achievement payloads."""
+    """Narrow match reference for achievement payloads: the match and every participant, in slot order."""
 
     id: int
     encounter_id: int
     map_id: int
-    score: Score
     log_name: str | None
-    time: float | None
-    home_team: AchievementMatchTeamRef | None = None
-    away_team: AchievementMatchTeamRef | None = None
+    #: Seconds.
+    duration_s: float | None
+    participants: list[MatchParticipantRead]
 
 
 class UserAchievementRead(AchievementRead):

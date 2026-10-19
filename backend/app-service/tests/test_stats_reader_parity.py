@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DEFAULT_GRID
 from shared.schemas.role import RoleRef
 from shared.testing import configure_test_cache
@@ -57,30 +58,114 @@ def _json(value: Any) -> Any:
         return _json(tuple(value))
     if isinstance(value, Mapping):
         result = {str(_json(key)): _json(item) for key, item in value.items()}
-        if {"encounter_id", "map_id", "score"}.issubset(result):
-            # P4 intentionally removes source/code and presents slot orientation.
-            # Retain every team's identity, score and optional expanded metadata.
-            result.pop("code", None)
-            result.pop("source", None)
-            # Raw capability is new provenance, not a change to frozen numerical facts.
-            result.pop("raw_status", None)
-            result.pop("raw_available", None)
-            score = result.pop("score")
-            participants = []
-            for side in ("home", "away"):
-                team = result.pop(f"{side}_team", None)
-                team_id = result.pop(f"{side}_team_id", team["id"] if team else None)
-                participant = {"team_id": team_id, "score": score[side]}
-                if team is not None:
-                    participant["team"] = team
-                participants.append(participant)
-            result["participants"] = sorted(participants, key=lambda item: (item["team_id"] is None, item["team_id"]))
+        if {"participants", "encounter_id", "map_id", "duration_s"} <= result.keys():
+            return _frozen_match(result)
+        if {"workspace_id", "discipline", "is_league", "team_id", "players"} <= result.keys():
+            # The owner context P7 added to a user's tournament row; it is not reader output the frozen capture had.
+            del result["workspace_id"], result["discipline"]
         return result
     if isinstance(value, (list, tuple)):
         return [_json(item) for item in value]
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     raise TypeError(f"Unnormalized app parity value: {type(value).__name__}")
+
+
+#: Source teams as the frozen achievement link carried them; loaded by ``collect_outputs`` from the real rows.
+_TEAMS: dict[int, dict[str, Any]] = {}
+
+
+def _whole(value: float | None) -> int | float | None:
+    """The frozen oracle spelled whole scores as integers."""
+    return int(value) if value is not None and float(value).is_integer() else value
+
+
+def _frozen_hero(entity: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "aliases": entity["aliases"],
+        "color": entity["attrs"].get("color") or "#ffffff",
+        "id": entity["id"],
+        "image_path": entity["image_path"] or "",
+        "name": entity["name"],
+        "slug": entity["slug"],
+        "type": entity["attrs"].get("class"),
+    }
+
+
+def _frozen_map(entity: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A native map entity in the frozen ``MapRead`` representation (its mode is ``gamemode``)."""
+    if entity is None:
+        return None
+    parent = entity["parent"]
+    return {
+        "aliases": entity["aliases"],
+        "id": entity["id"],
+        "name": entity["name"],
+        "image_path": entity["image_path"] or "",
+        "gamemode_id": entity["parent_id"],
+        "in_competitive": entity["attrs"].get("in_competitive", True),
+        "gamemode": None
+        if parent is None
+        else {
+            "aliases": parent["aliases"],
+            "description": parent["attrs"].get("description"),
+            "id": parent["id"],
+            "image_path": parent["image_path"] or "",
+            "name": parent["name"],
+            "slug": parent["slug"],
+        },
+    }
+
+
+def _frozen_match(match: dict[str, Any]) -> dict[str, Any]:
+    """A native match row in the frozen per-participant representation (projection only, never a recomputation).
+
+    The frozen user row carried the viewer's performance/impact/overperformance values, a badge and their heroes. They
+    are the viewer's whole-match facts, and the badge is the old rule over the match's members' totals: top competition
+    rank (ties share it) by ``overperformance_score`` and at least ``BADGE_THRESHOLD``.
+    """
+    participants = sorted(
+        (
+            {
+                "team_id": participant["tournament_team_id"],
+                "score": _whole(participant["team_facts"].get("score")),
+                "encounter_team_id": participant["encounter_team_id"],
+                **(
+                    {"team": _TEAMS[participant["tournament_team_id"]]}
+                    if "viewer" not in match and participant["tournament_team_id"] is not None
+                    else {}
+                ),
+            }
+            for participant in match["participants"]
+        ),
+        key=lambda participant: participant["encounter_team_id"],
+    )
+    row = {
+        "id": match["id"],
+        "encounter_id": match["encounter_id"],
+        "map_id": match["map_id"],
+        "log_name": match["log_name"],
+        "time": match["duration_s"],
+        "participants": participants,
+    }
+    if "member_totals" not in match:
+        return row
+    viewer = match["viewer"]
+    facts = viewer["facts"] if viewer is not None else {}
+    score = facts.get("overperformance_score")
+    scores = [fact["value"] for fact in match["member_totals"] if fact["stat_code"] == "overperformance_score"]
+    position = None if score is None else 1 + sum(value > score for value in scores)
+    row.update(
+        map_index=match["map_index"],
+        map=_frozen_map(match["map"]),
+        performance=None if "performance" not in facts else int(facts["performance"]),
+        impact_rank=None if "impact_rank" not in facts else int(facts["impact_rank"]),
+        impact_points=facts.get("impact_points"),
+        overperformance_score=score,
+        overperformance_badge=position == 1 and score >= BADGE_THRESHOLD,
+        heroes=[] if viewer is None else [_frozen_hero(entity) for entity in viewer["characters"]],
+    )
+    return row
 
 
 def _hero_stat_rows(rows: Any) -> list[Any]:
@@ -216,6 +301,15 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
     if session.bind is None:
         raise ValueError("App parity requires an AsyncSession bound to its isolated database")
     configure_test_cache()
+    _TEAMS.clear()
+    _TEAMS.update(
+        {
+            team_id: {"id": team_id, "image_url": image_url, "name": name}
+            for team_id, name, image_url in (
+                await session.execute(sa.select(models.Team.id, models.Team.name, models.Team.image_url))
+            ).all()
+        }
+    )
     user_module = import_module("src.services.user.service")
     original_factory = user_module.async_session_maker
     user_module.async_session_maker = async_sessionmaker(session.bind, expire_on_commit=False)
@@ -508,29 +602,6 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
                 )
             )
             output["tournaments"][tournament_key] = item
-        seat_ids = {
-            (encounter_id, team_id): seat_id
-            for encounter_id, team_id, seat_id in (
-                await session.execute(
-                    sa.select(
-                        models.EncounterTeam.encounter_id,
-                        models.EncounterTeam.team_id,
-                        models.EncounterTeam.id,
-                    )
-                )
-            ).all()
-        }
-        pending: list[Any] = [output]
-        while pending:
-            value = pending.pop()
-            if isinstance(value, dict):
-                if "participants" in value and "encounter_id" in value:
-                    for participant in value["participants"]:
-                        participant["encounter_team_id"] = seat_ids[(value["encounter_id"], participant["team_id"])]
-                    value["participants"].sort(key=lambda participant: participant["encounter_team_id"])
-                pending.extend(value.values())
-            elif isinstance(value, list):
-                pending.extend(value)
         return _json(output)
     finally:
         user_module.async_session_maker = original_factory
@@ -744,8 +815,10 @@ def test_native_public_matches_use_slots_and_achievement_revoke_is_effective(
             reverse = next(
                 match for encounter in encounters for match in encounter.matches if match.id == ids["match_reversed"]
             )
-            assert (reverse.home_team_id, reverse.away_team_id) == (ids["team_home"], ids["team_away"])
-            assert (reverse.score.home, reverse.score.away) == (4, 3)
+            assert [(p.tournament_team_id, p.team_facts["score"]) for p in reverse.participants] == [
+                (ids["team_home"], 4),
+                (ids["team_away"], 3),
+            ]
             earned = await achievements.get_user_achievements(
                 session,
                 ids["player_away"],
@@ -754,8 +827,10 @@ def test_native_public_matches_use_slots_and_achievement_revoke_is_effective(
             )
             assert [rule.id for rule in earned] == [ids["rule"]]
             link = next(match for match in earned[0].matches if match.id == ids["match_reversed"])
-            assert (link.home_team.id, link.away_team.id) == (ids["team_home"], ids["team_away"])
-            assert (link.score.home, link.score.away) == (4, 3)
+            assert [(p.tournament_team_id, p.team_facts["score"]) for p in link.participants] == [
+                (ids["team_home"], 4),
+                (ids["team_away"], 3),
+            ]
             await session.execute(
                 sa.update(AchievementOverride.__table__)
                 .where(
@@ -940,13 +1015,17 @@ def test_native_match_expansions_keep_inactive_game_participants(
             )
             reads = await achievements.queries.get_matches_bulk(session, [ids["match_reversed"]])
             assert len(reads) == 1
-            profile = to_match_with_user_stats(reads[0], performance=None, heroes=None)
+            profile = to_match_with_user_stats(reads[0])
             achievement = to_match_link(reads[0])
-            assert (profile.home_team_id, profile.away_team_id) == (ids["team_home"], ids["team_away"])
-            assert (profile.score.home, profile.score.away) == (4, 3)
+            expected = [
+                (ids["encounter_team_home"], ids["team_home"], 4),
+                (ids["encounter_team_away"], ids["team_away"], 3),
+            ]
+            for match in (profile, achievement):
+                assert [
+                    (p.encounter_team_id, p.tournament_team_id, p.team_facts["score"]) for p in match.participants
+                ] == expected
             assert profile.map_index == 2
-            assert (achievement.home_team.id, achievement.away_team.id) == (ids["team_home"], ids["team_away"])
-            assert (achievement.score.home, achievement.score.away) == (4, 3)
             await session.rollback()
 
     asyncio.run(run())
@@ -998,8 +1077,10 @@ def test_unbound_history_survives_retired_seats_and_roster_changes(stats_parity_
             match = next(match for match in history.matches if match.id == ids["match_reversed"])
             assert match.encounter_id == ids["encounter"]
             assert match.map_index is None  # source_map_index is never official order.
-            assert (match.home_team_id, match.away_team_id) == (ids["team_home"], ids["team_away"])
-            assert (match.score.home, match.score.away) == (4, 3)
+            assert [(p.tournament_team_id, p.team_facts["score"]) for p in match.participants] == [
+                (ids["team_home"], 4),
+                (ids["team_away"], 3),
+            ]
             assert history.teams == []  # Historical observations do not resurrect live seats.
             assert match.raw_status == "missing"
             assert match.raw_available is False
@@ -1008,8 +1089,10 @@ def test_unbound_history_survives_retired_seats_and_roster_changes(stats_parity_
             )
             link = next(match for match in earned[0].matches if match.id == ids["match_reversed"])
             assert link.encounter_id == ids["encounter"]
-            assert (link.home_team.id, link.away_team.id) == (ids["team_home"], ids["team_away"])
-            assert (link.score.home, link.score.away) == (4, 3)
+            assert [(p.tournament_team_id, p.team_facts["score"]) for p in link.participants] == [
+                (ids["team_home"], 4),
+                (ids["team_away"], 3),
+            ]
             page = await _uncached(
                 users.get_encounters_by_user,
                 session,
@@ -1084,13 +1167,15 @@ def test_native_match_hero_arrays_ignore_fact_insertion_order(
                 tournament_id=ids["tournament"],
             )
             paginated_heroes = next(
-                row[3] for row in paginated if row[1] is not None and row[1].match.id == ids["match"]
+                row[2].viewer.characters for row in paginated if row[1] is not None and row[1].match.id == ids["match"]
             )
             unpaginated_heroes = next(
-                row[4] for row in unpaginated if row[2] is not None and row[2].match.id == ids["match"]
+                row[3].viewer.characters
+                for row in unpaginated
+                if row[2] is not None and row[2].match.id == ids["match"]
             )
-            assert [hero["id"] for hero in paginated_heroes] == [ids["hero"], ids["hero_other"]]
-            assert [hero["id"] for hero in unpaginated_heroes] == [ids["hero"], ids["hero_other"]]
+            assert [hero.id for hero in paginated_heroes] == [ids["hero"], ids["hero_other"]]
+            assert [hero.id for hero in unpaginated_heroes] == [ids["hero"], ids["hero_other"]]
             await session.rollback()
 
     asyncio.run(run())

@@ -2,9 +2,8 @@
 
 Mirrors the fixture style of ``test_user.py`` (same ``rpc: RpcHarness`` /
 ``db: Session`` fixtures, fixed-id idempotent setup via native observed games)
-but exercises the NEW ``impact_rank`` / ``impact_points`` / ``overperformance_score``
-/ ``overperformance_badge`` fields on ``GET /users/{id}/encounters`` ->
-``rpc.app.users.encounters``.
+but exercises the viewer's whole-match facts and every observed member's totals on ``GET /users/{id}/encounters`` ->
+``rpc.app.users.encounters`` (the MVP badge is the renderer's rule over them).
 
 These are DB-integration tests: the ``rpc`` fixture skips cleanly when no local
 ``anak_dev`` Postgres is reachable (see ``conftest.py``), which is the expected
@@ -220,13 +219,25 @@ def _get_encounters(rpc: RpcHarness, user_id: int, workspace_id: int) -> dict:
     return env["data"]
 
 
-def test_get_user_encounters_impact_rank_and_overperformance_badge(rpc: RpcHarness, db: Session) -> None:
-    """MVP impact fields on user match reads (task 8):
+def _badge(match: dict) -> bool:
+    """The OW renderer's rule over the wire: top competition rank (ties share it) by overperformance among the
+    match's observed members, and at least ``BADGE_THRESHOLD``."""
+    viewer = match["viewer"]
+    score = None if viewer is None else viewer["facts"].get("overperformance_score")
+    if score is None:
+        return False
+    scores = [fact["value"] for fact in match["member_totals"] if fact["stat_code"] == "overperformance_score"]
+    return 1 + sum(value > score for value in scores) == 1 and score >= BADGE_THRESHOLD
+
+
+def test_get_user_encounters_carry_viewer_facts_and_every_members_totals(rpc: RpcHarness, db: Session) -> None:
+    """MVP impact inputs on user match reads: the wire ships the viewer's whole-match facts and every observed
+    member's totals; the badge is the renderer's rule over them, never a derived field.
 
     - top-1 OverperformanceScore in the match, score >= BADGE_THRESHOLD -> badge True
     - present but not top-1 in the match -> badge False
     - trivially top-1 (only entrant) but below BADGE_THRESHOLD -> badge False
-    - no impact rows at all for that match -> impact_rank is None, badge False
+    - no observed member at all for that match -> no viewer, no totals, badge False
     """
     ids = _ensure_impact_badge_fixture(db)
 
@@ -235,23 +246,30 @@ def test_get_user_encounters_impact_rank_and_overperformance_badge(rpc: RpcHarne
     assert len(results_a) == 1
     matches_a = results_a[0]["matches"]
     assert len(matches_a) == 3
+    assert {"impact_rank", "impact_points", "overperformance_score", "overperformance_badge"}.isdisjoint(matches_a[0])
 
     with_impact_a = _find_match(matches_a, ids["match_with_impact"])
-    assert with_impact_a["impact_rank"] == 1
-    assert with_impact_a["impact_points"] == pytest.approx(3.4)
-    assert with_impact_a["overperformance_score"] == pytest.approx(_OVERPERF_A_TOP)
-    assert with_impact_a["overperformance_badge"] is True
+    facts_a = with_impact_a["viewer"]["facts"]
+    assert facts_a["impact_rank"] == 1
+    assert facts_a["impact_points"] == pytest.approx(3.4)
+    assert facts_a["overperformance_score"] == pytest.approx(_OVERPERF_A_TOP)
+    # Both observed members' totals are on the row: the badge ranks the viewer against the whole match.
+    assert {fact["workspace_member_id"] for fact in with_impact_a["member_totals"]} == {
+        ids["workspace_member_a"],
+        ids["workspace_member_b"],
+    }
+    assert {(fact["segment"], fact["entity_id"]) for fact in with_impact_a["member_totals"]} == {(0, None)}
+    assert _badge(with_impact_a) is True
 
     without_impact_a = _find_match(matches_a, ids["match_without_impact"])
-    assert without_impact_a["impact_rank"] is None
-    assert without_impact_a["impact_points"] is None
-    assert without_impact_a["overperformance_score"] is None
-    assert without_impact_a["overperformance_badge"] is False
+    assert without_impact_a["viewer"] is None
+    assert without_impact_a["member_totals"] == []
+    assert _badge(without_impact_a) is False
 
     below_threshold_a = _find_match(matches_a, ids["match_below_threshold"])
-    assert below_threshold_a["impact_rank"] == 1
-    assert below_threshold_a["overperformance_score"] == pytest.approx(_OVERPERF_A_BELOW_THRESHOLD)
-    assert below_threshold_a["overperformance_badge"] is False  # top-1 but below BADGE_THRESHOLD
+    assert below_threshold_a["viewer"]["facts"]["impact_rank"] == 1
+    assert below_threshold_a["viewer"]["facts"]["overperformance_score"] == pytest.approx(_OVERPERF_A_BELOW_THRESHOLD)
+    assert _badge(below_threshold_a) is False  # top-1 but below BADGE_THRESHOLD
 
     content_b = _get_encounters(rpc, ids["user_b"], ids["workspace"])
     results_b = content_b["results"]
@@ -259,6 +277,6 @@ def test_get_user_encounters_impact_rank_and_overperformance_badge(rpc: RpcHarne
     matches_b = results_b[0]["matches"]
 
     with_impact_b = _find_match(matches_b, ids["match_with_impact"])
-    assert with_impact_b["impact_rank"] == 2
-    assert with_impact_b["overperformance_score"] == pytest.approx(_OVERPERF_B_SECOND)
-    assert with_impact_b["overperformance_badge"] is False  # not top-1 in the match
+    assert with_impact_b["viewer"]["facts"]["impact_rank"] == 2
+    assert with_impact_b["viewer"]["facts"]["overperformance_score"] == pytest.approx(_OVERPERF_B_SECOND)
+    assert _badge(with_impact_b) is False  # not top-1 in the match

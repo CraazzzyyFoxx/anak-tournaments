@@ -82,10 +82,10 @@ def team_scores(*, discipline: str, stat_code: str) -> sa.Subquery:
     )
 
 
-def match_context(*, discipline: str) -> sa.Subquery:
-    """Match headers with their real game position and encounter owner."""
+def match_context(*, discipline: str | None = None) -> sa.Subquery:
+    """Match headers with their real game position and encounter owner; ``None`` spans every discipline."""
     m, g, e = models.StatsMatch, models.EncounterGame, models.Encounter
-    return (
+    query = (
         sa.select(*m.__table__.c, g.position, e.tournament_id, e.custom_game_id)
         .select_from(m)
         .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
@@ -93,6 +93,8 @@ def match_context(*, discipline: str) -> sa.Subquery:
             g,
             sa.and_(g.id == m.encounter_game_id, g.encounter_id == m.encounter_id, g.map_id == m.map_entity_id),
         )
-        .where(m.discipline == discipline, sa.or_(m.encounter_game_id.is_(None), g.id.is_not(None)))
-        .subquery()
+        .where(sa.or_(m.encounter_game_id.is_(None), g.id.is_not(None)))
     )
+    if discipline is not None:
+        query = query.where(m.discipline == discipline)
+    return query.subquery()

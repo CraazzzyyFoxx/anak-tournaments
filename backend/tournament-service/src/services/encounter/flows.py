@@ -12,12 +12,14 @@ from shared.repository import (
     TeamRepository,
 )
 from shared.repository.stats_reads import MatchReadContext
+from shared.schemas.match import MatchEventsRead
 from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
     resolve_encounter_challonge,
     resolve_tournament_challonge,
 )
+from shared.services.match_reads import match_events_read, match_header_fields, match_statistics_read
 from src import models, schemas
 from src.core import config, errors, pagination, utils
 from src.services.encounter.service import EncounterService, encounter_service
@@ -312,7 +314,7 @@ class EncounterFlowsService:
             team_cache[team.id] = read
         return read
 
-    async def to_pydantic_match(
+    async def _match_fields(
         self,
         session: AsyncSession,
         match: MatchReadContext,
@@ -320,29 +322,9 @@ class EncounterFlowsService:
         *,
         team_cache: dict[int, schemas.TeamRead] | None = None,
         tournament_cache: dict[int, schemas.TournamentRead] | None = None,
-    ) -> schemas.MatchRead:
-        """Serialize explicit native match/game/participant observations."""
-        home_team: schemas.TeamRead | None = None
-        away_team: schemas.TeamRead | None = None
+    ) -> dict[str, typing.Any]:
+        """The ``MatchRead`` fields of one context: the shared header, and the encounter when asked for."""
         encounter: schemas.EncounterRead | None = None
-        map_read: schemas.MapRead | None = None
-
-        if "teams" in entities or "home_team" in entities:
-            teams_entities = (
-                utils.prepare_entities(entities, "teams")
-                if "teams" in entities
-                else utils.prepare_entities(entities, "home_team")
-            )
-            if match.home_team is not None:
-                home_team = await self._cached_team_read(session, match.home_team, teams_entities, team_cache)
-        if "teams" in entities or "away_team" in entities:
-            teams_entities = (
-                utils.prepare_entities(entities, "teams")
-                if "teams" in entities
-                else utils.prepare_entities(entities, "away_team")
-            )
-            if match.away_team is not None:
-                away_team = await self._cached_team_read(session, match.away_team, teams_entities, team_cache)
         if "encounter" in entities:
             encounter = await self.to_pydantic(
                 session,
@@ -355,31 +337,29 @@ class EncounterFlowsService:
                 tournament_cache=tournament_cache,
                 team_cache=team_cache,
             )
-        if "map" in entities:
-            map_read = map_to_read(match.map, utils.prepare_entities(entities, "map"))
+        return {
+            **match_header_fields(
+                match,
+                with_map="map" in entities,
+                with_parent="parent" in utils.prepare_entities(entities, "map"),
+            ),
+            "encounter": encounter,
+        }
 
+    async def to_pydantic_match(
+        self,
+        session: AsyncSession,
+        match: MatchReadContext,
+        entities: list[str],
+        *,
+        team_cache: dict[int, schemas.TeamRead] | None = None,
+        tournament_cache: dict[int, schemas.TournamentRead] | None = None,
+    ) -> schemas.MatchRead:
+        """Serialize one native match: its participants, official result lines and observed team facts."""
         return schemas.MatchRead(
-            id=match.match.id,
-            created_at=match.match.created_at,
-            updated_at=match.match.updated_at,
-            time=match.match.duration_s,
-            log_name=match.display_filename,
-            raw_status=match.job.raw_status if match.job is not None else None,
-            raw_available=match.job.raw_available if match.job is not None else False,
-            encounter_id=match.encounter.id,
-            map_id=match.match.map_entity_id,
-            map_index=match.game.position if match.game is not None else None,
-            workspace_id=match.match.workspace_id,
-            discipline=match.match.discipline,
-            home_team_id=match.home_team.id if match.home_team is not None else None,
-            away_team_id=match.away_team.id if match.away_team is not None else None,
-            score=schemas.Score(home=match.home_score, away=match.away_score),
-            home_participation=seat_to_read(match.home_participation, home_team),
-            away_participation=seat_to_read(match.away_participation, away_team),
-            home_team=home_team,
-            away_team=away_team,
-            encounter=encounter,
-            map=map_read,
+            **await self._match_fields(
+                session, match, entities, team_cache=team_cache, tournament_cache=tournament_cache
+            )
         )
 
     async def get_encounter(
@@ -696,7 +676,7 @@ class EncounterFlowsService:
         Parameters:
             session (AsyncSession): The SQLAlchemy async session.
             match_id (int): The ID of the match to retrieve.
-            entities (list[str]): A list of related entities to include (e.g., ["teams", "map"]).
+            entities (list[str]): A list of related entities to include (e.g., ["map", "encounter"]).
 
         Returns:
             schemas.MatchRead: The Pydantic schema representing the match.
@@ -704,19 +684,15 @@ class EncounterFlowsService:
         Raises:
             errors.ApiHTTPException: If the match is not found.
         """
-        match = await self.encounters.get_match(session, match_id, entities, workspace_id=workspace_id)
-        if not match:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="not_found", msg=f"Match with id {match_id} not found")],
-            )
+        match = await self._get_context(session, match_id, entities, workspace_id)
         return await self.to_pydantic_match(session, match, entities)
 
     @cache(
         ttl=config.settings.match_cache_ttl,
         # No tournament_id in the args, so this key can't participate in the
         # targeted invalidation patterns — staleness is bounded by the short TTL.
-        key="match_stats:{match_id}:{entities}:{workspace_id}",
+        # ``native_`` names the participant/fact document: a pre-cutover entry under the old key never matches it.
+        key="native_match_stats:{match_id}:{entities}:{workspace_id}",
         prefix="fastapi:",
     )
     async def get_match_with_stats(
@@ -727,42 +703,28 @@ class EncounterFlowsService:
         workspace_id: int | None = None,
     ) -> schemas.MatchReadWithStats:
         """
-        Retrieves a match by its ID and converts it to a Pydantic schema with detailed statistics.
+        Retrieves a match by its ID with its native statistics document.
 
         Parameters:
             session (AsyncSession): The SQLAlchemy async session.
             match_id (int): The ID of the match to retrieve.
-            entities (list[str]): A list of related entities to include (e.g., ["teams", "map"]).
+            entities (list[str]): A list of related entities to include (e.g., ["map", "map.parent"]).
 
         Returns:
-            schemas.MatchReadWithStats: The Pydantic schema representing the match with detailed statistics.
+            schemas.MatchReadWithStats: The header, participants and every member, segment and fact.
 
         Raises:
             errors.ApiHTTPException: If the match is not found.
         """
-        if "teams" not in entities:
-            entities.append("teams")
-        match = await self.get_match(session, match_id, entities, workspace_id=workspace_id)
-        players = await self.encounters.get_match_observed_players(session, match.id)
-        home_players = players.get(match.home_participation.id, [])
-        away_players = players.get(match.away_participation.id, [])
-        max_round = max(
-            (segment for side in players.values() for player in side for segment in player.stats), default=0
-        )
+        match = await self._get_context(session, match_id, entities, workspace_id)
         return schemas.MatchReadWithStats(
-            **match.model_dump(exclude={"home_participation", "away_participation"}),
-            rounds=max_round,
-            home_participation=schemas.MatchParticipationWithStats(
-                **match.home_participation.model_dump(), players=home_players
-            ),
-            away_participation=schemas.MatchParticipationWithStats(
-                **match.away_participation.model_dump(), players=away_players
-            ),
+            **await self._match_fields(session, match, entities),
+            statistics=await match_statistics_read(session, match_id),
         )
 
     @cache(
         ttl=config.settings.match_cache_ttl,
-        key="match_kill_feed:{match_id}:{workspace_id}",
+        key="native_match_events:{match_id}:{workspace_id}",
         prefix="fastapi:",
     )
     async def get_match_kill_feed(
@@ -770,19 +732,27 @@ class EncounterFlowsService:
         session: AsyncSession,
         match_id: int,
         workspace_id: int | None = None,
-    ) -> schemas.MatchKillFeedRead:
-        """Kill feed + timeline events for a match as a chronological read schema.
+    ) -> MatchEventsRead:
+        """A match's whole event timeline, chronological, with the characters its events name.
 
-        Validates the match exists within the (optional) workspace scope — mirrors
-        ``get_match_with_stats`` so kill data can't cross workspace boundaries — then
-        maps the raw joined rows to the typed read. Immutable once parsed, so it
-        reuses the short match cache TTL.
+        Validates the match exists within the (optional) workspace scope -- mirrors
+        ``get_match_with_stats`` so event data can't cross workspace boundaries. Immutable
+        once parsed, so it reuses the short match cache TTL.
         """
         # 404s if missing / out of workspace scope
-        await self.get_match(session, match_id, [], workspace_id=workspace_id)
+        match = await self._get_context(session, match_id, [], workspace_id)
+        return await match_events_read(session, match)
 
-        kills, events = await self.encounters.get_match_kill_feed(session, match_id)
-        return schemas.MatchKillFeedRead(match_id=match_id, kills=kills, events=events)
+    async def _get_context(
+        self, session: AsyncSession, match_id: int, entities: list[str], workspace_id: int | None
+    ) -> MatchReadContext:
+        match = await self.encounters.get_match(session, match_id, entities, workspace_id=workspace_id)
+        if not match:
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Match with id {match_id} not found")],
+            )
+        return match
 
 
 flows_service = EncounterFlowsService()

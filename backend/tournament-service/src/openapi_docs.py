@@ -30,11 +30,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.get_match": {
         "summary": "Get match with stats",
-        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match by id with player statistics and optionally hydrated related entities, scoped to the given workspace.",
+        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match by id: its participants (official result lines and observed team facts), every member, segment and fact at every grain, and optionally hydrated related entities, scoped to the given workspace.",
     },
     "rpc.tournament.get_match_kill_feed": {
         "summary": "Get match kill feed",
-        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match's chronological kill feed and timeline events, scoped to the given workspace; 404s when the match is outside that scope.",
+        "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns one match's whole event timeline in chronological order with the characters its events name, scoped to the given workspace; 404s when the match is outside that scope.",
     },
     "rpc.tournament.encounters_overview": {
         "summary": "Get encounters overview",
@@ -288,7 +288,8 @@ DOCS: dict[str, dict] = {
         "summary": "Update match",
         "description": (
             "Permission: workspace `match.result` on the workspace resolved from the match. "
-            "Edits observed home/away scores in historical game-slot order and nullable duration. "
+            "Edits the observed score of any participant, addressed by encounter_team_id (422 for a seat the "
+            "match does not have), and the nullable duration in seconds. "
             "The map must equal the bound game's existing map (409 otherwise). "
             "Team IDs, source, code, log_name and other unsupported fields are rejected with 422. "
             "Official game scores remain unchanged; score and duration changes carry separate native "

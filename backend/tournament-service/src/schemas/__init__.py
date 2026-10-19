@@ -13,7 +13,6 @@ from .tournament import *
 from .team import *
 from .encounter import *
 from .scrim import *
-from .killfeed import *
 from .standing import *
 from .statistics import *
 from .analytics import *

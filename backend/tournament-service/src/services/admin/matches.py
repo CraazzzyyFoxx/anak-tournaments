@@ -1,4 +1,4 @@
-"""Workspace-scoped admin reads over native observed OW duel matches."""
+"""Workspace-scoped admin reads over native observed matches of any discipline and any number of participants."""
 
 from __future__ import annotations
 
@@ -6,13 +6,14 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.repository.stats_queries import player_facts
-from shared.repository.stats_reads import MatchReadContext, duel_matches, get_match_reads
+from shared.repository.stats_queries import match_context, player_facts
+from shared.repository.stats_reads import MatchReadContext, get_match_reads
+from shared.services.match_reads import match_header_fields
 from src import models, schemas
 
 __all__ = ("matches_service",)
@@ -21,9 +22,9 @@ _NOT_FOUND = "Match not found"
 
 class _Query:
     def __init__(self, workspace_id: int, params: schemas.AdminMatchesSearchParams) -> None:
-        self.matches = duel_matches(discipline="overwatch")
+        self.matches = match_context()
         d = self.matches.c
-        home, away = aliased(models.Team), aliased(models.Team)
+        mt, seat = models.StatsMatchTeam, models.EncounterTeam
         self.query = (
             sa.select(d.id)
             .select_from(self.matches)
@@ -36,8 +37,6 @@ class _Query:
                     models.Tournament.discipline == d.discipline,
                 ),
             )
-            .outerjoin(home, home.id == d.home_tournament_team_id)
-            .outerjoin(away, away.id == d.away_tournament_team_id)
             .outerjoin(
                 models.IngestJob,
                 sa.and_(
@@ -58,17 +57,21 @@ class _Query:
         if params.query:
             like = f"%{params.query}%"
             predicates.append(
-                sa.or_(models.IngestJob.filename.ilike(like), home.name.ilike(like), away.name.ilike(like))
+                sa.or_(
+                    models.IngestJob.filename.ilike(like),
+                    sa.exists(
+                        sa.select(1)
+                        .select_from(mt)
+                        .join(seat, sa.and_(seat.id == mt.encounter_team_id, seat.encounter_id == mt.encounter_id))
+                        .where(mt.match_id == d.id, seat.name.ilike(like))
+                    ),
+                )
             )
         if params.log_status:
             predicates.append(models.IngestJob.status.in_(params.log_status))
         if params.unlinked_only:
             predicates.append(d.ingest_job_id.is_(None))
         self.query = self.query.where(*predicates)
-
-
-def _team_ref(team: models.Team | None) -> schemas.EncounterTeamRef | None:
-    return schemas.EncounterTeamRef(id=team.id, name=team.name) if team is not None else None
 
 
 def _log_record_ref(job: models.IngestJob | None) -> schemas.LogRecordRef | None:
@@ -89,23 +92,13 @@ def _log_record_ref(job: models.IngestJob | None) -> schemas.LogRecordRef | None
 
 
 def _row_fields(read: MatchReadContext) -> dict[str, Any]:
-    match, encounter = read.match, read.encounter
+    encounter = read.encounter
     tournament = encounter.tournament
     return {
-        "id": match.id,
-        "encounter_id": encounter.id,
+        **match_header_fields(read, with_map=True, with_parent=True),
         "encounter_name": encounter.name,
         "tournament_id": tournament.id,
         "tournament_name": tournament.name,
-        "map_id": match.map_entity_id,
-        "map_name": read.map.name,
-        "home_team": _team_ref(read.home_team),
-        "away_team": _team_ref(read.away_team),
-        "home_score": read.home_score,
-        "away_score": read.away_score,
-        "time": match.duration_s,
-        "log_name": read.display_filename,
-        "created_at": match.created_at,
         "log_record": _log_record_ref(read.job),
     }
 
@@ -166,7 +159,7 @@ class AdminMatchesService:
                 encounter_options=[selectinload(models.Encounter.tournament)],
             )
         )[match_id]
-        facts = player_facts(discipline="overwatch").c
+        facts = player_facts(discipline=read.match.discipline).c
         statistics_count, max_segment = (
             await session.execute(
                 sa.select(sa.func.count(), sa.func.max(facts.segment)).where(facts.match_id == match_id)
@@ -177,7 +170,7 @@ class AdminMatchesService:
             await session.execute(
                 sa.select(sa.func.count().filter(kind.code == "kill"), sa.func.count().filter(kind.code != "kill"))
                 .select_from(event)
-                .join(kind, sa.and_(kind.id == event.type_id, kind.discipline == "overwatch"))
+                .join(kind, sa.and_(kind.id == event.type_id, kind.discipline == read.match.discipline))
                 .where(event.match_id == match_id)
             )
         ).one()

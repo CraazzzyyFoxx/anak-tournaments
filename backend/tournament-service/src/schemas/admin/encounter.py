@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -8,6 +9,7 @@ __all__ = (
     "EncounterCreate",
     "EncounterSeatInput",
     "EncounterUpdate",
+    "MatchTeamFactIn",
     "MatchUpdate",
     "SetResultIn",
     "SetResultLineIn",
@@ -73,21 +75,34 @@ class EncounterUpdate(BaseModel):
     current_map_index: int | None = None
 
 
+class MatchTeamFactIn(BaseModel):
+    """One observed whole-match value of one participant. Only the observed score is editable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    encounter_team_id: int
+    stat_code: Literal["score"]
+    value: float = Field(allow_inf_nan=False)
+
+
 class MatchUpdate(BaseModel):
     """Edit observations without rebinding their game, participants or provenance."""
 
     model_config = ConfigDict(extra="forbid")
 
-    home_score: int | None = None
-    away_score: int | None = None
     map_id: int | None = None
-    time: float | None = None
+    duration_s: float | None = Field(default=None, allow_inf_nan=False)
+    team_facts: list[MatchTeamFactIn] | None = None
 
     @model_validator(mode="after")
     def _required_observations(self):
-        for field in ("home_score", "away_score", "map_id"):
+        for field in ("map_id", "team_facts"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
+        if self.team_facts is not None:
+            seats = [fact.encounter_team_id for fact in self.team_facts]
+            if len(seats) != len(set(seats)):
+                raise ValueError("team_facts names a participant twice")
         return self
 
 

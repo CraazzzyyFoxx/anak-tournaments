@@ -15,6 +15,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 os.environ["DEBUG"] = "true"
 
 svc = importlib.import_module("src.services.admin.matches")
+stats_reads = importlib.import_module("shared.repository.stats_reads")
 schemas = importlib.import_module("src.schemas")
 IngestJobStatus = importlib.import_module("shared.models.stats.ingest").IngestJobStatus
 RawSourceStatus = importlib.import_module("shared.models.stats.ingest").RawSourceStatus
@@ -40,14 +41,29 @@ def _job(**kw):
     )
 
 
+def _participant(team_id: int, slot: int, source_position: int, source: int | None, *, name: str, **kw):
+    return stats_reads.ParticipantContext(
+        **{
+            "seat": svc.models.EncounterTeam(
+                id=team_id, encounter_id=10, slot=slot, team_id=source, name=name, active=slot != 1
+            ),
+            "source_position": source_position,
+            "result": None,
+            "team_facts": {},
+            **kw,
+        }
+    )
+
+
 def _read(*, job=None, **kw):
-    return svc.MatchReadContext(
+    return stats_reads.MatchReadContext(
         **{
             "match": svc.models.StatsMatch(
                 id=100,
                 workspace_id=7,
                 discipline="overwatch",
                 encounter_id=10,
+                encounter_game_id=50,
                 map_entity_id=8,
                 duration_s=612.5,
                 created_at=datetime(2026, 5, 1, tzinfo=UTC),
@@ -59,18 +75,24 @@ def _read(*, job=None, **kw):
                 tournament_id=3,
                 tournament=svc.models.Tournament(id=3, name="Cup"),
             ),
-            "map": svc.models.CatalogEntity(id=8, name="Ilios"),
+            "map": svc.models.CatalogEntity(
+                id=8,
+                discipline="overwatch",
+                kind="map",
+                slug="ilios",
+                name="Ilios",
+                attrs={},
+                aliases=[],
+                active=True,
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
             "job": job,
-            "home_participation": svc.models.EncounterTeam(
-                id=21, encounter_id=10, slot=1, team_id=1, name="Observed A", active=False, score=4
+            # Three participants, the log's order reversed against the seats, one without a source team.
+            "participants": (
+                _participant(21, 1, 3, 1, name="Observed A", team_facts={"score": 2.0}),
+                _participant(22, 2, 1, 2, name="Observed B", team_facts={"score": 1.0}),
+                _participant(23, 3, 2, None, name="Observed C"),
             ),
-            "away_participation": svc.models.EncounterTeam(
-                id=22, encounter_id=10, slot=2, team_id=2, name="Observed B", active=True, score=3
-            ),
-            "home_team": svc.models.Team(id=1, name="A"),
-            "away_team": svc.models.Team(id=2, name="B"),
-            "home_score": 2,
-            "away_score": 1,
             "display_filename": job.filename if job is not None else None,
             **kw,
         }
@@ -94,12 +116,24 @@ class RowDerivation(TestCase):
         self.assertEqual(IngestJobStatus.FAILED, row.log_record.status)
         self.assertEqual("log_not_found", row.log_record.error_message)
 
-    def test_nullable_filename_and_source_teams_stay_null(self):
-        row = _row(_read(job=_job(filename=None), home_team=None, away_team=None))
+    def test_nullable_filename_stays_null(self):
+        row = _row(_read(job=_job(filename=None)))
         self.assertIsNone(row.log_record.filename)
         self.assertIsNone(row.log_name)
-        self.assertIsNone(row.home_team)
-        self.assertIsNone(row.away_team)
+
+    def test_every_participant_is_listed_in_seat_order_with_its_own_source_and_facts(self):
+        row = _row(_read())
+        self.assertEqual(
+            [(21, 1, 3, 1), (22, 2, 1, 2), (23, 3, 2, None)],
+            [(p.encounter_team_id, p.slot, p.source_position, p.tournament_team_id) for p in row.participants],
+        )
+        # A missing fact is an absent key, never a zero; the official result is another fact.
+        self.assertEqual([{"score": 2.0}, {"score": 1.0}, {}], [p.team_facts for p in row.participants])
+        self.assertEqual([None, None, None], [p.result for p in row.participants])
+        self.assertEqual("Ilios", row.map.name)
+        self.assertFalse(
+            {"home_team", "away_team", "home_score", "away_score", "time", "map_name"} & row.model_dump().keys()
+        )
 
 
 class PublicHistorySerialization(IsolatedAsyncioTestCase):
@@ -108,16 +142,19 @@ class PublicHistorySerialization(IsolatedAsyncioTestCase):
         context.match.source_map_index = 99
         row = await encounters.to_pydantic_match(None, context, [])
 
-        self.assertEqual((100, 10, 8, 612.5), (row.id, row.encounter_id, row.map_id, row.time))
+        self.assertEqual((100, 10, 8, 612.5), (row.id, row.encounter_id, row.map_id, row.duration_s))
         self.assertEqual((7, "overwatch"), (row.workspace_id, row.discipline))
-        self.assertEqual((2, 1), (row.score.home, row.score.away))
         self.assertIsNone(row.map_index)
+        self.assertIsNone(row.played_at)
         self.assertIsNone(row.raw_status)
         self.assertFalse(row.raw_available)
-        self.assertEqual((21, 22), (row.home_participation.id, row.away_participation.id))
-        self.assertEqual("Observed A", row.home_participation.name)
-        self.assertFalse(row.home_participation.active)
-        self.assertEqual(4, row.home_participation.score)
+        self.assertIsNone(row.map)
+        self.assertEqual(["Observed A", "Observed B", "Observed C"], [p.name for p in row.participants])
+
+    async def test_the_map_expands_on_request_and_carries_its_mode_only_when_asked(self):
+        row = await encounters.to_pydantic_match(None, _read(), ["map"])
+        self.assertEqual("Ilios", row.map.name)
+        self.assertIsNone(row.map.parent)
 
     async def test_raw_capability_comes_from_source_state_not_filename_or_binding(self):
         for raw_status, content_hash, filename, available in (

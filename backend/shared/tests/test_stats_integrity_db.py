@@ -666,18 +666,20 @@ class StatsIntegrityTests(IsolatedAsyncioTestCase):
                 ).all()
             ),
         )
-        read = (await get_match_reads(self.session, match_ids=[match.id], discipline=match.discipline))[match.id]
+        read = (await get_match_reads(self.session, match_ids=[match.id]))[match.id]
         self.assertIsNone(read.game)
         self.assertEqual(match.encounter_id, read.encounter.id)
-        self.assertEqual((3, 1), (read.home_score, read.away_score))
+        self.assertEqual({first: 3.0, second: 1.0}, {p.seat.id: p.team_facts["score"] for p in read.participants})
+        self.assertEqual([None, None], [p.result for p in read.participants])
         with self.assertRaises(ValueError):
             await self.repo.replace_observations(self.session, match=match, **self.mine["observations"])
         self.assertEqual(before, await self._snapshot())
         await self.repo.set_team_scores(
             self.session, match_id=match.id, discipline=match.discipline, scores={first: 4.5}
         )
-        with self.assertRaisesRegex(ValueError, "observed duel scores"):
-            await get_match_reads(self.session, match_ids=[match.id], discipline=match.discipline)
+        # No duel-score requirement: a non-integral observed value is a fact like any other.
+        read = (await get_match_reads(self.session, match_ids=[match.id]))[match.id]
+        self.assertEqual({first: 4.5, second: 1.0}, {p.seat.id: p.team_facts["score"] for p in read.participants})
         for model, root, root_id in (
             (models.Encounter, "encounter_id", match.encounter_id),
             (models.Tournament, "tournament_id", self.mine["tournament"].id),

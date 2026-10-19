@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from shared.repository.stats_reads import MatchReadContext
+from shared.services.match_reads import participant_reads
 from src import models, schemas
-from src.schemas.base import Score
 
 
 def to_tournament_link(
@@ -17,22 +17,14 @@ def to_tournament_link(
     )
 
 
-def _team_ref(team: models.Team | None) -> schemas.AchievementMatchTeamRef | None:
-    if team is None:
-        return None
-    return schemas.AchievementMatchTeamRef(id=team.id, name=team.name, image_url=team.image_url)
-
-
 def to_match_link(context: MatchReadContext) -> schemas.AchievementMatchLink:
     return schemas.AchievementMatchLink(
         id=context.match.id,
         encounter_id=context.encounter.id,
         map_id=context.match.map_entity_id,
-        score=Score(home=context.home_score, away=context.away_score),
         log_name=context.display_filename,
-        time=context.match.duration_s,
-        home_team=_team_ref(context.home_team),
-        away_team=_team_ref(context.away_team),
+        duration_s=context.match.duration_s,
+        participants=participant_reads(context),
     )
 
 

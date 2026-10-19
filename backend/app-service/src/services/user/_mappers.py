@@ -12,13 +12,13 @@ from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
-from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DivisionGrid
 from shared.repository.stats_reads import MatchReadContext
+from shared.schemas.match import NativeFact
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
+from shared.services.match_reads import match_header_fields
 from src import models, schemas
-from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
 
 _IDENTITY_ENTITIES = ("social_accounts",)
@@ -120,48 +120,26 @@ def to_user_tournament_player(
     )
 
 
-def to_match_with_user_stats(
-    context: MatchReadContext,
-    *,
-    performance: int | None,
-    heroes: list[dict] | None,
-    impact_rank: int | float | None = None,
-    impact_points: float | None = None,
-    overperformance_score: float | None = None,
-    overperf_pos: int | None = None,
-) -> schemas.MatchReadWithUserStats:
-    """One match in a user-scoped encounter — includes the viewer's stats.
+@dataclass(frozen=True, slots=True)
+class UserMatchStats:
+    """What the user pages add to a match header: the viewer's seat and totals, and every observed member's totals."""
 
-    ``overperf_pos`` is the viewer's rank (1 = best) among all match
-    participants by OverperformanceScore (match-wide window, not scoped to the
-    viewer) — used only to compute ``overperformance_badge`` and not exposed
-    on the schema itself. Scores and team ids follow the observation's historical
-    encounter slots 1 and 2, never the live seats or the log's source order.
+    viewer: schemas.UserMatchViewer | None
+    member_totals: list[NativeFact]
+
+
+def to_match_with_user_stats(
+    context: MatchReadContext, stats: UserMatchStats | None = None
+) -> schemas.MatchReadWithUserStats:
+    """One match in a user-scoped encounter: the native header, the map with its mode, and the viewer's totals.
+
+    Participants follow their historical encounter slots, never the live seats or the log's source order. Nothing
+    derived rides on the wire -- a discipline's renderer ranks ``viewer.facts`` against ``member_totals``.
     """
-    match = context.match
-    map_read = schemas.MapRead.from_entity(context.map, with_gamemode=True) if context.map is not None else None
-    hero_objs = [schemas.HeroRead.model_validate(h) for h in (heroes or [])]
     return schemas.MatchReadWithUserStats(
-        id=match.id,
-        home_team_id=context.home_team.id if context.home_team is not None else None,
-        away_team_id=context.away_team.id if context.away_team is not None else None,
-        score=Score(home=context.home_score, away=context.away_score),
-        time=match.duration_s,
-        log_name=context.display_filename,
-        raw_status=context.job.raw_status if context.job is not None else None,
-        raw_available=context.job.raw_available if context.job is not None else False,
-        encounter_id=context.encounter.id,
-        map_id=match.map_entity_id,
-        map_index=context.game.position if context.game is not None else None,
-        map=map_read,
-        performance=performance,
-        impact_rank=int(impact_rank) if impact_rank is not None else None,
-        impact_points=impact_points,
-        overperformance_score=overperformance_score,
-        overperformance_badge=(
-            overperf_pos == 1 and overperformance_score is not None and overperformance_score >= BADGE_THRESHOLD
-        ),
-        heroes=hero_objs,
+        **match_header_fields(context, with_map=True, with_parent=True),
+        viewer=stats.viewer if stats is not None else None,
+        member_totals=stats.member_totals if stats is not None else [],
     )
 
 

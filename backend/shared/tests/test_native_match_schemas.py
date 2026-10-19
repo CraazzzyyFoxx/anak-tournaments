@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from shared.schemas.match import (
     MatchEventsRead,
     MatchParticipantRead,
-    MatchReadWithStats,
+    MatchRead,
     NativeFact,
     NativeMatchStatistics,
 )
@@ -48,6 +48,7 @@ def _entity(entity_id: int) -> dict:
 
 
 def _match() -> dict:
+    """A header with its statistics document: tournament-service serves them as one ``MatchReadWithStats``."""
     return {
         "id": 5,
         "created_at": NOW,
@@ -74,7 +75,7 @@ def _match() -> dict:
                 {
                     "encounter_team_id": 12,
                     "workspace_member_id": 7,
-                    "player_id": None,
+                    "player_id": 3,
                     "handle_snapshot": "Event#1",
                     "observed_role": None,
                 }
@@ -96,7 +97,9 @@ def _match() -> dict:
 
 
 def test_wire_round_trip_keeps_null_source_missing_facts_and_played_at() -> None:
-    wire = MatchReadWithStats.model_validate(_match()).model_dump(mode="json")
+    document = _match()
+    wire = MatchRead.model_validate(document).model_dump(mode="json")
+    wire["statistics"] = NativeMatchStatistics.model_validate(document["statistics"]).model_dump(mode="json")
     assert [p["tournament_team_id"] for p in wire["participants"]] == [100, 101, None]
     assert [p["source_position"] for p in wire["participants"]] == [3, 1, 2]
     assert wire["participants"][2]["result"] is None
@@ -120,7 +123,7 @@ def test_a_match_without_a_participant_array_is_invalid() -> None:
     wire = _match()
     del wire["participants"]
     with pytest.raises(ValidationError):
-        MatchReadWithStats.model_validate(wire)
+        MatchRead.model_validate(wire)
     with pytest.raises(ValidationError):
         MatchParticipantRead.model_validate({**_participant(1, 1, 1, None), "slot": None})
 

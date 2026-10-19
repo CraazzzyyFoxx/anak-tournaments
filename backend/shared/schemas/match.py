@@ -1,7 +1,7 @@
 """Native match wire (P7 contracts §6): arbitrary participants, native facts, no home/away.
 
-Declarations only until the atomic match chain switches the active ``/api/v1/matches/{id}`` and kill-feed schemas to
-them. Used by tournament-service (the owner of the route) and app-service (user and achievement match rows).
+Served by tournament-service (``/api/v1/matches/{id}``, its kill-feed, the encounter's matches, the admin rows) and
+embedded by app-service (user match rows, achievement links); ``shared.services.match_reads`` builds every one of them.
 
 Scale and grain rules the consumers rely on:
 
@@ -25,7 +25,6 @@ __all__ = (
     "MatchEventsRead",
     "MatchParticipantRead",
     "MatchRead",
-    "MatchReadWithStats",
     "MatchResultRead",
     "NativeFact",
     "NativeMatchEvent",
@@ -88,7 +87,8 @@ class MatchRead(BaseRead):
 class NativeMatchMember(BaseModel):
     encounter_team_id: int
     workspace_member_id: int
-    player_id: int | None
+    #: The workspace member's global player; a member outside the match's workspace is never listed.
+    player_id: int
     handle_snapshot: str
     #: From ``observed_role_id`` through the owner ontology.
     observed_role: RoleRef | None
@@ -123,12 +123,6 @@ class NativeMatchStatistics(BaseModel):
     facts: list[NativeFact]
     #: Every entity referenced by a fact, same discipline.
     entities: list[CatalogEntityRead]
-
-
-class MatchReadWithStats(MatchRead):
-    """Wire name ``MatchWithStats``."""
-
-    statistics: NativeMatchStatistics
 
 
 class NativeMatchEvent(BaseModel):

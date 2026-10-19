@@ -6,12 +6,12 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from pydantic import BaseModel, BeforeValidator, Field
 
-from shared.models.stats import RawSourceStatus
+from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.match import MatchRead, NativeFact
 from shared.schemas.role import RoleRef
 from src import schemas
 from src.core import enums, pagination
 from src.schemas import MapRead
-from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # Structured GET filters are JSON-encoded query values; RPC callers may supply the object directly.
@@ -36,6 +36,7 @@ __all__ = (
     "UserEncounterTeamSummary",
     "UserEncounterTeamPlayerRef",
     "MatchReadWithUserStats",
+    "UserMatchViewer",
     "EncounterReadWithUserStats",
     "UserMap",
     "UserMapHeroStats",
@@ -192,28 +193,29 @@ class UserEncounterTeamSummary(BaseModel):
     players: list[UserEncounterTeamPlayerRef] = Field(default_factory=list)
 
 
-class MatchReadWithUserStats(BaseModel):
-    """Match within a user-scoped encounter, with the viewer's performance."""
+class UserMatchViewer(BaseModel):
+    """The viewer's own seat and whole-match totals in one match."""
 
-    id: int
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    score: Score
-    time: float | None
-    log_name: str | None
-    raw_status: RawSourceStatus | None
-    raw_available: bool
-    encounter_id: int
-    map_id: int
-    # Authoritative 1-based position of the bound encounter game.
-    map_index: int | None
-    map: MapRead | None = None
-    performance: int | None = None
-    impact_rank: int | None = None
-    impact_points: float | None = None
-    overperformance_score: float | None = None
-    overperformance_badge: bool = False
-    heroes: list[schemas.HeroRead] = Field(default_factory=list)
+    encounter_team_id: int
+    workspace_member_id: int
+    #: Observed segment-0 facts with NULL entity, by stat code; an absent key is missing, never zero.
+    facts: dict[str, float]
+    #: Characters the viewer played, in catalog order.
+    characters: list[CatalogEntityRead] = Field(default_factory=list)
+
+
+class MatchReadWithUserStats(MatchRead):
+    """Match within a user-scoped encounter: the native header, the viewer's totals and every observed member's.
+
+    A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals`` (every
+    member's segment-0, NULL-entity facts); no derived value rides on the wire. ``viewer`` is ``None`` for a match
+    the viewer's seat was a participant of without being observed.
+    """
+
+    #: Always expanded, with its mode as ``parent``.
+    map: CatalogEntityRead
+    viewer: UserMatchViewer | None = None
+    member_totals: list[NativeFact] = Field(default_factory=list)
 
 
 class EncounterReadWithUserStats(BaseModel):

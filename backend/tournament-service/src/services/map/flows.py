@@ -6,28 +6,29 @@ Map statistics/top-user flows live in app-service; encounter flows only need
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
+from shared.schemas.catalog import CatalogEntityRead
+from src import models
 
 
-def map_to_read(map: models.CatalogEntity, entities: list[str]) -> schemas.MapRead:
-    """Project the OW-shaped map read; ``gamemode`` requires the parent already loaded."""
-    return schemas.MapRead.from_entity(map, with_gamemode="gamemode" in entities)
+def map_to_read(map: models.CatalogEntity, entities: list[str]) -> CatalogEntityRead:
+    """The native catalog read of a map; ``parent`` (its mode) requires the parent already loaded."""
+    return CatalogEntityRead.from_entity(map, with_parent="parent" in entities)
 
 
 class MapFlowsService:
     async def to_pydantic(
         self, session: AsyncSession, map: models.CatalogEntity, entities: list[str]
-    ) -> schemas.MapRead:
+    ) -> CatalogEntityRead:
         """
-        Converts a Map model instance to a Pydantic schema (MapRead), including related entities.
+        Converts a map catalog entity to its native read, including related entities.
 
         Parameters:
             session (AsyncSession): The SQLAlchemy async session.
             map (models.CatalogEntity): The map entity to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["gamemode"]).
+            entities (list[str]): A list of related entities to include (e.g., ["parent"]).
 
         Returns:
-            schemas.MapRead: The Pydantic schema representing the map.
+            CatalogEntityRead: The native catalog entity of the map.
         """
         return map_to_read(map, entities)
 

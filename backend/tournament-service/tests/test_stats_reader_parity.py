@@ -12,11 +12,12 @@ import json
 import math
 from copy import deepcopy
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from difflib import unified_diff
 from enum import Enum
 from itertools import groupby, islice
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -26,11 +27,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from shared.core.errors import BaseAPIException
+from shared.services.match_reads import match_statistics_read
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import schemas
+from src import models, schemas
 from src.services.admin.matches import matches_service
 from src.services.encounter.flows import flows_service as encounters
-from src.services.encounter.service import encounter_service
 from src.services.tournament.flows import flows_service as tournaments
 from src.services.visibility_resolvers import visibility_resolvers_service as visibility
 
@@ -53,12 +54,12 @@ async def _uncached(method: Any, *args: Any, **kwargs: Any) -> Any:
     return await inspect.unwrap(method.__func__)(method.__self__, *args, **kwargs)
 
 
-def _normalize(value: Any, participants: dict[int, int]) -> Any:
-    """Project native observed identities onto the immutable P3 representation."""
+def _normalize(value: Any) -> Any:
+    """Representation only: JSON-comparable scalars and the order of unordered relationship aggregates."""
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="python")
     if isinstance(value, Enum):
-        return _normalize(value.value, participants)
+        return _normalize(value.value)
     if isinstance(value, datetime):
         if value.tzinfo is None:
             raise ValueError("parity timestamps must have a timezone")
@@ -71,59 +72,11 @@ def _normalize(value: Any, participants: dict[int, int]) -> Any:
     if isinstance(value, float) and math.isnan(value):
         return None
     if isinstance(value, (list, tuple)):
-        return [_normalize(item, participants) for item in value]
+        return [_normalize(item) for item in value]
     if not isinstance(value, dict):
         return value
 
-    row = {str(_normalize(key, participants)): _normalize(item, participants) for key, item in value.items()}
-    public_match = {"home_team_id", "away_team_id", "score", "encounter_id", "map_id"} <= row.keys()
-    admin_match = {"home_team", "away_team", "home_score", "away_score", "encounter_id", "map_id"} <= row.keys()
-    if public_match or admin_match:
-        # Representation only: keep observed scores and complete expanded teams,
-        # keyed by the historical encounter participation instead of log sides.
-        scores = row.pop("score") if public_match else None
-        row["scores_by_participant"] = {}
-        row["teams_by_participant"] = {}
-        row["team_ids_by_participant"] = {}
-        for side in ("home", "away"):
-            team = row.pop(f"{side}_team")
-            team_id = row.pop(f"{side}_team_id") if public_match else team["id"]
-            participation = row.pop(f"{side}_participation", None)
-            if participation is not None and "players" in participation:
-                # Only this frozen wire projection uses real source-roster metadata.
-                # Production never filters observations through that roster.
-                observed = {player["user_id"]: player for player in participation["players"]}
-                assert len(observed) == len(participation["players"])
-                roster_ids = {player["user_id"] for player in team["players"]}
-                assert all(
-                    player["user_id"] in roster_ids or not (player["stats"] or player["heroes"])
-                    for player in participation["players"]
-                )
-                team["players"] = [
-                    {
-                        **player,
-                        "stats": observed[player["user_id"]]["stats"],
-                        # The old nested DTO used HeroRead; direct stats retained timestamps.
-                        "heroes": {
-                            segment: [{key: hero[key] for key in schemas.HeroRead.model_fields} for hero in heroes]
-                            for segment, heroes in observed[player["user_id"]]["heroes"].items()
-                        },
-                    }
-                    for player in team["players"]
-                    if player["user_id"] in observed and observed[player["user_id"]]["heroes"]
-                ]
-            participant_id = str(participants[team_id])
-            row["scores_by_participant"][participant_id] = scores[side] if public_match else row.pop(f"{side}_score")
-            row["teams_by_participant"][participant_id] = team
-            row["team_ids_by_participant"][participant_id] = team_id
-        row.pop("source", None)
-        row.pop("code", None)
-        if public_match:
-            # New capability metadata has separate behavior coverage; the frozen
-            # P3 oracle continues to guard every historical ID, score and fact.
-            row.pop("raw_status", None)
-            row.pop("raw_available", None)
-
+    row = {str(_normalize(key)): _normalize(item) for key, item in value.items()}
     # These are unordered relationship/JSON aggregates, not ranked result lists.
     if isinstance(row.get("matches"), list):
         row["matches"].sort(key=lambda match: (match["map_index"] is None, match["map_index"] or 0, match["id"]))
@@ -143,8 +96,314 @@ def _normalize(value: Any, participants: dict[int, int]) -> Any:
     return row
 
 
-def _stats_result(result: tuple[dict, dict]) -> dict:
-    return {"statistics": result[0], "heroes": result[1]}
+_HERO_FIELDS = ("id", "slug", "name", "image_path", "type", "color")
+
+
+def _score(participant: dict[str, Any]) -> int | float | None:
+    """The participant's observed ``score`` team fact; the frozen oracle spelled whole scores as integers."""
+    value = participant["team_facts"].get("score")
+    return int(value) if value is not None and float(value).is_integer() else value
+
+
+def _cents(value: float) -> float:
+    """What ``sum(value)::numeric(10, 2)`` returned for one observation."""
+    return float(Decimal(repr(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _observed_players(statistics: dict[str, Any]) -> dict[int, list[dict[str, Any]]]:
+    """The pre-native observed-player view of a native statistics document, keyed by participation.
+
+    Projection only: members are the match's observed identities, ``stats`` their segment-keyed values without an
+    entity grain, ``heroes`` the characters they played longer than a minute in each segment. Native facts are never
+    reduced or recomputed; the numeric cast is the old reader's.
+    """
+    entities = {entity["id"]: entity for entity in statistics["entities"]}
+    players = {
+        (member["encounter_team_id"], member["workspace_member_id"]): {
+            "workspace_member_id": member["workspace_member_id"],
+            "user_id": member["player_id"],
+            "name": member["handle_snapshot"],
+            "stats": {},
+            "heroes": {},
+        }
+        for member in statistics["members"]
+    }
+    for fact in statistics["facts"]:
+        if fact["workspace_member_id"] is None:
+            continue
+        player = players[fact["encounter_team_id"], fact["workspace_member_id"]]
+        if fact["entity_id"] is None:
+            player["stats"].setdefault(fact["segment"], {})[fact["stat_code"]] = _cents(fact["value"])
+        elif fact["stat_code"] == "hero_time_played" and fact["value"] > 60:
+            entity = entities[fact["entity_id"]]
+            player["heroes"].setdefault(fact["segment"], []).append(
+                {
+                    "id": entity["id"],
+                    "created_at": entity["created_at"],
+                    "updated_at": entity["updated_at"],
+                    "name": entity["name"],
+                    "slug": entity["slug"],
+                    "image_path": entity["image_path"] or "",
+                    "color": entity["attrs"].get("color") or "#ffffff",
+                    "type": entity["attrs"].get("class"),
+                }
+            )
+    by_seat: dict[int, list[dict[str, Any]]] = {}
+    for (seat, _member), player in players.items():
+        by_seat.setdefault(seat, []).append(player)
+    return by_seat
+
+
+def _legacy_map(entity: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A native map entity in the frozen ``MapRead`` representation (its mode is ``gamemode``)."""
+    if entity is None:
+        return None
+    parent = entity["parent"]
+    return {
+        "id": entity["id"],
+        "name": entity["name"],
+        "image_path": entity["image_path"] or "",
+        "gamemode_id": entity["parent_id"],
+        "in_competitive": entity["attrs"].get("in_competitive", True),
+        "gamemode": None
+        if parent is None
+        else {
+            "id": parent["id"],
+            "slug": parent["slug"],
+            "name": parent["name"],
+            "image_path": parent["image_path"] or "",
+            "description": parent["attrs"].get("description"),
+        },
+    }
+
+
+async def _source_team(session: AsyncSession, team_id: int, entities: list[str]) -> dict[str, Any]:
+    """The source team through the production team reader, as the pre-native match expanded it."""
+    from shared.repository import TeamRepository
+
+    team = await TeamRepository().get(
+        session, team_id, options=TeamRepository.team_entities(entities), populate_existing=True
+    )
+    return (await encounters.teams.to_pydantic(session, team, entities)).model_dump(mode="python")
+
+
+async def _golden_match(
+    session: AsyncSession,
+    match: dict[str, Any],
+    entities: list[str],
+    statistics: dict[str, Any] | None = None,
+    team_cache: dict[int, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """One native match (``MatchRead``/``MatchReadWithStats`` dump) in the frozen per-participant representation.
+
+    Scores are the participants' observed ``score`` team facts, the source teams are the production team reader's
+    output for each participant's source team, and ``time`` is the duration. Nothing is invented: a participant with
+    no source team has no team, one with no ``score`` fact has no score. ``team_cache`` is what the frozen encounter
+    read had already expanded for its seats: a match nested in it reused those team reads, richer than its own
+    ``teams`` entity asked for.
+    """
+    from shared.core import utils
+
+    team_entities = utils.prepare_entities(entities, "teams")
+    row: dict[str, Any] = {
+        "id": match["id"],
+        "workspace_id": match["workspace_id"],
+        "discipline": match["discipline"],
+        "encounter_id": match["encounter_id"],
+        "map_id": match["map_id"],
+        "map_index": match["map_index"],
+        "time": match["duration_s"],
+        "log_name": match["log_name"],
+        "map": _legacy_map(match["map"]),
+        "encounter": None if match["encounter"] is None else await _golden(session, match["encounter"], []),
+        "scores_by_participant": {},
+        "teams_by_participant": {},
+        "team_ids_by_participant": {},
+    }
+    observed = _observed_players(statistics) if statistics is not None else {}
+    for participant in match["participants"]:
+        seat, source = participant["encounter_team_id"], participant["tournament_team_id"]
+        key = str(seat)
+        row["scores_by_participant"][key] = _score(participant)
+        row["team_ids_by_participant"][key] = source
+        team = None
+        if ("teams" in entities) and source is not None:
+            team = (team_cache or {}).get(source) or await _source_team(session, source, team_entities)
+            team = deepcopy(team)
+            if statistics is not None and "players" in team:
+                present = {player["user_id"]: player for player in observed.get(seat, [])}
+                assert len(present) == len(observed.get(seat, []))
+                roster_ids = {player["user_id"] for player in team["players"]}
+                assert all(
+                    player["user_id"] in roster_ids or not (player["stats"] or player["heroes"])
+                    for player in present.values()
+                )
+                team["players"] = [
+                    {
+                        **player,
+                        "stats": present[player["user_id"]]["stats"],
+                        "heroes": {
+                            segment: [{key: hero[key] for key in _HERO_FIELDS} for hero in heroes]
+                            for segment, heroes in present[player["user_id"]]["heroes"].items()
+                        },
+                    }
+                    for player in team["players"]
+                    if player["user_id"] in present and present[player["user_id"]]["heroes"]
+                ]
+        row["teams_by_participant"][key] = team
+    if statistics is not None:
+        row["rounds"] = max(
+            (segment for players in observed.values() for player in players for segment in player["stats"]), default=0
+        )
+    return row
+
+
+async def _golden(
+    session: AsyncSession,
+    value: Any,
+    entities: list[str],
+    team_cache: dict[int, dict[str, Any]] | None = None,
+    *,
+    page: bool = False,
+) -> Any:
+    """Dump native output and replace every match in it (``entities`` is what its reader expanded) and every
+    ``EncounterGameRead.map`` by the frozen representation. ``page`` marks a paginated encounter read, the one that
+    shared a team cache between an encounter's seats and its matches."""
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="python")
+    if isinstance(value, (list, tuple)):
+        return [await _golden(session, item, entities, team_cache, page=page) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if {"participants", "encounter_id", "map_id"} <= value.keys():
+        return await _golden_match(session, value, entities, team_cache=team_cache)
+    cache = team_cache
+    if page and isinstance(value.get("matches"), list) and isinstance(value.get("teams"), list):
+        cache = {
+            **(team_cache or {}),
+            **{seat["team"]["id"]: seat["team"] for seat in value["teams"] if seat.get("team")},
+        }
+    row = {key: await _golden(session, item, entities, cache, page=page) for key, item in value.items()}
+    if "position" in row and "map" in row and "teams" in row:
+        row["map"] = _legacy_map(value["map"])
+    return row
+
+
+async def _golden_admin(session: AsyncSession, row: Any) -> dict[str, Any]:
+    """An admin row/detail in the frozen representation: the source teams by participant, ``time``, ``map_name``."""
+    data = row.model_dump(mode="python")
+    names = dict(
+        (
+            await session.execute(
+                sa.select(models.Team.id, models.Team.name).where(
+                    models.Team.id.in_(
+                        [p["tournament_team_id"] for p in data["participants"] if p["tournament_team_id"]]
+                    )
+                )
+            )
+        ).all()
+    )
+    golden = {
+        key: data[key]
+        for key in (
+            "id",
+            "encounter_id",
+            "encounter_name",
+            "tournament_id",
+            "tournament_name",
+            "map_id",
+            "log_name",
+            "created_at",
+            "log_record",
+            "rounds",
+            "statistics_count",
+            "kill_feed_count",
+            "event_count",
+        )
+        if key in data
+    }
+    golden["map_name"] = data["map"]["name"]
+    golden["time"] = data["duration_s"]
+    golden["scores_by_participant"] = {str(p["encounter_team_id"]): _score(p) for p in data["participants"]}
+    golden["team_ids_by_participant"] = {
+        str(p["encounter_team_id"]): p["tournament_team_id"] for p in data["participants"]
+    }
+    golden["teams_by_participant"] = {
+        str(p["encounter_team_id"]): None
+        if p["tournament_team_id"] is None
+        else {"id": p["tournament_team_id"], "name": names[p["tournament_team_id"]]}
+        for p in data["participants"]
+    }
+    return golden
+
+
+def _golden_killfeed(feed: Any, statistics: dict[str, Any], participants: list[dict[str, Any]]) -> dict[str, Any]:
+    """A native event timeline in the frozen kill-feed/timeline representation.
+
+    Actors resolve to their global player and source team through the match's own members and participants; only
+    kills and the three timeline types the old reader selected are kept.
+    """
+    from shared.schemas.catalog import HeroRead
+
+    data = feed.model_dump(mode="python")
+    player = {member["workspace_member_id"]: member["player_id"] for member in statistics["members"]}
+    source = {participant["encounter_team_id"]: participant["tournament_team_id"] for participant in participants}
+    entities = {entity["id"]: entity for entity in data["entities"]}
+
+    def hero(entity_id: int | None) -> Any:
+        if entity_id is None:
+            return None
+        entity = entities[entity_id]
+        return HeroRead.from_entity(SimpleNamespace(**entity)).model_dump(mode="python")
+
+    def team(seat: int | None) -> int | None:
+        return None if seat is None else source[seat]
+
+    def who(member: int | None) -> int | None:
+        return None if member is None else player[member]
+
+    kills, events = [], []
+    for event in data["events"]:
+        extra = event["data"] or {}
+        if event["type"] == "kill":
+            kills.append(
+                {
+                    "time": event["t"],
+                    "round": event["segment"],
+                    "fight": extra.get("fight"),
+                    "ability": extra.get("ability"),
+                    "damage": extra.get("damage"),
+                    "is_critical_hit": extra.get("is_critical_hit"),
+                    "is_environmental": extra.get("is_environmental"),
+                    "killer_user_id": who(event["actor_member_id"]),
+                    "killer_team_id": team(event["actor_team_id"]),
+                    "killer_hero": hero(event["entity_id"]),
+                    "victim_user_id": who(event["target_member_id"]),
+                    "victim_team_id": team(event["target_team_id"]),
+                    "victim_hero": hero(event["related_entity_id"]),
+                }
+            )
+        elif event["type"] in ("ultimate_start", "ultimate_end", "mercy_rez"):
+            events.append(
+                {
+                    "time": event["t"],
+                    "round": event["segment"],
+                    "name": event["type"],
+                    "user_id": who(event["actor_member_id"]),
+                    "team_id": team(event["actor_team_id"]),
+                    "hero": hero(event["entity_id"]),
+                    "related_user_id": who(event["target_member_id"]),
+                    "related_team_id": team(event["target_team_id"]),
+                }
+            )
+    return {"match_id": data["match_id"], "kills": kills, "events": events}
+
+
+def _stats_result(player: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "statistics": {} if player is None else player["stats"],
+        "heroes": {} if player is None else player["heroes"],
+    }
 
 
 async def _not_found(operation: Any) -> dict:
@@ -157,9 +416,8 @@ async def _not_found(operation: Any) -> dict:
 
 async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
     """Project native reader outputs onto the frozen P3 numeric and metadata oracle."""
-    participants = {
-        ids[key.removeprefix("encounter_")]: value for key, value in ids.items() if key.startswith("encounter_team_")
-    }
+    from shared.core import utils
+
     workspace = ids["workspace"]
     outputs: dict[str, Any] = {}
 
@@ -179,37 +437,49 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
     }
     outputs["encounter_pages"] = {}
     for name, (scope, options) in encounter_cases.items():
-        outputs["encounter_pages"][name] = await _uncached(
+        page = await _uncached(
             encounters.get_all_encounters,
             session,
             schemas.EncounterSearchParams(**options),
             workspace_id=scope,
         )
-    outputs["encounter_pages"]["my_team_global"] = await _uncached(
-        encounters.get_all_encounters,
+        outputs["encounter_pages"][name] = await _golden(
+            session, page, utils.prepare_entities(options.get("entities", []), "matches"), page=True
+        )
+    outputs["encounter_pages"]["my_team_global"] = await _golden(
         session,
-        schemas.EncounterSearchParams(scope="my_team"),
-        viewer_auth_user_id=ids["auth_user"],
+        await _uncached(
+            encounters.get_all_encounters,
+            session,
+            schemas.EncounterSearchParams(scope="my_team"),
+            viewer_auth_user_id=ids["auth_user"],
+        ),
+        [],
     )
 
     outputs["encounter_details"] = {}
     for name in ("encounter", "encounter_other"):
         tournament_id = await visibility.tournament_id_for_encounter(session, ids[name])
         await ensure_tournament_viewable(session, None, tournament_id)
-        outputs["encounter_details"][name] = await encounters.get_encounter(
+        outputs["encounter_details"][name] = await _golden(
             session,
-            ids[name],
-            list(_ENCOUNTER_ENTITIES),
+            await encounters.get_encounter(session, ids[name], list(_ENCOUNTER_ENTITIES)),
+            utils.prepare_entities(list(_ENCOUNTER_ENTITIES), "matches"),
         )
 
     outputs["encounter_overviews"] = {}
     outputs["tournament_overviews"] = {}
     for name, scope in (("platform", None), ("workspace", workspace), ("other_workspace", ids["workspace_other"])):
-        outputs["encounter_overviews"][name] = await _uncached(
-            encounters.get_encounters_overview,
+        # The featured strips expand ``matches`` and ``matches.map``.
+        outputs["encounter_overviews"][name] = await _golden(
             session,
-            schemas.EncounterSearchParams(),
-            workspace_id=scope,
+            await _uncached(
+                encounters.get_encounters_overview,
+                session,
+                schemas.EncounterSearchParams(),
+                workspace_id=scope,
+            ),
+            ["map"],
         )
         outputs["tournament_overviews"][name] = await tournaments.get_tournaments_overall(session, workspace_id=scope)
 
@@ -227,14 +497,18 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
         ),
         "foreign_tournament": (workspace, {"tournament_id": ids["tournament_other"]}),
         "log_name_search": (workspace, {"query": "reverse", "fields": ["log_name"], "entities": ["map", "teams"]}),
-        "duration_desc": (workspace, {"order": "desc", "sort": "time"}),
+        "duration_desc": (workspace, {"order": "desc", "sort": "duration_s"}),
     }
     outputs["match_pages"] = {}
     for name, (scope, options) in match_cases.items():
-        outputs["match_pages"][name] = await encounters.get_all_matches(
+        outputs["match_pages"][name] = await _golden(
             session,
-            schemas.MatchSearchParams(**options),
-            workspace_id=scope,
+            await encounters.get_all_matches(
+                session,
+                schemas.MatchSearchParams(**options),
+                workspace_id=scope,
+            ),
+            options.get("entities", []),
         )
 
     outputs["match_details"] = {}
@@ -244,40 +518,49 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
         scope = ids["workspace_other"] if name == "match_other" else workspace
         tournament_id = await visibility.tournament_id_for_match(session, ids[name])
         await ensure_tournament_viewable(session, None, tournament_id)
-        outputs["match_details"][name] = await encounters.get_match(
+        outputs["match_details"][name] = await _golden(
             session,
-            ids[name],
+            await encounters.get_match(
+                session,
+                ids[name],
+                list(_MATCH_ENTITIES),
+                workspace_id=scope,
+            ),
             list(_MATCH_ENTITIES),
-            workspace_id=scope,
         )
-        outputs["match_details_with_stats"][name] = await _uncached(
-            encounters.get_match_with_stats,
-            session,
-            ids[name],
-            list(_MATCH_ENTITIES),
-            workspace_id=scope,
+        detail = (
+            await _uncached(
+                encounters.get_match_with_stats,
+                session,
+                ids[name],
+                list(_MATCH_ENTITIES),
+                workspace_id=scope,
+            )
+        ).model_dump(mode="python")
+        outputs["match_details_with_stats"][name] = await _golden_match(
+            session, detail, list(_MATCH_ENTITIES), detail["statistics"]
         )
         # Do not sort/deduplicate either array: round/time/source order is behavior.
-        outputs["killfeeds"][name] = await _uncached(
-            encounters.get_match_kill_feed,
-            session,
-            ids[name],
-            workspace_id=scope,
+        outputs["killfeeds"][name] = _golden_killfeed(
+            await _uncached(
+                encounters.get_match_kill_feed,
+                session,
+                ids[name],
+                workspace_id=scope,
+            ),
+            detail["statistics"],
+            detail["participants"],
         )
 
     outputs["single_user_stats"] = {}
     outputs["batch_user_stats"] = {}
     for match in _MATCH_KEYS:
-        observed = await encounter_service.get_match_observed_players(session, ids[match])
-        players = [player for side in observed.values() for player in side]
-        by_user = {player.user_id: (player.stats, player.heroes) for player in players}
+        statistics = (await match_statistics_read(session, ids[match])).model_dump(mode="python")
+        players = [player for seat in _observed_players(statistics).values() for player in seat]
+        by_user = {player["user_id"]: player for player in players}
         assert len(by_user) == len(players)
-        outputs["single_user_stats"][match] = {
-            user: _stats_result(by_user.get(ids[user], ({}, {}))) for user in _USER_KEYS
-        }
-        outputs["batch_user_stats"][match] = {
-            ids[user]: _stats_result(by_user.get(ids[user], ({}, {}))) for user in _USER_KEYS
-        }
+        outputs["single_user_stats"][match] = {user: _stats_result(by_user.get(ids[user])) for user in _USER_KEYS}
+        outputs["batch_user_stats"][match] = {ids[user]: _stats_result(by_user.get(ids[user])) for user in _USER_KEYS}
 
     # The old admin DTO requires non-null time/log_name. Use its real provenance
     # filter for row pages; unfiltered count still includes the no-raw match.
@@ -293,17 +576,24 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
         "foreign_tournament": (workspace, {"tournament_id": ids["tournament_other"], "log_status": ["done"]}),
     }
     for name, (scope, options) in admin_cases.items():
-        outputs["admin_pages"][name] = await matches_service.list_admin_matches(
+        page = await matches_service.list_admin_matches(
             session,
             workspace_id=scope,
             params=schemas.AdminMatchesSearchParams(**options),
         )
+        outputs["admin_pages"][name] = {
+            **page.model_dump(mode="python", exclude={"results"}),
+            "results": [await _golden_admin(session, row) for row in page.results],
+        }
     outputs["admin_details"] = {}
     for name in ("match", "match_reversed", "match_other", "match_hidden"):
-        outputs["admin_details"][name] = await matches_service.get_admin_match(
+        outputs["admin_details"][name] = await _golden_admin(
             session,
-            workspace_id=ids["workspace_other"] if name == "match_other" else workspace,
-            match_id=ids[name],
+            await matches_service.get_admin_match(
+                session,
+                workspace_id=ids["workspace_other"] if name == "match_other" else workspace,
+                match_id=ids[name],
+            ),
         )
 
     outputs["visibility"] = {}
@@ -342,7 +632,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
     outputs["visibility"]["foreign_admin_match"] = await _not_found(
         matches_service.get_admin_match(session, workspace_id=workspace, match_id=ids["match_other"]),
     )
-    return _normalize(outputs, participants)
+    return _normalize(outputs)
 
 
 def assert_tournament_golden(actual: dict) -> None:
@@ -424,7 +714,7 @@ def test_native_readers_preserve_captured_p3_outputs(stats_parity_database):
     asyncio.run(exercise())
 
 
-def test_native_ow_readers_reject_foreign_discipline(stats_parity_database):
+def test_native_readers_serve_a_match_of_another_discipline_under_its_own_discipline(stats_parity_database):
     async def exercise():
         from shared.models.stats.match import StatsMatch
         from shared.testing.stats_parity import seed_native_sentinel
@@ -456,39 +746,51 @@ def test_native_ow_readers_reject_foreign_discipline(stats_parity_database):
                     schemas.MatchSearchParams(per_page=-1),
                     workspace_id=ids["workspace"],
                 )
-                assert foreign.id not in {row.id for row in public.results}
+                # No game is special: the LoL observation lists with its own discipline and both participants.
+                listed = next(row for row in public.results if row.id == foreign.id)
+                assert (listed.discipline, listed.workspace_id) == ("lol", ids["workspace"])
+                assert [(p.encounter_team_id, p.team_facts) for p in listed.participants] == [
+                    (ids["encounter_team_lol_home"], {"score": 1.0}),
+                    (ids["encounter_team_lol_away"], {"score": 2.0}),
+                ]
                 from src.services.admin.encounter import encounter_service as admin
 
                 with pytest.raises(BaseAPIException) as caught:
                     await admin.update_match(session, ids["match"], schemas.MatchUpdate(map_id=ids["map_lol"]))
                 assert caught.value.status_code == 409
-                await _not_found(admin.update_match(session, foreign.id, schemas.MatchUpdate(time=10)))
-                assert await encounter_service.get_match_observed_players(session, foreign.id) == {}
-                await _not_found(encounters.get_match(session, foreign.id, [], workspace_id=ids["workspace"]))
-                await _not_found(
-                    _uncached(
-                        encounters.get_match_with_stats,
-                        session,
-                        foreign.id,
-                        [],
-                        workspace_id=ids["workspace"],
-                    )
+                # Its own discipline governs the edit: a duration is editable, and so is a declared ``score``.
+                await admin.update_match(
+                    session,
+                    foreign.id,
+                    schemas.MatchUpdate(
+                        duration_s=10,
+                        team_facts=[
+                            schemas.MatchTeamFactIn(
+                                encounter_team_id=ids["encounter_team_lol_home"], stat_code="score", value=5
+                            )
+                        ],
+                    ),
                 )
-                await _not_found(
-                    _uncached(
-                        encounters.get_match_kill_feed,
-                        session,
-                        foreign.id,
-                        workspace_id=ids["workspace"],
-                    )
+                direct = await encounters.get_match(session, foreign.id, [], workspace_id=ids["workspace"])
+                assert (direct.discipline, direct.duration_s) == ("lol", 10)
+                assert [p.team_facts for p in direct.participants] == [{"score": 5.0}, {"score": 2.0}]
+                with_stats = await _uncached(
+                    encounters.get_match_with_stats, session, foreign.id, [], workspace_id=ids["workspace"]
                 )
-                await _not_found(
-                    matches_service.get_admin_match(
-                        session,
-                        workspace_id=ids["workspace"],
-                        match_id=foreign.id,
-                    )
+                assert {entity.id for entity in with_stats.statistics.entities} == {ids["hero_lol"]}
+                assert {fact.stat_code for fact in with_stats.statistics.facts} == {
+                    "hero_damage_dealt",
+                    "hero_time_played",
+                    "score",
+                }
+                feed = await _uncached(
+                    encounters.get_match_kill_feed, session, foreign.id, workspace_id=ids["workspace"]
                 )
+                assert [(event.type, event.entity_id) for event in feed.events] == [("kill", ids["hero_lol"])]
+                detail = await matches_service.get_admin_match(
+                    session, workspace_id=ids["workspace"], match_id=foreign.id
+                )
+                assert (detail.discipline, detail.statistics_count, detail.event_count) == ("lol", 4, 0)
         finally:
             await engine.dispose()
 
@@ -576,10 +878,10 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                     ]
                     page = await encounters.get_all_matches(
                         session,
-                        schemas.MatchSearchParams(tournament_id=ids["tournament"], entities=["teams", "map"]),
+                        schemas.MatchSearchParams(tournament_id=ids["tournament"], entities=["map"]),
                         workspace_id=ids["workspace"],
                     )
-                    detail = await encounters.get_encounter(session, ids["encounter"], ["matches", "matches.teams"])
+                    detail = await encounters.get_encounter(session, ids["encounter"], ["matches"])
                     assert all(seat.active for seat in detail.teams)
                     if retired:
                         assert {seat.id for seat in detail.teams}.isdisjoint(
@@ -587,12 +889,7 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                         )
                     for name in ("match", "match_reversed", "match_no_raw"):
                         golden = expected["match_details"][name]
-                        direct = await encounters.get_match(
-                            session,
-                            ids[name],
-                            ["teams", "map"],
-                            workspace_id=ids["workspace"],
-                        )
+                        direct = await encounters.get_match(session, ids[name], ["map"], workspace_id=ids["workspace"])
                         with_stats = await _uncached(
                             encounters.get_match_with_stats,
                             session,
@@ -603,17 +900,26 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                         listed = next(match for match in page.results if match.id == ids[name])
                         nested = next(match for match in detail.matches if match.id == ids[name])
                         for match in (direct, with_stats, listed, nested):
-                            assert (match.home_team_id, match.away_team_id) == (ids["team_home"], ids["team_away"])
-                            assert (match.home_team.id, match.away_team.id) == (ids["team_home"], ids["team_away"])
-                            assert match.home_participation.id == ids["encounter_team_home"]
-                            assert match.away_participation.id == ids["encounter_team_away"]
-                            assert match.home_participation.active is not retired
-                            assert match.away_participation.active is not retired
-                            assert match.score.home == golden["scores_by_participant"][str(ids["encounter_team_home"])]
-                            assert match.score.away == golden["scores_by_participant"][str(ids["encounter_team_away"])]
-                            assert isinstance(match.score.home, int) and isinstance(match.score.away, int)
+                            # The historical participations, live or retired, in slot order; the source team is
+                            # a per-participant fact and the observed score a per-participant team fact.
+                            assert [
+                                (p.encounter_team_id, p.slot, p.tournament_team_id) for p in match.participants
+                            ] == [
+                                (ids["encounter_team_home"], 1, ids["team_home"]),
+                                (ids["encounter_team_away"], 2, ids["team_away"]),
+                            ]
+                            assert {
+                                str(p.encounter_team_id): p.team_facts["score"] for p in match.participants
+                            } == golden["scores_by_participant"]
+                            assert all(float(p.team_facts["score"]).is_integer() for p in match.participants)
                             assert (match.map_index, match.map_id) == (golden["map_index"], golden["map_id"])
-                            assert {"source", "code"}.isdisjoint(match.model_dump())
+                            assert {"source", "code", "score", "home_participation", "home_team"}.isdisjoint(
+                                match.model_dump()
+                            )
+                        # Source positions are the log's order, never the seat: the reversed log lists away first.
+                        assert [p.source_position for p in direct.participants] == (
+                            [2, 1] if name == "match_reversed" else [1, 2]
+                        )
                         official = next(
                             game
                             for game in expected["encounter_details"]["encounter"]["games"]
@@ -628,7 +934,9 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize("field", ["home_team_id", "away_team_id", "code", "source", "log_name"])
+@pytest.mark.parametrize(
+    "field", ["home_team_id", "away_team_id", "home_score", "away_score", "time", "code", "source", "log_name"]
+)
 def test_match_update_rpc_rejects_removed_fields(stats_parity_database, field):
     async def exercise():
         from types import SimpleNamespace
@@ -674,7 +982,7 @@ def test_native_admin_no_raw_rows_and_map_conflict(stats_parity_database):
                     workspace_id=ids["workspace"],
                     match_id=ids["match_no_raw"],
                 )
-                assert detail.time is None and detail.log_name is None and detail.log_record is None
+                assert detail.duration_s is None and detail.log_name is None and detail.log_record is None
                 assert (detail.rounds, detail.statistics_count, detail.kill_feed_count, detail.event_count) == (
                     0,
                     0,
@@ -732,10 +1040,24 @@ def test_native_admin_edits_keep_narrow_evidence_and_official_results(stats_pari
                 await admin.update_match(
                     session,
                     ids["match_reversed"],
-                    schemas.MatchUpdate(home_score=9, away_score=8, time=123.5),
+                    schemas.MatchUpdate(
+                        duration_s=123.5,
+                        team_facts=[
+                            schemas.MatchTeamFactIn(
+                                encounter_team_id=ids["encounter_team_home"], stat_code="score", value=9
+                            ),
+                            schemas.MatchTeamFactIn(
+                                encounter_team_id=ids["encounter_team_away"], stat_code="score", value=8
+                            ),
+                        ],
+                    ),
                 )
                 actual = await encounters.get_match(session, ids["match_reversed"], [])
-                assert (actual.score.home, actual.score.away, actual.time) == (9, 8, 123.5)
+                assert {p.encounter_team_id: p.team_facts["score"] for p in actual.participants} == {
+                    ids["encounter_team_home"]: 9,
+                    ids["encounter_team_away"]: 8,
+                }
+                assert actual.duration_s == 123.5
                 assert (await session.get(StatsMatch, ids["match_reversed"])).revision == 1
                 assert (
                     await session.execute(
@@ -910,7 +1232,10 @@ def test_native_nullable_events_and_historical_source_teams_are_not_dropped(stat
                     ids["match"],
                     workspace_id=ids["workspace"],
                 )
-                assert before.kills and before.events
+                assert {"kill", "ultimate_start", "ultimate_end", "mercy_rez"} <= {
+                    event.type for event in before.events
+                }
+                assert before.entities
                 await session.execute(
                     sa.update(StatsEvent)
                     .where(StatsEvent.match_id == ids["match"])
@@ -930,16 +1255,16 @@ def test_native_nullable_events_and_historical_source_teams_are_not_dropped(stat
                     ids["match"],
                     workspace_id=ids["workspace"],
                 )
-                assert [(row.round, row.time) for row in after.kills] == [(row.round, row.time) for row in before.kills]
-                assert [(row.round, row.time, row.name) for row in after.events] == [
-                    (row.round, row.time, row.name) for row in before.events
+                assert [(e.id, e.segment, e.t, e.type) for e in after.events] == [
+                    (e.id, e.segment, e.t, e.type) for e in before.events
                 ]
-                for row in after.kills:
-                    assert all(value is None for key, value in row.model_dump().items() if key not in {"round", "time"})
-                for row in after.events:
+                for event in after.events:
                     assert all(
-                        value is None for key, value in row.model_dump().items() if key not in {"round", "time", "name"}
+                        value is None
+                        for key, value in event.model_dump().items()
+                        if key not in {"id", "segment", "t", "type"}
                     )
+                assert after.entities == []
                 await session.execute(
                     sa.update(StatsMatchPlayer)
                     .where(
@@ -960,31 +1285,44 @@ def test_native_nullable_events_and_historical_source_teams_are_not_dropped(stat
                     [],
                     workspace_id=ids["workspace"],
                 )
-                assert detail.home_team_id is None and detail.away_team_id is None
-                assert detail.home_team is None and detail.away_team is None
-                assert (detail.score.home, detail.score.away) == (2, 1)
-                assert detail.rounds == 2
+                # The retired seats keep their snapshot and their observed score; the deleted source teams are null.
+                assert [(p.encounter_team_id, p.tournament_team_id) for p in detail.participants] == [
+                    (ids["encounter_team_home"], None),
+                    (ids["encounter_team_away"], None),
+                ]
+                assert [p.team_facts["score"] for p in detail.participants] == [2, 1]
+                assert all(segment.segment >= 1 for segment in detail.statistics.segments)
                 golden = json.loads(GOLDEN.read_text(encoding="utf-8"))["batch_user_stats"]["match"]
-                for side in ("home", "away"):
-                    participation = getattr(detail, f"{side}_participation")
-                    assert participation.id == ids[f"encounter_team_{side}"]
-                    assert not participation.active
-                    assert participation.team_id is None and participation.team is None
-                    for player in participation.players:
-                        assert _normalize(player.stats, {}) == golden[str(player.user_id)]["statistics"]
-                        assert (
-                            _normalize({"heroes": player.heroes}, {})["heroes"] == golden[str(player.user_id)]["heroes"]
-                        )
-                        assert {"id", "rank", "role", "team_id"}.isdisjoint(player.model_dump())
-                home = next(p for p in detail.home_participation.players if p.workspace_member_id == ids["member"])
-                away = next(p for p in detail.away_participation.players if p.workspace_member_id == ids["member_away"])
-                assert home.name == "HistoricalHandle#1234"
-                assert home.stats[0]["hero_damage_dealt"] == 18000
-                assert away.stats[0]["hero_damage_dealt"] == 36000
-                event_only = next(
-                    p for p in detail.home_participation.players if p.workspace_member_id == ids["member_event_only"]
+                observed = _observed_players(detail.statistics.model_dump(mode="python"))
+                assert set(observed) == {ids["encounter_team_home"], ids["encounter_team_away"]}
+                for players in observed.values():
+                    for player in players:
+                        if player["user_id"] is None:
+                            continue
+                        expected = golden[str(player["user_id"])]
+                        assert _normalize(player["stats"]) == expected["statistics"]
+                        assert _normalize({"heroes": player["heroes"]})["heroes"] == expected["heroes"]
+                members = {m.workspace_member_id: m for m in detail.statistics.members}
+                assert members[ids["member"]].handle_snapshot == "HistoricalHandle#1234"
+                assert {"id", "rank", "role", "team_id"}.isdisjoint(members[ids["member"]].model_dump())
+                home = next(
+                    p for p in observed[ids["encounter_team_home"]] if p["workspace_member_id"] == ids["member"]
                 )
-                assert event_only.stats == {} and event_only.heroes == {}
+                away = next(
+                    p for p in observed[ids["encounter_team_away"]] if p["workspace_member_id"] == ids["member_away"]
+                )
+                assert home["stats"][0]["hero_damage_dealt"] == 18000
+                assert away["stats"][0]["hero_damage_dealt"] == 36000
+                # An event-only member is a member without a single fact, never dropped and never given zeros.
+                assert ids["member_event_only"] in members
+                assert [f for f in detail.statistics.facts if f.workspace_member_id == ids["member_event_only"]] == []
+                event_only = next(
+                    p
+                    for players in observed.values()
+                    for p in players
+                    if p["workspace_member_id"] == ids["member_event_only"]
+                )
+                assert event_only["stats"] == {} and event_only["heroes"] == {}
                 current = await encounters.get_encounter(session, ids["encounter"], ["teams"])
                 assert current.teams == []
         finally:
@@ -1025,17 +1363,24 @@ def test_parsed_non_roster_member_keeps_snapshot_and_side_scoped_numbers(stats_p
                     encounters.get_match_with_stats,
                     session,
                     ids["match"],
-                    ["teams", "teams.players"],
+                    [],
                     workspace_id=ids["workspace"],
                 )
-                player = next(p for p in detail.home_participation.players if p.workspace_member_id == ids["member"])
-                assert player.name == "ParsedNonRoster#1234"
-                assert player.user_id == ids["player"]
-                assert player.stats[0]["hero_damage_dealt"] == 18000
-                assert player.stats[1]["hero_damage_dealt"] == 9000
-                assert {hero.id for hero in player.heroes[0]} == {ids["hero"], ids["hero_other"]}
-                assert all(p.user_id != ids["player"] for p in detail.home_team.players)
-                assert {"id", "rank", "role", "team_id"}.isdisjoint(player.model_dump())
+                member = next(m for m in detail.statistics.members if m.workspace_member_id == ids["member"])
+                assert member.handle_snapshot == "ParsedNonRoster#1234"
+                assert member.player_id == ids["player"]
+                assert member.encounter_team_id == ids["encounter_team_home"]
+                observed = _observed_players(detail.statistics.model_dump(mode="python"))
+                player = next(
+                    p for p in observed[ids["encounter_team_home"]] if p["workspace_member_id"] == ids["member"]
+                )
+                assert player["stats"][0]["hero_damage_dealt"] == 18000
+                assert player["stats"][1]["hero_damage_dealt"] == 9000
+                assert {hero["id"] for hero in player["heroes"][0]} == {ids["hero"], ids["hero_other"]}
+                # The roster is a separate fact: the source team no longer lists the parsed member.
+                source_team = await _source_team(session, ids["team_home"], ["players"])
+                assert all(p["user_id"] != ids["player"] for p in source_team["players"])
+                assert {"id", "rank", "role", "team_id"}.isdisjoint(member.model_dump())
 
                 # Changing linked global identities must not move native numbers
                 # between the observed sides or replace their handle snapshots.
@@ -1076,14 +1421,19 @@ def test_parsed_non_roster_member_keeps_snapshot_and_side_scoped_numbers(stats_p
                     [],
                     workspace_id=ids["workspace"],
                 )
-                home = next(p for p in changed.home_participation.players if p.workspace_member_id == ids["member"])
-                away = next(
-                    p for p in changed.away_participation.players if p.workspace_member_id == ids["member_away"]
+                members = {m.workspace_member_id: m for m in changed.statistics.members}
+                assert members[ids["member"]].player_id == ids["player_away"]
+                assert members[ids["member_away"]].player_id == ids["player"]
+                assert members[ids["member"]].handle_snapshot == "ParsedNonRoster#1234"
+                observed = _observed_players(changed.statistics.model_dump(mode="python"))
+                home = next(
+                    p for p in observed[ids["encounter_team_home"]] if p["workspace_member_id"] == ids["member"]
                 )
-                assert home.user_id == ids["player_away"] and away.user_id == ids["player"]
-                assert home.name == "ParsedNonRoster#1234"
-                assert home.stats == player.stats and home.heroes == {}
-                assert away.stats[0]["hero_damage_dealt"] == 36000
+                away = next(
+                    p for p in observed[ids["encounter_team_away"]] if p["workspace_member_id"] == ids["member_away"]
+                )
+                assert home["stats"] == player["stats"] and home["heroes"] == {}
+                assert away["stats"][0]["hero_damage_dealt"] == 36000
         finally:
             await engine.dispose()
 
@@ -1233,17 +1583,24 @@ def test_unbound_match_update_rpc_audits_direct_owner_without_changing_official_
                         {
                             "identity": identity,
                             "id": ids["match"],
-                            "payload": {"map_id": ids["map"], "home_score": 9, "away_score": 8, "time": 123.5},
+                            "payload": {
+                                "map_id": ids["map"],
+                                "duration_s": 123.5,
+                                "team_facts": [
+                                    {"encounter_team_id": ids["encounter_team_home"], "stat_code": "score", "value": 9},
+                                    {"encounter_team_id": ids["encounter_team_away"], "stat_code": "score", "value": 8},
+                                ],
+                            },
                         },
                         None,
                     )
                 assert result["ok"] is True, result
                 assert result["data"]["encounter_id"] == ids["encounter"]
-                assert (result["data"]["home_score"], result["data"]["away_score"], result["data"]["time"]) == (
-                    9,
-                    8,
-                    123.5,
-                )
+                assert result["data"]["duration_s"] == 123.5
+                assert {p["encounter_team_id"]: p["team_facts"]["score"] for p in result["data"]["participants"]} == {
+                    ids["encounter_team_home"]: 9,
+                    ids["encounter_team_away"]: 8,
+                }
                 audit = (
                     await session.scalars(sa.select(AuditLog).where(AuditLog.action == "encounter.update_match"))
                 ).one()

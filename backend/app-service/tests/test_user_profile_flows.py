@@ -497,13 +497,13 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         unbound = SimpleNamespace(match=SimpleNamespace(id=203), game=None)
 
         rows = [
-            (team, encounter_a, match_1, 1, [], 1, 10.0, 5.0, 1),
-            (team, encounter_a, match_2, 2, [], 2, 8.0, 4.0, 2),
-            (retired_team, encounter_a, match_1, 1, [], 1, 10.0, 5.0, 1),
-            (retired_team, encounter_a, match_2, 2, [], 2, 8.0, 4.0, 2),
-            (team, encounter_a, unbound, 3, [], 3, 6.0, 2.0, 3),
-            (retired_team, encounter_a, unbound, 3, [], 3, 6.0, 2.0, 3),
-            (team, encounter_b, None, None, None, None, None, None, None),
+            (team, encounter_a, match_1, None),
+            (team, encounter_a, match_2, None),
+            (retired_team, encounter_a, match_1, None),
+            (retired_team, encounter_a, match_2, None),
+            (team, encounter_a, unbound, None),
+            (retired_team, encounter_a, unbound, None),
+            (team, encounter_b, None, None),
         ]
         repo_mock = AsyncMock(return_value=rows)
         seat = SimpleNamespace(slot=1, team_id=9)
@@ -513,7 +513,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         }
         # `sort_user_matches` reads `map_index` off every mapped match.
         match_mapper = Mock(
-            side_effect=lambda context, **kwargs: SimpleNamespace(
+            side_effect=lambda context, stats=None: SimpleNamespace(
                 id=context.match.id,
                 map_index=context.game.position if context.game is not None else None,
             )

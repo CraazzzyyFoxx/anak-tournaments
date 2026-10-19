@@ -189,10 +189,29 @@ class MatchLogNameIsNotEditable(IsolatedAsyncioTestCase):
         self.assertNotIn("log_name", schemas.MatchUpdate.model_fields)
 
     def test_observed_scores_duration_and_bound_map_remain_editable(self) -> None:
-        body = schemas.MatchUpdate(home_score=3, away_score=2, map_id=10, time=120.5)
+        body = schemas.MatchUpdate(
+            map_id=10,
+            duration_s=120.5,
+            team_facts=[
+                schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="score", value=3),
+                schemas.MatchTeamFactIn(encounter_team_id=2, stat_code="score", value=2),
+            ],
+        )
         assert body.model_dump(exclude_unset=True) == {
-            "home_score": 3,
-            "away_score": 2,
             "map_id": 10,
-            "time": 120.5,
+            "duration_s": 120.5,
+            "team_facts": [
+                {"encounter_team_id": 1, "stat_code": "score", "value": 3.0},
+                {"encounter_team_id": 2, "stat_code": "score", "value": 2.0},
+            ],
         }
+        # A participant is addressed once, and only the observed score is editable.
+        with self.assertRaises(ValueError):
+            schemas.MatchUpdate(
+                team_facts=[
+                    schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="score", value=3),
+                    schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="score", value=4),
+                ]
+            )
+        with self.assertRaises(ValueError):
+            schemas.MatchTeamFactIn(encounter_team_id=1, stat_code="hero_damage_dealt", value=3)

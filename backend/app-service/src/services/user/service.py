@@ -1457,7 +1457,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:v3:{id}:{tournament_id}",
+        key="backend:user_tournament_encounters:v4:{id}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self, session: AsyncSession, id: int, tournament_id: int
@@ -1498,8 +1498,7 @@ class UserService:
         viewer_user_id: int,
     ) -> list[schemas.EncounterReadWithUserStats]:
         """Encounters in the given order, each with its live seats, bracket position and
-        its matches (``match_rows``: ``(encounter_id, match, performance, heroes, impact_rank,
-        impact_points, overperformance_score, overperf_pos)``) in play order.
+        its matches (``match_rows``: ``(encounter_id, match, stats)``) in play order.
 
         Each match carries its historical game's slots independently of live encounter seats.
         """
@@ -1507,32 +1506,13 @@ class UserService:
         contexts = await self.encounters.get_encounter_contexts(session, encounter_ids)
         matches: dict[int, list[schemas.MatchReadWithUserStats]] = {encounter_id: [] for encounter_id in encounter_ids}
         seen_matches: set[int] = set()
-        for (
-            encounter_id,
-            match,
-            performance,
-            heroes,
-            impact_rank,
-            impact_points,
-            overperformance_score,
-            overperf_pos,
-        ) in match_rows:
+        for encounter_id, match, stats in match_rows:
             # Historical seats can qualify the same observation more than once.
             match_id = match.match.id
             if match_id in seen_matches:
                 continue
             seen_matches.add(match_id)
-            matches[encounter_id].append(
-                _mappers.to_match_with_user_stats(
-                    match,
-                    performance=performance,
-                    heroes=heroes,
-                    impact_rank=impact_rank,
-                    impact_points=impact_points,
-                    overperformance_score=overperformance_score,
-                    overperf_pos=overperf_pos,
-                )
-            )
+            matches[encounter_id].append(_mappers.to_match_with_user_stats(match, stats))
 
         return [
             _mappers.to_encounter_with_user_stats(
@@ -1832,7 +1812,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:v3:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v4:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,

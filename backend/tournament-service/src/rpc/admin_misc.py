@@ -34,6 +34,7 @@ from shared.rpc.query import build_query_model
 from shared.services.audit import record_admin_audit
 from shared.services.bracket.usability import assert_encounter_live
 from shared.services.encounter.participants import active_teams
+from shared.services.match_reads import match_header_fields
 from src import models, schemas
 from src.core import auth
 from src.rpc._helpers import (
@@ -162,19 +163,9 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=encounter_id,
                 after={"match_id": match_id, **body.model_dump(mode="json", exclude_unset=True)},
             )
-            # update_match commits internally; route returns a custom dict.
+            # update_match commits internally; the edited observation comes back as the native match header.
             match = await enc_service.encounter_service.update_match(session, match_id, body, actor=user)
-            return {
-                "id": match.match.id,
-                "encounter_id": match.encounter.id,
-                "home_team_id": match.home_team.id if match.home_team is not None else None,
-                "away_team_id": match.away_team.id if match.away_team is not None else None,
-                "home_score": match.home_score,
-                "away_score": match.away_score,
-                "map_id": match.match.map_entity_id,
-                "time": match.match.duration_s,
-                "log_name": match.display_filename,
-            }
+            return _dump(schemas.MatchRead(**match_header_fields(match)))
 
         return await _run(logger, op)
 

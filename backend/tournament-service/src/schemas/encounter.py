@@ -5,14 +5,13 @@ from typing import Literal
 import sqlalchemy as sa
 from pydantic import BaseModel, Field
 
-from shared.models.stats.ingest import RawSourceStatus
+from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.discipline_filter import InstalledDisciplineFilter
-from src.core import db, enums, pagination
+from shared.schemas.match import MatchRead as NativeMatchRead
+from shared.schemas.match import NativeMatchStatistics
+from src.core import db, pagination
 from src.schemas import (
     BaseRead,
-    HeroRead,
-    MapRead,
-    Score,
     StageItemSummaryRead,
     StageSummaryRead,
     TeamRead,
@@ -40,9 +39,6 @@ __all__ = (
     "EncounterTeamRead",
     "MatchRead",
     "MatchReadWithStats",
-    "MatchObservedHeroRead",
-    "MatchObservedPlayerRead",
-    "MatchParticipationWithStats",
     "EncounterSearchParams",
     "EncounterSearchQueryParams",
     "MatchSearchParams",
@@ -132,7 +128,7 @@ class EncounterGameRead(BaseRead):
 
     position: int
     map_id: int | None = None
-    map: MapRead | None = None
+    map: CatalogEntityRead | None = None
     state: str
     result_source: str | None = None
     result_version: int = 0
@@ -182,54 +178,16 @@ class EncounterRead(BaseRead):
     games: list[EncounterGameRead] = []
 
 
-class MatchRead(BaseRead):
-    #: The observation's own owner context (``stats.match``), same as its encounter's.
-    workspace_id: int
-    discipline: str
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    score: Score
-    time: float | None
-    log_name: str | None
-    raw_status: RawSourceStatus | None
-    raw_available: bool
+class MatchRead(NativeMatchRead):
+    """What a parsed log OBSERVED, with its participants; ``encounter`` is expanded by ``entities=encounter``."""
 
-    encounter_id: int
-    map_id: int
-    # Only a proven game's position; a source claim is not official order.
-    map_index: int | None
-
-    home_participation: EncounterTeamRead
-    away_participation: EncounterTeamRead
-    home_team: TeamRead | None
-    away_team: TeamRead | None
-    encounter: EncounterRead | None
-    map: MapRead | None
-
-
-class MatchObservedHeroRead(HeroRead):
-    created_at: datetime
-    updated_at: datetime | None
-
-
-class MatchObservedPlayerRead(BaseModel):
-    """A parsed identity, independent of a current tournament or encounter roster."""
-
-    workspace_member_id: int
-    user_id: int | None
-    name: str
-    stats: dict[int, dict[enums.LogStatsName, float]]
-    heroes: dict[int, list[MatchObservedHeroRead]]
-
-
-class MatchParticipationWithStats(EncounterTeamRead):
-    players: list[MatchObservedPlayerRead]
+    encounter: EncounterRead | None = None
 
 
 class MatchReadWithStats(MatchRead):
-    rounds: int
-    home_participation: MatchParticipationWithStats
-    away_participation: MatchParticipationWithStats
+    """The match page's document: the header plus every member, segment and fact at every grain."""
+
+    statistics: NativeMatchStatistics
 
 
 class EncounterFiltersRead(BaseModel):
@@ -383,17 +341,17 @@ class EncounterSearchQueryParams(pagination.PaginationSortSearchQueryParams):
 @dataclass
 class MatchSearchParams(pagination.PaginationSortSearchParams):
     tournament_id: int | None = None
-    home_team_id: int | None = None
-    away_team_id: int | None = None
+    #: Matches this source team took part in, whichever seat it held.
+    tournament_team_id: int | None = None
 
 
 class MatchSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
-    home_team_id: int | None = None
-    away_team_id: int | None = None
+    tournament_team_id: int | None = None
 
 
 # EncounterRead.matches forward-references MatchRead, defined below it; see the
 # note at the tail of schemas/team.py for why the lazy rebuild is not enough.
 EncounterRead.model_rebuild()
 MatchRead.model_rebuild()
+MatchReadWithStats.model_rebuild()
