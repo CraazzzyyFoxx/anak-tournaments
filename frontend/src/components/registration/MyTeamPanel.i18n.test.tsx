@@ -20,6 +20,8 @@ import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import MyTeamPanel from "./MyTeamPanel";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -110,6 +112,7 @@ async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
       <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
+            discipline="overwatch"
             workspaceId={1}
             tournamentId={1}
             team={TEAM}

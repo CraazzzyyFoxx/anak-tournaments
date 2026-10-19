@@ -29,6 +29,8 @@ export type ScrimPoolInput =
 
 export interface ScrimCreateInput {
   workspace_id: number;
+  /** The game the room is played in; enabled for the workspace. */
+  discipline: string;
   label: string;
   best_of: number;
   /** Slot order: the creator's team first, the opponent's second. */

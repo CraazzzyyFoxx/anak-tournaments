@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { StatusPill } from "@/components/kit/StatusPill";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -37,11 +38,14 @@ export function TeamInviteHistory({
   tournamentId,
   workspaceId,
   teamId,
+  ontology,
   meta
 }: Readonly<{
   tournamentId: number;
   workspaceId: number;
   teamId: number;
+  /** The tournament's own game's scoped ontology, for the slot glyphs. */
+  ontology: RoleOntology | null;
   /** Rendered on the trigger's own line — a second full-width row for one
    *  short counter is the kind of thing that made this panel three screens. */
   meta?: ReactNode;
@@ -121,7 +125,7 @@ export function TeamInviteHistory({
                           everywhere else in this feature: spelled out, "Damage"
                           and "Support" doubled the width of every ledger row.
                           `RosterSlotGlyph` still announces the role name. */}
-                      <RosterSlotGlyph code={entry.slot_code} size={14} />
+                      <RosterSlotGlyph code={entry.slot_code} ontology={ontology} size={14} />
                       <span className="text-muted-foreground">
                         {entry.target_handle
                           ? t("invite.targetLabel", { name: entry.target_handle })

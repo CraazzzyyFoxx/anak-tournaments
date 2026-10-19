@@ -8,6 +8,8 @@ import type { Registration } from "@/types/registration.types";
 import type { ColumnDefinition } from "./participantsColumns.model";
 import { readParticipantUrlState } from "./participants-url-state";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 const testWindow = new Window({
   url: "http://localhost:3000/tournaments/72/participants",
   width: 1280,

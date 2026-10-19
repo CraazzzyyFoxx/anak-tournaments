@@ -23,7 +23,7 @@ import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { visibleFields } from "@/lib/forms/visible-when";
 import { notify } from "@/lib/notify";
 import { roleOf, subRoleSlugOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
-import { ROLES, type RoleCode } from "@/lib/roster/roles";
+import { ratedDimension, registrationRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
 import { BUILTIN_STATUS_MESSAGE_KEYS } from "@/lib/registration/balancer-statuses";
@@ -40,15 +40,16 @@ import type {
 } from "@/types/registration.types";
 import type { User } from "@/types/user.types";
 import { Spinner } from "@/components/ui/spinner";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 
 import FieldLabel from "./FieldLabel";
 import TextField, { fieldControlClass } from "./FormField";
 import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
 import { defaultRoleAnswer, rolesParams } from "./fields/RolesField";
 import { registrationRenderers } from "./registrationRenderers";
-import { fromRoleSelections, toRoleSelections } from "./types";
+import { fromRoleSelections, toRoleSelections, type RoleCode } from "./types";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
-import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 
 /**
  * The non-schema half of an organizer's edit: the site account this row is
@@ -118,7 +119,7 @@ interface StoredRole {
   is_primary: boolean;
   priority: number;
   rank_value?: number | null;
-  top_heroes?: string[] | null;
+  top_characters?: string[] | null;
 }
 
 const STATUS_OPTIONS = ["pending", "approved", "rejected", "withdrawn", "banned", "insufficient_data"];
@@ -140,7 +141,11 @@ function allFields(schema: FormSchema): FormField[] {
   return schema.sections.flatMap((section) => section.fields);
 }
 
-/** Stored role rows, priority order, in the shape the `roles` answer holds. */
+/**
+ * Stored role rows, priority order, in the shape the `roles` answer holds. The native read rows name the
+ * picks `top_characters`; the persisted form answer keeps its `top_heroes` spelling, so this is the one
+ * place the two meet.
+ */
 function roleInputsFrom(roles: readonly StoredRole[]): RoleInput[] {
   return [...roles]
     .sort((a, b) => a.priority - b.priority)
@@ -148,7 +153,7 @@ function roleInputsFrom(roles: readonly StoredRole[]): RoleInput[] {
       role: roleOf(role.role),
       ...(subRoleSlugOf(role.role) ? { subrole: subRoleSlugOf(role.role)! } : {}),
       is_primary: role.is_primary,
-      ...(role.top_heroes?.length ? { top_heroes: role.top_heroes } : {})
+      ...(role.top_characters?.length ? { top_heroes: role.top_characters } : {})
     }));
 }
 
@@ -167,6 +172,7 @@ function initialAnswers(
   mode: "public" | "admin",
   initial: Registration | AdminRegistration | null | undefined,
   userProfile: User | undefined,
+  roleCodes: readonly RoleCode[],
   lockedRole: RoleCode | null
 ): Answers {
   const answers: Answers = { ...(initial?.answers ?? {}) };
@@ -175,8 +181,12 @@ function initialAnswers(
   for (const field of allFields(schema)) {
     if (field.key === "roles") {
       answers.roles = initial
-        ? fromRoleSelections(toRoleSelections(roleInputsFrom(initial.roles)), lockedRole)
-        : defaultRoleAnswer(rolesParams(field), lockedRole);
+        ? fromRoleSelections(
+            roleCodes,
+            toRoleSelections(roleCodes, roleInputsFrom(initial.roles)),
+            lockedRole
+          )
+        : defaultRoleAnswer(rolesParams(field), roleCodes, lockedRole);
       continue;
     }
     if (answers[field.key] !== undefined) continue;
@@ -190,8 +200,11 @@ function initialAnswers(
   return answers;
 }
 
-function initialRanks(roles: readonly StoredRole[] | undefined): Record<string, string> {
-  const ranks: Record<string, string> = { tank: "", damage: "", support: "" };
+function initialRanks(
+  roleCodes: readonly RoleCode[],
+  roles: readonly StoredRole[] | undefined
+): Record<string, string> {
+  const ranks: Record<string, string> = Object.fromEntries(roleCodes.map((code) => [code, ""]));
   for (const role of roles ?? []) {
     if (role.rank_value != null) ranks[roleOf(role.role)] = String(role.rank_value);
   }
@@ -247,13 +260,47 @@ function dropDraft(key: string | null): void {
 /**
  * The registration form, public and admin alike, rendered from the schema.
  *
+ * The form's owner scope is the form read itself: `form.workspace_id` and `form.discipline` name the
+ * game whose roles, characters and identity provider every question is asked in. Its scoped metadata
+ * loads first, because the answer document opens with a role matrix seeded from that game's roles; a
+ * form never opens against another game's vocabulary while that request is in flight or after it failed.
+ */
+export default function RegistrationSchemaForm(props: Readonly<RegistrationSchemaFormProps>) {
+  const t = useTranslations("common.roleOntology");
+  const tCommon = useTranslations("common");
+  const metadata = useDisciplineMetadata(props.form.workspace_id, props.form.discipline);
+  if (metadata.isError) {
+    return (
+      <div role="alert" className="grid gap-2 text-sm text-destructive">
+        <p>{t("loadError")}</p>
+        <button
+          type="button"
+          className="w-fit text-xs underline"
+          onClick={() => void metadata.refetch()}
+        >
+          {tCommon("retry")}
+        </button>
+      </div>
+    );
+  }
+  if (!metadata.data) return <Spinner />;
+  return (
+    <RegistrationSchemaFormBody
+      key={`${props.form.discipline}:${metadata.data.workspace_id}`}
+      {...props}
+      metadata={metadata.data}
+    />
+  );
+}
+
+/**
  * Everything the tournament asks is a field of `form.form_schema`; this
  * component owns only the answer document, the step the registrant is on and —
  * in admin mode — the organizer's own non-schema annotations. It replaced an
  * 878-line wizard whose step list, validation and payload were three parallel
  * hand-maintained copies of one field catalogue.
  */
-export default function RegistrationSchemaForm({
+function RegistrationSchemaFormBody({
   mode,
   form,
   tournamentId,
@@ -266,9 +313,12 @@ export default function RegistrationSchemaForm({
   submitPending = false,
   hideTitle = false,
   writableKeys,
-  rolesLocked = false
-}: Readonly<RegistrationSchemaFormProps>) {
+  rolesLocked = false,
+  metadata
+}: Readonly<RegistrationSchemaFormProps & { metadata: DisciplineMetadata }>) {
   const t = useTranslations();
+  const roles = registrationRoles(metadata);
+  const roleCodes = roles.map((role) => role.code);
   const tErrors = useTranslations("forms.errors");
   const tOrganizer = useTranslations("registrationOrganizer");
   const queryClient = useQueryClient();
@@ -314,7 +364,7 @@ export default function RegistrationSchemaForm({
   // client-side only (the invite page waits for the URL fragment, the two
   // dialogs for a click), so there is no server render to diverge from.
   const [answers, setAnswers] = useState<Answers>(() => ({
-    ...initialAnswers(schema, mode, initial, userProfile, lockedRole),
+    ...initialAnswers(schema, mode, initial, userProfile, roleCodes, lockedRole),
     ...(draftKey ? readDraft(draftKey, lockedRole) : null)
   }));
   const [step, setStep] = useState(0);
@@ -330,7 +380,9 @@ export default function RegistrationSchemaForm({
   const [balancerStatus, setBalancerStatus] = useState(
     adminInitial?.balancer_status ?? "not_in_balancer"
   );
-  const [ranks, setRanks] = useState<Record<string, string>>(() => initialRanks(initial?.roles));
+  const [ranks, setRanks] = useState<Record<string, string>>(() =>
+    initialRanks(roleCodes, initial?.roles)
+  );
   const [authUserId, setAuthUserId] = useState<number | undefined>(undefined);
   const [authUserLabel, setAuthUserLabel] = useState<string | undefined>(undefined);
 
@@ -347,13 +399,8 @@ export default function RegistrationSchemaForm({
 
   const rolesField = allFields(schema).find((field) => field.key === "roles");
   const topHeroesEnabled = rolesField ? rolesParams(rolesField).top_heroes.enabled : false;
-  // The picker lists the characters of the tournament's own game; the form read carries no discipline, so the
-  // tournament (cache-shared with the public pages) names it. Nothing is requested until it has.
-  const tournamentQuery = useQuery({
-    ...tournamentOverviewQueryOptions(tournamentId),
-    enabled: topHeroesEnabled
-  });
-  const heroesQuery = useCatalogEntities(tournamentQuery.data?.discipline, "character", {
+  // The picker lists the characters of the form's own game (the owner read names it).
+  const heroesQuery = useCatalogEntities(form.discipline, "character", {
     enabled: topHeroesEnabled
   });
 
@@ -385,6 +432,7 @@ export default function RegistrationSchemaForm({
     accounts,
     subroleCatalog: form.subrole_catalog ?? {},
     heroes: heroesQuery.data ?? [],
+    metadata,
     lockedRole,
     subscription: isAdmin ? null : (subscriptionQuery.data ?? null),
     onLinkAccounts,
@@ -451,25 +499,30 @@ export default function RegistrationSchemaForm({
     const payload: RegistrationFormSubmit = { form_version_id: form.version_id, answers: sent };
     if (isAdmin) {
       const selections = toRoleSelections(
+        roleCodes,
         Array.isArray(answers.roles) ? (answers.roles as RoleInput[]) : []
       );
+      const dimension = ratedDimension(metadata)?.code ?? null;
       // Admin rows carry ranks and activity, which `answers.roles` cannot —
       // the server takes these over the answer when both are sent. Left out
       // whole when the viewer lacks `registration.roles`.
-      const adminRoles = rolesReadOnly
-        ? null
-        : fromRoleSelections(selections, lockedRole).map((role, index) => {
-            const typed = ranks[role.role]?.trim();
-            const rank = typed ? Number(typed) : null;
-            return {
-              role: toRoleRef(role.role, role.subrole ? `${role.role}_${role.subrole}` : null, "player_role"),
-              is_primary: role.is_primary,
-              priority: index + 1,
-              rank_value: rank != null && Number.isFinite(rank) ? rank : null,
-              is_active: true,
-              ...(role.top_heroes?.length ? { top_heroes: role.top_heroes } : {})
-            } satisfies AdminRegistrationRoleInput;
-          });
+      const adminRoles =
+        rolesReadOnly || dimension === null
+          ? null
+          : fromRoleSelections(roleCodes, selections, lockedRole).map((role, index) => {
+              const typed = ranks[role.role]?.trim();
+              const rank = typed ? Number(typed) : null;
+              return {
+                role: toRoleRef(role.role, role.subrole ? `${role.role}_${role.subrole}` : null, dimension),
+                is_primary: role.is_primary,
+                priority: index + 1,
+                rank_value: rank != null && Number.isFinite(rank) ? rank : null,
+                is_active: true,
+                // The persisted answer spells the picks `top_heroes`; the typed row is the native
+                // `top_characters`.
+                ...(role.top_heroes?.length ? { top_characters: role.top_heroes } : {})
+              } satisfies AdminRegistrationRoleInput;
+            });
       payload.admin = {
         display_name: displayName || null,
         admin_notes: adminNotes || null,
@@ -579,10 +632,10 @@ export default function RegistrationSchemaForm({
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {ROLES.map((role) => (
+        {roles.map((role) => (
           <TextField
             key={role.code}
-            label={t("registrationOrganizer.form.rank", { role: role.display })}
+            label={t("registrationOrganizer.form.rank", { role: role.name })}
             type="number"
             placeholder="—"
             value={ranks[role.code] ?? ""}

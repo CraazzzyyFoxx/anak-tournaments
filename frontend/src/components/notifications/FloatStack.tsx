@@ -24,7 +24,7 @@ import {
 } from "@/lib/notifications/announcement-dismissed";
 import { announcementHref, announcementText } from "@/lib/notifications/announcement-text";
 import { notificationQueryKeys } from "@/lib/notifications/query-keys";
-import { isRosterSlotCode } from "@/lib/roster/shape";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import notificationService from "@/services/notification.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -321,7 +321,7 @@ function UrgentCard({
   } else if (typeof slotCode === "string") {
     // An unknown code from a newer server renders as itself: the label is
     // decoration, the slot is the offer.
-    meta.push(t("urgent.slot", { slot: isRosterSlotCode(slotCode) ? tSlot(slotCode) : slotCode }));
+    meta.push(t("urgent.slot", { slot: slotCode === OPEN_SLOT_CODE ? tSlot("flex") : slotCode }));
   }
 
   const onHide = () => {

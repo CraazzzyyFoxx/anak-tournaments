@@ -4,7 +4,8 @@ import { Crown } from "lucide-react";
 
 import type { RegistrationForm } from "@/types/registration.types";
 import { answerSearchText } from "@/lib/forms/answers";
-import { identityMaxCount, isBuiltinKey } from "@/lib/forms/builtin-keys";
+import { identityKey, identityMaxCount, isBuiltinKey } from "@/lib/forms/builtin-keys";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { CatalogEntityChip } from "@/types/catalog.types";
 
 import {
@@ -25,11 +26,16 @@ import {
   BUILT_IN_FIELD_DEFS,
   EMPTY_HEROES_MAP,
   FALLBACK_FIELD_KEYS,
+  identityColumnDef,
+  identityExtrasColumnDef,
+  type BuiltInFieldDef,
   type BuiltInRenderContext,
 } from "./participantsBuiltInFields";
 import {
   asksTopHeroes,
   getLocalizedColumnLabel,
+  IDENTITY_COLUMN_ID,
+  IDENTITY_EXTRAS_COLUMN_ID,
   type ColumnDefinition,
   type Translator,
 } from "./participantsColumns.model";
@@ -56,9 +62,20 @@ function StatusWord({ children }: Readonly<{ children: string }>) {
 // Main builder
 // ---------------------------------------------------------------------------
 
+/** What the owner game contributes to the roster's columns. */
+export interface ParticipantColumnOwner {
+  /** The game: scopes the grid-less crest fallback. */
+  discipline: string;
+  /** Its identity provider (Battle.net, Riot, …); `null` while metadata loads or when it declares none. */
+  identityProvider: string | null;
+  /** Its scoped ontology (role names and glyphs); `null` while it loads. */
+  ontology: RoleOntology | null;
+}
+
 export function buildParticipantColumns(
   form: RegistrationForm | null,
   t: Translator,
+  owner: ParticipantColumnOwner,
   grid?: DivisionGrid | null,
   heroesMap?: Map<string, CatalogEntityChip>,
   /** Whether the loaded roster actually carries teams. There is no team flag on
@@ -67,12 +84,22 @@ export function buildParticipantColumns(
   hasTeams: boolean = false,
 ): ColumnDefinition[] {
   const columns: ColumnDefinition[] = [];
+  const provider = owner.identityProvider;
 
   const renderContext: BuiltInRenderContext = {
     heroesMap: heroesMap ?? EMPTY_HEROES_MAP,
+    ontology: owner.ontology,
     grid,
+    discipline: owner.discipline,
     showRanks: form?.show_ranks,
   };
+  // The owner provider's two identity columns: the primary handle and the handles after it.
+  const identityDef = provider
+    ? identityColumnDef(getLocalizedColumnLabel(t, identityKey(provider), provider))
+    : null;
+  const extrasDef = provider
+    ? identityExtrasColumnDef(provider, getLocalizedColumnLabel(t, IDENTITY_EXTRAS_COLUMN_ID, provider))
+    : null;
 
   // Meta: row number
   columns.push({
@@ -129,8 +156,14 @@ export function buildParticipantColumns(
     });
   }
 
+  const builtInDef = (key: string): BuiltInFieldDef | undefined => {
+    if (provider && key === identityKey(provider)) return identityDef ?? undefined;
+    if (key === IDENTITY_EXTRAS_COLUMN_ID) return extrasDef ?? undefined;
+    return BUILT_IN_FIELD_DEFS[key];
+  };
+
   const pushBuiltIn = (key: string, label: string, defaultVisible: boolean) => {
-    const def = BUILT_IN_FIELD_DEFS[key];
+    const def = builtInDef(key);
     if (!def) return;
     columns.push({
       id: def.id,
@@ -153,10 +186,10 @@ export function buildParticipantColumns(
   //
   // The fallback below is for "this tournament HAS no form", not for "its form
   // asks the public nothing". The second is reachable — no invariant makes
-  // `identity_battlenet` mandatory and every question may be organizers-only —
-  // and it must render an empty roster rather than five columns the organizer
-  // never asked for. Only the identity column and the notes column survive
-  // that, and both for reasons of their own, below.
+  // the owner game's identity question mandatory and every question may be
+  // organizers-only — and it must render an empty roster rather than five columns
+  // the organizer never asked for. Only the identity column and the notes column
+  // survive that, and both for reasons of their own, below.
   const schema = form?.form_schema ?? null;
   const publicFields = (schema?.sections ?? [])
     .flatMap((section) => section.fields)
@@ -164,8 +197,8 @@ export function buildParticipantColumns(
 
   if (schema) {
     for (const field of publicFields) {
-      if (BUILT_IN_FIELD_DEFS[field.key]) {
-        const def = BUILT_IN_FIELD_DEFS[field.key];
+      const def = builtInDef(field.key);
+      if (def) {
         pushBuiltIn(field.key, field.label || def.label, def.defaultVisible);
         if (field.key === "roles" && asksTopHeroes(field)) {
           pushBuiltIn("top_heroes", BUILT_IN_FIELD_DEFS.top_heroes.label, true);
@@ -173,12 +206,8 @@ export function buildParticipantColumns(
         // One question, two columns: the primary handle is the roster's
         // identity and the rest are an organizers-only aside, so they are
         // split the way `roles` splits off its top heroes.
-        if (field.key === "identity_battlenet" && identityMaxCount("battlenet", field.params) > 1) {
-          pushBuiltIn(
-            "identity_battlenet_extras",
-            BUILT_IN_FIELD_DEFS.identity_battlenet_extras.label,
-            true,
-          );
+        if (provider && field.key === identityKey(provider) && identityMaxCount(provider, field.params) > 1) {
+          pushBuiltIn(IDENTITY_EXTRAS_COLUMN_ID, extrasDef?.label ?? "", true);
         }
         continue;
       }
@@ -204,19 +233,20 @@ export function buildParticipantColumns(
   } else {
     for (const key of FALLBACK_FIELD_KEYS) {
       pushBuiltIn(key, BUILT_IN_FIELD_DEFS[key].label, true);
+      if (key === "top_heroes" && provider) pushBuiltIn(IDENTITY_EXTRAS_COLUMN_ID, extrasDef?.label ?? "", true);
     }
   }
 
-  if (!columns.some((column) => column.id === "identity_battlenet")) {
-    const identity = BUILT_IN_FIELD_DEFS.identity_battlenet;
+  // The roster's face is the owner game's primary handle: always offered, whatever the form asks.
+  if (identityDef && !columns.some((column) => column.id === IDENTITY_COLUMN_ID)) {
     columns.splice(1, 0, {
-      id: identity.id,
-      label: getLocalizedColumnLabel(t, "identity_battlenet", identity.label),
+      id: IDENTITY_COLUMN_ID,
+      label: identityDef.label,
       category: "built_in",
       defaultVisible: true,
       responsive: "always",
-      render: (reg) => identity.render(reg, renderContext),
-      searchValue: identity.searchValue,
+      render: (reg) => identityDef.render(reg, renderContext),
+      searchValue: identityDef.searchValue,
     });
   }
 

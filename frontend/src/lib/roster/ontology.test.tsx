@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NextIntlClientProvider } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, quotaCount } from "./ontology";
+import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, quotaCount, registrationRoles, slotCodeOrder, slotLabel, slotRank } from "./ontology";
 import { teamFormatPayload, teamFormatErrors, teamFormatsEqual } from "./team-format";
 import type { RoleOntology } from "./ontology";
 
@@ -62,6 +62,26 @@ describe("scoped role ontology", () => {
     expect(render({ dimension: "position", role: "top" })).toContain('crossorigin="anonymous"');
     expect(render({ dimension: "position", role: "missing" })).toContain("Unknown role: missing");
     expect(render({ dimension: "position", role: "old" })).toContain("Retired role: old");
+  });
+});
+
+describe("registration roles and slots", () => {
+  it("offers a game's declared root roles only, never workspace children or other dimensions", () => {
+    expect(registrationRoles(ontology).map(r => r.code)).toEqual(["top", "jungle", "mid", "bottom", "support"]);
+    expect(registrationRoles(null)).toEqual([]);
+    expect(registrationRoles({ ...ontology, dimensions: [] })).toEqual([]);
+  });
+  it("orders slots by the game's declaration with the open slot last, retired history included", () => {
+    expect(slotCodeOrder(ontology)).toEqual(["top", "jungle", "mid", "bottom", "support", "old", "blocked", "flex"]);
+    expect(slotRank(slotCodeOrder(ontology), "mid")).toBe(2);
+    expect(slotRank(slotCodeOrder(ontology), "unheard-of")).toBe(slotCodeOrder(ontology).length);
+    expect(slotCodeOrder(null)).toEqual(["flex"]);
+  });
+  it("names a slot by the game's role, the open slot by the caller's label, and an unknown role by its raw code", () => {
+    expect(slotLabel({ ...ontology, roles: ontology.roles.map(r => r.code === "jungle" ? { ...r, name: "Jungle" } : r) }, "jungle", "Open")).toBe("Jungle");
+    expect(slotLabel(ontology, "flex", "Open")).toBe("Open");
+    expect(slotLabel(ontology, "tank", "Open")).toBe("tank");
+    expect(slotLabel(null, "top", "Open")).toBe("top");
   });
 });
 

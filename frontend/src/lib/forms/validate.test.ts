@@ -184,7 +184,9 @@ describe("validateAnswer — kinds", () => {
     // The renderer deletes a blank rank, so an untouched block arrives as `{}`.
     expect(validateAnswer(rules, {}, t)).toBe("required");
     expect(validateAnswer(field({ key: "peak_rank", kind: "role_ranks" }), {}, t)).toBeNull();
-    expect(validateAnswer(rules, { healer: "3200" }, t)).toBe("invalid_option");
+    // The owner game's role codes judge which roles may be rated; without them the server is the only judge.
+    expect(validateAnswer(rules, { healer: "3200" }, t, undefined, ["tank", "damage", "support"])).toBe("invalid_option");
+    expect(validateAnswer(rules, { healer: "3200" }, t)).toBeNull();
     expect(validateAnswer(rules, { tank: "3200.5" }, t)).toBe("invalid_type");
     expect(validateAnswer(rules, "3200", t)).toBe("invalid_type");
   });

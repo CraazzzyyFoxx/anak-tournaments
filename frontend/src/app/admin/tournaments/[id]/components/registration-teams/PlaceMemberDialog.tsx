@@ -19,7 +19,9 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { ROSTER_SLOT_CODES } from "@/lib/roster/shape";
+import { buildMyTeamRoster } from "@/components/registration/myTeam.model";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationTeam } from "@/types/registration-team.types";
@@ -42,11 +44,14 @@ export function PlaceMemberDialog({
   tournamentId,
   workspaceId,
   team,
+  ontology,
   onClose,
   actions
 }: Readonly<{
   tournamentId: number;
   workspaceId: number;
+  /** The tournament's own game's scoped ontology; slots are named and drawn in it. */
+  ontology: RoleOntology | null;
   /** `null` closes the dialog; a team opens it on a blank form. */
   team: RegistrationTeam | null;
   onClose: () => void;
@@ -54,14 +59,17 @@ export function PlaceMemberDialog({
 }>) {
   const t = useTranslations("registrationTeams");
   const tAdmin = useTranslations("adminTournament.registrationTeams");
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  const slotLabel = useSlotLabel(ontology);
   const fieldId = useId();
 
   const [registrationId, setRegistrationId] = useState<number | null>(null);
   const [handle, setHandle] = useState("");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [slot, setSlot] = useState<string>(ROSTER_SLOT_CODES[0]);
+  const [pickedSlot, setSlot] = useState<string>("");
+  // The slots of THIS team's roster shape, in the game's own order; the first is the default.
+  const slotOptions = team ? buildMyTeamRoster(team, slotCodeOrder(ontology)).benchSlots : [];
+  const slot = slotOptions.includes(pickedSlot) ? pickedSlot : (slotOptions[0] ?? "");
   const [substitute, setSubstitute] = useState(false);
 
   // A different team is being filled, so the last one's answers are not this
@@ -73,7 +81,7 @@ export function PlaceMemberDialog({
     setRegistrationId(null);
     setHandle("");
     setSearch("");
-    setSlot(ROSTER_SLOT_CODES[0]);
+    setSlot("");
     setSubstitute(false);
   }
 
@@ -185,11 +193,11 @@ export function PlaceMemberDialog({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ROSTER_SLOT_CODES.map((code) => (
+            {slotOptions.map((code) => (
               <SelectItem key={code} value={code}>
                 <span className="flex items-center gap-1.5">
-                  <RosterSlotGlyph code={code} size={14} decorative />
-                  {tSlot(code)}
+                  <RosterSlotGlyph code={code} ontology={ontology} size={14} decorative />
+                  {slotLabel(code)}
                 </span>
               </SelectItem>
             ))}

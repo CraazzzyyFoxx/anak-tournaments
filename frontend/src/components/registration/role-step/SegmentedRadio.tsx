@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, type CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,8 @@ export interface SegmentedOption<T extends string> {
   label: string;
   /** Extra classes applied when this option is the selected one. */
   selectedClassName?: string;
+  /** Extra inline style applied when this option is the selected one (a role's own accent). */
+  selectedStyle?: CSSProperties;
 }
 
 interface SegmentedRadioProps<T extends string> {
@@ -75,11 +77,16 @@ export function SegmentedRadio<T extends string>({
                 move(-1);
               }
             }}
+            style={checked ? option.selectedStyle : undefined}
             className={cn(
               "flex-1 whitespace-nowrap rounded-md px-2 py-1 text-label font-medium transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
               checked
-                ? cn("text-[color:var(--aqt-fg)]", option.selectedClassName ?? "bg-[color:var(--aqt-overlay-3)]")
+                ? cn(
+                    "text-[color:var(--aqt-fg)]",
+                    option.selectedClassName ??
+                      (option.selectedStyle ? undefined : "bg-[color:var(--aqt-overlay-3)]"),
+                  )
                 : "text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)]",
             )}
           >

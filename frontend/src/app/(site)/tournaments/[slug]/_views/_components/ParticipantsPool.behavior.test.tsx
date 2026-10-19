@@ -24,6 +24,8 @@ import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 
 import TournamentParticipantsPage from "../TournamentParticipantsPage";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }

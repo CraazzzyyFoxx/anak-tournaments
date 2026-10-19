@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { catalogEntity } from "@/test/catalog";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RolesParams } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -24,6 +25,10 @@ import {
   type FlexMode,
   type RoleSelections,
 } from "./types";
+
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
+const ROLE_CODES = ["tank", "damage", "support"];
 
 const testWindow = new Window({ url: "http://localhost:3000/", width: 720, height: 900 });
 const previousGlobals = new Map<PropertyKey, PropertyDescriptor | undefined>();
@@ -136,7 +141,7 @@ function paramsFor(flexMode: FlexMode): RolesParams {
 
 let container = testWindow.document.createElement("div");
 let root = createRoot(container as unknown as Element);
-let latest: RoleSelections = createRoleSelections();
+let latest: RoleSelections = createRoleSelections(ROLE_CODES);
 
 function Harness({
   flexMode = "optional" as FlexMode,
@@ -146,18 +151,19 @@ function Harness({
   initial?: RoleSelections;
 }) {
   const [selections, setSelections] = useState<RoleSelections>(
-    initial ?? createRoleSelections(flexMode),
+    initial ?? createRoleSelections(ROLE_CODES, flexMode),
   );
   // The matrix speaks `RoleSelections`; the stored answer is `RoleInput[]`.
   // Converting at the boundary keeps these cases written in the vocabulary
   // they assert in, and exercises the round trip on every interaction.
   return (
     <RoleStep
+      ontology={OW_METADATA}
       params={paramsFor(flexMode)}
       subroleCatalog={CATALOG}
-      value={fromRoleSelections(selections)}
+      value={fromRoleSelections(ROLE_CODES, selections)}
       onChange={(next) => {
-        const restored = toRoleSelections(next);
+        const restored = toRoleSelections(ROLE_CODES, next);
         latest = restored;
         setSelections(restored);
       }}
@@ -171,7 +177,7 @@ function mount(flexMode: FlexMode = "optional", initial?: RoleSelections) {
   container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   root = createRoot(container as unknown as Element);
-  latest = initial ?? createRoleSelections(flexMode);
+  latest = initial ?? createRoleSelections(ROLE_CODES, flexMode);
   act(() => root.render(<Harness flexMode={flexMode} initial={initial} />));
 }
 
@@ -256,21 +262,18 @@ describe("RoleStep", () => {
 });
 
 describe("RoleStep flex hero roster", () => {
-  it("offers only the row's own heroes, flex or not", () => {
-    // Flex used to widen every row to the full roster, a leftover from the
-    // layout where flex had ONE hero block instead of one per role. Picks are
-    // submitted under the row's role, so Ana as a tank pick is a 422 the moment
-    // the submission stops being flex.
+  it("offers the whole roster on every row: a character's class is never read as a role", () => {
+    // Picks are validated against the owner game's characters, not against the role they are filed
+    // under, so Ana is as legal a tank pick as Reinhardt and no row narrows by class.
     mount();
     click('[role="radio"]', MAIN.tank - 1); // tank → fallback; a skipped row is locked
-    expect(roster(0)).toEqual(["reinhardt", "dva"]);
+    const everyone = roster(0);
+    expect([...everyone].sort()).toEqual(["ana", "ashe", "dva", "genji", "kiriko", "reinhardt"]);
 
     click("[aria-pressed]", 0); // flex preset — every role main
     expect(isFlexSelection(latest)).toBe(true);
-
-    expect(roster(0)).toEqual(["reinhardt", "dva"]);
-    expect(roster(1)).toEqual(["genji", "ashe"]);
-    expect(roster(2)).toEqual(["ana", "kiriko"]);
+    expect(roster(1)).toEqual(everyone);
+    expect(roster(2)).toEqual(everyone);
   });
 
   it("locks the specialization and hero cells of a skipped role", () => {
@@ -315,15 +318,10 @@ describe("RoleStep flex hero roster", () => {
     expect(Object.values(latest).filter((entry) => entry.priority === "main")).toHaveLength(0);
   });
 
-  it("keeps a stale cross-class pick in the roster so it can be removed", () => {
-    // An existing flex registration may carry one: the backend accepted it while
-    // the submission was flex. Filtering it out of the roster would leave it
-    // selected and unreachable, and the next non-flex submit would 422 on it.
-    const loaded = createRoleSelections("optional");
+  it("keeps a cross-class pick selectable and removable", () => {
+    const loaded = createRoleSelections(ROLE_CODES, "optional");
     loaded.tank = { ...loaded.tank, priority: "main", topHeroes: ["ana"] };
     mount("optional", loaded);
-
-    expect(roster(0)).toEqual(["reinhardt", "dva", "ana"]);
 
     click(HERO_TRIGGER, 0);
     click('button[title="ana"]');

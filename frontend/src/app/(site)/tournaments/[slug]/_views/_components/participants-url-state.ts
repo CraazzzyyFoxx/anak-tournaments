@@ -1,3 +1,5 @@
+import { IDENTITY_COLUMN_ID } from "./participantsColumns.model";
+
 // Public URL contract for this section (redesign plan §1.2): `q` for search,
 // `view` for the pool/table switch. `participantStatus`/`participantColumns`
 // keep their prefixed names — they are table-only knobs with no counterpart on
@@ -18,7 +20,7 @@ function isParticipantView(value: string | null): value is ParticipantView {
 }
 
 export const PARTICIPANT_SEARCH_MAX_LENGTH = 120;
-const PARTICIPANT_MANDATORY_COLUMN_IDS = ["identity_battlenet", "_status"] as const;
+const PARTICIPANT_MANDATORY_COLUMN_IDS = [IDENTITY_COLUMN_ID, "_status"] as const;
 
 const PARTICIPANT_MANDATORY_COLUMN_ID_SET = new Set<string>(
   PARTICIPANT_MANDATORY_COLUMN_IDS,

@@ -11,6 +11,7 @@ export const ADMIN_ROLE_FORM: RegistrationForm = {
   id: 0,
   tournament_id: 0,
   workspace_id: 0,
+  discipline: "",
   is_open: true,
   form_schema: { schema_version: 1, sections: [] },
   version_id: 0,

@@ -29,8 +29,8 @@ function builtin(key: string, required = false): FormField {
   };
 }
 
-/** Omit the provider only for an unowned legacy workspace template. */
-export function defaultFormSchema(identityProvider: string = "battlenet"): FormSchema {
+/** The default questionnaire of a game: its own identity provider asks the required game handle. */
+export function defaultFormSchema(identityProvider: string): FormSchema {
   return {
     schema_version: 1,
     sections: [

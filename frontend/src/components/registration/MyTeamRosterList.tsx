@@ -5,18 +5,21 @@ import { useTranslations } from "next-intl";
 
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
-import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster/shape";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { SlotCode } from "@/lib/roster/shape";
 import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 
 interface MyTeamRosterListProps {
   team: RegistrationTeam;
   /** One entry per unfilled, unoffered starter place. */
-  freeSlots: RosterSlotCode[];
-  benchSlots: RosterSlotCode[];
+  freeSlots: SlotCode[];
+  benchSlots: SlotCode[];
   benchOpen: boolean;
   isCaptain: boolean;
   canEditRoster: boolean;
   busy: boolean;
+  /** The owner game's scoped ontology, for slot glyphs; `null` while it loads. */
+  ontology: RoleOntology | null;
   slotLabel: (code: string) => string;
   onPlace: (input: {
     registrationId: number;
@@ -26,7 +29,7 @@ interface MyTeamRosterListProps {
   onSetManager: (input: { registrationId: number; isManager: boolean }) => void;
   onTransferCaptaincy: (member: RegistrationTeamMember) => void;
   onKick: (member: RegistrationTeamMember) => void;
-  onInvite: (code: RosterSlotCode | null, substitute?: boolean) => void;
+  onInvite: (code: SlotCode | null, substitute?: boolean) => void;
 }
 
 /** The roster itself: who holds which slot, the gaps nobody holds, and the bench. */
@@ -38,6 +41,7 @@ export default function MyTeamRosterList({
   isCaptain,
   canEditRoster,
   busy,
+  ontology,
   slotLabel,
   onPlace,
   onSetManager,
@@ -54,7 +58,7 @@ export default function MyTeamRosterList({
           key={member.registration_id}
           className="flex flex-wrap items-center gap-2 py-2.5 text-sm first:pt-0 last:pb-0"
         >
-          <RosterSlotGlyph code={member.slot_code} />
+          <RosterSlotGlyph code={member.slot_code} ontology={ontology} />
           <span className="font-medium">{member.display_name ?? member.primary_handle}</span>
           {member.is_captain && (
             <span className="inline-flex items-center gap-1 text-xs text-[color:var(--aqt-amber)]">
@@ -86,7 +90,7 @@ export default function MyTeamRosterList({
                     })
                   }
                 >
-                  {ROSTER_SLOT_CODES.map((code) => (
+                  {benchSlots.map((code) => (
                     <option key={code} value={code}>
                       {slotLabel(code)}
                     </option>
@@ -162,7 +166,7 @@ export default function MyTeamRosterList({
           key={`free-${code}-${index}`}
           className="flex flex-wrap items-center gap-2 py-2.5 text-sm first:pt-0 last:pb-0"
         >
-          <RosterSlotGlyph code={code} />
+          <RosterSlotGlyph code={code} ontology={ontology} />
           <span className="text-[color:var(--aqt-fg-muted)]">{t("list.openSlot")}</span>
           <span className="text-xs text-[color:var(--aqt-fg-muted)]">{slotLabel(code)}</span>
           {canEditRoster && (

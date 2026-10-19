@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useTournamentQuery } from "@/hooks/useTournamentClientData";
 import { getPublicPageQueryPresentation } from "@/lib/public-page-query-presentation";
@@ -43,6 +44,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
   const t = useTranslations();
   const { teamsQuery, records, registrationsByUser, heroesMap } =
     useTournamentTeamsData(tournament);
+  // The tournament's own game names and draws every role of the roster.
+  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
 
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const storedView = useStoredTeamsView();
@@ -228,6 +231,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                       medal={medal}
                       showGroup={showGroup}
                       discipline={tournament.discipline}
+                      ontology={ontology}
                     />
                   </div>
                 );
@@ -246,6 +250,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   showGroup={showGroup}
                   registrationsByUser={registrationsByUser}
                   heroesMap={heroesMap}
+                  ontology={ontology}
                 />
               ))}
             </div>

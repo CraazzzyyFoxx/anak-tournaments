@@ -24,6 +24,12 @@ import type {
  * `is_open` and `subscription_requirement_json` are absent on purpose: both are
  * server-derived read-only projections, and the schema drops them on the way in.
  */
+/** The default questionnaire of the owner's game; with the provider unresolved there is no honest default. */
+function ownerDefaultSchema(identityProvider: string | undefined) {
+  if (!identityProvider) throw new Error("The owner's identity provider is not resolved yet");
+  return defaultFormSchema(identityProvider);
+}
+
 export function toRegistrationFormUpsert(
   form: AdminRegistrationForm | null | undefined,
   identityProvider?: string
@@ -46,6 +52,6 @@ export function toRegistrationFormUpsert(
     // The looser stage for a form saved before the field existed, so loading an
     // old form never silently arms a sign-up wall.
     subscription_stage: form?.subscription_stage === "registration" ? "registration" : "check_in",
-    form_schema: form?.form_schema ?? defaultFormSchema(identityProvider)
+    form_schema: form?.form_schema ?? ownerDefaultSchema(identityProvider)
   };
 }

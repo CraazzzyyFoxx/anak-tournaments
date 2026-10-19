@@ -1,6 +1,9 @@
 import type { Registration, RegistrationStatus } from "@/types/registration.types";
 
-import type { ColumnDefinition } from "./_components/participantsColumns.model";
+import {
+  IDENTITY_EXTRAS_COLUMN_ID,
+  type ColumnDefinition,
+} from "./_components/participantsColumns.model";
 
 export type StatusFilter = "all" | RegistrationStatus;
 
@@ -52,7 +55,7 @@ export const POOL_TEAM_FORMATIONS: Record<string, true> = { balancer: true, draf
  *  and `balancer_status` on every row. */
 export const ADMIN_ONLY_COLUMN_IDS: Record<string, true> = {
   public_notes: true,
-  identity_battlenet_extras: true
+  [IDENTITY_EXTRAS_COLUMN_ID]: true
 };
 
 /** How many rows each status holds, for the filter chips' counts. */

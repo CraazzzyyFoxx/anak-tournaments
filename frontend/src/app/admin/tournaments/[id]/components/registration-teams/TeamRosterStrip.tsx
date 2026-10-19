@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { StatusPill } from "@/components/kit/StatusPill";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
@@ -43,9 +44,12 @@ export function TeamRosterStrip({
   team,
   canManage,
   disabled,
+  ontology,
   onRevokeInvite
 }: Readonly<{
   team: RegistrationTeam;
+  /** The tournament's own game's scoped ontology, for the slot glyphs. */
+  ontology: RoleOntology | null;
   canManage: boolean;
   disabled: boolean;
   onRevokeInvite: (inviteId: number) => void;
@@ -65,7 +69,7 @@ export function TeamRosterStrip({
           key={member.registration_id}
           className="flex items-center gap-1.5 rounded-md border border-border px-1.5 py-0.5 text-caption"
         >
-          <RosterSlotGlyph code={member.slot_code} size={14} />
+          <RosterSlotGlyph code={member.slot_code} ontology={ontology} size={14} />
           <span className="font-medium">{memberName(member)}</span>
           {member.is_captain && (
             <RosterMark icon={Crown} label={t("member.captain")} className="text-warning" />
@@ -90,7 +94,7 @@ export function TeamRosterStrip({
           <StatusPill tone={inviteTone(invite.state)}>
             {t(`inviteState.${invite.state}`)}
           </StatusPill>
-          <RosterSlotGlyph code={invite.slot_code} size={14} />
+          <RosterSlotGlyph code={invite.slot_code} ontology={ontology} size={14} />
           <span className="text-muted-foreground">
             {invite.target_handle ?? t("invite.linkLabel")}
           </span>

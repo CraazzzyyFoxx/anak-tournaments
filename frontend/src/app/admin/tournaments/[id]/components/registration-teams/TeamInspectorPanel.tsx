@@ -22,6 +22,8 @@ import { formatShortfall } from "@/lib/registration/team-shortfall";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import { ADMISSION_TONE, isTeamLive } from "./model";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { TeamInviteHistory } from "./TeamInviteHistory";
 import { TeamRosterStrip } from "./TeamRosterStrip";
 import type { RegistrationTeamActions } from "./useRegistrationTeamActions";
@@ -41,11 +43,14 @@ export function TeamInspectorPanel({
   canManageTeams,
   disabled,
   inlineError,
+  ontology,
   actions
 }: Readonly<{
   team: RegistrationTeam;
   tournamentId: number;
   workspaceId: number;
+  /** The tournament's own game's scoped ontology: slots are named and drawn in it. */
+  ontology: RoleOntology | null;
   canManageTeams: boolean;
   /** A read or a write is in flight; nothing on the panel may be typed into. */
   disabled: boolean;
@@ -54,7 +59,7 @@ export function TeamInspectorPanel({
 }>) {
   const t = useTranslations("registrationTeams");
   const tErr = useTranslations("registrationTeams.errors");
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  const slotLabel = useSlotLabel(ontology);
 
   const editable = canManageTeams && team.exported_team_id == null && isTeamLive(team);
   const name = actions.nameDraft[team.id] ?? team.name;
@@ -89,7 +94,7 @@ export function TeamInspectorPanel({
             of its own. */}
         {team.status === "forming" && team.exported_team_id == null && (
           <span className="text-caption font-medium text-warning">
-            {t("list.shortfall", { slots: formatShortfall(team.open_slots, tSlot) })}
+            {t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })}
           </span>
         )}
       </div>
@@ -98,6 +103,7 @@ export function TeamInspectorPanel({
         team={team}
         canManage={canManageTeams}
         disabled={disabled}
+        ontology={ontology}
         onRevokeInvite={(inviteId) => actions.revokeInvite({ teamId: team.id, inviteId })}
       />
 
@@ -202,6 +208,7 @@ export function TeamInspectorPanel({
         tournamentId={tournamentId}
         workspaceId={workspaceId}
         teamId={team.id}
+        ontology={ontology}
         meta={
           /* Only once someone is actually on the bench: "0 of 2 substitutes"
              under every team is a constant, not news. */

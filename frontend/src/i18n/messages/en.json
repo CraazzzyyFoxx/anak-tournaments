@@ -485,7 +485,8 @@
       "topHeroes": {
         "title": "Top Heroes",
         "desc": "Pick up to {max} heroes you play best in this role.",
-        "count": "{count}/{max}"
+        "count": "{count}/{max}",
+        "search": "Search characters"
       }
     },
     "details": {
@@ -7238,6 +7239,7 @@
     },
     "create": {
       "communityLabel": "Community",
+      "gameLabel": "Game",
       "communityPlaceholder": "Choose a community",
       "communityHint": "Choose where to create this room. Your viewing filter will not change.",
       "open": "New room",

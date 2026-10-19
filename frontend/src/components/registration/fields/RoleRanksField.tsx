@@ -1,14 +1,14 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo } from "react";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import type { FieldRendererProps } from "@/components/forms/types";
 import { NumberInput } from "@/components/ui/number-input";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
-import { ROLES } from "@/lib/roster/roles";
+import { registrationRoles } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import FieldLabel from "../FieldLabel";
 import { fieldControlClass, fieldInvalidClass } from "../FormField";
@@ -46,10 +46,12 @@ function storedRank(stored: unknown): number | null {
  * range, so a picker over the ladder would round every answer to its tier and
  * the crest beside the field already says which tier that is.
  *
- * The crest is read off the PLATFORM's grid (`OW_REFERENCE_GRID`), never the
- * workspace's: what the registrant types is their Overwatch SR, and 3200 is
- * Diamond 3 on the ladder no matter what a workspace calls its 14th division.
- * A workspace grid here would rename the number under the registrant.
+ * The crest is read off the owner game's NATIVE ladder (its scoped metadata),
+ * never the workspace's grid: what the registrant types is a rank of THAT game,
+ * and it lands on the same native tier no matter what a workspace calls its own
+ * divisions. A workspace grid here would rename the number under the registrant.
+ * A game with no native ladder shows no crest, and no other game's ladder is
+ * ever borrowed.
  */
 export default function RoleRanksField({
   field,
@@ -61,6 +63,11 @@ export default function RoleRanksField({
   const id = useId();
   const errorId = `${id}-error`;
   const ranks = ranksOf(value);
+  const roles = registrationRoles(context.metadata);
+  const nativeLadder = useMemo<DivisionGrid>(
+    () => ({ tiers: [...(context.metadata?.native_ladder ?? [])] }),
+    [context.metadata],
+  );
   // Required per ROLE, not per block: the registrant must rate the roles they
   // signed up for, and may still rate the ones they did not.
   const declared = context.declaredRoles ?? [];
@@ -82,10 +89,10 @@ export default function RoleRanksField({
         <FieldLabel label={field.label || field.key} required={field.required} />
       </legend>
       <div className="grid gap-3 sm:grid-cols-3">
-        {ROLES.map((role) => {
+        {roles.map((role) => {
           const controlId = `${id}-${role.code}`;
           const rank = storedRank(ranks[role.code]);
-          const division = resolveDivisionFromRank(OW_REFERENCE_GRID, rank);
+          const division = resolveDivisionFromRank(nativeLadder, rank);
           // Only the blank cells the objection is ABOUT go red: a rank that is
           // filled in is not why the block was refused, and painting all three
           // made the answered roles look wrong too. With nothing declared the
@@ -97,7 +104,7 @@ export default function RoleRanksField({
           return (
             <div key={role.code} className="space-y-2">
               <FieldLabel
-                label={role.display}
+                label={role.name}
                 htmlFor={controlId}
                 required={field.required && declared.includes(role.code)}
               />
@@ -120,11 +127,11 @@ export default function RoleRanksField({
                 {division != null ? (
                   <span
                     className="pointer-events-none absolute inset-y-0 right-2 flex items-center"
-                    title={getDivisionLabel(OW_REFERENCE_GRID, division) ?? undefined}
+                    title={getDivisionLabel(nativeLadder, division) ?? undefined}
                   >
                     <DivisionIcon
                       division={division}
-                      tournamentGrid={OW_REFERENCE_GRID}
+                      tournamentGrid={nativeLadder}
                       width={22}
                       height={22}
                       className="size-[22px] object-contain"

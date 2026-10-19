@@ -21,6 +21,8 @@ import type { Tournament } from "@/types/tournament.types";
 
 import MyInviteOffers from "./MyInviteOffers";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -56,7 +58,7 @@ vi.mock("@/services/registration-team.service", () => ({
 
 const MESSAGES = { en, ru } as const;
 
-const TOURNAMENT = { id: 5, workspace_id: 1, name: "Autumn Cup" } as unknown as Tournament;
+const TOURNAMENT = { id: 5, workspace_id: 1, discipline: "overwatch", name: "Autumn Cup" } as unknown as Tournament;
 
 const OFFER = {
   invite_id: 42,

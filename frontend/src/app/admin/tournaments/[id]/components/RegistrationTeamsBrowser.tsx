@@ -23,6 +23,8 @@ import { EXPORT_SKIP_CODES, isExportEligible, type PendingConfirm } from "./regi
 import { PlaceMemberDialog } from "./registration-teams/PlaceMemberDialog";
 import { RenameTeamDialog } from "./registration-teams/RenameTeamDialog";
 import { TeamConfirmDialog } from "./registration-teams/TeamConfirmDialog";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { TeamInspectorPanel } from "./registration-teams/TeamInspectorPanel";
 import { useRegistrationTeamActions } from "./registration-teams/useRegistrationTeamActions";
 import {
@@ -52,12 +54,17 @@ import {
  */
 export function RegistrationTeamsBrowser({
   tournamentId,
-  workspaceId
+  workspaceId,
+  discipline
 }: Readonly<{
   tournamentId: number;
   workspaceId: number;
+  /** The tournament's game: its scoped ontology names and draws every roster slot. */
+  discipline: string;
 }>) {
   const t = useTranslations("registrationTeams");
+  const ontology = useDisciplineMetadata(workspaceId, discipline).data ?? null;
+  const slotLabel = useSlotLabel(ontology);
   // Backend messages are English; every rejection here carries a machine code
   // and MUST go through the translator (§12.2).
   const tErr = useTranslations("registrationTeams.errors");
@@ -173,7 +180,7 @@ export function RegistrationTeamsBrowser({
     [setActionError]
   );
 
-  const columns = useRegistrationTeamColumns({ canManageTeams, canExport, handlers: rowHandlers });
+  const columns = useRegistrationTeamColumns({ canManageTeams, canExport, slotLabel, handlers: rowHandlers });
 
   return (
     <>
@@ -310,6 +317,7 @@ export function RegistrationTeamsBrowser({
               workspaceId={workspaceId}
               canManageTeams={canManageTeams}
               disabled={disabled}
+              ontology={ontology}
               inlineError={inlineError}
               actions={actions}
             />
@@ -376,6 +384,7 @@ export function RegistrationTeamsBrowser({
       <PlaceMemberDialog
         tournamentId={tournamentId}
         workspaceId={workspaceId}
+        ontology={ontology}
         team={placeTarget}
         onClose={() => setPlaceTarget(null)}
         actions={actions}

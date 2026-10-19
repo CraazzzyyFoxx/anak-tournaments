@@ -3,7 +3,9 @@
 import { useTranslations } from "next-intl";
 
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
-import { ROSTER_SLOT_CODES } from "@/lib/roster/shape";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { slotCodesOf } from "@/lib/roster/shape";
 import { groupTournamentStageFlow } from "@/lib/tournament/stages";
 import type { TeamFormation, Tournament } from "@/types/tournament.types";
 
@@ -32,7 +34,9 @@ export function OverviewPhasesCard({ tournament }: Readonly<{ tournament: Tourna
  */
 export function OverviewFormatCard({ tournament }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations();
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  // The tournament's own game names and draws its roster slots.
+  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
+  const slotLabel = useSlotLabel(ontology);
 
   // Slots as role glyphs, not "2 × Урон": the icon is the site's role
   // vocabulary everywhere else. `RosterSlotGlyph` announces the slot name for
@@ -40,7 +44,7 @@ export function OverviewFormatCard({ tournament }: Readonly<{ tournament: Tourna
   // unlabelled shield-and-×2 pair could not.
   const rosterShape = tournament.roster_shape;
   const rosterSlots = rosterShape
-    ? ROSTER_SLOT_CODES.filter((code) => (rosterShape.slots[code] ?? 0) > 0).map((code) => ({
+    ? slotCodesOf(rosterShape.slots).map((code) => ({
         code,
         count: rosterShape.slots[code] as number
       }))
@@ -98,9 +102,9 @@ export function OverviewFormatCard({ tournament }: Readonly<{ tournament: Tourna
                 <span
                   key={code}
                   className="inline-flex items-center gap-1"
-                  title={`${tSlot(code)} ×${count}`}
+                  title={`${slotLabel(code)} ×${count}`}
                 >
-                  <RosterSlotGlyph code={code} size={14} />
+                  <RosterSlotGlyph code={code} ontology={ontology} size={14} />
                   <span className="aqt-tnum text-[color:var(--aqt-fg-faint)]">×{count}</span>
                 </span>
               ))}

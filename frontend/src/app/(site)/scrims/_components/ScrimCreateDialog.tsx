@@ -40,6 +40,7 @@ import { notify } from "@/lib/notify";
 import { withReturnTo } from "@/lib/auth/return-to";
 import { stageRoundShape } from "@/lib/bracket/view";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import encounterService from "@/services/encounter.service";
 import scrimService from "@/services/scrim.service";
 import tournamentService from "@/services/tournament.service";
@@ -68,12 +69,6 @@ type PoolSource = "copy" | "custom";
 
 const POOL_SOURCES: PoolSource[] = ["copy", "custom"];
 
-/**
- * The game a new room is created for. `ScrimService.create` opens Overwatch rooms only (it asserts that discipline
- * is enabled and stamps it on the room), so the custom pool is drawn from that game's catalog.
- */
-const SCRIM_DISCIPLINE = "overwatch";
-
 export function ScrimCreateDialog({
   workspaceId: scopedWorkspaceId,
   workspaces
@@ -93,6 +88,18 @@ export function ScrimCreateDialog({
   const workspaceId = workspaces.some((workspace) => workspace.id === candidateWorkspaceId)
     ? candidateWorkspaceId
     : null;
+  // The game the room is played in: one of the games enabled for the chosen community. The room's pool is
+  // drawn from that game's catalog and the server stamps it on the room; nothing here assumes a game.
+  const disciplinesQuery = useDisciplines(workspaceId ?? "all");
+  const enabledDisciplines = useMemo(
+    () => (workspaceId == null ? [] : (disciplinesQuery.data ?? []).filter((entry) => entry.enabled)),
+    [workspaceId, disciplinesQuery.data]
+  );
+  const [chosenDiscipline, setChosenDiscipline] = useState<string | null>(null);
+  const discipline =
+    enabledDisciplines.find((entry) => entry.code === chosenDiscipline)?.code ??
+    enabledDisciplines[0]?.code ??
+    null;
   const [label, setLabel] = useState("");
   const [bestOf, setBestOf] = useState(DEFAULT_BEST_OF);
   const [ownName, setOwnName] = useState("");
@@ -151,7 +158,7 @@ export function ScrimCreateDialog({
   const poolIssues = source === "custom" ? validateScrimPoolDraft(pool) : [];
   const namesFilled = label.trim() !== "" && ownName.trim() !== "" && opponentName.trim() !== "";
   const canSubmit =
-    workspaceId != null && namesFilled &&
+    workspaceId != null && discipline != null && namesFilled &&
     (source === "copy" ? copyTournamentId != null : poolIssues.length === 0);
 
   const createMutation = useMutation({
@@ -171,7 +178,7 @@ export function ScrimCreateDialog({
   });
 
   const submit = () => {
-    if (workspaceId == null || !canSubmit) return;
+    if (workspaceId == null || discipline == null || !canSubmit) return;
     const poolInput: ScrimPoolInput =
       source === "copy"
         ? {
@@ -196,6 +203,7 @@ export function ScrimCreateDialog({
 
     createMutation.mutate({
       workspace_id: workspaceId,
+      discipline,
       label: label.trim(),
       best_of: bestOf,
       team_names: [ownName.trim(), opponentName.trim()],
@@ -240,6 +248,28 @@ export function ScrimCreateDialog({
                   ))}
                 </select>
                 <FieldDescription>{t("communityHint")}</FieldDescription>
+              </Field>
+            ) : null}
+            {enabledDisciplines.length > 1 ? (
+              <Field>
+                <FieldLabel htmlFor={`${ids}-game`}>{t("gameLabel")}</FieldLabel>
+                <select
+                  id={`${ids}-game`}
+                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
+                  value={discipline ?? ""}
+                  onChange={(event) => {
+                    setChosenDiscipline(event.target.value);
+                    // A pool is one game's catalog ids: nothing chosen for the other game carries over.
+                    setPool(emptyScrimPoolDraft);
+                    setCopyTournamentId(null);
+                    setCopyStageId(null);
+                    setCopyRound(null);
+                  }}
+                >
+                  {enabledDisciplines.map((entry) => (
+                    <option key={entry.code} value={entry.code}>{entry.name}</option>
+                  ))}
+                </select>
               </Field>
             ) : null}
             <Field>
@@ -385,14 +415,14 @@ export function ScrimCreateDialog({
                   </Select>
                 </Field>
               </div>
-            ) : (
+            ) : discipline != null ? (
               <ScrimPoolEditor
-                discipline={SCRIM_DISCIPLINE}
+                discipline={discipline}
                 pool={pool}
                 disabled={createMutation.isPending}
                 onChange={setPool}
               />
-            )}
+            ) : null}
 
             {poolIssues.length > 0 ? (
               <Alert variant="destructive">

@@ -11,8 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { getRegistrationTeamStatus, REGISTRATION_TEAM_STATUS_TONE } from "@/lib/registration/team-tone";
-import { ROSTER_SLOT_CODES, type RosterSlotCode } from "@/lib/roster/shape";
+import { slotCodeOrder, slotRank, type RoleOntology } from "@/lib/roster/ontology";
+import type { SlotCode } from "@/lib/roster/shape";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
 import registrationService from "@/services/registration.service";
@@ -20,15 +22,15 @@ import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 import type { Tournament } from "@/types/tournament.types";
 
-/** Canonical reading order of a roster: tank, damage, support, flex. */
-const SLOT_RANK = new Map<string, number>(ROSTER_SLOT_CODES.map((code, index) => [code, index]));
-
-function RosterRow({ member }: Readonly<{ member: RegistrationTeamMember }>) {
+function RosterRow({
+  member,
+  ontology
+}: Readonly<{ member: RegistrationTeamMember; ontology: RoleOntology | null }>) {
   const t = useTranslations();
 
   return (
     <li className="flex items-center gap-2 text-body">
-      <RosterSlotGlyph code={member.slot_code} />
+      <RosterSlotGlyph code={member.slot_code} ontology={ontology} />
       {/* Name and its markers are one group: with the name on `flex-1` the crown
           drifted to the far edge of the card and read as a column of its own. */}
       <span className="flex min-w-0 items-center gap-1.5">
@@ -67,12 +69,15 @@ function RosterRow({ member }: Readonly<{ member: RegistrationTeamMember }>) {
  * gap also stops a one-player card from being stretched to the height of a full
  * one by the grid, which was most of the dead space on this page.
  */
-function OpenSlotRow({ code }: Readonly<{ code: RosterSlotCode }>) {
+function OpenSlotRow({
+  code,
+  ontology
+}: Readonly<{ code: SlotCode; ontology: RoleOntology | null }>) {
   const t = useTranslations();
 
   return (
     <li className="flex items-center gap-2 text-body opacity-60">
-      <RosterSlotGlyph code={code} />
+      <RosterSlotGlyph code={code} ontology={ontology} />
       <span className="truncate text-[color:var(--aqt-fg-muted)]">
         {t("registrationTeams.list.openSlot")}
       </span>
@@ -80,23 +85,26 @@ function OpenSlotRow({ code }: Readonly<{ code: RosterSlotCode }>) {
   );
 }
 
-function RegistrationTeamCard({ team }: Readonly<{ team: RegistrationTeam }>) {
+function RegistrationTeamCard({
+  team,
+  ontology
+}: Readonly<{ team: RegistrationTeam; ontology: RoleOntology | null }>) {
   const t = useTranslations();
   const headingId = useId();
   const status = getRegistrationTeamStatus(team);
-  // Starters before substitutes, canonical slot order inside each, captain first
+  // Starters before substitutes, the game's own slot order inside each, captain first
   // within a slot — the order a roster is read in, and the same shape in every
   // card so two rosters can be compared by looking at them.
+  const order = slotCodeOrder(ontology);
   const roster = [...team.members].sort(
     (a, b) =>
       Number(a.is_substitute) - Number(b.is_substitute) ||
-      (SLOT_RANK.get(a.slot_code ?? "") ?? ROSTER_SLOT_CODES.length) -
-        (SLOT_RANK.get(b.slot_code ?? "") ?? ROSTER_SLOT_CODES.length) ||
+      slotRank(order, a.slot_code) - slotRank(order, b.slot_code) ||
       Number(b.is_captain) - Number(a.is_captain)
   );
-  const openSlots = ROSTER_SLOT_CODES.flatMap((code) =>
-    Array.from({ length: team.open_slots[code] ?? 0 }, () => code)
-  );
+  const openSlots = Object.keys(team.open_slots)
+    .sort((a, b) => slotRank(order, a) - slotRank(order, b))
+    .flatMap((code) => Array.from({ length: team.open_slots[code] ?? 0 }, () => code));
 
   return (
     <article
@@ -134,15 +142,15 @@ function RegistrationTeamCard({ team }: Readonly<{ team: RegistrationTeam }>) {
         {roster
           .filter((member) => !member.is_substitute)
           .map((member) => (
-            <RosterRow key={member.registration_id} member={member} />
+            <RosterRow key={member.registration_id} member={member} ontology={ontology} />
           ))}
         {openSlots.map((code, index) => (
-          <OpenSlotRow key={`${code}-${index}`} code={code} />
+          <OpenSlotRow key={`${code}-${index}`} code={code} ontology={ontology} />
         ))}
         {roster
           .filter((member) => member.is_substitute)
           .map((member) => (
-            <RosterRow key={member.registration_id} member={member} />
+            <RosterRow key={member.registration_id} member={member} ontology={ontology} />
           ))}
       </ul>
 
@@ -194,6 +202,7 @@ export default function RegistrationTeamsList({
     enabled: isAuthenticated
   });
   const myTeamId = myRegQuery.data?.team?.id ?? null;
+  const metadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
 
   const activeTeams = (teamsQuery.data?.items ?? []).filter(
     (team) => team.status === "forming" || team.status === "complete",
@@ -261,7 +270,7 @@ export default function RegistrationTeamsList({
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {teams.map((team) => (
-          <RegistrationTeamCard key={team.id} team={team} />
+          <RegistrationTeamCard key={team.id} team={team} ontology={metadata.data ?? null} />
         ))}
       </div>
     </section>

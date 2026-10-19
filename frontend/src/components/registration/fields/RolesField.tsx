@@ -1,12 +1,11 @@
 "use client";
 
 import type { FieldRendererProps } from "@/components/forms/types";
-import type { RoleCode } from "@/lib/roster/roles";
 import type { FormField, RolesParams } from "@/types/forms.types";
 import type { RoleInput } from "@/types/registration.types";
 
 import RoleStep from "../RoleStep";
-import { createRoleSelections, fromRoleSelections, type FlexMode } from "../types";
+import { createRoleSelections, fromRoleSelections, type FlexMode, type RoleCode } from "../types";
 
 /**
  * `roles.params` with every default filled in.
@@ -49,9 +48,14 @@ export function roleFlexMode(params: RolesParams): FlexMode {
  */
 export function defaultRoleAnswer(
   params: RolesParams,
+  roleCodes: readonly RoleCode[],
   lockedRole: RoleCode | null = null,
 ): RoleInput[] {
-  return fromRoleSelections(createRoleSelections(roleFlexMode(params)), lockedRole);
+  return fromRoleSelections(
+    roleCodes,
+    createRoleSelections(roleCodes, roleFlexMode(params)),
+    lockedRole,
+  );
 }
 
 export default function RolesField({
@@ -70,6 +74,7 @@ export default function RolesField({
       onChange={onChange}
       error={error}
       allHeroes={context.heroes}
+      ontology={context.metadata}
       hideHelperText={context.mode === "admin"}
       lockedRole={context.lockedRole}
     />

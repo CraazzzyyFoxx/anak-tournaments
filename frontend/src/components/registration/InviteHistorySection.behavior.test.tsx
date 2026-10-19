@@ -26,6 +26,8 @@ import ru from "@/i18n/messages/ru.json";
 
 import InviteHistorySection from "./InviteHistorySection";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }

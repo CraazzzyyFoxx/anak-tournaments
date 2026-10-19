@@ -1,16 +1,21 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-
 import FlexIcon from "@/components/icons/FlexIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { getRoleIconName, ROLE_ACCENT, ROLE_ACCENTS } from "@/lib/roster/roles";
-import { isRoleSlotCode, type RosterSlotCode } from "@/lib/roster/shape";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleAccent } from "@/lib/registration/role-accent";
+import {
+  findRole,
+  ratedDimension,
+  rolePresentation,
+  type RoleOntology,
+} from "@/lib/roster/ontology";
+import { isRoleSlot, type SlotCode } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 
 /** One offerable slot plus how many of it the tournament's roster has. */
 export interface RosterSlotOption {
-  code: RosterSlotCode;
+  code: SlotCode;
   count: number;
 }
 
@@ -18,8 +23,10 @@ interface RosterSlotPickerProps {
   /** Radio group name — must be unique on the page. */
   name: string;
   options: readonly RosterSlotOption[];
-  value: RosterSlotCode | null;
-  onChange: (code: RosterSlotCode) => void;
+  value: SlotCode | null;
+  onChange: (code: SlotCode) => void;
+  /** The owner game's scoped ontology: slot names, glyphs and accents are its roles'. */
+  ontology: RoleOntology | null;
   disabled?: boolean;
 }
 
@@ -34,10 +41,9 @@ interface RosterSlotPickerProps {
  * and `<legend>` rather than this adding `role="radiogroup"` over the platform's
  * own semantics.
  *
- * Labels come from `rosterShape.slotCodes` — the same translated slot vocabulary
- * the roster shortfall, the invite chips and the admin card use. The earlier
- * version rendered `ROLES[].display`, hardcoded English, so one roster could read
- * "DPS" on this picker and "Урон" on the chip for the very same slot.
+ * Labels come from the owner game's ontology (`useSlotLabel`) — the same slot
+ * vocabulary the roster shortfall, the invite chips and the admin card use — so
+ * one roster never reads two different names for the very same slot.
  *
  * `count` is the slot's multiplicity in the roster, shown only when it is above
  * one: it answers "if I take a damage slot, is there still one left for someone
@@ -52,14 +58,21 @@ export default function RosterSlotPicker({
   options,
   value,
   onChange,
+  ontology,
   disabled = false,
 }: Readonly<RosterSlotPickerProps>) {
-  const tSlots = useTranslations("rosterShape.slotCodes");
+  const slotLabel = useSlotLabel(ontology);
+  const rated = ontology ? ratedDimension(ontology) : null;
 
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2">
       {options.map(({ code, count }) => {
         const selected = value === code;
+        const roleRef = rated && isRoleSlot(code) ? { dimension: rated.code, role: code } : null;
+        const node = ontology && roleRef ? findRole(ontology, roleRef) : null;
+        const accent = roleAccent(
+          ontology && node ? rolePresentation(ontology.roles, node.id).color : null,
+        );
         return (
           <label
             key={code}
@@ -84,18 +97,12 @@ export default function RosterSlotPicker({
                 "transition-[background-color,border-color,box-shadow] duration-150 ease-out",
                 "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[color:var(--aqt-teal)]",
                 disabled && "opacity-50",
-                selected
-                  ? ROLE_ACCENTS[code].selectedCard
-                  : "border-[color:var(--aqt-border)] hover:bg-[color:var(--aqt-overlay-2)]",
+                !selected && "border-[color:var(--aqt-border)] hover:bg-[color:var(--aqt-overlay-2)]",
               )}
+              style={selected ? accent.selectedCard : undefined}
             >
-              {isRoleSlotCode(code) ? (
-                <PlayerRoleIcon
-                  role={getRoleIconName(code)}
-                  size={26}
-                  color={selected ? ROLE_ACCENT[code] : "var(--aqt-fg-muted)"}
-                  decorative
-                />
+              {isRoleSlot(code) ? (
+                <PlayerRoleIcon role={roleRef} ontology={ontology} size={26} decorative />
               ) : (
                 <FlexIcon
                   width={26}
@@ -110,7 +117,7 @@ export default function RosterSlotPicker({
                     selected ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
                   )}
                 >
-                  {tSlots(code)}
+                  {slotLabel(code)}
                 </span>
                 {count > 1 && (
                   <span className="aqt-tnum text-label tabular-nums text-[color:var(--aqt-fg-dim)]">

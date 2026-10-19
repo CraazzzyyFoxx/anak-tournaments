@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
@@ -69,6 +70,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
 
   const canEdit = canAccessPermission("registration_form.update", workspaceId);
   const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, discipline);
+  const metadata = useDisciplineMetadata(workspaceId ?? "all", workspaceId !== null ? discipline : null);
 
   const listQuery = useQuery({
     queryKey: registrationFormTemplatesKey(workspaceId ?? 0),
@@ -84,12 +86,21 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: registrationFormTemplatesKey(workspaceId ?? 0) });
 
+  // The browsed game's own identity provider: a template starts from the questionnaire the server would
+  // build for a fresh tournament OF THAT GAME. A game that declares none has no handle to ask for.
+  const identityProvider =
+    browsing.disciplines?.find((entry) => entry.code === discipline)?.identity_provider ?? null;
+
   const createMutation = useMutation({
-    mutationFn: (name: string) =>
-      // A new template starts from the same questionnaire the server would
-      // build for a fresh tournament, so "new template" and "new tournament"
-      // never disagree about what a form asks by default.
-      registrationFormTemplatesService.create(workspaceId as number, name, defaultFormSchema()),
+    mutationFn: (name: string) => {
+      if (identityProvider === null) throw new Error("no identity provider");
+      // "New template" and "new tournament" never disagree about what a form asks by default.
+      return registrationFormTemplatesService.create(
+        workspaceId as number,
+        name,
+        defaultFormSchema(identityProvider)
+      );
+    },
     onSuccess: async (created) => {
       setNewName("");
       await invalidate();
@@ -235,7 +246,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                 className="h-8 text-xs"
                 onChange={(event) => setNewName(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && newName.trim()) {
+                  if (event.key === "Enter" && newName.trim() && identityProvider !== null) {
                     event.preventDefault();
                     createMutation.mutate(newName.trim());
                   }
@@ -246,7 +257,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                 variant="outline"
                 size="sm"
                 className="h-8 shrink-0"
-                disabled={!newName.trim() || createMutation.isPending}
+                disabled={!newName.trim() || identityProvider === null || createMutation.isPending}
                 onClick={() => createMutation.mutate(newName.trim())}
               >
                 {createMutation.isPending ? (
@@ -268,6 +279,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
               onChange={setDraft}
               subroleCatalog={catalog}
               catalogLoading={catalogLoading}
+              metadata={metadata.data ?? null}
               fieldErrors={{}}
             />
           ) : (

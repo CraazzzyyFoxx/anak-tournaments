@@ -23,7 +23,11 @@ export default function RegistrationTeamsPage() {
   const workspaceId = tournament?.workspace_id ?? null;
 
   if (isLoading) return tabFallback;
-  if (validTournamentId == null || workspaceId == null) return null;
+  if (validTournamentId == null || workspaceId == null || tournament == null) return null;
 
-  return <RegistrationTeamsBrowser tournamentId={validTournamentId} workspaceId={workspaceId} />;
+  return <RegistrationTeamsBrowser
+      tournamentId={validTournamentId}
+      workspaceId={workspaceId}
+      discipline={tournament.discipline}
+    />;
 }

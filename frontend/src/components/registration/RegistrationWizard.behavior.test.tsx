@@ -6,6 +6,8 @@ import { ApiError } from "@/lib/api/error";
 import type { FormField, FormSchema } from "@/types/forms.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 const testWindow = new Window({ url: "http://localhost:3000/", width: 900, height: 900 });
 const previousGlobals = new Map<PropertyKey, PropertyDescriptor | undefined>();
 
@@ -98,6 +100,7 @@ const FORM = {
   workspace_id: 3,
   is_open: true,
   form_schema: SCHEMA,
+  discipline: "overwatch",
   version_id: 42,
   version_number: 2,
   subrole_catalog: {},

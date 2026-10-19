@@ -30,7 +30,10 @@ import { ApiError, getApiErrorMessage } from "@/lib/api/error";
 import { activeRequirements, formatAdmissionReason, formatRequirementName } from "@/lib/registration/admission";
 import { formatShortfall } from "@/lib/registration/team-shortfall";
 import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
-import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/roster/player-role";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleAccent } from "@/lib/registration/role-accent";
+import { findRole, roleColor, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
 import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import { answerFlag, answerList, answerText } from "@/lib/forms/answers";
 import { IDENTITY_PROVIDERS, identityKey, identityProvider } from "@/lib/forms/builtin-keys";
@@ -45,8 +48,10 @@ import type {
   RegistrationStatus
 } from "@/types/registration.types";
 
-import { getRoleLabel, type ColumnDefinition } from "./participantsColumns.model";
-import { ROLE_TINT } from "./RegistrationSummary";
+import {
+  IDENTITY_COLUMN_ID,
+  type ColumnDefinition
+} from "./participantsColumns.model";
 import { useTranslations } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { getStatusIcon } from "@/lib/registration/status-icons";
@@ -86,36 +91,6 @@ const STATUS_BAR_CONFIG: Record<RegistrationStatus, { icon: typeof Clock; color:
     color:
       "text-[color:var(--aqt-damage)] border-[color:color-mix(in_srgb,var(--aqt-damage)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-damage)_10%,transparent)]"
   }
-};
-
-const ROLE_ACCENT_CLASSES: Record<string, { bg: string; text: string; border: string }> = {
-  tank: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_10%,transparent)]",
-    text: "text-[color:var(--aqt-tank)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-tank)_20%,transparent)]"
-  },
-  damage: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-damage)_10%,transparent)]",
-    text: "text-[color:var(--aqt-damage)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-damage)_20%,transparent)]"
-  },
-  support: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-support)_10%,transparent)]",
-    text: "text-[color:var(--aqt-support)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-support)_20%,transparent)]"
-  },
-  flex: {
-    bg: "bg-[color:color-mix(in_srgb,var(--aqt-violet)_10%,transparent)]",
-    text: "text-[color:var(--aqt-violet)]",
-    border: "border-[color:color-mix(in_srgb,var(--aqt-violet)_20%,transparent)]"
-  }
-};
-
-const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex"
 };
 
 const DiscordIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -206,23 +181,25 @@ function RegistrationStepMarker({ tone }: Readonly<{ tone: RegistrationStepTone 
 function RegistrationRoleChip({
   role,
   showPrimaryMark,
+  ontology,
   t
 }: Readonly<{
   role: Registration["roles"][number];
   showPrimaryMark: boolean;
+  /** The tournament's own game's scoped ontology; roles render neutral until it loads. */
+  ontology: RoleOntology | null;
   t: ReturnType<typeof useTranslations<never>>;
 }>) {
+  const roleLabel = useSlotLabel(ontology);
+  const node = ontology ? findRole(ontology, role.role) : null;
+  const accent = roleAccent(ontology && node ? rolePresentation(ontology.roles, node.id).color : null);
   return (
     <div
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-        ROLE_ACCENT_CLASSES[roleOf(role.role)]?.bg,
-        ROLE_ACCENT_CLASSES[roleOf(role.role)]?.border,
-        ROLE_ACCENT_CLASSES[roleOf(role.role)]?.text
-      )}
+      className="inline-flex items-center gap-1.5 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium"
+      style={{ ...accent.tile, ...accent.selectedCard }}
     >
-      <PlayerRoleIcon role={ROLE_TO_ICON[roleOf(role.role)] ?? roleOf(role.role)} size={12} decorative />
-      <span>{getRoleLabel(roleOf(role.role), t)}</span>
+      <PlayerRoleIcon role={role.role} ontology={ontology} size={12} decorative />
+      <span>{roleLabel(roleOf(role.role))}</span>
       {subRoleSlugOf(role.role) && (
         <span className="text-label opacity-60">({formatSubroleSlug(subRoleSlugOf(role.role)!)})</span>
       )}
@@ -242,7 +219,7 @@ const QUEUE_CHIP_CLASS =
 /** Answers the card lays out by hand — chips for roles, brand chips for the
  *  handles, a quote for the notes — so the generic details block skips them. */
 const CARD_OWN_COLUMN_IDS: Record<string, true> = {
-  identity_battlenet: true,
+  [IDENTITY_COLUMN_ID]: true,
   roles: true,
   public_notes: true
 };
@@ -278,7 +255,11 @@ function MyRegistrationCard({
   columns: readonly ColumnDefinition[];
 }>) {
   const t = useTranslations();
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  // The tournament's own game: roles, slots and the identity provider are all named in its scope.
+  const ownerMetadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
+  const ontology = ownerMetadata.data ?? null;
+  const ownerProvider = ownerMetadata.data?.discipline.identity_provider ?? null;
+  const slotLabel = useSlotLabel(ontology);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -331,10 +312,10 @@ function MyRegistrationCard({
     registration.queue_role_position != null &&
     registration.queue_role_total != null
       ? (() => {
-          const slot = playerRoleSlotCode(normalizePlayerRole(roleOf(registration.queue_role)));
+          const slot = roleOf(registration.queue_role);
           return {
-            label: t(`common.roles.${slot}`),
-            tint: ROLE_TINT[slot],
+            label: slotLabel(slot),
+            tint: roleColor(ontology, slot) ?? "var(--aqt-fg-dim)",
             position: registration.queue_role_position,
             total: registration.queue_role_total
           };
@@ -541,7 +522,7 @@ function MyRegistrationCard({
       teamHint = {
         text: t("registrationTeams.myCard.incomplete", {
           ...teamValues,
-          shortfall: formatShortfall(myTeam.open_slots, tSlot)
+          shortfall: formatShortfall(myTeam.open_slots, slotLabel)
         }),
         tone: "font-medium text-[color:var(--aqt-amber)]"
       };
@@ -848,12 +829,13 @@ function MyRegistrationCard({
               </h4>
               {primaryRole || secondaryRoles.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark t={t} />}
+                  {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark ontology={ontology} t={t} />}
                   {secondaryRoles.map((r) => (
                     <RegistrationRoleChip
                       key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
                       role={r}
                       showPrimaryMark={false}
+                      ontology={ontology}
                       t={t}
                     />
                   ))}
@@ -902,7 +884,7 @@ function MyRegistrationCard({
                   // carry no identity answer at all, hence `primary_handle`.
                   const handle =
                     answerList(registration.answers, identityKey(provider))[0] ??
-                    (provider === "battlenet" ? registration.primary_handle : null);
+                    (provider === ownerProvider ? registration.primary_handle : null);
                   if (!handle) return null;
                   const brand = IDENTITY_ICONS[provider];
                   return (

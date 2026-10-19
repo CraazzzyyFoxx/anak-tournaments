@@ -41,16 +41,18 @@ export interface TeamRowHandlers {
 export function useRegistrationTeamColumns({
   canManageTeams,
   canExport,
+  slotLabel,
   handlers
 }: Readonly<{
   canManageTeams: boolean;
   canExport: boolean;
+  /** Names a slot in the tournament's own game. */
+  slotLabel: (code: string) => string;
   /** Stable identity required: the kebab column closes over it, so a fresh
    *  object per render would rebuild every column. */
   handlers: TeamRowHandlers;
 }>): ColumnDef<RegistrationTeam>[] {
   const t = useTranslations("registrationTeams");
-  const tSlot = useTranslations("rosterShape.slotCodes");
 
   return useMemo<ColumnDef<RegistrationTeam>[]>(() => {
     const rowActions = (team: RegistrationTeam): KebabAction[] => {
@@ -209,7 +211,7 @@ export function useRegistrationTeamColumns({
           if (!short && issues === 0) return <span className="text-muted-foreground">—</span>;
           return (
             <div className="space-y-0.5 text-caption text-warning">
-              {short && <p>{t("list.shortfall", { slots: formatShortfall(team.open_slots, tSlot) })}</p>}
+              {short && <p>{t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })}</p>}
               {issues > 0 && <p>{t("admin.problemCount", { count: issues })}</p>}
             </div>
           );
@@ -218,5 +220,5 @@ export function useRegistrationTeamColumns({
       },
       createKebabColumn<RegistrationTeam>(rowActions, { rowLabel: (team) => team.name })
     ];
-  }, [canExport, canManageTeams, handlers, t, tSlot]);
+  }, [canExport, canManageTeams, handlers, slotLabel, t]);
 }

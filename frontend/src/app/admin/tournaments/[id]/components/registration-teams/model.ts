@@ -80,7 +80,7 @@ export function captainOf(team: RegistrationTeam): RegistrationTeamMember | unde
  */
 export function rosterCounts(team: RegistrationTeam): { starters: number; required: number } {
   const starters = team.members.filter((member) => !member.is_substitute).length;
-  const open = Object.values(team.open_slots).reduce((sum, count) => sum + (count ?? 0), 0);
+  const open = Object.values(team.open_slots).reduce<number>((sum, count) => sum + (count ?? 0), 0);
   return { starters, required: starters + open };
 }
 

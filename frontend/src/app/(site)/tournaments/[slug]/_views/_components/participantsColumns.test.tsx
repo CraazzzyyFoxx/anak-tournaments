@@ -10,6 +10,9 @@ import { buildParticipantColumns } from "./participantsColumns";
 
 const t = ((key: string) => key) as never;
 
+const OWNER = { discipline: "overwatch", identityProvider: "battlenet", ontology: null };
+const LOL_OWNER = { discipline: "lol", identityProvider: "riot", ontology: null };
+
 function field(key: string, overrides: Partial<FormField> = {}): FormField {
   return {
     key,
@@ -35,16 +38,16 @@ function form(fields: FormField[] = []): RegistrationForm {
 
 describe("participant column model", () => {
   it("keeps identity and status mandatory when the form does not ask for a BattleTag", () => {
-    const columns = buildParticipantColumns(form([field("public_notes")]), t);
+    const columns = buildParticipantColumns(form([field("public_notes")]), t, OWNER);
 
     expect(
-      columns.filter((column) => ["identity_battlenet", "_status"].includes(column.id)).map((column) => column.id),
-    ).toEqual(["identity_battlenet", "_status"]);
+      columns.filter((column) => ["_identity", "_status"].includes(column.id)).map((column) => column.id),
+    ).toEqual(["_identity", "_status"]);
   });
 
   it("always offers the notes column even when the form does not ask for notes", () => {
     for (const candidate of [form([field("identity_battlenet")]), form(), null]) {
-      const notesColumns = buildParticipantColumns(candidate, t).filter(
+      const notesColumns = buildParticipantColumns(candidate, t, OWNER).filter(
         (column) => column.id === "public_notes",
       );
       expect(notesColumns).toHaveLength(1);
@@ -60,7 +63,7 @@ describe("participant column model", () => {
         field("identity_twitch"),
         field("identity_boosty"),
       ]),
-      t,
+      t, OWNER,
     );
 
     const ids = columns.map((column) => column.id);
@@ -70,9 +73,9 @@ describe("participant column model", () => {
   });
 
   it("splits the Battle.net answer into the primary handle and the extra handles", () => {
-    const columns = buildParticipantColumns(form([field("identity_battlenet")]), t);
-    const identity = columns.find((column) => column.id === "identity_battlenet");
-    const extras = columns.find((column) => column.id === "identity_battlenet_extras");
+    const columns = buildParticipantColumns(form([field("identity_battlenet")]), t, OWNER);
+    const identity = columns.find((column) => column.id === "_identity");
+    const extras = columns.find((column) => column.id === "_identity_extras");
     const registration = {
       primary_handle: "Main#1111",
       answers: { identity_battlenet: ["Main#1111", "Alt#2222", "Alt#3333"] },
@@ -85,14 +88,14 @@ describe("participant column model", () => {
   it("offers no extra-handle column when the form allows a single BattleTag", () => {
     const ids = buildParticipantColumns(
       form([field("identity_battlenet", { params: { max_count: 1 } })]),
-      t,
+      t, OWNER,
     ).map((column) => column.id);
 
-    expect(ids).not.toContain("identity_battlenet_extras");
+    expect(ids).not.toContain("_identity_extras");
   });
 
   it("reads the boosty handle off the registration's answers", () => {
-    const [boosty] = buildParticipantColumns(form([field("identity_boosty")]), t).filter(
+    const [boosty] = buildParticipantColumns(form([field("identity_boosty")]), t, OWNER).filter(
       (column) => column.id === "identity_boosty",
     );
 
@@ -111,7 +114,7 @@ describe("participant column model", () => {
         field("organizer_notes", { visibility: "organizers" }),
         field("budget", { kind: "text", label: "Budget", visibility: "organizers" }),
       ]),
-      t,
+      t, OWNER,
     ).map((column) => column.id);
 
     expect(ids).not.toContain("organizer_notes");
@@ -125,23 +128,23 @@ describe("participant column model", () => {
     // case's roles/heroes/smurfs columns.
     const ids = buildParticipantColumns(
       form([field("organizer_notes", { visibility: "organizers" })]),
-      t,
+      t, OWNER,
     ).map((column) => column.id);
 
-    for (const invented of ["roles", "top_heroes", "identity_battlenet_extras"]) {
+    for (const invented of ["roles", "top_heroes", "_identity_extras"]) {
       expect(ids).not.toContain(invented);
     }
     // The roster's own identity column and the notes column stay: the first is
     // a registration column rather than an answer, the second may hold what a
     // sheet import wrote.
-    expect(ids).toContain("identity_battlenet");
+    expect(ids).toContain("_identity");
     expect(ids).toContain("public_notes");
   });
 
   it("builds one column per organizer-defined question and reads its stored answer", () => {
     const columns = buildParticipantColumns(
       form([field("vk", { kind: "text", label: "VK profile" })]),
-      t,
+      t, OWNER,
     );
 
     const custom = columns.find((column) => column.id === "vk");
@@ -157,8 +160,8 @@ describe("participant column model", () => {
     // expanded details panel. On a team tournament it must be ON, because
     // search only walks visible columns and finding players by team is the
     // point of it.
-    const withoutTeams = buildParticipantColumns(form(), t).find((column) => column.id === "team");
-    const withTeams = buildParticipantColumns(form(), t, null, undefined, true).find(
+    const withoutTeams = buildParticipantColumns(form(), t, OWNER).find((column) => column.id === "team");
+    const withTeams = buildParticipantColumns(form(), t, OWNER, null, undefined, true).find(
       (column) => column.id === "team",
     );
 
@@ -177,7 +180,7 @@ describe("participant column model", () => {
     // Lateness is the schedule's own mark and belongs beside the status. The
     // registrant's "you can call me in" is organizer bookkeeping: under every
     // Pending pill it read as a second status the player was in.
-    const status = buildParticipantColumns(form(), t).find((column) => column.id === "_status")!;
+    const status = buildParticipantColumns(form(), t, OWNER).find((column) => column.id === "_status")!;
     const render = (reg: unknown) =>
       renderToStaticMarkup(
         <NextIntlClientProvider locale="en" messages={{}}>
@@ -196,11 +199,39 @@ describe("participant column model", () => {
   it("offers the on-call answer as its own column, off by default", () => {
     // Asked as a question, so it rides the schema like any other answer: the
     // reader turns it on when they care who can be rung.
-    const onCall = buildParticipantColumns(form([field("reserve")]), t).find(
+    const onCall = buildParticipantColumns(form([field("reserve")]), t, OWNER).find(
       (column) => column.id === "reserve",
     );
 
     expect(onCall?.defaultVisible).toBe(false);
     expect(onCall?.label).toBe("registration.details.reserve");
+  });
+
+  it("names the roster's identity from the owner game's provider, never Battle.net", () => {
+    const columns = buildParticipantColumns(
+      form([field("identity_riot"), field("identity_battlenet")]),
+      t,
+      LOL_OWNER
+    );
+    const identity = columns.find((column) => column.id === "_identity");
+    // The Riot question IS the identity column; the Battle.net answer of the same form is an ordinary column.
+    expect(identity?.label).toBe("registration.accounts.riot");
+    expect(columns.filter((column) => column.id === "_identity")).toHaveLength(1);
+    expect(columns.some((column) => column.id === "identity_riot")).toBe(false);
+    expect(columns.some((column) => column.id === "identity_battlenet")).toBe(true);
+    expect(
+      renderToStaticMarkup(
+        <>{identity?.render({ primary_handle: "Faker#KR1", answers: {} } as never, 0)}</>
+      )
+    ).toContain("Faker#KR1");
+  });
+
+  it("builds no identity column while the owner provider is unresolved", () => {
+    const ids = buildParticipantColumns(
+      form([field("identity_riot")]),
+      t,
+      { discipline: "lol", identityProvider: null, ontology: null }
+    ).map((column) => column.id);
+    expect(ids).not.toContain("_identity");
   });
 });

@@ -30,6 +30,7 @@ import { isPhaseWindowActive } from "@/lib/tournament/status";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
 import registrationService from "@/services/registration.service";
 import CheckInSubscriptionProof from "@/components/registration/CheckInSubscriptionProof";
@@ -182,6 +183,11 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   }, [canCheckIn, tournament.id]);
 
   const divisionGrid = useDivisionGrid(tournament.discipline);
+  // The owner game's metadata: its identity provider names the roster's identity columns, its
+  // ontology names and draws every role.
+  const ownerMetadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
+  const ontology = ownerMetadata.data ?? null;
+  const identityProvider = ownerMetadata.data?.discipline.identity_provider ?? null;
   const [needsHeroes, setNeedsHeroes] = useState(false);
   const heroesMap = useHeroesMap(tournament.discipline, { enabled: needsHeroes });
 
@@ -198,8 +204,16 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   const { canAccessPermission } = usePermissions();
   const canReadOrganizerColumns = canAccessPermission("registration.read", tournament.workspace_id);
   const builtColumns = useMemo(
-    () => buildParticipantColumns(form, t, divisionGrid, heroesMap, hasTeams),
-    [form, t, divisionGrid, heroesMap, hasTeams]
+    () =>
+      buildParticipantColumns(
+        form,
+        t,
+        { discipline: tournament.discipline, identityProvider, ontology },
+        divisionGrid,
+        heroesMap,
+        hasTeams
+      ),
+    [form, t, tournament.discipline, identityProvider, ontology, divisionGrid, heroesMap, hasTeams]
   );
   const allColumns = useMemo(
     () =>
@@ -746,6 +760,8 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             {t("tournamentDetail.participants.hidden.title")}
           </div>
           <RegistrationSummary
+            workspaceId={tournament.workspace_id}
+            discipline={tournament.discipline}
             total={registrationList?.total ?? 0}
             roleCounts={registrationList?.role_counts ?? {}}
             maxParticipants={registrationList?.max_participants}
@@ -760,6 +776,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           rosterShape={tournament.roster_shape}
           divisionGrid={divisionGrid}
           heroesMap={heroesMap}
+          ontology={ontology}
           search={searchQuery}
           division={divisionFilter}
           onResetFilters={() => navigateParticipantUrl({ type: "reset" })}

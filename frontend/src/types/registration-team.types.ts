@@ -8,7 +8,7 @@
  * Mirrors `backend/tournament-service/src/schemas/registration_team.py`.
  */
 
-import type { RosterSlotCode } from "@/lib/roster/shape";
+import type { SlotCode } from "@/lib/roster/shape";
 import type { RoleRef } from "@/lib/roster/role-ref";
 import type { RegistrationSubmitInput } from "@/types/registration.types";
 
@@ -63,7 +63,7 @@ export interface RegistrationTeam {
   invites: RegistrationTeamInvite[];
   /** Slots with nobody accepted yet. Empty object means the roster is complete.
    *  Zero-count entries are stripped server-side. */
-  open_slots: Partial<Record<RosterSlotCode, number>>;
+  open_slots: Partial<Record<SlotCode, number>>;
   /** Server-rendered "what is still missing", e.g. "1x damage, 2x support". */
   shortfall: string;
   is_complete: boolean;
@@ -109,13 +109,13 @@ export interface RegistrationTeamInviteCreated extends RegistrationTeamInvite {
 export interface RegistrationTeamCreateInput {
   name: string;
   /** The slot the captain personally occupies — they are a member like any other. */
-  slot_code: RosterSlotCode;
+  slot_code: SlotCode;
   /** Identical shape to a solo registration; the backend runs the same validation. */
   registration: RegistrationSubmitInput;
 }
 
 export interface RegistrationTeamInviteInput {
-  slot_code: RosterSlotCode;
+  slot_code: SlotCode;
   is_substitute?: boolean;
   /**
    * Omit for a shareable link invite; set to address a free agent already
@@ -154,6 +154,8 @@ export interface RegistrationTeamInvitePreview {
   tournament_id: number;
   tournament_name: string;
   workspace_id: number;
+  /** The tournament's game: the scope of the role that names `slot_code`. */
+  discipline: string;
   team_id: number;
   team_name: string;
   slot_code: string;

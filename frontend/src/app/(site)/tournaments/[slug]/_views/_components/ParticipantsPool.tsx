@@ -11,7 +11,15 @@ import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { answerFlag } from "@/lib/forms/answers";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { isRoleSlotCode, orderSlotCodes, ROSTER_SLOT_CODES } from "@/lib/roster/shape";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import {
+  ratedDimension,
+  roleColor,
+  slotCodeOrder,
+  slotRank,
+  type RoleOntology
+} from "@/lib/roster/ontology";
+import { isRoleSlot, OPEN_SLOT_CODE, slotCodesOf } from "@/lib/roster/shape";
 import type { RosterShape } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import type { CatalogEntityChip } from "@/types/catalog.types";
@@ -19,7 +27,6 @@ import type { Registration, RegistrationRole } from "@/types/registration.types"
 import type { DivisionGrid } from "@/types/workspace.types";
 import { getPlayerSlug } from "@/lib/player";
 
-import { getRoleLabel } from "./participantsColumns.model";
 import { TournamentPageState } from "../../_components/TournamentPageState";
 
 /** The one status that means "was in, took themselves out" (§6 ④). */
@@ -32,24 +39,12 @@ const WITHDRAWN_STATUS = "withdrawn";
  */
 const VISIBLE_PER_COLUMN = 10;
 
-/** Icon names `PlayerRoleIcon` knows, keyed by the registration role code. */
-const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex"
-};
-
 /**
- * One colour per column, exposed as `--pool-role` on the card so the accent
- * rail, the icon chip and the leading positions all read from a single value.
+ * A column whose role declares no colour reads as this neutral. One colour per column is exposed as
+ * `--pool-role` on the card, so the accent rail, the icon chip and the leading positions all read from
+ * a single value — the role's own presentation color from the owner game's ontology.
  */
-const ROLE_COLOR: Record<string, string> = {
-  tank: "var(--aqt-tank)",
-  damage: "var(--aqt-damage)",
-  support: "var(--aqt-support)",
-  flex: "var(--aqt-teal)"
-};
+const NEUTRAL_ROLE_COLOR = "var(--aqt-fg-muted)";
 
 /** Positions that wear the role colour — the top of a role is the headline. */
 const HIGHLIGHTED_POSITIONS = 3;
@@ -88,6 +83,8 @@ export interface ParticipantsPoolProps {
   rosterShape: RosterShape | null;
   divisionGrid: DivisionGrid;
   heroesMap: Map<string, CatalogEntityChip>;
+  /** The owner game's scoped ontology (role names, glyphs, colors); `null` while it loads. */
+  ontology: RoleOntology | null;
   search: string;
   division: number | null;
   /** Clears search + division for the filtered-empty state. */
@@ -125,13 +122,13 @@ export function poolDivisionOptions(
   return [...present].sort((left, right) => left - right);
 }
 
-/** Heroes for one role, resolved through the catalogue with a slug fallback. */
+/** Characters for one role, resolved through the catalogue with a slug fallback. */
 function topHeroes(role: RegistrationRole, heroesMap: Map<string, CatalogEntityChip>, limit: number): CatalogEntityChip[] {
   const heroes: CatalogEntityChip[] = [];
-  for (const slug of role.top_heroes ?? []) {
+  for (const slug of role.top_characters ?? []) {
     if (!slug || heroes.length >= limit) continue;
     const hero = heroesMap.get(slug);
-    heroes.push(hero ?? { name: slug, slug, image_path: null, attrs: { class: roleOf(role.role) } });
+    heroes.push(hero ?? { name: slug, slug, image_path: null, attrs: {} });
   }
   return heroes;
 }
@@ -141,6 +138,7 @@ function PoolRow({
   position,
   heroesMap,
   divisionGrid,
+  ontology,
   showDivision,
   showHeroes
 }: Readonly<{
@@ -148,10 +146,12 @@ function PoolRow({
   position: number;
   heroesMap: Map<string, CatalogEntityChip>;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   showDivision: boolean;
   showHeroes: boolean;
 }>) {
   const t = useTranslations();
+  const roleLabel = useSlotLabel(ontology);
   const { registration, role, division, isFlex } = entry;
   const rank = role.rank_value ?? null;
   const heroes = topHeroes(role, heroesMap, 3);
@@ -170,7 +170,7 @@ function PoolRow({
   const flexTitle = isFlex
     ? t("tournamentDetail.participantsPool.flexTitle", {
         roles: (registration.roles ?? [])
-          .map((declared) => getRoleLabel(roleOf(declared.role), t))
+          .map((declared) => roleLabel(roleOf(declared.role)))
           .join(" · ")
       })
     : null;
@@ -261,20 +261,24 @@ function RoleColumn({
   entries,
   heroesMap,
   divisionGrid,
+  ontology,
   showDivision
 }: Readonly<{
   role: string;
   entries: PoolEntry[];
   heroesMap: Map<string, CatalogEntityChip>;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   showDivision: boolean;
 }>) {
   const t = useTranslations();
+  const roleLabel = useSlotLabel(ontology);
+  const rated = ontology ? ratedDimension(ontology) : null;
   const visible = entries.slice(0, VISIBLE_PER_COLUMN);
   const rest = entries.slice(VISIBLE_PER_COLUMN);
   // Reserving the hero track in a column nobody filled in leaves a stripe of
   // nothing next to every name.
-  const showHeroes = entries.some((entry) => (entry.role.top_heroes?.length ?? 0) > 0);
+  const showHeroes = entries.some((entry) => (entry.role.top_characters?.length ?? 0) > 0);
 
   const renderRow = (entry: PoolEntry, index: number) => (
     <PoolRow
@@ -283,6 +287,7 @@ function RoleColumn({
       position={index + 1}
       heroesMap={heroesMap}
       divisionGrid={divisionGrid}
+      ontology={ontology}
       showDivision={showDivision}
       showHeroes={showHeroes}
     />
@@ -291,9 +296,9 @@ function RoleColumn({
   return (
     <section
       className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2 pt-3"
-      style={{ "--pool-role": ROLE_COLOR[role] ?? "var(--aqt-fg-muted)" } as CSSProperties}
+      style={{ "--pool-role": roleColor(ontology, role) ?? NEUTRAL_ROLE_COLOR } as CSSProperties}
       aria-label={t("tournamentDetail.participantsPool.columnLabel", {
-        role: getRoleLabel(role, t),
+        role: roleLabel(role),
         count: entries.length
       })}
       data-pool-column={role}
@@ -305,10 +310,15 @@ function RoleColumn({
       />
       <h3 className="mb-2 flex items-center gap-2 px-1.5">
         <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
-          <PlayerRoleIcon role={ROLE_TO_ICON[role] ?? role} size={13} decorative />
+          <PlayerRoleIcon
+            role={rated ? { dimension: rated.code, role } : null}
+            ontology={ontology}
+            size={13}
+            decorative
+          />
         </span>
         <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
-          {getRoleLabel(role, t)}
+          {roleLabel(role)}
         </span>
         <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
           {entries.length}
@@ -349,6 +359,7 @@ export default function ParticipantsPool({
   rosterShape,
   divisionGrid,
   heroesMap,
+  ontology,
   search,
   division,
   onResetFilters
@@ -362,12 +373,13 @@ export default function ParticipantsPool({
     [registrations]
   );
 
-  // Columns come from the roster shape's role slots, never a hardcoded trio.
+  // Columns come from the roster shape's role slots, never a fixed list of roles.
   // `flex` is dropped: it is a wildcard slot, not a role anybody registers as,
   // so a FLEX column would be permanently empty. Any role a player declared
   // that the shape does not list is appended, so nobody becomes invisible.
   const roleColumns = useMemo(() => {
-    const fromShape = rosterShape ? orderSlotCodes(rosterShape.slots).filter(isRoleSlotCode) : [];
+    const fromShape = rosterShape ? slotCodesOf(rosterShape.slots).filter(isRoleSlot) : [];
+    const order = slotCodeOrder(ontology);
     const declared = new Set<string>();
     for (const registration of active) {
       for (const role of registration.roles ?? []) {
@@ -375,17 +387,11 @@ export default function ParticipantsPool({
       }
     }
     const extra = [...declared]
-      .filter((role) => !fromShape.includes(role as (typeof fromShape)[number]) && role !== "flex")
-      .sort((left, right) => {
-        // Unknown codes sort after every canonical one, then alphabetically.
-        const leftIndex = ROSTER_SLOT_CODES.indexOf(left as (typeof ROSTER_SLOT_CODES)[number]);
-        const rightIndex = ROSTER_SLOT_CODES.indexOf(right as (typeof ROSTER_SLOT_CODES)[number]);
-        const leftRank = leftIndex === -1 ? ROSTER_SLOT_CODES.length : leftIndex;
-        const rightRank = rightIndex === -1 ? ROSTER_SLOT_CODES.length : rightIndex;
-        return leftRank - rightRank || left.localeCompare(right);
-      });
-    return [...fromShape, ...extra] as string[];
-  }, [active, rosterShape]);
+      .filter((role) => !fromShape.includes(role) && role !== OPEN_SLOT_CODE)
+      // Roles the game does not declare sort after every declared one, then alphabetically.
+      .sort((left, right) => slotRank(order, left) - slotRank(order, right) || left.localeCompare(right));
+    return [...fromShape, ...extra];
+  }, [active, ontology, rosterShape]);
 
   const normalizedSearch = search.trim().toLowerCase();
 
@@ -498,6 +504,7 @@ export default function ParticipantsPool({
               entries={entriesByRole.get(role) ?? []}
               heroesMap={heroesMap}
               divisionGrid={divisionGrid}
+              ontology={ontology}
               showDivision={showDivision}
             />
           ))}

@@ -14,7 +14,6 @@
 import { declaredRoles } from "@/lib/forms/answers";
 import { identityMaxCount, identityProvider } from "@/lib/forms/builtin-keys";
 import type { Translate } from "@/lib/forms/form-errors";
-import { REGISTRATION_TO_CANONICAL } from "@/lib/roster/roles";
 import { displaySocialHandle, normalizeSocialHandle } from "@/lib/social/providers";
 import type { Answers, FormField } from "@/types/forms.types";
 
@@ -131,12 +130,17 @@ function isRealDate(value: string): boolean {
  * `answers` is the whole document, needed by the rules that read a SECOND
  * answer declares. Optional, so a caller validating one value in isolation (one
  * handle being typed into a combobox) keeps passing three arguments.
+ *
+ * `roleCodes` are the owner game's registration roles; a `role_ranks` answer may
+ * only name those. Absent (the host has no metadata for the game), the server
+ * stays the only judge of which codes exist — no game's list is assumed here.
  */
 export function validateAnswer(
   field: FormField,
   value: unknown,
   t: Translate,
   answers?: Answers,
+  roleCodes?: readonly string[],
 ): string | null {
   const empty =
     value === null ||
@@ -182,7 +186,7 @@ export function validateAnswer(
     case "role_ranks": {
       if (!isPlainObject(value)) return t("invalid_type");
       const entries = Object.entries(value);
-      if (entries.some(([role]) => !Object.hasOwn(REGISTRATION_TO_CANONICAL, role))) {
+      if (roleCodes && entries.some(([role]) => !roleCodes.includes(role))) {
         return t("invalid_option");
       }
       const bad = entries.some(([, rank]) =>

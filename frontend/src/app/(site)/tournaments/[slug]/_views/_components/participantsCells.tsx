@@ -13,8 +13,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { normalizePlayerRole, playerRoleSlotCode, type PlayerRoleSlotCode } from "@/lib/roster/player-role";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { useFormatter } from "@/lib/datetime/client";
+import { findRole, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { RegistrationRole } from "@/types/registration.types";
 import type { CatalogEntityChip } from "@/types/catalog.types";
@@ -22,41 +23,48 @@ import { HeroStrip } from "@/components/hero/HeroImage";
 import { useTranslations } from "next-intl";
 import { formatSubroleSlug } from "@/lib/roster/roles";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import type { DivisionGrid } from "@/types/workspace.types";
 import DivisionIcon from "@/components/DivisionIcon";
 
-import { getRoleLabel, ROLE_TO_ICON } from "./participantsColumns.model";
-
 export function RolesCell({
   roles,
+  ontology,
   grid,
+  discipline,
   showRanks = false,
 }: Readonly<{
   roles: RegistrationRole[];
+  /** The owner game's scoped ontology; `null` while it loads (roles then render neutral, never another game's). */
+  ontology: RoleOntology | null;
+  /** The owner game's grid. No grid, no crest: another game's artwork is never borrowed. */
   grid?: DivisionGrid | null;
+  discipline?: string;
   showRanks?: boolean;
 }>) {
   const t = useTranslations();
-  const resolvedGrid = grid || OW_REFERENCE_GRID;
+  const roleLabel = useSlotLabel(ontology);
   if (!roles || roles.length === 0)
     return <span className="text-[color:var(--aqt-fg-dim)]">&mdash;</span>;
 
   return (
     <div className="flex flex-wrap items-start justify-center gap-x-0.5 gap-y-2">
       {roles.map((r) => {
-        const roleLabel = getRoleLabel(roleOf(r.role), t);
-        const subroleLabel = subRoleSlugOf(r.role) ? formatSubroleSlug(subRoleSlugOf(r.role)!) : null;
-        const division = r.rank_value != null ? resolveDivisionFromRank(resolvedGrid, r.rank_value) : null;
+        const label = roleLabel(roleOf(r.role));
+        const subrole = ontology ? findRole(ontology, r.role) : null;
+        const subroleLabel = subRoleSlugOf(r.role)
+          ? (subrole?.parent_id != null ? subrole.name : formatSubroleSlug(subRoleSlugOf(r.role)!))
+          : null;
+        const division =
+          grid && r.rank_value != null ? resolveDivisionFromRank(grid, r.rank_value) : null;
 
         return (
           <div
             key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
             className="inline-flex min-w-7 flex-col items-center gap-0.5"
             title={[
-              roleLabel,
+              label,
               subroleLabel,
-              showRanks && r.rank_value ? `SR: ${r.rank_value}` : null,
+              showRanks && r.rank_value ? String(r.rank_value) : null,
               r.is_primary ? t("registration.roles.primary.title") : null,
             ]
               .filter(Boolean)
@@ -70,10 +78,7 @@ export function RolesCell({
                   : "text-[color:var(--aqt-fg-muted)]",
               )}
             >
-              <PlayerRoleIcon
-                role={ROLE_TO_ICON[roleOf(r.role)] ?? roleOf(r.role)}
-                size={22}
-              />
+              <PlayerRoleIcon role={r.role} ontology={ontology} size={22} />
             </span>
             {subroleLabel ? (
               <span className="text-center text-label font-semibold leading-none tracking-label text-[color:var(--aqt-fg-dim)] uppercase">
@@ -83,6 +88,8 @@ export function RolesCell({
             {showRanks && division != null ? (
               <DivisionIcon
                 division={division}
+                tournamentGrid={grid}
+                discipline={discipline}
                 width={18}
                 height={18}
                 className="shrink-0 mt-0.5"
@@ -95,22 +102,15 @@ export function RolesCell({
   );
 }
 
-function getCanonicalRole(hero: CatalogEntityChip): Exclude<PlayerRoleSlotCode, "flex"> {
-  const slotCode = playerRoleSlotCode(
-    normalizePlayerRole(typeof hero.attrs.class === "string" ? hero.attrs.class : null)
-  );
-  return slotCode === "flex" ? "damage" : slotCode;
-}
-
-const ROLE_COLORS: Record<string, string> = {
-  tank: "text-[color:var(--aqt-tank)]",
-  damage: "text-[color:var(--aqt-damage)]",
-  support: "text-[color:var(--aqt-support)]",
-};
-
+/**
+ * A registrant's top characters, grouped by the role each pick was DECLARED under. The group's glyph is
+ * that declared role's own presentation: a character's class is never read as a role, so a support-class
+ * pick under a damage role stays in the damage group.
+ */
 export function TopHeroesCell({
   roles,
   heroesMap,
+  ontology,
 }: Readonly<{
   roles: RegistrationRole[];
   /**
@@ -119,82 +119,54 @@ export function TopHeroesCell({
    * cost this prop removes.
    */
   heroesMap: Map<string, CatalogEntityChip>;
+  ontology: RoleOntology | null;
 }>) {
-  const sortedRoles = useMemo(() => {
+  const roleLabel = useSlotLabel(ontology);
+  const groups = useMemo(() => {
     if (!roles) return [];
-    return [...roles].sort((a, b) => {
-      if (a.is_primary && !b.is_primary) return -1;
-      if (!a.is_primary && b.is_primary) return 1;
-      return a.priority - b.priority;
-    });
-  }, [roles]);
+    return [...roles]
+      .sort((a, b) => {
+        if (a.is_primary && !b.is_primary) return -1;
+        if (!a.is_primary && b.is_primary) return 1;
+        return a.priority - b.priority;
+      })
+      .map((role) => ({
+        role,
+        heroes: (role.top_characters ?? [])
+          .filter(Boolean)
+          .map(
+            (slug): CatalogEntityChip =>
+              heroesMap.get(slug) ?? { name: slug, slug, image_path: null, attrs: {} },
+          ),
+      }))
+      .filter((group) => group.heroes.length > 0);
+  }, [roles, heroesMap]);
 
-  const topHeroesList = useMemo(() => {
-    const uniqueHeroSlugs = new Set<string>();
-    const list: CatalogEntityChip[] = [];
-
-    for (const r of sortedRoles) {
-      if (r.top_heroes) {
-        for (const slug of r.top_heroes) {
-          if (!slug) continue;
-          if (!uniqueHeroSlugs.has(slug)) {
-            uniqueHeroSlugs.add(slug);
-            const heroObj = heroesMap.get(slug);
-            if (heroObj) {
-              list.push(heroObj);
-            } else {
-              // Fallback
-              list.push({ name: slug, slug, image_path: null, attrs: { class: roleOf(r.role) } });
-            }
-          }
-        }
-      }
-    }
-    return list;
-  }, [sortedRoles, heroesMap]);
-
-  const heroesByRole = useMemo(() => {
-    const groups: Record<Exclude<PlayerRoleSlotCode, "flex">, CatalogEntityChip[]> = {
-      tank: [],
-      damage: [],
-      support: [],
-    };
-
-    for (const hero of topHeroesList) {
-      const canonical = getCanonicalRole(hero);
-      groups[canonical].push(hero);
-    }
-
-    return groups;
-  }, [topHeroesList]);
-
-  const activeRoles = useMemo(() => {
-    return (["tank", "damage", "support"] as const).filter(
-      (role) => heroesByRole[role].length > 0
-    );
-  }, [heroesByRole]);
-
-  if (topHeroesList.length === 0) {
+  if (groups.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">&mdash;</span>;
   }
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 justify-center">
-      {activeRoles.map((role) => (
-        <div
-          key={role}
-          className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] py-0.5 pl-2 pr-1 shadow-sm"
-        >
-          <span className={cn("inline-flex shrink-0 items-center", ROLE_COLORS[role])}>
-            <span className="sr-only">{role.toUpperCase()}</span>
-            <PlayerRoleIcon role={ROLE_TO_ICON[role] || role} size={14} aria-hidden />
-          </span>
-          <HeroStrip
-            heroes={heroesByRole[role]}
-            size="sm"
-          />
-        </div>
-      ))}
+      {groups.map(({ role, heroes }) => {
+        const node = ontology ? findRole(ontology, role.role) : null;
+        const color = ontology && node ? rolePresentation(ontology.roles, node.id).color : null;
+        return (
+          <div
+            key={`${roleOf(role.role)}-${subRoleSlugOf(role.role) ?? "base"}-${role.priority}`}
+            className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] py-0.5 pl-2 pr-1 shadow-sm"
+          >
+            <span
+              className="inline-flex shrink-0 items-center"
+              style={color ? { color } : undefined}
+            >
+              <span className="sr-only">{roleLabel(roleOf(role.role))}</span>
+              <PlayerRoleIcon role={role.role} ontology={ontology} size={14} aria-hidden />
+            </span>
+            <HeroStrip heroes={heroes} size="sm" />
+          </div>
+        );
+      })}
     </div>
   );
 }

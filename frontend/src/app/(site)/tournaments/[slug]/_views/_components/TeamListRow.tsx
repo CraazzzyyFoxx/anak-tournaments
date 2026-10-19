@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronDown, Crown } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { roleOf } from "@/lib/roster/role-ref";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { useFormatter } from "@/lib/datetime/client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -37,7 +37,8 @@ export const TeamListRow = ({
   needle,
   showGroup,
   registrationsByUser,
-  heroesMap
+  heroesMap,
+  ontology
 }: {
   team: Team;
   tournament: Tournament;
@@ -47,6 +48,8 @@ export const TeamListRow = ({
   showGroup: boolean;
   registrationsByUser: Map<number, Registration>;
   heroesMap: Map<string, CatalogEntityChip>;
+  /** The tournament's own game's scoped ontology; `null` while it loads. */
+  ontology: RoleOntology | null;
 }) => {
   const t = useTranslations();
   const format = useFormatter();
@@ -98,7 +101,7 @@ export const TeamListRow = ({
                     {/* Inline, not flex: an atomic box is clipped whole, so
                         `truncate` could only ellipsize plain text runs. */}
                     <span className="mr-1 inline-block align-[-2px]">
-                      <PlayerRoleIcon role={roleOf(player.role)} size={13} decorative />
+                      <PlayerRoleIcon role={player.role} ontology={ontology} size={13} decorative />
                     </span>
                     {matched ? (
                       <mark className={MARK_CLASS}>{player.name}</mark>
@@ -139,6 +142,7 @@ export const TeamListRow = ({
         players={roster}
         tournamentGrid={tournament.division_grid_version}
         discipline={tournament.discipline}
+        ontology={ontology}
         captainUserId={team.captain_id}
       />
       <div className="tc-divider" />

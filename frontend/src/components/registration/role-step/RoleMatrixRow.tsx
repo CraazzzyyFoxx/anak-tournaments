@@ -11,12 +11,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROLE_ACCENTS, getRoleIconName, type RoleCode } from "@/lib/roster/roles";
+import { roleAccent } from "@/lib/registration/role-accent";
+import {
+  findRole,
+  ratedDimension,
+  rolePresentation,
+  type RoleOntology,
+} from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { SubroleOption } from "@/types/registration.types";
 
-import type { RolePriority, RoleSelection } from "../types";
+import type { RoleCode, RolePriority, RoleSelection } from "../types";
 import { HeroPickerCell } from "./HeroPickerCell";
 import { SegmentedRadio, type SegmentedOption } from "./SegmentedRadio";
 
@@ -26,9 +32,11 @@ const ANY_SUBROLE = "__any__";
 export interface RoleMatrixRowProps {
   roleCode: RoleCode;
   roleLabel: string;
+  /** The owner game's scoped ontology: the glyph and accent are this role's own presentation. */
+  ontology: RoleOntology | null;
   selection: RoleSelection;
   subroleOptions: readonly SubroleOption[];
-  /** Heroes offered for this row — always filtered to the role's own class. */
+  /** Characters offered for this row: the owner game's whole roster. A class is a display property, never a role. */
   heroes: CatalogEntityRead[];
   topHeroesEnabled: boolean;
   maxHeroes: number;
@@ -42,6 +50,7 @@ export interface RoleMatrixRowProps {
 export function RoleMatrixRow({
   roleCode,
   roleLabel,
+  ontology,
   selection,
   subroleOptions,
   heroes,
@@ -54,13 +63,18 @@ export function RoleMatrixRow({
 }: Readonly<RoleMatrixRowProps>) {
   const t = useTranslations();
   const subroleId = useId();
-  const accent = ROLE_ACCENTS[roleCode] ?? ROLE_ACCENTS.flex;
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const roleRef = rated ? { dimension: rated.code, role: roleCode } : null;
+  const node = ontology && roleRef ? findRole(ontology, roleRef) : null;
+  const accent = roleAccent(
+    ontology && node ? rolePresentation(ontology.roles, node.id).color : null,
+  );
   const active = showPriority ? selection.priority !== "off" : true;
 
   const priorityOptions: readonly SegmentedOption<RolePriority>[] = [
     { value: "off", label: t("registration.roles.matrix.off") },
     { value: "fallback", label: t("registration.roles.matrix.fallback") },
-    { value: "main", label: t("registration.roles.matrix.main"), selectedClassName: accent.tile },
+    { value: "main", label: t("registration.roles.matrix.main"), selectedStyle: accent.tile },
   ];
 
   return (
@@ -77,9 +91,10 @@ export function RoleMatrixRow({
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <span
-          className={cn("flex size-7 shrink-0 items-center justify-center rounded-xl", accent.tile)}
+          className="flex size-7 shrink-0 items-center justify-center rounded-xl"
+          style={accent.tile}
         >
-          <PlayerRoleIcon role={getRoleIconName(roleCode)} size={18} decorative />
+          <PlayerRoleIcon role={roleRef} ontology={ontology} size={18} decorative />
         </span>
         <span
           className={cn(
@@ -139,7 +154,7 @@ export function RoleMatrixRow({
             {t("registration.roles.topHeroes.title")}
           </span>
           <HeroPickerCell
-            roleCode={roleCode}
+            accent={accent}
             roleLabel={roleLabel}
             heroes={heroes}
             selected={selection.topHeroes}

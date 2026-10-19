@@ -411,7 +411,8 @@ export interface AdminRegistrationRole {
   is_active: boolean;
   /** The raw `registration_role.is_active` column — what the organizer ticked. */
   is_declared_active: boolean;
-  top_heroes?: string[] | null;
+  /** Ordered character slugs (the native spelling; the persisted form answer keeps `top_heroes`). */
+  top_characters?: string[] | null;
   /** Latest OW2 rank for this role, normalised to the workspace grid (from the backend). */
   ow_rank_value?: number | null;
   rank_source?: RegistrationRankSource;

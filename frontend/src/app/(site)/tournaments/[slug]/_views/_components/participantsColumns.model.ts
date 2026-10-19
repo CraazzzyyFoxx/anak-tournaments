@@ -33,31 +33,13 @@ export interface ColumnDefinition {
   align?: "left" | "center";
 }
 
-// ---------------------------------------------------------------------------
-// Role helpers — icon-only, larger icons
-// ---------------------------------------------------------------------------
-
-export const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex",
-};
-
-export function getRoleLabel(role: string, t: Translator): string {
-  switch (role.toLowerCase()) {
-    case "tank":
-      return t("common.roles.tank");
-    case "damage":
-      return t("common.roles.damage");
-    case "support":
-      return t("common.roles.support");
-    case "flex":
-      return t("common.roles.flex");
-    default:
-      return role.charAt(0).toUpperCase() + role.slice(1);
-  }
-}
+/**
+ * The roster's identity columns have provider-independent ids: whichever game owns the tournament, its
+ * primary handle is `_identity` (mandatory) and the handles after it `_identity_extras` (organizers only),
+ * so a saved column choice and the mandatory set never depend on a provider name.
+ */
+export const IDENTITY_COLUMN_ID = "_identity";
+export const IDENTITY_EXTRAS_COLUMN_ID = "_identity_extras";
 
 /**
  * The site's own name for a question the schema labels in the organizer's
@@ -70,8 +52,8 @@ export function getLocalizedColumnLabel(t: Translator, key: string, fallback: st
   if (provider) return t(`registration.accounts.${provider}`);
   switch (key) {
     // Not an identity key of its own: the handles after the primary one, split
-    // out of the `identity_battlenet` answer into a column of their own.
-    case "identity_battlenet_extras":
+    // out of the owner provider's identity answer into a column of their own.
+    case IDENTITY_EXTRAS_COLUMN_ID:
       return t("registration.accounts.smurfs");
     case "roles":
       return t("common.rolesList");

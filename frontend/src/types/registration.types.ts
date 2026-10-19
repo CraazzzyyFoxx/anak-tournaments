@@ -7,7 +7,7 @@ export interface SubroleOption {
   label: string;
 }
 
-/** Workspace sub-role catalog keyed by registration role code (tank/damage/support). */
+/** Workspace sub-role catalog keyed by registration role code of the owner game's rated dimension. */
 export type SubroleCatalog = Record<string, SubroleOption[]>;
 
 // ---------------------------------------------------------------------------
@@ -217,6 +217,8 @@ export interface RegistrationForm {
   id: number;
   tournament_id: number;
   workspace_id: number;
+  /** The owning tournament's game: the scope of the form's roles, characters and identity provider. */
+  discipline: string;
   is_open: boolean;
   require_open_profile?: boolean;
   open_profile_scope?: "main" | "all";
@@ -302,8 +304,8 @@ export interface Registration {
   workspace_id: number;
   user_id: number | null;
   /** The registration's public identity: the PRIMARY handle of its first game
-   *  identity (the BattleTag, today). Derived from
-   *  `answers.identity_battlenet[0]` server-side, and the key the Google-Sheets
+   *  identity, in the owning tournament's identity provider. Derived from
+   *  `answers.identity_<provider>[0]` server-side, and the key the Google-Sheets
    *  feed matches on. */
   primary_handle: string | null;
   /** Stays top-level: normalized rows with ranks and heroes, not a JSON answer. */
@@ -401,8 +403,8 @@ export interface RegistrationRole {
   is_primary: boolean;
   priority: number;
   rank_value?: number | null;
-  /** Ordered hero slugs (top picks). */
-  top_heroes: string[];
+  /** Ordered character slugs (top picks) of the owning game. */
+  top_characters: string[];
 }
 
 export interface RoleInput {

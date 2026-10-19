@@ -22,6 +22,8 @@ import { ApiError } from "@/lib/api/error";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 import { RegistrationTeamsBrowser } from "./RegistrationTeamsBrowser";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -166,7 +168,7 @@ function Harness() {
   useEffect(() => {
     rerender = () => force((value) => value + 1);
   }, []);
-  return <RegistrationTeamsBrowser tournamentId={TOURNAMENT_ID} workspaceId={WORKSPACE_ID} />;
+  return <RegistrationTeamsBrowser tournamentId={TOURNAMENT_ID} workspaceId={WORKSPACE_ID} discipline="overwatch" />;
 }
 
 async function mount(search = "") {

@@ -70,6 +70,7 @@ export default function MyTeamSection({ tournament }: Readonly<{ tournament: Tou
     return (
       <MyTeamPanel
         workspaceId={tournament.workspace_id}
+        discipline={tournament.discipline}
         tournamentId={tournament.id}
         team={myTeam}
         isCaptain={brief?.is_captain ?? false}

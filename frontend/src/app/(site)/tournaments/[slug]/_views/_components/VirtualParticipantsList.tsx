@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import type { Registration } from "@/types/registration.types";
 
 import styles from "../../TournamentDetail.module.css";
-import type { ColumnDefinition } from "./participantsColumns.model";
+import { IDENTITY_COLUMN_ID, type ColumnDefinition } from "./participantsColumns.model";
 import { isMandatoryParticipantColumnId } from "./participants-url-state";
 
 const ESTIMATED_ROW_HEIGHT = 56;
@@ -53,8 +53,8 @@ function orderedColumns(
   // The identity column stays leftmost: the grid gives the first track its
   // wide minmax and the mobile card layout promotes cell 0 to the title row.
   return [
-    ...display.filter((column) => column.id === "identity_battlenet"),
-    ...display.filter((column) => column.id !== "identity_battlenet"),
+    ...display.filter((column) => column.id === IDENTITY_COLUMN_ID),
+    ...display.filter((column) => column.id !== IDENTITY_COLUMN_ID),
   ];
 }
 

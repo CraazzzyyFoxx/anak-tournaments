@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { RoleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
@@ -15,9 +16,10 @@ import { HeroPickerBlock } from "./HeroPickerBlock";
 const PREVIEW_LIMIT = 3;
 
 interface HeroPickerCellProps {
-  roleCode: string;
+  /** The role's own accent (from its ontology presentation). */
+  accent: RoleAccent;
   roleLabel: string;
-  /** Heroes to offer — pre-filtered to the role's class. */
+  /** Characters to offer: the owner game's whole roster. */
   heroes: CatalogEntityRead[];
   selected: string[];
   max: number;
@@ -35,7 +37,7 @@ interface HeroPickerCellProps {
  * heroes are chosen.
  */
 export function HeroPickerCell({
-  roleCode,
+  accent,
   roleLabel,
   heroes,
   selected,
@@ -104,7 +106,7 @@ export function HeroPickerCell({
           heroes={heroes}
           selected={selected}
           max={max}
-          roleCode={roleCode}
+          accent={accent}
           onChange={onChange}
         />
         {/* `block`: <output> is inline, so the popover's `space-y-2` rhythm

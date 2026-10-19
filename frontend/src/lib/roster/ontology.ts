@@ -1,4 +1,5 @@
 import type { DisciplineMetadata, OntologyRole, RoleDimension } from "@/types/discipline.types";
+import { OPEN_SLOT_CODE } from "./shape";
 import type { RoleRef } from "./team-format";
 
 /** One concrete game's history dictionary in one authorized workspace/global scope. */
@@ -25,6 +26,51 @@ export function selectableRoles(ontology: RoleOntology, dimension: string): Onto
   return ontology.roles.filter(role => role.dimension === dimension && role.active && role.selectable &&
     (role.workspace_id === null || role.workspace_id === ontology.workspace_id))
     .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+}
+
+/**
+ * The roles a registrant may declare: the owner game's selectable, module-declared ROOT roles of its
+ * rated dimension, in declared order (workspace children are specializations, never registration rows).
+ * Empty for missing or invalid metadata, so nothing is ever synthesized.
+ */
+export function registrationRoles(ontology: RoleOntology | null | undefined): OntologyRole[] {
+  const rated = ontology ? ratedDimension(ontology) : null;
+  if (!ontology || !rated) return [];
+  return selectableRoles(ontology, rated.code).filter(role => role.parent_id === null && role.workspace_id === null);
+}
+
+/** Every slot code a roster of this game can show, history included, in declared order; the open slot is last. */
+export function slotCodeOrder(ontology: RoleOntology | null | undefined): string[] {
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const codes = !ontology || !rated ? [] : ontology.roles
+    .filter(role => role.dimension === rated.code && role.parent_id === null && role.workspace_id === null)
+    .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code))
+    .map(role => role.code);
+  return [...codes, OPEN_SLOT_CODE];
+}
+
+/** The presentation color of a rated-dimension role code (inherited from its ancestors), or `null` — never a guessed hue. */
+export function roleColor(ontology: RoleOntology | null | undefined, code: string): string | null {
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const role = ontology && rated ? findRole(ontology, { dimension: rated.code, role: code }) : null;
+  return ontology && role ? rolePresentation(ontology.roles, role.id).color : null;
+}
+
+/** Position of a slot code in {@link slotCodeOrder}; unknown codes sort after every known one. */
+export function slotRank(order: readonly string[], code: string | null | undefined): number {
+  const index = order.indexOf(code ?? "");
+  return index === -1 ? order.length : index;
+}
+
+/**
+ * A slot's display name: the game's own role name, the caller's open-slot label, or the raw code when this
+ * scope does not know the role (never a guessed one).
+ */
+export function slotLabel(ontology: RoleOntology | null | undefined, code: string, openLabel: string): string {
+  if (code === OPEN_SLOT_CODE) return openLabel;
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const role = ontology && rated ? findRole(ontology, { dimension: rated.code, role: code }) : null;
+  return role?.name ?? code;
 }
 
 export function roleAncestors(ontology: RoleOntology, role: OntologyRole): OntologyRole[] {

@@ -1,0 +1,95 @@
+import type { DisciplineDescriptor, DisciplineMetadata, OntologyRole } from "@/types/discipline.types";
+
+/**
+ * Scoped metadata fixtures for the two installed games, shaped like `GET /disciplines/{code}/metadata`:
+ * Overwatch's three roots in the `player_role` dimension, League's five positions in `position`. Component
+ * tests mock `@/services/discipline.service` with {@link disciplineServiceMock} so a form or roster resolves
+ * the same owner scope it would in production.
+ */
+function role(
+  id: number,
+  dimension: string,
+  code: string,
+  name: string,
+  extra: Partial<OntologyRole> = {}
+): OntologyRole {
+  return {
+    id,
+    dimension,
+    code,
+    name,
+    parent_id: null,
+    workspace_id: null,
+    active: true,
+    selectable: true,
+    sort_order: id,
+    attrs: {},
+    ...extra
+  };
+}
+
+function descriptor(code: string, name: string, provider: string): DisciplineDescriptor {
+  return {
+    code,
+    name,
+    enabled: true,
+    kinds: { character: code === "lol" ? "Champion" : "Hero", map: "Map" },
+    character_classes: [],
+    identity_provider: provider,
+    capabilities: {
+      catalog_sync: true,
+      native_rank_collection: code === "overwatch",
+      native_ladder: code === "overwatch",
+      achievement_conditions: code === "overwatch",
+      analytics: code === "overwatch"
+    }
+  } as DisciplineDescriptor;
+}
+
+function metadata(
+  code: string,
+  name: string,
+  provider: string,
+  dimension: string,
+  roles: OntologyRole[]
+): DisciplineMetadata {
+  return {
+    discipline: descriptor(code, name, provider),
+    workspace_id: null,
+    dimensions: [
+      { id: 1, code: dimension, name: dimension, selection_mode: "single", rated: true, active: true, sort_order: 0 }
+    ],
+    roles,
+    stat_defs: [],
+    team_format_presets: [],
+    native_ladder: []
+  } as unknown as DisciplineMetadata;
+}
+
+export const OW_METADATA = metadata("overwatch", "Overwatch", "battlenet", "player_role", [
+  role(1, "player_role", "tank", "Tank", { attrs: { color: "#0ea5e9" } }),
+  role(2, "player_role", "damage", "Damage", { attrs: { color: "#f97316" } }),
+  role(3, "player_role", "support", "Support", { attrs: { color: "#10b981" } })
+]);
+
+export const LOL_METADATA = metadata("lol", "League of Legends", "riot", "position", [
+  role(11, "position", "top", "Top"),
+  role(12, "position", "jungle", "Jungle"),
+  role(13, "position", "mid", "Mid"),
+  role(14, "position", "bot", "Bot"),
+  role(15, "position", "support", "Support")
+]);
+
+const ALL = [OW_METADATA, LOL_METADATA];
+
+/** The `vi.mock("@/services/discipline.service", …)` factory result. */
+export const disciplineServiceMock = {
+  default: {
+    list: async () => ALL.map((entry) => entry.discipline),
+    metadata: async (_axis: unknown, code: string) => {
+      const found = ALL.find((entry) => entry.discipline.code === code);
+      if (!found) throw new Error(`discipline_not_installed: ${code}`);
+      return found;
+    }
+  }
+};

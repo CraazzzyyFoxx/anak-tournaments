@@ -11,6 +11,7 @@ import { evaluateCondition } from "@/lib/forms/visible-when";
 import type { Answers, FormField, FormSchema, FormSection } from "@/types/forms.types";
 
 import GenericField from "./GenericField";
+import { registrationRoles } from "@/lib/roster/ontology";
 import type { FieldRendererContext, RendererRegistry } from "./types";
 
 /** Whether `answers` is asked for this field right now. */
@@ -148,7 +149,13 @@ export default function SchemaForm({
    */
   const objectionTo = (field: FormField): string | null => {
     const rule = context.mode === "admin" && field.required ? { ...field, required: false } : field;
-    return validateAnswer(rule, answers[field.key], context.t, answers);
+    return validateAnswer(
+      rule,
+      answers[field.key],
+      context.t,
+      answers,
+      context.metadata ? registrationRoles(context.metadata).map((role) => role.code) : undefined,
+    );
   };
 
   /** First client-side objection among `entry`'s visible fields, or `null`. */

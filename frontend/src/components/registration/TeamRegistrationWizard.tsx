@@ -8,11 +8,12 @@ import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { ApiError } from "@/lib/api/error";
 import { MAX_AVATAR_BYTES } from "@/lib/uploads";
 import { notify } from "@/lib/notify";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
-import { isRoleSlotCode, type RosterSlotCode } from "@/lib/roster/shape";
+import { isRoleSlot, type SlotCode } from "@/lib/roster/shape";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import meService from "@/services/me.service";
 import registrationTeamService from "@/services/registration-team.service";
@@ -62,9 +63,11 @@ export default function TeamRegistrationWizard({
   const tErrors = useTranslations("registrationTeams.errors");
   const { user: authUser } = useAuthProfile();
   const queryClient = useQueryClient();
+  // The slot tiles are the form's own game's roles (the owner read names the game).
+  const metadata = useDisciplineMetadata(form.workspace_id, form.discipline);
 
   const [name, setName] = useState("");
-  const [slot, setSlot] = useState<RosterSlotCode | null>(availableSlots[0]?.code ?? null);
+  const [slot, setSlot] = useState<SlotCode | null>(availableSlots[0]?.code ?? null);
   const [error, setError] = useState<string | null>(null);
   // Team-name errors stay hidden until the field has been left once, so the
   // panel does not open with a red "Enter a team name" on an untouched form.
@@ -259,6 +262,7 @@ export default function TeamRegistrationWizard({
               options={availableSlots}
               value={slot}
               onChange={setSlot}
+              ontology={metadata.data ?? null}
             />
             <p id="regteam-slot-hint" className="text-xs text-[color:var(--aqt-fg-muted)]">
               {t("create.slotHint")}
@@ -280,7 +284,7 @@ export default function TeamRegistrationWizard({
         // one row they will actually play instead of asking the question twice. A
         // `flex` slot names no role, so it locks nothing — locking on it would
         // filter every row away and leave the step with nothing to answer.
-        lockedRole={slot != null && isRoleSlotCode(slot) ? slot : null}
+        lockedRole={slot != null && isRoleSlot(slot) ? slot : null}
         onSubmit={async ({ form_version_id, answers }) => {
           setError(null);
           if (nameError) {

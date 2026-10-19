@@ -18,6 +18,8 @@ import type { RegistrationTeam } from "@/types/registration-team.types";
 
 import MyTeamPanel from "./MyTeamPanel";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -82,6 +84,7 @@ async function render(team: RegistrationTeam): Promise<HTMLElement> {
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
+            discipline="overwatch"
             workspaceId={1}
             tournamentId={1}
             team={team}

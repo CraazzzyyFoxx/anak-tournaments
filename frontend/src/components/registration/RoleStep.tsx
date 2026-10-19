@@ -3,15 +3,10 @@
 import { useTranslations } from "next-intl";
 
 import FlexIcon from "@/components/icons/FlexIcon";
-import { characterClass } from "@/lib/catalog/attrs";
+import { roleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
-import {
-  REGISTRATION_TO_CANONICAL,
-  ROLES,
-  ROLE_ACCENTS,
-  getSubroleOptions,
-  type RoleCode,
-} from "@/lib/roster/roles";
+import { getSubroleOptions } from "@/lib/roster/roles";
+import { registrationRoles, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
 import type { RolesParams } from "@/types/forms.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RoleInput, SubroleCatalog } from "@/types/registration.types";
@@ -22,6 +17,7 @@ import {
   priorityChoice,
   toRoleSelections,
   type FlexMode,
+  type RoleCode,
   type RolePriority,
   type RoleSelections,
 } from "./types";
@@ -39,7 +35,13 @@ interface RoleStepProps {
   /** Field-level role error, shown once above the matrix. */
   error?: string | null;
   hideHelperText?: boolean;
+  /** The owner game's characters (`top_heroes` picks are validated against exactly these). */
   allHeroes: CatalogEntityRead[];
+  /**
+   * The owner game's scoped ontology. The matrix has one row per registration role of its rated dimension;
+   * missing or invalid metadata renders an error and no rows — nothing is synthesized.
+   */
+  ontology: RoleOntology | null;
   /**
    * Restrict the matrix to ONE role, permanently `main`.
    *
@@ -55,7 +57,7 @@ interface RoleStepProps {
 }
 
 /**
- * Role step, laid out as a fixed matrix: one row per role, always showing the
+ * Role step, laid out as a fixed matrix: one row per role of the owner's game, always showing the
  * same four cells (role, priority, specialization, top heroes).
  *
  * It used to be three stacked sections — primary roles, secondary roles, top
@@ -72,13 +74,16 @@ export default function RoleStep({
   error = null,
   hideHelperText = false,
   allHeroes,
+  ontology,
   lockedRole = null,
 }: Readonly<RoleStepProps>) {
   const t = useTranslations();
-  // The same translated slot vocabulary the roster shortfall, the invite chips
-  // and the slot picker speak, so the matrix never labels `damage` "DPS" beside
-  // a chip that reads "Дамаг".
-  const tSlots = useTranslations("rosterShape.slotCodes");
+  // One vocabulary for the matrix, the roster shortfall, the invite chips and the
+  // slot picker: the game's own role names from its scoped ontology.
+  const roles = registrationRoles(ontology);
+  const roleCodes = roles.map((role) => role.code);
+  const accentOf = (role: (typeof roles)[number]) =>
+    roleAccent(ontology ? rolePresentation(ontology.roles, role.id).color : null);
   const isLocked = lockedRole != null;
   // `flex_allowed: false` is the old `flex_role.enabled: false` — no flex at all.
   const flexMode: FlexMode = params.flex_allowed ? params.flex_mode : "off";
@@ -87,43 +92,17 @@ export default function RoleStep({
   // The matrix thinks in one entry per role; the answer stores only the roles
   // taken. Converting at this boundary keeps both honest — the wire shape has
   // no way to say "off", and the matrix has no way to say "absent".
-  const selections = toRoleSelections(value);
-  const onChange = (next: RoleSelections) => onValueChange(fromRoleSelections(next, lockedRole));
+  const selections = toRoleSelections(roleCodes, value);
+  const onChange = (next: RoleSelections) =>
+    onValueChange(fromRoleSelections(roleCodes, next, lockedRole));
   const isForced = flexMode === "forced";
   const isAllRoles = !isLocked && flexMode === "all_roles";
   // A single row has nothing to prioritise against, so the control would only
   // offer the invitee a way to mark their own dictated slot as "off".
   const showPriority = !isLocked && !isForced && !isAllRoles;
   const isFlex = !isLocked && (isForced || isFlexSelection(selections));
-  const visibleRoles = isLocked ? ROLES.filter((role) => role.code === lockedRole) : ROLES;
+  const visibleRoles = isLocked ? roles.filter((role) => role.code === lockedRole) : roles;
   const isAdditionalRolesRequired = params.additional_required;
-
-  /**
-   * The roster offered for one row, always filtered to that row's role.
-   *
-   * Flex used to widen this to the full roster, which made sense while flex
-   * rendered a *single* hero block (pre-matrix `RoleStep`): the picker was not
-   * attached to a role. Here every row IS a role and its picks are submitted
-   * under that role's `top_heroes`, so the full roster would offer Ana as a tank
-   * pick — and the backend only tolerates that while the submission stays flex
-   * (`_validate_role_heroes`), rejecting it the moment it does not.
-   *
-   * Already-selected slugs stay in the roster whatever their class: an existing
-   * flex registration may carry a cross-class pick, and a tile that is not
-   * offered cannot be deselected — the registrant would be stuck with a hero the
-   * backend rejects as soon as they stop being flex.
-   */
-  const heroesForRole = (roleCode: string): CatalogEntityRead[] => {
-    const canonical = REGISTRATION_TO_CANONICAL[roleCode as RoleCode];
-    if (!canonical) {
-      return allHeroes;
-    }
-    const selected = selections[roleCode as RoleCode].topHeroes;
-    return allHeroes.filter(
-      (hero) =>
-        (characterClass(hero) ?? "").toLowerCase() === canonical || selected.includes(hero.slug),
-    );
-  };
 
   // The allowlist no longer splits by priority: one `subroles` map per role,
   // whatever slot it is taken in.
@@ -150,8 +129,8 @@ export default function RoleStep({
       // rebalancing below would read the two hidden rows and demote it.
       return next;
     }
-    const mains = ROLES.filter((role) => next[role.code].priority === "main");
-    if (mains.length <= 1 || (mains.length === ROLES.length && flexMode !== "off")) {
+    const mains = roles.filter((role) => next[role.code].priority === "main");
+    if (mains.length <= 1 || (mains.length === roles.length && flexMode !== "off")) {
       return next;
     }
     // A promotion names its own winner. A demotion does not: crowning a survivor
@@ -197,13 +176,13 @@ export default function RoleStep({
   const toggleFlex = () => {
     const next = { ...selections };
     if (isFlex) {
-      const [first, ...rest] = ROLES;
+      const [first, ...rest] = roles;
       next[first.code] = { ...next[first.code], priority: "main" };
       for (const role of rest) {
         next[role.code] = { ...next[role.code], priority: "fallback" };
       }
     } else {
-      for (const role of ROLES) {
+      for (const role of roles) {
         next[role.code] = { ...next[role.code], priority: "main" };
       }
     }
@@ -217,7 +196,7 @@ export default function RoleStep({
    */
   const setPriorityChoice = (choice: RoleCode | "flex") => {
     const next = { ...selections };
-    for (const role of ROLES) {
+    for (const role of roles) {
       next[role.code] = {
         ...next[role.code],
         priority: choice === "flex" || role.code === choice ? "main" : "fallback",
@@ -231,17 +210,27 @@ export default function RoleStep({
     : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]";
 
   const priorityOptions: readonly SegmentedOption<RoleCode | "flex">[] = [
-    ...ROLES.map((role) => ({
+    ...roles.map((role) => ({
       value: role.code as RoleCode | "flex",
-      label: tSlots(role.code),
-      selectedClassName: (ROLE_ACCENTS[role.code] ?? ROLE_ACCENTS.flex).tile,
+      label: role.name,
+      selectedStyle: accentOf(role).tile,
     })),
     {
       value: "flex" as const,
       label: t("registration.roles.matrix.choiceFlex"),
-      selectedClassName: ROLE_ACCENTS.flex.tile,
+      selectedStyle: roleAccent(null).tile,
     },
   ];
+
+  if (roles.length === 0) {
+    // Missing, still-loading-failed or invalid (no unique rated dimension) metadata: no rows are
+    // guessed, so there is nothing to answer here.
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        {t("common.roleOntology.metadataError")}
+      </p>
+    );
+  }
 
   return (
     <div className="grid gap-3">
@@ -269,9 +258,10 @@ export default function RoleStep({
               "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-label font-medium transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               isFlex
-                ? cn(ROLE_ACCENTS.flex.selectedCard, "text-[color:var(--aqt-fg)]")
+                ? "text-[color:var(--aqt-fg)]"
                 : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)]",
             )}
+            style={isFlex ? roleAccent(null).selectedCard : undefined}
           >
             <FlexIcon width={14} height={14} />
             {t("registration.roles.matrix.flexPreset")}
@@ -317,10 +307,11 @@ export default function RoleStep({
           <RoleMatrixRow
             key={role.code}
             roleCode={role.code}
-            roleLabel={tSlots(role.code)}
+            roleLabel={role.name}
+            ontology={ontology}
             selection={selections[role.code]}
             subroleOptions={subroleOptionsFor(role.code)}
-            heroes={heroesForRole(role.code)}
+            heroes={allHeroes}
             topHeroesEnabled={topHeroesEnabled}
             maxHeroes={maxHeroes}
             showPriority={showPriority}

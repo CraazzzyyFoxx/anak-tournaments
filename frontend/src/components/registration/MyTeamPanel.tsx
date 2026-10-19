@@ -15,15 +15,20 @@ import MyTeamHeader from "@/components/registration/MyTeamHeader";
 import MyTeamInviteDialog from "@/components/registration/MyTeamInviteDialog";
 import MyTeamInvitesList from "@/components/registration/MyTeamInvitesList";
 import MyTeamRosterList from "@/components/registration/MyTeamRosterList";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
+import { slotCodeOrder } from "@/lib/roster/ontology";
 import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 
-import { buildMyTeamRoster, slotLabelFor } from "./myTeam.model";
+import { buildMyTeamRoster } from "./myTeam.model";
 import { useMyTeamInvite } from "./useMyTeamInvite";
 import { useMyTeamMutations, useMyTeamRefresh } from "./useMyTeamMutations";
 
 interface MyTeamPanelProps {
   workspaceId: number;
+  /** The owning tournament's game: the scope of the roster's slot names and glyphs. */
+  discipline: string;
   tournamentId: number;
   team: RegistrationTeam;
   /** True when the viewer is this team's captain. Transfer, disband, lock and
@@ -47,6 +52,7 @@ type ConfirmKind = "transfer" | "kick" | "disband" | "lock" | "leave";
  */
 export default function MyTeamPanel({
   workspaceId,
+  discipline,
   tournamentId,
   team,
   isCaptain,
@@ -57,9 +63,11 @@ export default function MyTeamPanel({
 }: Readonly<MyTeamPanelProps>) {
   const t = useTranslations("registrationTeams");
   const tErrors = useTranslations("registrationTeams.errors");
-  // The same translated slot vocabulary the admin card and the public tab use, so
-  // one roster never shows "DPS" in its shortfall and "Урон" on a chip.
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  // The owner game's role names, the same vocabulary the admin card and the public tab use, so
+  // one roster never shows two spellings of a slot in its shortfall and on a chip.
+  const metadata = useDisciplineMetadata(workspaceId, discipline);
+  const ontology = metadata.data ?? null;
+  const slotLabel = useSlotLabel(ontology);
 
   /** Owned here, not by the drawer, because a refusal at the invite cap has to
    *  force it open — the answer to "where did 60 invites go" is in there. */
@@ -86,7 +94,7 @@ export default function MyTeamPanel({
     starterCapacity,
     benchSlots,
     benchOpen,
-  } = buildMyTeamRoster(team);
+  } = buildMyTeamRoster(team, slotCodeOrder(ontology));
 
   /** The crest is only writable while the roster still is: the server refuses a
    *  terminal or already-exported team with `team_not_forming` /
@@ -149,7 +157,6 @@ export default function MyTeamPanel({
   const blockingReason = !active ? t(`myCard.blocked.${status}`)
     : locked ? t("myCard.blocked.locked")
     : !registrationOpen ? t("myCard.blocked.closed") : null;
-  const slotLabel = (code: string) => slotLabelFor(code, tSlot);
 
   // One flat table: the dialog is mounted once and reads whichever row the
   // pending action names. Only the two member-scoped rows interpolate a name.
@@ -203,7 +210,7 @@ export default function MyTeamPanel({
         logoBusy={
           mutations.uploadImageMutation.isPending || mutations.deleteImageMutation.isPending
         }
-        tSlot={tSlot}
+        slotLabel={slotLabel}
         onRename={mutations.renameMutation.mutate}
         onUploadLogo={mutations.uploadImageMutation.mutate}
         onDeleteLogo={mutations.deleteImageMutation.mutate}
@@ -249,6 +256,7 @@ export default function MyTeamPanel({
         isCaptain={isCaptain}
         canEditRoster={canEditRoster}
         busy={busy}
+        ontology={ontology}
         slotLabel={slotLabel}
         onPlace={mutations.placeMutation.mutate}
         onSetManager={mutations.managerMutation.mutate}

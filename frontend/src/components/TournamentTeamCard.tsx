@@ -19,8 +19,10 @@ import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
-import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
+import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
@@ -76,13 +78,17 @@ const BRANCH_LINE = "pointer-events-none absolute border-[color:var(--aqt-fg-fai
 export function RosterRole({
   role,
   position,
-  inline
+  inline,
+  ontology = null
 }: Readonly<{
   role: RoleRef | null;
   position?: RosterSlotPosition<SortableRosterPlayer & { name: string }>;
   inline?: boolean;
+  /** The roster's own game's scoped ontology. Absent, the role renders neutral — never another game's glyph. */
+  ontology?: RoleOntology | null;
 }>) {
   const t = useTranslations();
+  const slotLabel = useSlotLabel(ontology);
   const index = position?.index ?? 0;
   const slotSize = position?.slot.length ?? 1;
   const lineBelow = index < slotSize - 1;
@@ -114,7 +120,6 @@ export function RosterRole({
     );
   }
 
-  const roleKey = PLAYER_ROLE_LABEL_KEY[role ? normalizePlayerRole(roleOf(role)) : "Flex"];
   return (
     <>
       {lineBelow ? (
@@ -126,10 +131,10 @@ export function RosterRole({
         />
       ) : null}
       <IconTooltip
-        label={t(roleKey)}
+        label={slotLabel(role ? roleOf(role) : OPEN_SLOT_CODE)}
         className={cn("shrink-0", position && isReplaced(position) && "opacity-50")}
       >
-        <PlayerRoleIcon role={roleOf(role)} decorative />
+        <PlayerRoleIcon role={role} ontology={ontology} decorative />
       </IconTooltip>
     </>
   );
@@ -244,12 +249,15 @@ export const TournamentTeamTable = ({
   players,
   tournamentGrid,
   discipline,
+  ontology,
   highlightUserId,
   captainUserId
 }: {
   players: TeamRosterPlayer[];
   tournamentGrid?: DivisionGridVersion | null;
   discipline?: string;
+  /** The roster's own game's scoped ontology, for the role column. */
+  ontology?: RoleOntology | null;
   /** When a roster row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
   /** When a roster row belongs to this user id, it gets a captain crown. */
@@ -297,7 +305,7 @@ export const TournamentTeamTable = ({
               return (
                 <tr key={player.id}>
                   <td className="relative">
-                    <RosterRole role={player.role} position={position} />
+                    <RosterRole role={player.role} position={position} ontology={ontology} />
                   </td>
                   <td>
                     <RosterPlayer
@@ -431,12 +439,15 @@ export const TournamentTeamCard = ({
   team,
   medal,
   showGroup,
-  discipline
+  discipline,
+  ontology
 }: {
   team: Team;
   medal: boolean;
   showGroup: boolean;
   discipline: string;
+  /** The team's own game's scoped ontology, for the roster's role column. */
+  ontology?: RoleOntology | null;
 }) => {
   const t = useTranslations();
   const format = useFormatter();
@@ -469,6 +480,7 @@ export const TournamentTeamCard = ({
         players={team.players}
         tournamentGrid={team.tournament?.division_grid_version}
         discipline={discipline}
+        ontology={ontology}
         captainUserId={team.captain_id}
       />
     </TournamentTeamCardFrame>

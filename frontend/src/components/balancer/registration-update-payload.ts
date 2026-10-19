@@ -20,7 +20,7 @@ export function buildRegistrationUpdateFromPlayerPayload(
     // Registration preferences share the owner's rated role dimension.
     const roleDimension = existingRoles?.[0]?.role.dimension ?? "player_role";
     const existingRolesMap = new Map(
-      existingRoles?.map((role) => [roleOf(role.role), role.top_heroes ?? []]) ?? []
+      existingRoles?.map((role) => [roleOf(role.role), role.top_characters ?? []]) ?? []
     );
     const sortedEntries = [...(payload.role_entries_json ?? [])].sort(
       (left, right) => left.priority - right.priority

@@ -95,6 +95,8 @@ export function OverviewRegistrationView({
                 {/* "Tanks are short" — the same figures the participants page
                     falls back to when the roster itself is hidden. */}
                 <RegistrationSummary
+                  workspaceId={tournament.workspace_id}
+                  discipline={tournament.discipline}
                   total={registrationList?.total ?? registrations.length}
                   roleCounts={registrationList?.role_counts ?? {}}
                   maxParticipants={registrationList?.max_participants}

@@ -24,6 +24,8 @@ import type { Tournament } from "@/types/tournament.types";
 
 import TeamRegistrationEntry from "./TeamRegistrationEntry";
 
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
@@ -77,6 +79,7 @@ const FORM = {
   tournament_id: 84,
   workspace_id: 3,
   is_open: true,
+  discipline: "overwatch",
   version_id: 42,
   version_number: 1,
   subrole_catalog: SUBROLE_CATALOG,

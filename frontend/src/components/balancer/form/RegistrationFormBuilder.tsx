@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
@@ -37,6 +38,7 @@ import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AdminRegistrationForm } from "@/types/balancer-admin.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { FieldKind, FormField, FormSchema } from "@/types/forms.types";
 
 import { AddFieldMenu, newBuiltinField, newCustomField } from "./_components/AddFieldMenu";
@@ -149,6 +151,8 @@ export interface SchemaEditorProps {
   fieldErrors: Record<string, string>;
   /** Template menu, save-as, anything the owning screen puts above the tabs. */
   toolbar?: ReactNode;
+  /** The owner game's scoped metadata, for the preview's role blocks; `null` until the owner resolves. */
+  metadata?: DisciplineMetadata | null;
 }
 
 /**
@@ -171,7 +175,8 @@ export function SchemaEditor({
   subroleCatalog,
   catalogLoading = false,
   fieldErrors,
-  toolbar
+  toolbar,
+  metadata = null
 }: Readonly<SchemaEditorProps>) {
   const t = useTranslations("registrationFormAdmin.builder");
   const tBuiltins = useTranslations("registrationFormAdmin.builtins");
@@ -318,11 +323,12 @@ export function SchemaEditor({
       accounts: [],
       subroleCatalog,
       heroes: [],
+      metadata,
       lockedRole: null,
       subscription: null,
       t: tFormErrors
     }),
-    [subroleCatalog, tFormErrors]
+    [subroleCatalog, metadata, tFormErrors]
   );
 
   return (
@@ -593,6 +599,10 @@ export default function RegistrationFormBuilder({
     enabled: tournamentId !== null
   });
   const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, owner.data?.discipline ?? null);
+  const metadata = useDisciplineMetadata(
+    workspaceId ?? "all",
+    workspaceId !== null ? (owner.data?.discipline ?? null) : null
+  );
 
   // A known tournament's default must wait for its owner metadata. A saved
   // questionnaire is already authoritative and does not need that lookup.
@@ -688,6 +698,7 @@ export default function RegistrationFormBuilder({
         onChange={setDraft}
         subroleCatalog={catalog}
         catalogLoading={catalogLoading}
+        metadata={metadata.data ?? null}
         fieldErrors={fieldErrors}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">

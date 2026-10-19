@@ -1,6 +1,5 @@
 import { duelSeats } from "@/lib/encounter/seats";
 import { getEncounterWinner } from "@/lib/encounter/status";
-import { normalizePlayerRole } from "@/lib/roster/player-role";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { Encounter } from "@/types/encounter.types";
 import type { CatalogEntityChip } from "@/types/catalog.types";
@@ -91,15 +90,15 @@ export function declaredHeroes(
 ): CatalogEntityChip[] {
   if (!registration) return [];
   const roles = registration.roles ?? [];
-  const wanted = player.role ? normalizePlayerRole(roleOf(player.role)) : "Flex";
+  // The pick list of the role the player was drafted into; a flex slot (no role) reads the primary one.
+  const wanted = player.role ? roleOf(player.role) : null;
   const role =
-    roles.find((entry) => normalizePlayerRole(roleOf(entry.role)) === wanted) ??
+    (wanted ? roles.find((entry) => roleOf(entry.role) === wanted) : undefined) ??
     roles.find((entry) => entry.is_primary) ??
     roles[0];
-  return (role?.top_heroes ?? [])
+  return (role?.top_characters ?? [])
     .slice(0, 3)
     .map(
-      (slug) =>
-        heroesMap.get(slug) ?? { name: slug, slug, image_path: null, attrs: { class: wanted } }
+      (slug) => heroesMap.get(slug) ?? { name: slug, slug, image_path: null, attrs: {} }
     );
 }

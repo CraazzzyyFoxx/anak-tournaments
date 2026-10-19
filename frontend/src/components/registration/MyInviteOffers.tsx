@@ -7,9 +7,10 @@ import { useFormatter } from "@/lib/datetime/client";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { notify } from "@/lib/notify";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
-import { ROSTER_SLOT_CODES } from "@/lib/roster/shape";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationTeamInviteOffer } from "@/types/registration-team.types";
@@ -26,9 +27,11 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
   const format = useFormatter();
   const t = useTranslations("registrationTeams");
   const tErrors = useTranslations("registrationTeams.errors");
-  // The same translated slot vocabulary the roster panel and the public tab use,
-  // so one tournament never shows "DPS" here and "Урон" on a chip.
-  const tSlot = useTranslations("rosterShape.slotCodes");
+  // The owner game's role names, the same vocabulary the roster panel and the public tab use,
+  // so one tournament never shows two spellings of a slot.
+  const metadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
+  const ontology = metadata.data ?? null;
+  const slotLabel = useSlotLabel(ontology);
   const queryClient = useQueryClient();
 
   const { status: authStatus, user } = useAuthProfile();
@@ -90,11 +93,6 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
 
   const busy = acceptMutation.isPending || declineMutation.isPending;
 
-  const slotLabel = (code: string) => {
-    const known = ROSTER_SLOT_CODES.find((candidate) => candidate === code);
-    return known ? tSlot(known) : code;
-  };
-
   const offers = offersQuery.data?.items ?? [];
   // This tab is public: an empty card on every visitor's screen is pure noise, so
   // the component disappears entirely when there is nothing to answer.
@@ -111,7 +109,7 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
             key={offer.invite_id}
             className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] px-3 py-2 text-sm"
           >
-            <RosterSlotGlyph code={offer.slot_code} size={18} decorative />
+            <RosterSlotGlyph code={offer.slot_code} ontology={ontology} size={18} decorative />
             <span>
               {offer.is_substitute
                 ? t("offers.sentenceSubstitute", {
