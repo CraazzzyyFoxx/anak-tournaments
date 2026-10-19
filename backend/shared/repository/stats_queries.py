@@ -30,16 +30,12 @@ def player_facts(*, discipline: str) -> sa.Subquery:
         .join(m, m.id == f.match_id)
         .join(d, sa.and_(d.id == f.stat_id, d.discipline == m.discipline))
         .join(wm, sa.and_(wm.id == f.workspace_member_id, wm.workspace_id == m.workspace_id))
-        .join(
-            mt,
-            sa.and_(
-                mt.match_id == f.match_id,
-                mt.encounter_team_id == f.encounter_team_id,
-                mt.encounter_id == m.encounter_id,
-            ),
-        )
+        # The match/encounter owner of match_team and encounter.team is already pinned by the composite FKs
+        # (fk_fact_team, fk_match_team_match, fk_match_team_encounter_team). Restating it as join predicates makes
+        # the planner multiply their selectivities as independent, estimate one row and nest-loop millions.
+        .join(mt, sa.and_(mt.match_id == f.match_id, mt.encounter_team_id == f.encounter_team_id))
         .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
-        .join(et, sa.and_(et.id == f.encounter_team_id, et.encounter_id == e.id))
+        .join(et, et.id == f.encounter_team_id)
         .where(m.discipline == discipline, f.workspace_member_id.is_not(None))
         .subquery()
     )
@@ -61,16 +57,10 @@ def team_scores(*, discipline: str, stat_code: str) -> sa.Subquery:
         .select_from(f)
         .join(m, m.id == f.match_id)
         .join(d, sa.and_(d.id == f.stat_id, d.discipline == m.discipline))
-        .join(
-            mt,
-            sa.and_(
-                mt.match_id == f.match_id,
-                mt.encounter_team_id == f.encounter_team_id,
-                mt.encounter_id == m.encounter_id,
-            ),
-        )
+        # FK-implied owner predicates omitted for the planner, as in ``player_facts``.
+        .join(mt, sa.and_(mt.match_id == f.match_id, mt.encounter_team_id == f.encounter_team_id))
         .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
-        .join(et, sa.and_(et.id == f.encounter_team_id, et.encounter_id == e.id))
+        .join(et, et.id == f.encounter_team_id)
         .where(
             m.discipline == discipline,
             d.code == stat_code,
