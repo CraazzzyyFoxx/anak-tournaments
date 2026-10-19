@@ -54,6 +54,8 @@ export function useUsersIndexData(
   // A role chip needs the game's rated dimension: such a read waits for the metadata rather than running unfiltered.
   const roleFilter = roleFilterOf(metadata, role);
   const ready = discipline !== null && (role === undefined || roleFilter !== undefined);
+  // A game without a grid on this axis refuses all three reads alike; the index shows `MissingGridNotice` for it.
+  const meta = { rendersGridRefusal: true };
 
   const overviewQuery = useQuery({
     queryKey: userQueryKeys.overview(
@@ -85,6 +87,7 @@ export function useUsersIndexData(
         signal
       }),
     placeholderData: sameGame,
+    meta,
     staleTime: 30_000,
     enabled: view === "table" && ready
   });
@@ -102,6 +105,7 @@ export function useUsersIndexData(
         signal
       }),
     placeholderData: sameGame,
+    meta,
     staleTime: 30_000,
     enabled: ready
   });
@@ -122,6 +126,7 @@ export function useUsersIndexData(
         signal
       }),
     placeholderData: sameGame,
+    meta,
     staleTime: 30_000,
     enabled: view === "catalog" && ready
   });

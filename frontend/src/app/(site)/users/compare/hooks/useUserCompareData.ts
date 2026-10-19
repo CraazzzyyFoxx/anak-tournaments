@@ -98,7 +98,12 @@ export const useUserCompareData = ({
     workspaceId,
     fetchCompare: userService.getUserCompare
   });
-  const compareQuery = useQuery({ ...overallOptions, enabled: overallOptions.enabled && roleReady });
+  // A game without a grid on this axis refuses the comparison; the page shows `MissingGridNotice` for it.
+  const compareQuery = useQuery({
+    ...overallOptions,
+    enabled: overallOptions.enabled && roleReady,
+    meta: { rendersGridRefusal: true }
+  });
 
   const heroesQuery = useCatalogEntities(discipline, "character", {
     enabled: shouldLoadHeroCatalogs(isHeroScope)
@@ -146,7 +151,8 @@ export const useUserCompareData = ({
     });
   const heroCompareQuery = useQuery({
     ...heroCompareOptions,
-    enabled: heroCompareOptions.enabled && selectionsSettled && stats.length > 0 && roleReady
+    enabled: heroCompareOptions.enabled && selectionsSettled && stats.length > 0 && roleReady,
+    meta: { rendersGridRefusal: true }
   });
 
   const heroes = heroesQuery.data ?? [];
@@ -258,6 +264,8 @@ export const useUserCompareData = ({
     activeErrorMessage,
     compareDisplayName,
     divisionGrid,
+    /** The workspace every read on the page is pinned to, or the cross-workspace sentinel. */
+    workspaceId,
     /** An id in the URL that is not in the scoped discipline's catalog: show it, request and render nothing. */
     selectionInvalid,
     selectionsSettled,

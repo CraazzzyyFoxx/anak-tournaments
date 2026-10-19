@@ -11,16 +11,18 @@ import React from "react";
 
 import AuthBootstrap from "@/components/auth/AuthBootstrap";
 import WorkspaceBootstrap from "@/components/workspace/WorkspaceBootstrap";
+import { isDivisionGridRequired } from "@/components/divisions/MissingGridNotice";
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 
-function makeQueryClient() {
+export function makeQueryClient() {
   return new QueryClient({
     // Surface API errors as toasts by default. Opt out per-call with
     // `meta: { suppressErrorToast: true }` (e.g. when a component shows its own UI).
     queryCache: new QueryCache({
       onError: (error, query) => {
         if (query.meta?.suppressErrorToast) return;
+        if (query.meta?.rendersGridRefusal && isDivisionGridRequired(error)) return;
         // 401s are owned by the token-refresh / login flow — don't spam logged-out users.
         if (error instanceof ApiError && error.status === 401) return;
         // Only the initial load (no cached data) — avoids spamming on background refetches.
@@ -43,9 +45,11 @@ function makeQueryClient() {
         // did not reply in time; TanStack's default (3 retries) turned every
         // such read into four requests inside ~7s — aimed at the one queue
         // that is already over capacity, and billed as four Sentry events
-        // (OWT-TOURNAMENTS-23M). Everything else keeps the default.
+        // (OWT-TOURNAMENTS-23M). Nor a missing division grid: the refusal holds until an organizer publishes
+        // one, so a retry only delays the notice. Everything else keeps the default.
         retry: (failureCount, error) =>
           !(error instanceof ApiError && (error.status === 503 || error.status === 504)) &&
+          !isDivisionGridRequired(error) &&
           failureCount < 3
       }
     }

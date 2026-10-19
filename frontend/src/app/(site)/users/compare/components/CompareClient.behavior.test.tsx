@@ -198,3 +198,22 @@ describe("compare selection", () => {
     });
   });
 });
+
+describe("a game without a division grid", () => {
+  it("names the missing grid instead of the server's refusal", async () => {
+    mocks.compare.mockRejectedValue(
+      new ApiError(422, [
+        { msg: "division_grid_required: 'lol' needs a division grid of its own with tiers", code: "unprocessable" }
+      ])
+    );
+
+    await mount("/users/compare?user_id=5&discipline=lol");
+
+    const notice = container.querySelector('[role="alert"]');
+    expect(notice?.textContent).toContain(messages.common.discipline.gridMissing);
+    expect(notice?.textContent).toContain("League of Legends");
+    // The all-workspaces axis has no workspace grid to fix: no settings link.
+    expect(notice?.querySelector("a")).toBeNull();
+    expect(container.textContent).not.toContain("division_grid_required");
+  });
+});
