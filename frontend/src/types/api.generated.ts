@@ -14059,6 +14059,8 @@ export interface components {
         "app.UserTournamentWithStats": {
             /** Closeness */
             closeness: number;
+            /** Discipline */
+            discipline: string;
             /** Division */
             division: number;
             /** @default null */
@@ -14083,6 +14085,8 @@ export interface components {
             stats: {
                 [key: string]: components["schemas"]["app.UserTournamentStat"];
             };
+            /** Workspace Id */
+            workspace_id: number;
         };
         /** WorkspaceRead */
         "app.WorkspaceRead": {

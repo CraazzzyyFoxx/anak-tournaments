@@ -33,7 +33,7 @@ from src.services.hero.service import heroes as hero_service
 from src.services.statistics.queries import StatisticsQueries
 
 from . import _mappers
-from .queries.compare import COMPARE_METRIC_DEFINITIONS, DEFAULT_HERO_COMPARE_STATS, UserCompareQueries
+from .queries.compare import COMPARE_METRIC_DEFINITIONS, UserCompareQueries
 from .queries.encounters import UserEncounterQueries
 from .queries.overview import UserOverviewQueries
 from .queries.profile import UserProfileQueries
@@ -809,9 +809,11 @@ class UserService(DisciplineQueries):
         baseline_target: schemas.UserCompareUser | None = None
         sample_size = 0
 
-        requested_stats = [stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed]
-        if not requested_stats:
-            requested_stats = list(DEFAULT_HERO_COMPARE_STATS)
+        # No named stats → the game's own comparable vocabulary; a game that declares none compares nothing (empty
+        # metrics), never another game's stats.
+        requested_stats = [stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed] or list(
+            self.compare.comparable_stats
+        )
 
         left_playtime, left_stats = await self.compare.get_user_hero_compare_stats(
             session,
@@ -1011,9 +1013,9 @@ class UserService(DisciplineQueries):
                     )
                 ],
             )
-        requested_stats = {stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed}
-        if not requested_stats:
-            requested_stats = set(DEFAULT_HERO_COMPARE_STATS)
+        requested_stats = {stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed} or set(
+            self.compare.comparable_stats
+        )
         stats_key = ",".join(sorted(requested_stats))
         is_cohort = params.baseline == "cohort"
         return await self._get_hero_compare_cached(
@@ -1530,10 +1532,10 @@ class UserService(DisciplineQueries):
 
     # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
     # division_grid_version), so it stays out of the key; a grid change fires a
-    # TournamentChangedEvent that broadly drops ``user_tournament_stats:*``.
+    # TournamentChangedEvent that broadly drops ``user_tournament_stats:v2:*``.
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_stats:{id}:{self.discipline}:{tournament_id}:native",
+        key="backend:user_tournament_stats:v2:{id}:{self.discipline}:{tournament_id}:native",
         lock=True,
     )
     async def get_tournament_with_stats(
@@ -1598,6 +1600,8 @@ class UserService(DisciplineQueries):
         return schemas.UserTournamentWithStats(
             id=team.tournament.id,
             name=team.tournament.name,
+            workspace_id=team.tournament.workspace_id,
+            discipline=team.tournament.discipline,
             division=resolve_tournament_division(
                 player.rank,
                 tournament_grid=grid,

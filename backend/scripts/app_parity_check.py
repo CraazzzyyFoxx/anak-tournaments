@@ -34,7 +34,8 @@ GATEWAY = os.environ.get("GATEWAY_BASE", "http://gateway:8080").rstrip("/")
 HTTP = os.environ.get("HTTP_BASE", "http://backend:8000").rstrip("/")
 WS = os.environ.get("WORKSPACE_ID")  # optional; appended as ?workspace_id= where relevant
 PREFIX = "/api/v1/core"
-CATALOG_DISCIPLINE = os.environ.get("CATALOG_DISCIPLINE", "overwatch")  # the catalog is per discipline
+# The catalog and every statistics read are one game's: stat reads carry it explicitly (no default discipline).
+CATALOG_DISCIPLINE = os.environ.get("CATALOG_DISCIPLINE", "overwatch")
 CATALOG_KINDS = ("character", "map", "mode")
 
 
@@ -43,6 +44,11 @@ def _ws(params: dict[str, Any] | None = None) -> dict[str, Any]:
     if WS:
         p.setdefault("workspace_id", WS)
     return p
+
+
+def _game(params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Workspace scope plus the explicit game a statistics read requires."""
+    return _ws({**(params or {}), "discipline": CATALOG_DISCIPLINE})
 
 
 def _canon(body: bytes) -> str:
@@ -80,13 +86,13 @@ def build_paths(client: httpx.Client) -> list[tuple[str, dict[str, Any]]]:
     add(f"{PREFIX}/workspaces")
     add(f"{PREFIX}/users", {"page": 1, "per_page": 5})
     add(f"{PREFIX}/users/search", {"query": "a"})
-    add(f"{PREFIX}/users/overview", _ws({"page": 1, "per_page": 5}))
-    add(f"{PREFIX}/users/overview/stats", _ws())
-    add(f"{PREFIX}/users/overview/catalog", _ws())
-    add(f"{PREFIX}/heroes/statistics/playtime", _ws({"page": 1, "per_page": 5}))
+    add(f"{PREFIX}/users/overview", _game({"page": 1, "per_page": 5}))
+    add(f"{PREFIX}/users/overview/stats", _game())
+    add(f"{PREFIX}/users/overview/catalog", _game())
+    add(f"{PREFIX}/statistics/{CATALOG_DISCIPLINE}/characters/playtime", _ws({"page": 1, "per_page": 5}))
     for stat in ("champion", "winrate", "won-maps"):
-        add(f"{PREFIX}/statistics/{stat}", _ws({"page": 1, "per_page": 5}))
-    add(f"{PREFIX}/statistics/dashboard", _ws())
+        add(f"{PREFIX}/statistics/{stat}", _game({"page": 1, "per_page": 5}))
+    add(f"{PREFIX}/statistics/dashboard", _game())
 
     # Detail endpoints (discover ids)
     hero_id = _first_id(client, f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/character", {"per_page": 1})
@@ -98,7 +104,7 @@ def build_paths(client: httpx.Client) -> list[tuple[str, dict[str, Any]]]:
 
     if hero_id:
         add(f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/character/{hero_id}")
-        add(f"{PREFIX}/heroes/{hero_id}/leaderboard", _ws({"per_page": 5}))
+        add(f"{PREFIX}/statistics/{CATALOG_DISCIPLINE}/characters/{hero_id}/leaderboard", _ws({"per_page": 5}))
     if map_id:
         add(f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/map/{map_id}")
     if gm_id:
@@ -113,15 +119,15 @@ def build_paths(client: httpx.Client) -> list[tuple[str, dict[str, Any]]]:
             "profile",
             "tournaments",
             "maps",
-            "heroes",
+            "characters",
             "teammates",
             "encounters",
             "maps/summary",
             "matches/summary",
         ):
-            add(f"{PREFIX}/users/{user_id}/{sub}", _ws())
+            add(f"{PREFIX}/users/{user_id}/{sub}", _game())
         add(f"{PREFIX}/achievements/user/{user_id}", _ws())
-        add(f"{PREFIX}/users/{user_id}/compare", _ws())
+        add(f"{PREFIX}/users/{user_id}/compare", _game())
     return out
 
 

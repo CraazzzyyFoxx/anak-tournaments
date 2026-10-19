@@ -272,6 +272,8 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         tournament = SimpleNamespace(
             id=3,
             name="Tournament Example",
+            workspace_id=5,
+            discipline="overwatch",
             is_league=False,
             division_grid_version=tournament_grid_version,
         )

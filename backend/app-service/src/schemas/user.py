@@ -277,6 +277,9 @@ class UserTournamentStat(BaseModel):
 class UserTournamentWithStats(BaseModel):
     id: int
     name: str
+    #: The tournament's owner workspace and game: the role and division are drawn in that scope.
+    workspace_id: int
+    discipline: str
     division: int
     # `division` is resolved against the tournament's own grid (see
     # get_tournament_with_stats). Ship the grid version too so the frontend

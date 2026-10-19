@@ -68,8 +68,11 @@ def _json(value: Any) -> Any:
         result = {str(_json(key)): _json(item) for key, item in value.items()}
         if {"participants", "encounter_id", "map_id", "duration_s"} <= result.keys():
             return _frozen_match(result)
-        if {"workspace_id", "discipline", "is_league", "team_id", "players"} <= result.keys():
-            # The owner context P7 added to a user's tournament row; it is not reader output the frozen capture had.
+        if {"workspace_id", "discipline"} <= result.keys() and (
+            {"is_league", "team_id", "players"} <= result.keys() or {"playtime", "stats"} <= result.keys()
+        ):
+            # The owner context P7 added to a user's tournament row and tournament stats; it is not reader output the
+            # frozen capture had.
             del result["workspace_id"], result["discipline"]
         return result
     if isinstance(value, (list, tuple)):

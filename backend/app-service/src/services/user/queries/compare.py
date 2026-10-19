@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid, division_filter_predicates
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
@@ -19,10 +20,6 @@ from ._scope import (
     _compare_user_scope_exists,
     _hero_compare_stat_visibility_condition,
     player_role_filter,
-)
-
-DEFAULT_HERO_COMPARE_STATS: tuple[enums.LogStatsName, ...] = tuple(
-    stat for stat in enums.LogStatsName if stat != enums.LogStatsName.HeroTimePlayed
 )
 
 COMPARE_METRIC_DEFINITIONS: tuple[tuple[str, str, bool], ...] = (
@@ -45,6 +42,15 @@ COMPARE_METRIC_DEFINITIONS: tuple[tuple[str, str, bool], ...] = (
 
 class UserCompareQueries(DisciplineQueries):
     """Compare-tab queries: cohort metrics, hero-vs-hero stats and their catalogs."""
+
+    @property
+    def comparable_stats(self) -> tuple[enums.LogStatsName, ...]:
+        """The game's declared non-team character stats, playtime aside: what a character comparison reports when the
+        caller names none. ``()`` for a game that declares none (LoL) — never another game's vocabulary."""
+        declared = {d.code for d in DISCIPLINES[self.discipline].stat_defs if d.group != "team"}
+        return tuple(
+            stat for stat in enums.LogStatsName if stat.value in declared and stat != enums.LogStatsName.HeroTimePlayed
+        )
 
     async def get_compare_catalog_entities(
         self,
@@ -318,6 +324,7 @@ class UserCompareQueries(DisciplineQueries):
         # joining it and filtering by membership in it are the same thing.
         effective_achievements = build_effective_achievement_rows_subquery(
             workspace_id=workspace_id,
+            discipline=self.discipline,
             user_ids=cohort_scope,
             name="compare_effective_achievement_rows_v2",
         )
@@ -706,7 +713,6 @@ class UserCompareQueries(DisciplineQueries):
         widen the baseline.
         """
 
-        requested_stats = stats or list(DEFAULT_HERO_COMPARE_STATS)
         candidates = self.compare_hero_candidates_select(
             user_ids=user_ids,
             role=role,
@@ -794,7 +800,7 @@ class UserCompareQueries(DisciplineQueries):
                     self._facts.c.entity_id,
                     hero_id=hero_id,
                 ),
-                self._facts.c.stat_code.in_(requested_stats),
+                self._facts.c.stat_code.in_(stats),
                 sa.exists(
                     sa.select(1)
                     .select_from(eligible_hero_time)

@@ -201,6 +201,33 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
                 self.assertEqual("stat_not_declared", raised.exception.detail[0]["code"])
         compute.assert_awaited_once()
 
+    async def test_no_named_stats_reads_the_games_own_vocabulary(self) -> None:
+        """Omitted stats default to the game's declared comparable stats; League declares none, so it compares none."""
+        league = flows.UserService.of("lol")
+        compute = AsyncMock(return_value=object())
+        params = schemas.UserCharacterCompareParams(baseline="target_user", target_user_id=9)
+        with patch.object(users, "get_hero_compare", compute), patch.object(league, "get_hero_compare", compute):
+            await users.get_hero_compare_cached(object(), 202, params, grid=_grid())
+            overwatch_stats = set(compute.await_args.args[2].stats)
+            await league.get_hero_compare_cached(object(), 202, params, grid=_grid())
+            league_stats = compute.await_args.args[2].stats
+        self.assertIn(enums.LogStatsName.Eliminations, overwatch_stats)
+        self.assertNotIn(enums.LogStatsName.HeroTimePlayed, overwatch_stats)
+        self.assertEqual([], league_stats)
+
+        # The uncached compute itself: a League comparison reads no stat and reports no metric.
+        reads = AsyncMock(return_value=(1200.0, {}))
+        with (
+            patch.object(
+                league, "get", AsyncMock(side_effect=lambda _s, uid, _e: SimpleNamespace(id=uid, name=f"u{uid}"))
+            ),
+            patch.object(league.compare, "get_compare_catalog_entities", AsyncMock(return_value=(None, None, None))),
+            patch.object(league.compare, "get_user_hero_compare_stats", reads),
+        ):
+            response = await league.get_hero_compare(object(), 202, params, grid=_grid())
+        self.assertEqual([], response.metrics)
+        self.assertEqual([[], []], [call.kwargs["stats"] for call in reads.await_args_list])
+
     async def test_stampede_lock_computes_identical_request_once(self) -> None:
         entered = asyncio.Event()
         release = asyncio.Event()

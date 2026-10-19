@@ -58,6 +58,7 @@ def override_applies_to_scope_sql(
 def build_effective_achievement_rows_subquery(
     *,
     workspace_id: int | None = None,
+    discipline: str | None = None,
     achievement_rule_ids: Iterable[int] | None = None,
     user_ids: Iterable[int] | sa.Select | sa.ScalarSelect | None = None,
     name: str = "effective_achievement_rows",
@@ -123,15 +124,19 @@ def build_effective_achievement_rows_subquery(
         .where(AchievementOverride.action == AchievementOverrideAction.grant)
     )
 
-    if workspace_id is not None:
+    rule_filters = [
+        *([AchievementRule.workspace_id == workspace_id] if workspace_id is not None else []),
+        *([AchievementRule.discipline == discipline] if discipline is not None else []),
+    ]
+    if rule_filters:
         evaluation_rows = evaluation_rows.join(
             AchievementRule,
             AchievementRule.id == AchievementEvaluationResult.achievement_rule_id,
-        ).where(AchievementRule.workspace_id == workspace_id)
+        ).where(*rule_filters)
         grant_rows = grant_rows.join(
             AchievementRule,
             AchievementRule.id == AchievementOverride.achievement_rule_id,
-        ).where(AchievementRule.workspace_id == workspace_id)
+        ).where(*rule_filters)
 
     if achievement_rule_ids:
         evaluation_rows = evaluation_rows.where(

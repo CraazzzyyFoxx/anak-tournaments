@@ -22239,6 +22239,10 @@
           "title": "Closeness",
           "type": "number"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "division": {
           "title": "Division",
           "type": "integer"
@@ -22313,11 +22317,17 @@
           },
           "title": "Stats",
           "type": "object"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
         }
       },
       "required": [
         "id",
         "name",
+        "workspace_id",
+        "discipline",
         "division",
         "closeness",
         "group_placement",

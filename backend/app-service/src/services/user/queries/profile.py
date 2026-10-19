@@ -185,8 +185,8 @@ class UserProfileQueries(DisciplineQueries):
     async def get_overall_statistics(
         self, session: AsyncSession, user_id: int, workspace_id: int | None = None
     ) -> tuple[int, int, int]:
-        """A user's ``(maps won, maps lost, average encounter closeness)`` across all
-        tournaments, or the workspace's tournaments when ``workspace_id`` is given.
+        """A user's ``(maps won, maps lost, average encounter closeness)`` across this game's
+        tournaments, or the workspace's tournaments of this game when ``workspace_id`` is given.
         """
 
         seat = Seat()
@@ -207,12 +207,11 @@ class UserProfileQueries(DisciplineQueries):
             )
         )
         q = seat.join(q, models.Team.id)
+        q = q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
+            models.Tournament.discipline == self.discipline
+        )
         if workspace_id is not None:
-            q = (
-                q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-                .where(models.Tournament.discipline == self.discipline)
-                .where(models.Tournament.workspace_id == workspace_id)
-            )
+            q = q.where(models.Tournament.workspace_id == workspace_id)
         sides = q.subquery("profile_map_sides")
         query = (
             sa.select(
@@ -715,21 +714,19 @@ class UserProfileQueries(DisciplineQueries):
             .join(teammate_player, teammate_player.team_id == self_player.team_id)
             .join(self_member, self_member.id == self_player.workspace_member_id)
             .join(teammate_member, teammate_member.id == teammate_player.workspace_member_id)
+            .join(models.Tournament, models.Tournament.id == self_player.tournament_id)
             .where(
                 self_member.player_id == user_id,
                 self_player.is_substitution.is_(False),
                 teammate_player.is_substitution.is_(False),
                 teammate_member.player_id != user_id,
+                models.Tournament.discipline == self.discipline,
             )
             .distinct()
         )
 
         if workspace_id is not None:
-            shared_teams_select = (
-                shared_teams_select.join(models.Tournament, models.Tournament.id == self_player.tournament_id)
-                .where(models.Tournament.discipline == self.discipline)
-                .where(models.Tournament.workspace_id == workspace_id)
-            )
+            shared_teams_select = shared_teams_select.where(models.Tournament.workspace_id == workspace_id)
 
         shared_teams = shared_teams_select.cte("shared_teams")
 

@@ -167,11 +167,12 @@ class UserOverviewQueries(DisciplineQueries):
         grid: DivisionGrid,
         workspace_id: int | None = None,
     ) -> sa.ScalarSelect:
-        # The workspace filter lives inside the effective-rows subquery, the same
-        # way the displayed per-page count builds it.
+        # The workspace and game filters live inside the effective-rows subquery, the same
+        # way the displayed per-page count builds it: only this game's rules count.
         effective_rows = build_effective_achievement_rows_subquery(
             user_ids=None,
             workspace_id=workspace_id,
+            discipline=self.discipline,
             name="overview_effective_achievement_rows",
         )
         query = sa.select(sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id))).where(
@@ -568,13 +569,13 @@ class UserOverviewQueries(DisciplineQueries):
 
     # Cache key intentionally omits `session`/`grid` (see get_profile). For the sorts
     # this path serves — the correlated aggregates with *no* role/division/logs/search
-    # filter — the ordering depends only on (workspace, sort, direction, min_encounters);
-    # `grid` only feeds the division predicates, which are absent here. Short TTL +
-    # invalidation on a tournament.standings invalidation (services.cache_resources)
-    # bound staleness.
+    # filter — the ordering depends only on (game, workspace, sort, direction,
+    # min_encounters); `grid` only feeds the division predicates, which are absent here.
+    # Short TTL + invalidation on a tournament.standings invalidation
+    # (services.cache_resources) bound staleness.
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_overview_order:{workspace_id}:{sort_key}:{descending}:{min_encounters}",
+        key="backend:user_overview_order:{self.discipline}:{workspace_id}:{sort_key}:{descending}:{min_encounters}",
     )
     async def _overview_ordered_ids(
         self,
@@ -817,6 +818,7 @@ class UserOverviewQueries(DisciplineQueries):
         effective_rows = build_effective_achievement_rows_subquery(
             user_ids=user_ids,
             workspace_id=workspace_id,
+            discipline=self.discipline,
             name="overview_achievement_count_rows",
         )
         query = sa.select(
