@@ -11,6 +11,7 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 
+import { columnMeta } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 
 /**
@@ -27,6 +28,7 @@ export function createAliasesColumn<T>(
     header: label,
     size: 96,
     enableSorting: false,
+    meta: columnMeta<T>({ align: "center" }),
     cell: ({ row }) => {
       const count = getAliases(row.original)?.length ?? 0;
       return count > 0 ? (

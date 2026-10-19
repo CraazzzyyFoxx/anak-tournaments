@@ -93,7 +93,7 @@ export function useFilters(defs: FilterDef[]): FilterState {
     defs.map((def) => [def.key, readValue(def, params)])
   ) as Record<string, FilterValue>;
 
-  // The two writers are the exception: `AdminAuditPage` lists them as column
+  // The two writers are the exception: `useAuditColumns` lists them as column
   // memo dependencies precisely because the `filters` object around them is
   // rebuilt every render. They close over nothing but `setParams`.
   const set = useCallback(

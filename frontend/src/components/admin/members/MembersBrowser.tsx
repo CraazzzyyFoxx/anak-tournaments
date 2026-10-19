@@ -1,0 +1,235 @@
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserPlus, Wand2 } from "lucide-react";
+import { DataTable } from "@/components/data-table";
+import { FilterBar } from "@/components/kit/FilterBar";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { useFilters } from "@/components/kit/useFilters";
+import { Button } from "@/components/ui/button";
+import { notify } from "@/lib/notify";
+import { usePermissions } from "@/hooks/usePermissions";
+import { rbacService } from "@/services/rbac.service";
+import workspaceService from "@/services/workspace.service";
+import type { RbacRole } from "@/types/rbac.types";
+import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
+import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
+import { useTranslations } from "next-intl";
+
+import { AddMemberDialog } from "./AddMemberDialog";
+import { memberFilterDefs } from "./filters";
+import { isSystemRoleName, memberCustomRoleIds, memberLabel, memberPrimaryRole } from "./model";
+import { useMemberColumns } from "./useMemberColumns";
+
+/**
+ * The members of one workspace: who they are, the role each holds, and the
+ * add / fill-missing / remove actions the caller's `workspace_member.*` grants allow.
+ */
+export function MembersBrowser({
+  workspaceId,
+  workspaceName
+}: Readonly<{ workspaceId: number; workspaceName: string }>) {
+  const t = useTranslations("adminAccess.common");
+  const tw = useTranslations("adminAccess.workspace");
+  const tm = useTranslations("adminAccess.member");
+  const { isSuperuser, canAccessAnyPermission } = usePermissions();
+  const queryClient = useQueryClient();
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<WorkspaceMember | null>(null);
+
+  const canCreateMembers =
+    isSuperuser || canAccessAnyPermission(["workspace_member.create"], workspaceId);
+  const canUpdateMembers =
+    isSuperuser || canAccessAnyPermission(["workspace_member.update"], workspaceId);
+  const canDeleteMembers =
+    isSuperuser || canAccessAnyPermission(["workspace_member.delete"], workspaceId);
+
+  const { data: scopedRoles } = useQuery({
+    queryKey: workspaceQueryKeys.rbacRoles(workspaceId),
+    queryFn: () => rbacService.listRolesAll({ workspace_id: workspaceId }),
+    enabled: canCreateMembers || canUpdateMembers
+  });
+
+  const systemRoleId = useCallback(
+    (name: WorkspaceSystemRole): number | undefined =>
+      scopedRoles?.find((role) => role.name === name)?.id,
+    [scopedRoles]
+  );
+  const customScopedRoles: RbacRole[] = useMemo(
+    () => (scopedRoles ?? []).filter((role) => !isSystemRoleName(role.name)),
+    [scopedRoles]
+  );
+
+  const filterDefs = useMemo(
+    () => memberFilterDefs(scopedRoles ?? [], { role: t("role"), excludeRole: tm("excludeRole") }),
+    [scopedRoles, t, tm]
+  );
+  const filters = useFilters(filterDefs);
+  const roleFilter = String(filters.values.role ?? "");
+  const excludeRoleIds = Array.isArray(filters.values.exclude_role)
+    ? filters.values.exclude_role.map(Number).filter((id) => Number.isInteger(id))
+    : [];
+
+  const invalidateMembers = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.memberList(workspaceId) });
+  }, [queryClient, workspaceId]);
+
+  const updateRolesMutation = useMutation({
+    mutationFn: ({ authUserId, roleIds }: { authUserId: number; roleIds: number[] }) =>
+      workspaceService.updateMemberRole(workspaceId, authUserId, roleIds),
+    onSuccess: () => {
+      invalidateMembers();
+      notify.success(tw("rolesUpdated"));
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (authUserId: number) => workspaceService.removeMember(workspaceId, authUserId),
+    onSuccess: () => {
+      invalidateMembers();
+      setPendingRemoval(null);
+      notify.success(tw("memberRemoved"));
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  const autofillMutation = useMutation({
+    mutationFn: () => workspaceService.autofillMemberRoles(workspaceId),
+    onSuccess: ({ assigned }) => {
+      invalidateMembers();
+      notify.success(
+        assigned > 0
+          ? tm("assignedPlayer", { count: assigned })
+          : tm("everyoneHasRole")
+      );
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  const changePrimaryRole = useCallback(
+    (member: WorkspaceMember, nextRole: WorkspaceSystemRole) => {
+      if (nextRole === memberPrimaryRole(member)) return;
+      const sysId = systemRoleId(nextRole);
+      if (sysId == null) {
+        notify.error(tw("roleNotConfigured"));
+        return;
+      }
+      updateRolesMutation.mutate({
+        authUserId: member.auth_user_id,
+        roleIds: [sysId, ...memberCustomRoleIds(member)]
+      });
+    },
+    [systemRoleId, updateRolesMutation, tw]
+  );
+
+  const toggleCustomRole = useCallback(
+    (member: WorkspaceMember, roleId: number) => {
+      const current = new Set(memberCustomRoleIds(member));
+      if (current.has(roleId)) current.delete(roleId);
+      else current.add(roleId);
+      const primary = memberPrimaryRole(member);
+      const sysId = primary != null ? systemRoleId(primary) : undefined;
+      updateRolesMutation.mutate({
+        authUserId: member.auth_user_id,
+        roleIds: [...(sysId != null ? [sysId] : []), ...current]
+      });
+    },
+    [systemRoleId, updateRolesMutation]
+  );
+
+  const columns = useMemberColumns({
+    canUpdateMembers,
+    canDeleteMembers,
+    customScopedRoles,
+    changePrimaryRole,
+    toggleCustomRole,
+    requestRemoval: setPendingRemoval
+  });
+
+  const tableActions = (
+    <>
+      {canUpdateMembers ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={autofillMutation.isPending}
+          onClick={() => autofillMutation.mutate()}
+        >
+          <Wand2 aria-hidden className="size-3.5" />
+          {tw("fillMissing")}
+        </Button>
+      ) : null}
+      {canCreateMembers ? (
+        <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
+          <UserPlus aria-hidden className="size-3.5" />
+          {t("addMember")}
+        </Button>
+      ) : null}
+    </>
+  );
+
+  return (
+    <>
+      <DataTable<WorkspaceMember>
+        queryKey={(page, search, pageSize, sortField, sortDir) => [
+          "workspace-members",
+          workspaceId,
+          { page, search, pageSize, sortField, sortDir, roleId: roleFilter || null, excludeRoleIds }
+        ]}
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          workspaceService.getMembers(workspaceId, {
+            page,
+            per_page: pageSize,
+            search,
+            role_id: roleFilter ? Number(roleFilter) : null,
+            exclude_role_id: excludeRoleIds,
+            sort: sortField === "role" ? "role" : "username",
+            order: sortDir
+          })
+        }
+        columns={columns}
+        initialPageSize={25}
+        searchPlaceholder={t("searchByNameEmail")}
+        filterKey={filters.filterKey}
+        getRowId={(row) => String(row.auth_user_id)}
+        toolbar={<FilterBar defs={filterDefs} filters={filters} />}
+        emptyMessage={tw("noMembers")}
+        actions={tableActions}
+      />
+
+      {canCreateMembers ? (
+        <AddMemberDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          workspaceId={workspaceId}
+          systemRoleId={systemRoleId}
+          onAdded={() => {
+            invalidateMembers();
+            setAddOpen(false);
+          }}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => (open ? null : setPendingRemoval(null))}
+        intent={{
+          title: t("removeMember"),
+          description: pendingRemoval
+            ? tm("removeDescription", { member: memberLabel(pendingRemoval), workspace: workspaceName })
+            : "",
+          confirmLabel: t("removeMember"),
+          tone: "danger"
+        }}
+        onConfirm={() => {
+          if (pendingRemoval) removeMemberMutation.mutate(pendingRemoval.auth_user_id);
+        }}
+        pending={removeMemberMutation.isPending}
+      />
+    </>
+  );
+}
