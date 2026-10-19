@@ -3469,11 +3469,6 @@
     "teamsLabel": "{count, plural, one {team} other {teams}}",
     "applications": "{count, plural, one {# application} other {# applications}}",
     "applicationsLabel": "{count, plural, one {application} other {applications}}",
-    "roles": {
-      "Tank": "Tank",
-      "Damage": "Damage",
-      "Support": "Support"
-    },
     "now": {
       "rubric": "Tournaments",
       "title": "Now in the community",

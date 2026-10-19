@@ -3469,11 +3469,6 @@
     "teamsLabel": "{count, plural, one {команда} few {команды} many {команд} other {команд}}",
     "applications": "{count, plural, one {# заявка} few {# заявки} many {# заявок} other {# заявок}}",
     "applicationsLabel": "{count, plural, one {заявка} few {заявки} many {заявок} other {заявок}}",
-    "roles": {
-      "Tank": "Танк",
-      "Damage": "Урон",
-      "Support": "Поддержка"
-    },
     "now": {
       "rubric": "Турниры",
       "title": "Сейчас в сообществе",
