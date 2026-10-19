@@ -555,4 +555,9 @@ in the published API docs.
    `alembic upgrade head` first if the DB is fresh), `python -c "import serve"` to catch import
    cycles, `lint-imports` if the service has an `.importlinter`, and the repo-wide guards in
    `backend/tests/` (`test_repository_boundaries.py`, `test_rpc_route_parity.py`,
-   `test_rpc_error_code_parity.py`).
+   `test_rpc_error_code_parity.py`, `test_discipline_module_boundary.py`). Anything game-specific
+   (a game code, role, catalog label, identity provider, stat code, asset folder) belongs in
+   `shared/disciplines/<code>/` or comes from the registry/ontology:
+   `uv run python scripts/check_discipline_literals.py` (D99) fails on such a literal anywhere else
+   unless `scripts/discipline_literal_exceptions.json` names it exactly, with an owner and removal
+   event.
