@@ -52,10 +52,13 @@ export function ConditionTreeCard({
   const t = useTranslations("adminAchievements");
   const tCommon = useTranslations("common");
   const [draft, setDraft] = useState<Record<string, unknown>>({});
-  // The condition vocabulary is the game module's; a game that declares none has nothing to edit with. Unknown
-  // until its metadata loads, so the editor waits for an explicit yes.
+  // The condition vocabulary is the game module's; a game that declares none has nothing to edit with, and no
+  // registry to ask. Unknown until its metadata loads, so the editor waits for an explicit yes and nothing that
+  // could ask for a registry mounts before the answer.
   const metadata = useDisciplineMetadata("all", discipline);
   const conditions = metadata.data?.discipline.capabilities.achievement_conditions;
+  // A stored tree draws itself without the registry; an empty one would need it, so an unsupported game shows none.
+  const showStored = conditions === true || (conditions === false && Object.keys(conditionTree).length > 0);
 
   return (
     <Card>
@@ -94,9 +97,11 @@ export function ConditionTreeCard({
               </Button>
             </div>
           </div>
-        ) : (
+        ) : metadata.isPending ? (
+          <Skeleton className="h-75 w-full rounded-lg" />
+        ) : showStored || metadata.isError ? (
           <ConditionFlowViewer value={conditionTree} readOnly discipline={discipline} />
-        )}
+        ) : null}
       </CardContent>
     </Card>
   );
