@@ -6,14 +6,16 @@ import { useFormatter } from "@/lib/datetime/client";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { EncountersDataTable, FULL_ENCOUNTER_COLUMNS } from "@/components/EncountersTable";
-import type { PaginatedResponse } from "@/types/pagination.types";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
-import type { Encounter, EncounterOverview } from "@/types/encounter.types";
 
-import { ENCOUNTERS_PAGE_SIZE, type EncounterFilterState } from "./encounters.helpers";
+import Loading from "../loading";
+import { EMPTY_OVERVIEW, ENCOUNTERS_PAGE_SIZE, type EncounterFilterState } from "./encounters.helpers";
 import { countLabel, hasActiveFilters } from "./encounters.model";
 import { useEncountersFilters } from "./useEncountersFilters";
-import { useEncountersData } from "./useEncountersData";
+import { useEncountersData, type EncountersSeed } from "./useEncountersData";
 import { EncountersHero } from "./EncountersHero";
 import { EncountersViewsBar } from "./EncountersViewsBar";
 import { EncountersFilterBar } from "./EncountersFilterBar";
@@ -23,8 +25,8 @@ import { EncountersRail } from "./EncountersRail";
 import styles from "./Encounters.module.css";
 
 type EncountersClientProps = {
-  initialData: PaginatedResponse<Encounter>;
-  initialOverview: EncounterOverview;
+  seed: EncountersSeed | null;
+  initial: BrowsingDisciplineInit;
   initialFilters: EncounterFilterState;
   initialPage: number;
   initialError?: string | null;
@@ -32,13 +34,14 @@ type EncountersClientProps = {
 };
 
 /**
- * The encounters index. Filter/URL state and the reads it drives live in
- * `useEncountersFilters` / `useEncountersData`; everything below is layout plus
- * the one piece of state neither owns — which page of the list is on screen.
+ * The encounters index of one game (§2.3 concrete browsing). Filter/URL state and
+ * the reads it drives live in `useEncountersFilters` / `useEncountersData`;
+ * everything below is layout plus the one piece of state neither owns — which
+ * page of the list is on screen.
  */
 export default function EncountersClient({
-  initialData,
-  initialOverview,
+  seed,
+  initial,
   initialFilters,
   initialPage,
   initialError,
@@ -46,25 +49,41 @@ export default function EncountersClient({
 }: Readonly<EncountersClientProps>) {
   const t = useTranslations();
   const format = useFormatter();
-  const controls = useEncountersFilters(initialFilters, initialPage);
+  const browsing = useBrowsingDiscipline({ allowsAll: false, initial });
+  const { resolved, disciplines } = browsing;
+  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
+  const controls = useEncountersFilters(initialFilters, initialPage, discipline);
   const { effectiveFilters, page } = controls;
   const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
-    initialData,
-    initialOverview,
+    seed,
     initialFilters,
     initialPage,
     effectiveFilters,
     page,
-    scope
+    scope,
+    discipline
   });
 
-  const overview = overviewQuery.data ?? initialOverview;
-  const encounters = listQuery.data ?? initialData;
-  const rows = encounters.results ?? [];
-  const totalPages = Math.max(1, Math.ceil((encounters.total ?? 0) / ENCOUNTERS_PAGE_SIZE));
+  const overview = overviewQuery.data ?? EMPTY_OVERVIEW;
+  const rows = listQuery.data?.results ?? [];
+  const total = listQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / ENCOUNTERS_PAGE_SIZE));
   const isFiltered = hasActiveFilters(effectiveFilters);
   const showingStart = rows.length ? (page - 1) * ENCOUNTERS_PAGE_SIZE + 1 : 0;
-  const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, encounters.total);
+  const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, total);
+
+  if ((resolved?.kind === "invalid" || resolved?.kind === "empty") && disciplines) {
+    return (
+      <DisciplineUnavailable resolved={resolved} disciplines={disciplines} allowsAll={false} onSelect={browsing.select} />
+    );
+  }
+  if (discipline === null) {
+    return browsing.isError ? (
+      <PageStateCard state="error" description={t("common.loadError")} onAction={browsing.refetch} />
+    ) : (
+      <Loading />
+    );
+  }
 
   const listBody = () => {
     if (listQuery.isError) {
@@ -89,6 +108,11 @@ export default function EncountersClient({
 
   return (
     <div className={styles.surface}>
+      {disciplines ? (
+        <div className="flex justify-end">
+          <DisciplineSelector disciplines={disciplines} value={discipline} allowsAll={false} onSelect={browsing.select} />
+        </div>
+      ) : null}
       <EncountersHero overview={overview} />
 
       {initialError ? (
@@ -142,7 +166,7 @@ export default function EncountersClient({
               summary={t("encounters.list.showing", {
                 start: String(showingStart),
                 end: String(showingEnd),
-                total: countLabel(format, encounters.total)
+                total: countLabel(format, total)
               })}
             />
           </div>

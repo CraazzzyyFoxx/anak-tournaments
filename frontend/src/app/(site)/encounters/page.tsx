@@ -1,11 +1,15 @@
 import { getTranslations } from "next-intl/server";
 import encounterService from "@/services/encounter.service";
-import type { Encounter, EncounterOverview } from "@/types/encounter.types";
+import type { Encounter } from "@/types/encounter.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
+import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
+import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import EncountersClient from "./_components/EncountersClient";
+import type { EncountersSeed } from "./_components/useEncountersData";
 import {
+  EMPTY_OVERVIEW,
   ENCOUNTERS_PAGE_SIZE,
   filtersToApiFilters,
   normalizeEncounterFilters,
@@ -23,50 +27,6 @@ function emptyEncounters(page: number): PaginatedResponse<Encounter> {
   };
 }
 
-const EMPTY_OVERVIEW: EncounterOverview = {
-  kpis: {
-    total_encounters: 0,
-    recent_count: 0,
-    with_logs_count: 0,
-    with_logs_pct: 0,
-    avg_closeness: null,
-    live_now_count: 0,
-    upcoming_count: 0,
-  },
-  preset_counts: {
-    all: 0,
-    my_team: 0,
-    finals: 0,
-    close_bo5: 0,
-    upsets: 0,
-    with_logs: 0,
-  },
-  closeness_histogram: [],
-  score_heatmap: [],
-  stage_split: [],
-  featured: {
-    closest: [],
-    upcoming: [],
-    live: [],
-  },
-  hot_maps: [],
-  pulse: {
-    avg_series_seconds: null,
-    completed_series_count: 0,
-    sweep_rate: 0,
-    sweep_count: 0,
-    went_distance_count: 0,
-    reverse_sweep_rate: 0,
-    most_decisive_map: null,
-  },
-  slot_balance: {
-    slot_one_wins: 0,
-    slot_two_wins: 0,
-    slot_one_win_pct: 0,
-    slot_two_win_pct: 0,
-  },
-};
-
 type EncountersPageProps = {
   searchParams: Promise<{
     page?: string;
@@ -81,6 +41,7 @@ type EncountersPageProps = {
     closeness_max?: string;
     scope?: string;
     sort?: string;
+    discipline?: string;
   }>;
 };
 
@@ -89,7 +50,12 @@ type ParsedSearchParams = {
   filters: EncounterFilterState;
 };
 
-type EncountersContentProps = ParsedSearchParams & { scope: StatsScope };
+type EncountersContentProps = ParsedSearchParams & {
+  scope: StatsScope;
+  initial: BrowsingDisciplineInit;
+  /** The resolved concrete game; `null` (invalid, empty, unreadable) reads nothing. */
+  game: string | null;
+};
 
 function parseSearchParams(params: Record<string, string | undefined>): ParsedSearchParams {
   const parsedPage = Number.parseInt(params.page ?? String(DEFAULT_PAGE), 10);
@@ -101,47 +67,49 @@ function parseSearchParams(params: Record<string, string | undefined>): ParsedSe
   };
 }
 
-async function EncountersContent({ page, filters, scope }: Readonly<EncountersContentProps>) {
+async function EncountersContent({ page, filters, scope, initial, game }: Readonly<EncountersContentProps>) {
   const t = await getTranslations();
-  const apiFilters = filtersToApiFilters(filters);
+  const apiFilters = { ...filtersToApiFilters(filters), discipline: game };
   let initialError: string | null = null;
   // Workspace scope leaves the ambient workspace to `apiFetch`.
   const workspaceId = scope === "all" ? "all" : undefined;
-  let data = emptyEncounters(page);
-  let overview = EMPTY_OVERVIEW;
+  let seed: EncountersSeed | null = null;
 
-  try {
-    [data, overview] = await Promise.all([
-      encounterService.getAll(
-        page,
-        filters.query,
-        null,
-        ENCOUNTERS_PAGE_SIZE,
-        apiFilters.sort ?? "id",
-        "desc",
-        workspaceId,
-        {
-          ...apiFilters,
-          entities: [
-            "tournament",
-            "stage",
-            "stage_item",
-            "teams",
-            "matches",
-            "matches.map",
-          ],
-        },
-      ),
-      encounterService.getOverview(filters.query, apiFilters, workspaceId),
-    ]);
-  } catch {
-    initialError = t("encounters.dataUnavailable");
+  if (game !== null) {
+    seed = { discipline: game, data: emptyEncounters(page), overview: EMPTY_OVERVIEW };
+    try {
+      [seed.data, seed.overview] = await Promise.all([
+        encounterService.getAll(
+          page,
+          filters.query,
+          null,
+          ENCOUNTERS_PAGE_SIZE,
+          apiFilters.sort ?? "id",
+          "desc",
+          workspaceId,
+          {
+            ...apiFilters,
+            entities: [
+              "tournament",
+              "stage",
+              "stage_item",
+              "teams",
+              "matches",
+              "matches.map",
+            ],
+          },
+        ),
+        encounterService.getOverview(filters.query, apiFilters, workspaceId),
+      ]);
+    } catch {
+      initialError = t("encounters.dataUnavailable");
+    }
   }
 
   return (
     <EncountersClient
-      initialData={data}
-      initialOverview={overview}
+      seed={seed}
+      initial={initial}
       initialFilters={filters}
       initialPage={page}
       initialError={initialError}
@@ -151,9 +119,20 @@ async function EncountersContent({ page, filters, scope }: Readonly<EncountersCo
 }
 
 export default async function EncountersPage({ searchParams }: Readonly<EncountersPageProps>) {
-  const params = parseSearchParams(await searchParams);
+  const raw = await searchParams;
+  const params = parseSearchParams(raw);
+  const [scope, browsing] = await Promise.all([
+    resolveStatsScope(),
+    resolveServerBrowsingDiscipline(raw.discipline),
+  ]);
 
   return (
-    <EncountersContent page={params.page} filters={params.filters} scope={await resolveStatsScope()} />
+    <EncountersContent
+      page={params.page}
+      filters={params.filters}
+      scope={scope}
+      initial={browsing.init}
+      game={browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null}
+    />
   );
 }

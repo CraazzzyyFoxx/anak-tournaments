@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useDebounce } from "use-debounce";
 
+import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
+
 import {
   DEFAULT_FILTERS,
   filtersToSearchParams,
@@ -32,17 +34,25 @@ export interface EncountersFilterControls {
  * The mirror is a `replaceState`, not a router navigation: the page re-renders
  * off the query cache either way, and a push would stack one history entry per
  * keystroke. The previous-value ref keeps the very first render (which already
- * matches the server-rendered URL) from writing a redundant entry.
+ * matches the server-rendered URL) from writing a redundant entry. The game is the
+ * browsing selector's, not a filter: the mirror carries it and never writes a URL
+ * without it, and another game starts again from its first page.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
-  initialPage: number
+  initialPage: number,
+  discipline: string | null
 ): EncountersFilterControls {
   const pathname = usePathname();
   const [filters, setFilters] = useState<EncounterFilterState>(initialFilters);
   const [searchValue, setSearchInput] = useState(initialFilters.query);
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
+  const [pageDiscipline, setPageDiscipline] = useState(discipline);
+  if (discipline !== null && discipline !== pageDiscipline) {
+    setPageDiscipline(discipline);
+    if (pageDiscipline !== null) setPage(1);
+  }
   const previousUrlRef = useRef({ page: initialPage, filters: initialFilters });
   const effectiveFilters = useMemo(
     () => ({ ...filters, query: debouncedSearch }),
@@ -50,8 +60,10 @@ export function useEncountersFilters(
   );
 
   useEffect(() => {
+    if (discipline === null) return;
     const params = filtersToSearchParams(effectiveFilters, page);
-    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    params.set(DISCIPLINE_PARAM, discipline);
+    const nextUrl = `${pathname}?${params.toString()}`;
     const previous = previousUrlRef.current;
     if (
       previous.page === page &&
@@ -62,7 +74,7 @@ export function useEncountersFilters(
 
     window.history.replaceState(null, "", nextUrl);
     previousUrlRef.current = { page, filters: effectiveFilters };
-  }, [effectiveFilters, page, pathname]);
+  }, [discipline, effectiveFilters, page, pathname]);
 
   return {
     filters,

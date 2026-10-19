@@ -66,10 +66,12 @@ export default class encounterService {
     sort: string | null = null,
     order: "asc" | "desc" = "desc",
     workspaceId?: number | "all" | null,
-    filters: EncounterFilters & { entities?: string[] } = {}
+    filters: EncounterFilters & { entities?: string[] } = {},
+    opts: { signal?: AbortSignal } = {}
   ): Promise<PaginatedResponse<Encounter>> {
     const { entities, ...restFilters } = filters;
     return apiFetch(`/api/v1/encounters`, {
+      signal: opts.signal,
       query: {
         workspace_id: workspaceId,
         per_page: perPage,
@@ -88,9 +90,11 @@ export default class encounterService {
   static async getOverview(
     query: string,
     filters: EncounterFilters = {},
-    workspaceId?: number | "all" | null
+    workspaceId?: number | "all" | null,
+    opts: { signal?: AbortSignal } = {}
   ): Promise<EncounterOverview> {
     return apiFetch(`/api/v1/encounters/overview`, {
+      signal: opts.signal,
       query: {
         workspace_id: workspaceId,
         per_page: -1,

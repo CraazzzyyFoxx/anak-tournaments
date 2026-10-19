@@ -1,4 +1,4 @@
-import type { Encounter, EncounterFilters } from "@/types/encounter.types";
+import type { Encounter, EncounterFilters, EncounterOverview } from "@/types/encounter.types";
 
 export const ENCOUNTERS_PAGE_SIZE = 15;
 
@@ -33,6 +33,51 @@ export const DEFAULT_FILTERS: EncounterFilterState = {
   closeness_max: null,
   scope: "all",
   sort: "date",
+};
+
+/** The overview of nothing: what the page shows before (or instead of) a read. */
+export const EMPTY_OVERVIEW: EncounterOverview = {
+  kpis: {
+    total_encounters: 0,
+    recent_count: 0,
+    with_logs_count: 0,
+    with_logs_pct: 0,
+    avg_closeness: null,
+    live_now_count: 0,
+    upcoming_count: 0,
+  },
+  preset_counts: {
+    all: 0,
+    my_team: 0,
+    finals: 0,
+    close_bo5: 0,
+    upsets: 0,
+    with_logs: 0,
+  },
+  closeness_histogram: [],
+  score_heatmap: [],
+  stage_split: [],
+  featured: {
+    closest: [],
+    upcoming: [],
+    live: [],
+  },
+  hot_maps: [],
+  pulse: {
+    avg_series_seconds: null,
+    completed_series_count: 0,
+    sweep_rate: 0,
+    sweep_count: 0,
+    went_distance_count: 0,
+    reverse_sweep_rate: 0,
+    most_decisive_map: null,
+  },
+  slot_balance: {
+    slot_one_wins: 0,
+    slot_two_wins: 0,
+    slot_one_win_pct: 0,
+    slot_two_win_pct: 0,
+  },
 };
 
 export type BuiltInViewId = "all" | "my_team" | "finals" | "close_bo5" | "upsets" | "with_logs";
