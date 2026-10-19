@@ -6,6 +6,7 @@ import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { realtimeClient } from "@/services/realtime.service";
 import type { RealtimeEventEnvelope } from "@/types/realtime.types";
 import type { BalancerRosterKey } from "@/types/balancer-admin.types";
+import { OPEN_SLOT_CODE, solverSlotCode } from "@/lib/roster/shape";
 
 /** Mirrors `BALANCER_DRAG` in shared/services/balancer_realtime.py. */
 const BALANCER_DRAG_EVENT = "balancer.drag";
@@ -89,9 +90,10 @@ export function applyDragEvent(
       playerId: data.player_id ?? "",
       playerName: (data.player_name ?? "").slice(0, MAX_PLAYER_NAME_LENGTH),
       fromTeamIndex: data.from_team_index ?? 0,
-      fromRoleKey: data.from_role_key ?? "Tank",
+      // A tab on an older editor sends the display spelling (`Tank`); a frame naming no origin starts neutral.
+      fromRoleKey: data.from_role_key ? solverSlotCode(data.from_role_key) : OPEN_SLOT_CODE,
       overTeamIndex: data.over_team_index ?? null,
-      overRoleKey: data.over_role_key ?? null,
+      overRoleKey: data.over_role_key ? solverSlotCode(data.over_role_key) : null,
       overInsertIndex: data.over_insert_index ?? null,
       updatedAt: nowMs,
     },

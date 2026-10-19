@@ -23,16 +23,22 @@ import {
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { formatSubRoleLabel } from "@/lib/player";
-import type { InternalBalancePayload, InternalBalanceTeam } from "@/types/balancer-admin.types";
+import type {
+  BalancerRosterKey,
+  InternalBalancePayload,
+  InternalBalanceTeam
+} from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import {
-  BALANCE_ROSTER_KEYS,
   MUTED_BUTTON_CLASS,
   TEAM_BADGE_ACCENTS,
   calculateTeamAverageFromPayload,
   calculateTeamTotalFromPayload
 } from "@/components/balancer/balancer-page-helpers";
+import { balanceBucketKeys } from "@/components/balancer/balance-editor-helpers";
 import { Spinner } from "@/components/ui/spinner";
 
 const TEAMS_PER_IMAGE = 10;
@@ -43,6 +49,8 @@ type BalanceImageExportDialogProps = {
   onOpenChange: (open: boolean) => void;
   payload: InternalBalancePayload | null;
   divisionGrid: DivisionGrid;
+  /** The tournament owner's role dictionary: role names, glyphs and the order of the buckets. `null` while it loads. */
+  ontology: RoleOntology | null;
   tournamentId: number | null;
 };
 
@@ -84,6 +92,7 @@ export function BalanceImageExportDialog({
   onOpenChange,
   payload,
   divisionGrid,
+  ontology,
   tournamentId
 }: Readonly<BalanceImageExportDialogProps>) {
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -94,6 +103,10 @@ export function BalanceImageExportDialog({
   const [error, setError] = useState<string | null>(null);
 
   const chunks = useMemo(() => chunkBalanceTeams(payload?.teams ?? []), [payload]);
+  const bucketKeys = useMemo(
+    () => (payload ? balanceBucketKeys(payload, ontology) : []),
+    [payload, ontology]
+  );
 
   const clearGeneratedImages = useCallback(() => {
     setImages((current) => {
@@ -321,6 +334,8 @@ export function BalanceImageExportDialog({
               }}
               entries={chunk.entries}
               divisionGrid={divisionGrid}
+              bucketKeys={bucketKeys}
+              ontology={ontology}
             />
           ))}
           <BalanceImageCaptureFrame
@@ -329,6 +344,8 @@ export function BalanceImageExportDialog({
             }}
             entries={payload.teams.map((team, teamIndex) => ({ team, teamIndex }))}
             divisionGrid={divisionGrid}
+            bucketKeys={bucketKeys}
+            ontology={ontology}
           />
         </div>
       ) : null}
@@ -339,11 +356,15 @@ export function BalanceImageExportDialog({
 function BalanceImageCaptureFrame({
   refCallback,
   entries,
-  divisionGrid
+  divisionGrid,
+  bucketKeys,
+  ontology
 }: Readonly<{
   refCallback: (node: HTMLDivElement | null) => void;
   entries: TeamExportEntry[];
   divisionGrid: DivisionGrid;
+  bucketKeys: BalancerRosterKey[];
+  ontology: RoleOntology | null;
 }>) {
   return (
     <div
@@ -358,6 +379,8 @@ function BalanceImageCaptureFrame({
             team={team}
             teamIndex={teamIndex}
             divisionGrid={divisionGrid}
+            bucketKeys={bucketKeys}
+            ontology={ontology}
           />
         ))}
       </div>
@@ -368,12 +391,17 @@ function BalanceImageCaptureFrame({
 function BalanceExportTeamCard({
   team,
   teamIndex,
-  divisionGrid
+  divisionGrid,
+  bucketKeys,
+  ontology
 }: Readonly<{
   team: InternalBalanceTeam;
   teamIndex: number;
   divisionGrid: DivisionGrid;
+  bucketKeys: BalancerRosterKey[];
+  ontology: RoleOntology | null;
 }>) {
+  const slotLabel = useSlotLabel(ontology);
   const total = Math.round(calculateTeamTotalFromPayload(team));
   const average = Math.round(calculateTeamAverageFromPayload(team));
   const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
@@ -424,13 +452,13 @@ function BalanceExportTeamCard({
             </th>
           </tr>
         </thead>
-        {BALANCE_ROSTER_KEYS.map((roleKey) => (
+        {bucketKeys.map((roleKey) => (
           <tbody key={`${team.id}-${roleKey}`}>
             {team.roster[roleKey].map((player) => (
               <tr key={player.uuid} className="border-b border-[color:var(--aqt-border)]">
                 <td className="w-13 px-4 py-2.5">
                   <div className="flex justify-center">
-                    <PlayerRoleIcon role={roleKey} size={18} />
+                    <PlayerRoleIcon role={roleKey} ontology={ontology} size={18} />
                   </div>
                 </td>
                 <td className="min-w-45 py-2.5 pr-2">
@@ -461,7 +489,7 @@ function BalanceExportTeamCard({
                           key={`${player.uuid}-${preference}-${index}`}
                           className="flex items-center justify-center opacity-85"
                         >
-                          <PlayerRoleIcon role={preference} size={14} />
+                          <PlayerRoleIcon role={preference} ontology={ontology} size={14} />
                         </span>
                       ))
                     ) : (
@@ -478,7 +506,7 @@ function BalanceExportTeamCard({
                   colSpan={4}
                   className="px-3 py-2.5 text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                 >
-                  Empty {roleKey.toLowerCase()}
+                  Empty {slotLabel(roleKey).toLowerCase()}
                 </td>
               </tr>
             ) : null}

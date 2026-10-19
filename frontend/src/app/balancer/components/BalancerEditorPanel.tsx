@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 
 import type { InternalBalancePayload } from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { BalanceEditor } from "@/components/balancer/BalanceEditor";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ type BalancerEditorPanelProps = {
   activeVariant: BalanceVariant | null;
   balanceEditorRef: RefObject<HTMLDivElement | null>;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   selectedPlayerId: number | null;
   collapsedTeamIds: number[];
   poolPlayerCount: number;
@@ -35,6 +37,7 @@ export function BalancerEditorPanel({
   activeVariant,
   balanceEditorRef,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   collapsedTeamIds,
   poolPlayerCount,
@@ -60,6 +63,7 @@ export function BalancerEditorPanel({
             value={activeVariant.payload}
             onChange={onChangePayload}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             selectedPlayerId={selectedPlayerId}
             onSelectPlayer={onSelectPlayer}
             collapsedTeamIds={collapsedTeamIds}

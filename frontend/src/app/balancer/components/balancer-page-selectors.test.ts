@@ -16,7 +16,7 @@ function createPayload(teamName: string): InternalBalancePayload {
         id: 1,
         name: teamName,
         average_mmr: 2500,
-        roster: { Tank: [], Damage: [], Support: [] },
+        roster: { tank: [], damage: [], support: [] },
       },
     ],
   };
@@ -107,6 +107,7 @@ describe("buildBalancerPageCollections", () => {
         registration(4, "pending"),
       ],
       OW_REFERENCE_GRID,
+      (code) => code,
     );
 
     expect(collections.allPlayerValidationStates.map((state) => state.player.id)).toEqual([1]);

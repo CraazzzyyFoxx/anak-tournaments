@@ -17,12 +17,14 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration, BalancerPlayerRecord } from "@/types/balancer-admin.types";
-import { ROLE_TEXT_ACCENTS, getRegistrationBattleTags, splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
+import { getRegistrationBattleTags, splitBattleTag } from "@/components/balancer/balancer-page-helpers";
 import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
 import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
 import {
-  ROLE_LABELS,
   isRoleEntryActive,
   type PlayerValidationIssue,
 } from "@/components/balancer/workspace-helpers";
@@ -32,6 +34,10 @@ type PoolPlayerCompactListProps = {
     player: BalancerPlayerRecord;
     issues: PlayerValidationIssue[];
   }>;
+  /** The tournament owner's role dictionary: role names, glyphs and tints. `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The owner game's grid the rows' division crests resolve in. */
+  divisionGrid: DivisionGrid;
   registrationsById?: Map<number, AdminRegistration>;
   statusOptions?: StatusOptionGroups;
   selectedPlayerId?: number | null;
@@ -61,6 +67,8 @@ type PoolPlayerRowProps = {
   registration: AdminRegistration | null;
   statusOptions?: StatusOptionGroups;
   isSelected: boolean;
+  ontology: RoleOntology | null;
+  divisionGrid: DivisionGrid;
   isBulkSelected: boolean;
   onToggleBulkSelection?: (playerId: number) => void;
   onSelectPlayer?: (playerId: number | null) => void;
@@ -77,6 +85,8 @@ type PoolPlayerRowProps = {
 const PoolPlayerRow = memo(function PoolPlayerRow({
   player,
   issues,
+  ontology,
+  divisionGrid,
   registration,
   statusOptions,
   isSelected,
@@ -87,6 +97,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
   onSetBalancerStatus,
   actionsDisabled,
 }: PoolPlayerRowProps) {
+  const slotLabel = useSlotLabel(ontology);
   const isReady = player.is_in_pool && issues.length === 0;
   const sortedEntries = [...player.role_entries_json].sort((left, right) => left.priority - right.priority);
   const rankedEntries = sortedEntries.filter((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
@@ -136,8 +147,8 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                 {rankedRoleCodes.length > 0 ? (
                   <div className="flex items-center gap-1">
                     {rankedRoleCodes.map((roleCode) => (
-                      <span key={roleCode} title={ROLE_LABELS[roleCode]} className="opacity-95">
-                        <PlayerRoleIcon role={ROLE_LABELS[roleCode]} size={15} />
+                      <span key={roleCode} title={slotLabel(roleCode)} className="opacity-95">
+                        <PlayerRoleIcon role={roleCode} ontology={ontology} size={15} />
                       </span>
                     ))}
                   </div>
@@ -160,15 +171,13 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                 <div className="flex items-center gap-2 pr-1">
                   {divisionNumber != null ? (
                     <span className="shrink-0" title={`Division ${divisionNumber}`}>
-                      <DivisionIcon division={divisionNumber} width={20} height={20} />
+                      <DivisionIcon division={divisionNumber} tournamentGrid={divisionGrid} width={20} height={20} />
                     </span>
                   ) : null}
                   {primaryEntry?.rank_value != null ? (
                     <span
-                      className={cn(
-                        "min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300",
-                        primaryRole && ROLE_TEXT_ACCENTS[primaryRole],
-                      )}
+                      className="min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300"
+                      style={primaryRole ? { color: roleTint(ontology, primaryRole) } : undefined}
                     >
                       {primaryEntry.rank_value}
                     </span>
@@ -218,7 +227,12 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   </span>
                 ) : null}
                 {issues.map((issue) => (
-                  <IssueChip key={`${player.id}-${issueChipKey(issue)}`} issue={issue} />
+                  <IssueChip
+                    key={`${player.id}-${issueChipKey(issue)}`}
+                    issue={issue}
+                    ontology={ontology}
+                    divisionGrid={divisionGrid}
+                  />
                 ))}
                 <SmurfTagStrip smurfTags={smurfTags} />
               </div>
@@ -264,6 +278,8 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
 
 export function PoolPlayerCompactList({
   playerStates,
+  ontology,
+  divisionGrid,
   registrationsById,
   statusOptions,
   selectedPlayerId,
@@ -306,6 +322,8 @@ export function PoolPlayerCompactList({
       <PoolPlayerRow
         player={player}
         issues={issues}
+        ontology={ontology}
+        divisionGrid={divisionGrid}
         registration={registrationsById?.get(player.id) ?? null}
         statusOptions={statusOptions}
         isSelected={player.id === selectedPlayerId}

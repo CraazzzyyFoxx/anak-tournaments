@@ -10,12 +10,15 @@ import {
   type PoolLane,
 } from "@/components/balancer/balancer-page-helpers";
 import {
+  buildVariantFromSavedBalance,
   convertBalanceResponseToInternalPayload,
   createSyntheticApplicationFromRegistration,
-  createSyntheticPlayerFromRegistration,
-  getPlayerValidationIssues,
+  createSyntheticPlayerFromRegistration as createSynthetic,
+  fetchPlayerRankHistoryPreview,
+  getPlayerValidationIssues as validationIssues,
   isRegistrationIncludedInBalancer,
   type PlayerValidationIssue,
+  type SlotLabeler,
 } from "@/components/balancer/workspace-helpers";
 import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/registration-update-payload";
 import type {
@@ -27,10 +30,34 @@ import type {
 import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
 import { OW_REFERENCE_GRID } from "@/disciplines/overwatch/ladder/ow-reference-grid";
 import { apiFetch } from "@/lib/api/fetch";
+import { slotLabel } from "@/lib/roster/ontology";
 import balancerAdminService from "@/services/balancer-admin.service";
+import userService from "@/services/user.service";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 vi.mock("@/lib/api/fetch", () => ({ apiFetch: vi.fn() }));
+
+// The helpers take the owner's grid and role names. Most of this file pins Overwatch behavior, so it reads them
+// through these two OW-bound entry points; the League cases below pass League's own.
+const owLabel: SlotLabeler = (code) => slotLabel(OW_METADATA, code, "Flex");
+const lolLabel: SlotLabeler = (code) => slotLabel(LOL_METADATA, code, "Flex");
+
+function getPlayerValidationIssues(
+  player: BalancerPlayerRecord,
+  application: BalancerApplication | null,
+  workspaceConfig?: { rank_delta_threshold: number | null } | null,
+) {
+  return validationIssues(player, application, workspaceConfig ?? null, OW_REFERENCE_GRID, owLabel);
+}
+
+function createSyntheticPlayerFromRegistration(
+  registration: AdminRegistration,
+  grid: DivisionGrid = OW_REFERENCE_GRID,
+) {
+  return createSynthetic(registration, grid);
+}
 
 function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerRecord {
   return {
@@ -717,18 +744,17 @@ describe("convertBalanceResponseToInternalPayload", () => {
       statistics: {},
     }) as unknown as BalanceResponse;
 
-  it("re-keys the solver's canonical roster codes onto the editor's buckets", () => {
-    // The solver keys the response by the tournament roster shape's slot codes,
-    // so a run whose roster arrives as tank/damage/support must still land in the
-    // Tank/Damage/Support buckets the editor and result_json use.
+  it("keys the editor's buckets by the solver's lower-case slot codes", () => {
+    // The solver keys the response by the tournament roster shape's slot codes, and the editor, result_json and
+    // the save endpoint speak the same codes: tank/damage/support stay tank/damage/support.
     const payload = convertBalanceResponseToInternalPayload(
       response({ tank: [player({ uuid: "t" })], damage: [player({ uuid: "d" })], support: [player({ uuid: "s" })] }),
     );
 
     const roster = payload.teams[0].roster;
-    expect(roster.Tank.map((entry) => entry.uuid)).toEqual(["t"]);
-    expect(roster.Damage.map((entry) => entry.uuid)).toEqual(["d"]);
-    expect(roster.Support.map((entry) => entry.uuid)).toEqual(["s"]);
+    expect(roster.tank.map((entry) => entry.uuid)).toEqual(["t"]);
+    expect(roster.damage.map((entry) => entry.uuid)).toEqual(["d"]);
+    expect(roster.support.map((entry) => entry.uuid)).toEqual(["s"]);
   });
 
   it("preserves format findings from the solver through the save request", async () => {
@@ -756,17 +782,17 @@ describe("convertBalanceResponseToInternalPayload", () => {
     });
   });
 
-  it("re-keys the per-role player maps the editor compares against roster keys", () => {
+  it("keeps the per-role player maps keyed like the roster buckets", () => {
     const payload = convertBalanceResponseToInternalPayload(response({ tank: [player()] }));
 
-    const entry = payload.teams[0].roster.Tank[0];
-    expect(entry.role_preferences).toEqual(["Tank", "Damage"]);
-    expect(entry.all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
-    expect(entry.all_discomforts).toEqual({ Tank: 0, Damage: 100, Support: 5000 });
+    const entry = payload.teams[0].roster.tank[0];
+    expect(entry.role_preferences).toEqual(["tank", "damage"]);
+    expect(entry.all_ratings).toEqual({ tank: 3000, damage: 2800 });
+    expect(entry.all_discomforts).toEqual({ tank: 0, damage: 100, support: 5000 });
   });
 
-  it("keeps display-name payloads unchanged", () => {
-    // Saved balances and pre-roster-shape runs carry the display names already.
+  it("re-keys display-name payloads onto the slot codes", () => {
+    // The solver echoes the spelling of the mask it was given; runs from before the roster shape say `Damage`.
     const legacy = player({
       role_preferences: ["Damage"],
       all_ratings: { Damage: 2800 },
@@ -775,9 +801,9 @@ describe("convertBalanceResponseToInternalPayload", () => {
 
     const payload = convertBalanceResponseToInternalPayload(response({ Damage: [legacy] }));
 
-    const entry = payload.teams[0].roster.Damage[0];
-    expect(entry.role_preferences).toEqual(["Damage"]);
-    expect(entry.all_ratings).toEqual({ Damage: 2800 });
+    const entry = payload.teams[0].roster.damage[0];
+    expect(entry.role_preferences).toEqual(["damage"]);
+    expect(entry.all_ratings).toEqual({ damage: 2800 });
   });
 
   it("normalizes benched players the same way", () => {
@@ -785,6 +811,149 @@ describe("convertBalanceResponseToInternalPayload", () => {
 
     const payload = convertBalanceResponseToInternalPayload(benched);
 
-    expect(payload.benched_players?.[0].all_ratings).toEqual({ Tank: 3000, Damage: 2800 });
+    expect(payload.benched_players?.[0].all_ratings).toEqual({ tank: 3000, damage: 2800, });
+  });
+
+  it("keeps every bucket of another game: a League balance loses no player", () => {
+    const seats = ["top", "jungle", "mid", "bot", "support"];
+    const payload = convertBalanceResponseToInternalPayload(
+      response(
+        Object.fromEntries(
+          seats.map((seat) => [seat, [player({ uuid: seat, role_preferences: [seat], all_ratings: { [seat]: 2500 } })]]),
+        ),
+      ),
+    );
+
+    const roster = payload.teams[0].roster;
+    expect(Object.keys(roster)).toEqual(seats);
+    expect(Object.values(roster).flat().map((entry) => entry.uuid)).toEqual(seats);
+    expect(roster.jungle[0].role_preferences).toEqual(["jungle"]);
+  });
+
+  it("keeps the open slot and a bucket the game does not know instead of dropping their players", () => {
+    const payload = convertBalanceResponseToInternalPayload(
+      response({ flex: [player({ uuid: "f" })], retired: [player({ uuid: "r" })] }),
+    );
+
+    expect(Object.values(payload.teams[0].roster).flat().map((entry) => entry.uuid)).toEqual(["f", "r"]);
+  });
+});
+
+describe("buildVariantFromSavedBalance", () => {
+  it("re-keys a balance saved under display names; both spellings are one bucket on every team", () => {
+    const seat = (uuid: string): PlayerData => ({
+      uuid,
+      name: uuid,
+      assigned_rating: 2000,
+      role_discomfort: 0,
+      is_captain: false,
+      role_preferences: ["Tank", "Damage"],
+      all_ratings: { Tank: 2000 },
+    });
+    const saved = {
+      id: 5,
+      config_json: null,
+      result_json: {
+        teams: [
+          { id: 1, name: "A", average_mmr: 1, roster: { Tank: [seat("a")], tank: [seat("b")], Flex: [] } },
+          { id: 2, name: "B", average_mmr: 1, roster: { Tank: [seat("c")] } },
+        ],
+        benched_players: [seat("x")],
+      },
+    } as unknown as Parameters<typeof buildVariantFromSavedBalance>[0];
+
+    const { payload } = buildVariantFromSavedBalance(saved);
+
+    expect(payload.teams[0].roster.tank.map((entry) => entry.uuid)).toEqual(["a", "b"]);
+    expect(Object.keys(payload.teams[1].roster)).toEqual(["tank", "flex"]);
+    expect(payload.teams[0].roster.tank[0].role_preferences).toEqual(["tank", "damage"]);
+    expect(payload.teams[0].roster.tank[0].all_ratings).toEqual({ tank: 2000 });
+    expect(payload.benched_players?.[0].role_preferences).toEqual(["tank", "damage"]);
+  });
+});
+
+describe("a League roster", () => {
+  const NO_TIERS: DivisionGrid = { tiers: [] };
+  const entry = (role: string, rank: number | null, extra: Partial<BalancerPlayerRecord["role_entries_json"][number]> = {}) => ({
+    role,
+    subtype: null,
+    priority: 1,
+    division_number: null,
+    rank_value: rank,
+    is_active: true,
+    is_declared_active: true,
+    ow_rank_value: null,
+    ...extra,
+  });
+
+  it("matches the application's positions against the player's own", () => {
+    const player = createPlayer({ role_entries_json: [entry("top", 900), entry("jungle", 900, { priority: 2 })] });
+    const application = createApplication({ primary_role: "Top", additional_roles_json: ["jungle"] });
+
+    expect(validationIssues(player, application, null, NO_TIERS, lolLabel)).toEqual([]);
+  });
+
+  it("names a position mismatch in League's own roles", () => {
+    const player = createPlayer({ role_entries_json: [entry("bot", 900)] });
+    const application = createApplication({ primary_role: "mid", additional_roles_json: [] });
+
+    const [issue] = validationIssues(player, application, null, NO_TIERS, lolLabel);
+
+    expect(issue).toMatchObject({
+      code: "application_role_mismatch",
+      applicationRoleCodes: ["mid"],
+      playerRoleCodes: ["bot"],
+      message: "Application: Mid; balancer: Bot",
+    });
+  });
+
+  it("quotes a rank-delta warning with the position's own name", () => {
+    const player = createPlayer({ role_entries_json: [entry("jungle", 2000, { ow_rank_value: 2500 })] });
+
+    const [issue] = validationIssues(player, null, { rank_delta_threshold: 100 }, NO_TIERS, lolLabel);
+
+    expect(issue).toMatchObject({ code: "rank_delta_warning", role: "jungle" });
+    expect(issue.message.startsWith("Jungle: ")).toBe(true);
+  });
+
+  it("reads the owner game's roles from history, in declared order, and never a flex participation", async () => {
+    const tournament = (id: number, discipline: string, role: { dimension: string; role: string } | null, rank: number) => ({
+      id,
+      name: `T${id}`,
+      discipline,
+      role,
+      division_grid_version: null,
+      players: [{ user_id: 7, rank }],
+    });
+    const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
+    const tournaments = vi
+      .spyOn(userService, "getUserTournaments")
+      .mockResolvedValue([
+        tournament(3, "lol", { dimension: "position", role: "jungle" }, 2400),
+        tournament(2, "lol", { dimension: "position", role: "top" }, 1800),
+        tournament(1, "lol", null, 3000),
+        tournament(4, "overwatch", { dimension: "player_role", role: "tank" }, 4000),
+      ] as never);
+
+    try {
+      const preview = await fetchPlayerRankHistoryPreview(
+        "Name#EUW",
+        null,
+        NO_TIERS,
+        undefined,
+        null,
+        "lol",
+        ["top", "jungle", "mid", "bot", "support"],
+      );
+
+      expect(preview?.entries.map((row) => [row.role, row.rank_value])).toEqual([
+        ["top", 1800],
+        ["jungle", 2400],
+      ]);
+      expect(preview?.average_rank_value).toBe(2100);
+    } finally {
+      byName.mockRestore();
+      tournaments.mockRestore();
+    }
   });
 });

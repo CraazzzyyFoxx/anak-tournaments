@@ -20,6 +20,9 @@ import type { StatusMeta } from "@/types/registration.types";
 import type { PlayerValidationState, PoolView, PoolSortValue } from "@/components/balancer/balancer-page-helpers";
 import { ICON_BUTTON_CLASS, PANEL_CLASS, hasBlockingIssues, sortPlayerStates } from "@/components/balancer/balancer-page-helpers";
 import { buildPlayerSearchIndex } from "@/components/balancer/workspace-helpers";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
 import { PoolPlayerCompactList } from "./PoolPlayerCompactList";
 import { PoolTriageBoard } from "./PoolTriageBoard";
 import { WorkspaceBalancerConfigDialog } from "./WorkspaceBalancerConfigDialog";
@@ -44,6 +47,10 @@ type BalancingPoolSidebarProps = {
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
   allPlayerValidationStates: PlayerValidationState[];
+  /** The tournament owner's role dictionary: role names, glyphs and tints. `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The owner game's grid the rows' division crests resolve in. */
+  divisionGrid: DivisionGrid;
   applications: BalancerApplication[];
   registrationsById?: Map<number, AdminRegistration>;
   balancerStatusOptions?: StatusOptionGroups;
@@ -109,6 +116,8 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
       collapsed = false,
       onToggleCollapsed,
       allPlayerValidationStates,
+      ontology,
+      divisionGrid,
       applications,
       registrationsById,
       balancerStatusOptions,
@@ -124,6 +133,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
     },
     ref,
   ) {
+    const slotLabel = useSlotLabel(ontology);
     const [poolView, setPoolView] = useState<PoolView>("all");
     const [configDialogOpen, setConfigDialogOpen] = useState(false);
     const [poolSort, setPoolSort] = useState<PoolSortValue>("division_asc");
@@ -184,10 +194,11 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
         return buildPlayerSearchIndex(
           state.player,
           applicationsById.get(state.player.application_id) ?? null,
+          slotLabel,
         ).includes(normalizedSearchQuery);
       });
       return sortPlayerStates(nextStates, poolSort);
-    }, [allPlayerValidationStates, applicationsById, normalizedSearchQuery, poolSort, poolView, workspaceBalancerConfig]);
+    }, [allPlayerValidationStates, applicationsById, normalizedSearchQuery, poolSort, poolView, slotLabel, workspaceBalancerConfig]);
 
     const poolFilterOptions: PoolFilterOption[] = [
       { value: "all", label: "All", count: poolPlayers.length },
@@ -483,6 +494,8 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
         <div className="mt-2.5 flex min-h-0 flex-1 flex-col">
           <PoolPlayerCompactList
             playerStates={filteredPoolPlayerStates}
+            ontology={ontology}
+            divisionGrid={divisionGrid}
             registrationsById={registrationsById}
             statusOptions={balancerStatusOptions}
             selectedPlayerId={selectedPlayerId}
@@ -501,6 +514,8 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
           open={isTriageBoardOpen}
           onOpenChange={setIsTriageBoardOpen}
           playerStates={allPlayerValidationStates}
+          ontology={ontology}
+          divisionGrid={divisionGrid}
           registrationsById={registrationsById}
           statusOptions={balancerStatusOptions}
           selectedPlayerId={selectedPlayerId}

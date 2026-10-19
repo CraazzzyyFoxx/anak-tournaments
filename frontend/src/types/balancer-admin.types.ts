@@ -1,5 +1,5 @@
-import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/roster/player-role";
 import type { RoleRef } from "@/lib/roster/role-ref";
+import type { SlotCode } from "@/lib/roster/shape";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type { Answers, FormField, FormSchema } from "@/types/forms.types";
 import type { PlayerIdentity } from "@/types/identity.types";
@@ -13,10 +13,13 @@ import type {
   SubscriptionRequirement,
 } from "@/types/registration.types";
 
-/** Registration/draft wire code — the non-flex slice of `PlayerRoleSlotCode`. */
-export type BalancerRoleCode = Exclude<PlayerRoleSlotCode, "flex">;
-/** Capitalized roster bucket key — a role, or the role-less `Flex` slot. */
-export type BalancerRosterKey = PlayerRoleOption;
+/** A role code of the owner game's rated dimension (`tank`, `top`, …): the game's own vocabulary, never a fixed list. */
+export type BalancerRoleCode = string;
+/**
+ * A roster bucket key: a role code of the owner game, or the open slot `flex`. Always the lower-case slot code the
+ * solver speaks; a payload saved before that (`Tank`, `Flex`) is re-keyed when it is loaded.
+ */
+export type BalancerRosterKey = SlotCode;
 export type BalancerRoleSubtype = string;
 /** Layers a registration role's rank can resolve from, strongest first. */
 export type RegistrationRankSource = "registration" | "workspace" | "native" | "none";

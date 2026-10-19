@@ -12,6 +12,7 @@ import {
   getPlayerValidationIssues,
   isRegistrationAvailableForBalancer,
   type BalanceVariant,
+  type SlotLabeler,
 } from "@/components/balancer/workspace-helpers";
 import { type PlayerValidationState } from "@/components/balancer/balancer-page-helpers";
 
@@ -32,6 +33,7 @@ export type BalancerPageCollections = {
 export function buildBalancerPageCollections(
   allRegistrations: AdminRegistration[],
   divisionGrid: DivisionGrid,
+  slotLabel: SlotLabeler,
 ): BalancerPageCollections {
   // Only approved registrations belong to the balancer, the same rule the
   // backend pool uses (`pool_only`): pending, rejected and withdrawn rows are
@@ -56,8 +58,18 @@ export function buildBalancerPageCollections(
     applications.map((application) => [application.id, application]),
   );
   const poolPlayers = players.filter((player) => player.is_in_pool);
-  const allPlayerValidationStates = buildPlayerValidationStates(players, applicationsById);
-  const playerValidationStates = buildPlayerValidationStates(poolPlayers, applicationsById);
+  const allPlayerValidationStates = buildPlayerValidationStates(
+    players,
+    applicationsById,
+    divisionGrid,
+    slotLabel,
+  );
+  const playerValidationStates = buildPlayerValidationStates(
+    poolPlayers,
+    applicationsById,
+    divisionGrid,
+    slotLabel,
+  );
   const readyPlayers = playerValidationStates
     .filter((state) => state.issues.length === 0)
     .map((state) => state.player);
@@ -82,12 +94,17 @@ export function buildBalancerPageCollections(
 function buildPlayerValidationStates(
   players: BalancerPlayerRecord[],
   applicationsById: Map<number, BalancerApplication>,
+  divisionGrid: DivisionGrid,
+  slotLabel: SlotLabeler,
 ): PlayerValidationState[] {
   return players.map((player) => ({
     player,
     issues: getPlayerValidationIssues(
       player,
       applicationsById.get(player.application_id) ?? null,
+      null,
+      divisionGrid,
+      slotLabel,
     ),
   }));
 }

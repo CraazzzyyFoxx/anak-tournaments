@@ -24,17 +24,16 @@ import type {
   InternalBalancePayload,
   InternalBalancePlayer,
 } from "@/types/balancer-admin.types";
-
-import { BALANCE_ROSTER_KEYS } from "@/components/balancer/balancer-page-helpers";
+import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { BalanceEditorPlayerPreviewRow } from "./BalanceEditorPlayerRows";
 import { BalanceEditorTeamCard } from "./BalanceEditorTeamCard";
 import {
+  balanceBucketKeys,
   canPlayerPlayRole,
   findBalancePlayerLocation,
   moveBalancePlayer,
   resolveBalanceDropTarget,
-  rosterCapacity,
   type BalanceActiveDrag,
 } from "./balance-editor-helpers";
 import { useBalancerDragGhosts } from "./useBalancerDragGhosts";
@@ -44,6 +43,8 @@ type BalanceEditorProps = {
   value: InternalBalancePayload | null;
   onChange: (payload: InternalBalancePayload) => void;
   divisionGrid: DivisionGrid;
+  /** The tournament owner's role dictionary: role names, glyphs and the order of the buckets. `null` while it loads. */
+  ontology: RoleOntology | null;
   selectedPlayerId?: number | null;
   onSelectPlayer?: (playerId: number | null) => void;
   collapsedTeamIds?: number[];
@@ -61,6 +62,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
     value,
     onChange,
     divisionGrid,
+    ontology,
     selectedPlayerId = null,
     onSelectPlayer,
     collapsedTeamIds = [],
@@ -85,14 +87,13 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
   );
   const teamCards = useMemo(() => value?.teams ?? [], [value]);
   // The buckets this tournament's roster shape actually fields (a 1-2-2 shape
-  // has no Flex row, an all-flex shape has only one): the same capacity read
-  // the move rules gate on, so the card never shows a seat nobody can fill.
-  const bucketKeys = useMemo(() => {
-    if (!value) return BALANCE_ROSTER_KEYS;
-    const capacity = rosterCapacity(value);
-    const fielded = BALANCE_ROSTER_KEYS.filter((roleKey) => capacity[roleKey] > 0);
-    return fielded.length > 0 ? fielded : BALANCE_ROSTER_KEYS;
-  }, [value]);
+  // has no open row, an all-open shape only that one), in the owner game's role
+  // order: the same capacity read the move rules gate on, so the card never
+  // shows a seat nobody can fill.
+  const bucketKeys = useMemo(
+    () => (value ? balanceBucketKeys(value, ontology) : []),
+    [value, ontology],
+  );
 
   const { remoteDrags, broadcastDragStart, broadcastDragOver, broadcastDragEnd } =
     useBalancerDragGhosts({ topic: realtimeTopic, currentUserId });
@@ -226,6 +227,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
               selectedPlayerId={selectedPlayerId}
               collapsed={collapsedTeamIds.includes(team.id)}
               activeDrag={activeDrag}
+              ontology={ontology}
               remoteDrags={remoteDrags.filter((drag) => drag.overTeamIndex === teamIndex)}
               resolveActorName={resolveActorName}
               onSelectPlayer={onSelectPlayer}
@@ -241,6 +243,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
             player={activePlayer.player}
             roleKey={activePlayer.roleKey}
             divisionGrid={divisionGrid}
+            ontology={ontology}
           />
         ) : null}
       </DragOverlay>

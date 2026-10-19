@@ -127,7 +127,7 @@ function HistoryPreviewCard({
         {entry.tournament_name ? (
           <div className="font-medium text-[color:var(--aqt-fg)]">{entry.tournament_name}</div>
         ) : null}
-        {entry.source_role ? <div>Source role: {entry.source_role}</div> : null}
+        {entry.source_role ? <div>Source role: {slotLabel(entry.source_role)}</div> : null}
       </div>
     </div>
   );

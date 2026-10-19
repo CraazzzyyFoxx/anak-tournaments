@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BalancerPlayerRecord } from "@/types/balancer-admin.types";
 import type { PlayerValidationState } from "@/components/balancer/balancer-page-helpers";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import { BalancingPoolSidebar } from "./BalancingPoolSidebar";
 
 declare global {
@@ -66,6 +67,8 @@ async function mount() {
     createRoot(container).render(
       <BalancingPoolSidebar
         allPlayerValidationStates={POOL_STATES}
+        ontology={OW_METADATA}
+        divisionGrid={{ tiers: [] }}
         applications={[]}
         selectedPlayerId={null}
         onSelectPlayer={onSelectPlayer}

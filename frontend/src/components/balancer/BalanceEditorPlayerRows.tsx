@@ -16,6 +16,8 @@ import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
 import { formatSubRoleLabel } from "@/lib/player";
 import type { DivisionGrid } from "@/types/workspace.types";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type {
   BalancerRosterKey,
   InternalBalancePlayer,
@@ -29,6 +31,7 @@ type BalanceEditorPlayerPreviewRowProps = {
   player: InternalBalancePlayer;
   roleKey: BalancerRosterKey;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   selectedPlayerId?: number | null;
   dragging?: boolean;
   dragHandleProps?: HTMLAttributes<HTMLDivElement>;
@@ -41,6 +44,7 @@ type BalanceEditorPlayerTableRowProps = {
   player: InternalBalancePlayer;
   roleKey: BalancerRosterKey;
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   selectedPlayerId?: number | null;
   dragging?: boolean;
   dropActive?: boolean;
@@ -56,6 +60,7 @@ type DroppableRoleSectionProps = {
   roleKey: BalancerRosterKey;
   players: InternalBalancePlayer[];
   divisionGrid: DivisionGrid;
+  ontology: RoleOntology | null;
   selectedPlayerId?: number | null;
   /** The active drag cannot legally drop into this role — block + dim it. */
   dropDisabled?: boolean;
@@ -66,6 +71,7 @@ export function BalanceEditorPlayerPreviewRow({
   player,
   roleKey,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   dragging = false,
   dragHandleProps,
@@ -81,6 +87,7 @@ export function BalanceEditorPlayerPreviewRow({
             player={player}
             roleKey={roleKey}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             selectedPlayerId={selectedPlayerId}
             dragging={dragging}
             dragHandleProps={dragHandleProps as HTMLAttributes<HTMLTableRowElement> | undefined}
@@ -98,6 +105,7 @@ function BalanceEditorPlayerTableRow({
   player,
   roleKey,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   dragging = false,
   dropActive = false,
@@ -106,6 +114,7 @@ function BalanceEditorPlayerTableRow({
   style,
   onSelectPlayer,
 }: Readonly<BalanceEditorPlayerTableRowProps>) {
+  const slotLabel = useSlotLabel(ontology);
   const playerId = parseInternalBalancePlayerId(player);
   const division = resolveDivisionFromRank(divisionGrid, player.assigned_rating);
   const isSelected = playerId !== null && selectedPlayerId === playerId;
@@ -136,7 +145,7 @@ function BalanceEditorPlayerTableRow({
     >
       <TableCell className="w-13 px-4 py-2.5">
         <div className="flex justify-center">
-          <PlayerRoleIcon role={roleKey} size={18} />
+          <PlayerRoleIcon role={roleKey} ontology={ontology} size={18} />
         </div>
       </TableCell>
       <TableCell className="min-w-45 py-2.5 pr-2">
@@ -161,7 +170,7 @@ function BalanceEditorPlayerTableRow({
         <div className="flex justify-center">
           {division != null ? (
             <span title={`Division ${division}`}>
-              <DivisionIcon division={division} width={26} height={26} />
+              <DivisionIcon division={division} tournamentGrid={divisionGrid} width={26} height={26} />
             </span>
           ) : (
             <span className="text-xs text-[color:var(--aqt-fg-faint)]">-</span>
@@ -179,11 +188,12 @@ function BalanceEditorPlayerTableRow({
                   key={`${player.uuid}-${preference}-${index}`}
                   className="flex items-center justify-center opacity-85"
                   title={
-                    highlightPreferredRole ? `Off-role: assigned ${roleKey}` : undefined
+                    highlightPreferredRole ? `Off-role: assigned ${slotLabel(roleKey)}` : undefined
                   }
                 >
                   <PlayerRoleIcon
                     role={preference}
+                    ontology={ontology}
                     size={14}
                     color={highlightPreferredRole ? "var(--aqt-amber)" : undefined}
                   />
@@ -285,10 +295,12 @@ export function DroppableRoleSection({
   roleKey,
   players,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   dropDisabled = false,
   onSelectPlayer,
 }: Readonly<DroppableRoleSectionProps>) {
+  const slotLabel = useSlotLabel(ontology);
   const { setNodeRef, isOver } = useDroppable({
     id: containerId,
     data: {
@@ -316,6 +328,7 @@ export function DroppableRoleSection({
             playerIndex={playerIndex}
             roleKey={roleKey}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             selectedPlayerId={selectedPlayerId}
             dropDisabled={dropDisabled}
             onSelectPlayer={onSelectPlayer}
@@ -337,7 +350,7 @@ export function DroppableRoleSection({
             colSpan={4}
             className="px-3 py-2.5 text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
           >
-            Drop {roleKey.toLowerCase()} here
+            Drop {slotLabel(roleKey).toLowerCase()} here
           </TableCell>
         </TableRow>
       ) : null}

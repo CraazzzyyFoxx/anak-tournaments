@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { parseImportedBalancePayload } from "./balance-import";
+import { slotCodeOrder } from "@/lib/roster/ontology";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+
+import { parseImportedBalancePayload as parseImported } from "./balance-import";
+
+const OW_CODES = slotCodeOrder(OW_METADATA);
+const LOL_CODES = slotCodeOrder(LOL_METADATA);
+
+/** Overwatch is the game most cases pin; the League cases pass League's own codes. */
+const parseImportedBalancePayload = (text: string, slotCodes: readonly string[] = OW_CODES) =>
+  parseImported(text, slotCodes);
 
 const player = {
   uuid: 297,
@@ -41,13 +51,13 @@ describe("parseImportedBalancePayload", () => {
     expect(team.id).toBe(4);
     expect(team.average_mmr).toBe(2500);
     expect(team.rating_variance).toBe(12.5);
-    expect(team.roster.Tank[0].uuid).toBe("297");
-    expect(team.roster.Tank[0].is_captain).toBe(true);
+    expect(team.roster.tank[0].uuid).toBe("297");
+    expect(team.roster.tank[0].is_captain).toBe(true);
     expect(payload.statistics?.average_mmr).toBe(2500);
     expect(payload.benched_players?.[0].name).toBe("Bench#1");
   });
 
-  it("fills missing roster buckets, ids and derived aggregates", () => {
+  it("keeps the buckets the file has, fills ids and derived aggregates", () => {
     const payload = parseImportedBalancePayload(
       payloadWith({ name: "Team A", roster: { Tank: [player] } })
     );
@@ -57,8 +67,7 @@ describe("parseImportedBalancePayload", () => {
     expect(team.average_mmr).toBe(2600);
     expect(team.total_discomfort).toBe(100);
     expect(team.max_discomfort).toBe(100);
-    expect(team.roster.Damage).toEqual([]);
-    expect(team.roster.Support).toEqual([]);
+    expect(Object.keys(team.roster)).toEqual(["tank"]);
   });
 
   // The save endpoint validates statistics against the solver's `Statistics`
@@ -85,7 +94,7 @@ describe("parseImportedBalancePayload", () => {
       })
     );
 
-    const parsed = payload.teams[0].roster.Tank[0];
+    const parsed = payload.teams[0].roster.tank[0];
     expect(parsed.role_discomfort).toBe(0);
     expect(parsed.is_captain).toBe(false);
     expect(parsed.is_flex).toBe(false);
@@ -122,7 +131,30 @@ describe("parseImportedBalancePayload", () => {
   it("rejects unknown roster roles instead of dropping their players", () => {
     expect(() =>
       parseImportedBalancePayload(payloadWith({ name: "Team A", roster: { DPS: [player] } }))
-    ).toThrowError(/unsupported roster role "DPS"/);
+    ).toThrowError(/unsupported roster role "DPS". Use tank, damage, support, flex\./);
+  });
+
+  it("re-keys the display spellings of a file written by an older editor", () => {
+    const payload = parseImportedBalancePayload(
+      payloadWith({ name: "Team A", roster: { Tank: [player], tank: [{ ...player, uuid: "2" }] } })
+    );
+
+    const [first] = payload.teams[0].roster.tank;
+    expect(payload.teams[0].roster.tank.map((entry) => entry.uuid)).toEqual(["297", "2"]);
+    expect(first.role_preferences).toEqual(["tank", "damage"]);
+    expect(first.all_ratings).toEqual({ tank: 2600, damage: 2400 });
+  });
+
+  it("imports another game's buckets and rejects the Overwatch ones", () => {
+    const league = parseImportedBalancePayload(
+      payloadWith({ name: "Team A", roster: { top: [player], jungle: [{ ...player, uuid: "2" }] } }),
+      LOL_CODES
+    );
+    expect(Object.values(league.teams[0].roster).flat().map((entry) => entry.uuid)).toEqual(["297", "2"]);
+
+    expect(() =>
+      parseImportedBalancePayload(payloadWith({ name: "Team A", roster: { Tank: [player] } }), LOL_CODES)
+    ).toThrowError(/unsupported roster role "Tank". Use top, jungle, mid, bot, support, flex\./);
   });
 
   it("names the offending team and player", () => {

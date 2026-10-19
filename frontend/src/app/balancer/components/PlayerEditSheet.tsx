@@ -39,7 +39,7 @@ import { Spinner } from "@/components/ui/spinner";
 
 import { PlayerEditHistoryPanel } from "./PlayerEditHistoryPanel";
 import { SortableRoleEntry } from "./PlayerEditRoleRow";
-import { ROLE_OPTIONS, isComputedReady } from "./playerEditSheet.model";
+import { isComputedReady } from "./playerEditSheet.model";
 import { usePlayerEditForm } from "./usePlayerEditForm";
 
 type PlayerEditModalProps = {
@@ -85,6 +85,7 @@ export function PlayerEditModal({
     player,
     registration,
     discipline,
+    ontology,
     divisionGridVersionId,
     divisionGridVersion,
     open: open && discipline !== undefined,
@@ -191,7 +192,7 @@ export function PlayerEditModal({
                   size="sm"
                   className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-label text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   onClick={form.addRole}
-                  disabled={roleEntries.length >= ROLE_OPTIONS.length}
+                  disabled={form.addableRole === null}
                 >
                   <Plus className="mr-1 h-3 w-3" />
                   Add role

@@ -1,20 +1,20 @@
 import type {
-  BalancerRosterKey,
   InternalBalancePayload,
   InternalBalancePlayer,
   InternalBalanceTeam
 } from "@/types/balancer-admin.types";
 
 import {
-  BALANCE_ROSTER_KEYS,
   calculateTeamAverageValueFromPayload,
   calculateTeamDiscomfortFromPayload,
   calculateTeamVarianceFromPayload
 } from "@/components/balancer/balancer-page-helpers";
 import { recalculateBalanceStatistics } from "@/components/balancer/balance-editor-helpers";
+import { normalizeInternalPayload } from "@/components/balancer/workspace-helpers";
+import { solverSlotCode } from "@/lib/roster/shape";
 
 const FORMAT_HINT =
-  'Expected the internal balance format written by "Download JSON": { "teams": [{ "name": …, "roster": { "Tank": [{ "uuid", "name", "assigned_rating" }] } }] }.';
+  'Expected the internal balance format written by "Download JSON": { "teams": [{ "name": …, "roster": { "<slot code>": [{ "uuid", "name", "assigned_rating" }] } }] }.';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -53,7 +53,7 @@ function parsePlayer(raw: unknown, where: string): InternalBalancePlayer {
   };
 }
 
-function parseTeam(raw: unknown, index: number): InternalBalanceTeam {
+function parseTeam(raw: unknown, index: number, slotCodes: readonly string[]): InternalBalanceTeam {
   if (!isRecord(raw)) {
     throw new Error(`Team #${index + 1} is not an object. ${FORMAT_HINT}`);
   }
@@ -65,24 +65,19 @@ function parseTeam(raw: unknown, index: number): InternalBalanceTeam {
   if (!isRecord(roster)) {
     throw new Error(`Team "${name}" is missing a "roster" object. ${FORMAT_HINT}`);
   }
-  // Reject unknown buckets instead of silently dropping their players.
+  // Reject unknown buckets instead of silently dropping their players: a bucket is a role code of the owner game
+  // or the open slot, in any case (a file written by an older editor says `Tank`).
   const unknownRole = Object.keys(roster).find(
-    (roleKey) => !BALANCE_ROSTER_KEYS.includes(roleKey as BalancerRosterKey)
+    (roleKey) => !slotCodes.includes(solverSlotCode(roleKey))
   );
   if (unknownRole !== undefined) {
     throw new Error(
-      `Team "${name}" has an unsupported roster role "${unknownRole}". Use Tank, Damage, Support or Flex.`
+      `Team "${name}" has an unsupported roster role "${unknownRole}". Use ${slotCodes.join(", ")}.`
     );
   }
 
-  const parsedRoster: Record<BalancerRosterKey, InternalBalancePlayer[]> = {
-    Tank: [],
-    Damage: [],
-    Support: [],
-    Flex: []
-  };
-  for (const roleKey of BALANCE_ROSTER_KEYS) {
-    const players = roster[roleKey];
+  const parsedRoster: Record<string, InternalBalancePlayer[]> = {};
+  for (const [roleKey, players] of Object.entries(roster)) {
     if (players === undefined || players === null) {
       continue;
     }
@@ -128,7 +123,11 @@ function parseTeam(raw: unknown, index: number): InternalBalanceTeam {
  * Throws with a message naming the offending field; the import dialog shows it
  * verbatim.
  */
-export function parseImportedBalancePayload(text: string): InternalBalancePayload {
+export function parseImportedBalancePayload(
+  text: string,
+  /** The owner game's slot codes (its role codes and the open slot): the buckets a file may carry. */
+  slotCodes: readonly string[]
+): InternalBalancePayload {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -144,7 +143,7 @@ export function parseImportedBalancePayload(text: string): InternalBalancePayloa
   }
 
   const payload: InternalBalancePayload = {
-    teams: raw.teams.map(parseTeam),
+    teams: raw.teams.map((team, index) => parseTeam(team, index, slotCodes)),
     statistics: isRecord(raw.statistics)
       ? (raw.statistics as InternalBalancePayload["statistics"])
       : undefined,
@@ -161,8 +160,9 @@ export function parseImportedBalancePayload(text: string): InternalBalancePayloa
   // `{ teams: [...] }` minimum — imports fine and then 422s on save, so the
   // derivable fields are filled in. Whatever the file states wins: only the
   // solver knows its own objective scores.
+  const normalized = normalizeInternalPayload(payload);
   return {
-    ...payload,
-    statistics: { ...recalculateBalanceStatistics(payload), ...payload.statistics }
+    ...normalized,
+    statistics: { ...recalculateBalanceStatistics(normalized), ...payload.statistics }
   };
 }

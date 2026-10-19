@@ -26,6 +26,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { cn } from "@/lib/utils";
 import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
+import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
 import {
   POOL_LANES,
   POOL_LANE_LABELS,
@@ -37,7 +39,7 @@ import {
   type PoolLane,
 } from "@/components/balancer/balancer-page-helpers";
 import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
-import { ROLE_LABELS, isRoleEntryActive } from "@/components/balancer/workspace-helpers";
+import { isRoleEntryActive } from "@/components/balancer/workspace-helpers";
 import { IssueChip, issueChipKey } from "./IssueChip";
 
 import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
@@ -46,6 +48,10 @@ type PoolTriageBoardProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   playerStates: PlayerValidationState[];
+  /** The tournament owner's role dictionary: role glyphs and tints. `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The owner game's grid the cards' division crests resolve in. */
+  divisionGrid: DivisionGrid;
   registrationsById?: Map<number, AdminRegistration>;
   statusOptions?: StatusOptionGroups;
   selectedPlayerId?: number | null;
@@ -67,12 +73,6 @@ const LANE_COPY: Record<PoolLane, string> = {
   excluded: "Drop here to remove from the run.",
   needs_fix: "Included, but validation still needs attention.",
   ready: "Included and ready for balancing.",
-};
-
-const ROLE_TEXT_ACCENTS: Record<BalancerRoleCode, string> = {
-  tank: "text-sky-300",
-  damage: "text-orange-300",
-  support: "text-emerald-300",
 };
 
 function sortRoleEntries(player: BalancerPlayerRecord) {
@@ -98,6 +98,8 @@ function isCardActionTarget(target: EventTarget | null): boolean {
 function TriagePlayerCard({
   state,
   registration,
+  ontology,
+  divisionGrid,
   statusOptions,
   selectedPlayerId,
   actionsDisabled,
@@ -108,6 +110,8 @@ function TriagePlayerCard({
   state: PlayerValidationState;
   registration: AdminRegistration | null;
   statusOptions?: StatusOptionGroups;
+  ontology: RoleOntology | null;
+  divisionGrid: DivisionGrid;
   selectedPlayerId?: number | null;
   actionsDisabled?: boolean;
   onSelectPlayer: (playerId: number | null) => void;
@@ -174,7 +178,7 @@ function TriagePlayerCard({
                 <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                   {rankedRoleCodes.length > 0 ? (
                     rankedRoleCodes.map((roleCode) => (
-                      <PlayerRoleIcon key={roleCode} role={ROLE_LABELS[roleCode]} size={15} />
+                      <PlayerRoleIcon key={roleCode} role={roleCode} ontology={ontology} size={15} />
                     ))
                   ) : (
                     <span className="text-label text-[color:var(--aqt-fg-faint)]">No roles</span>
@@ -198,7 +202,12 @@ function TriagePlayerCard({
                     </span>
                   ) : null}
                   {state.issues.map((issue) => (
-                    <IssueChip key={`${state.player.id}-${issueChipKey(issue)}`} issue={issue} />
+                    <IssueChip
+                      key={`${state.player.id}-${issueChipKey(issue)}`}
+                      issue={issue}
+                      ontology={ontology}
+                      divisionGrid={divisionGrid}
+                    />
                   ))}
                   <SmurfTagStrip smurfTags={smurfTags} compact />
                 </div>
@@ -207,10 +216,13 @@ function TriagePlayerCard({
 
             <div className="flex shrink-0 items-center gap-1">
               {primaryEntry?.division_number != null ? (
-                <DivisionIcon division={primaryEntry.division_number} width={20} height={20} />
+                <DivisionIcon division={primaryEntry.division_number} tournamentGrid={divisionGrid} width={20} height={20} />
               ) : null}
               {primaryEntry?.rank_value != null ? (
-                <span className={cn("min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300", primaryRole && ROLE_TEXT_ACCENTS[primaryRole])}>
+                <span
+                  className="min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300"
+                  style={primaryRole ? { color: roleTint(ontology, primaryRole) } : undefined}
+                >
                   {primaryEntry.rank_value}
                 </span>
               ) : (
@@ -276,6 +288,8 @@ function TriagePlayerCard({
 function TriageLaneColumn({
   lane,
   states,
+  ontology,
+  divisionGrid,
   registrationsById,
   statusOptions,
   selectedPlayerId,
@@ -286,6 +300,8 @@ function TriageLaneColumn({
 }: Readonly<{
   lane: PoolLane;
   states: PlayerValidationState[];
+  ontology: RoleOntology | null;
+  divisionGrid: DivisionGrid;
   registrationsById?: Map<number, AdminRegistration>;
   statusOptions?: StatusOptionGroups;
   selectedPlayerId?: number | null;
@@ -339,6 +355,8 @@ function TriageLaneColumn({
                 <TriagePlayerCard
                   state={state}
                   registration={registrationsById?.get(state.player.id) ?? null}
+                  ontology={ontology}
+                  divisionGrid={divisionGrid}
                   statusOptions={statusOptions}
                   selectedPlayerId={selectedPlayerId}
                   actionsDisabled={actionsDisabled}
@@ -363,6 +381,8 @@ export function PoolTriageBoard({
   open,
   onOpenChange,
   playerStates,
+  ontology,
+  divisionGrid,
   registrationsById,
   statusOptions,
   selectedPlayerId,
@@ -420,6 +440,8 @@ export function PoolTriageBoard({
                 key={lane}
                 lane={lane}
                 states={statesByLane[lane]}
+                ontology={ontology}
+                divisionGrid={divisionGrid}
                 registrationsById={registrationsById}
                 statusOptions={statusOptions}
                 selectedPlayerId={selectedPlayerId}

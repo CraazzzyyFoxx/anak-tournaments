@@ -1,8 +1,8 @@
 import type {
   AdminRegistration,
   BalancerPlayerRecord,
-  BalancerRosterKey,
-  InternalBalancePayload
+  InternalBalancePayload,
+  InternalBalancePlayer
 } from "@/types/balancer-admin.types";
 import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
 import { getActiveRoleEntries } from "@/components/balancer/workspace-helpers";
@@ -117,8 +117,6 @@ export const TEAM_BADGE_ACCENTS = [
   "border-indigo-400/20 bg-indigo-500/10 text-indigo-200"
 ];
 
-export const BALANCE_ROSTER_KEYS: BalancerRosterKey[] = ["Tank", "Damage", "Support", "Flex"];
-
 export const PANEL_CLASS = "rounded-xl border border-border bg-card";
 
 /**
@@ -136,13 +134,6 @@ export const TOOLBAR_BUTTON_CLASS = `h-8 px-3 text-sm ${MUTED_BUTTON_CLASS}`;
 /** Square icon-button chrome shared by both balancer sidebars. */
 export const ICON_BUTTON_CLASS =
   "h-8 w-8 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
-
-/** One accent per role, so a rank number carries its role without a second label. */
-export const ROLE_TEXT_ACCENTS: Record<string, string> = {
-  tank: "text-sky-300",
-  damage: "text-orange-300",
-  support: "text-emerald-300"
-};
 
 /**
  * `Name#1234` → a bright name plus a dim `#1234`, so a row reads as one
@@ -200,27 +191,28 @@ export function calculateTeamAverageValueFromPayload(
   return calculateTeamTotalFromPayload(team) / totalPlayers;
 }
 
+/** Every player of a team, whichever bucket (role or open slot) of the owner game holds them. */
+function teamPlayers(team: InternalBalancePayload["teams"][number]): InternalBalancePlayer[] {
+  return Object.values(team.roster).flat();
+}
+
 export function calculateTeamTotalFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
-  return BALANCE_ROSTER_KEYS.reduce(
-    (sum, roleKey) =>
-      sum + team.roster[roleKey].reduce((roleSum, player) => roleSum + player.assigned_rating, 0),
-    0
-  );
+  return teamPlayers(team).reduce((sum, player) => sum + player.assigned_rating, 0);
 }
 
 export function countTeamPlayers(team: InternalBalancePayload["teams"][number]): number {
-  return BALANCE_ROSTER_KEYS.reduce((sum, roleKey) => sum + team.roster[roleKey].length, 0);
+  return teamPlayers(team).length;
 }
 
 export function calculateOffRoleCountFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
-  return BALANCE_ROSTER_KEYS.reduce(
-    (sum, roleKey) =>
+  return Object.entries(team.roster).reduce(
+    (sum, [roleKey, players]) =>
       sum +
-      team.roster[roleKey].filter((player) => {
+      players.filter((player) => {
         if (player.is_flex) {
           return false;
         }
@@ -246,18 +238,11 @@ export function sampleStdDev(values: number[]): number {
   return variance > 0 ? Math.sqrt(variance) : 0;
 }
 
-/** All per-player assigned ratings of a team, flattened across role buckets. */
-function collectTeamRatings(team: InternalBalancePayload["teams"][number]): number[] {
-  return BALANCE_ROSTER_KEYS.flatMap((roleKey) =>
-    team.roster[roleKey].map((player) => player.assigned_rating)
-  );
-}
-
 /** Intra-team rating spread (mirrors backend `Team.intra_std`). */
 export function calculateTeamVarianceFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
-  return sampleStdDev(collectTeamRatings(team));
+  return sampleStdDev(teamPlayers(team).map((player) => player.assigned_rating));
 }
 
 /** Total and max role-discomfort across a team (mirrors `Team.discomfort` / `max_pain`). */
@@ -266,13 +251,11 @@ export function calculateTeamDiscomfortFromPayload(
 ): { total: number; max: number } {
   let total = 0;
   let max = 0;
-  for (const roleKey of BALANCE_ROSTER_KEYS) {
-    for (const player of team.roster[roleKey]) {
-      const discomfort = player.role_discomfort ?? 0;
-      total += discomfort;
-      if (discomfort > max) {
-        max = discomfort;
-      }
+  for (const player of teamPlayers(team)) {
+    const discomfort = player.role_discomfort ?? 0;
+    total += discomfort;
+    if (discomfort > max) {
+      max = discomfort;
     }
   }
   return { total, max };
@@ -286,9 +269,9 @@ export function calculateSubRoleCollisionsFromPayload(
   team: InternalBalancePayload["teams"][number]
 ): number {
   let collisions = 0;
-  for (const roleKey of BALANCE_ROSTER_KEYS) {
+  for (const players of Object.values(team.roster)) {
     const counts = new Map<string, number>();
-    for (const player of team.roster[roleKey]) {
+    for (const player of players) {
       const subRole = player.sub_role;
       if (!subRole) {
         continue;

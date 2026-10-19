@@ -1,18 +1,6 @@
 import type { PlayerRankHistoryPreview, PlayerRankHistoryPreviewEntry } from "@/components/balancer/workspace-helpers";
 import type { BalancerPlayerRoleEntry, BalancerRoleCode } from "@/types/balancer-admin.types";
 
-export const ROLE_OPTIONS: Array<{ value: BalancerRoleCode; label: string }> = [
-  { value: "tank", label: "Tank" },
-  { value: "damage", label: "Damage" },
-  { value: "support", label: "Support" }
-];
-
-export const ROLE_DISPLAY: Record<BalancerRoleCode, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support"
-};
-
 /** Which workspaces the "Load from history" preview reads, remembered per browser. */
 export const MULTIPLE_WORKSPACES_COOKIE = "aqt-history-multiple-workspaces";
 

@@ -13,6 +13,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import userService from "@/services/user.service";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type {
   BalancerPlayerRecord,
   RegistrationRankAutofillResponse
@@ -137,6 +138,7 @@ function sheet(
     <PlayerEditModal
       player={player}
       discipline={discipline}
+      ontology={discipline === "lol" ? LOL_METADATA : discipline === "overwatch" ? OW_METADATA : null}
       divisionGridVersionId={divisionGridVersionId}
       divisionGridVersion={divisionGridVersion}
       open

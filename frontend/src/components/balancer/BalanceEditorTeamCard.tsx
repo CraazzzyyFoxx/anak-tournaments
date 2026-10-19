@@ -13,6 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type {
   BalancerRosterKey,
   InternalBalancePayload,
@@ -29,6 +31,8 @@ type BalanceEditorTeamCardProps = {
   /** Roster buckets to draw, in order — the ones the tournament's shape fields. */
   bucketKeys: BalancerRosterKey[];
   divisionGrid: DivisionGrid;
+  /** The tournament owner's role dictionary: names the buckets and glyphs the rows. `null` while it loads. */
+  ontology: RoleOntology | null;
   selectedPlayerId?: number | null;
   collapsed: boolean;
   activeDrag?: BalanceActiveDrag | null;
@@ -44,12 +48,14 @@ export function BalanceEditorTeamCard({
   teamIndex,
   bucketKeys,
   divisionGrid,
+  ontology,
   selectedPlayerId,
   activeDrag = null,
   remoteDrags = [],
   resolveActorName,
   onSelectPlayer,
 }: Readonly<BalanceEditorTeamCardProps>) {
+  const slotLabel = useSlotLabel(ontology);
   const total = Math.round(calculateTeamTotalFromPayload(team));
   const average = Math.round(calculateTeamAverageFromPayload(team));
   const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
@@ -101,7 +107,7 @@ export function BalanceEditorTeamCard({
                 {drag.playerName || "player"}
               </span>
               {drag.overRoleKey ? (
-                <span className="text-cyan-100/55">&rarr; {drag.overRoleKey}</span>
+                <span className="text-cyan-100/55">&rarr; {slotLabel(drag.overRoleKey)}</span>
               ) : null}
             </div>
           ))}
@@ -132,6 +138,7 @@ export function BalanceEditorTeamCard({
             roleKey={roleKey}
             players={team.roster[roleKey]}
             divisionGrid={divisionGrid}
+            ontology={ontology}
             selectedPlayerId={selectedPlayerId}
             dropDisabled={activeDrag != null && !isRoleDropAllowed(activeDrag, roleKey)}
             onSelectPlayer={onSelectPlayer}

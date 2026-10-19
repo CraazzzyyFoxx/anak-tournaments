@@ -26,7 +26,9 @@ import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { mergeStatusOptions } from "@/lib/registration/balancer-statuses";
+import { slotCodeOrder } from "@/lib/roster/ontology";
 import { slotCodesOf } from "@/lib/roster/shape";
 import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 import { notify } from "@/lib/notify";
@@ -183,6 +185,9 @@ export function BalancerMainPageClient() {
     tournamentQuery.data?.workspace_id ?? "all",
     tournamentQuery.data?.discipline ?? null
   ).data ?? null;
+  const slotLabel = useSlotLabel(ontology);
+  // The buckets a balance file may carry: the owner game's role codes and the open slot. `null` while they load.
+  const slotCodes = ontology ? slotCodeOrder(ontology) : null;
   const roleCodes = tournamentQuery.data?.roster_shape
     ? slotCodesOf(tournamentQuery.data.roster_shape.slots)
     : null;
@@ -273,8 +278,8 @@ export function BalancerMainPageClient() {
     invalidPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid),
-    [divisionGrid, registrations]
+    () => buildBalancerPageCollections(registrations, divisionGrid, slotLabel),
+    [divisionGrid, registrations, slotLabel]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;
@@ -286,10 +291,11 @@ export function BalancerMainPageClient() {
           state.player,
           applicationsById.get(state.player.application_id) ?? null,
           workspaceBalancerConfig,
-          divisionGrid
+          divisionGrid,
+          slotLabel
         )
       })),
-    [allPlayerValidationStates, applicationsById, workspaceBalancerConfig, divisionGrid]
+    [allPlayerValidationStates, applicationsById, workspaceBalancerConfig, divisionGrid, slotLabel]
   );
 
   const activeVariant = useMemo(
@@ -468,7 +474,8 @@ export function BalancerMainPageClient() {
     isConfigDirty,
     onTournamentConfigSaved: handleConfigSavedFromRun,
     activeVariant,
-    onJobCreated: registerLocalJob
+    onJobCreated: registerLocalJob,
+    slotCodes
   });
 
   const canRunBalance = useMemo(
@@ -681,6 +688,8 @@ export function BalancerMainPageClient() {
       collapsed={isWideLayout && isPoolSidebarCollapsed}
       onToggleCollapsed={isWideLayout ? handleToggleSidebarCollapsed : undefined}
       allPlayerValidationStates={enrichedPlayerValidationStates}
+      ontology={ontology}
+      divisionGrid={divisionGrid}
       applications={applications}
       registrationsById={registrationsById}
       balancerStatusOptions={playerStatusOptions.balancer}
@@ -767,6 +776,7 @@ export function BalancerMainPageClient() {
         activeVariant={activeVariant}
         balanceEditorRef={balanceEditorRef}
         divisionGrid={divisionGrid}
+        ontology={ontology}
         selectedPlayerId={selectedPlayerId}
         collapsedTeamIds={collapsedTeamIds}
         poolPlayerCount={poolPlayers.length}
@@ -847,6 +857,7 @@ export function BalancerMainPageClient() {
         onOpenChange={setIsImageExportOpen}
         payload={activeVariant?.payload ?? null}
         divisionGrid={divisionGrid}
+        ontology={ontology}
         tournamentId={tournamentId}
       />
 

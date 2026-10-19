@@ -9,6 +9,7 @@ import {
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/components/balancer/workspace-helpers";
+import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import {
   useCurrentWorkspaceId,
   useDivisionGrid,
@@ -34,7 +35,6 @@ import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types"
 
 import {
   MULTIPLE_WORKSPACES_COOKIE,
-  ROLE_OPTIONS,
   applyHistoryPreviewToRoleEntries,
   normalizeRoleEntries
 } from "./playerEditSheet.model";
@@ -59,6 +59,8 @@ interface UsePlayerEditFormInput {
   player: BalancerPlayerRecord;
   registration: AdminRegistration | null;
   discipline: string | undefined;
+  /** The owner game's role dictionary: the roles a player may be given. `null` while it loads. */
+  ontology: RoleOntology | null;
   /** Undefined is unresolved owner metadata; null explicitly means no pin. */
   divisionGridVersionId: number | null | undefined;
   divisionGridVersion?: DivisionGridVersion | null;
@@ -75,6 +77,7 @@ export function usePlayerEditForm({
   player,
   registration,
   discipline,
+  ontology,
   divisionGridVersionId,
   divisionGridVersion,
   open,
@@ -113,22 +116,9 @@ export function usePlayerEditForm({
   });
 
   const subtypeOptions = useMemo(() => {
-    const options: Record<BalancerRoleCode, Array<{ value: string; label: string }>> = {
-      tank: [],
-      damage: [],
-      support: []
-    };
-
-    if (subRoles) {
-      for (const sr of subRoles) {
-        const roleKey = sr.role as BalancerRoleCode;
-        if (options[roleKey]) {
-          options[roleKey].push({
-            value: sr.slug,
-            label: sr.label
-          });
-        }
-      }
+    const options: Record<BalancerRoleCode, Array<{ value: string; label: string }>> = {};
+    for (const sr of subRoles ?? []) {
+      (options[sr.role] ??= []).push({ value: sr.slug, label: sr.label });
     }
     return options;
   }, [subRoles]);
@@ -173,6 +163,14 @@ export function usePlayerEditForm({
   const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
   const [pinToTournament, setPinToTournament] = useState(false);
 
+  // The roles the owner game offers a registrant, in declared order; "Add role" takes the first one this player lacks.
+  const selectableRoleCodes = useMemo(
+    () => registrationRoles(ontology).map((role) => role.code),
+    [ontology]
+  );
+  const addableRole =
+    selectableRoleCodes.find((code) => !roleEntries.some((entry) => entry.role === code)) ?? null;
+
   const [historyWorkspaceValue, setHistoryWorkspaceValue] = useState<string>(() => {
     const saved = Cookies.get(MULTIPLE_WORKSPACES_COOKIE);
     return saved || "current";
@@ -198,6 +196,7 @@ export function usePlayerEditForm({
   }, [player, registration]);
 
   const readHistory = async (workspaceValue: string) => {
+    if (discipline === undefined) return;
     setLoadingHistory(true);
     setHistoryLoadError(null);
     try {
@@ -207,7 +206,8 @@ export function usePlayerEditForm({
         workspaceGrid,
         getHistoryWorkspaceIdParam(workspaceValue),
         workspaceId,
-        discipline
+        discipline,
+        selectableRoleCodes
       );
       setHistoryPreview(preview);
     } catch (error) {
@@ -263,15 +263,12 @@ export function usePlayerEditForm({
   };
 
   const addRole = () => {
-    const availableRole = ROLE_OPTIONS.find(
-      (option) => !roleEntries.some((entry) => entry.role === option.value)
-    );
-    if (!availableRole) return;
+    if (addableRole === null) return;
 
     setRoleEntries([
       ...roleEntries,
       {
-        role: availableRole.value,
+        role: addableRole,
         subtype: null,
         priority: roleEntries.length + 1,
         division_number: null,
@@ -367,6 +364,7 @@ export function usePlayerEditForm({
     getOriginalDivisionName,
     history,
     addRole,
+    addableRole,
     updateEntry,
     removeEntry,
     reorderRoles,

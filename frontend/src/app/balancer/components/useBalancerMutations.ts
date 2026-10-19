@@ -47,6 +47,8 @@ type UseBalancerMutationsOptions = {
   isConfigDirty: boolean;
   onTournamentConfigSaved: (config: BalancerConfig) => void;
   activeVariant: BalanceVariant | null;
+  /** The owner game's slot codes (role codes and the open slot) a balance file may carry; `null` while its roles load. */
+  slotCodes: readonly string[] | null;
   /**
    * Called once a balance job is created so the realtime layer can attach the
    * run-local context (skipped count, config) to the eventual `succeeded`
@@ -133,7 +135,8 @@ export function useBalancerMutations({
   isConfigDirty,
   onTournamentConfigSaved,
   activeVariant,
-  onJobCreated
+  onJobCreated,
+  slotCodes
 }: UseBalancerMutationsOptions) {
   const invalidateRegistrations = () =>
     queryClient.invalidateQueries({ queryKey: balancerQueryKeys.registrations(tournamentId) });
@@ -455,9 +458,10 @@ export function useBalancerMutations({
   const importBalanceMutation = useMutation({
     mutationFn: async ({ file, onStageChange }: ImportBalanceVariables) => {
       if (!tournamentId) throw new Error("Select a tournament first");
+      if (!slotCodes) throw new Error("The game's roles are still loading; try the import again in a moment");
 
       const payload = await runReportedStage("read", onStageChange, async () =>
-        parseImportedBalancePayload(await file.text())
+        parseImportedBalancePayload(await file.text(), slotCodes)
       );
 
       return runReportedStage("load", onStageChange, async () => {

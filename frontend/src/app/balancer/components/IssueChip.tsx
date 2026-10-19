@@ -3,8 +3,11 @@
 import { ArrowRight } from "lucide-react";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import { useSlotLabel } from "@/hooks/useSlotLabel";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGrid } from "@/types/workspace.types";
 
-import { ROLE_LABELS, type PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
+import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
 
 const CHIP_CLASS =
   "inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-0.5 text-label font-medium text-amber-100/80";
@@ -31,17 +34,28 @@ export function issueChipKey(issue: PlayerValidationIssue): string {
  * Amber validation chip. For rank-delta warnings it renders a compact icon form
  * (role · current-division-icon → ow-division-icon · Δpts); the full text is in the tooltip.
  */
-export function IssueChip({ issue }: Readonly<{ issue: PlayerValidationIssue }>) {
+export function IssueChip({
+  issue,
+  ontology,
+  divisionGrid,
+}: Readonly<{
+  issue: PlayerValidationIssue;
+  /** The tournament owner's role dictionary that names the chip's role. `null` while it loads. */
+  ontology: RoleOntology | null;
+  /** The owner game's grid the chip's division crests resolve in. */
+  divisionGrid: DivisionGrid;
+}>) {
+  const slotLabel = useSlotLabel(ontology);
   if (issue.code === "rank_delta_warning") {
     return (
       <span className={CHIP_CLASS} title={issue.message}>
-        <span className="font-semibold uppercase tracking-label">{ROLE_LABELS[issue.role]}</span>
+        <span className="font-semibold uppercase tracking-label">{slotLabel(issue.role)}</span>
         {issue.currentDivision != null ? (
-          <DivisionIcon division={issue.currentDivision} width={14} height={14} />
+          <DivisionIcon division={issue.currentDivision} tournamentGrid={divisionGrid} width={14} height={14} />
         ) : null}
         <ArrowRight className="size-4 shrink-0 opacity-70" aria-hidden />
         {issue.owDivision != null ? (
-          <DivisionIcon division={issue.owDivision} width={14} height={14} />
+          <DivisionIcon division={issue.owDivision} tournamentGrid={divisionGrid} width={14} height={14} />
         ) : null}
         <span className="tabular-nums">Δ{issue.delta} pts</span>
       </span>
