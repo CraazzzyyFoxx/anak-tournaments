@@ -33,7 +33,7 @@ export function ReadersSection({
 
   return (
     <section className="flex min-w-0 flex-col gap-2" aria-labelledby="divisions-readers">
-      <h2 id="divisions-readers" className="font-display text-base font-semibold">
+      <h2 id="divisions-readers" className="text-ui font-semibold text-foreground">
         {t("readersTitle")}
       </h2>
       {loading ? (

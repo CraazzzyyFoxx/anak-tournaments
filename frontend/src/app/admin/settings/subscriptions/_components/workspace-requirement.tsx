@@ -9,13 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import SubscriptionRequirementEditor from "@/components/admin/subscriptions/SubscriptionRequirementEditor";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -68,8 +62,8 @@ export function WorkspaceRequirementCard({
   });
 
   // The editor's `availableProviders` contract is "configured AND enabled", and the
-  // card above is the only surface that enables them — so read the same list it
-  // renders instead of hardcoding the provider pair the form builder guessed at.
+  // provider groups above are the only surface that enables them — so read the same
+  // list they render instead of hardcoding the provider pair the form builder guessed at.
   // Same query key, so enabling a provider there refreshes the options here.
   const providersQuery = useQuery({
     queryKey: workspaceQueryKeys.subscriptionProviders(workspaceId),
@@ -112,34 +106,30 @@ export function WorkspaceRequirementCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle asChild>
-          <h2>{t("title")}</h2>
-        </CardTitle>
-        <CardDescription className="max-w-prose">{t("description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {requirementQuery.isLoading ? (
-          <Skeleton className="h-24 w-full" />
-        ) : (
-          <>
-            <SubscriptionRequirementEditor
-              value={value}
-              availableProviders={availableProviders}
-              onChange={onDraftChange}
-            />
+    <SettingGroup title={t("title")} description={t("description")}>
+      {requirementQuery.isLoading ? (
+        // Shaped like the editor: a provider/tier row, then the add button.
+        <div aria-busy="true" className="space-y-3">
+          <Skeleton className="h-8 w-full max-w-sm" />
+          <Skeleton className="h-8 w-32" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <SubscriptionRequirementEditor
+            value={value}
+            availableProviders={availableProviders}
+            onChange={onDraftChange}
+          />
 
-            {changed && (
-              <p className="max-w-prose text-caption text-warning">
-                {t(disarming ? "warning.disarming" : "warning.changed", {
-                  count: enforcingTournaments
-                })}
-              </p>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+          {changed && (
+            <p className="max-w-prose text-caption text-warning">
+              {t(disarming ? "warning.disarming" : "warning.changed", {
+                count: enforcingTournaments
+              })}
+            </p>
+          )}
+        </div>
+      )}
+    </SettingGroup>
   );
 }

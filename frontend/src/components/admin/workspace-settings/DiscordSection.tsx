@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { useDiscordGuildInfo } from "@/hooks/useDiscordEntities";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
@@ -177,15 +177,9 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
                 />
               </>
             ) : (
-              <section className="flex flex-col gap-4">
-                <div>
-                  <h2 className={EYEBROW_CLASS}>{t("linkServer")}</h2>
-                  <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-                    {t("linkServerHelp")}
-                  </p>
-                </div>
+              <SettingGroup title={t("linkServer")} description={t("linkServerHelp")} immediate>
                 {picker}
-              </section>
+              </SettingGroup>
             )}
 
             <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>

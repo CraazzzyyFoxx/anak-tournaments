@@ -8,7 +8,7 @@ import copy
 import hashlib
 from importlib import import_module
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import sqlalchemy as sa
@@ -553,14 +553,12 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
         async def finalized(result):
             self.assertCountEqual([donor_id, survivor_id], result.affected_auth_user_ids)
 
-        redis = Mock(delete=AsyncMock(), aclose=AsyncMock())
-        with patch("src.services.admin.user_merge.Redis.from_url", return_value=redis):
-            result = await self.merges.execute_merge(
-                self.session,
-                await request(),
-                operator_auth_user_id=None,
-                auth_finalizer=finalized,
-            )
+        result = await self.merges.execute_merge(
+            self.session,
+            await request(),
+            operator_auth_user_id=None,
+            auth_finalizer=finalized,
+        )
         self.assertEqual(
             self.target_id,
             await self.session.scalar(

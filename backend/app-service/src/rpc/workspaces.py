@@ -17,8 +17,10 @@ the ``audit_log`` row for each bespoke mutation, so the trail lives or dies with
 the write. The workspace's own field updates are NOT audited from here at all:
 they go through the shared CRUD engine, which records them at its single hook.
 
-The member-payload / RBAC-cache-bust helpers stay here so the headless worker
-never depends on route internals. Role resolution lives on ``WorkspaceService``.
+The member-payload helpers stay here so the headless worker never depends on
+route internals. Role resolution lives on ``WorkspaceService``, and so does the
+``WorkspaceMemberChangedEvent`` every membership write stages for identity's
+RBAC cache.
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +38,6 @@ from shared.core.pagination import Paginated
 from shared.disciplines import DISCIPLINES
 from shared.models import QuotaWorkspaceLimit
 from shared.quota import admin as quota_admin
-from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.rpc.query import parse_id_list
@@ -92,16 +92,6 @@ async def _quota_override(session: AsyncSession, workspace_id: int, scope: str) 
         )
     ).scalar_one_or_none()
     return _quota_values(row, scope)
-
-
-async def _invalidate_auth_rbac_cache(auth_user_id: int, logger: Any) -> None:
-    redis = Redis.from_url(str(config.settings.redis_url), decode_responses=True)
-    try:
-        await redis.delete(f"{RBAC_USER_KEY_PREFIX}{auth_user_id}")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to invalidate auth RBAC cache for user {}: {}", auth_user_id, exc)
-    finally:
-        await redis.aclose()
 
 
 async def _member_payload(session: AsyncSession, member: models.WorkspaceMember) -> schemas.WorkspaceMemberRead:
@@ -357,7 +347,6 @@ def register(broker: Any, logger: Any) -> None:
                 after={"name": body.name, "slug": body.slug},
             )
             await session.commit()
-            await _invalidate_auth_rbac_cache(int(user.id), logger)
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.create", op, session_factory=_SF)
@@ -462,9 +451,7 @@ def register(broker: Any, logger: Any) -> None:
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            payload = await _member_payload(session, member)
-            await _invalidate_auth_rbac_cache(body.auth_user_id, logger)
-            return payload
+            return await _member_payload(session, member)
 
         return await c.envelope(logger, "workspaces.member_add", op, session_factory=_SF)
 
@@ -499,9 +486,7 @@ def register(broker: Any, logger: Any) -> None:
                 member = await workspace_service.change_member_roles(session, member, role_ids=role_ids)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-            payload = await _member_payload(session, member)
-            await _invalidate_auth_rbac_cache(auth_user_id, logger)
-            return payload
+            return await _member_payload(session, member)
 
         return await c.envelope(logger, "workspaces.member_update", op, session_factory=_SF)
 
@@ -529,7 +514,6 @@ def register(broker: Any, logger: Any) -> None:
                 after={"auth_user_id": auth_user_id},
             )
             await workspace_service.revoke_member(session, member)
-            await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return None
 
         return await c.envelope(logger, "workspaces.member_remove", op, session_factory=_SF)
@@ -796,12 +780,7 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Auth user not found")
             if not user.is_superuser:
                 await workspace_service.ensure_create_limit(session, recipient, detail="workspace_owner_limit_reached")
-            previous_owner_id = workspace.owner_id
             workspace = await workspace_service.transfer_ownership(session, workspace, body.auth_user_id, actor=user)
-            # Both sides' permissions changed, so both cached RBAC payloads are
-            # stale -- same bust the member ops do after a role write.
-            for auth_user_id in {body.auth_user_id, previous_owner_id} - {None}:
-                await _invalidate_auth_rbac_cache(auth_user_id, logger)
             return await _owner_payload(session, workspace)
 
         return await c.envelope(logger, "workspaces.owner_transfer", op, session_factory=_SF)

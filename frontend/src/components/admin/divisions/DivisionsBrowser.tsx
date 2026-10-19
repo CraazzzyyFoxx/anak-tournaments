@@ -12,6 +12,7 @@ import {
   standardTiers,
   type Band
 } from "@/app/admin/settings/divisions/editor/draftReducer";
+import { SettingsHeaderActions } from "@/components/admin/workspace-settings/WorkspaceSettingsShell";
 import { DataTable } from "@/components/data-table";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
@@ -309,9 +310,12 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
 
   if (gridsQuery.isLoading) {
     return (
-      <div className="flex flex-col gap-6">
+      <div aria-hidden className="flex flex-col gap-6">
         <Skeleton className="h-40 w-full rounded-xl" />
-        <Skeleton className="h-64 w-full rounded-xl" />
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
       </div>
     );
   }
@@ -384,13 +388,15 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   return (
     <div className="flex flex-col gap-6">
       {browsing.disciplines ? (
-        <DisciplineSelector
-          disciplines={browsing.disciplines}
-          value={browsedDiscipline ?? undefined}
-          allowsAll={false}
-          onSelect={selectGame}
-          className="w-52 self-start"
-        />
+        <SettingsHeaderActions>
+          <DisciplineSelector
+            disciplines={browsing.disciplines}
+            value={browsedDiscipline ?? undefined}
+            allowsAll={false}
+            onSelect={selectGame}
+            className="w-52"
+          />
+        </SettingsHeaderActions>
       ) : null}
       <GridInForceSection
         ladder={ladder}
@@ -439,7 +445,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
         </div>
 
         <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-table">
-          <h2 id="divisions-table" className="font-display text-base font-semibold">
+          <h2 id="divisions-table" className="text-ui font-semibold text-foreground">
             {t("divisionsInForce")}
           </h2>
           {activeVersion ? (

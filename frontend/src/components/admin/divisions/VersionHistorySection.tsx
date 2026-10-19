@@ -73,7 +73,7 @@ export function VersionHistorySection({
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-history">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="divisions-history" className="font-display text-base font-semibold">
+        <h2 id="divisions-history" className="text-ui font-semibold text-foreground">
           {t("versionHistory")}
         </h2>
         <div className="flex flex-wrap items-center gap-2">

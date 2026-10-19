@@ -14,9 +14,10 @@ import {
   sanitizeSchema
 } from "@/components/balancer/form/_components/schemaEdits";
 import { registrationFormTemplatesKey } from "@/components/balancer/form/_components/TemplateMenu";
+import { SettingsHeaderActions } from "@/components/admin/workspace-settings/WorkspaceSettingsShell";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { MasterDetail } from "@/components/kit/MasterDetail";
+import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +37,6 @@ import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspac
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { FormSchema } from "@/types/forms.types";
@@ -211,39 +211,29 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       {(browsing.disciplines?.length ?? 0) > 1 ? (
-        <DisciplineSelector disciplines={browsing.disciplines ?? []} value={discipline ?? undefined} allowsAll={false} onSelect={browsing.select} disabled={draft !== null} />
+        <SettingsHeaderActions>
+          <DisciplineSelector
+            disciplines={browsing.disciplines ?? []}
+            value={discipline ?? undefined}
+            allowsAll={false}
+            onSelect={browsing.select}
+            disabled={draft !== null}
+            className="w-52"
+          />
+        </SettingsHeaderActions>
       ) : null}
       <MasterDetail
         list={
           <div className="flex flex-col gap-2">
             {listQuery.isLoading ? (
-              <Skeleton className="h-40 w-full rounded-md" />
+              <MasterListSkeleton />
             ) : templates.length > 0 ? (
-              <nav aria-label={t("listLabel")} className="rounded-xl border border-border bg-card p-2">
-                <ul className="flex flex-col gap-0.5">
-                  {templates.map((template) => {
-                    const isSelected = template.id === selectedId;
-                    return (
-                      <li key={template.id}>
-                        <button
-                          type="button"
-                          aria-current={isSelected ? "true" : undefined}
-                          onClick={() => openTemplate(template.id)}
-                          className={cn(
-                            "w-full truncate rounded-md px-2 py-1.5 text-left text-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            isSelected
-                              ? "bg-accent/40 font-medium text-foreground"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {template.name}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </nav>
+              <MasterList
+                label={t("listLabel")}
+                items={templates.map((template) => ({ key: template.id, label: template.name }))}
+                selectedKey={selectedId}
+                onSelect={openTemplate}
+              />
             ) : null}
 
             {canEdit && (
@@ -280,24 +270,30 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
         }
         detail={
           selected && schema ? (
-            <section className="space-y-4">
+            <section aria-labelledby="registration-template-title" className="space-y-4">
               <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1 text-base font-semibold">
-                  <InlineEditText
-                    value={selected.name}
-                    label={t("templateName")}
-                    canEdit={canEdit}
-                    onSave={(name) =>
-                      saveMutation.mutateAsync({
-                        id: selected.id,
-                        name,
-                        // Renaming must not publish the schema being edited
-                        // below it: a rename sends what is SAVED.
-                        form_schema: selected.form_schema
-                      })
-                    }
-                  />
-                </div>
+                {/* The heading names the template; the editable text beside it
+                    is the control, so the heading's name stays the bare name
+                    rather than "name, Edit template name". */}
+                <h2 id="registration-template-title" className="sr-only">
+                  {selected.name}
+                </h2>
+                <InlineEditText
+                  className="flex-1"
+                  textClassName="text-ui font-semibold text-foreground"
+                  value={selected.name}
+                  label={t("templateName")}
+                  canEdit={canEdit}
+                  onSave={(name) =>
+                    saveMutation.mutateAsync({
+                      id: selected.id,
+                      name,
+                      // Renaming must not publish the schema being edited
+                      // below it: a rename sends what is SAVED.
+                      form_schema: selected.form_schema
+                    })
+                  }
+                />
                 {canEdit && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -337,7 +333,12 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
           ) : null
         }
         emptyDetail={
-          listQuery.isLoading ? null : (
+          listQuery.isLoading ? (
+            <div aria-hidden className="space-y-4">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          ) : (
             <PageStateCard
               state="empty"
               title={templates.length === 0 ? t("emptyTitle") : t("pickTitle")}

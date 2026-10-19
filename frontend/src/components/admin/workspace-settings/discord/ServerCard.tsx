@@ -3,10 +3,10 @@
 import { useTranslations } from "next-intl";
 import { MoreHorizontal, Users } from "lucide-react";
 
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,7 +79,9 @@ function OwnerMark({ name, src }: Readonly<{ name: string; src?: string | null }
  * bot are rare enough to live in the overflow menu, except when the bot is
  * missing: then the invite is the one thing that unblocks the page.
  *
- * Only a failing state is marked: a verified, bot-ready server shows nothing.
+ * Every verb here acts at once, never through the section's save bar, so the
+ * group says so. Only a failing state is marked: a verified, bot-ready server
+ * shows nothing.
  */
 export function ServerCard({
   workspace,
@@ -110,90 +112,86 @@ export function ServerCard({
   const botMissing = info !== undefined && !info.connected && !info.error;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 pt-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <GuildMark name={name} src={icon} size="lg" />
-            <div className="flex min-w-0 flex-col gap-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <p className="truncate text-base font-semibold" title={name}>
-                  {name}
-                </p>
-                {workspace.discord_guild_verified_at ? null : (
-                  <StatusPill tone="warning">{t("ownershipNotVerified")}</StatusPill>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                {info?.member_count ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Users aria-hidden className="size-3" />
-                    <span className="tabular-nums">
-                      {info.member_count}
-                    </span>
-                  </span>
-                ) : null}
-                <span className="break-all font-mono">{boundId}</span>
-              </div>
-              {info?.owner_name ? (
-                <OwnerMark name={info.owner_name} src={info.owner_avatar_url} />
-              ) : null}
+    <SettingGroup title={t("server")} immediate>
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <GuildMark name={name} src={icon} size="lg" />
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-ui font-medium text-foreground" title={name}>
+                {name}
+              </p>
+              {workspace.discord_guild_verified_at ? null : (
+                <StatusPill tone="warning">{t("ownershipNotVerified")}</StatusPill>
+              )}
             </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <Button type="button" variant="outline" size="sm" onClick={onChange}>
-              {t("changeServer")}
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("moreActions")}
-                  title={t("moreActions")}
-                >
-                  <MoreHorizontal aria-hidden className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {invite && !botMissing ? (
-                  <DropdownMenuItem asChild>
-                    <a href={invite} target="_blank" rel="noopener noreferrer">
-                      {t("reinvite")}
-                    </a>
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  className="text-danger focus:text-danger"
-                  disabled={unlinking}
-                  onSelect={onUnlink}
-                >
-                  {t("unlink")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+              {info?.member_count ? (
+                <span className="inline-flex items-center gap-1">
+                  <Users aria-hidden className="size-3" />
+                  <span className="tabular-nums">{info.member_count}</span>
+                </span>
+              ) : null}
+              <span className="break-all font-mono">{boundId}</span>
+            </div>
+            {info?.owner_name ? (
+              <OwnerMark name={info.owner_name} src={info.owner_avatar_url} />
+            ) : null}
           </div>
         </div>
 
-        {botUnknown ? (
-          <p className="text-caption text-muted-foreground">{t("botUnknown")}</p>
-        ) : null}
-
-        {botMissing ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="max-w-prose text-caption text-warning">{t("botMissing")}</p>
-            {invite ? (
-              <Button asChild size="sm">
-                <a href={invite} target="_blank" rel="noopener noreferrer">
-                  {t("addBot")}
-                </a>
+        <div className="flex items-center gap-1.5">
+          <Button type="button" variant="outline" size="sm" onClick={onChange}>
+            {t("changeServer")}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t("moreActions")}
+                title={t("moreActions")}
+              >
+                <MoreHorizontal aria-hidden className="size-4" />
               </Button>
-            ) : null}
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {invite && !botMissing ? (
+                <DropdownMenuItem asChild>
+                  <a href={invite} target="_blank" rel="noopener noreferrer">
+                    {t("reinvite")}
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem
+                className="text-danger focus:text-danger"
+                disabled={unlinking}
+                onSelect={onUnlink}
+              >
+                {t("unlink")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {botUnknown ? (
+        <p className="py-4 text-caption text-muted-foreground last:pb-0">{t("botUnknown")}</p>
+      ) : null}
+
+      {botMissing ? (
+        <div className="flex flex-wrap items-center gap-3 py-4 last:pb-0">
+          <p className="max-w-prose text-caption text-warning">{t("botMissing")}</p>
+          {invite ? (
+            <Button asChild size="sm">
+              <a href={invite} target="_blank" rel="noopener noreferrer">
+                {t("addBot")}
+              </a>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </SettingGroup>
   );
 }

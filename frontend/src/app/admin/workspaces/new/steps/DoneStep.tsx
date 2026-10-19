@@ -57,7 +57,9 @@ export function DoneStep({ workspace }: Readonly<{ workspace: Workspace }>) {
 
       <section className="flex flex-col gap-2">
         <h3 className={EYEBROW_CLASS}>{t("setupTitle")}</h3>
-        <SetupChecklist workspace={workspace} basePath="/admin/settings" />
+        <div className="rounded-lg border border-border px-4 py-3">
+          <SetupChecklist workspace={workspace} basePath="/admin/settings" />
+        </div>
       </section>
 
       <section className="flex flex-col gap-2">

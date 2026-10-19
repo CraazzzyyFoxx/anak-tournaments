@@ -13,7 +13,6 @@ import { useScopedSettingsForm } from "@/components/kit/useScopedSettingsForm";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import adminService from "@/services/admin.service";
-import { Card, CardContent } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { tabFallback } from "../../hubQueries";
@@ -110,28 +109,24 @@ function RosterForm({
           tabFallback
         )
       ) : hasBench && bench.value ? (
-        <Card>
-          <CardContent className="pt-6">
-            <SettingGroup title={t("bench.title")} description={t("bench.description")}>
-              <SettingRow
-                htmlFor={`${ids}-max-substitutes`}
-                label={t("team.maxSubstitutes")}
-                hint={t("team.maxSubstitutesHint")}
-              >
-                <NumberInput
-                  id={`${ids}-max-substitutes`}
-                  integer
-                  min={0}
-                  value={bench.value.max_substitutes ?? 0}
-                  disabled={benchDisabled}
-                  onValueChange={(next) => bench.patch({ max_substitutes: next ?? 0 })}
-                  aria-label={t("team.maxSubstitutesAria")}
-                  className="h-8 w-24"
-                />
-              </SettingRow>
-            </SettingGroup>
-          </CardContent>
-        </Card>
+        <SettingGroup title={t("bench.title")} description={t("bench.description")}>
+          <SettingRow
+            htmlFor={`${ids}-max-substitutes`}
+            label={t("team.maxSubstitutes")}
+            hint={t("team.maxSubstitutesHint")}
+          >
+            <NumberInput
+              id={`${ids}-max-substitutes`}
+              integer
+              min={0}
+              value={bench.value.max_substitutes ?? 0}
+              disabled={benchDisabled}
+              onValueChange={(next) => bench.patch({ max_substitutes: next ?? 0 })}
+              aria-label={t("team.maxSubstitutesAria")}
+              className="h-8 w-24"
+            />
+          </SettingRow>
+        </SettingGroup>
       ) : null}
 
       <SaveBar

@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
-import { Label } from "@/components/ui/label";
+import { SettingRow } from "@/components/kit/SettingRow";
 import { NumberInput } from "@/components/ui/number-input";
 import type { QuotaDimension, QuotaLimitsPayload } from "@/types/auth.types";
 import { QUOTA_DIMENSIONS } from "@/types/auth.types";
@@ -51,7 +51,7 @@ export function QuotaLimitFields({
   const format = useFormatter();
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="divide-y divide-border/60">
       {QUOTA_DIMENSIONS.map((dimension) => {
         const fieldId = `${idPrefix}-${dimension}`;
         const hintId = `${fieldId}-hint`;
@@ -79,39 +79,42 @@ export function QuotaLimitFields({
           .join(" ");
 
         return (
-          <div key={dimension} className="space-y-1.5">
-            <Label htmlFor={fieldId}>{label}</Label>
-            <NumberInput
-              id={fieldId}
-              integer
-              min={0}
-              value={values[dimension]}
-              onValueChange={(next) => onChange(dimension, next)}
-              placeholder={
-                ceiling === null
-                  ? t("inheritPlaceholder")
-                  : t("inheritPlaceholderValue", { value: format.number(ceiling) })
-              }
-              disabled={disabled}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={described}
-            />
-            {error ? (
-              <p id={errorId} className="text-xs font-medium text-danger">
-                {error}
-              </p>
-            ) : null}
-            {isRaise && canRaise ? (
-              <p id={noteId} className="text-xs font-medium text-warning">
-                {ceiling === null
-                  ? t("raiseAboveUnlimited")
-                  : t("raiseAbove", { limit: format.number(ceiling) })}
-              </p>
-            ) : null}
-            <p id={hintId} className="text-xs text-muted-foreground">
-              {t(`dimensions.${dimension}.hint`)}
-            </p>
-          </div>
+          <SettingRow
+            key={dimension}
+            htmlFor={fieldId}
+            label={label}
+            hint={<span id={hintId}>{t(`dimensions.${dimension}.hint`)}</span>}
+          >
+            <div className="w-full space-y-1.5">
+              <NumberInput
+                id={fieldId}
+                integer
+                min={0}
+                value={values[dimension]}
+                onValueChange={(next) => onChange(dimension, next)}
+                placeholder={
+                  ceiling === null
+                    ? t("inheritPlaceholder")
+                    : t("inheritPlaceholderValue", { value: format.number(ceiling) })
+                }
+                disabled={disabled}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={described}
+              />
+              {error ? (
+                <p id={errorId} className="text-xs font-medium text-danger">
+                  {error}
+                </p>
+              ) : null}
+              {isRaise && canRaise ? (
+                <p id={noteId} className="text-xs font-medium text-warning">
+                  {ceiling === null
+                    ? t("raiseAboveUnlimited")
+                    : t("raiseAbove", { limit: format.number(ceiling) })}
+                </p>
+              ) : null}
+            </div>
+          </SettingRow>
         );
       })}
     </div>

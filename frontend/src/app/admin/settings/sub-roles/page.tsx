@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Palette, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { SettingsHeaderActions } from "@/components/admin/workspace-settings/WorkspaceSettingsShell";
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { MasterDetail } from "@/components/kit/MasterDetail";
+import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +28,6 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { notify } from "@/lib/notify";
 import { ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { PlayerSubRole, PlayerSubRoleUpdateInput } from "@/types/admin.types";
@@ -100,18 +101,32 @@ export default function WorkspaceSubRolesSettingsPage() {
     );
   }
   if (!metadata.data || !code || typeof scope.axis !== "number") {
-    return <Skeleton className="h-64" />;
+    return (
+      <MasterDetail
+        list={<MasterListSkeleton />}
+        detail={null}
+        emptyDetail={
+          <div aria-hidden className="space-y-4">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-32" />
+          </div>
+        }
+      />
+    );
   }
 
   return (
-    <div className="space-y-4">
+    <>
       {(scope.disciplines?.length ?? 0) > 1 ? (
-        <DisciplineSelector
-          disciplines={scope.disciplines ?? []}
-          value={code}
-          allowsAll={false}
-          onSelect={scope.select}
-        />
+        <SettingsHeaderActions>
+          <DisciplineSelector
+            disciplines={scope.disciplines ?? []}
+            value={code}
+            allowsAll={false}
+            onSelect={scope.select}
+            className="w-52"
+          />
+        </SettingsHeaderActions>
       ) : null}
       <SubRoleCatalog
         key={`${scope.axis}:${code}`}
@@ -119,7 +134,7 @@ export default function WorkspaceSubRolesSettingsPage() {
         discipline={code}
         ontology={metadata.data}
       />
-    </div>
+    </>
   );
 }
 
@@ -176,39 +191,24 @@ function SubRoleCatalog({
 
   return (
     <MasterDetail
-      listWidth={240}
       list={
-        <nav aria-label={t("rolesLabel")} className="rounded-xl border border-border bg-card p-2">
-          <ul className="flex flex-col gap-0.5">
-            {roots.map((role) => {
-              const isSelected = role.code === selected?.code;
-              return (
-                <li key={role.id}>
-                  <button
-                    type="button"
-                    aria-current={isSelected ? "true" : undefined}
-                    onClick={() => setParams({ role: role.code })}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isSelected
-                        ? "bg-accent/40 font-medium text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <PlayerRoleIcon
-                      role={{ dimension: rated.code, role: role.code }}
-                      ontology={ontology}
-                      size={16}
-                      decorative
-                    />
-                    <span className="min-w-0 flex-1 truncate">{role.name}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+        <MasterList
+          label={t("rolesLabel")}
+          items={roots.map((role) => ({
+            key: role.code,
+            label: role.name,
+            icon: (
+              <PlayerRoleIcon
+                role={{ dimension: rated.code, role: role.code }}
+                ontology={ontology}
+                size={16}
+                decorative
+              />
+            )
+          }))}
+          selectedKey={selected?.code}
+          onSelect={(roleCode) => setParams({ role: roleCode })}
+        />
       }
       detail={
         selected ? (
@@ -296,15 +296,20 @@ function RoleSubRoles({
 
   return (
     <section className="space-y-4">
-      <h2 className="flex items-center gap-2 text-base font-semibold">
-        <PlayerRoleIcon role={{ dimension, role: role.code }} ontology={ontology} size={20} decorative />
+      <h2 className="flex items-center gap-2 text-ui font-semibold text-foreground">
+        <PlayerRoleIcon
+          role={{ dimension, role: role.code }}
+          ontology={ontology}
+          size={20}
+          decorative
+        />
         {role.name}
       </h2>
 
       {loading ? (
         <Skeleton className="h-32" />
       ) : entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("empty")}</p>
+        <EmptyNote>{t("empty")}</EmptyNote>
       ) : (
         <ul className="divide-y divide-border border-y border-border">
           {entries.map((entry) => (

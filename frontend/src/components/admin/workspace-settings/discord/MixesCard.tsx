@@ -9,7 +9,6 @@ import {
   useScopedSettingsForm,
   type ScopedSettingsForm
 } from "@/components/kit/useScopedSettingsForm";
-import { Card, CardContent } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import {
@@ -158,112 +157,110 @@ export function MixesCard({
   const busy = channelsQuery.isLoading || saving;
 
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <SettingGroup title={t("mixes")}>
-          {!values ? (
-            <div aria-busy="true" className="flex flex-col gap-4 py-2">
-              {[0, 1].map((row) => (
-                <div key={row} className="grid gap-3 md:grid-cols-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-9 w-full" />
-                </div>
-              ))}
+    <SettingGroup title={t("mixes")}>
+      {!values ? (
+        <div aria-busy="true" className="flex flex-col gap-4 py-2">
+          {[0, 1].map((row) => (
+            <div key={row} className="grid gap-2 @xl:grid-cols-2 @xl:gap-6">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-full" />
             </div>
-          ) : (
-            <>
-              <SettingRow label={t("announcementChannel")} hint={t("announcementChannelHint")}>
-                <div className="w-full md:max-w-sm">
-                  <DiscordChannelSelect
-                    workspaceId={workspaceId}
-                    value={values.mix_discord_channel_id ?? ""}
-                    onChange={(next) => patch({ mix_discord_channel_id: next === "" ? null : next })}
-                    disabled={saving}
-                    ariaLabel={t("mixChannelAria")}
-                    placeholder={t("noChannel")}
-                    noneLabel={t("noChannel")}
-                  />
-                </div>
-              </SettingRow>
+          ))}
+        </div>
+      ) : (
+        <>
+          <SettingRow label={t("announcementChannel")} hint={t("announcementChannelHint")}>
+            <div className="w-full md:max-w-sm">
+              <DiscordChannelSelect
+                workspaceId={workspaceId}
+                value={values.mix_discord_channel_id ?? ""}
+                onChange={(next) => patch({ mix_discord_channel_id: next === "" ? null : next })}
+                disabled={saving}
+                ariaLabel={t("mixChannelAria")}
+                placeholder={t("noChannel")}
+                noneLabel={t("noChannel")}
+              />
+            </div>
+          </SettingRow>
 
-              <SettingRow label={t("voiceCategory")} hint={t("voiceCategoryHint")}>
-                <div className="flex w-full flex-col gap-1 md:max-w-sm">
-                  <Select
-                    value={categoryId || NO_CATEGORY}
-                    // A new category invalidates the old general voices: they
-                    // belong to the category that is being left behind.
-                    onValueChange={(next) =>
-                      patch({
-                        mix_voice_category_id: next === NO_CATEGORY ? null : next,
-                        mix_general_voice_channel_ids: []
-                      })
-                    }
-                    disabled={busy}
-                  >
-                    <SelectTrigger aria-label={t("mixVoiceCategory")}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_CATEGORY}>{t("noVoiceCategory")}</SelectItem>
-                      {categories.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {categoryMissing ? (
-                    <p className="text-xs text-warning">{t("missing", { value: categoryMissing })}</p>
-                  ) : null}
-                </div>
-              </SettingRow>
-
-              {categoryId !== "" ? (
-                <SettingRow label={t("generalVoices")} hint={t("generalVoicesHint")}>
-                  <div className="flex w-full flex-col gap-2 md:max-w-sm">
-                    {channelsQuery.isLoading ? (
-                      <div aria-busy="true" className="flex gap-1.5">
-                        <span className="sr-only">{t("asking")}</span>
-                        <Skeleton className="h-7 w-20" />
-                        <Skeleton className="h-7 w-20" />
-                      </div>
-                    ) : voices.length > 0 ? (
-                      <FilterChipGroup label={t("generalVoices")}>
-                        {voices.map((voice) => {
-                          const pressed = generalIds.includes(voice.id);
-                          const missing = missingLabel(t, voice.missing_permissions);
-                          return (
-                            <FilterChip
-                              key={voice.id}
-                              active={pressed}
-                              disabled={busy}
-                              onClick={() =>
-                                patch({
-                                  mix_general_voice_channel_ids: pressed
-                                    ? generalIds.filter((id) => id !== voice.id)
-                                    : [...generalIds, voice.id]
-                                })
-                              }
-                              title={missing ? t("missing", { value: missing }) : undefined}
-                            >
-                              {voice.name}
-                            </FilterChip>
-                          );
-                        })}
-                      </FilterChipGroup>
-                    ) : (
-                      <p className="text-xs text-warning">{t("noVoices")}</p>
-                    )}
-                    {lacking.length > 0 ? (
-                      <p className="text-xs text-warning">{t("missingOn", { value: lacking.join("; ") })}</p>
-                    ) : null}
-                  </div>
-                </SettingRow>
+          <SettingRow label={t("voiceCategory")} hint={t("voiceCategoryHint")}>
+            <div className="flex w-full flex-col gap-1 md:max-w-sm">
+              <Select
+                value={categoryId || NO_CATEGORY}
+                // A new category invalidates the old general voices: they
+                // belong to the category that is being left behind.
+                onValueChange={(next) =>
+                  patch({
+                    mix_voice_category_id: next === NO_CATEGORY ? null : next,
+                    mix_general_voice_channel_ids: []
+                  })
+                }
+                disabled={busy}
+              >
+                <SelectTrigger aria-label={t("mixVoiceCategory")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CATEGORY}>{t("noVoiceCategory")}</SelectItem>
+                  {categories.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {categoryMissing ? (
+                <p className="text-xs text-warning">{t("missing", { value: categoryMissing })}</p>
               ) : null}
-            </>
-          )}
-        </SettingGroup>
-      </CardContent>
-    </Card>
+            </div>
+          </SettingRow>
+
+          {categoryId !== "" ? (
+            <SettingRow label={t("generalVoices")} hint={t("generalVoicesHint")}>
+              <div className="flex w-full flex-col gap-2 md:max-w-sm">
+                {channelsQuery.isLoading ? (
+                  <div aria-busy="true" className="flex gap-1.5">
+                    <span className="sr-only">{t("asking")}</span>
+                    <Skeleton className="h-7 w-20" />
+                    <Skeleton className="h-7 w-20" />
+                  </div>
+                ) : voices.length > 0 ? (
+                  <FilterChipGroup label={t("generalVoices")}>
+                    {voices.map((voice) => {
+                      const pressed = generalIds.includes(voice.id);
+                      const missing = missingLabel(t, voice.missing_permissions);
+                      return (
+                        <FilterChip
+                          key={voice.id}
+                          active={pressed}
+                          disabled={busy}
+                          onClick={() =>
+                            patch({
+                              mix_general_voice_channel_ids: pressed
+                                ? generalIds.filter((id) => id !== voice.id)
+                                : [...generalIds, voice.id]
+                            })
+                          }
+                          title={missing ? t("missing", { value: missing }) : undefined}
+                        >
+                          {voice.name}
+                        </FilterChip>
+                      );
+                    })}
+                  </FilterChipGroup>
+                ) : (
+                  <p className="text-xs text-warning">{t("noVoices")}</p>
+                )}
+                {lacking.length > 0 ? (
+                  <p className="text-xs text-warning">
+                    {t("missingOn", { value: lacking.join("; ") })}
+                  </p>
+                ) : null}
+              </div>
+            </SettingRow>
+          ) : null}
+        </>
+      )}
+    </SettingGroup>
   );
 }

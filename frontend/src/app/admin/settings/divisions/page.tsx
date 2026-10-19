@@ -31,7 +31,7 @@ export default function DivisionsSettingsPage() {
   if (!isSuperuser && !canAccessPermission("division_grid.read", workspaceId)) {
     return (
       <PageStateCard
-        state="not-found"
+        state="error"
         title={t("unavailable.title")}
         description={t("unavailable.description")}
       />

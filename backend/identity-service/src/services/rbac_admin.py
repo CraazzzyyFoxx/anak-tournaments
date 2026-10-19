@@ -481,7 +481,9 @@ class RoleAdminService:
 
         self._policy.require_role_access(current_user, role, "delete")
 
-        await _invalidate_role_holders(session, role.id, role_grants=self._role_grants, cache=self._cache)
+        # Read before the delete cascades the grants away; dropped only after the
+        # commit, or a request in between re-caches the RBAC that is going away.
+        holders = await self._role_grants.user_ids_for_role(session, role.id)
         # ``role`` is loaded without its permissions here, so the snapshot stays on
         # the columns the row itself carries.
         await record_audit(
@@ -504,6 +506,8 @@ class RoleAdminService:
         )
         await session.delete(role)
         await session.commit()
+        for user_id in holders:
+            await self._cache.invalidate_rbac(user_id)
         logger.info(f"Role deleted: {role.name}")
 
     async def assign_to_user(

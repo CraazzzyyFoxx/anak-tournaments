@@ -1,12 +1,10 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { useTranslations } from "next-intl";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { SettingGroup } from "@/components/kit/SettingRow";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 
@@ -27,44 +25,33 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
     <WorkspaceSettingsFrame workspaceId={workspaceId} settings={settings}>
       {({ form: values }) => (
         <>
-          <Card>
-            <CardContent className="flex flex-col gap-5 pt-6">
-              <SettingGroup title={t("groups.discovery.title")}>
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <Label htmlFor="workspace-is-hidden">{t("hidden")}</Label>
-                    <p className="max-w-prose text-xs text-muted-foreground">{t("hiddenHelp")}</p>
-                  </div>
-                  <Switch
-                    id="workspace-is-hidden"
-                    checked={values.is_hidden}
-                    onCheckedChange={(checked) => patch({ is_hidden: checked })}
-                  />
-                </div>
-              </SettingGroup>
+          <SettingGroup title={t("groups.discovery.title")}>
+            <SettingRow htmlFor="workspace-is-hidden" label={t("hidden")} hint={t("hiddenHelp")}>
+              <Switch
+                id="workspace-is-hidden"
+                checked={values.is_hidden}
+                onCheckedChange={(checked) => patch({ is_hidden: checked })}
+              />
+            </SettingRow>
+          </SettingGroup>
 
-              <SettingGroup title={t("groups.newcomers.title")}>
-                <div>
-                  <p id="workspace-newcomer-scope" className="text-sm font-medium leading-none">
-                    {t("newcomerScope")}
-                  </p>
-                  <ToggleGroup
-                    type="single"
-                    className="mt-1.5"
-                    value={values.newcomer_scope}
-                    onValueChange={(value) =>
-                      patch({ newcomer_scope: value as "global" | "workspace" })
-                    }
-                    aria-labelledby="workspace-newcomer-scope"
-                  >
-                    <ToggleGroupItem value="global">{t("platformWide")}</ToggleGroupItem>
-                    <ToggleGroupItem value="workspace">{t("workspaceOnly")}</ToggleGroupItem>
-                  </ToggleGroup>
-                  <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t("scopeHelp")}</p>
-                </div>
-              </SettingGroup>
-            </CardContent>
-          </Card>
+          <SettingGroup title={t("groups.newcomers.title")}>
+            {/* A ToggleGroup is not a labelable element, so the row's
+                `<label>` cannot name it; it carries the name itself. */}
+            <SettingRow label={t("newcomerScope")} hint={t("scopeHelp")}>
+              <ToggleGroup
+                type="single"
+                value={values.newcomer_scope}
+                onValueChange={(value) =>
+                  patch({ newcomer_scope: value as "global" | "workspace" })
+                }
+                aria-label={t("newcomerScope")}
+              >
+                <ToggleGroupItem value="global">{t("platformWide")}</ToggleGroupItem>
+                <ToggleGroupItem value="workspace">{t("workspaceOnly")}</ToggleGroupItem>
+              </ToggleGroup>
+            </SettingRow>
+          </SettingGroup>
 
           <SaveBar
             dirty={settings.dirty}

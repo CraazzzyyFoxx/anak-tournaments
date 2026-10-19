@@ -21,7 +21,6 @@ from dataclasses import dataclass
 
 import sqlalchemy as sa
 from cashews import cache
-from redis.asyncio import Redis
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,10 +28,12 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
+from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.custom_game import CustomGameRoundMember
-from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
 from shared.repository.stats import StatsMatchRepository
+from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.schemas.user_merge_auth import AuthMergeResult
 from shared.services.auth_merge import apply_auth_merge, preview_auth_merge
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
@@ -396,6 +397,19 @@ class UserMergeService:
             )
             await self.audits.create(session, audit)
             if auth_result is not None:
+                if auth_result.affected_auth_user_ids:
+                    # identity drops these users' cached RBAC once the relay
+                    # delivers it, i.e. only after this commit.
+                    await enqueue_outbox_event(
+                        session,
+                        WorkspaceMemberChangedEvent(
+                            auth_user_ids=auth_result.affected_auth_user_ids,
+                            change="merged",
+                            source_service="app-service",
+                        ),
+                        exchange="",
+                        routing_key=WORKSPACE_MEMBER_CHANGED_QUEUE.name,
+                    )
                 # Fail closed before committing when identity cannot retire the old sessions.
                 await auth_finalizer(auth_result)
             await session.commit()
@@ -403,8 +417,6 @@ class UserMergeService:
             await session.rollback()
             raise
 
-        if auth_result is not None:
-            await self._invalidate_auth_rbac_caches(auth_result.affected_auth_user_ids)
         await self._invalidate_merge_caches(
             source_user_id=request.source_user_id,
             target_user_id=request.target_user_id,
@@ -1158,15 +1170,6 @@ class UserMergeService:
         return moved
 
     # ─── Cache invalidation ──────────────────────────────────────────────────
-    async def _invalidate_auth_rbac_caches(self, auth_user_ids: list[int]) -> None:
-        from src.core.config import settings
-
-        redis = Redis.from_url(str(settings.redis_url), decode_responses=True)
-        try:
-            await redis.delete(*(f"{RBAC_USER_KEY_PREFIX}{user_id}" for user_id in auth_user_ids))
-        finally:
-            await redis.aclose()
-
     async def _invalidate_merge_caches(
         self,
         *,

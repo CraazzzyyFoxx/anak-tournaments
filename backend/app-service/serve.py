@@ -18,6 +18,7 @@ from shared.messaging.config import (
     CACHE_INVALIDATION_EXCHANGE,
     NOTIFICATION_DELIVERY_DLQ,
 )
+from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
@@ -32,6 +33,7 @@ from shared.schemas.events import CacheInvalidatedEvent
 from shared.services.ontology import project_disciplines
 from shared.services.realtime import Resource, configure_realtime
 from shared.services.realtime.consumer import register_invalidation_consumer
+from shared.services.scheduler import IntervalScheduler
 from src.core import clients, config, db
 from src.core.caching import configure_cache
 from src.rpc import (
@@ -163,6 +165,10 @@ binary.register(broker, logger)
 # service reads, plus a workspace's own usage report.
 quota.register(broker, logger)
 
+# Relay for the outbox rows this service writes (notifications, Discord
+# messages, workspace membership changes).
+_outbox_scheduler = IntervalScheduler(job_id="event_outbox_drain", label="Outbox drain", logger=logger)
+
 
 @app.on_startup
 async def start_worker() -> None:
@@ -207,11 +213,13 @@ async def start_worker() -> None:
     # Kick off the initial build of the hero global-stats materialized view as a
     # debounced background task — never blocks startup or the event consumer.
     hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
+    _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     logger.info("App RPC service (app-svc) started")
 
 
 @app.on_shutdown
 async def stop_worker() -> None:
+    _outbox_scheduler.shutdown()
     await clients.s3_client.close()
     # Process-global redis client behind the quota gate (see configure_quota).
     await close_quota()

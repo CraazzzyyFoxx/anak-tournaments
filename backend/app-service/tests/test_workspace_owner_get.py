@@ -194,6 +194,7 @@ class TransferOwnershipTests(IsolatedAsyncioTestCase):
             patch.object(workspace_service, "replace_user_workspace_roles", replace),
             patch.object(workspace_service, "assign_default_member_role_if_roleless", default_if_roleless),
             patch.object(workspace_service, "record_audit", AsyncMock()) as audit,
+            patch.object(workspace_service, "enqueue_outbox_event", AsyncMock()) as self.outbox,
         ):
             await workspaces.transfer_ownership(session, workspace, 11, actor=_actor())
         return calls, audit, session
@@ -238,6 +239,14 @@ class TransferOwnershipTests(IsolatedAsyncioTestCase):
         self.assertEqual("workspace.ownership_transferred", audit.await_args.kwargs["action"])
         self.assertEqual({"owner_id": 3}, audit.await_args.kwargs["before"])
         self.assertEqual({"owner_id": 11}, audit.await_args.kwargs["after"])
+
+    async def test_both_sides_rbac_caches_are_dropped_in_the_same_transaction(self) -> None:
+        workspace = _make_workspace(owner_id=3)
+
+        await self._transfer(workspace)
+
+        event = self.outbox.await_args.args[1]
+        self.assertEqual(([3, 11], "owner_transferred"), (event.auth_user_ids, event.change))
 
 
 class OwnerSetRPCTests(IsolatedAsyncioTestCase):
@@ -312,7 +321,6 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
         module = importlib.import_module("src.rpc.workspaces")
         handler = _handler(module, _TRANSFER_SUBJECT)
         transfer = AsyncMock(return_value=ws)
-        busted: list[int] = []
         with (
             patch("src.rpc.workspaces.workspace_service.get_by_id", AsyncMock(return_value=ws)),
             patch("src.rpc.workspaces.workspace_service.transfer_ownership", transfer),
@@ -321,15 +329,11 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
                 limit or AsyncMock(),
             ) as cap,
             patch.object(module._auth_user_repo, "get", AsyncMock(return_value=recipient)),
-            patch(
-                "src.rpc.workspaces._invalidate_auth_rbac_cache",
-                AsyncMock(side_effect=lambda auth_user_id, _logger: busted.append(auth_user_id)),
-            ),
         ):
-            return await handler(data, MagicMock()), transfer, cap, busted
+            return await handler(data, MagicMock()), transfer, cap
 
     async def test_the_current_owner_may_hand_the_workspace_off(self) -> None:
-        envelope, transfer, cap, busted = await self._call(
+        envelope, transfer, cap = await self._call(
             {"workspace_id": 7, "identity": _OWNER, "payload": {"auth_user_id": 7}},
             ws=_workspace(owner_id=_OWNER["user_id"]),
         )
@@ -338,10 +342,9 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
         transfer.assert_awaited_once()
         self.assertEqual(7, transfer.await_args.args[2])
         cap.assert_awaited_once()
-        self.assertEqual({7, _OWNER["user_id"]}, set(busted))
 
     async def test_a_workspace_admin_who_is_not_the_owner_is_refused(self) -> None:
-        envelope, transfer, _, _ = await self._call(
+        envelope, transfer, _ = await self._call(
             {"workspace_id": 7, "identity": _OUTSIDER, "payload": {"auth_user_id": 7}},
             ws=_workspace(owner_id=_OWNER["user_id"]),
         )
@@ -352,7 +355,7 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
     async def test_a_superuser_may_transfer_a_workspace_they_do_not_own(self) -> None:
         """And skips the recipient's cap: a superuser assignment is its override,
         exactly as on ``owner_set``."""
-        envelope, transfer, cap, _ = await self._call(
+        envelope, transfer, cap = await self._call(
             {"workspace_id": 7, "identity": _ADMIN, "payload": {"auth_user_id": 7}},
             ws=_workspace(owner_id=_OWNER["user_id"]),
         )
@@ -363,7 +366,7 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
 
     async def test_an_unowned_workspace_is_not_up_for_grabs(self) -> None:
         """Nobody is on the hook, so nobody but a superuser has standing."""
-        envelope, transfer, _, _ = await self._call(
+        envelope, transfer, _ = await self._call(
             {"workspace_id": 7, "identity": _OWNER, "payload": {"auth_user_id": 7}},
             ws=_workspace(owner_id=None),
         )
@@ -377,7 +380,7 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
         def deny(*args, **kwargs):
             raise BaseAPIException(status_code=403, detail="workspace_owner_limit_reached")
 
-        envelope, transfer, _, _ = await self._call(
+        envelope, transfer, _ = await self._call(
             {"workspace_id": 7, "identity": _OWNER, "payload": {"auth_user_id": 7}},
             ws=_workspace(owner_id=_OWNER["user_id"]),
             limit=AsyncMock(side_effect=deny),
@@ -388,7 +391,7 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
         transfer.assert_not_awaited()
 
     async def test_404s_an_unknown_recipient(self) -> None:
-        envelope, transfer, _, _ = await self._call(
+        envelope, transfer, _ = await self._call(
             {"workspace_id": 7, "identity": _OWNER, "payload": {"auth_user_id": 4242}},
             ws=_workspace(owner_id=_OWNER["user_id"]),
             recipient=None,
@@ -399,7 +402,7 @@ class OwnerTransferRPCTests(IsolatedAsyncioTestCase):
 
     async def test_rejects_a_transfer_to_nobody(self) -> None:
         """``None`` is the superuser-only clear on ``owner_set``, not a hand-off."""
-        envelope, transfer, _, _ = await self._call(
+        envelope, transfer, _ = await self._call(
             {"workspace_id": 7, "identity": _OWNER, "payload": {"auth_user_id": None}},
             ws=_workspace(owner_id=_OWNER["user_id"]),
         )

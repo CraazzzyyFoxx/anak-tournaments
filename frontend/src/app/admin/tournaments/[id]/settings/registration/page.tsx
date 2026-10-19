@@ -8,7 +8,6 @@ import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { Card, CardContent } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -77,73 +76,71 @@ function RegistrationForm({
 
   return (
     <>
-      <Card>
-        <CardContent className="flex flex-col gap-5 pt-6">
-          <SettingGroup title={tStatus("title")}>
-            {/* Derived, not editable: openness is the REGISTRATION phase-schedule
+      <div className="flex flex-col gap-4">
+        <SettingGroup title={tStatus("title")}>
+          {/* Derived, not editable: openness is the REGISTRATION phase-schedule
                 window. Shown because this is the screen an organizer opens to ask
                 "are we taking entries", and the answer lives one section away.
                 Closed is the absence of the pill. */}
-            <SettingRow label={tStatus("acceptLabel")} hint={tStatus("scheduleHint")}>
-              {saved?.is_open ? <StatusPill tone="success">{tStatus("stateOpen")}</StatusPill> : null}
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-auto-approve`}
-              label={tStatus("autoApproveLabel")}
-              hint={tStatus("autoApproveHint")}
-            >
-              <Switch
-                id={`${ids}-auto-approve`}
-                checked={value.auto_approve}
-                disabled={disabled}
-                onCheckedChange={(next) => patch({ auto_approve: next })}
-              />
-            </SettingRow>
-          </SettingGroup>
+          <SettingRow label={tStatus("acceptLabel")} hint={tStatus("scheduleHint")}>
+            {saved?.is_open ? <StatusPill tone="success">{tStatus("stateOpen")}</StatusPill> : null}
+          </SettingRow>
+          <SettingRow
+            htmlFor={`${ids}-auto-approve`}
+            label={tStatus("autoApproveLabel")}
+            hint={tStatus("autoApproveHint")}
+          >
+            <Switch
+              id={`${ids}-auto-approve`}
+              checked={value.auto_approve}
+              disabled={disabled}
+              onCheckedChange={(next) => patch({ auto_approve: next })}
+            />
+          </SettingRow>
+        </SettingGroup>
 
-          <SettingGroup title={t("display.title")} description={t("display.description")}>
-            <SettingRow
-              htmlFor={`${ids}-max-participants`}
-              label={t("display.maxParticipants")}
-              hint={t("display.maxParticipantsHint")}
-            >
-              <NumberInput
-                id={`${ids}-max-participants`}
-                integer
-                min={0}
-                value={value.max_participants ?? null}
-                disabled={disabled}
-                onValueChange={(next) => patch({ max_participants: next })}
-                className="h-8 w-24"
-              />
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-hide-registrations`}
-              label={t("display.hideRegistrations")}
-              hint={t("display.hideRegistrationsHint")}
-            >
-              <Switch
-                id={`${ids}-hide-registrations`}
-                checked={value.hide_registrations ?? false}
-                disabled={disabled}
-                onCheckedChange={(next) => patch({ hide_registrations: next })}
-              />
-            </SettingRow>
-            <SettingRow
-              htmlFor={`${ids}-show-ranks`}
-              label={t("display.showRanks")}
-              hint={t("display.hint")}
-            >
-              <Switch
-                id={`${ids}-show-ranks`}
-                checked={value.show_ranks ?? false}
-                disabled={disabled}
-                onCheckedChange={(next) => patch({ show_ranks: next })}
-              />
-            </SettingRow>
-          </SettingGroup>
-        </CardContent>
-      </Card>
+        <SettingGroup title={t("display.title")} description={t("display.description")}>
+          <SettingRow
+            htmlFor={`${ids}-max-participants`}
+            label={t("display.maxParticipants")}
+            hint={t("display.maxParticipantsHint")}
+          >
+            <NumberInput
+              id={`${ids}-max-participants`}
+              integer
+              min={0}
+              value={value.max_participants ?? null}
+              disabled={disabled}
+              onValueChange={(next) => patch({ max_participants: next })}
+              className="h-8 w-24"
+            />
+          </SettingRow>
+          <SettingRow
+            htmlFor={`${ids}-hide-registrations`}
+            label={t("display.hideRegistrations")}
+            hint={t("display.hideRegistrationsHint")}
+          >
+            <Switch
+              id={`${ids}-hide-registrations`}
+              checked={value.hide_registrations ?? false}
+              disabled={disabled}
+              onCheckedChange={(next) => patch({ hide_registrations: next })}
+            />
+          </SettingRow>
+          <SettingRow
+            htmlFor={`${ids}-show-ranks`}
+            label={t("display.showRanks")}
+            hint={t("display.hint")}
+          >
+            <Switch
+              id={`${ids}-show-ranks`}
+              checked={value.show_ranks ?? false}
+              disabled={disabled}
+              onCheckedChange={(next) => patch({ show_ranks: next })}
+            />
+          </SettingRow>
+        </SettingGroup>
+      </div>
 
       <SaveBar
         dirty={dirty}

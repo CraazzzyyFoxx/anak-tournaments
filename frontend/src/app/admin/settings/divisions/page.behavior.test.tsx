@@ -109,6 +109,12 @@ vi.mock("next/link", () => ({
   )
 }));
 
+// The game picker lives in the settings shell's header slot; with no shell mounted here, render the
+// slot's content in place so the picker stays reachable.
+vi.mock("@/components/admin/workspace-settings/WorkspaceSettingsShell", () => ({
+  SettingsHeaderActions: ({ children }: { children: ReactNode }) => <>{children}</>
+}));
+
 // The page reads its game from the shared browsing resolver and that game's native metadata; both are
 // driven by the URL here (`?discipline=`), exactly as the real hooks resolve an explicit choice.
 const INSTALLED = [

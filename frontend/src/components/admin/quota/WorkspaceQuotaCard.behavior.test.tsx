@@ -114,17 +114,7 @@ function fields(dimension: string): HTMLInputElement[] {
   );
 }
 
-/** The panel wrapper a field sits in, so its `hidden` state can be read. */
-function panelOf(input: HTMLInputElement): HTMLElement {
-  const panel = input.closest("section > div");
-  if (!panel) throw new Error("no panel wrapper");
-  return panel as HTMLElement;
-}
-
-const setValue = Object.getOwnPropertyDescriptor(
-  window.HTMLInputElement.prototype,
-  "value"
-)!.set!;
+const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!;
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -144,10 +134,13 @@ describe("WorkspaceQuotaCard", () => {
     tab = "session";
     await render();
 
-    const [workspace, key, session] = fields("heavy_per_day").map(panelOf);
-    expect(session.hidden).toBe(false);
-    expect(workspace.hidden).toBe(true);
-    expect(key.hidden).toBe(true);
+    // A field is hidden when its scope panel is.
+    const [workspace, key, session] = fields("heavy_per_day").map(
+      (input) => input.closest("[hidden]") !== null
+    );
+    expect(session).toBe(false);
+    expect(workspace).toBe(true);
+    expect(key).toBe(true);
     // The session row stores 50; the visible panel is the one that shows it.
     expect(fields("heavy_per_day")[2].value).toBe("50");
   });

@@ -53,10 +53,8 @@ export function GridInForceSection({
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <h2 id="divisions-in-force" className="font-display text-2xl font-semibold leading-tight">
-            {activeVersion
-              ? activeVersion.label
-              : t(ladder ? "builtInLadder" : "gridRequired")}
+          <h2 id="divisions-in-force" className="text-ui font-semibold text-foreground">
+            {activeVersion ? activeVersion.label : t(ladder ? "builtInLadder" : "gridRequired")}
           </h2>
           <p className="mt-1 text-caption text-muted-foreground">
             {meta.filter(Boolean).join(" · ")}

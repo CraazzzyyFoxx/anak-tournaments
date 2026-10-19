@@ -6929,8 +6929,10 @@
     }
   },
   "subscriptionProviders": {
-    "title": "Subscription providers",
-    "description": "Choose how each provider verifies a subscription.",
+    "enabled": {
+      "label": "Enabled",
+      "hint": "Only an enabled provider can be part of the subscription requirement."
+    },
     "methodLabel": "How a subscription is proven",
     "methodAria": "Verification method",
     "methods": {
@@ -6958,6 +6960,7 @@
       }
     },
     "guild": {
+      "label": "Discord server",
       "unset": "No Discord server is set for this workspace.",
       "missing": "Live verification needs a Discord server. Set it in workspace settings.",
       "hint": "Set once per workspace, in workspace settings. Our bot must be a member of that server."
@@ -10981,6 +10984,8 @@
     },
     "workspaceSettings": {
       "overview": {
+        "identity": "Workspace",
+        "name": "Name",
         "address": "Platform address"
       },
       "setup": {
@@ -11050,9 +11055,9 @@
         "aboutHelp": "Markdown. Rendered as the “About” block of the public page.",
         "timezone": "Timezone",
         "selectTimezone": "Select timezone",
-        "timezoneHelp": "Tournament schedule times are entered and shown in this zone.",
+        "timezoneHelp": "Tournament schedule times are entered and shown in this zone, and the community page shows it as the time matches are played in.",
         "icon": "Icon",
-        "iconHelp": "PNG, JPEG, WebP or GIF, max 2 MB. Saved as soon as you pick it.",
+        "iconHelp": "PNG, JPEG, WebP or GIF, max 2 MB.",
         "owner": "Owner",
         "ownerHelp": "The account accountable for this workspace, counted against that account's workspace limit.",
         "linkLabels": {
@@ -11062,8 +11067,8 @@
         },
         "groups": {
           "identity": {
-            "title": "Name and icon",
-            "description": "The name and icon stand for the workspace in the site header, the workspace switcher, home page cards and notifications."
+            "title": "Name and timezone",
+            "description": "The name stands for the workspace in the site header, the workspace switcher, home page cards and notifications."
           },
           "publicPage": {
             "title": "Community page",
@@ -11074,9 +11079,9 @@
             "title": "Links",
             "description": "Each filled link becomes a button in the community page header."
           },
-          "time": {
-            "title": "Time",
-            "description": "The community page shows this zone as the time its matches are played in."
+          "iconOwnership": {
+            "title": "Icon and ownership",
+            "description": "The icon appears beside the workspace name wherever the name is shown."
           }
         },
         "auditTarget": "workspace “{name}”"
@@ -11084,6 +11089,7 @@
       "branding": {
         "siteBranding": "Site branding",
         "siteBrandingHelp": "Custom palette for this workspace on the main public site",
+        "useCustomPalette": "Use custom palette",
         "seedColours": "Seed colours",
         "primaryAccent": "Primary accent",
         "secondaryAccent": "Secondary accent",
@@ -11133,12 +11139,13 @@
         "addDomain": "Add domain",
         "addDns": "Add DNS records",
         "verifyLabel": "Verified",
-        "domainLabel": "Custom domain",
+        "domainLabel": "Domain",
         "removeDomain": "Remove domain",
         "domainPlaceholder": "tourney.example.com",
         "enterDomain": "Enter a domain such as tourney.example.com first.",
         "saveDomain": "Save domain",
         "saving": "Saving…",
+        "dnsRecords": "DNS records",
         "addRecords": "Add these two records at your DNS provider. We re-check every {seconds}s; Verify now checks at once.",
         "verifyNow": "Verify now",
         "copyTxt": "Copy TXT value",
@@ -11168,6 +11175,7 @@
         "linkHelp": "Link your Discord account (or reconnect it, so the server list is fresh) in account settings, then come back. You need to own the server or have Manage Server on it.",
         "accountSettings": "Open account settings",
         "linked": "Linked",
+        "server": "Server",
         "changeServer": "Change server",
         "moreActions": "More server actions",
         "reinvite": "Re-invite bot",
@@ -11224,6 +11232,21 @@
         "ownerName": "Owner · {name}",
         "mixLoadError": "Could not load the mix settings",
         "noVoices": "This category has no voice channels."
+      },
+      "pages": {
+        "profile": "Profile",
+        "roles": "Roles & statuses",
+        "access": "Subscriptions & limits"
+      },
+      "descriptions": {
+        "overview": "What this workspace has set up, and what it still lacks.",
+        "profile": "Name, community page, colours and who can find the workspace.",
+        "domain": "Where the workspace is served and how search engines show it.",
+        "discord": "The server this workspace runs in, its announcements and mixes.",
+        "divisions": "The rank ladder players are grouped into.",
+        "roles": "Sub-roles within each role, and the statuses shown on players.",
+        "registrationForms": "Question sets tournaments start their registration form from.",
+        "access": "Subscriptions a player needs to enter, and this workspace's rate limits."
       }
     }
   },
@@ -12269,6 +12292,9 @@
       "date": "Date",
       "time": "Time",
       "clear": "Clear"
+    },
+    "settings": {
+      "appliesImmediately": "Applies immediately"
     }
   },
   "kitAudit": {

@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.workspace_tier import is_verified_or_trusted
+from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
@@ -28,6 +30,7 @@ from shared.repository import (
     WorkspaceRepository,
     get_or_create_workspace_member,
 )
+from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.services.audit import record_audit
 from shared.services.settings_provider import settings_provider
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
@@ -509,6 +512,27 @@ class WorkspaceService:
         )
         await self.member_repo.update_fields(session, member, {"removed_at": datetime.now(UTC)})
 
+    async def _member_changed(
+        self, session: AsyncSession, workspace_id: int, auth_user_ids: typing.Iterable[int], change: str
+    ) -> None:
+        """Stage the event that makes identity drop these users' cached RBAC.
+
+        Staged in the membership write's own transaction by every transactional
+        operation that changes who holds which workspace role, so the relay
+        only ever announces a change that committed.
+        """
+        await enqueue_outbox_event(
+            session,
+            WorkspaceMemberChangedEvent(
+                workspace_id=workspace_id,
+                auth_user_ids=sorted(auth_user_ids),
+                change=change,
+                source_service="app-service",
+            ),
+            exchange="",
+            routing_key=WORKSPACE_MEMBER_CHANGED_QUEUE.name,
+        )
+
     # --- ownership cap guard (design §4.4) ----------------------------------
 
     async def ensure_create_limit(
@@ -574,6 +598,7 @@ class WorkspaceService:
         await assign_workspace_system_role(
             session, user_id=owner_auth_user_id, workspace_id=workspace.id, role_name="owner"
         )
+        await self._member_changed(session, workspace.id, [owner_auth_user_id], "added")
         await session.commit()
         await session.refresh(workspace, ["division_grid_defaults"])
         return workspace
@@ -611,6 +636,7 @@ class WorkspaceService:
         if await self.get_member(session, workspace_id, auth_user_id):
             raise HTTPException(status_code=400, detail="User is already a member")
         member = await self.add_member_with_roles(session, workspace_id, auth_user_id, role_ids=role_ids)
+        await self._member_changed(session, workspace_id, [auth_user_id], "added")
         await session.commit()
         return member
 
@@ -622,11 +648,15 @@ class WorkspaceService:
         role_ids: list[int],
     ) -> models.WorkspaceMember:
         member = await self.update_member_roles(session, member, role_ids=role_ids)
+        auth_user_id = await self.get_member_auth_user_id(session, member)
+        await self._member_changed(session, member.workspace_id, [auth_user_id], "roles_changed")
         await session.commit()
         return member
 
     async def revoke_member(self, session: AsyncSession, member: models.WorkspaceMember) -> None:
         await self.remove_member(session, member)
+        auth_user_id = await self.get_member_auth_user_id(session, member)
+        await self._member_changed(session, member.workspace_id, [auth_user_id], "removed")
         await session.commit()
 
     async def _record_domain_change(
@@ -1028,6 +1058,9 @@ class WorkspaceService:
             entity_label=workspace.slug,
             before={"owner_id": owner_before},
             after={"owner_id": workspace.owner_id},
+        )
+        await self._member_changed(
+            session, workspace.id, {new_owner_auth_user_id, owner_before} - {None}, "owner_transferred"
         )
         await session.commit()
         return workspace

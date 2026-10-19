@@ -2,14 +2,17 @@
 
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { LinkTabs } from "@/components/kit/LinkTabs";
 import { SectionNav } from "@/components/kit/SectionNav";
+import { cn } from "@/lib/utils";
 import {
   WORKSPACE_SETTINGS_SECTIONS,
-  workspaceSectionLabel,
   workspaceSettingsNavGroups,
+  workspaceSettingsPage,
   type WorkspaceSettingsSectionKey
 } from "./sections";
 
@@ -32,9 +35,21 @@ export interface WorkspaceSettingsShellProps {
  */
 const FULL_SCREEN_PREFIXES = ["/admin/settings/divisions/v/"] as const;
 
+const HeaderActionsContext = createContext<HTMLElement | null>(null);
+
 /**
- * Chrome of the workspace settings hub (T5): the heading, the section rail and
- * nothing else.
+ * Puts a section's page-level controls (the audit trail, a discipline picker)
+ * into the shell's header, beside the title they act on, instead of a row of
+ * their own above the form. Renders nothing outside a settings shell.
+ */
+export function SettingsHeaderActions({ children }: Readonly<{ children: ReactNode }>) {
+  const node = useContext(HeaderActionsContext);
+  return node ? createPortal(children, node) : null;
+}
+
+/**
+ * Chrome of the workspace settings hub (T5): the section rail, the page
+ * heading, the page's tabs and nothing else.
  *
  * Both shells mount this one — `/admin/settings` for the workspace an admin is
  * in, `/admin/workspaces/[id]` for a superuser looking at another — so a
@@ -44,9 +59,13 @@ const FULL_SCREEN_PREFIXES = ["/admin/settings/divisions/v/"] as const;
  * The active section is resolved from the first path segment after `basePath`,
  * not the last segment of the URL: `/admin/settings/divisions/import` is a
  * child screen of Divisions and has to leave that rail item current. The bare
- * `basePath` is the overview.
+ * `basePath` is the overview. The rail marks the page that owns the section;
+ * the tabs mark the section itself.
+ *
+ * The heading sits in the content column, as on the tournament settings hub,
+ * so the title, the tabs and the form share one leading edge. Form pages are
+ * capped at a readable width; table and list/detail pages take the column.
  */
-
 export function WorkspaceSettingsShell({
   basePath,
   sections,
@@ -54,6 +73,7 @@ export function WorkspaceSettingsShell({
 }: Readonly<WorkspaceSettingsShellProps>) {
   const t = useTranslations("adminWorkspace.workspaceSettings");
   const pathname = usePathname();
+  const [actionsNode, setActionsNode] = useState<HTMLDivElement | null>(null);
   if (FULL_SCREEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return <>{children}</>;
 
   const trailing = pathname.startsWith(basePath) ? pathname.slice(basePath.length) : "";
@@ -61,20 +81,28 @@ export function WorkspaceSettingsShell({
   const activeKey = (WORKSPACE_SETTINGS_SECTIONS as readonly string[]).includes(segment)
     ? (segment as WorkspaceSettingsSectionKey)
     : null;
+  const page = activeKey ? workspaceSettingsPage(activeKey, basePath, t, sections) : null;
 
   return (
-    <div className="flex flex-col gap-4">
-      <AdminPageHeader
-        title={activeKey ? workspaceSectionLabel(activeKey, t) : t("sections.settingsTitle")}
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+      <SectionNav
+        groups={workspaceSettingsNavGroups(basePath, t, sections)}
+        activeKey={page?.key ?? ""}
       />
-      <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-        <SectionNav
-          groups={workspaceSettingsNavGroups(basePath, t, sections)}
-          activeKey={activeKey ?? ""}
+      {/* Not `<main>`: the admin shell already exposes the page-level main
+          landmark (`components/ui/sidebar.tsx` SidebarInset). */}
+      <div className={cn("flex min-w-0 flex-1 flex-col gap-4", !page?.wide && "max-w-3xl")}>
+        <AdminPageHeader
+          title={page?.title ?? t("sections.settingsTitle")}
+          description={page?.description}
+          actions={<div ref={setActionsNode} className="flex flex-wrap items-center gap-2" />}
         />
-        {/* Not `<main>`: the admin shell already exposes the page-level main
-            landmark (`components/ui/sidebar.tsx` SidebarInset). */}
-        <div className="min-w-0 flex-1">{children}</div>
+        {page && activeKey ? (
+          <LinkTabs items={page.tabs} activeKey={activeKey} ariaLabel={page.title} />
+        ) : null}
+        <HeaderActionsContext.Provider value={actionsNode}>
+          {children}
+        </HeaderActionsContext.Provider>
       </div>
     </div>
   );

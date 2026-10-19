@@ -5,11 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/select";
 import { DiscordRoleSelect } from "@/components/discord/DiscordRoleSelect";
 import { DiscordServerStatus } from "@/components/discord/DiscordServerStatus";
-import { SocialIcon } from "@/components/social/SocialIcon";
 import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/lib/registration/subscription-requirement";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
@@ -100,9 +99,9 @@ interface SubscriptionProvidersCardProps {
 }
 
 /**
- * The providers half of the subscriptions section. It saves nothing itself:
- * each editor reports its draft, and the section's one `SaveBar` stores every
- * draft together with the workspace rule.
+ * The providers half of the subscriptions section: one settings group per
+ * provider. It saves nothing itself: each editor reports its draft, and the
+ * section's one `SaveBar` stores every draft together with the workspace rule.
  */
 export default function SubscriptionProvidersCard({
   workspaceId,
@@ -123,34 +122,36 @@ export default function SubscriptionProvidersCard({
     );
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle asChild>
-          <h2>{t("title")}</h2>
-        </CardTitle>
-        <CardDescription className="max-w-prose">{t("description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <DiscordServerStatus workspaceId={workspaceId} />
-        {query.isLoading || !query.data ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <div className="divide-y divide-border">
-            {query.data.configs.map((config) => (
-              <ProviderEditor
-                key={`${resetKey}:${config.provider}:${JSON.stringify(config)}`}
-                workspaceId={workspaceId}
-                config={config}
-                discordGuildId={query.data.discord_guild_id ?? null}
-                onDraftChange={onDraftChange}
-              />
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+  if (query.isLoading || !query.data) {
+    // Two provider groups of label/control rows. The provider names are not
+    // known until the configs land, so the bare card stands in for `SettingGroup`.
+    return [0, 1].map((group) => (
+      <Card key={group} aria-busy="true">
+        <div className="px-5 py-3">
+          <Skeleton className="h-5 w-24" />
+        </div>
+        <div className="@container flex flex-col gap-6 border-t border-border px-5 py-3">
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="grid gap-2 @xl:grid-cols-2 @xl:items-center @xl:gap-6">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </div>
+      </Card>
+    ));
+  }
+
+  const { configs, discord_guild_id } = query.data;
+  return configs.map((config) => (
+    <ProviderEditor
+      key={`${resetKey}:${config.provider}:${JSON.stringify(config)}`}
+      workspaceId={workspaceId}
+      config={config}
+      discordGuildId={discord_guild_id ?? null}
+      onDraftChange={onDraftChange}
+    />
+  ));
 }
 
 /** The editable role/code rows carry no server id, yet they can be removed from
@@ -254,205 +255,178 @@ function ProviderEditor({
     method === "code" && enabled && config.codes.length === 0 && newCodes.length === 0;
 
   return (
-    <section className="space-y-3 py-4 first:pt-0 last:pb-0">
-      <div className="flex items-center gap-2">
+    <SettingGroup title={label}>
+      <SettingRow
+        htmlFor={`enabled-${config.provider}`}
+        label={t("enabled.label")}
+        hint={t("enabled.hint")}
+      >
         <Checkbox
           id={`enabled-${config.provider}`}
           checked={enabled}
           onCheckedChange={(checked) => setEnabled(checked === true)}
         />
-        <Label
-          htmlFor={`enabled-${config.provider}`}
-          className="flex cursor-pointer items-center gap-1.5 text-sm font-semibold"
-        >
-          <SocialIcon provider={config.provider} size={16} decorative />
-          {label}
-        </Label>
-      </div>
+      </SettingRow>
 
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label htmlFor={methodSelectId}>{t("methodLabel")}</Label>
-          <Select value={method} onValueChange={(next) => setMethod(next as VerificationMethod)}>
-            <SelectTrigger
-              id={methodSelectId}
-              className="w-full sm:max-w-xs"
-              aria-label={t("methodAria")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {methodOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {t(option.labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {/* The chosen mechanism's consequence stays on screen. A dropdown that
-              hid it would turn "Either" against "Challenge code" into a guess,
-              which is what the radio list spelled out for free. */}
-          {selectedMethod && (
-            <p className="max-w-prose text-caption text-muted-foreground">
-              {t(selectedMethod.descriptionKey)}
-            </p>
-          )}
-        </div>
+      {/* The chosen mechanism's consequence stays on screen. A dropdown that
+          hid it would turn "Either" against "Challenge code" into a guess,
+          which is what the radio list spelled out for free. */}
+      <SettingRow
+        htmlFor={methodSelectId}
+        label={t("methodLabel")}
+        hint={selectedMethod ? t(selectedMethod.descriptionKey) : undefined}
+      >
+        <Select value={method} onValueChange={(next) => setMethod(next as VerificationMethod)}>
+          <SelectTrigger id={methodSelectId} className="w-full" aria-label={t("methodAria")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {methodOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {t(option.labelKey)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
 
-        {acceptsLive &&
-          (isBoosty ? (
-            <div className="space-y-3 pt-1">
-              <div className="space-y-1">
-                {/* The server's own identity is the status card above — name, icon,
-                    bot reachability. This line only speaks up when there is nothing
-                    to show; the raw snowflake was never the useful half. */}
-                {!discordGuildId && (
-                  <p
-                    className={cn(
-                      "text-caption",
-                      guildMissing ? "text-danger" : "text-muted-foreground"
-                    )}
-                  >
-                    {guildMissing ? t("guild.missing") : t("guild.unset")}
-                  </p>
+      {acceptsLive && isBoosty && (
+        <>
+          {/* The bound server's identity (name, icon, bot reachability); with
+              none bound, the line that says so. The raw snowflake was never
+              the useful half. */}
+          <SettingRow label={t("guild.label")} hint={t("guild.hint")}>
+            {discordGuildId ? (
+              <DiscordServerStatus workspaceId={workspaceId} />
+            ) : (
+              <p
+                className={cn(
+                  "text-caption",
+                  guildMissing ? "text-danger" : "text-muted-foreground"
                 )}
-                <p className="max-w-prose text-caption text-muted-foreground">{t("guild.hint")}</p>
-              </div>
+              >
+                {guildMissing ? t("guild.missing") : t("guild.unset")}
+              </p>
+            )}
+          </SettingRow>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>{t("roles.label")}</Label>
+          <SettingRow label={t("roles.label")} stacked>
+            <div className="w-full space-y-2">
+              {roleTiers.map((tier, index) => (
+                <div key={tier.rowId} className="flex flex-wrap items-center gap-2">
+                  <DiscordRoleSelect
+                    workspaceId={workspaceId}
+                    value={tier.role_id}
+                    onChange={(newRoleId) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) => (i === index ? { ...row, role_id: newRoleId } : row))
+                      )
+                    }
+                    onRoleNameSelected={(roleName) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) =>
+                          i === index && !row.tier_label ? { ...row, tier_label: roleName } : row
+                        )
+                      )
+                    }
+                    ariaLabel={t("roles.roleAria")}
+                    // Wide enough that the role name survives once the two
+                    // icon buttons take their 32px each; the row wraps rather
+                    // than truncating the value to nothing.
+                    className="min-w-56 flex-1"
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    value={tier.tier_rank}
+                    onChange={(event) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) =>
+                          i === index ? { ...row, tier_rank: Number(event.target.value) || 1 } : row
+                        )
+                      )
+                    }
+                    className="w-20"
+                    aria-label={t("roles.tierRankAria")}
+                  />
+                  <Input
+                    value={tier.tier_label ?? ""}
+                    aria-label={t("roles.tierLabelAria")}
+                    onChange={(event) =>
+                      setRoleTiers((rows) =>
+                        rows.map((row, i) =>
+                          i === index ? { ...row, tier_label: event.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder={t("roles.tierLabelPlaceholder")}
+                    className="min-w-40 flex-1"
+                  />
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={() =>
-                      setRoleTiers((rows) => [
-                        ...rows,
-                        { role_id: "", tier_rank: rows.length + 1, tier_label: "", rowId: nextRowId() },
-                      ])
-                    }
+                    aria-label={t("roles.removeAria", { number: index + 1 })}
+                    title={t("roles.removeAria", { number: index + 1 })}
+                    onClick={() => setRoleTiers((rows) => rows.filter((_, i) => i !== index))}
                   >
-                    {t("roles.add")}
+                    <Trash2 className="size-3.5" aria-hidden />
                   </Button>
                 </div>
-
-                {roleTiers.map((tier, index) => (
-                  <div key={tier.rowId} className="flex flex-wrap items-center gap-2">
-                    <DiscordRoleSelect
-                      workspaceId={workspaceId}
-                      value={tier.role_id}
-                      onChange={(newRoleId) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index ? { ...row, role_id: newRoleId } : row
-                          )
-                        )
-                      }
-                      onRoleNameSelected={(roleName) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index && !row.tier_label ? { ...row, tier_label: roleName } : row
-                          )
-                        )
-                      }
-                      ariaLabel={t("roles.roleAria")}
-                      // Wide enough that the role name survives once the two
-                      // icon buttons take their 32px each; the row wraps rather
-                      // than truncating the value to nothing.
-                      className="min-w-56 flex-1"
-                    />
-                    <Input
-                      type="number"
-                      min={1}
-                      value={tier.tier_rank}
-                      onChange={(event) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index ? { ...row, tier_rank: Number(event.target.value) || 1 } : row
-                          )
-                        )
-                      }
-                      className="w-20"
-                      aria-label={t("roles.tierRankAria")}
-                    />
-                    <Input
-                      value={tier.tier_label ?? ""}
-                      aria-label={t("roles.tierLabelAria")}
-                      onChange={(event) =>
-                        setRoleTiers((rows) =>
-                          rows.map((row, i) =>
-                            i === index ? { ...row, tier_label: event.target.value } : row
-                          )
-                        )
-                      }
-                      placeholder={t("roles.tierLabelPlaceholder")}
-                      className="min-w-40 flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t("roles.removeAria", { number: index + 1 })}
-                      title={t("roles.removeAria", { number: index + 1 })}
-                      onClick={() => setRoleTiers((rows) => rows.filter((_, i) => i !== index))}
-                    >
-                      <Trash2 className="size-3.5" aria-hidden />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2 pt-1">
-              <div className="space-y-1">
-                <Label htmlFor={`bid-${config.provider}`}>
-                  {t("broadcaster.idLabel")}
-                </Label>
-                <Input
-                  id={`bid-${config.provider}`}
-                  value={broadcasterId}
-                  onChange={(event) => setBroadcasterId(event.target.value)}
-                  placeholder="12345"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  className="font-mono"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor={`blogin-${config.provider}`}>
-                  {t("broadcaster.loginLabel")}
-                </Label>
-                <Input
-                  id={`blogin-${config.provider}`}
-                  value={broadcasterLogin}
-                  onChange={(event) => setBroadcasterLogin(event.target.value)}
-                  placeholder={t("broadcaster.loginPlaceholder")}
-                  autoComplete="off"
-                />
-              </div>
-              <p className="max-w-prose text-caption text-muted-foreground sm:col-span-2">
-                {t.rich("broadcaster.note", { em: (chunks) => <em>{chunks}</em> })}
-              </p>
-            </div>
-          ))}
-
-        {acceptsCode && (
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between">
-              <Label>{t("codes.label")}</Label>
+              ))}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setNewCodes((rows) => [...rows, { code: "", tier_rank: 1, rowId: nextRowId() }])
+                  setRoleTiers((rows) => [
+                    ...rows,
+                    { role_id: "", tier_rank: rows.length + 1, tier_label: "", rowId: nextRowId() }
+                  ])
                 }
               >
-                {t("codes.addCode")}
+                {t("roles.add")}
               </Button>
             </div>
-            <p className="max-w-prose text-caption text-muted-foreground">
+          </SettingRow>
+        </>
+      )}
+
+      {acceptsLive && !isBoosty && (
+        <>
+          <SettingRow
+            htmlFor={`bid-${config.provider}`}
+            label={t("broadcaster.idLabel")}
+            hint={t.rich("broadcaster.note", { em: (chunks) => <em>{chunks}</em> })}
+          >
+            <Input
+              id={`bid-${config.provider}`}
+              value={broadcasterId}
+              onChange={(event) => setBroadcasterId(event.target.value)}
+              placeholder="12345"
+              inputMode="numeric"
+              autoComplete="off"
+              className="font-mono"
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`blogin-${config.provider}`} label={t("broadcaster.loginLabel")}>
+            <Input
+              id={`blogin-${config.provider}`}
+              value={broadcasterLogin}
+              onChange={(event) => setBroadcasterLogin(event.target.value)}
+              placeholder={t("broadcaster.loginPlaceholder")}
+              autoComplete="off"
+            />
+          </SettingRow>
+        </>
+      )}
+
+      {acceptsCode && (
+        <SettingRow
+          label={t("codes.label")}
+          stacked
+          hint={
+            <>
               {t("codes.hint")}
               {config.codes.length > 0 && (
                 <>
@@ -467,7 +441,10 @@ function ProviderEditor({
                   })}
                 </>
               )}
-            </p>
+            </>
+          }
+        >
+          <div className="w-full space-y-2">
             {newCodes.map((code, index) => (
               <div key={code.rowId} className="flex flex-wrap items-center gap-2">
                 <Input
@@ -510,30 +487,42 @@ function ProviderEditor({
                 </Button>
               </div>
             ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setNewCodes((rows) => [...rows, { code: "", tier_rank: 1, rowId: nextRowId() }])
+              }
+            >
+              {t("codes.addCode")}
+            </Button>
             {newCodes.length > 0 && (
               <p className="text-caption text-warning">
                 {t("codes.replaceWarning", { count: newCodes.length })}
               </p>
             )}
           </div>
-        )}
+        </SettingRow>
+      )}
 
-        {duplicateRole && (
-          <p className="max-w-prose text-caption text-danger">{t("warnings.duplicateRole")}</p>
-        )}
-
-        {rolesMissing && (
-          <p className="max-w-prose text-caption text-warning">
-            {t.rich("warnings.rolesMissing", { em: (chunks) => <em>{chunks}</em> })}
-          </p>
-        )}
-
-        {codesMissing && (
-          <p className="max-w-prose text-caption text-warning">
-            {t.rich("warnings.codesMissing", { em: (chunks) => <em>{chunks}</em> })}
-          </p>
-        )}
-      </div>
-    </section>
+      {(duplicateRole || rolesMissing || codesMissing) && (
+        <div className="space-y-1 py-4 last:pb-0">
+          {duplicateRole && (
+            <p className="max-w-prose text-caption text-danger">{t("warnings.duplicateRole")}</p>
+          )}
+          {rolesMissing && (
+            <p className="max-w-prose text-caption text-warning">
+              {t.rich("warnings.rolesMissing", { em: (chunks) => <em>{chunks}</em> })}
+            </p>
+          )}
+          {codesMissing && (
+            <p className="max-w-prose text-caption text-warning">
+              {t.rich("warnings.codesMissing", { em: (chunks) => <em>{chunks}</em> })}
+            </p>
+          )}
+        </div>
+      )}
+    </SettingGroup>
   );
 }

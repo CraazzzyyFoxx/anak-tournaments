@@ -17,6 +17,8 @@ from datetime import timedelta
 
 from faststream import FastStream
 
+from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_DLQ
+from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
     observe_scheduled_job,
@@ -32,7 +34,7 @@ from src.core import db
 from src.core.config import settings
 from src.core.redis import close_redis, init_redis
 from src.core.s3 import s3_client
-from src.rpc import api_keys, auth, avatars, oauth, players, rbac, tokens
+from src.rpc import api_keys, auth, avatars, oauth, players, rbac, tokens, workspace_member_events
 from src.services.oauth_providers import close_http_client
 from src.services.sessions import refresh_tokens
 
@@ -77,7 +79,7 @@ configure_quota(
     edge_workspace_metering=settings.quota_edge_workspace_metering,
 )
 
-for _module in (tokens, auth, oauth, api_keys, rbac, players, avatars):
+for _module in (tokens, auth, oauth, api_keys, rbac, players, avatars, workspace_member_events):
     _module.register(broker, logger)
 
 _purge_scheduler = IntervalScheduler(job_id="refresh_token_purge", label="Refresh-token purge", logger=logger)
@@ -93,6 +95,8 @@ async def purge_expired_refresh_tokens() -> None:
 
 @app.on_startup
 async def setup_worker() -> None:
+    await broker.connect()
+    await declare_dead_letter_queue(broker, WORKSPACE_MEMBER_CHANGED_DLQ)
     setup_sentry(
         dsn=settings.sentry_dsn,
         traces_sample_rate=settings.sentry_traces_sample_rate,

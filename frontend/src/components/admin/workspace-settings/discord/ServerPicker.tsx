@@ -13,9 +13,10 @@ import { GuildMark } from "./GuildMark";
 /**
  * The servers this account administers, each one bindable.
  *
- * Rendered inline while nothing is linked and inside the "Change server"
- * dialog afterwards: one list, so the two cannot disagree about which servers
- * are offered or how a refusal reads.
+ * Rendered inside the "Link this server" group while nothing is linked and
+ * inside the "Change server" dialog afterwards: one list, so the two cannot
+ * disagree about which servers are offered or how a refusal reads. Both hosts
+ * are already a surface, so the list draws only hairlines between rows.
  */
 export function ServerPicker({
   boundId,
@@ -44,10 +45,10 @@ export function ServerPicker({
         <ul
           aria-busy="true"
           aria-label={t("asking")}
-          className="flex flex-col divide-y divide-border/60 rounded-lg border border-border"
+          className="flex flex-col divide-y divide-border/60"
         >
           {[0, 1, 2].map((row) => (
-            <li key={row} className="flex items-center gap-3 p-3">
+            <li key={row} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
               <Skeleton className="size-9 rounded-lg" />
               <Skeleton className="h-4 w-40" />
             </li>
@@ -56,7 +57,12 @@ export function ServerPicker({
       ) : null}
 
       {failed ? (
-        <PageStateCard state="error" title={t("unreachable")} onAction={onRetry} />
+        <PageStateCard
+          state="error"
+          title={t("unreachable")}
+          onAction={onRetry}
+          className="border-0 bg-transparent py-6"
+        />
       ) : null}
 
       {/* No administered server is not an error: most often the Discord account
@@ -74,9 +80,12 @@ export function ServerPicker({
       ) : null}
 
       {guilds.length > 0 ? (
-        <ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border">
+        <ul className="flex flex-col divide-y divide-border/60">
           {guilds.map((guild) => (
-            <li key={guild.guild_id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+            <li
+              key={guild.guild_id}
+              className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+            >
               <div className="flex min-w-0 items-center gap-3">
                 <GuildMark name={guild.name} src={guild.icon_url} size="md" />
                 <div className="min-w-0">
