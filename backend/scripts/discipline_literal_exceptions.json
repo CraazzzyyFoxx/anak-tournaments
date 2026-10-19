@@ -2792,16 +2792,6 @@
       "remove_when": "pick-ban kind is migrated to 'character'"
     },
     {
-      "path": "frontend/src/components/admin/pregame-rooms/PregameRoomsBrowser.tsx",
-      "rule": "catalog-label",
-      "token": "hero",
-      "context": "room.phase === \"hero\"",
-      "count": 1,
-      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
-      "owner": "P9",
-      "remove_when": "pick-ban kind is migrated to 'character'"
-    },
-    {
       "path": "frontend/src/components/admin/pregame-rooms/useRoomColumns.tsx",
       "rule": "catalog-label",
       "token": "heroes",
@@ -3150,6 +3140,36 @@
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
       "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "collector wire: the person glance renders the OW native-rank (OverFast) snapshot per OW role; null for every other game",
+      "owner": "module",
+      "remove_when": "the person glance's native-rank layer is served by the OW module (rank family slot) or reads roles from the owner ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "collector wire: the person glance renders the OW native-rank (OverFast) snapshot per OW role; null for every other game",
+      "owner": "module",
+      "remove_when": "the person glance's native-rank layer is served by the OW module (rank family slot) or reads roles from the owner ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "collector wire: the person glance renders the OW native-rank (OverFast) snapshot per OW role; null for every other game",
+      "owner": "module",
+      "remove_when": "the person glance's native-rank layer is served by the OW module (rank family slot) or reads roles from the owner ontology"
     }
   ]
 }
