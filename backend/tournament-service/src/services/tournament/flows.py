@@ -311,9 +311,10 @@ class TournamentFlowsService:
         *,
         workspace_id: int | None = None,
         is_league: bool | None = None,
+        discipline: str | None = None,
         limit: int = 500,
     ) -> list[schemas.LookupItem]:
-        """Lightweight id/name lookup for pickers (rpc.tournament.lookup_tournaments)."""
+        """Lightweight id/name lookup for pickers (rpc.tournament.lookup_tournaments), optionally of one game."""
         query = (
             sa.select(models.Tournament.id, models.Tournament.name)
             # Hidden tournaments never appear in public pickers/lookups (issue #115).
@@ -325,6 +326,8 @@ class TournamentFlowsService:
             query = query.where(models.Tournament.workspace_id == workspace_id)
         if is_league is not None:
             query = query.where(models.Tournament.is_league.is_(is_league))
+        if discipline is not None:
+            query = query.where(models.Tournament.discipline == discipline)
         result = await session.execute(query)
         return [schemas.LookupItem(id=row.id, name=row.name) for row in result.all()]
 

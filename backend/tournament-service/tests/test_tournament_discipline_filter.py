@@ -1,8 +1,8 @@
-"""``discipline`` narrows the public tournament list and its facets to one installed game.
+"""``discipline`` narrows the public tournament list, its facets and the picker lookup to one installed game.
 
 Three properties: a bogus code is a validation error (never an empty list and never another game's rows), the
 filter reaches both the page and the count statement, and over a real database a game's tournaments are
-counted/listed without the other game's.
+counted/listed/looked up without the other game's.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 import sqlalchemy as sa
@@ -33,8 +35,11 @@ from shared.models.tournament import Tournament  # noqa: E402
 from shared.rpc.query import build_query_model  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src import schemas  # noqa: E402
+from src.rpc import _helpers as rpc_helpers  # noqa: E402
+from src.rpc import reads  # noqa: E402
 from src.services.tournament import flows as tournament_flows  # noqa: E402
 from src.services.tournament.service import tournament_service  # noqa: E402
+from tests._rpc_fakes import CapturingBroker  # noqa: E402
 
 MODELS = (schemas.TournamentPaginationSortSearchQueryParams, schemas.TournamentFacetsQueryParams)
 
@@ -152,3 +157,43 @@ def test_list_and_facets_over_two_games_of_one_workspace() -> None:
     assert overwatch == (2, {"overwatch"})
     assert (lol_facets.total, lol_facets.live) == (1, 1)
     assert (all_facets.total, all_facets.live) == (3, 3)
+
+
+def test_lookup_rpc_lists_only_the_requested_games_tournaments() -> None:
+    broker = CapturingBroker()
+    reads.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+    lookup = broker.handlers["rpc.tournament.lookup_tournaments"]
+
+    async def _run():
+        async with _db_sessions() as session_maker:
+            async with session_maker() as session:
+                suffix = uuid.uuid4().hex[:12]
+                workspace = Workspace(slug=f"look-{suffix}", name=f"Look {suffix}")
+                session.add(workspace)
+                await session.flush()
+                ids: dict[str, set[int]] = {"overwatch": set(), "lol": set()}
+                for discipline in ("overwatch", "overwatch", "lol"):
+                    tournament = await _make_tournament(session, workspace_id=workspace.id, discipline=discipline)
+                    ids[discipline].add(tournament.id)
+                await session.commit()
+                workspace_id = workspace.id
+
+            async def ask(**query: str) -> dict:
+                data = {"query": {"workspace_id": [str(workspace_id)], **{k: [v] for k, v in query.items()}}}
+                return await lookup(data, None)
+
+            try:
+                with patch.object(rpc_helpers.db, "async_session_maker", session_maker):
+                    return ids, await ask(), await ask(discipline="lol"), await ask(discipline="starcraft")
+            finally:
+                async with session_maker() as session:
+                    await session.execute(sa.delete(Workspace).where(Workspace.id == workspace_id))
+                    await session.commit()
+
+    ids, every, lol, bogus = asyncio.run(_run())
+
+    assert {row["id"] for row in every["data"]} == ids["overwatch"] | ids["lol"]
+    assert {row["id"] for row in lol["data"]} == ids["lol"]
+    # An uninstalled code is the filter's 422, never an empty list or every game's tournaments.
+    assert bogus["ok"] is False
+    assert bogus["error"]["code"] == "unprocessable"

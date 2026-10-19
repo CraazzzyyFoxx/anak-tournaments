@@ -3465,7 +3465,7 @@ export interface paths {
         };
         /**
          * Lookup tournaments
-         * @description Permission: public; no authentication required — hidden tournaments are never listed here, for any caller. Returns a lightweight id/name list of up to 500 most-recent tournaments, optionally filtered by workspace and league flag, for pickers.
+         * @description Permission: public; no authentication required — hidden tournaments are never listed here, for any caller. Returns a lightweight id/name list of up to 500 most-recent tournaments, optionally filtered by workspace, league flag and installed discipline (an uninstalled code is 422), for pickers.
          *
          *     RPC subject: `rpc.tournament.lookup_tournaments`
          */
@@ -41279,6 +41279,7 @@ export interface operations {
             query?: {
                 workspace_id?: number;
                 is_league?: boolean;
+                discipline?: string;
             };
             header?: never;
             path?: never;

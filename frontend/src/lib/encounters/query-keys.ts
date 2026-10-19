@@ -21,15 +21,15 @@ export const encounterQueryKeys = {
     ["encounter", encounterId, "pick-ban-state", "map"] as const,
   captainReports: (encounterId: KeyPart) => ["encounter", encounterId, "reports"] as const,
   detailRoot: () => ["encounter"] as const,
-  /** One game's index (§2.6): `discipline` sits right after the workspace axis. */
+  /** One game's index and its tournament picker (§2.6): `discipline` sits right after the workspace axis. */
   list: (workspaceId: KeyPart, discipline: KeyPart, page: KeyPart, filters: unknown, query: KeyPart) =>
     ["encounters-list", workspaceId, discipline, page, filters, query] as const,
   overview: (workspaceId: KeyPart, discipline: KeyPart, filters: unknown, query: KeyPart) =>
     ["encounters-overview", workspaceId, discipline, filters, query] as const,
   savedViews: (workspaceId: KeyPart, userKey: KeyPart) =>
     ["encounters-saved-views", workspaceId, userKey] as const,
-  tournamentsLookup: (workspaceId: KeyPart) =>
-    ["encounters-tournaments-lookup", workspaceId] as const,
+  tournamentsLookup: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["encounters-tournaments-lookup", workspaceId, discipline] as const,
   byTournament: (tournamentId: KeyPart) => ["encounters", "by-tournament", tournamentId] as const,
   all: () => ["encounters"] as const,
   matchDetail: (matchId: KeyPart) => ["match-detail", matchId] as const,

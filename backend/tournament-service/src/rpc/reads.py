@@ -19,6 +19,7 @@ from shared.domain import pick_ban_rules as pbr
 from shared.repository import TournamentRepository
 from shared.rpc.identity import rehydrate_user_optional
 from shared.rpc.query import build_query_model
+from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.services.division_grid.access import build_workspace_division_grid_normalizer
 from shared.services.division_grid.normalization import DivisionGridNormalizationError
 from shared.services.tournament.visibility import assert_tournament_viewable, ensure_tournament_viewable
@@ -80,6 +81,8 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 workspace_id=_q1(data, "workspace_id", int),
                 is_league=_q1(data, "is_league", _bool),
+                # One game's tournaments: absent is every game, a code nobody installed is 422.
+                discipline=build_query_model(DisciplineFilterQuery, data.get("query")).discipline,
             )
 
         return await _read(logger, op)

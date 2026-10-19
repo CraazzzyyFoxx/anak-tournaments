@@ -55,7 +55,13 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.statistics_overall": Op(response=schemas.OverallStatistics, query_params=(_WS,)),
     # ── public reads (arrays) ──────────────────────────────────────────────
     "rpc.tournament.lookup_tournaments": Op(
-        response=schemas.LookupItem, response_array=True, query_params=(_WS, QueryParam("is_league", "boolean"))
+        response=schemas.LookupItem,
+        response_array=True,
+        query_params=(
+            _WS,
+            QueryParam("is_league", "boolean"),
+            QueryParam("discipline", description="Installed discipline code; absent lists every game."),
+        ),
     ),
     "rpc.tournament.get_stages": Op(response=schemas.StageRead, response_array=True),
     "rpc.tournament.get_standings": Op(response=schemas.StandingRead, response_array=True, query_params=(_ENTITIES,)),

@@ -103,10 +103,10 @@ export function useEncountersData({
     retry: 1
   });
 
-  // ponytail: `/tournaments/lookup` takes no `discipline`, so the tournament picker lists every game's; scope it once the route does.
   const tournamentsLookupQuery = useQuery({
-    queryKey: encounterQueryKeys.tournamentsLookup(workspaceId),
-    queryFn: () => tournamentService.lookup(workspaceId),
+    queryKey: encounterQueryKeys.tournamentsLookup(workspaceId, discipline),
+    queryFn: ({ signal }) => tournamentService.lookup(workspaceId, discipline, { signal }),
+    enabled: discipline !== null,
     staleTime: 5 * 60_000,
     retry: 1
   });

@@ -11,7 +11,7 @@ import type * as SelectorModule from "@/components/workspace/DisciplineSelector"
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Encounter } from "@/types/encounter.types";
-import type { PaginatedResponse } from "@/types/pagination.types";
+import type { LookupItem, PaginatedResponse } from "@/types/pagination.types";
 
 import EncountersClient from "./EncountersClient";
 import { DEFAULT_FILTERS, EMPTY_OVERVIEW } from "./encounters.helpers";
@@ -46,6 +46,16 @@ vi.mock("@/components/EncountersTable", () => ({
         <li key={row.id} data-row={row.id} data-game={row.discipline} />
       ))}
     </ul>
+  )
+}));
+// The picker's options are the subject; the Radix select only renders them while open.
+vi.mock("./EncountersFilterBar", () => ({
+  EncountersFilterBar: ({ tournaments }: { tournaments: LookupItem[] }) => (
+    <ol>
+      {tournaments.map((item) => (
+        <li key={item.id} data-tournament={item.name} />
+      ))}
+    </ol>
   )
 }));
 // The real selector is a Radix popover; a button per game is the same `onSelect` contract.
@@ -88,6 +98,11 @@ const seedOf = (game: string, page = 1): EncountersSeed => ({
   overview: EMPTY_OVERVIEW
 });
 
+const TOURNAMENTS: Record<string, LookupItem[]> = {
+  overwatch: [{ id: 11, name: "OW Cup" }],
+  lol: [{ id: 22, name: "LoL Cup" }]
+};
+
 type ListArgs = [number, string, null, number, string, string, unknown, { discipline: string }, { signal: AbortSignal }];
 
 let root: Root;
@@ -124,6 +139,8 @@ async function mount(seed: EncountersSeed | null, initialPage = 1) {
 }
 
 const rows = () => [...container.querySelectorAll("[data-row]")].map((row) => row.getAttribute("data-game"));
+const tournaments = () =>
+  [...container.querySelectorAll("[data-tournament]")].map((item) => item.getAttribute("data-tournament"));
 const listRead = (game: string, page = 1) =>
   [page, "", null, 15, "id", "desc", "all", expect.objectContaining({ discipline: game }), { signal: expect.any(AbortSignal) }] as const;
 
@@ -132,7 +149,7 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (...args: ListArgs) => pageOf(args[7].discipline, args[0]));
   mocks.getOverview.mockReset().mockResolvedValue(EMPTY_OVERVIEW);
-  mocks.lookup.mockReset().mockResolvedValue([]);
+  mocks.lookup.mockReset().mockImplementation(async (_workspace: unknown, game: string) => TOURNAMENTS[game]);
   mocks.list.mockReset().mockResolvedValue(GAMES);
   document.body.innerHTML = "";
   document.cookie = "owt-discipline=; Max-Age=0; path=/";
@@ -219,6 +236,27 @@ describe("the encounters index is one game at a time", () => {
     expect(rows()).toEqual(["lol"]);
   });
 
+  it("the tournament picker offers only the resolved game's tournaments, none of the previous game's after a switch", async () => {
+    const lol = Promise.withResolvers<LookupItem[]>();
+    mocks.lookup.mockImplementation((_workspace: unknown, game: string) =>
+      game === "lol" ? lol.promise : Promise.resolve(TOURNAMENTS[game])
+    );
+    navigation.reset("/encounters?discipline=overwatch");
+    await mount(seedOf("overwatch"));
+
+    expect(mocks.lookup).toHaveBeenCalledWith("all", "overwatch", { signal: expect.any(AbortSignal) });
+    expect(tournaments()).toEqual(["OW Cup"]);
+
+    await act(async () => navigation.push("/encounters?discipline=lol"));
+    await tick();
+    expect(mocks.lookup).toHaveBeenLastCalledWith("all", "lol", { signal: expect.any(AbortSignal) });
+    expect(tournaments()).toEqual([]);
+
+    await act(async () => lol.resolve(TOURNAMENTS.lol));
+    await tick();
+    expect(tournaments()).toEqual(["LoL Cup"]);
+  });
+
   it("names an unknown requested game, reads no encounters and leaves the URL as typed", async () => {
     navigation.reset("/encounters?discipline=xx");
     await mount(seedOf("overwatch"));
@@ -227,6 +265,7 @@ describe("the encounters index is one game at a time", () => {
     expect(rows()).toEqual([]);
     expect(mocks.getAll).not.toHaveBeenCalled();
     expect(mocks.getOverview).not.toHaveBeenCalled();
+    expect(mocks.lookup).not.toHaveBeenCalled();
     expect(navigation.current()).toBe("/encounters?discipline=xx");
   });
 });

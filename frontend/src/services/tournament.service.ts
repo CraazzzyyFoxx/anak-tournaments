@@ -39,14 +39,17 @@ function tournamentFilterQuery(params: TournamentFilterParams): Record<string, u
 }
 
 export default class tournamentService {
+  /** Picker id/name list; `discipline` narrows it to one installed game, absent lists every game's. */
   static async lookup(
     workspaceId?: number | "all" | null,
-    isLeague?: boolean | null
+    discipline?: string | null,
+    opts: { signal?: AbortSignal } = {}
   ): Promise<LookupItem[]> {
     return apiFetch("/api/v1/tournaments/lookup", {
+      signal: opts.signal,
       query: {
         workspace_id: workspaceId,
-        is_league: isLeague
+        discipline
       }
     }).then((res) => res.json());
   }
