@@ -41,7 +41,13 @@ const voiceMove = vi.fn();
 vi.mock("@/services/custom-game.service", () => ({
   customGameKeys: {
     all: (workspaceId: number) => ["custom-games", workspaceId],
-    list: (workspaceId: number) => ["custom-games", workspaceId],
+    lists: (workspaceId: number) => ["custom-games", workspaceId, "list"],
+    list: (workspaceId: number, discipline: string | null = null) => [
+      "custom-games",
+      workspaceId,
+      "list",
+      discipline ?? "all",
+    ],
     one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId],
     matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"],
     rotationAll: (workspaceId: number, gameId: number) => [

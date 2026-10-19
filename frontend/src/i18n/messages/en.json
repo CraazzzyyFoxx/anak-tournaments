@@ -7652,7 +7652,11 @@
       "sourceRequired": "Choose a previous mix.",
       "workspace": "Community",
       "workspacePlaceholder": "Choose a community",
-      "workspaceRequired": "Choose a community where you can host a mix."
+      "workspaceRequired": "Choose a community where you can host a mix.",
+      "game": "Game",
+      "gamePlaceholder": "Choose a game",
+      "gameRequired": "Choose the game this mix is for.",
+      "gameUnavailable": "This community has not enabled this game."
     },
     "leaderboard": {
       "title": "Leaders by wins",

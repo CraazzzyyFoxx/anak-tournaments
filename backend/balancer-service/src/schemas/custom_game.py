@@ -47,7 +47,8 @@ _MixName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 
 class CustomGameCreate(_Request):
     name: _MixName
-    discipline: str = "overwatch"
+    #: Required: no game is implied. A clone keeps its source's game, so the value is the source's own.
+    discipline: str
     team_format_preset: str | None = Field(default=None, max_length=64)
     member_ids: list[int] = Field(default_factory=list, max_length=100)
     #: Clone the pool, role setup, frozen team format, team names and co-hosts, not played state.

@@ -17,6 +17,8 @@ type PickupMixListProps = {
   canEdit: boolean;
   games: CustomGame[];
   communities?: Record<number, string>;
+  /** Game names by code, passed under "all games" so every row says which game it is for. */
+  disciplineNames?: Record<string, string>;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
@@ -27,6 +29,7 @@ export function PickupMixList({
   canEdit,
   games,
   communities,
+  disciplineNames,
   loading,
   error,
   onRetry,
@@ -113,7 +116,12 @@ export function PickupMixList({
           )}
         >
           {visibleGames.map((game) => (
-            <PickupMixRow key={game.id} game={game} community={communities?.[game.workspace_id]} />
+            <PickupMixRow
+              key={game.id}
+              game={game}
+              community={communities?.[game.workspace_id]}
+              discipline={disciplineNames ? (disciplineNames[game.discipline] ?? game.discipline) : undefined}
+            />
           ))}
         </ul>
       )}
@@ -121,7 +129,11 @@ export function PickupMixList({
   );
 }
 
-function PickupMixRow({ game, community }: Readonly<{ game: CustomGame; community?: string }>) {
+function PickupMixRow({
+  game,
+  community,
+  discipline
+}: Readonly<{ game: CustomGame; community?: string; discipline?: string }>) {
   const t = useTranslations("mixes.list");
   const tLobbies = useTranslations("mixes.lobbies");
   const format = useFormatter();
@@ -147,6 +159,7 @@ function PickupMixRow({ game, community }: Readonly<{ game: CustomGame; communit
         </span>
         <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-caption text-[color:var(--aqt-fg-muted)] [overflow-wrap:anywhere]">
           {community ? <span className="min-w-0 max-w-full font-medium">{community}</span> : null}
+          {discipline ? <span className="min-w-0 max-w-full font-medium">{discipline}</span> : null}
           <span className="min-w-0 max-w-full">
             {t("host", { name: game.host_display_name ?? `#${game.host_user_id}` })}
           </span>

@@ -25,6 +25,7 @@ function sampleGame(id: number, name: string): CustomGame {
   return {
     id,
     workspace_id: 1,
+    discipline: "overwatch",
     host_user_id: 10,
     co_hosts: [],
     host_display_name: "HostGuy#1234",
@@ -67,9 +68,15 @@ async function mount(
   games: CustomGame[] = [],
   props: {
     creating?: boolean;
-    onCreate?: (name: string, cloneFromGameId: number | null, workspaceId: number) => Promise<unknown>;
+    onCreate?: (
+      name: string,
+      cloneFromGameId: number | null,
+      workspaceId: number,
+      discipline: string
+    ) => Promise<unknown>;
     onClose?: () => void;
     scopedWorkspaceId?: number | null;
+    fixedDiscipline?: string | null;
   } = {}
 ) {
   const container = document.createElement("div");
@@ -85,7 +92,15 @@ async function mount(
         <Dialog open={true}>
           <PickupCreateMixDialog
             games={games}
-            workspaces={[{ id: 1, name: "Alpha" }, { id: 2, name: "Beta" }]}
+            workspaces={[
+              { id: 1, name: "Alpha", disciplines_enabled: ["overwatch", "lol"] },
+              { id: 2, name: "Beta", disciplines_enabled: ["overwatch"] }
+            ]}
+            disciplines={[
+              { code: "overwatch", name: "Overwatch" },
+              { code: "lol", name: "League of Legends" }
+            ]}
+            fixedDiscipline={props.fixedDiscipline === undefined ? "overwatch" : props.fixedDiscipline}
             scopedWorkspaceId={props.scopedWorkspaceId === undefined ? 1 : props.scopedWorkspaceId}
             creating={props.creating ?? false}
             onCreate={onCreate}
@@ -137,7 +152,7 @@ describe("PickupCreateMixDialog", () => {
     await typeInto(input, "Friday Scrim");
     await submit(scope);
 
-    expect(onCreate).toHaveBeenCalledWith("Friday Scrim", null, 1);
+    expect(onCreate).toHaveBeenCalledWith("Friday Scrim", null, 1, "overwatch");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -167,7 +182,7 @@ describe("PickupCreateMixDialog", () => {
     await typeInto(input, "Kept Name");
     await submit(scope);
 
-    expect(onCreate).toHaveBeenCalledWith("Kept Name", null, 1);
+    expect(onCreate).toHaveBeenCalledWith("Kept Name", null, 1, "overwatch");
     expect(onClose).not.toHaveBeenCalled();
     const keptInput = scope.querySelector('input[name="name"]') as HTMLInputElement;
     expect(keptInput.value).toBe("Kept Name");
@@ -200,6 +215,51 @@ describe("PickupCreateMixDialog", () => {
     });
     expect(scope.querySelector("#pickup-clone-from")).toBeNull();
     await submit(scope);
-    expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1);
+    expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1, "overwatch");
+  });
+
+  it("names the directory's game and offers no other", async () => {
+    const { scope, onCreate } = await mount([], { fixedDiscipline: "lol" });
+    expect(scope.querySelector("select#pickup-discipline")).toBeNull();
+    expect(scope.querySelector("#pickup-discipline")?.textContent).toBe("League of Legends");
+    await submit(scope);
+    expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1, "lol");
+  });
+
+  it("refuses a directory game the community has not enabled", async () => {
+    const { scope, onCreate } = await mount([], { fixedDiscipline: "lol", scopedWorkspaceId: 2 });
+    expect(scope.textContent).toContain("This community has not enabled this game.");
+    await submit(scope);
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("makes the host name the game under all games and copies only from a mix of that game", async () => {
+    const owMix = sampleGame(12, "OW mix");
+    const lolMix = { ...sampleGame(14, "LoL mix"), discipline: "lol" };
+    const { scope, onCreate } = await mount([owMix, lolMix], { fixedDiscipline: null });
+    const select = scope.querySelector("select#pickup-discipline") as HTMLSelectElement;
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      "Choose a game",
+      "Overwatch",
+      "League of Legends"
+    ]);
+
+    await submit(scope);
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(select.getAttribute("aria-invalid")).toBe("true");
+    expect(scope.textContent).toContain("Choose the game this mix is for.");
+
+    await act(async () => {
+      select.value = "lol";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      scope.querySelectorAll('input[type="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      (scope.querySelector("#pickup-clone-from") as HTMLButtonElement).click();
+    });
+    expect(scope.textContent).toContain("LoL mix");
+    expect(scope.textContent).not.toContain("OW mix");
   });
 });

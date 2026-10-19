@@ -29,6 +29,9 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
  * Every mix a workspace has run, newest first — the entry point for hosting
  * one. Opening or starting a mix both leave this page for
  * `/balancer/mix/[gameId]`, which reads and edits the one already picked.
+ *
+ * A directory: it shows every game by default and narrows to one when the host picks it (`?discipline=`). The list,
+ * the scoreboard and the creation form all follow that one resolved choice; an invalid or empty one makes no request.
  */
 export default function BalancerPickupListPage() {
   const router = useRouter();
@@ -43,16 +46,24 @@ export default function BalancerPickupListPage() {
   const visibleWorkspaces = workspaces.filter((workspace) =>
     all || workspace.id === (hostWorkspaceId ?? workspaceId)
   );
+  const browsing = useBrowsingDiscipline({ allowsAll: true });
+  const resolved = browsing.resolved;
+  // `null` = every game. Only a concrete choice narrows the directory; invalid/empty ones never reach a request.
+  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
+  const browsable = resolved?.kind === "all" || resolved?.kind === "concrete";
   const { canAccessPermission } = usePermissions();
-  const creationWorkspaces = visibleWorkspaces.filter((workspace) =>
-    canAccessPermission("custom_game.create", workspace.id)
+  const creationWorkspaces = visibleWorkspaces.filter(
+    (workspace) =>
+      canAccessPermission("custom_game.create", workspace.id) &&
+      (discipline === null ? workspace.disciplines_enabled.length > 0 : workspace.disciplines_enabled.includes(discipline))
   );
   const canEdit = creationWorkspaces.length > 0;
   const [createOpen, setCreateOpen] = useState(false);
   const gamesQueries = useQueries({
     queries: visibleWorkspaces.map((workspace) => ({
-      queryKey: customGameKeys.list(workspace.id),
-      queryFn: () => customGameService.list(workspace.id),
+      queryKey: customGameKeys.list(workspace.id, discipline),
+      queryFn: ({ signal }: { signal: AbortSignal }) => customGameService.list(workspace.id, discipline, { signal }),
+      enabled: browsable,
     })),
   });
   const games = gamesQueries.flatMap((query) => query.data ?? []).sort((a, b) => b.id - a.id);
@@ -61,36 +72,31 @@ export default function BalancerPickupListPage() {
   // Pinned to the period, not recomputed per render: a `since` that drifted
   // with the clock would be a new query key every render.
   const since = useMemo(() => sinceFor(period, new Date()), [period]);
-  // The scoreboard is a per-game read when one game is chosen and the workspace-wide tally under `all`;
-  // an invalid or empty choice makes no game request.
-  const browsing = useBrowsingDiscipline({ allowsAll: true });
-  const resolved = browsing.resolved;
-  const statsDiscipline = resolved?.kind === "concrete" ? resolved.code : undefined;
-  const statsEnabled = resolved?.kind === "all" || resolved?.kind === "concrete";
+  // The scoreboard is a per-game read when one game is chosen and the workspace-wide tally under `all`.
   const statsQueries = useQueries({
     queries: visibleWorkspaces.map((workspace) => ({
-      queryKey: customGameKeys.stats(workspace.id, since, statsDiscipline),
+      queryKey: customGameKeys.stats(workspace.id, since, discipline ?? undefined),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        customGameService.stats(workspace.id, since, statsDiscipline, { signal }),
-      enabled: statsEnabled,
+        customGameService.stats(workspace.id, since, discipline ?? undefined, { signal }),
+      enabled: browsable,
       staleTime: 60_000,
     })),
   });
 
   const createGame = useMutation({
-    mutationFn: (input: { workspaceId: number; name: string; cloneFromGameId: number | null }) => {
+    mutationFn: (input: { workspaceId: number; discipline: string; name: string; cloneFromGameId: number | null }) => {
       if (!creationWorkspaces.some((workspace) => workspace.id === input.workspaceId)) {
         throw new Error(t("create.workspaceRequired"));
       }
       if (input.cloneFromGameId != null && !games.some((game) =>
-        game.id === input.cloneFromGameId && game.workspace_id === input.workspaceId
+        game.id === input.cloneFromGameId && game.workspace_id === input.workspaceId && game.discipline === input.discipline
       )) {
         throw new Error(t("create.sourceRequired"));
       }
-      return customGameService.create(input.workspaceId, input.name, input.cloneFromGameId);
+      return customGameService.create(input.workspaceId, input.discipline, input.name, input.cloneFromGameId);
     },
     onSuccess: (created) => {
-      void queryClient.invalidateQueries({ queryKey: customGameKeys.list(created.workspace_id) });
+      void queryClient.invalidateQueries({ queryKey: customGameKeys.lists(created.workspace_id) });
       router.push(`/balancer/mix/${created.id}`);
     },
     onError: (error) => notify.apiError(error)
@@ -118,70 +124,86 @@ export default function BalancerPickupListPage() {
           </h1>
           <p className="text-body text-[color:var(--aqt-fg-muted)]">{t("description")}</p>
         </div>
-        {canEdit ? (
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4" aria-hidden="true" />
-            {t("createAction")}
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {browsing.disciplines && resolved && browsable ? (
+            <DisciplineSelector
+              disciplines={browsing.disciplines}
+              value={resolved.kind === "all" ? "all" : resolved.code}
+              allowsAll
+              onSelect={browsing.select}
+            />
+          ) : null}
+          {canEdit && browsable ? (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              {t("createAction")}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="grid w-full min-w-0 grid-cols-1 gap-6 xl:grid-cols-[1fr_380px] xl:items-start">
-        <div className="min-w-0 w-full">
-          <PickupMixList
-            canEdit={canEdit}
-            games={games}
-            communities={all ? Object.fromEntries(visibleWorkspaces.map((workspace) => [workspace.id, workspace.name])) : undefined}
-            loading={workspacesLoading || gamesQueries.some((query) => query.isLoading)}
-            error={gamesQueries.some((query) => query.isError)}
-            onRetry={() => { for (const query of gamesQueries) void query.refetch(); }}
-            onCreateGame={() => setCreateOpen(true)}
-          />
+      {browsing.disciplines && resolved && !browsable ? (
+        <DisciplineUnavailable
+          resolved={resolved}
+          disciplines={browsing.disciplines}
+          allowsAll
+          onSelect={browsing.select}
+        />
+      ) : (
+        <div className="grid w-full min-w-0 grid-cols-1 gap-6 xl:grid-cols-[1fr_380px] xl:items-start">
+          <div className="min-w-0 w-full">
+            <PickupMixList
+              canEdit={canEdit}
+              games={games}
+              communities={all ? Object.fromEntries(visibleWorkspaces.map((workspace) => [workspace.id, workspace.name])) : undefined}
+              disciplineNames={
+                resolved?.kind === "all" && browsing.disciplines
+                  ? Object.fromEntries(browsing.disciplines.map((item) => [item.code, item.name]))
+                  : undefined
+              }
+              loading={workspacesLoading || resolved === null || gamesQueries.some((query) => query.isLoading)}
+              error={browsing.isError || gamesQueries.some((query) => query.isError)}
+              onRetry={() => {
+                if (browsing.isError) browsing.refetch();
+                for (const query of gamesQueries) void query.refetch();
+              }}
+              onCreateGame={() => setCreateOpen(true)}
+            />
+          </div>
+          <div className="flex min-w-0 w-full flex-col gap-4">
+            {visibleWorkspaces.map((workspace, index) => (
+              <div key={workspace.id} className="min-w-0 space-y-2">
+                {all ? <h2 className="text-ui font-semibold">{workspace.name}</h2> : null}
+                <PickupLeaderboard
+                  members={leaderboardRows(statsQueries[index]?.data?.members ?? [], LEADERBOARD_MIN_GAMES)}
+                  loading={workspacesLoading || resolved === null || statsQueries[index]?.isLoading === true}
+                  error={statsQueries[index]?.isError === true}
+                  onRetry={() => void statsQueries[index]?.refetch()}
+                  period={period}
+                  onPeriodChange={setPeriod}
+                />
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex min-w-0 w-full flex-col gap-4">
-          {browsing.disciplines && resolved ? (
-            resolved.kind === "invalid" || resolved.kind === "empty" ? (
-              <DisciplineUnavailable
-                resolved={resolved}
-                disciplines={browsing.disciplines}
-                allowsAll
-                onSelect={browsing.select}
-              />
-            ) : (
-              <DisciplineSelector
-                disciplines={browsing.disciplines}
-                value={resolved.kind === "all" ? "all" : resolved.code}
-                allowsAll
-                onSelect={browsing.select}
-                className="w-full"
-              />
-            )
-          ) : null}
-          {visibleWorkspaces.map((workspace, index) => (
-            <div key={workspace.id} className="min-w-0 space-y-2">
-              {all ? <h2 className="text-ui font-semibold">{workspace.name}</h2> : null}
-              <PickupLeaderboard
-                members={leaderboardRows(statsQueries[index]?.data?.members ?? [], LEADERBOARD_MIN_GAMES)}
-                loading={workspacesLoading || statsQueries[index]?.isLoading === true}
-                error={statsQueries[index]?.isError === true}
-                onRetry={() => void statsQueries[index]?.refetch()}
-                period={period}
-                onPeriodChange={setPeriod}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        {createOpen ? (
+        {createOpen && browsing.disciplines ? (
           <PickupCreateMixDialog
             games={games}
             workspaces={creationWorkspaces}
+            disciplines={browsing.disciplines}
+            fixedDiscipline={discipline}
             scopedWorkspaceId={all ? null : (hostWorkspaceId ?? workspaceId)}
             creating={createGame.isPending}
-            onCreate={async (name, cloneFromGameId, creationWorkspaceId) => {
-              await createGame.mutateAsync({ workspaceId: creationWorkspaceId, name, cloneFromGameId });
+            onCreate={async (name, cloneFromGameId, creationWorkspaceId, creationDiscipline) => {
+              await createGame.mutateAsync({
+                workspaceId: creationWorkspaceId,
+                discipline: creationDiscipline,
+                name,
+                cloneFromGameId
+              });
             }}
             onClose={() => setCreateOpen(false)}
           />

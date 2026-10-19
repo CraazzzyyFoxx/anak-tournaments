@@ -428,9 +428,13 @@ export type MixStatsResponse = {
 };
 
 export const customGameKeys = {
-  /** Every mix query for a workspace — `list` is a prefix of the rest, so this covers them all. */
+  /** Every mix query for a workspace — the prefix the rest hang off, so this covers them all. */
   all: (workspaceId: number) => ["custom-games", workspaceId] as const,
-  list: (workspaceId: number) => ["custom-games", workspaceId] as const,
+  /** Every directory list of a workspace, whatever game it was filtered to; not a prefix of any one mix's reads. */
+  lists: (workspaceId: number) => ["custom-games", workspaceId, "list"] as const,
+  /** The directory list of one game (`null` = every game the workspace runs): a game's rows never serve another's. */
+  list: (workspaceId: number, discipline: string | null = null) =>
+    ["custom-games", workspaceId, "list", discipline ?? "all"] as const,
   one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId] as const,
   byId: (gameId: number, workspaceId: number | null) =>
     ["custom-game-entity", gameId, workspaceId] as const,
@@ -462,21 +466,33 @@ export const customGameKeys = {
 };
 
 export const customGameService = {
-  list(workspaceId: number): Promise<CustomGame[]> {
-    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games`, { skipWorkspace: true }).then((r) => r.json());
+  /** `discipline` narrows the directory to one game; omitted lists every game of the workspace. */
+  list(workspaceId: number, discipline?: string | null, opts?: { signal?: AbortSignal }): Promise<CustomGame[]> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games`, {
+      skipWorkspace: true,
+      query: { discipline: discipline ?? undefined },
+      signal: opts?.signal,
+    }).then((r) => r.json());
   },
 
   /**
    * Starts empty: the lineup is built explicitly from the workspace roster.
    * `cloneFromGameId` instead copies a previous mix's lineup and settings --
-   * everyone lands in the pool, and no match history comes with it.
+   * everyone lands in the pool, and no match history comes with it. `discipline` is required
+   * (no game is implied); a clone keeps its source's game, so pass the source's own.
    */
-  create(workspaceId: number, name: string, cloneFromGameId: number | null = null): Promise<CustomGame> {
+  create(
+    workspaceId: number,
+    discipline: string,
+    name: string,
+    cloneFromGameId: number | null = null
+  ): Promise<CustomGame> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games`, {
       skipWorkspace: true,
       method: "POST",
       body: {
         name,
+        discipline,
         member_ids: [],
         ...(cloneFromGameId != null ? { clone_from_game_id: cloneFromGameId } : {}),
       },

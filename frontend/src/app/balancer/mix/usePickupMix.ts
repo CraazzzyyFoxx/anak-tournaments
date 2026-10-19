@@ -81,9 +81,11 @@ export function usePickupMix(
   const queryClient = useQueryClient();
   const tVoiceError = useTranslations("mixes.voice.errors");
 
+  // Every game of the workspace on purpose: the voice panel names the channels this workspace's OTHER mixes already
+  // took, and voice channels are shared across games.
   const gamesQuery = useQuery({
     queryKey: customGameKeys.list(workspaceId),
-    queryFn: () => customGameService.list(workspaceId),
+    queryFn: ({ signal }) => customGameService.list(workspaceId, null, { signal }),
   });
 
   const selectedGameId = pickedGameId;
@@ -158,11 +160,10 @@ export function usePickupMix(
 
   const applyGame = (game: CustomGame) => {
     queryClient.setQueryData(customGameKeys.one(workspaceId, game.id), game);
-    // The list carries name and status, both of which a write can change.
-    // `exact`: the list key is a prefix of every mix key, so a bare invalidate
-    // would also refetch the detail just seeded above -- the heaviest payload
-    // the mix API has. Everything else follows on the realtime echo.
-    void queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId), exact: true });
+    // The directory lists carry name and status, both of which a write can change. `lists` is not a prefix of
+    // any mix's own reads, so this never refetches the detail just seeded above -- the heaviest payload the mix
+    // API has. Everything else follows on the realtime echo.
+    void queryClient.invalidateQueries({ queryKey: customGameKeys.lists(workspaceId) });
     // Roster, participation and match history all feed the rotation verdict --
     // any write here can flip it, so it is invalidated alongside the game
     // itself rather than only on the writes that look rotation-specific. The
@@ -417,7 +418,7 @@ export function usePickupMix(
     mutationFn: () => customGameService.hardDelete(workspaceId, selectedGameId as number),
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: customGameKeys.one(workspaceId, selectedGameId ?? 0) });
-      await queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId) });
+      await queryClient.invalidateQueries({ queryKey: customGameKeys.lists(workspaceId) });
       notify.success("Mix deleted");
     },
     onError: (error) => notify.apiError(error),
@@ -457,7 +458,7 @@ export function usePickupMix(
     void queryClient.invalidateQueries({
       queryKey: customGameKeys.one(workspaceId, state.custom_game_id),
     });
-    void queryClient.invalidateQueries({ queryKey: customGameKeys.list(workspaceId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: customGameKeys.lists(workspaceId) });
     void queryClient.invalidateQueries({
       queryKey: customGameKeys.rotationAll(workspaceId, state.custom_game_id),
     });
