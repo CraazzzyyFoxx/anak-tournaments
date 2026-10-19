@@ -12412,6 +12412,8 @@ export interface components {
             code: string;
             /** Enabled */
             enabled: boolean;
+            /** Icon */
+            icon: string | null;
             /** Identity Provider */
             identity_provider: string | null;
             /** Kinds */
@@ -12420,6 +12422,8 @@ export interface components {
             };
             /** Name */
             name: string;
+            /** Short Name */
+            short_name: string;
         };
         /** DisciplineMetadata */
         "app.DisciplineMetadata": {

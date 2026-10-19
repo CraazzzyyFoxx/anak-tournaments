@@ -32,6 +32,8 @@ function descriptor(code: string, name: string, provider: string): DisciplineDes
   return {
     code,
     name,
+    short_name: code === "lol" ? "LoL" : "OW",
+    icon: null,
     enabled: true,
     kinds: { character: code === "lol" ? "Champion" : "Hero", map: "Map" },
     character_classes: [],

@@ -66,4 +66,5 @@ SPEC = DisciplineSpec(
     dimensions=(POSITION,),
     team_format_presets=(POSITIONS_5V5, OPEN_5V5),
     identity_provider=SocialProvider.RIOT,
+    short_name="LoL",
 )

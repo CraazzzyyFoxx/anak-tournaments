@@ -43,6 +43,10 @@ class DisciplineDescriptor(BaseModel):
     #: ``None``: the game has no identity input/upsert.
     identity_provider: str | None
     capabilities: DisciplineCapabilities
+    #: The game's monogram ("OW"); the module's ``short_name``, else its name.
+    short_name: str
+    #: A static icon path, or ``None`` (the frontend draws the monogram).
+    icon: str | None
 
 
 class RoleDimensionRead(BaseModel):

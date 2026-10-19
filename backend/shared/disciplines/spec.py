@@ -251,6 +251,11 @@ class DisciplineSpec:
     balancer_role_settings: Mapping[str, Mapping[str, Mapping[str, float]]] = field(
         default_factory=dict, compare=False, hash=False
     )
+    #: The game's short mark ("OW"): the monogram a ``GameMark`` draws when there is no icon. Empty falls back to
+    #: ``name`` on the wire.
+    short_name: str = ""
+    #: A static ``/disciplines/<code>/icon.svg`` the frontend serves, or ``None`` (the monogram is drawn).
+    icon: str | None = None
 
     @property
     def rated_dimension(self) -> DimensionSpec:

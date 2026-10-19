@@ -21,6 +21,8 @@ const caps = (collects: boolean) => ({
 const game = (code: string, collects: boolean, enabled = true): DisciplineDescriptor => ({
   code,
   name: code,
+  short_name: code.toUpperCase(),
+  icon: null,
   enabled,
   kinds: {},
   character_classes: [],

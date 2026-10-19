@@ -85,6 +85,8 @@ def _descriptor(spec: DisciplineSpec, *, enabled: bool) -> DisciplineDescriptor:
         kinds=dict(spec.kinds),  # type: ignore[arg-type]  # validated against the catalog kinds
         character_classes=list(spec.character_classes),
         identity_provider=spec.identity_provider,
+        short_name=spec.short_name or spec.name,
+        icon=spec.icon,
         capabilities=DisciplineCapabilities(
             catalog_sync=spec.catalog_sync is not None,
             native_rank_collection="rank.collect" in spec.collection_handlers,

@@ -59,6 +59,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const OVERWATCH: DisciplineDescriptor = {
   code: "overwatch",
   name: "Overwatch",
+  short_name: "OW",
+  icon: null,
   enabled: true,
   kinds: {},
   character_classes: [],
@@ -76,6 +78,7 @@ const LOL: DisciplineDescriptor = {
   ...OVERWATCH,
   code: "lol",
   name: "League of Legends",
+  short_name: "LoL",
   capabilities: { ...OVERWATCH.capabilities, native_rank_collection: false, native_ladder: false }
 };
 

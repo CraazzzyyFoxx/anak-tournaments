@@ -15316,6 +15316,17 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon"
+        },
         "identity_provider": {
           "anyOf": [
             {
@@ -15344,6 +15355,10 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "short_name": {
+          "title": "Short Name",
+          "type": "string"
         }
       },
       "required": [
@@ -15353,7 +15368,9 @@
         "kinds",
         "character_classes",
         "identity_provider",
-        "capabilities"
+        "capabilities",
+        "short_name",
+        "icon"
       ],
       "title": "DisciplineDescriptor",
       "type": "object"
