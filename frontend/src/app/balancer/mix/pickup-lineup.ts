@@ -164,6 +164,8 @@ export type MixOwner = {
   ontology: RoleOntology | null;
   /** The game's own name, for labels that say where a rank came from. */
   gameName: string | null;
+  /** The game's name when it collects a live native rank (a rank to read beside the author's), else `null`. */
+  nativeRankName: string | null;
   /** The rated dimension role references are written in. `null` until metadata loads, so nothing writes a guess. */
   dimension: string | null;
   /** Roles a lineup row may play, in the game's declared order. */
@@ -194,6 +196,7 @@ export function buildMixOwner(
   return {
     ontology,
     gameName: metadata?.discipline.name ?? null,
+    nativeRankName: metadata?.discipline.capabilities.native_rank_collection ? metadata.discipline.name : null,
     dimension: ontology ? (ratedDimension(ontology)?.code ?? null) : null,
     roles,
     demand,

@@ -1,6 +1,6 @@
 import { Check, CornerDownLeft, Plus } from "lucide-react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
@@ -37,7 +37,7 @@ export function RosterRowItem({
 }>) {
   const slotLabel = useSlotLabel(owner.ontology);
   const label = row.displayName || row.handle || `#${row.memberId}`;
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
   const { grid } = owner;
 
   return (

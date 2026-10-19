@@ -204,7 +204,7 @@ export function PlayerEditHistoryPanel({
 
         {!history.error && !history.loading && entries.length === 0 ? (
           <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 py-2 text-xs text-[color:var(--aqt-fg-muted)]">
-            No ranked tournament history was found for this BattleTag.
+            No ranked tournament history was found for this player.
           </div>
         ) : null}
 

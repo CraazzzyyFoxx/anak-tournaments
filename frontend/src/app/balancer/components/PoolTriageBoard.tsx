@@ -34,11 +34,11 @@ import {
   derivePoolLane,
   hasBlockingIssues,
   getPoolDropPatch,
-  getRegistrationBattleTags,
+  splitHandle,
   type PlayerValidationState,
   type PoolLane,
 } from "@/components/balancer/balancer-page-helpers";
-import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
+import { AdditionalHandleStrip, HandleContextMenuItems, HandleCopyButton } from "./HandleCopyControls";
 import { isRoleEntryActive } from "@/components/balancer/workspace-helpers";
 import { IssueChip, issueChipKey } from "./IssueChip";
 
@@ -83,14 +83,6 @@ function uniqueRoleCodes(roleCodes: BalancerRoleCode[]): BalancerRoleCode[] {
   return roleCodes.filter((roleCode, index) => roleCodes.indexOf(roleCode) === index);
 }
 
-function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
-  const hashIndex = battleTag.indexOf("#");
-  if (hashIndex < 0) {
-    return { name: battleTag, suffix: null };
-  }
-  return { name: battleTag.slice(0, hashIndex), suffix: battleTag.slice(hashIndex) };
-}
-
 function isCardActionTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-card-action]") !== null;
 }
@@ -133,11 +125,9 @@ function TriagePlayerCard({
   const rankedRoleCodes = uniqueRoleCodes(rankedEntries.map((entry) => entry.role));
   const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
   const primaryRole = primaryEntry?.role ?? null;
-  const { name, suffix } = splitBattleTag(state.player.battle_tag);
+  const { name, suffix } = splitHandle(state.player.identity);
   const isSelected = selectedPlayerId === state.player.id;
-  const battleTags = getRegistrationBattleTags(registration, state.player.battle_tag);
-  const primaryBattleTag = battleTags[0] ?? state.player.battle_tag;
-  const smurfTags = battleTags.slice(1);
+  const handles = [state.player.identity, ...state.player.additional_handles];
   const isReady = state.player.is_in_pool && !hasBlockingIssues(state.issues);
 
   return (
@@ -151,7 +141,7 @@ function TriagePlayerCard({
             isSelected && "border-primary/45 bg-primary/[0.08]",
             isDragging && "z-50 scale-[1.02] opacity-80 shadow-[0_22px_56px_rgba(0,0,0,0.34)]",
           )}
-          title={primaryBattleTag}
+          title={state.player.identity}
         >
           <div className="flex items-start gap-2">
             {state.player.is_in_pool ? (
@@ -172,7 +162,7 @@ function TriagePlayerCard({
                 type="button"
                 data-card-action
                 onClick={() => onSelectPlayer(state.player.id)}
-                title={`Edit ${primaryBattleTag}`}
+                title={`Edit ${state.player.identity}`}
                 className="w-full min-w-0 rounded text-left"
               >
                 <span className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -189,7 +179,7 @@ function TriagePlayerCard({
                   {suffix ? <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
                 </span>
               </button>
-              {state.player.is_flex || isReady || state.issues.length > 0 || smurfTags.length > 0 ? (
+              {state.player.is_flex || isReady || state.issues.length > 0 || state.player.additional_handles.length > 0 ? (
                 <div className="mt-1 flex min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {state.player.is_flex ? (
                     <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-violet-200">
@@ -209,7 +199,7 @@ function TriagePlayerCard({
                       divisionGrid={divisionGrid}
                     />
                   ))}
-                  <SmurfTagStrip smurfTags={smurfTags} compact />
+                  <AdditionalHandleStrip additionalHandles={state.player.additional_handles} compact />
                 </div>
               ) : null}
             </div>
@@ -240,7 +230,7 @@ function TriagePlayerCard({
               onChange={registration ? (status) => onSetBalancerStatus?.(state.player.id, status) : undefined}
             />
             <div className="flex items-center gap-1">
-              <BattleTagCopyButton battleTag={primaryBattleTag} className="h-7 w-7" />
+              <HandleCopyButton handle={state.player.identity} className="h-7 w-7" />
               {state.player.is_in_pool ? (
                 <Button
                   type="button"
@@ -264,7 +254,7 @@ function TriagePlayerCard({
           <Pencil className="h-4 w-4" />
           Edit full profile
         </ContextMenuItem>
-        <BattleTagContextMenuItems battleTags={battleTags} />
+        <HandleContextMenuItems handles={handles} />
         {onSetPoolMembership && state.player.is_in_pool ? (
           <>
             <ContextMenuSeparator />

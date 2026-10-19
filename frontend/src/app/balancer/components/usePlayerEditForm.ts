@@ -201,7 +201,7 @@ export function usePlayerEditForm({
     setHistoryLoadError(null);
     try {
       const preview = await fetchPlayerRankHistoryPreview(
-        player.battle_tag,
+        player.identity,
         workspaceGridVersion,
         workspaceGrid,
         getHistoryWorkspaceIdParam(workspaceValue),

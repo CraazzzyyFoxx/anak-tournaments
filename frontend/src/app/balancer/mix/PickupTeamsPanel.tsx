@@ -92,7 +92,7 @@ type PickupTeamsPanelProps = {
     firstUuid: string,
     secondUuid: string
   ) => void | Promise<unknown>;
-  onCopyBattleTags: () => void;
+  onCopyHandles: () => void;
   postingToDiscord?: boolean;
   /** Omitted -- no Post to Discord button, matching a page that offers no post. */
   onPostToDiscord?: (variantIndex: number) => void;
@@ -141,7 +141,7 @@ export function PickupTeamsPanel({
   onCloseMix,
   onRenameTeam,
   onSwapSeats,
-  onCopyBattleTags,
+  onCopyHandles,
   postingToDiscord = false,
   onPostToDiscord,
   emptyState
@@ -418,7 +418,7 @@ export function PickupTeamsPanel({
               </IconTooltip>
               <IconTooltip
                 control
-                label="Copy battletags"
+                label="Copy handles"
                 hint="Everyone in the balance, one per line"
               >
                 <Button
@@ -426,8 +426,8 @@ export function PickupTeamsPanel({
                   variant="ghost"
                   size="icon"
                   className={TOOL_ICON_CLASS}
-                  aria-label="Copy battletags"
-                  onClick={onCopyBattleTags}
+                  aria-label="Copy handles"
+                  onClick={onCopyHandles}
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
                 </Button>

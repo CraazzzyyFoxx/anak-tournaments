@@ -1,7 +1,7 @@
 "use client";
 
-import { BattleTagCopyButton } from "@/app/balancer/components/BattleTagCopyControls";
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import {
   RoleRankControls,
   accentRowStyle,
@@ -22,6 +22,7 @@ import {
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RosterMember } from "@/services/workspace-player.service";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
 const EYEBROW_CLASS =
@@ -38,8 +39,8 @@ type WorkspacePlayerSheetProps = {
   member: RosterMember | null;
   /** The roster's game: rank history is resolved for it. */
   discipline: string;
-  /** The roster game's role dictionary: which roles carry a rank card, their names, glyphs and tints. */
-  ontology: RoleOntology | null;
+  /** The roster game's metadata: which roles carry a rank card (names, glyphs, tints) and whether it has a live rank. */
+  ontology: DisciplineMetadata | null;
   /** The grid the ranks are on: the roster game's grid in the workspace. */
   grid: DivisionGrid;
   canEdit: boolean;
@@ -75,7 +76,9 @@ export function WorkspacePlayerSheet({
   onSaveRank,
 }: Readonly<WorkspacePlayerSheetProps>) {
   const label = member ? member.display_name || member.identity?.handle || `#${member.member_id}` : "";
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
+  // Only a game that collects native ranks has a live rank to show.
+  const nativeRankName = ontology?.discipline.capabilities.native_rank_collection ? ontology.discipline.name : null;
   const roles = registrationRoles(ontology).map((role) => role.code);
 
   return (
@@ -94,7 +97,7 @@ export function WorkspacePlayerSheet({
               </span>
             ) : null}
             {member?.identity?.handle ? (
-              <BattleTagCopyButton battleTag={member.identity?.handle} className="ml-0.5 shrink-0" />
+              <HandleCopyButton handle={member.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
           <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
@@ -136,15 +139,16 @@ export function WorkspacePlayerSheet({
             </section>
 
             {/* The one thing the roster cannot tell an organiser: what this
-                player is actually ranked in the game right now. Read-only, and
-                the same component both other sheets use. */}
-            {member.identity?.provider === "battlenet" ? (
+                player is actually ranked in the game right now, for a game
+                that collects a native rank. Read-only, and the same component
+                both other sheets use. */}
+            {nativeRankName !== null && member.identity?.handle ? (
               <section className="space-y-2 px-5 py-4">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Live rank (OverFast)
+                  Live {nativeRankName} rank
                 </Label>
                 <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                  <RankHistory battleTag={member.identity?.handle} discipline={discipline} />
+                  <RankHistory battleTag={member.identity.handle} discipline={discipline} />
                 </div>
               </section>
             ) : null}

@@ -223,17 +223,17 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
     );
   };
 
-  const copyBattleTags = () => {
-    const tags = rows
+  const copyHandles = () => {
+    const handles = rows
       .filter((row) => row.participation !== "benched")
       .map((row) => row.identity?.handle ?? playerLabel(row));
-    if (tags.length === 0) {
+    if (handles.length === 0) {
       notify.error("Nobody is in the balance yet");
       return;
     }
     void navigator.clipboard
-      .writeText(tags.join("\n"))
-      .then(() => notify.success(`Copied ${tags.length} battletags`))
+      .writeText(handles.join("\n"))
+      .then(() => notify.success(`Copied ${handles.length} handles`))
       .catch(() => notify.error("Could not reach the clipboard"));
   };
 
@@ -339,7 +339,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
                   secondUuid,
                 })
               }
-              onCopyBattleTags={copyBattleTags}
+              onCopyHandles={copyHandles}
               postingToDiscord={postToDiscord.isPending}
               onPostToDiscord={(idx) => postToDiscord.mutate({ lobbyIndex: activeLobby, variantIndex: idx })}
               emptyState={

@@ -82,8 +82,7 @@ describe("buildBalancerPageCollections", () => {
       id,
       tournament_id: 60,
       user_id: id,
-      battle_tag: `Player${id}#1000`,
-      battle_tag_normalized: `player${id}#1000`,
+      primary_handle: `Player${id}#1000`,
       display_name: null,
       answers: {},
       roles: [],
@@ -108,6 +107,7 @@ describe("buildBalancerPageCollections", () => {
       ],
       OW_REFERENCE_GRID,
       (code) => code,
+      "battlenet",
     );
 
     expect(collections.allPlayerValidationStates.map((state) => state.player.id)).toEqual([1]);

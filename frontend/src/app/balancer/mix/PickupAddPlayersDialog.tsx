@@ -27,7 +27,7 @@ type PickupAddPlayersDialogProps = {
   discipline: string;
   /** The mix owner's game: the rank columns, the full-lobby size and the grid the ranks are on. */
   owner: MixOwner;
-  /** Workspace right: whether a new BattleTag can be added to the roster. */
+  /** Workspace right: whether a new player handle can be added to the roster. */
   canEdit: boolean;
   /**
    * Whether the rank pickers write. Only the host's book decides this mix, and

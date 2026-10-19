@@ -2,9 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   derivePoolLane,
-  formatBattleTagsForClipboard,
-  formatSmurfCount,
-  getRegistrationBattleTags,
+  formatAdditionalHandleCount,
+  formatHandlesForClipboard,
   getPoolDropPatch,
   type PlayerValidationState,
   type PoolLane,
@@ -15,6 +14,7 @@ import {
   createSyntheticApplicationFromRegistration,
   createSyntheticPlayerFromRegistration as createSynthetic,
   fetchPlayerRankHistoryPreview,
+  getRegistrationHandles,
   getPlayerValidationIssues as validationIssues,
   isRegistrationIncludedInBalancer,
   type PlayerValidationIssue,
@@ -55,8 +55,9 @@ function getPlayerValidationIssues(
 function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
   grid: DivisionGrid = OW_REFERENCE_GRID,
+  identityProvider: string | null = "battlenet",
 ) {
-  return createSynthetic(registration, grid);
+  return createSynthetic(registration, grid, identityProvider);
 }
 
 function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerRecord {
@@ -64,8 +65,9 @@ function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerR
     id: 1,
     tournament_id: 60,
     application_id: 10,
-    battle_tag: "player#1234",
-    battle_tag_normalized: "player#1234",
+    identity: "player#1234",
+    identity_key: "player#1234",
+    additional_handles: [],
     user_id: 1,
     role_entries_json: [],
     is_flex: false,
@@ -81,9 +83,9 @@ function createApplication(overrides: Partial<BalancerApplication>): BalancerApp
     id: 10,
     tournament_id: 60,
     tournament_sheet_id: 1,
-    battle_tag: "player#1234",
-    battle_tag_normalized: "player#1234",
-    smurf_tags_json: [],
+    identity: "player#1234",
+    identity_key: "player#1234",
+    additional_handles: [],
     twitch_nick: null,
     discord_nick: null,
     stream_pov: false,
@@ -380,33 +382,68 @@ describe("pool lane helpers", () => {
   });
 });
 
-describe("battle tag clipboard helpers", () => {
-  it("returns the primary BattleTag followed by unique non-empty smurf tags", () => {
+describe("game handle helpers", () => {
+  it("returns the primary handle followed by unique non-empty extra accounts", () => {
     const registration = createRegistration({
       answers: {
         identity_battlenet: ["Main#1111", " ", "Main#1111", "Alt#2222", "alt#2222", "Pocket#3333"],
       },
     });
 
-    expect(getRegistrationBattleTags(registration, "Fallback#0000")).toEqual([
+    expect(getRegistrationHandles(registration, "battlenet", "Fallback#0000")).toEqual([
       "Main#1111",
       "Alt#2222",
       "Pocket#3333",
     ]);
   });
 
-  it("falls back to the player BattleTag when the row answered no Battle.net identity", () => {
+  it("falls back to the player's handle when the row answered none for the game's provider", () => {
     const registration = createRegistration({ answers: {} });
 
-    const battleTags = getRegistrationBattleTags(registration, "Player#1234");
+    const handles = getRegistrationHandles(registration, "battlenet", "Player#1234");
 
-    expect(battleTags).toEqual(["Player#1234"]);
-    expect(formatBattleTagsForClipboard(battleTags)).toBe("Player#1234");
+    expect(handles).toEqual(["Player#1234"]);
+    expect(formatHandlesForClipboard(handles)).toBe("Player#1234");
   });
 
-  it("formats smurf count labels for collapsed UI", () => {
-    expect(formatSmurfCount(1)).toBe("1 smurf");
-    expect(formatSmurfCount(3)).toBe("3 smurfs");
+  it("reads the answer of the owner game's provider only", () => {
+    const registration = createRegistration({
+      answers: { identity_battlenet: ["Main#1111", "Alt#2222"], identity_riot: ["Faker#KR1"] },
+    });
+
+    expect(getRegistrationHandles(registration, "riot", "Fallback")).toEqual(["Faker#KR1"]);
+    // A game with no identity provider has no handle answer to read.
+    expect(getRegistrationHandles(registration, null, "Fallback")).toEqual(["Fallback"]);
+  });
+
+  it("formats the extra-account count for collapsed UI", () => {
+    expect(formatAdditionalHandleCount(1)).toBe("1 alt");
+    expect(formatAdditionalHandleCount(3)).toBe("3 alts");
+  });
+});
+
+describe("synthetic player identity", () => {
+  it("names a League registration by its Riot ID answers, extras apart, keyed by the Riot grammar", () => {
+    const registration = createRegistration({
+      primary_handle: "Faker # KR1",
+      answers: { identity_riot: ["Faker # KR1", "Alt#EUW"], identity_battlenet: ["Wrong#1111"] },
+    });
+
+    const player = createSyntheticPlayerFromRegistration(registration, OW_REFERENCE_GRID, "riot");
+
+    expect(player.identity).toBe("Faker # KR1");
+    expect(player.identity_key).toBe("faker#kr1");
+    expect(player.additional_handles).toEqual(["Alt#EUW"]);
+  });
+
+  it("keeps a registration with no game identity nameable by its own name", () => {
+    const registration = createRegistration({ primary_handle: null, display_name: "Walk In", answers: {} });
+
+    const player = createSyntheticPlayerFromRegistration(registration, OW_REFERENCE_GRID, null);
+    const application = createSyntheticApplicationFromRegistration(registration, player, null);
+
+    expect(player).toMatchObject({ identity: "Walk In", identity_key: "walk in", additional_handles: [] });
+    expect(application).toMatchObject({ identity: "Walk In", additional_handles: [] });
   });
 });
 
@@ -503,7 +540,7 @@ describe("synthetic registration helpers", () => {
     });
 
     const player = createSyntheticPlayerFromRegistration(registration);
-    const application = createSyntheticApplicationFromRegistration(registration, player);
+    const application = createSyntheticApplicationFromRegistration(registration, player, "battlenet");
 
     expect(application.primary_role).toBeNull();
     expect(application.additional_roles_json).toEqual(["tank", "support"]);
@@ -640,12 +677,86 @@ describe("registration rank pin save", () => {
         })),
         is_flex: player.is_flex
       },
-      registration.roles
+      registration.roles,
+      "position"
     );
     expect(patch.roles?.[0]).toMatchObject({
       role: { dimension: "position", role: "support" },
       rank_value: 1500
     });
+  });
+
+  it("writes a League registration that has no roles yet in the game's rated dimension", () => {
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      {
+        role_entries_json: [{ ...roleEntries[0], role: "jungle" }, { ...roleEntries[0], role: "mid", priority: 2 }],
+        is_flex: false
+      },
+      [],
+      "position"
+    );
+    expect(patch.roles?.map((entry) => entry.role)).toEqual([
+      { dimension: "position", role: "jungle" },
+      { dimension: "position", role: "mid" }
+    ]);
+  });
+
+  it("uses the rated dimension of the owner over a stale existing role's", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "legacy", role: "support" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          ow_rank_value: null
+        }
+      ]
+    });
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      { role_entries_json: roleEntries, is_flex: false },
+      registration.roles,
+      "position"
+    );
+    expect(patch.roles?.[0]?.role).toEqual({ dimension: "position", role: "support" });
+  });
+
+  it("falls back to the existing roles' dimension while the owner's roles load", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "position", role: "support" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          ow_rank_value: null
+        }
+      ]
+    });
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      { role_entries_json: roleEntries, is_flex: false },
+      registration.roles,
+      null
+    );
+    expect(patch.roles?.[0]?.role).toEqual({ dimension: "position", role: "support" });
+  });
+
+  it("refuses to guess a dimension for a role write when neither the game nor the registration names one", () => {
+    expect(() =>
+      buildRegistrationUpdateFromPlayerPayload(
+        { role_entries_json: roleEntries, is_flex: false },
+        [],
+        null
+      )
+    ).toThrow(/rated role dimension/);
+    // A write that touches no role entry needs no dimension.
+    expect(
+      buildRegistrationUpdateFromPlayerPayload({ admin_notes: "n" } as never, [], null)
+    ).toEqual({ admin_notes: "n" });
   });
 
   it("carries a role's saved character picks as `top_characters`, never the persisted-form spelling", () => {
@@ -666,7 +777,8 @@ describe("registration rank pin save", () => {
     const player = createSyntheticPlayerFromRegistration(registration);
     const patch = buildRegistrationUpdateFromPlayerPayload(
       { role_entries_json: player.role_entries_json, is_flex: player.is_flex },
-      registration.roles
+      registration.roles,
+      "position"
     );
     expect(patch.roles?.[0]).toMatchObject({ top_characters: ["ahri", "syndra"] });
     expect(patch.roles?.[0]).not.toHaveProperty("top_heroes");
@@ -676,7 +788,7 @@ describe("registration rank pin save", () => {
     const patch = buildRegistrationUpdateFromPlayerPayload({
       role_entries_json: roleEntries,
       is_flex: false,
-    });
+    }, undefined, "player_role");
     expect(patch.pin).toBe(undefined);
     expect(patch.clear_pin).toBe(undefined);
   });
@@ -686,7 +798,7 @@ describe("registration rank pin save", () => {
       role_entries_json: roleEntries,
       is_flex: false,
       pin: true,
-    });
+    }, undefined, "player_role");
     expect(patch.pin).toBe(true);
   });
 
@@ -695,7 +807,7 @@ describe("registration rank pin save", () => {
       role_entries_json: roleEntries,
       is_flex: false,
       clear_pin: true,
-    });
+    }, undefined, "player_role");
     expect(patch.clear_pin).toBe(true);
     expect(patch.roles).toEqual([
       { role: {dimension: "player_role", role: "support"}, priority: 1,
@@ -709,7 +821,7 @@ describe("registration rank pin save", () => {
     const patch = buildRegistrationUpdateFromPlayerPayload({
       role_entries_json: [{ ...roleEntries[0], is_active: true, is_declared_active: false }],
       is_flex: false,
-    });
+    }, undefined, "player_role");
     expect(patch.roles?.[0]?.is_active).toBe(false);
   });
 });

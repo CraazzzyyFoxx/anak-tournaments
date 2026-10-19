@@ -86,7 +86,7 @@ function MemberSearchCombobox({
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
-      searchPlaceholder="Search by name or battletag…"
+      searchPlaceholder="Search by name or handle…"
       emptyMessage={emptyMessage}
       shouldFilter={false}
     >

@@ -15,7 +15,7 @@
 //     page's variant index; closing the mix is a separate, explicit action;
 //  6. a read-only viewer gets no writes but still sees teams;
 //  7. the verdict pills sit inside the captured block with the team card, so
-//     "Copy image" exports them together, while "Copy image"/"Copy battletags"
+//     "Copy image" exports them together, while "Copy image"/"Copy handles"
 //     stay outside it -- exporting its own toolbar would be a screenshot of a
 //     screenshot button;
 //  8. every seat is a drag source and drop target, gated on both write access
@@ -104,7 +104,7 @@ const onVariantIndexChange = vi.fn();
 const onRecordOutcome = vi.fn();
 const onNextMapChange = vi.fn();
 const onCloseMix = vi.fn();
-const onCopyBattleTags = vi.fn();
+const onCopyHandles = vi.fn();
 const onRenameTeam = vi.fn();
 const onSwapSeats = vi.fn();
 const onUndoMatch = vi.fn();
@@ -270,7 +270,7 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       onCloseMix={onCloseMix}
       onRenameTeam={onRenameTeam}
       onSwapSeats={props.omitSwapSeats ? undefined : onSwapSeats}
-      onCopyBattleTags={onCopyBattleTags}
+      onCopyHandles={onCopyHandles}
       postingToDiscord={false}
       onPostToDiscord={props.omitPostToDiscord ? undefined : onPostToDiscord}
     />
@@ -335,7 +335,7 @@ beforeEach(() => {
   onRecordOutcome.mockReset();
   onNextMapChange.mockReset();
   onCloseMix.mockReset();
-  onCopyBattleTags.mockReset();
+  onCopyHandles.mockReset();
   onRenameTeam.mockReset();
   onSwapSeats.mockReset();
   onUndoMatch.mockReset();
@@ -462,7 +462,7 @@ describe("PickupTeamsPanel", () => {
     expect(captured?.textContent).toContain("0.87");
     expect(captured?.textContent).toContain("karin");
     expect(captured?.textContent).not.toContain("Copy image");
-    expect(captured?.textContent).not.toContain("Copy battletags");
+    expect(captured?.textContent).not.toContain("Copy handles");
     expect(captured?.textContent).not.toContain("Close mix");
   });
 
@@ -724,11 +724,11 @@ describe("PickupTeamsPanel", () => {
     expect(scope.textContent).not.toContain("Match history");
   });
 
-  it("hands the tag copy to the page", async () => {
+  it("hands the handle copy to the page", async () => {
     const scope = await mount(game());
 
-    await click(byName(scope, "Copy battletags"));
-    expect(onCopyBattleTags).toHaveBeenCalledTimes(1);
+    await click(byName(scope, "Copy handles"));
+    expect(onCopyHandles).toHaveBeenCalledTimes(1);
   });
 
   it("gives a read-only viewer the teams but no controls -- not even the pager", async () => {

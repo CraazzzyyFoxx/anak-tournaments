@@ -90,8 +90,9 @@ const player: BalancerPlayerRecord = {
   id: 7,
   tournament_id: 11,
   application_id: 8,
-  battle_tag: "Support#1",
-  battle_tag_normalized: "support#1",
+  identity: "Support#1",
+  identity_key: "support#1",
+  additional_handles: [],
   user_id: null,
   role_entries_json: [
     {
@@ -384,7 +385,7 @@ describe("owner-grid nested crests", () => {
         {
           registration_id: 8,
           display_name: "Support",
-          battle_tag: null,
+          identity: null,
           status: "will_update",
           reason: null,
           will_add_to_balancer: false,
@@ -477,7 +478,7 @@ describe("owner game role and rank capabilities", () => {
 
   it("shows a live native rank, named by its game, only for a game that collects one", async () => {
     await render(sheetFor("overwatch", { ow_rank_value: 1500 }));
-    expect(document.body.textContent).toContain("Live rank (OverFast)");
+    expect(document.body.textContent).toContain("Live Overwatch rank");
     expect(document.body.textContent).toContain("Overwatch");
     expect(document.body.textContent).not.toContain("No live");
 

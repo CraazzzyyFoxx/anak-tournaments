@@ -25,12 +25,19 @@ export type BalancerRoleSubtype = string;
 export type RegistrationRankSource = "registration" | "workspace" | "native" | "none";
 
 
+/**
+ * The balancer tool's per-registration player record, synthesized client-side from an `AdminRegistration`.
+ * `identity` is the registration's primary handle for the owner game's identity provider in its display form (the
+ * registration's own name when it carries none); `identity_key` is that handle as it is MATCHED (provider-normalized);
+ * `additional_handles` are the extra accounts of the same provider, primary excluded.
+ */
 export interface BalancerPlayerRecord {
   id: number;
   tournament_id: number;
   application_id: number;
-  battle_tag: string;
-  battle_tag_normalized: string;
+  identity: string;
+  identity_key: string;
+  additional_handles: string[];
   user_id: number | null;
   role_entries_json: BalancerPlayerRoleEntry[];
   is_flex: boolean;
@@ -54,13 +61,14 @@ export interface BalancerPlayerRoleEntry {
   rank_source?: RegistrationRankSource;
 }
 
+/** Synthesized from an `AdminRegistration` like {@link BalancerPlayerRecord}; the identity fields mean the same. */
 export interface BalancerApplication {
   id: number;
   tournament_id: number;
   tournament_sheet_id: number;
-  battle_tag: string;
-  battle_tag_normalized: string;
-  smurf_tags_json: string[];
+  identity: string;
+  identity_key: string;
+  additional_handles: string[];
   twitch_nick: string | null;
   discord_nick: string | null;
   stream_pov: boolean;

@@ -20,9 +20,9 @@ import type { AdminRegistration, BalancerPlayerRecord } from "@/types/balancer-a
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGrid } from "@/types/workspace.types";
-import { getRegistrationBattleTags, splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
-import { BattleTagContextMenuItems, BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
+import { AdditionalHandleStrip, HandleContextMenuItems, HandleCopyButton } from "./HandleCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
 import {
   isRoleEntryActive,
@@ -106,18 +106,16 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
     .filter((roleCode, index, all) => all.indexOf(roleCode) === index);
   const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
   const divisionNumber = primaryEntry?.division_number ?? null;
-  const { name, suffix } = splitBattleTag(player.battle_tag);
+  const { name, suffix } = splitHandle(player.identity);
   const primaryRole = primaryEntry?.role ?? null;
   const issueSummary = issues.map((issue) => issue.message).join(" | ");
-  const battleTags = getRegistrationBattleTags(registration, player.battle_tag);
-  const primaryBattleTag = battleTags[0] ?? player.battle_tag;
-  const smurfTags = battleTags.slice(1);
+  const handles = [player.identity, ...player.additional_handles];
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
-          title={issueSummary || primaryBattleTag}
+          title={issueSummary || player.identity}
           className={cn(
             "group grid w-full cursor-pointer grid-cols-[24px_minmax(0,1fr)] items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
             "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]",
@@ -129,7 +127,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             type="button"
             data-card-action
             aria-pressed={isBulkSelected}
-            aria-label={isBulkSelected ? `Unselect ${player.battle_tag}` : `Select ${player.battle_tag}`}
+            aria-label={isBulkSelected ? `Unselect ${player.identity}` : `Select ${player.identity}`}
             onClick={() => onToggleBulkSelection?.(player.id)}
             className={cn(
               "mt-0.5 flex h-6 w-6 items-center justify-center rounded-md border text-label transition-colors",
@@ -159,7 +157,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   type="button"
                   data-card-action
                   onClick={() => onSelectPlayer?.(player.id)}
-                  title={`Edit ${primaryBattleTag}`}
+                  title={`Edit ${player.identity}`}
                   className="flex min-w-0 items-baseline gap-1 rounded text-left"
                 >
                   <span className="truncate text-caption font-medium text-[color:var(--aqt-fg)]">{name}</span>
@@ -194,7 +192,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   onChange={registration ? (status) => onSetBalancerStatus?.(player.id, status) : undefined}
                 />
 
-                <BattleTagCopyButton battleTag={primaryBattleTag} />
+                <HandleCopyButton handle={player.identity} />
 
                 {/* Exclude only: an excluded player comes back through a balancer status change. */}
                 {player.is_in_pool ? (
@@ -204,7 +202,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                     size="icon"
                     disabled={actionsDisabled || !onSetPoolMembership}
                     className="h-7 w-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-                    aria-label={`Exclude ${primaryBattleTag} from the balancer`}
+                    aria-label={`Exclude ${player.identity} from the balancer`}
                     title="Exclude from balancer"
                     onClick={() => onSetPoolMembership?.(player.id, false)}
                   >
@@ -214,7 +212,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
               </div>
             </div>
 
-            {player.is_flex || isReady || issues.length > 0 || smurfTags.length > 0 ? (
+            {player.is_flex || isReady || issues.length > 0 || player.additional_handles.length > 0 ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 {player.is_flex ? (
                   <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-violet-200">
@@ -234,7 +232,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                     divisionGrid={divisionGrid}
                   />
                 ))}
-                <SmurfTagStrip smurfTags={smurfTags} />
+                <AdditionalHandleStrip additionalHandles={player.additional_handles} />
               </div>
             ) : null}
           </div>
@@ -246,7 +244,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
           <Pencil className="h-4 w-4" />
           Edit full profile
         </ContextMenuItem>
-        <BattleTagContextMenuItems battleTags={battleTags} />
+        <HandleContextMenuItems handles={handles} />
         {onSetPoolMembership && player.is_in_pool ? (
           <>
             <ContextMenuSeparator />

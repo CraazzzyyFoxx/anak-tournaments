@@ -1,12 +1,6 @@
-import type {
-  AdminRegistration,
-  BalancerPlayerRecord,
-  InternalBalancePayload,
-  InternalBalancePlayer
-} from "@/types/balancer-admin.types";
+import type { BalancerPlayerRecord, InternalBalancePayload, InternalBalancePlayer } from "@/types/balancer-admin.types";
 import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
 import { getActiveRoleEntries } from "@/components/balancer/workspace-helpers";
-import { answerList } from "@/lib/forms/answers";
 
 export type { PlayerValidationIssue };
 
@@ -64,36 +58,13 @@ export function getPoolDropPatch(targetLane: PoolLane): PoolDropPatch {
   return { is_in_pool: targetLane !== "excluded" };
 }
 
-/** Every BattleTag the registration carries — its primary handle first, the
- *  smurfs after — deduplicated case-insensitively. `fallbackBattleTag` stands
- *  in when there is no registration behind the row, or it answered no
- *  Battle.net identity at all. */
-export function getRegistrationBattleTags(
-  registration: Pick<AdminRegistration, "answers"> | null | undefined,
-  fallbackBattleTag: string
-): string[] {
-  const handles = registration ? answerList(registration.answers, "identity_battlenet") : [];
-  const seen = new Set<string>();
-  const tags = [handles[0] ?? fallbackBattleTag, ...handles.slice(1)]
-    .map((tag) => tag?.trim())
-    .filter((tag): tag is string => Boolean(tag));
-
-  return tags.filter((tag) => {
-    const normalizedTag = tag.toLowerCase();
-    if (seen.has(normalizedTag)) {
-      return false;
-    }
-    seen.add(normalizedTag);
-    return true;
-  });
+export function formatHandlesForClipboard(handles: string[]): string {
+  return handles.join("\n");
 }
 
-export function formatBattleTagsForClipboard(battleTags: string[]): string {
-  return battleTags.join("\n");
-}
-
-export function formatSmurfCount(count: number): string {
-  return `${count} smurf${count === 1 ? "" : "s"}`;
+/** The collapsed label of a row's extra accounts: `2 alts`. */
+export function formatAdditionalHandleCount(count: number): string {
+  return `${count} alt${count === 1 ? "" : "s"}`;
 }
 
 export const PRESET_LABELS: Record<string, string> = {
@@ -138,12 +109,12 @@ export const ICON_BUTTON_CLASS =
 /**
  * `Name#1234` → a bright name plus a dim `#1234`, so a row reads as one
  * identity instead of one long string with the discriminator competing for
- * attention. Tags without a discriminator come back whole.
+ * attention. Handles without a discriminator come back whole.
  */
-export function splitBattleTag(battleTag: string): { name: string; suffix: string | null } {
-  const index = battleTag.lastIndexOf("#");
-  if (index <= 0) return { name: battleTag, suffix: null };
-  return { name: battleTag.slice(0, index), suffix: battleTag.slice(index) };
+export function splitHandle(handle: string): { name: string; suffix: string | null } {
+  const index = handle.lastIndexOf("#");
+  if (index <= 0) return { name: handle, suffix: null };
+  return { name: handle.slice(0, index), suffix: handle.slice(index) };
 }
 
 export function createVariantLabel(index: number): string {
@@ -162,7 +133,7 @@ export function sortPlayerStates(
 ): PlayerValidationState[] {
   return [...playerStates].sort((left, right) => {
     if (sortValue === "name_asc") {
-      return left.player.battle_tag.localeCompare(right.player.battle_tag);
+      return left.player.identity.localeCompare(right.player.identity);
     }
     if (sortValue === "division_asc") {
       return getPrimaryDivision(left.player) - getPrimaryDivision(right.player);

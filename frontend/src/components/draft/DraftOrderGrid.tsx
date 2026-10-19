@@ -4,7 +4,7 @@ import { ArrowRight, Hourglass, Shuffle, Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef } from "react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { currentRound, orderGrid, pickState, picksAway, type RoundDirection } from "@/lib/draft/room-model";
@@ -146,7 +146,7 @@ export function DraftOrderGrid({
               const sub =
                 state === "done"
                   ? tag != null
-                    ? splitBattleTag(tag).name
+                    ? splitHandle(tag).name
                     : "—"
                   : state === "current"
                     ? t("teams.order.now")

@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Pin, Save, UserMinus } from "lucide-react";
 
-import { BattleTagCopyButton } from "@/app/balancer/components/BattleTagCopyControls";
+import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import RankHistory from "@/components/RankHistory";
 import { Button } from "@/components/ui/button";
@@ -137,7 +137,7 @@ export function PickupPlayerSheet({
 }: Readonly<PickupPlayerSheetProps>) {
   const label = row ? playerLabel(row) : "";
   const t = useTranslations("mixes.lobbies");
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
   // The record across every mix, not this one: a caption, because it is
   // context for the settings below it and nothing here edits it.
   const mixStreak = mixStats ? formatStreak(mixStats.streak) : null;
@@ -216,7 +216,7 @@ export function PickupPlayerSheet({
               </span>
             ) : null}
             {row?.identity?.handle ? (
-              <BattleTagCopyButton battleTag={row.identity?.handle} className="ml-0.5 shrink-0" />
+              <HandleCopyButton handle={row.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
           {mixRecord ? <span className={cn(CAPTION_CLASS, "pt-1")}>{mixRecord}</span> : null}
@@ -364,17 +364,18 @@ export function PickupPlayerSheet({
             </section>
 
             {/* The one thing the mix cannot tell the host: what this player is
-                actually ranked in Overwatch right now. Read-only, and the same
-                component the tournament sheet uses. */}
-            {row.identity?.provider === "battlenet" ? (
-            <section className="space-y-2 px-5 py-4">
-              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                Live rank (OverFast)
-              </Label>
-              <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
-                <RankHistory battleTag={row.identity?.handle} discipline={discipline} />
-              </div>
-            </section>
+                actually ranked in the game right now — only for a game that
+                collects a native rank. Read-only, and the same component the
+                tournament sheet uses. */}
+            {owner.nativeRankName !== null && row.identity?.handle ? (
+              <section className="space-y-2 px-5 py-4">
+                <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                  Live {owner.nativeRankName} rank
+                </Label>
+                <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
+                  <RankHistory battleTag={row.identity.handle} discipline={discipline} />
+                </div>
+              </section>
             ) : null}
           </div>
         )}

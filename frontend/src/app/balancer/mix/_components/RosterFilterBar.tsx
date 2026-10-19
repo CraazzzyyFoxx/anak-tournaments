@@ -36,7 +36,7 @@ export function RosterFilterBar({
   mineTotal: number | null;
   visibleAuthors: RosterAuthor[];
   overflowAuthors: RosterAuthor[];
-  /** Workspace right: whether a new BattleTag can be added to the roster. */
+  /** Workspace right: whether a new player handle can be added to the roster. */
   canEdit: boolean;
   canWrite: boolean;
   workspaceId: number;

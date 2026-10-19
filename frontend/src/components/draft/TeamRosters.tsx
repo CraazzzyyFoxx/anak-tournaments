@@ -4,7 +4,7 @@ import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, type CSSProperties } from "react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
@@ -468,7 +468,7 @@ function RosterCell({
           className="h-[18px] w-[18px] flex-none object-contain"
         />
       )}
-      <span className="min-w-0 truncate">{splitBattleTag(tag).name}</span>
+      <span className="min-w-0 truncate">{splitHandle(tag).name}</span>
     </button>
   );
 }

@@ -18,25 +18,26 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { formatBattleTagsForClipboard, formatSmurfCount } from "@/components/balancer/balancer-page-helpers";
+import { formatAdditionalHandleCount, formatHandlesForClipboard } from "@/components/balancer/balancer-page-helpers";
 
-type BattleTagCopyButtonProps = {
-  battleTag: string;
+type HandleCopyButtonProps = {
+  handle: string;
   label?: string;
   className?: string;
 };
 
-type SmurfTagStripProps = {
-  smurfTags: string[];
+type AdditionalHandleStripProps = {
+  additionalHandles: string[];
   className?: string;
   compact?: boolean;
 };
 
-type BattleTagMenuItemsProps = {
-  battleTags: string[];
+type HandleMenuItemsProps = {
+  /** The row's primary handle first, its extra accounts after. */
+  handles: string[];
 };
 
-function useBattleTagClipboard() {
+function useHandleClipboard() {
   return async (value: string, label: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -47,12 +48,12 @@ function useBattleTagClipboard() {
   };
 }
 
-export function BattleTagCopyButton({
-  battleTag,
-  label = "BattleTag",
+export function HandleCopyButton({
+  handle,
+  label = "Handle",
   className
-}: Readonly<BattleTagCopyButtonProps>) {
-  const copyBattleTag = useBattleTagClipboard();
+}: Readonly<HandleCopyButtonProps>) {
+  const copyHandle = useHandleClipboard();
 
   return (
     <Button
@@ -64,7 +65,7 @@ export function BattleTagCopyButton({
         className
       )}
       title={`Copy ${label}`}
-      onClick={() => copyBattleTag(battleTag, label)}
+      onClick={() => copyHandle(handle, label)}
     >
       <Copy className="h-3.5 w-3.5" />
       <span className="sr-only">Copy {label}</span>
@@ -72,16 +73,17 @@ export function BattleTagCopyButton({
   );
 }
 
-export function SmurfTagStrip({ smurfTags, className, compact = false }: Readonly<SmurfTagStripProps>) {
-  const copyBattleTag = useBattleTagClipboard();
+/** A row's extra accounts behind one collapsed chip: copy one or all of them. */
+export function AdditionalHandleStrip({ additionalHandles, className, compact = false }: Readonly<AdditionalHandleStripProps>) {
+  const copyHandle = useHandleClipboard();
 
-  if (smurfTags.length === 0) {
+  if (additionalHandles.length === 0) {
     return null;
   }
 
   return (
     // `data-card-action`: the clickable pool and roster rows skip this subtree,
-    // so opening the smurf menu never opens the player sheet behind it.
+    // so opening the alt menu never opens the player sheet behind it.
     <div data-card-action className={cn("flex shrink-0 items-center gap-1", className)}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -91,33 +93,28 @@ export function SmurfTagStrip({ smurfTags, className, compact = false }: Readonl
               "inline-flex items-center gap-1 rounded-full border border-cyan-300/15 bg-cyan-500/8 font-semibold text-cyan-100/62 transition hover:border-cyan-300/30 hover:bg-cyan-500/14 hover:text-cyan-50",
               compact ? "px-1.5 py-0.5 text-label" : "px-2 py-0.5 text-label"
             )}
-            title="Show smurf BattleTags"
+            title="Show alt handles"
           >
-            {formatSmurfCount(smurfTags.length)}
+            {formatAdditionalHandleCount(additionalHandles.length)}
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>Smurf BattleTags</DropdownMenuLabel>
-          {smurfTags.length > 1 ? (
+          <DropdownMenuLabel>Alt handles</DropdownMenuLabel>
+          {additionalHandles.length > 1 ? (
             <>
               <DropdownMenuItem
-                onClick={() =>
-                  copyBattleTag(formatBattleTagsForClipboard(smurfTags), "Smurf BattleTags")
-                }
+                onClick={() => copyHandle(formatHandlesForClipboard(additionalHandles), "Alt handles")}
               >
                 <Files className="h-4 w-4" />
-                Copy all smurfs
+                Copy all alts
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
           ) : null}
-          {smurfTags.map((smurfTag) => (
-            <DropdownMenuItem
-              key={smurfTag}
-              onClick={() => copyBattleTag(smurfTag, "Smurf BattleTag")}
-            >
+          {additionalHandles.map((handle) => (
+            <DropdownMenuItem key={handle} onClick={() => copyHandle(handle, "Alt handle")}>
               <Copy className="h-4 w-4" />
-              <span className="truncate">{smurfTag}</span>
+              <span className="truncate">{handle}</span>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -126,35 +123,35 @@ export function SmurfTagStrip({ smurfTags, className, compact = false }: Readonl
   );
 }
 
-export function BattleTagContextMenuItems({ battleTags }: Readonly<BattleTagMenuItemsProps>) {
-  const copyBattleTag = useBattleTagClipboard();
-  const [primaryBattleTag, ...smurfTags] = battleTags;
+export function HandleContextMenuItems({ handles }: Readonly<HandleMenuItemsProps>) {
+  const copyHandle = useHandleClipboard();
+  const [primaryHandle, ...additionalHandles] = handles;
 
-  if (!primaryBattleTag) {
+  if (!primaryHandle) {
     return null;
   }
 
   return (
     <>
       <ContextMenuSeparator />
-      <ContextMenuLabel>BattleTags</ContextMenuLabel>
-      <ContextMenuItem onClick={() => copyBattleTag(primaryBattleTag, "BattleTag")}>
+      <ContextMenuLabel>Handles</ContextMenuLabel>
+      <ContextMenuItem onClick={() => copyHandle(primaryHandle, "Handle")}>
         <Copy className="h-4 w-4" />
-        Copy main BattleTag
+        Copy main handle
       </ContextMenuItem>
-      {battleTags.length > 1 ? (
+      {handles.length > 1 ? (
         <ContextMenuItem
-          onClick={() => copyBattleTag(formatBattleTagsForClipboard(battleTags), "All BattleTags")}
+          onClick={() => copyHandle(formatHandlesForClipboard(handles), "All handles")}
         >
           <Files className="h-4 w-4" />
-          Copy all BattleTags
+          Copy all handles
         </ContextMenuItem>
       ) : null}
-      {smurfTags.length > 0 ? <ContextMenuSeparator /> : null}
-      {smurfTags.map((smurfTag) => (
-        <ContextMenuItem key={smurfTag} onClick={() => copyBattleTag(smurfTag, "Smurf BattleTag")}>
+      {additionalHandles.length > 0 ? <ContextMenuSeparator /> : null}
+      {additionalHandles.map((handle) => (
+        <ContextMenuItem key={handle} onClick={() => copyHandle(handle, "Alt handle")}>
           <Copy className="h-4 w-4" />
-          {smurfTag}
+          {handle}
         </ContextMenuItem>
       ))}
     </>

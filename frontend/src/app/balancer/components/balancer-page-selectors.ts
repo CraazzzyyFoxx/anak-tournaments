@@ -34,6 +34,8 @@ export function buildBalancerPageCollections(
   allRegistrations: AdminRegistration[],
   divisionGrid: DivisionGrid,
   slotLabel: SlotLabeler,
+  /** The owner game's identity provider: whose handle answers name each player (`null`: the game has none). */
+  identityProvider: string | null,
 ): BalancerPageCollections {
   // Only approved registrations belong to the balancer, the same rule the
   // backend pool uses (`pool_only`): pending, rejected and withdrawn rows are
@@ -43,7 +45,7 @@ export function buildBalancerPageCollections(
     registrations.map((registration) => [registration.id, registration]),
   );
   const players = registrations.map((registration) =>
-    createSyntheticPlayerFromRegistration(registration, divisionGrid),
+    createSyntheticPlayerFromRegistration(registration, divisionGrid, identityProvider),
   );
   const playersById = new Map(players.map((player) => [player.id, player]));
   const applications = registrations.map((registration) =>
@@ -52,6 +54,7 @@ export function buildBalancerPageCollections(
       playersById.get(registration.id)?.is_in_pool
         ? playersById.get(registration.id) ?? null
         : null,
+      identityProvider,
     ),
   );
   const applicationsById = new Map(

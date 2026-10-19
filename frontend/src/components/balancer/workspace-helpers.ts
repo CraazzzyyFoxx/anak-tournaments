@@ -19,6 +19,8 @@ import userService from "@/services/user.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import { DivisionGridNormalizer } from "@/lib/divisions/grid-normalizer";
 import { answerFlag, answerList, answerText } from "@/lib/forms/answers";
+import { identityKey } from "@/lib/forms/builtin-keys";
+import { normalizeSocialHandle } from "@/lib/social/providers";
 
 /** Names a slot code for display: the owner game's role name, or the open-slot label (`useSlotLabel(ontology)`). */
 export type SlotLabeler = (code: string) => string;
@@ -175,13 +177,14 @@ export function buildPlayerSearchIndex(
   );
 
   return [
-    player.battle_tag,
-    player.battle_tag_normalized,
+    player.identity,
+    player.identity_key,
+    ...player.additional_handles,
     player.is_flex ? "flex" : "",
     playerRoleLabels.join(" "),
     playerRoleCodes.join(" "),
     divisions.join(" "),
-    application?.battle_tag ?? "",
+    application?.identity ?? "",
     applicationRoleLabels.join(" ")
   ]
     .join(" ")
@@ -392,6 +395,36 @@ function getRegistrationDisplayName(registration: AdminRegistration): string {
   return registration.primary_handle ?? registration.display_name ?? `registration-${registration.id}`;
 }
 
+/**
+ * Every handle the registration carries for the owner game's identity provider: the primary handle first, the extra
+ * accounts after, deduplicated case-insensitively. `fallback` stands in when the registration answered no handle of
+ * that provider (or the game has none).
+ */
+export function getRegistrationHandles(
+  registration: Pick<AdminRegistration, "answers">,
+  provider: string | null,
+  fallback: string
+): string[] {
+  const handles = provider ? answerList(registration.answers, identityKey(provider)) : [];
+  const seen = new Set<string>();
+  return [handles[0] ?? fallback, ...handles.slice(1)]
+    .map((handle) => handle?.trim())
+    .filter((handle): handle is string => Boolean(handle))
+    .filter((handle) => {
+      const key = handle.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+/** The identity fields of the synthetic records, read for the owner game's provider (`null`: the game has none). */
+function registrationIdentityFields(registration: AdminRegistration, provider: string | null) {
+  const fallback = getRegistrationDisplayName(registration);
+  const [identity = fallback, ...additional_handles] = getRegistrationHandles(registration, provider, fallback);
+  return { identity, identity_key: normalizeSocialHandle(provider ?? "", identity), additional_handles };
+}
+
 export function isRegistrationIncludedInBalancer(registration: AdminRegistration): boolean {
   return !registration.deleted_at && !registration.balancer_status_meta.excludes_from_balancer;
 }
@@ -407,16 +440,16 @@ export function isRegistrationAvailableForBalancer(registration: AdminRegistrati
 
 export function createSyntheticPlayerFromRegistration(
   registration: AdminRegistration,
-  grid: DivisionGrid
+  grid: DivisionGrid,
+  /** The owner game's identity provider: whose handle answers name the player. */
+  identityProvider: string | null
 ): BalancerPlayerRecord {
-  const battleTag = getRegistrationDisplayName(registration);
   const isFlex = registration.is_flex;
   return {
     id: registration.id,
     tournament_id: registration.tournament_id,
     application_id: registration.id,
-    battle_tag: battleTag,
-    battle_tag_normalized: battleTag.toLowerCase(),
+    ...registrationIdentityFields(registration, identityProvider),
     user_id: registration.user_id,
     // Roles come from the API exactly as the roster engine resolved them:
     // `is_active` IS "playable" and `rank_value` IS the resolved rank, flex
@@ -441,7 +474,8 @@ export function createSyntheticPlayerFromRegistration(
 
 export function createSyntheticApplicationFromRegistration(
   registration: AdminRegistration,
-  player: BalancerPlayerRecord | null = null
+  player: BalancerPlayerRecord | null,
+  identityProvider: string | null
 ): BalancerApplication {
   const sortedRoles = [...registration.roles].sort((left, right) => left.priority - right.priority);
   const isFlex = registration.is_flex;
@@ -451,18 +485,12 @@ export function createSyntheticApplicationFromRegistration(
   const additionalRoles = sortedRoles
     .map((role) => roleOf(role.role))
     .filter((role) => isFlex || role !== primaryRole);
-  const battleTag = getRegistrationDisplayName(registration);
 
   return {
     id: registration.id,
     tournament_id: registration.tournament_id,
     tournament_sheet_id: 0,
-    battle_tag: battleTag,
-    battle_tag_normalized: battleTag.toLowerCase(),
-    // The sheet application record keeps its own smurf column; the extras of
-    // the registration's Battle.net answer are what fills it, the primary
-    // handle above being its first entry.
-    smurf_tags_json: answerList(registration.answers, "identity_battlenet").slice(1),
+    ...registrationIdentityFields(registration, identityProvider),
     twitch_nick: answerList(registration.answers, "identity_twitch")[0] ?? null,
     discord_nick: answerList(registration.answers, "identity_discord")[0] ?? null,
     stream_pov: answerFlag(registration.answers, "stream_pov"),
@@ -523,7 +551,7 @@ export function downloadPlayersExport(
  * the user cannot be found or has no history.
  */
 export async function fetchPlayerRankHistoryPreview(
-  battleTag: string,
+  identity: string,
   targetGridVersion: DivisionGridVersion | null,
   grid: DivisionGrid,
   workspaceId: number | null | undefined,
@@ -534,7 +562,7 @@ export async function fetchPlayerRankHistoryPreview(
   roleCodes: readonly BalancerRoleCode[]
 ): Promise<PlayerRankHistoryPreview | null> {
   try {
-    const lookupName = battleTag.replace("#", "-");
+    const lookupName = identity.replace("#", "-");
     const user = await userService.getUserByName(lookupName);
     if (!user?.id) return null;
 

@@ -29,8 +29,9 @@ function player(id: number, battleTag: string, overrides: Partial<BalancerPlayer
     id,
     tournament_id: 80,
     application_id: id,
-    battle_tag: battleTag,
-    battle_tag_normalized: battleTag.toLowerCase(),
+    identity: battleTag,
+    identity_key: battleTag.toLowerCase(),
+    additional_handles: [],
     user_id: id,
     role_entries_json: [
       { role: "support", subtype: null, priority: 1, division_number: 12, rank_value: 900, is_active: true, is_declared_active: true, ow_rank_value: null },

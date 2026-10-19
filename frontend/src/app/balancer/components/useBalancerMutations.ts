@@ -49,6 +49,8 @@ type UseBalancerMutationsOptions = {
   activeVariant: BalanceVariant | null;
   /** The owner game's slot codes (role codes and the open slot) a balance file may carry; `null` while its roles load. */
   slotCodes: readonly string[] | null;
+  /** The owner game's rated role dimension a player-sheet save writes its role entries in; `null` while its roles load. */
+  ratedDimension: string | null;
   /**
    * Called once a balance job is created so the realtime layer can attach the
    * run-local context (skipped count, config) to the eventual `succeeded`
@@ -136,7 +138,8 @@ export function useBalancerMutations({
   onTournamentConfigSaved,
   activeVariant,
   onJobCreated,
-  slotCodes
+  slotCodes,
+  ratedDimension
 }: UseBalancerMutationsOptions) {
   const invalidateRegistrations = () =>
     queryClient.invalidateQueries({ queryKey: balancerQueryKeys.registrations(tournamentId) });
@@ -173,7 +176,8 @@ export function useBalancerMutations({
       const existingReg = cachedRegistrations?.find((r) => r.id === playerId);
       const registrationPatch = buildRegistrationUpdateFromPlayerPayload(
         payload,
-        existingReg?.roles
+        existingReg?.roles,
+        ratedDimension
       );
       let updated: AdminRegistration | null = null;
       if (Object.keys(registrationPatch).length > 0) {

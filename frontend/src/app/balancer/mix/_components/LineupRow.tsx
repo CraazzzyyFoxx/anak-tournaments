@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
 import { Armchair, GripVertical, RotateCw, SlidersHorizontal, X } from "lucide-react";
 
-import { PANEL_CLASS, splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { PANEL_CLASS, splitHandle } from "@/components/balancer/balancer-page-helpers";
 import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
@@ -143,7 +143,7 @@ export function LineupRow({
 }: Readonly<LineupRowProps>) {
   const { grid } = owner;
   const label = playerLabel(row);
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
   const issue = getLineupIssue(row, owner.roles);
   const rank = averageRank(row, owner.roles);
   const division = resolveDivisionFromRank(grid, rank);
@@ -260,7 +260,7 @@ export function LineupRow({
 /** The dragged row's own card, detached from its column, following the pointer. */
 export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlayer; owner: MixOwner }>) {
   const label = playerLabel(row);
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
   const rank = averageRank(row, owner.roles);
 
   return (

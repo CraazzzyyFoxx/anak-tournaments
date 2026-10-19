@@ -32,8 +32,7 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
-import { getRegistrationBattleTags } from "@/components/balancer/balancer-page-helpers";
-import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
+import { AdditionalHandleStrip, HandleCopyButton } from "./HandleCopyControls";
 import RankHistory from "@/components/RankHistory";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -93,9 +92,7 @@ export function PlayerEditModal({
   });
   const { roleEntries, history } = form;
 
-  const battleTags = getRegistrationBattleTags(registration, player.battle_tag);
-  const primaryBattleTag = battleTags[0] ?? player.battle_tag;
-  const smurfTags = battleTags.slice(1);
+  const primaryHandle = player.identity;
   const computedReady = isComputedReady(roleEntries);
   const hasOverride = roleEntries.some((entry) => entry.rank_source === "registration");
   // Only a game that collects native ranks has a live rank to show or to suggest: no other game gets a placeholder.
@@ -120,16 +117,16 @@ export function PlayerEditModal({
         >
           <div className="flex flex-wrap items-center gap-2">
             <SheetTitle className="text-base font-semibold tracking-tight text-[color:var(--aqt-fg)]">
-              {primaryBattleTag}
+              {primaryHandle}
             </SheetTitle>
-            <BattleTagCopyButton battleTag={primaryBattleTag} className="h-6 w-6" />
+            <HandleCopyButton handle={primaryHandle} className="h-6 w-6" />
             {form.isFlex ? (
               <Badge className="h-5 border-emerald-400/25 bg-emerald-400/10 px-2 text-label text-emerald-200 hover:bg-emerald-400/10">
                 Flex
               </Badge>
             ) : null}
           </div>
-          <SmurfTagStrip smurfTags={smurfTags} className="mt-1.5" />
+          <AdditionalHandleStrip additionalHandles={player.additional_handles} className="mt-1.5" />
           <SheetDescription className="text-xs text-[color:var(--aqt-fg-dim)]">
             Roles, ratings, and balancer participation.
           </SheetDescription>
@@ -287,13 +284,13 @@ export function PlayerEditModal({
           {nativeRankName !== null ? (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                Live rank (OverFast)
+                Live {nativeRankName} rank
               </Label>
               <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
                 {player.user_id != null ? (
                   <RankHistory userId={player.user_id} discipline={discipline} />
                 ) : (
-                  <RankHistory battleTag={primaryBattleTag} discipline={discipline} />
+                  <RankHistory battleTag={primaryHandle} discipline={discipline} />
                 )}
               </div>
             </div>

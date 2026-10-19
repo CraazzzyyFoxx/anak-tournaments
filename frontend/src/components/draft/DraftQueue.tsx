@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef, useState } from "react";
 
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
@@ -127,7 +127,7 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor, 
                 </span>
                 <ArrowRight aria-hidden className="h-[13px] w-[13px] flex-none text-[color:var(--aqt-fg-faint)]" />
                 <span className="truncate font-semibold" title={tag}>
-                  {splitBattleTag(tag).name}
+                  {splitHandle(tag).name}
                 </span>
                 {pick.target_role && (
                   <span className="flex-none" title={slotLabel(roleOf(pick.target_role))}>

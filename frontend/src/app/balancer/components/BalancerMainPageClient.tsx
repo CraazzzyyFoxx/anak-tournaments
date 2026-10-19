@@ -28,7 +28,7 @@ import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { mergeStatusOptions } from "@/lib/registration/balancer-statuses";
-import { slotCodeOrder } from "@/lib/roster/ontology";
+import { ratedDimension, slotCodeOrder } from "@/lib/roster/ontology";
 import { slotCodesOf } from "@/lib/roster/shape";
 import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 import { notify } from "@/lib/notify";
@@ -186,6 +186,8 @@ export function BalancerMainPageClient() {
     tournamentQuery.data?.discipline ?? null
   ).data ?? null;
   const slotLabel = useSlotLabel(ontology);
+  // Whose handle answers name a player; `null` while the game's metadata loads or for a game with no identity.
+  const identityProvider = ontology?.discipline.identity_provider ?? null;
   // The buckets a balance file may carry: the owner game's role codes and the open slot. `null` while they load.
   const slotCodes = ontology ? slotCodeOrder(ontology) : null;
   const roleCodes = tournamentQuery.data?.roster_shape
@@ -278,8 +280,8 @@ export function BalancerMainPageClient() {
     invalidPlayerStates,
     flexPoolCount
   } = useMemo(
-    () => buildBalancerPageCollections(registrations, divisionGrid, slotLabel),
-    [divisionGrid, registrations, slotLabel]
+    () => buildBalancerPageCollections(registrations, divisionGrid, slotLabel, identityProvider),
+    [divisionGrid, registrations, slotLabel, identityProvider]
   );
 
   const workspaceBalancerConfig = workspaceBalancerConfigQuery.data ?? null;
@@ -319,9 +321,9 @@ export function BalancerMainPageClient() {
   const quickEditPlayer = useMemo(
     () =>
       quickEditRegistration
-        ? createSyntheticPlayerFromRegistration(quickEditRegistration, divisionGrid)
+        ? createSyntheticPlayerFromRegistration(quickEditRegistration, divisionGrid, identityProvider)
         : null,
-    [quickEditRegistration, divisionGrid]
+    [quickEditRegistration, divisionGrid, identityProvider]
   );
   const playerStatusOptions = useMemo(
     () => ({
@@ -475,7 +477,8 @@ export function BalancerMainPageClient() {
     onTournamentConfigSaved: handleConfigSavedFromRun,
     activeVariant,
     onJobCreated: registerLocalJob,
-    slotCodes
+    slotCodes,
+    ratedDimension: ontology ? (ratedDimension(ontology)?.code ?? null) : null
   });
 
   const canRunBalance = useMemo(

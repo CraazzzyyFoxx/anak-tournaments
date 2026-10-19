@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
-import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
+import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
@@ -176,7 +176,7 @@ function LineupChip({
 }: Readonly<{ row: CustomGamePlayer; owner: MixOwner; canWrite: boolean; onRemove: () => void }>) {
   const slotLabel = useSlotLabel(owner.ontology);
   const label = playerLabel(row);
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
   const order = resolveRoleOrder(row, owner.roles);
   const rank = averageRank(row, owner.roles);
 

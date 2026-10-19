@@ -9,16 +9,25 @@ import type {
  * Editor payload -> registration patch. Pure: it is the one place that decides
  * which of the player-sheet's fields become a registration write, so the
  * balancer tool and the admin registrations table cannot disagree about it.
+ *
+ * Role entries are written in the owner game's rated dimension (`ratedDimension`,
+ * from its ontology); a registration that already has roles may supply it while
+ * the ontology is still loading. With neither known the write is refused rather
+ * than guessed.
  */
 export function buildRegistrationUpdateFromPlayerPayload(
   payload: BalancerPlayerUpdateInput,
-  existingRoles?: AdminRegistration["roles"]
+  existingRoles: AdminRegistration["roles"] | undefined,
+  ratedDimension: string | null
 ): AdminRegistrationUpdateInput {
   const registrationPatch: AdminRegistrationUpdateInput = {};
 
   if (payload.role_entries_json !== undefined) {
     // Registration preferences share the owner's rated role dimension.
-    const roleDimension = existingRoles?.[0]?.role.dimension ?? "player_role";
+    const roleDimension = ratedDimension ?? existingRoles?.[0]?.role.dimension;
+    if (!roleDimension) {
+      throw new Error("The game's rated role dimension is not known yet");
+    }
     const existingRolesMap = new Map(
       existingRoles?.map((role) => [roleOf(role.role), role.top_characters ?? []]) ?? []
     );

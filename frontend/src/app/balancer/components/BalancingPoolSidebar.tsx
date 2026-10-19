@@ -212,7 +212,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
 
     const filteredPoolEmptyState = useMemo(() => {
       if (normalizedSearchQuery.length > 0) {
-        return { title: "No players match this search", description: "Try another BattleTag, role, or division." };
+        return { title: "No players match this search", description: "Try another handle, role, or division." };
       }
       if (poolView === "needs_fix") {
         return { title: "No players need fixes right now", description: "Every player in the pool is ready for the balancer." };
@@ -385,7 +385,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               value={searchQuery}
               onValueChange={setSearchQuery}
               label="Search the Balancing Pool"
-              placeholder="Search BattleTag or role"
+              placeholder="Search handle or role"
               autoComplete="off"
               className="h-9"
             />

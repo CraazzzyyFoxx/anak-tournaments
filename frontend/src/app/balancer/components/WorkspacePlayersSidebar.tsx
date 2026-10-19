@@ -15,12 +15,12 @@ import {
 import {
   ICON_BUTTON_CLASS,
   PANEL_CLASS,
-  splitBattleTag,
+  splitHandle,
 } from "@/components/balancer/balancer-page-helpers";
 import {
-  BattleTagContextMenuItems,
-  BattleTagCopyButton,
-} from "@/app/balancer/components/BattleTagCopyControls";
+  HandleContextMenuItems,
+  HandleCopyButton,
+} from "@/app/balancer/components/HandleCopyControls";
 import { WorkspacePlayerSheet } from "@/app/balancer/components/WorkspacePlayerSheet";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -96,7 +96,7 @@ type RosterMemberRowProps = {
  *
  * Same anatomy as `PoolPlayerCompactList`'s row — the ranked-role glyphs
  * beside the name, the division icon and accent-coloured top rank on the
- * right, a BattleTag copy button, and a right-click menu — minus everything
+ * right, a handle copy button, and a right-click menu — minus everything
  * that only exists for a tournament registration: the balancer status menu,
  * the pool include/exclude button, and the Flex / Ready / issue chips.
  *
@@ -117,7 +117,7 @@ type RosterMemberRowProps = {
 const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, onOpen }: RosterMemberRowProps) {
   const slotLabel = useSlotLabel(ontology);
   const label = memberLabel(member);
-  const { name, suffix } = splitBattleTag(label);
+  const { name, suffix } = splitHandle(label);
   const effective = member.ranks;
 
   // The owner game's rated roles, in declared order, that the member has a rank for.
@@ -198,7 +198,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                 ) : (
                   <span className="text-label text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
                 )}
-                {member.identity?.handle ? <BattleTagCopyButton battleTag={member.identity?.handle} /> : null}
+                {member.identity?.handle ? <HandleCopyButton handle={member.identity.handle} /> : null}
               </div>
             </div>
           </div>
@@ -210,7 +210,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
           <Pencil className="h-4 w-4" />
           Edit ranks
         </ContextMenuItem>
-        {member.identity?.handle ? <BattleTagContextMenuItems battleTags={[member.identity?.handle]} /> : null}
+        {member.identity?.handle ? <HandleContextMenuItems handles={[member.identity.handle]} /> : null}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -231,15 +231,15 @@ export function WorkspacePlayersSidebar({
   const identityConfig = provider ? getSocialProviderConfig(provider) : null;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [battleTag, setBattleTag] = useState("");
+  const [handleText, setHandleText] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
   const deferredSearch = useDeferredValue(search.trim());
   const searchRef = useRef<HTMLInputElement>(null);
-  const battleTagRef = useRef<HTMLInputElement>(null);
-  const battleTagId = useId();
-  const battleTagHintId = `${battleTagId}-hint`;
+  const handleRef = useRef<HTMLInputElement>(null);
+  const handleId = useId();
+  const handleHintId = `${handleId}-hint`;
 
   const listParams = { page, perPage: PER_PAGE, query: deferredSearch, discipline };
   const membersQuery = useQuery({
@@ -251,7 +251,7 @@ export function WorkspacePlayersSidebar({
     mutationFn: (input: { workspaceId: number; discipline: string; identity: { provider: string; handle: string } }) =>
       workspacePlayerService.upsert(input.workspaceId, { discipline: input.discipline, identity: input.identity }),
     onSuccess: async (_member, input) => {
-      setBattleTag("");
+      setHandleText("");
       setIsAddOpen(false);
       notify.success(`${input.identity.handle} saved to the workspace`);
       await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(input.workspaceId) });
@@ -328,12 +328,12 @@ export function WorkspacePlayersSidebar({
     );
   }
 
-  const submitBattleTag = () => {
+  const submitHandle = () => {
     if (!provider) return;
-    const tag = displaySocialHandle(provider, battleTag);
+    const tag = displaySocialHandle(provider, handleText);
     if (!tag) {
       setAddError(`Enter a ${identityConfig?.label ?? "game"} handle, for example ${identityConfig?.placeholder ?? "Name#TAG"}.`);
-      battleTagRef.current?.focus();
+      handleRef.current?.focus();
       return;
     }
     setAddError(null);
@@ -390,28 +390,28 @@ export function WorkspacePlayersSidebar({
                   className="space-y-1.5"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    submitBattleTag();
+                    submitHandle();
                   }}
                 >
                   <label
-                    htmlFor={battleTagId}
+                    htmlFor={handleId}
                     className="block text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
                   >
                     Add by {identityConfig?.label ?? "game"} identity
                   </label>
                   <div className="flex gap-1.5">
                     <Input
-                      ref={battleTagRef}
-                      id={battleTagId}
-                      value={battleTag}
+                      ref={handleRef}
+                      id={handleId}
+                      value={handleText}
                       onChange={(event) => {
-                        setBattleTag(event.target.value);
+                        setHandleText(event.target.value);
                         if (addError) setAddError(null);
                       }}
                       placeholder={identityConfig?.placeholder ?? ""}
                       autoComplete="off"
                       aria-invalid={addError ? true : undefined}
-                      aria-describedby={battleTagHintId}
+                      aria-describedby={handleHintId}
                       // `min-w-0`: an `<input>` carries an intrinsic ~170px width that
                       // `min-width: auto` in a flex row turns into a floor.
                       className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm"
@@ -430,7 +430,7 @@ export function WorkspacePlayersSidebar({
                     </Button>
                   </div>
                   <p
-                    id={battleTagHintId}
+                    id={handleHintId}
                     className={cn(
                       "text-label",
                       addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
@@ -471,7 +471,7 @@ export function WorkspacePlayersSidebar({
             setSearch(event.target.value);
             setPage(1);
           }}
-          placeholder="Search name or BattleTag"
+          placeholder="Search name or handle"
           aria-label="Search workspace players"
           autoComplete="off"
           className={cn(
@@ -545,7 +545,7 @@ export function WorkspacePlayersSidebar({
             <PageStateCard
               state="filtered-empty"
               title={`No players match \u201C${deferredSearch}\u201D`}
-              description="Try a different name or BattleTag."
+              description="Try a different name or handle."
               actionLabel="Clear search"
               onAction={clearSearch}
               className="px-4 py-8"
@@ -556,7 +556,7 @@ export function WorkspacePlayersSidebar({
               title="No workspace players yet"
               description={
                 canEdit
-                  ? "Add a BattleTag above to start the roster this workspace balances from."
+                  ? "Add a player handle above to start the roster this workspace balances from."
                   : "Players added to this workspace will appear here."
               }
               className="px-4 py-8"

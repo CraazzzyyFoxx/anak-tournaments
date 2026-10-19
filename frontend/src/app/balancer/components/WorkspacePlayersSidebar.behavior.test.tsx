@@ -337,8 +337,8 @@ describe("WorkspacePlayersSidebar", () => {
     expect(scope.textContent).not.toMatch(/Exclude|Include in balancer|Ready|Flex/);
     expect(scope.querySelector("[data-slot='badge']")).toBeNull();
     // What the pool row does give it, and it keeps: role glyphs, the top rank
-    // and a BattleTag copy control.
-    expect(scope.querySelector("button[title='Copy BattleTag']")).not.toBeNull();
+    // and a handle copy control.
+    expect(scope.querySelector("button[title='Copy Handle']")).not.toBeNull();
   });
 
   it("writes to the workspace layer, the only one this panel ever reads or writes", async () => {
