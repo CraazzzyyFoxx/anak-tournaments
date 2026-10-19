@@ -32,6 +32,8 @@ interface SectionProps {
   user: User;
   scope: StatsScope;
   discipline: string;
+  /** The viewed workspace axis the game's metadata is read on (tenant host: its own). */
+  axis: WorkspaceAxis;
 }
 
 // Reads shared by more than one section. `cache()` collapses them to a single
@@ -116,7 +118,7 @@ const characterCards = (characters: CharacterWithUserStats[], maps: UserMapRead[
   };
 };
 
-const TopHeroesSection = async ({ user, userSlug, scope, discipline }: SectionProps & { userSlug: string }) => {
+const TopHeroesSection = async ({ user, userSlug, scope, discipline, axis }: SectionProps & { userSlug: string }) => {
   const [charactersRes, mapsRes] = await Promise.all([
     getCharacters(user.id, scope, discipline),
     getMaps(user.id, scope, discipline)
@@ -125,10 +127,11 @@ const TopHeroesSection = async ({ user, userSlug, scope, discipline }: SectionPr
   if (characters.length === 0) return null;
   return (
     <ProfileWidget
+      axis={axis}
       discipline={discipline}
       slot="topCharacters"
       props={{ characters, games, userSlug }}
-      fallback={<CharacterStatsTable discipline={discipline} characters={characters} limit={8} />}
+      fallback={<CharacterStatsTable axis={axis} discipline={discipline} characters={characters} limit={8} />}
     />
   );
 };
@@ -166,7 +169,7 @@ const RoleSplitSection = async ({
   scope,
   discipline,
   axis
-}: SectionProps & { profile: UserProfile; axis: WorkspaceAxis }) => {
+}: SectionProps & { profile: UserProfile }) => {
   const [charactersRes, mapsRes] = await Promise.all([
     getCharacters(user.id, scope, discipline),
     getMaps(user.id, scope, discipline)
@@ -177,7 +180,7 @@ const RoleSplitSection = async ({
   );
 };
 
-const AchievementsSection = async ({ user, userSlug, scope }: Omit<SectionProps, "discipline"> & { userSlug: string }) => {
+const AchievementsSection = async ({ user, userSlug, scope }: Pick<SectionProps, "user" | "scope"> & { userSlug: string }) => {
   const achievements = await userService
     .getUserAchievements(user.id, { scope })
     .catch(() => [] as AchievementRarity[]);
@@ -207,7 +210,7 @@ const TeammatesSection = async ({ user, scope, discipline }: SectionProps) => {
  */
 const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline, axis }: OverviewPageProps) => {
   const userSlug = getPlayerSlug(user.name);
-  const section = { user, scope, discipline };
+  const section = { user, scope, discipline, axis };
 
   return (
     <div className="aqt-player grid grid-cols-1 gap-3.5 xl:grid-cols-[1fr_380px] xl:items-start">
@@ -228,7 +231,7 @@ const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline, axis
       {/* Below the tab strip's z-40 so it scrolls under the bar, not through it. */}
       <aside className="z-30 flex min-w-0 flex-col gap-3.5 xl:sticky xl:top-[var(--aqt-sticky-top)]">
         <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
-          <RoleSplitSection {...section} profile={profile} axis={axis} />
+          <RoleSplitSection {...section} profile={profile} />
         </Suspense>
         <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
           <AchievementsSection user={user} userSlug={userSlug} scope={scope} />

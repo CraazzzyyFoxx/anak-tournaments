@@ -61,7 +61,9 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   }
   if (!applicable) return fallback;
 
-  if (loaded?.code !== discipline) return requires === undefined ? fallback : null;
+  // Still resolving the family's module: neutral (nothing), never the caller's fallback — the fallback says "this
+  // game has no renderer", which is only known once the loader has answered.
+  if (loaded?.code !== discipline) return null;
   const Slot = loaded.ui?.slots[slot] as ComponentType<SlotProps[K]> | undefined;
   if (!Slot) {
     return requires === undefined ? (

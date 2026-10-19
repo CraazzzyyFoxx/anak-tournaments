@@ -181,6 +181,26 @@ describe("DisciplineWidget", () => {
     expect(view.querySelector("[role=alert]")).toBeNull();
   });
 
+  it("shows nothing while the module is still resolving, and the fallback only once it has none", async () => {
+    const pending = Promise.withResolvers<{ code: string; slots: object } | null>();
+    loadDisciplineUI.mockReturnValue(pending.promise);
+
+    const view = await mount(
+      <DisciplineWidget
+        discipline="lol"
+        slot="nativeRankEditor"
+        capabilities={NONE}
+        props={EDITOR_PROPS}
+        fallback={<p>generic</p>}
+      />
+    );
+    expect(view.textContent).not.toContain("generic");
+    expect(view.querySelector("[role=alert]")).toBeNull();
+
+    await act(async () => pending.resolve(null));
+    expect(view.textContent).toContain("generic");
+  });
+
   it("shows the generic fallback, and loads nothing, for a shape the slot does not apply to", async () => {
     loadDisciplineUI.mockImplementation(async (code) => moduleOf(code));
 

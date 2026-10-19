@@ -7,8 +7,9 @@ import CharacterCard from "@/components/profile/CharacterCard";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import { AvatarStack } from "@/components/ui/avatar";
 import { winrateColor } from "@/lib/colors";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
-const MapRow = ({ row, discipline }: { row: UserMapRead; discipline: string }) => {
+const MapRow = ({ row, discipline, axis }: { row: UserMapRead; discipline: string; axis: WorkspaceAxis }) => {
   const wr = row.win_rate * 100;
   const wrColor = winrateColor(wr);
   const characterStats = row.character_stats ?? [];
@@ -44,6 +45,7 @@ const MapRow = ({ row, discipline }: { row: UserMapRead; discipline: string }) =
               size="sm"
               popover={
                 <ProfileWidget
+                  axis={axis}
                   discipline={discipline}
                   slot="characterPopover"
                   props={{ entity: hs.character, mapStats: hs }}

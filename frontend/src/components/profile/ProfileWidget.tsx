@@ -11,25 +11,19 @@ import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 /**
- * The axis a profile reads its game's metadata on: the global one. Profile slots need the game's stat vocabulary,
- * capabilities and module role presentation, none of which a workspace changes.
- */
-export const PROFILE_METADATA_AXIS: WorkspaceAxis = "all";
-
-/**
  * One player-profile slot of the profile's game: its module's renderer when the game has one, else `fallback`
- * (the working generic view). The game's metadata is a required read — nothing is drawn while it loads, and a
+ * (the working generic view). The game's metadata is a required read on the axis the host names (the viewed
+ * workspace, tenant host included; a dossier its tournament's own) — nothing is drawn while it loads, and a
  * failed read says so with a retry instead of guessing another game's presentation.
  */
 export default function ProfileWidget<K extends ProfileSlot>({
-  axis = PROFILE_METADATA_AXIS,
+  axis,
   discipline,
   slot,
   props,
   fallback
 }: Readonly<{
-  /** Defaults to {@link PROFILE_METADATA_AXIS}; a dossier names its tournament's own workspace. */
-  axis?: WorkspaceAxis;
+  axis: WorkspaceAxis;
   discipline: string;
   slot: K;
   props: Omit<SlotProps[K], "metadata">;

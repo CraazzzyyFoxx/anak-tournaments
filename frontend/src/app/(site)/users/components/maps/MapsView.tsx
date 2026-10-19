@@ -15,11 +15,14 @@ import { DataPagination } from "@/components/ui/data-pagination";
 import { winrateColor } from "@/lib/colors";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 interface Props {
   userId: number;
   scope: StatsScope;
   discipline: string;
+  /** The viewed workspace axis the game's metadata is read on. */
+  axis: WorkspaceAxis;
 }
 
 const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assault"] as const;
@@ -27,7 +30,7 @@ const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assaul
 type SortKey = "winrate" | "count" | "name";
 type OrderKey = "asc" | "desc";
 
-const MapsView = ({ userId, scope, discipline }: Props) => {
+const MapsView = ({ userId, scope, discipline, axis }: Props) => {
   const t = useTranslations();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -259,7 +262,7 @@ const MapsView = ({ userId, scope, discipline }: Props) => {
           <div className="text-right">{t("users.maps.colGames")}</div>
         </div>
         {pageMaps.map((row) => (
-          <MapRow key={row.map.id} row={row} discipline={discipline} />
+          <MapRow key={row.map.id} row={row} discipline={discipline} axis={axis} />
         ))}
         {pageMaps.length === 0 ? (
           <div className="py-10 text-center text-[color:var(--aqt-fg-dim)]">

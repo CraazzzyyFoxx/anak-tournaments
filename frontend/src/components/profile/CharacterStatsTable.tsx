@@ -5,10 +5,10 @@ import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { CardSurface } from "@/components/profile/atoms";
-import { PROFILE_METADATA_AXIS } from "@/components/profile/ProfileWidget";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatStat } from "@/lib/stats/format";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { CharacterSummary } from "@/types/user.types";
 
 const headCell =
@@ -20,12 +20,15 @@ const headCell =
  * cell. The generic view of a game whose module draws no characters tab of its own; a missing value is a dash.
  */
 export default function CharacterStatsTable({
+  axis,
   discipline,
   characters,
   title,
   action,
   limit
 }: Readonly<{
+  /** The viewed workspace axis the game's stat definitions are read on (a tenant host's own, never `all` there). */
+  axis: WorkspaceAxis;
   discipline: string;
   characters: CharacterSummary[];
   /** Defaults to the localized "Characters". */
@@ -35,7 +38,7 @@ export default function CharacterStatsTable({
 }>) {
   const t = useTranslations();
   const format = useFormatter();
-  const definitions = useDisciplineMetadata(PROFILE_METADATA_AXIS, discipline).data?.stat_defs ?? [];
+  const definitions = useDisciplineMetadata(axis, discipline).data?.stat_defs ?? [];
   const present = new Set(characters.flatMap((row) => row.stats.map((stat) => stat.name)));
   const columns = definitions
     .filter((def) => def.active && present.has(def.code))

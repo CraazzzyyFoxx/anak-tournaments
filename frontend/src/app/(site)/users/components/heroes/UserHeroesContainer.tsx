@@ -10,14 +10,17 @@ import ProfileWidget from "@/components/profile/ProfileWidget";
 import { Skeleton } from "@/components/ui/skeleton";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 interface UserHeroesContainerProps {
   userId: number;
   scope: StatsScope;
   discipline: string;
+  /** The viewed workspace axis the game's metadata is read on. */
+  axis: WorkspaceAxis;
 }
 
-const UserHeroesContainer = ({ userId, scope, discipline }: UserHeroesContainerProps) => {
+const UserHeroesContainer = ({ userId, scope, discipline, axis }: UserHeroesContainerProps) => {
   const [tournamentId, setTournamentId] = useState<number | undefined>(undefined);
 
   const tournamentsQuery = useQuery({
@@ -71,10 +74,11 @@ const UserHeroesContainer = ({ userId, scope, discipline }: UserHeroesContainerP
 
   return (
     <ProfileWidget
+      axis={axis}
       discipline={discipline}
       slot="characterStats"
       props={{ characters, maps: mapsQuery.data?.results ?? [], filterSlot }}
-      fallback={<CharacterStatsTable discipline={discipline} characters={characters} action={filterSlot} />}
+      fallback={<CharacterStatsTable axis={axis} discipline={discipline} characters={characters} action={filterSlot} />}
     />
   );
 };
