@@ -7,10 +7,9 @@ import { cn } from "@/components/data-table/host";
 import { ADMIN_ACTION_COLUMN_ID, ALIGN_CLASS, ALIGN_FLEX_CLASS, RESPONSIVE_CLASS, readColumnMeta } from "@/components/data-table/columns";
 import { HighlightMatch } from "@/components/data-table/HighlightMatch";
 import type { ColumnLayout } from "@/components/data-table/column-layout";
-import type { RowSelectionGestures } from "@/components/data-table/useRowSelectionGestures";
+import type { RowHandlers } from "@/components/data-table/body-rows";
 
 export interface BodyCellContext<TData> {
-  i18n: (key: string, values?: Record<string, unknown>) => string;
   layout: ColumnLayout<TData>;
   /** Vertical padding for the current density. */
   cellPadding: string;
@@ -28,13 +27,15 @@ export interface LeadingCellContext<TData> {
   cellAlign: "top" | "middle";
   enableRowSelection: boolean;
   hasExpandedDetail: boolean;
-  gestures: RowSelectionGestures<TData>;
+  selected: boolean;
+  expanded: boolean;
+  handlers: RowHandlers<TData>;
 }
 
 /** The narrow first column: expand chevron and/or selection checkbox. */
 export function renderLeadingCell<TData>(
   row: Row<TData>,
-  { i18n, layout, cellPadding, cellAlign, enableRowSelection, hasExpandedDetail, gestures }: LeadingCellContext<TData>
+  { i18n, layout, cellPadding, cellAlign, enableRowSelection, hasExpandedDetail, selected, expanded, handlers }: LeadingCellContext<TData>
 ) {
   return (
     <TableCell
@@ -56,11 +57,11 @@ export function renderLeadingCell<TData>(
           <button
             type="button"
             onClick={row.getToggleExpandedHandler()}
-            aria-expanded={row.getIsExpanded()}
-            aria-label={row.getIsExpanded() ? i18n("collapseDetails") : i18n("expandDetails")}
+            aria-expanded={expanded}
+            aria-label={expanded ? i18n("collapseDetails") : i18n("expandDetails")}
             className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
           >
-            {row.getIsExpanded() ? (
+            {expanded ? (
               <ChevronDown aria-hidden className="size-4" />
             ) : (
               <ChevronRight aria-hidden className="size-4" />
@@ -69,10 +70,10 @@ export function renderLeadingCell<TData>(
         ) : null}
         {enableRowSelection && row.getCanSelect() ? (
           <Checkbox
-            checked={row.getIsSelected()}
+            checked={selected}
             onCheckedChange={(checked) => row.toggleSelected(checked === true)}
-            onPointerDown={gestures.checkboxPointerDown(row)}
-            onClick={gestures.checkboxClick}
+            onPointerDown={(event) => handlers.checkboxPointerDown(event, row)}
+            onClick={handlers.checkboxClick}
             className="touch-none"
             aria-label={i18n("selectRow", { id: row.id })}
           />

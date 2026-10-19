@@ -67,7 +67,11 @@ export function useAdminTableData<TData>({
     );
   }, [rows, search, columns]);
 
-  const data: PaginatedResponse<TData> = dataQuery.data ?? { results: EMPTY_RESULTS, total: 0, page: 1, per_page: pageSize };
+  // One object per query result: `onPageRowsChange` hands it on from an effect keyed on it.
+  const data = useMemo<PaginatedResponse<TData>>(
+    () => dataQuery.data ?? { results: EMPTY_RESULTS, total: 0, page: 1, per_page: pageSize },
+    [dataQuery.data, pageSize]
+  );
 
   return {
     data,

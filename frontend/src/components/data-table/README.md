@@ -59,7 +59,7 @@ are the reference; `app/admin/matches/page.tsx` is the page in front of them.
 | File | Holds |
 | --- | --- |
 | `app/admin/<route>/page.tsx` | The page header, the permission gate, and `<XBrowser />`. Nothing else — no columns, no queries, no dialogs. |
-| `components/admin/<x>/XBrowser.tsx` | The screen: `useQueryParams({ resetOnChange: [], shallow: true })` for `?id=`, `useFilters(defs)`, the `DataTable`, the `Inspector`, the dialogs and mutations. `pageRows` comes from `onPageRowsChange`, never from inside `queryFn`. |
+| `components/admin/<x>/XBrowser.tsx` | The screen: `useQueryParams({ resetOnChange: [], shallow: true })` for `?id=`, `useFilters(defs)`, the `DataTable`, the `Inspector`, the dialogs and mutations. `pageRows` (and `total` or any other response field) comes from `onPageRowsChange(rows, page)`, never from inside `queryFn`. |
 | `components/admin/<x>/useXColumns.tsx` | `useMemo`'d `ColumnDef[]`, taking permissions and the callbacks the kebab needs. Icon-only and badge-only columns declare `meta.align: "center"`. |
 | `components/admin/<x>/filters.ts` | The `FilterDef[]` builder for the chip row. |
 | `components/admin/<x>/model.ts` | Pure row shaping, labels, sort helpers — the part that gets a unit test. |
@@ -73,7 +73,8 @@ lines; split by section or hook, never by line count.
 ## Inside
 
 `DataTable.tsx` is the orchestrator: it wires the hooks together, owns the
-row-level handlers and renders the card. Everything with a seam of its own sits
+row-level handlers (handed to the rows as one stable dispatcher) and the
+roving-focus row, and renders the card. Everything with a seam of its own sits
 next to it.
 
 | File | Responsibility |
@@ -82,22 +83,22 @@ next to it.
 | `useAdminTableState.ts` | Page, search, page size, sort and filters: the state the URL owns, plus the back/forward and page-1-reset rules. |
 | `url-state.ts` | Pure `?page=`/`?search=`/`?sort=`/`?dir=` parsing and writing. |
 | `filters.ts` | The `meta.filter` contract shared with a filter bar, and its query params. |
-| `useAdminTableData.ts` | The two data modes: the server-mode query, or the client-mode rows narrowed by the search box. |
-| `useAdminTable.ts` | The TanStack table instance — row models, controlled state, manual vs local paging/sorting/filtering. |
-| `useTablePreferences.ts` | Density, column widths and column order in localStorage; rebuilds the order around columns added since it was saved. |
+| `useAdminTableData.ts` | The two data modes: the server-mode query (one page object per result), or the client-mode rows narrowed by the search box. |
+| `useAdminTable.ts` | The TanStack table instance — row models, controlled state, manual vs local paging/sorting/filtering; memoised column filters keep row objects stable. |
+| `useTablePreferences.ts` | Density, column widths and column order in localStorage; rebuilds the order around columns added since it was saved, memoised so TanStack's column list keeps its identity. |
 | `useColumnVisibility.ts` | Persisted column visibility behind the "Columns" picker. |
 | `useTableScrollBox.ts` | The scroll box the header sticks in, capped to the height left in the viewport. |
 | `useVirtualBody.ts` | Rows, group headers and expanded details as one flat list, virtualised past 100 items. |
 | `useRowSelectionGestures.ts` | Paint-select, Shift/Ctrl ranges, keyboard selection. |
-| `column-layout.tsx` | Column widths, the sticky prefix and suffix, and the filler column, shared by header and body. |
-| `head-cell.tsx` / `body-cells.tsx` / `body-rows.tsx` | One `<th>`, one `<td>` (plus the leading checkbox/chevron cell), and one `<tr>`. |
+| `column-layout.tsx` | Column widths, the sticky prefix and suffix, and the filler column, shared by header and body; memoised in `DataTable` on the visible columns, sizing and density. |
+| `head-cell.tsx` / `body-cells.tsx` / `body-rows.tsx` | One `<th>`, one `<td>` (plus the leading checkbox/chevron cell), and one `<tr>`: a memoised `BodyRow` that repaints only when its own props (selected, expanded, current, tabbable, layout, debounced search) change. |
 | `AdminTableHeader.tsx` | The sticky header row, select-all, and the dnd-kit boundary the reorder chunk fills in. |
 | `AdminTableHead.tsx` / `ColumnDnd.tsx` | The resizable header cell, and its draggable variant in a lazily imported chunk. |
 | `AdminTableToolbar.tsx` | Search, the screen's `toolbar` slot, bulk actions, CSV, density, saved views, column picker, `actions`. |
 | `AdminTablePagination.tsx` | The footer: range, rows-per-page, page numbers. |
 | `AdminTableMobileList.tsx` | Rows as cards below `md`. |
 | `AdminTableEmptyState.tsx` | No rows, and the way out of the search/filter that emptied them. |
-| `AdminRowContextMenu.tsx` / `kebab-column.tsx` | Row actions as a right-click menu and as the `⋯` column. |
+| `AdminRowContextMenu.tsx` / `kebab-column.tsx` | Row actions as one right-click / long-press menu per table (the `<tbody>` is its trigger; it resolves the row when it opens) and as the `⋯` column. |
 | `SavedViews.tsx`, `HighlightMatch.tsx`, `csv.ts`, `columns.ts`, `host.ts` | Saved views, search highlighting, CSV export, column meta, host bindings. |
 
 ## Porting

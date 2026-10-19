@@ -211,13 +211,13 @@ describe("DataTable row actions and inspector", () => {
         await promise;
       });
     await flush();
-    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[0]]);
+    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[0]], expect.objectContaining({ page: 1, total: 2 }));
 
     await act(async () => {
       [...container.querySelectorAll("button")].find((b) => /next/i.test(b.getAttribute("aria-label") ?? ""))!.click();
     });
     await flush();
-    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[1]]);
+    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[1]], expect.objectContaining({ page: 2, total: 2 }));
 
     await act(async () => {
       [...container.querySelectorAll("button")].find((b) => /prev/i.test(b.getAttribute("aria-label") ?? ""))!.click();
@@ -225,6 +225,6 @@ describe("DataTable row actions and inspector", () => {
     await flush();
     // Page 1 is a cache hit: no third fetch, yet the screen still learns which rows it shows.
     expect(queryFn).toHaveBeenCalledTimes(2);
-    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[0]]);
+    expect(onPageRowsChange).toHaveBeenLastCalledWith([ROWS[0]], expect.objectContaining({ page: 1, total: 2 }));
   });
 });

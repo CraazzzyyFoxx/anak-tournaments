@@ -1,5 +1,5 @@
 import React from "react";
-import type { Column, ColumnDef, ColumnSizingState, Table } from "@tanstack/react-table";
+import type { Column, ColumnDef, ColumnSizingState } from "@tanstack/react-table";
 
 import { TableCell, TableHead } from "@/components/ui/table";
 import { cn } from "@/components/data-table/host";
@@ -13,7 +13,8 @@ export const ADMIN_LEADING_COLUMN_WIDTH = 40;
 const ADMIN_FLEXIBLE_FILL_PERCENT = 75;
 
 export interface ColumnLayoutOptions<TData> {
-  table: Table<TData>;
+  /** `table.getVisibleLeafColumns()`, which TanStack keeps as one array until visibility, order or the columns change. */
+  visibleColumns: Column<TData, unknown>[];
   columns: ColumnDef<TData>[];
   columnSizing: ColumnSizingState;
   hasLeadingColumn: boolean;
@@ -39,10 +40,11 @@ export interface ColumnLayout<TData> {
 
 /**
  * Widths, the sticky prefix and the filler column — everything about where a
- * column sits, derived once per render and shared by the header and the body.
+ * column sits, shared by the header and the body. Pure in its options, so
+ * `DataTable` memoises it and the memoised body rows keep their props.
  */
 export function buildColumnLayout<TData>({
-  table,
+  visibleColumns,
   columns,
   columnSizing,
   hasLeadingColumn,
@@ -80,11 +82,10 @@ export function buildColumnLayout<TData>({
     // No explicit or dragged width: split an even share of the table so the
     // grid fills the screen instead of shrink-wrapping to content with a
     // dead gap on the right (the filler, below, absorbs what's left).
-    const flexibleCount = table.getVisibleLeafColumns().filter(isFlexibleColumn).length;
+    const flexibleCount = visibleColumns.filter(isFlexibleColumn).length;
     return flexibleCount > 0 ? { width: `${ADMIN_FLEXIBLE_FILL_PERCENT / flexibleCount}%` } : undefined;
   };
 
-  const visibleColumns = table.getVisibleLeafColumns();
   // +1 for the filler column that swallows leftover width, keeping data columns
   // packed at their content width instead of stretched proportionally.
   const bodyColumnCount = visibleColumns.length + (hasLeadingColumn ? 1 : 0) + 1;
