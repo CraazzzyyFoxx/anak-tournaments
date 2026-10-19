@@ -55,7 +55,7 @@ from src.services.encounter.games import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
-from src.services.encounter.settle import push_confirmed_to_challonge
+from src.services.encounter.settle import enqueue_challonge_push
 
 __all__ = ("ClaimResultIn", "GameClaimService", "map_report_service")
 
@@ -267,10 +267,9 @@ class GameClaimService:
             invalidates=[Resource.TOURNAMENT_ENCOUNTERS],
             entity_ids={"encounter_ids": [encounter.id]},
         )
-        confirmed, encounter_id = encounter.result_status == EncounterResultStatus.CONFIRMED, encounter.id
+        if encounter.result_status == EncounterResultStatus.CONFIRMED:
+            await enqueue_challonge_push(session, encounter)
         await session.commit()
-        if confirmed:
-            await push_confirmed_to_challonge(session, encounter_id)
         return await self._answer(session, game, disputed=False, resolved=True)
 
     @staticmethod

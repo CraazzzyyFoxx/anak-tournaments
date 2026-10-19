@@ -546,7 +546,7 @@ class RegistrationDecisionTests(_ProducerTestCase):
 
     async def test_reject_notifies_the_player(self) -> None:
         self.registration.status = "rejected"
-        await events_module.enqueue_registration_rejected(self.fx.shim, self.registration)
+        await events_module.notify_registration_rejected(self.fx.shim, self.registration)
         await self.fx.shim.commit()
 
         rows = self.fx.notifications()

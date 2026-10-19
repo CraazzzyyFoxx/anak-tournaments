@@ -385,6 +385,20 @@ class RecalculationEnqueueTests(_DatabaseTestCase):
         request = await self._enqueue(PREVIEW_TOURNAMENT_ID)
         request.assert_awaited_once_with(self.db.shim, PREVIEW_TOURNAMENT_ID)
 
+    async def test_one_transaction_requests_the_standings_once(self) -> None:
+        """A completing result asks twice (settlement + caller); one job answers both, the next commit asks again."""
+        request = AsyncMock()
+        with (
+            patch.object(tournament_events.jobs_service, "request_standings_recalculation", request),
+            patch.object(tournament_events, "emit", AsyncMock()),
+        ):
+            for _ in range(2):
+                await tournament_events.enqueue_tournament_recalculation(self.db.shim, REAL_TOURNAMENT_ID)
+            request.assert_awaited_once()
+            await self.db.shim.commit()
+            await tournament_events.enqueue_tournament_recalculation(self.db.shim, REAL_TOURNAMENT_ID)
+        self.assertEqual(2, request.await_count)
+
 
 class ScrimStandingsInventionTests(_DatabaseTestCase):
     """Why the enqueue guard is load-bearing, reproduced.

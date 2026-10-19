@@ -62,7 +62,7 @@ class RegistrationIdentityEventsTests(IsolatedAsyncioTestCase):
         await self.session.flush()
         return registration
 
-    async def test_approval_rejection_and_recheck_outbox_choose_each_owner_provider(self):
+    async def test_approval_and_recheck_outbox_choose_each_owner_provider(self):
         for discipline, provider, expected in [
             ("lol", "riot", "Riot Name#EUW"),
             ("overwatch", "battlenet", "Battle#1234"),
@@ -72,7 +72,6 @@ class RegistrationIdentityEventsTests(IsolatedAsyncioTestCase):
             )
             for publish in (
                 events.enqueue_registration_approved,
-                events.enqueue_registration_rejected,
                 events.enqueue_registration_rank_check,
             ):
                 await publish(self.session, registration)
@@ -82,7 +81,6 @@ class RegistrationIdentityEventsTests(IsolatedAsyncioTestCase):
                         models.EventOutbox.routing_key.in_(
                             [
                                 "tournament.registration.approved",
-                                "tournament.registration.rejected",
                                 "tournament.registration.rank_check_requested",
                             ]
                         )
@@ -90,7 +88,7 @@ class RegistrationIdentityEventsTests(IsolatedAsyncioTestCase):
                 )
             )
             owned = [row for row in outbox if row.payload_json["registration_id"] == registration.id]
-            assert len(owned) == 3
+            assert len(owned) == 2
             for row in owned:
                 assert row.payload_json["identity"] == {"provider": provider, "handle": expected}
                 assert "battle_tag" not in row.payload_json and "discipline" not in row.payload_json

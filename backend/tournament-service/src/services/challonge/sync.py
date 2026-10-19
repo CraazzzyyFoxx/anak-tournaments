@@ -2416,10 +2416,10 @@ class ChallongeSyncService:
         return True
 
     async def auto_push_on_confirm(self, session: AsyncSession, encounter_id: int) -> None:
-        """Auto-push to Challonge when an encounter result is confirmed.
+        """Push a confirmed encounter result to Challonge; a no-op for an unlinked one.
 
-        Called from captain.submit_captain_report / set_encounter_result once the
-        encounter result becomes confirmed.
+        Run by the ``tournament_challonge_push`` consumer and the organizer's manual push. A failure is journaled
+        in the sync log (committed) and re-raised, so the caller decides between retry and dead-letter.
         """
         encounter = await self.encounter_repo.get(
             session,
@@ -2460,6 +2460,7 @@ class ChallongeSyncService:
                 error_message=str(e),
             )
             await session.commit()
+            raise
 
     # ── Background auto-sync (Challonge -> local) ────────────────────────
 

@@ -88,6 +88,7 @@ from src.services.encounter.games import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
+from src.services.encounter.settle import enqueue_challonge_push
 from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = (
@@ -238,6 +239,9 @@ async def _decide(
     await enqueue_tournament_recalculation(session, encounter.tournament_id)
     await emit_pick_ban_update(session, encounter.id)
     await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
+    if encounter.result_status == EncounterResultStatus.CONFIRMED:
+        # The game that completed the encounter: its result rides this delivery's transaction to Challonge.
+        await enqueue_challonge_push(session, encounter)
     return ACCEPTED, None
 
 

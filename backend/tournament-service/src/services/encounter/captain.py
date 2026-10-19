@@ -65,7 +65,7 @@ from src.services.encounter.dispute_review import notify_dispute_review
 from src.services.encounter.games import EncounterGameService, encounter_game_service, require_filled_seats
 from src.services.encounter.report_form import ReportFormService, report_form_service
 from src.services.encounter.room_journal import record_room_event
-from src.services.encounter.settle import push_confirmed_to_challonge, settle_confirmed
+from src.services.encounter.settle import enqueue_challonge_push, settle_confirmed
 from src.services.tournament.events import enqueue_encounter_completed, enqueue_tournament_recalculation
 
 __all__ = ("CaptainService", "ReportResultIn", "captain_service", "serialize_team_report")
@@ -406,12 +406,11 @@ class CaptainService:
         confirmed = await self._recompute_from_reports(
             session, encounter, seats, actor_user_id=reporter_user_id, actor_auth_user_id=actor_auth_user_id
         )
-        if not confirmed:
+        if confirmed:
+            await enqueue_challonge_push(session, encounter)
+        else:
             await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()
-
-        if confirmed:
-            await push_confirmed_to_challonge(session, encounter.id)
         return encounter
 
     async def _reject_impossible_report(
@@ -727,9 +726,8 @@ class CaptainService:
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
         await enqueue_encounter_completed(session, encounter)
         await settle_confirmed(session, encounter)
+        await enqueue_challonge_push(session, encounter)
         await session.commit()
-
-        await push_confirmed_to_challonge(session, encounter.id)
         return encounter
 
     @staticmethod

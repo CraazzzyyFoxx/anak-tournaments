@@ -23,6 +23,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.models.identity.rbac import Permission, Role, role_permissions, user_roles
 from shared.models.identity.user import User
 from shared.models.platform.notification import Notification
+from shared.models.platform.outbox import EventOutbox
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
@@ -948,7 +949,11 @@ class LobbyResultTests(ResultFlowCase):
 
         with (
             patch("src.services.encounter.settle.enqueue_tournament_recalculation", AsyncMock()) as recalc,
-            patch("src.services.encounter.ffa.push_confirmed_to_challonge", AsyncMock()) as push,
+            # Linked to a Challonge match, so the confirmation owes a push.
+            patch(
+                "src.services.encounter.settle.resolve_encounter_challonge",
+                AsyncMock(side_effect=lambda _s, ids: dict.fromkeys(ids, 1)),
+            ),
         ):
             for position, ranked in enumerate((order, order[::-1]), 1):
                 async with self.Session() as s:
@@ -962,10 +967,19 @@ class LobbyResultTests(ResultFlowCase):
                     )
                 if position == 1:
                     recalc.assert_not_awaited()
-                    push.assert_not_awaited()
 
         recalc.assert_awaited_once_with(ANY, self.ids["t"])
-        push.assert_awaited_once_with(ANY, self.ids["e"])
+        async with self.Session() as s:
+            version = (await self.encounter(s)).result_version
+            pushes = list(
+                await s.scalars(
+                    sa.select(EventOutbox.payload_json).where(
+                        EventOutbox.event_id.startswith(f"challonge_push:{self.ids['e']}:")
+                    )
+                )
+            )
+        # One request, carrying the version that confirmed the lobby: game 1 left it unconfirmed.
+        self.assertEqual([version], [push["result_version"] for push in pushes])
 
 
 class CascadeTests(ResultFlowCase):

@@ -9,12 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from shared.disciplines import discipline as discipline_spec
-from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
+from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE, TOURNAMENT_STATE_CHANGED_ROUTING_KEY
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.schemas.events import (
     RegistrationApprovedEvent,
     RegistrationRankCheckRequestedEvent,
-    RegistrationRejectedEvent,
     TournamentStateChangedEvent,
 )
 from shared.schemas.identity import PlayerIdentityRead
@@ -32,6 +31,14 @@ from src.services.computation.jobs import jobs_service
 #: instances WEAKLY, so a ``session.get`` result is collected between iterations
 #: and re-queried every time.
 _TOURNAMENT_NAMES_KEY = "notification_tournament_names"
+
+#: Tournaments whose standings this transaction already asked for. A result
+#: write that completes its encounter reaches ``enqueue_tournament_recalculation``
+#: twice -- once from the settlement, once from the caller's own unconditional
+#: request (a lobby game, an accepted log, a game correction) -- and a second
+#: request bumps the generation past the job the first one created, so that job
+#: was followed by a second full recompute over the very data it had just ranked.
+_STANDINGS_REQUESTED_KEY = "standings_recalculation_requested"
 
 #: Resources that a write to the tournament's shape (stages, teams, the
 #: tournament row itself) stales. ``tournament.structure`` covers the overview,
@@ -89,14 +96,20 @@ async def _tournament_name(session: AsyncSession, tournament_id: int) -> str:
 
 
 @event.listens_for(Session, "after_commit")
-def _drop_tournament_names_after_commit(session: Session) -> None:
-    # Per-transaction scratch; a session outlives its transactions.
+def _drop_transaction_scratch_after_commit(session: Session) -> None:
+    # Per-transaction scratch; a session outlives its transactions. A released
+    # savepoint fires this too, but its work is still the outer transaction's.
+    if session.in_nested_transaction():
+        return
     session.info.pop(_TOURNAMENT_NAMES_KEY, None)
+    session.info.pop(_STANDINGS_REQUESTED_KEY, None)
 
 
 @event.listens_for(Session, "after_rollback")
-def _drop_tournament_names_after_rollback(session: Session) -> None:
+def _drop_transaction_scratch_after_rollback(session: Session) -> None:
+    # Fires for a rolled-back savepoint too: forgetting a request it undid costs at most one spare job.
     session.info.pop(_TOURNAMENT_NAMES_KEY, None)
+    session.info.pop(_STANDINGS_REQUESTED_KEY, None)
 
 
 async def enqueue_tournament_recalculation(
@@ -115,8 +128,11 @@ async def enqueue_tournament_recalculation(
     # Skipped here, at the only automatic door into the standings queue, rather
     # than no-opped in the worker: a job that is created, delivered and then
     # discarded is a permanent per-report cost that looks like health.
-    if not await is_scrim_container(session, tournament_id):
+    info = _session_info(session)
+    requested: set[int] = info.setdefault(_STANDINGS_REQUESTED_KEY, set()) if info is not None else set()
+    if tournament_id not in requested and not await is_scrim_container(session, tournament_id):
         await jobs_service.request_standings_recalculation(session, tournament_id)
+    requested.add(tournament_id)
     # The realtime invalidation still goes out: it is a cache notification, not a
     # computation, and a room's participants are legitimate viewers of the
     # container.
@@ -245,8 +261,7 @@ async def _notify_registration_decision(
         recipient_auth_user_id=int(recipient),
         # The organizer that owns the tournament, so their operators can find
         # (and retire) the decision rows their own review produced. Passed in
-        # rather than re-read: both callers already resolved it for the outbox
-        # event above.
+        # rather than re-read: both callers already resolved it.
         source_workspace_id=workspace_id,
         payload={
             "tournament_id": registration.tournament_id,
@@ -288,25 +303,13 @@ async def enqueue_registration_approved(
     )
 
 
-async def enqueue_registration_rejected(
+async def notify_registration_rejected(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
+    """Tell the registrant and the open pages; no domain event, nothing consumes a rejection."""
     workspace_id = await get_registration_workspace_id(session, registration.tournament_id)
     player_id = await get_registration_player_id(session, registration)
-    await enqueue_outbox_event(
-        session,
-        RegistrationRejectedEvent(
-            tournament_id=registration.tournament_id,
-            workspace_id=workspace_id,
-            registration_id=registration.id,
-            user_id=player_id,
-            identity=await registration_identity(session, registration),
-            source_service="tournament-service",
-        ),
-        exchange=TOURNAMENT_EVENTS_EXCHANGE,
-        routing_key="tournament.registration.rejected",
-    )
     await _notify_registration_decision(
         session, registration, player_id, kind="registration.rejected", workspace_id=workspace_id
     )
@@ -357,5 +360,5 @@ async def enqueue_tournament_state_changed(
             source_service="tournament-service",
         ),
         exchange=TOURNAMENT_EVENTS_EXCHANGE,
-        routing_key="tournament.state.changed",
+        routing_key=TOURNAMENT_STATE_CHANGED_ROUTING_KEY,
     )

@@ -7,9 +7,8 @@ re-raises, FastStream rejects without requeue and the message lands in ``match.i
 transient database failure rolls the whole delivery back and is requeued, so no partial roster/result/receipt can
 exist and the redelivery applies once; a permanent database defect is still rejected, not retried forever.
 
-An accepted result that completed a Challonge-linked encounter is pushed after the commit, outside the locks, by
-the same helper the captain and lobby flows use. The push is external and best-effort: its failure is logged and
-never undoes or re-delivers the committed decision.
+An accepted result that completed a Challonge-linked encounter stages its Challonge push in that same transaction
+(an outbox row for the ``tournament_challonge_push`` consumer); nothing external runs here.
 
 ``ponytail:`` a requeue has no backoff; add a delayed retry queue if a database outage shows hot redelivery.
 """
@@ -18,20 +17,16 @@ from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit import Channel, RabbitRouter
 from faststream.rabbit.annotations import RabbitMessage
 from loguru import logger
 from sqlalchemy.exc import DBAPIError
 
-from shared.core.enums import EncounterResultStatus
 from shared.messaging.config import MATCH_INGESTED_EXCHANGE, MATCH_INGESTED_TOURNAMENT_QUEUE
-from shared.models.encounter.encounter import Encounter
 from shared.observability import observe_message_processing
 from shared.schemas.events import MatchIngestedEvent
 from src.core import db
-from src.services.encounter.log_evidence import ACCEPTED, apply_match_evidence
-from src.services.encounter.settle import push_confirmed_to_challonge
+from src.services.encounter.log_evidence import apply_match_evidence
 
 __all__ = ("is_transient", "process_match_ingested", "task_router")
 
@@ -73,25 +68,12 @@ async def process_match_ingested(data: dict[str, Any]) -> str | None:
         async with db.async_session_maker() as session:
             outcome = await apply_match_evidence(session, event)
             await session.commit()
-            if outcome == ACCEPTED:
-                await _push_to_challonge(session, event.encounter_id)
     except DBAPIError as exc:
         if not is_transient(exc):
             raise
         logger.warning(f"match.ingested {event.event_id}: database unavailable, requeueing")
         return None
     return outcome
-
-
-async def _push_to_challonge(session: Any, encounter_id: int) -> None:
-    """After the commit: the confirmed-result push every other result flow runs, never part of the decision."""
-    confirmed = await session.scalar(sa.select(Encounter.result_status).where(Encounter.id == encounter_id))
-    if confirmed != EncounterResultStatus.CONFIRMED:
-        return
-    try:
-        await push_confirmed_to_challonge(session, encounter_id)
-    except Exception:
-        logger.exception(f"match.ingested: Challonge push for encounter {encounter_id} failed after commit")
 
 
 @task_router.subscriber(MATCH_INGESTED_TOURNAMENT_QUEUE, exchange=MATCH_INGESTED_EXCHANGE, channel=_INGEST_CHANNEL)

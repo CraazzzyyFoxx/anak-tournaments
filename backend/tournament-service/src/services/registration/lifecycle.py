@@ -55,7 +55,7 @@ from src.services.registration.answers import answer_service
 from src.services.registration.service import RegistrationService, registration_service
 from src.services.tournament.events import (
     enqueue_registration_approved,
-    enqueue_registration_rejected,
+    notify_registration_rejected,
 )
 
 __all__ = ("RegistrationLifecycleService", "lifecycle_service")
@@ -466,7 +466,7 @@ class RegistrationLifecycleService:
         if status_value == "approved" and previous_status != "approved":
             await enqueue_registration_approved(session, registration)
         elif status_value == "rejected" and previous_status != "rejected":
-            await enqueue_registration_rejected(session, registration)
+            await notify_registration_rejected(session, registration)
         else:
             await self.common._register_registration_changed(session, registration)
 
@@ -506,7 +506,7 @@ class RegistrationLifecycleService:
         registration.status = "rejected"
         registration.reviewed_at = datetime.now(UTC)
         registration.reviewed_by = reviewed_by
-        await enqueue_registration_rejected(session, registration)
+        await notify_registration_rejected(session, registration)
         await session.commit()
         # Refetch: reviewed_by changed, the serializer needs a loaded .reviewer.
         return await self.get_registration_by_id(session, registration.id)
