@@ -12,7 +12,12 @@ import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 import Loading from "../loading";
-import { EMPTY_OVERVIEW, ENCOUNTERS_PAGE_SIZE, type EncounterFilterState } from "./encounters.helpers";
+import {
+  EMPTY_OVERVIEW,
+  ENCOUNTERS_PAGE_SIZE,
+  GAME_SCOPED_FILTERS,
+  type EncounterFilterState
+} from "./encounters.helpers";
 import { countLabel, hasActiveFilters } from "./encounters.model";
 import { useEncountersFilters } from "./useEncountersFilters";
 import { useEncountersData, type EncountersSeed } from "./useEncountersData";
@@ -54,6 +59,8 @@ export default function EncountersClient({
   const discipline = resolved?.kind === "concrete" ? resolved.code : null;
   const controls = useEncountersFilters(initialFilters, initialPage, discipline);
   const { effectiveFilters, page } = controls;
+  // The pushed URL already leaves the old game's tournament/stage behind, as the filter state does.
+  const selectGame = (value: string) => browsing.select(value, { dropParams: Object.keys(GAME_SCOPED_FILTERS) });
   const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
     seed,
     initialFilters,
@@ -74,7 +81,7 @@ export default function EncountersClient({
 
   if ((resolved?.kind === "invalid" || resolved?.kind === "empty") && disciplines) {
     return (
-      <DisciplineUnavailable resolved={resolved} disciplines={disciplines} allowsAll={false} onSelect={browsing.select} />
+      <DisciplineUnavailable resolved={resolved} disciplines={disciplines} allowsAll={false} onSelect={selectGame} />
     );
   }
   if (discipline === null) {
@@ -110,7 +117,7 @@ export default function EncountersClient({
     <div className={styles.surface}>
       {disciplines ? (
         <div className="flex justify-end">
-          <DisciplineSelector disciplines={disciplines} value={discipline} allowsAll={false} onSelect={browsing.select} />
+          <DisciplineSelector disciplines={disciplines} value={discipline} allowsAll={false} onSelect={selectGame} />
         </div>
       ) : null}
       <EncountersHero overview={overview} />

@@ -9,6 +9,7 @@ import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 import {
   DEFAULT_FILTERS,
   filtersToSearchParams,
+  GAME_SCOPED_FILTERS,
   type EncounterFilterState
 } from "./encounters.helpers";
 
@@ -36,7 +37,8 @@ export interface EncountersFilterControls {
  * keystroke. The previous-value ref keeps the very first render (which already
  * matches the server-rendered URL) from writing a redundant entry. The game is the
  * browsing selector's, not a filter: the mirror carries it and never writes a URL
- * without it, and another game starts again from its first page.
+ * without it, and another game starts again from its first page without the old
+ * game's tournament/stage filters.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
@@ -48,10 +50,13 @@ export function useEncountersFilters(
   const [searchValue, setSearchInput] = useState(initialFilters.query);
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
-  const [pageDiscipline, setPageDiscipline] = useState(discipline);
-  if (discipline !== null && discipline !== pageDiscipline) {
-    setPageDiscipline(discipline);
-    if (pageDiscipline !== null) setPage(1);
+  const [stateDiscipline, setStateDiscipline] = useState(discipline);
+  if (discipline !== null && discipline !== stateDiscipline) {
+    setStateDiscipline(discipline);
+    if (stateDiscipline !== null) {
+      setPage(1);
+      setFilters((current) => ({ ...current, ...GAME_SCOPED_FILTERS }));
+    }
   }
   const previousUrlRef = useRef({ page: initialPage, filters: initialFilters });
   const effectiveFilters = useMemo(

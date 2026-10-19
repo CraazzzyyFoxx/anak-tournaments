@@ -117,7 +117,7 @@ const tick = async () => {
   }
 };
 
-async function mount(seed: EncountersSeed | null, initialPage = 1) {
+async function mount(seed: EncountersSeed | null, initialPage = 1, initialFilters = DEFAULT_FILTERS) {
   // The app's defaults: a seeded first page is fresh, not refetched on mount.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
   await act(async () => {
@@ -127,7 +127,7 @@ async function mount(seed: EncountersSeed | null, initialPage = 1) {
           <EncountersClient
             seed={seed}
             initial={{ stored: null, axis: "all", hostLockedWorkspaceId: null, disciplines: GAMES }}
-            initialFilters={DEFAULT_FILTERS}
+            initialFilters={initialFilters}
             initialPage={initialPage}
             scope="all"
           />
@@ -182,13 +182,15 @@ describe("the encounters index is one game at a time", () => {
     expect(rows()).toEqual(["overwatch"]);
   });
 
-  it("a picked game starts on its first page and never shows the previous game's rows while it loads", async () => {
+  it("a picked game starts on its first page without the old game's tournament/stage and never shows its rows while it loads", async () => {
     const lol = Promise.withResolvers<PaginatedResponse<Encounter>>();
     mocks.getAll.mockImplementation((...args: ListArgs) =>
       args[7].discipline === "lol" ? lol.promise : Promise.resolve(pageOf(args[7].discipline, args[0]))
     );
-    navigation.reset("/encounters?discipline=overwatch&page=2");
-    await mount(seedOf("overwatch", 2), 2);
+    const url = "/encounters?discipline=overwatch&page=2&tournament_id=11&stage_id=5";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(seedOf("overwatch", 2), 2, { ...DEFAULT_FILTERS, tournament_id: 11, stage_id: 5 });
 
     // The server's read is this game's: shown as is, not read again.
     expect(rows()).toEqual(["overwatch"]);
@@ -201,11 +203,17 @@ describe("the encounters index is one game at a time", () => {
     await tick();
 
     expect(navigation.pushes).toEqual(["/encounters?discipline=lol"]);
+    // The filter state, and the URL mirrored from it, leave the old game's ids behind.
+    expect(window.location.search).toBe("?discipline=lol");
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
     expect(mocks.getAll).toHaveBeenCalledWith(...listRead("lol", 1));
-    expect(mocks.getOverview).toHaveBeenCalledWith("", expect.objectContaining({ discipline: "lol" }), "all", {
-      signal: expect.any(AbortSignal)
-    });
+    expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null });
+    expect(mocks.getOverview).toHaveBeenCalledWith(
+      "",
+      expect.objectContaining({ discipline: "lol", tournament_id: null, stage_id: null }),
+      "all",
+      { signal: expect.any(AbortSignal) }
+    );
     expect(rows()).toEqual([]);
 
     await act(async () => lol.resolve(pageOf("lol")));

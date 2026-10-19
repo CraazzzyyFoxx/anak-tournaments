@@ -35,6 +35,16 @@ export const DEFAULT_FILTERS: EncounterFilterState = {
   sort: "date",
 };
 
+/**
+ * The filters that name one game's tournament or stage, cleared when the game changes so the
+ * new game's list is not narrowed to an id it cannot contain. Field names double as URL params.
+ */
+export const GAME_SCOPED_FILTERS = {
+  tournament_id: null,
+  stage_id: null,
+  stage_item_id: null,
+} as const satisfies Partial<EncounterFilterState>;
+
 /** The overview of nothing: what the page shows before (or instead of) a read. */
 export const EMPTY_OVERVIEW: EncounterOverview = {
   kpis: {
