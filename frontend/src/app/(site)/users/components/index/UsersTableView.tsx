@@ -327,7 +327,7 @@ function PlayerRow({
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.tournaments_count}</td>
       <td className="px-2 py-2 text-center">
-        <WinrateCell user={user} minEncounters={minEncounters} />
+        <WinrateCell user={user} minEncounters={minEncounters} record={allGames} />
       </td>
       <td className="px-2 py-2 text-center tabular-nums">
         {formatOptional(user.averages.avg_placement)}

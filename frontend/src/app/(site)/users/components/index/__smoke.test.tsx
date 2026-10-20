@@ -159,6 +159,8 @@ it("renders a player row with its winrate and sample size", async () => {
   // 24 of 40 decided maps.
   expect(container.textContent).toContain("60%");
   expect(container.textContent).toContain("30 encounters");
+  // The maps record belongs to the cross-game row only.
+  expect(container.textContent).not.toContain(en.users.list.table.mapsRecord.replace("{won}", "24").replace("{lost}", "16"));
   // Role chips read their counts from the stats endpoint.
   expect(container.textContent).toContain("100");
 });

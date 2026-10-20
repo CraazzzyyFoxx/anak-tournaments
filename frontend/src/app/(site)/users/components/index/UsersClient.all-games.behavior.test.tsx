@@ -167,6 +167,14 @@ it("shows a game column instead of roles and top heroes", async () => {
   expect(container.querySelectorAll('button[aria-label="Overwatch"]')).toHaveLength(2);
 });
 
+it("shows each player's maps won and lost beside the winrate, in the row and its card", async () => {
+  await render();
+
+  const record = en.users.list.table.mapsRecord.replace("{won}", "24").replace("{lost}", "16");
+  expect(container.querySelector("tbody tr")?.textContent).toContain(record);
+  expect(container.querySelector("article")?.textContent).toContain(record);
+});
+
 it("registers its game-bound params, which a pill game pick drops (R5)", async () => {
   useWorkspaceStore.setState({ gameScope: "overwatch" });
   window.history.replaceState(null, "", "/users?discipline=overwatch&role=tank&div=3");

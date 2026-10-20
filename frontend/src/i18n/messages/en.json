@@ -5383,6 +5383,7 @@
         "topHeroes": "Characters",
         "details": "Details",
         "encounters": "{count, plural, one {# encounter} other {# encounters}}",
+        "mapsRecord": "maps {won}–{lost}",
         "noLogs": "no logs",
         "neverPlayed": "no tournaments"
       },

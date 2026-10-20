@@ -87,7 +87,7 @@ export function PlayerCard({
           <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("users.list.table.winrate")}
           </span>
-          <WinrateCell user={user} minEncounters={minEncounters} />
+          <WinrateCell user={user} minEncounters={minEncounters} record={game.discipline === null} />
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">

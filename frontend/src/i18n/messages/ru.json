@@ -5383,6 +5383,7 @@
         "topHeroes": "Персонажи",
         "details": "Детали",
         "encounters": "{count, plural, one {# встреча} few {# встречи} many {# встреч} other {# встречи}}",
+        "mapsRecord": "карты {won}–{lost}",
         "noLogs": "нет логов",
         "neverPlayed": "нет турниров"
       },

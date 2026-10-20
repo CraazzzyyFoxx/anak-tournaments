@@ -123,15 +123,18 @@ export function RolesCrests({
  * Map winrate as a plain coloured number with its sample size underneath — no
  * bar: a filled track reads as progress toward a goal, which a winrate is not.
  * Under `minEncounters` the number greys out instead of claiming a rank.
+ * `record` adds the maps won–lost beside it (the cross-game row, spec §6.7).
  */
 export function WinrateCell({
   user,
   minEncounters,
-  align = "center"
+  align = "center",
+  record = false
 }: Readonly<{
   user: { maps_won: number; maps_lost: number; encounters_played: number };
   minEncounters: number;
   align?: "center" | "start";
+  record?: boolean;
 }>) {
   const t = useTranslations();
   const pct = mapsWinratePct(user);
@@ -147,8 +150,15 @@ export function WinrateCell({
 
   return (
     <span className={cn("flex flex-col gap-0.5", align === "center" ? "items-center" : "items-start")}>
-      <span className="font-semibold tabular-nums" style={{ color: winrateColor(pct, lowSample) }}>
-        {pct.toFixed(0)}%
+      <span className={cn("flex flex-wrap items-baseline gap-x-1.5", align === "center" && "justify-center")}>
+        <span className="font-semibold tabular-nums" style={{ color: winrateColor(pct, lowSample) }}>
+          {pct.toFixed(0)}%
+        </span>
+        {record ? (
+          <span className="text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
+            {t("users.list.table.mapsRecord", { won: user.maps_won, lost: user.maps_lost })}
+          </span>
+        ) : null}
       </span>
       <span className="text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
         {t("users.list.table.encounters", { count: user.encounters_played })}
