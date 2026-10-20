@@ -114,7 +114,6 @@ TIER = {
 
 _TOKENS: dict[str, tuple[str, float]] = {}
 _SCENARIO = ["seed"]
-_DEFECTS: dict[str, list[str]] = {}
 
 
 # == HTTP / SQL helpers ================================================================================================
@@ -216,17 +215,6 @@ def invariant(live: Live, key: str, value: Any) -> Any:
 
 def scenario_ids(live: Live, **values: Any) -> None:
     live.stack.evidence.data["scenario_ids"].setdefault(_SCENARIO[0], {}).update(values)
-
-
-def defect(live: Live, code: str, reproduced: bool, detail: str) -> None:
-    """A production defect this live run observed (``P8-D<n>``, listed in ``<ws>/slice-S4-run-report.md``).
-
-    The scenario carries on and its test ends as xfail (``_run``). Once the defect no longer reproduces this fails, so
-    the guard is removed.
-    """
-    assert reproduced, f"{code} no longer reproduces ({detail}): remove its defect() guard"
-    live.stack.evidence.append("errors", {"scenario": _SCENARIO[0], "defect": code, "detail": detail})
-    _DEFECTS.setdefault(_SCENARIO[0], []).append(f"{code}: {detail}")
 
 
 def member_of(live: Live, ids: dict[str, Any], label: str, ws: str = "A") -> int | None:
@@ -1010,8 +998,8 @@ def _wait_round(live: Live, ids: dict[str, Any], enc: dict[str, Any], number: in
 def _roster(live: Live, ids: dict[str, Any], enc: dict[str, Any]) -> dict[int, list[str]]:
     """Each seat's exported tournament roster (``tournament.player`` of the seat's team).
 
-    Not ``encounter.team_member``: a stage-generated encounter is seated without a line-up snapshot
-    (tournament-service ``src.services.bracket.persist.SeatTeam.members`` stays empty, ``admin/stage.py::_seat_teams``).
+    Stage generation snapshots the same roster as the seat's line-up (``encounter.team_member``), which is what binds a
+    document to the game by its participants' identities.
     """
     by_member = labels_by_member(live, ids)
     out: dict[int, list[str]] = {seat: [] for seat in enc["seats"]}
@@ -1149,26 +1137,11 @@ def _on_map(live: Live, ids: dict[str, Any], enc: dict[str, Any], game: str, gam
         )
 
 
-def _bound(live: Live, ids: dict[str, Any], enc: dict[str, Any], job_id: int, game_id: int, keys: list[str]) -> dict:
-    """The settled job of a document hinted at ``game_id``.
-
-    P8-D2: a stage-generated encounter is seated without a line-up snapshot, so the participants prove no seat and the
-    game's first hinted document waits for an administrator; the organizer binds it through the real route and the run
-    carries on. That bind seats the evidence's participants on the encounter, so a later document of the same game binds
-    by them and revises the match without waiting.
-    """
+def _bound(live: Live, job_id: int, game_id: int) -> dict:
+    """The settled job of a document hinted at ``game_id``: the seat line-ups prove the binding, no operator needed."""
     job = _settled(live, "off_ok", job_id)
-    match = live.match(game_id)
-    if job["status"] == "done" and match is not None and (match["revision"] > 1 or match["ingest_job_id"] != job_id):
-        return job
-    defect(
-        live, "P8-D2", job["status"] == "awaiting_link", "hinted ingest of a stage-generated encounter awaits a link"
-    )
-    observation = call(
-        live, ids, "org", "GET", "/api/v1/admin/logs/games/{gid}/observation", expect=200, gid=game_id
-    ).json()
-    teams = dict(zip(keys, enc["seats"], strict=True))
-    return _bind(live, ids, job_id, game_id, teams, observation["revision"], expect=200).json()
+    assert job["status"] == "done" and job["binding"]["encounter_game_id"] == game_id, job
+    return job
 
 
 def _bind(
@@ -2172,7 +2145,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     job_ids = {r.json()["id"] for r in results}
     assert len(job_ids) == 1, job_ids
     job_id = job_ids.pop()
-    job = _bound(live, ids, enc, job_id, enc["g1"], ["alpha", "beta"])
+    job = _bound(live, job_id, enc["g1"])
     assert job["status"] == "done" and job["binding"]["encounter_game_id"] == enc["g1"], job
     match = live.match(enc["g1"])
     assert (
@@ -2200,7 +2173,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     # Correction under a new external id: same match, revision + 1, no residual 7.
     fix = _lol_doc(live, ids, enc, f"p8-lol-g1-fix-{tag}", kills=8, hint=enc["g1"])
     fix_job = ingest(live, "off_ok", fix).json()["id"]
-    assert _bound(live, ids, enc, fix_job, enc["g1"], ["alpha", "beta"])["status"] == "done"
+    assert _bound(live, fix_job, enc["g1"])["status"] == "done"
     corrected = live.match(enc["g1"])
     assert corrected["id"] == match["id"] and corrected["revision"] == 2 and corrected["ingest_job_id"] == fix_job
 
@@ -2217,7 +2190,7 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     # OW leg: a valid external document for an exported OW encounter, and the Workshop golden as parity control.
     ow_doc = _ow_doc(live, ids, ow_enc, f"p8-ow-g1-{tag}", hint=ow_enc["g1"])
     ow_job = ingest(live, "off_ok", ow_doc).json()["id"]
-    assert _bound(live, ids, ow_enc, ow_job, ow_enc["g1"], ["t1", "t2"])["status"] == "done"
+    assert _bound(live, ow_job, ow_enc["g1"])["status"] == "done"
     ids["matches"]["ow"] = live.match(ow_enc["g1"])["id"]
     shop = live.workshop
     raw = (DIRECTORY / "workshop.csv").read_bytes()
@@ -2265,31 +2238,18 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
     preset = _preset(live, ids)
     side_config = _config(ids, preset["ruleset"], preset["first_ban_rotation"])
     for game in GAMES:
-        # Both teams play several encounters: a hint-less document has more than one candidate.
+        # Both teams play several encounters on the document's map: a hint-less document has more than one candidate.
         enc = _encounter(live, ids, game, "awaiting", config=side_config if game == LOL else None)
-        _encounter(live, ids, game, "awaiting-twin", config=side_config if game == LOL else None)
-        if game == LOL:
-            _ready(live, ids, enc)
-            _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
-        # The bind checks the game's map against the document's (P5 ``process`` bind): the captain records it first.
-        _on_map(live, ids, enc, game, enc["g1"])
+        twin = _encounter(live, ids, game, "awaiting-twin", config=side_config if game == LOL else None)
+        for each in (enc, twin):
+            if game == LOL:
+                _ready(live, ids, each)
+                _side_pick(live, ids, each, _acting(live, ids, each), 0, expect=200)
+            # The bind checks the game's map against the document's (P5 ``process`` bind): the captain records it.
+            _on_map(live, ids, each, game, each["g1"])
         doc = (_lol_doc if game == LOL else _ow_doc)(live, ids, enc, f"p8-{game}-awaiting-{tag}")
         job_id = ingest(live, "off_ok", doc).json()["id"]
         job = _settled(live, "off_ok", job_id)
-        if job["status"] == "done":
-            # P8-D2: the only seats with a line-up are an earlier game's (seated from its evidence's participants), so
-            # the hint-less document is not ambiguous at all: it binds there and revises that game's match. The bind
-            # checks below then run on a document hinted at this game, which waits for the same reason.
-            defect(
-                live,
-                "P8-D2",
-                job["binding"]["encounter_game_id"] != enc["g1"],
-                "a hint-less document revises an earlier game's match instead of awaiting a link",
-            )
-            doc["source"]["external_id"] += "-hinted"
-            doc["hint"] = {"encounter_game_id": enc["g1"]}
-            job_id = ingest(live, "off_ok", doc).json()["id"]
-            job = _settled(live, "off_ok", job_id)
         assert job["status"] == "awaiting_link", job
         assert live.s("SELECT count(*) FROM stats.match WHERE ingest_job_id=%s", job_id) == 0
         observation = call(
@@ -2300,6 +2260,7 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
             live, ids, job_id, enc["g1"], dict(zip(keys, enc["seats"], strict=True)), observation["revision"] + 5
         )
         assert stale.status == 409, stale.raw[:300]
+        # Reversed, every participant is on the other seat's line-up: the map is refused and nothing is written.
         reversed_map = dict(zip(keys, reversed(enc["seats"]), strict=True))
         wrong = _bind(live, ids, job_id, enc["g1"], reversed_map, observation["revision"])
         live.stack.evidence.append(
@@ -2311,15 +2272,10 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
                 "code": code_of(wrong),
             },
         )
-        reversed_bound = wrong.status < 400
-        if reversed_bound:
-            # P8-D2 again: with no line-up on either seat nothing contradicts the reversed map, so it binds.
-            defect(live, "P8-D2", True, "a reversed admin bind of a stage-generated encounter is accepted")
-            bound = wrong.json()
-        else:
-            assert live.match(enc["g1"]) is None, wrong.raw[:300]
-            teams = dict(zip(keys, enc["seats"], strict=True))
-            bound = _bind(live, ids, job_id, enc["g1"], teams, observation["revision"], expect=200).json()
+        refused(wrong, 409, code="binding_mismatch")
+        assert live.match(enc["g1"]) is None, wrong.raw[:300]
+        teams = dict(zip(keys, enc["seats"], strict=True))
+        bound = _bind(live, ids, job_id, enc["g1"], teams, observation["revision"], expect=200).json()
         assert bound["status"] == "done" and bound["binding"]["revision"] == 1, bound
         match = live.match(enc["g1"])
         live.drain()
@@ -2328,9 +2284,7 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
             == "published"
         )
         receipts = live.wait_receipts(enc["encounter_id"], 1)
-        # Reversed, every participant is rostered on the other seat: the match layer refuses the evidence itself.
-        expected = "owner_policy_refused" if reversed_bound else "logs_disabled"
-        assert [r["outcome"] for r in receipts] == [expected], receipts
+        assert [r["outcome"] for r in receipts] == ["logs_disabled"], receipts
         live.stack.evidence.record("receipt_outcomes", f"p8_{game}_awaiting", [r["outcome"] for r in receipts])
 
     # logs_official on: LoL evidence becomes the official result only after the real side selection.
@@ -2354,7 +2308,7 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
         _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
         _on_map(live, ids, enc, LOL, enc["g1"])
         accepted = ingest(live, "off_ok", _lol_doc(live, ids, enc, f"p8-official-{tag}", hint=enc["g1"])).json()["id"]
-        assert _bound(live, ids, enc, accepted, enc["g1"], ["alpha", "beta"])["status"] == "done"
+        assert _bound(live, accepted, enc["g1"])["status"] == "done"
         outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 1)]
         assert outcomes == ["accepted"], outcomes
         official = live.game(enc["g1"])
@@ -2362,7 +2316,7 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
         contradicting = _lol_doc(live, ids, enc, f"p8-official-late-{tag}", hint=enc["g1"])
         contradicting["teams"] = [{"key": "alpha", "placement": 2}, {"key": "beta", "placement": 1}]
         late = ingest(live, "off_ok", contradicting).json()["id"]
-        assert _bound(live, ids, enc, late, enc["g1"], ["alpha", "beta"])["status"] == "done"
+        assert _bound(live, late, enc["g1"])["status"] == "done"
         outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 2)]
         assert outcomes[-1] == "result_locked" and live.game(enc["g1"]) == official, outcomes
         live.stack.evidence.record("receipt_outcomes", "p8_lol_official", outcomes)
@@ -2650,8 +2604,6 @@ def _run(name: str, live: Live, ids: dict[str, Any], scenario) -> None:
     except BaseException as exc:
         live.stack.evidence.append("errors", {"scenario": name, "error": redact(repr(exc)[:2000], live.stack.secrets)})
         raise
-    if _DEFECTS.get(name):
-        pytest.xfail("; ".join(dict.fromkeys(_DEFECTS[name])))
 
 
 def test_tournament_registration(live: Live, p8_ids: dict[str, Any]) -> None:
