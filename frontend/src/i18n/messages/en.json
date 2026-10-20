@@ -218,10 +218,8 @@
       "invalidTitle": "Unknown game selection",
       "invalid": {
         "unknown": "\"{requested}\" is not an installed game.",
-        "disabled": "\"{requested}\" is not enabled for this workspace.",
-        "all-not-supported": "This page shows one game at a time; \"All games\" is not available here."
+        "disabled": "\"{requested}\" is not enabled for this workspace."
       },
-      "invalidAction": "Choose one of the available games below.",
       "emptyTitle": "No games available",
       "empty": "No game is enabled for this scope yet.",
       "widgetUnsupported": "This game does not support this feature.",
