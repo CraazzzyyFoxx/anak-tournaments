@@ -1,0 +1,184 @@
+// @vitest-environment happy-dom
+//
+// The profile's blocks stream in after the site header, and by the time one hydrates the browser may hold some of the
+// games' data already: the scope pill reads the installed games, a game card (or any block) its game's metadata. A
+// block's first browser render must still be the server's. Under "all games" the game cards (named from the installed
+// games) and the overview's role split (named and painted from its game's metadata) hydrate the server's markup into
+// such a browser without a mismatch.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
+import { act } from "react";
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
+import { afterEach, expect, it, vi } from "vitest";
+
+import type * as OverviewModule from "@/app/(site)/users/_views/UserOverviewPage";
+import messages from "@/i18n/messages/en.json";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { resolveServer } from "@/test/resolve-server";
+import { navigation } from "@/test/url-navigation";
+
+import UserPage from "./page";
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const { profile } = vi.hoisted(() => {
+  const support = { dimension: "player_role", role: "support" };
+  // A player of both games, one tournament each: Overwatch (area order first) is the overview's game.
+  const crossGame = {
+    tournaments: [
+      { id: 1, discipline: "overwatch" },
+      { id: 2, discipline: "lol" }
+    ],
+    games: [
+      {
+        discipline: "overwatch",
+        roles: [{ role: support, division: 5, division_grid_version: null }],
+        tournaments_count: 1,
+        tournaments_won: 0
+      },
+      { discipline: "lol", roles: [], tournaments_count: 1, tournaments_won: 0 }
+    ],
+    roles: [],
+    tournaments_count: 2,
+    tournaments_won: 0,
+    characters_count: 0,
+    maps_total: 0
+  };
+  return {
+    profile: (game: string | null) =>
+      game === null
+        ? crossGame
+        : {
+            ...crossGame,
+            roles: [{ role: support, maps: 0, maps_won: 0, tournaments: 1, division: 5, division_grid_version: null }]
+          }
+  };
+});
+
+// `vi.mock` factories run before this file's imports, so the modules they hand out are loaded inside them.
+vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
+// A visitor with no saved game, across communities.
+vi.mock("@/lib/site/tenant-host", () => ({
+  resolveStatsScope: async () => "all",
+  resolveServerDisciplineScope: async () => ({ stored: "all", lastGame: null, axis: "all", hostLockedWorkspaceId: null })
+}));
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+vi.mock("@/services/user.service", () => ({
+  default: {
+    getUserByName: async () => ({ id: 108, name: "IngestH0" }),
+    getUserProfile: async (_id: number, game: string | null) => profile(game),
+    getUserTournament: async () => null,
+    getUserTournamentEncounters: async () => [],
+    getUserTournaments: async () => [],
+    getUserCharacters: async () => null,
+    getUserMaps: async () => null,
+    getUserEncounters: async () => ({ results: [], total: 0 }),
+    getUserAchievements: async () => [],
+    getUserBestTeammates: async () => ({ results: [], total: 0 })
+  }
+}));
+// The rest of the page has its own suites.
+vi.mock("@/app/(site)/users/components/header/UserHeader", () => ({ default: () => null }));
+vi.mock("@/app/(site)/users/components/shared/profile-jsonld", () => ({ ProfileJsonLd: () => null }));
+vi.mock("@/app/(site)/users/components/overview/OverviewCareerList", () => ({ default: () => null }));
+vi.mock("@/app/(site)/users/components/overview/OverviewRecentEncounters", () => ({ default: () => null }));
+vi.mock("@/app/(site)/users/components/overview/OverviewAchievementsPreview", () => ({ default: () => null }));
+vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
+vi.mock("@/disciplines/registry/profile", () => ({ loadProfileUI: async () => null }));
+// The overview awaits its sections, as the RSC renderer does (`resolveServer` only awaits async components).
+vi.mock("@/app/(site)/users/_views/UserOverviewPage", async (importOriginal) => {
+  const actual = await importOriginal<typeof OverviewModule>();
+  return { ...actual, default: async (props: Parameters<typeof actual.default>[0]) => actual.default(props) };
+});
+
+let hydrated: Root | undefined;
+let host: HTMLElement | undefined;
+
+afterEach(async () => {
+  await act(async () => hydrated?.unmount());
+  host?.remove();
+  hydrated = host = undefined;
+});
+
+async function settle(turns = 8) {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 0);
+      await promise;
+    });
+  }
+}
+
+/**
+ * The server's markup of the profile under all games, hydrated into a browser whose cache `prewarm` filled; the same
+ * tree on both sides, only the query client differs, as one request's and the browser's do.
+ */
+async function hydrateProfile(prewarm: (client: QueryClient) => void) {
+  navigation.reset("/users/IngestH0");
+  const page = await resolveServer(
+    await UserPage({ params: Promise.resolve({ slug: "IngestH0" }), searchParams: Promise.resolve({}) })
+  );
+  const tree = (queryClient: QueryClient) => (
+    <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+      <QueryClientProvider client={queryClient}>{page}</QueryClientProvider>
+    </NextIntlClientProvider>
+  );
+  const html = renderToString(tree(new QueryClient()));
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  prewarm(client);
+  host = document.body.appendChild(document.createElement("div"));
+  host.innerHTML = html;
+  const recoverable: unknown[] = [];
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  await act(async () => {
+    hydrated = hydrateRoot(host as HTMLElement, tree(client), {
+      onRecoverableError: (error) => void recoverable.push(error)
+    });
+  });
+  await settle();
+  const mismatches = errors.mock.calls.filter((call) => String(call[0]).toLowerCase().includes("hydrat"));
+  errors.mockRestore();
+  return { html, recoverable, mismatches };
+}
+
+const GAMES = [OW_METADATA.discipline, LOL_METADATA.discipline];
+
+it.each([
+  ["has read them", (client: QueryClient) => client.setQueryData(disciplineQueryKeys.list("all"), GAMES)],
+  [
+    "is still reading them",
+    (client: QueryClient) =>
+      void client.prefetchQuery({
+        queryKey: disciplineQueryKeys.list("all"),
+        queryFn: () => Promise.withResolvers<never>().promise
+      })
+  ]
+])("draws a card per game on the server, and hydrates it where the scope pill %s", async (_state, prewarm) => {
+  const { html, recoverable, mismatches } = await hydrateProfile(prewarm);
+
+  expect(recoverable.map(String)).toEqual([]);
+  expect(mismatches).toEqual([]);
+  expect(html).toContain(">Overwatch</h3>");
+  expect(html).toContain(">League of Legends</h3>");
+  const cards = host?.querySelectorAll('ul[aria-label="All games"] h3') ?? [];
+  expect([...cards].map((card) => card.textContent)).toEqual(["Overwatch", "League of Legends"]);
+});
+
+it("names and paints the role split's roles on the server, and hydrates it where a game card read the game's metadata", async () => {
+  const { html, recoverable, mismatches } = await hydrateProfile((client) =>
+    client.setQueryData(disciplineQueryKeys.metadata("all", "overwatch"), OW_METADATA)
+  );
+
+  expect(recoverable.map(String)).toEqual([]);
+  expect(mismatches).toEqual([]);
+  expect(html).toContain(">Support<");
+  expect(html).toContain("#10b981");
+  expect(host?.textContent).toContain("Support");
+});

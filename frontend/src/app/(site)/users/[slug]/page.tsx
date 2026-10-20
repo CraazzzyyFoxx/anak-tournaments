@@ -1,5 +1,6 @@
 import React, { Suspense, cache } from "react";
 import userService from "@/services/user.service";
+import disciplineService from "@/services/discipline.service";
 import UserHeader from "@/app/(site)/users/components/header/UserHeader";
 import UserGameCards from "@/app/(site)/users/components/header/UserGameCards";
 import { TabsContent } from "@/components/ui/tabs";
@@ -28,6 +29,7 @@ import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderS
 import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-jsonld";
 import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEmpty";
 import ProfileGameTabs from "@/app/(site)/users/components/shared/ProfileGameTabs";
+import ProfileGameData from "@/app/(site)/users/components/shared/ProfileGameData";
 import ProfileNotPlayed from "@/app/(site)/users/components/shared/ProfileNotPlayed";
 import { blockGameOf, boundGameSummary, orderPlayerGames } from "@/app/(site)/users/components/shared/profile-games";
 import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
@@ -138,6 +140,20 @@ const getUserAndProfile = cache(async (slug: string, scope: StatsScope, game: st
 });
 
 type UserAndProfile = Awaited<ReturnType<typeof getUserAndProfile>>;
+
+/**
+ * What the profile's blocks read of the games, read once for the page alongside the profile: the installed games
+ * (axis `all`) and the metadata, on the viewed axis, of every game the page can show — its game, or under "all games"
+ * each of the area's. A failed read is left out: the browser reads it itself.
+ */
+const loadProfileGameData = async (view: ProfileView) => {
+  const codes = view.game === null ? (view.init.disciplines ?? []).map((entry) => entry.code) : [view.game];
+  const [games, metadata] = await Promise.all([
+    view.axis === "all" ? view.init.disciplines : disciplineService.list("all").catch(() => null),
+    Promise.all(codes.map((code) => disciplineService.metadata(view.axis, code).catch(() => null)))
+  ]);
+  return { games, metadata: metadata.filter((entry) => entry !== null) };
+};
 
 const gameNameOf = (view: ProfileView, code: string) =>
   view.init.disciplines?.find((entry) => entry.code === code)?.name ?? code;
@@ -456,10 +472,12 @@ const ProfileBody = async ({
  */
 const ProfileOrMissingGrid = async ({
   userAndProfile,
+  gameData,
   view,
   children
 }: {
   userAndProfile: Promise<UserAndProfile>;
+  gameData: ReturnType<typeof loadProfileGameData>;
   view: ProfileView;
   children: React.ReactNode;
 }) => {
@@ -469,7 +487,12 @@ const ProfileOrMissingGrid = async ({
     if (!isDivisionGridRequired(error) || view.game === null) throw error;
     return <UsersMissingGrid discipline={view.game} gameName={gameNameOf(view, view.game)} axis={view.axis} />;
   }
-  return children;
+  const { games, metadata } = await gameData;
+  return (
+    <ProfileGameData axis={view.axis} games={games} metadata={metadata}>
+      {children}
+    </ProfileGameData>
+  );
 };
 
 export default async function UserPage({
@@ -498,6 +521,7 @@ export default async function UserPage({
     init: page.init
   };
   const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, view.game);
+  const gameData = loadProfileGameData(view);
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";
   const activeTab: UserTab = isUserTab(requestedTab) ? requestedTab : "overview";
@@ -536,7 +560,7 @@ export default async function UserPage({
         </>
       }
     >
-      <ProfileOrMissingGrid userAndProfile={userAndProfile} view={view}>
+      <ProfileOrMissingGrid userAndProfile={userAndProfile} gameData={gameData} view={view}>
         <Suspense fallback={<UserHeaderSkeleton />}>
           <UserHeaderSection userAndProfile={userAndProfile} slug={resolvedParams.slug} view={view} />
         </Suspense>

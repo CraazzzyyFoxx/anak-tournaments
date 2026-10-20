@@ -3,7 +3,7 @@
 // across communities as a choice of community, on a workspace as that workspace's missing grid — and any other
 // failure still reaches the route's error boundary. Under "all games" a per-game tab reads its game's own profile and
 // is refused the same way: the notice then stands under the game tabs.
-import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -11,6 +11,7 @@ import en from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
 import type { PageGame, WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { resolveServer } from "@/test/resolve-server";
 
 import UserPage from "./page";
 
@@ -38,11 +39,16 @@ vi.mock("@/lib/site/discipline-server", () => ({
 vi.mock("@/services/user.service", () => ({
   default: { getUserByName: async () => ({ id: 7, name: "Faker" }), getUserProfile }
 }));
+// The fixture loads inside the factory: `vi.mock` factories run before this file's imports.
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 // The profile around a per-game tab has its own suites: only the tab's own game read is exercised here.
 vi.mock("@/app/(site)/users/components/header/UserHeader", () => ({ default: () => null }));
 vi.mock("@/app/(site)/users/components/header/UserGameCards", () => ({ default: () => null }));
 vi.mock("@/app/(site)/users/components/shared/profile-jsonld", () => ({ ProfileJsonLd: () => null }));
 vi.mock("@/app/(site)/users/components/shared/ProfileGameTabs", () => ({ default: () => "[game tabs]" }));
+vi.mock("@/app/(site)/users/components/shared/ProfileGameData", () => ({
+  default: ({ children }: { children: ReactNode }) => children
+}));
 vi.mock("@/app/(site)/users/_views/UserOverviewPage", () => ({
   default: () => "[overview]",
   UserOverviewPageSkeleton: () => null
@@ -59,20 +65,6 @@ vi.mock("@/app/(site)/users/components/tabs/UserTabsClient", async () => {
 const REFUSAL = new ApiError(422, [
   { msg: "division_grid_required: 'lol' needs a division grid of its own with tiers", code: "unprocessable" }
 ]);
-
-/** Awaits every async (server) component in the tree, the way the RSC renderer does, leaving client ones to SSR. */
-async function resolveServer(node: ReactNode): Promise<ReactNode> {
-  if (Array.isArray(node)) return Promise.all(node.map(resolveServer));
-  if (!isValidElement(node)) return node;
-  const { type, props } = node as ReactElement<{ children?: ReactNode }>;
-  if (typeof type === "function" && type.constructor.name === "AsyncFunction") {
-    return resolveServer(await (type as (p: unknown) => Promise<ReactNode>)(props));
-  }
-  if (props.children === undefined) return node;
-  // Static JSX children stay positional arguments, as they were written (an array argument would need keys).
-  const children = await resolveServer(props.children);
-  return cloneElement(node, undefined, ...(Array.isArray(children) ? children : [children]));
-}
 
 const renderProfile = async () =>
   renderToStaticMarkup(
