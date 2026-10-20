@@ -141,6 +141,17 @@ describe("GameField", () => {
     expect(onChange).toHaveBeenCalledWith("overwatch");
   });
 
+  it("takes no pick when the checked game is pressed again, a reselect or a deselect attempt alike", async () => {
+    const onChange = vi.fn();
+    await render(<GameField games={[OW, LOL]} value="lol" onChange={onChange} />);
+
+    await act(async () => radios()[1]?.click());
+    await act(async () => radios()[1]?.click());
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(radios().map((radio) => radio.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+  });
+
   it("checks nothing without a value and takes no pick once locked", async () => {
     const onChange = vi.fn();
     await render(<GameField games={[OW, LOL]} value={null} onChange={onChange} disabled />);

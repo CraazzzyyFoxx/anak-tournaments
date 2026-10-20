@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
-import { act, type ReactNode } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useWorkspaceStore } from "@/stores/workspace.store";
+import { LOL_GAME, OW_GAME } from "@/test/game-scope";
 import type { AchievementRule } from "@/types/admin.types";
 
+import { AchievementFormDialog } from "./_components/AchievementFormDialog";
 import { useAchievementRuleActions } from "./_hooks/useAchievementRuleActions";
 import { useAchievementRuleForm, type AchievementRuleForm } from "./_hooks/useAchievementRuleForm";
 import { useAchievementDetailMutations } from "./[id]/_hooks/useAchievementDetail";
@@ -26,6 +29,7 @@ const service = vi.hoisted(() => ({
   evaluateAchievements: vi.fn(),
   exportAchievementRules: vi.fn(),
   deleteAchievementRule: vi.fn(),
+  getCatalogCharacters: vi.fn(),
 }));
 
 vi.mock("next-intl", async (importOriginal) => {
@@ -38,6 +42,7 @@ vi.mock("next-intl", async (importOriginal) => {
   };
 });
 vi.mock("@/services/admin.service", () => ({ default: service }));
+vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
 
 const RULE: AchievementRule = {
   id: 5,
@@ -186,6 +191,38 @@ describe("the rule form is scoped to a discipline", () => {
 
     expect(form.discipline).toBe("lol");
     expect(form.formData).toMatchObject({ discipline: "lol", name: "Draft", entity_id: null });
+  });
+
+  it("keeps the draft's character when its own game is pressed again in the game field", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: 7 });
+    service.getCatalogCharacters.mockResolvedValue([{ id: 77, name: "Tracer", active: true }]);
+    function DialogProbe() {
+      const dialogForm = useAchievementRuleForm(7, "overwatch");
+      useEffect(() => {
+        form = dialogForm;
+      });
+      return <AchievementFormDialog form={dialogForm} games={[OW_GAME, LOL_GAME]} />;
+    }
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <DialogProbe />
+        </QueryClientProvider>
+      );
+    });
+    await act(async () => form.openCreate());
+    // The character is one the game's catalog offers, as when it is picked in the field.
+    await act(() => new Promise<void>((done) => setTimeout(done, 0)));
+    await act(async () => form.setFormData({ ...form.formData, name: "Draft", entity_id: 77 }));
+    expect(form.formData.entity_id).toBe(77);
+
+    const overwatch = Array.from(document.querySelectorAll<HTMLButtonElement>('#rule-game [role="radio"]')).find(
+      (radio) => radio.textContent?.includes("Overwatch")
+    );
+    expect(overwatch?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => overwatch!.click());
+
+    expect(form.formData).toMatchObject({ discipline: "overwatch", name: "Draft", entity_id: 77 });
   });
 });
 

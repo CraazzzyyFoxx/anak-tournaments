@@ -9,7 +9,8 @@ import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 /**
  * A creation form's "Game" field (spec §7.2): one radio per enabled game. The caller passes the
- * default (`defaultCreationGame`) and locks the field once the entity exists.
+ * default (`defaultCreationGame`) and locks the field once the entity exists. Only a different game
+ * is reported: pressing the checked one again is no pick, so whatever the form keeps per game stays.
  */
 export function GameField({
   games,
@@ -33,7 +34,13 @@ export function GameField({
         {t("field")}
       </p>
       <div id={id}>
-        <ToggleGroup type="single" variant="pill" value={value ?? undefined} onValueChange={onChange} aria-labelledby={labelId}>
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          value={value ?? undefined}
+          onValueChange={(code) => code && code !== value && onChange(code)}
+          aria-labelledby={labelId}
+        >
           {games
             .filter((game) => game.enabled)
             .map((game) => (
