@@ -53,6 +53,9 @@ rehearsal is a P9 gate.
   `all` only on `/tournaments` and `/balancer/mix`; the tenant host's workspace is never overridden; browsing links
   (header, footer, command palette, `WorkspaceScopeLink`) carry the resolved game; an invalid explicit value renders an
   error state. Owner pages (tournament, match, encounter, draft, scrim, grid) take their game from the owner DTO.
+  *Superseded on 2026-10-20 by the game scope (`docs/releases/2026-10-20-game-scope.md`): `all` is legal on every list
+  page, links no longer carry the game, landing never canonicalizes the URL, and `useBrowsingDiscipline` is replaced
+  by `useGameScope`.*
 * **Slot registry by family** — `disciplines/registry/{rank,pregame,admin,match,profile,analytics}.ts` with module
   entrypoints `disciplines/<code>/<family>.ts`; `DisciplineWidget` takes the family loader (`load`), renders nothing (or a
   caller-supplied `pending` view) while a chunk loads and the fallback only when the resolved game has no renderer.
