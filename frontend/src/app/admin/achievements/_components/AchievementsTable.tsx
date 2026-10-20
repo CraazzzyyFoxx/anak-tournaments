@@ -114,9 +114,9 @@ export function AchievementsTable({
     ),
   ];
 
-  // After enabled, slug and name: the game names the rule before its category.
+  // Right after enabled: the game is among the first three columns, so the phone card (the first three) shows it too.
   const columns = showGame
-    ? [...base.slice(0, 3), gameColumn<AchievementRule>(tGame("column"), (rule) => rule.discipline), ...base.slice(3)]
+    ? [base[0], gameColumn<AchievementRule>(tGame("column"), (rule) => rule.discipline), ...base.slice(1)]
     : base;
 
   return (

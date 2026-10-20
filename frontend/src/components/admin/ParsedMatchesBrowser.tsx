@@ -18,7 +18,7 @@ import {
 } from "@/components/admin/tournament-filter";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
-import { gameColumn } from "@/components/workspace/game-column";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -251,6 +251,9 @@ export function ParsedMatchesBrowser({
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="truncate text-sm font-medium">{row.original.map.name}</p>
+                {discipline === null ? (
+                  <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
+                ) : null}
                 <p className="truncate text-xs text-muted-foreground">
                   {row.original.encounter_name} ·{" "}
                   <span className="tabular-nums">{scoreLine(row.original.participants)}</span>

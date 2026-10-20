@@ -379,6 +379,17 @@ describe("/admin/matches", () => {
     expect(cards[0].querySelector('[role="img"][aria-label="No logs"]')).not.toBeNull();
   });
 
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    scopeGame.value = null;
+    getEncounters.mockResolvedValue({ results: [encounter({ discipline: "lol" })], total: 1, page: 1, per_page: 15 });
+    setViewportWidth(375);
+    const container = await mount();
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Team C vs Team D");
+    expect(card.textContent).toContain("League of Legends");
+  });
+
   it("asks the encounters view for the game in scope", async () => {
     scopeGame.value = "lol";
     const container = await mount();

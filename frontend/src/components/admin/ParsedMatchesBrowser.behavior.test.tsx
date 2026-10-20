@@ -232,6 +232,8 @@ describe("ParsedMatchesBrowser", () => {
     });
     replace.mockClear();
     window.history.replaceState(null, "", "/admin/matches");
+    // Desktop unless a case narrows it: below `md` the table renders cards.
+    Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
     document.body.innerHTML = "";
   });
 
@@ -381,5 +383,14 @@ describe("ParsedMatchesBrowser", () => {
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     expect(lastQuery().discipline).toBe("lol");
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Ilios");
+    expect(card.textContent).toContain("Overwatch");
   });
 });

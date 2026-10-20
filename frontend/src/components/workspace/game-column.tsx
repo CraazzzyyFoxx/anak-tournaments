@@ -5,9 +5,10 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { GameLabel } from "@/components/workspace/GameLabel";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 
-function GameCell({ code }: Readonly<{ code: string }>) {
+/** A row's game in an all-games admin list — its table cell or its mobile card (spec §6.1): mark and name. */
+export function RowGameLabel({ code, className }: Readonly<{ code: string; className?: string }>) {
   const games = useGameDescriptors();
-  return <GameLabel code={code} games={games} />;
+  return <GameLabel code={code} games={games} className={className} />;
 }
 
 /** The admin tables' "Game" column (spec §6.1): each row's game mark and name. Only the all-games view adds it. */
@@ -19,7 +20,7 @@ export function gameColumn<T>(header: string, codeOf: (row: T) => string | null 
     enableSorting: false,
     cell: ({ row }) => {
       const code = codeOf(row.original);
-      return code ? <GameCell code={code} /> : null;
+      return code ? <RowGameLabel code={code} /> : null;
     }
   };
 }

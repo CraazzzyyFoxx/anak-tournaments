@@ -99,6 +99,8 @@ beforeEach(() => {
     page: 1,
     per_page: 15
   });
+  // Desktop unless a case narrows it: below `md` the table renders cards.
+  Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
   document.body.innerHTML = "";
   container = document.body.appendChild(document.createElement("div"));
   root = createRoot(container);
@@ -123,5 +125,13 @@ describe("the rule catalog under the game scope", () => {
 
     expect(getAchievementRules).toHaveBeenCalledWith(7, "lol", expect.any(Object));
     expect(headers()).not.toContain("Game");
+  });
+
+  it("names each rule's game in the phone card under all games", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+    await mount(null, true);
+
+    const cards = Array.from(container.querySelectorAll("ul[aria-label='Rows'] > li")).map((card) => card.textContent ?? "");
+    expect(cards.find((text) => text.includes("rule-2"))).toContain("League of Legends");
   });
 });

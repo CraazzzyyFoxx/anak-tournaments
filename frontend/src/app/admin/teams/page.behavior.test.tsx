@@ -355,6 +355,18 @@ describe("/admin/teams", () => {
     // roster size are what a phone needs from a team.
     expect(cards[0].textContent).toContain("MoonRise Mix Vol.4");
     expect(cards[0].textContent).toContain("2 players");
+    // Under a game every card is that game's: no game label.
+    expect(cards[0].textContent).not.toContain("Overwatch");
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    scopeGame.value = null;
+    setViewportWidth(375);
+    const container = await mount();
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Wombat Warriors");
+    expect(card.textContent).toContain("Overwatch");
   });
 
   it("lists every game's teams with a Game column and ignores a one-game tournament filter when no game is chosen", async () => {

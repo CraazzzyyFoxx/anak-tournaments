@@ -15,7 +15,7 @@ import {
   TOURNAMENT_QUERY_PARAM,
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
-import { gameColumn } from "@/components/workspace/game-column";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -157,6 +157,12 @@ export function TeamsBrowser({ discipline }: Readonly<{ discipline: string | nul
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
+                {discipline === null && row.original.tournament?.discipline ? (
+                  <RowGameLabel
+                    code={row.original.tournament.discipline}
+                    className="flex text-xs text-muted-foreground"
+                  />
+                ) : null}
                 <p className="truncate text-xs text-muted-foreground">
                   {row.original.tournament?.name ?? t("noTournamentShort")}
                 </p>

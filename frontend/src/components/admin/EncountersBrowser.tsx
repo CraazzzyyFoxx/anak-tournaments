@@ -8,7 +8,7 @@ import { FileX2, Plus } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
-import { gameColumn } from "@/components/workspace/game-column";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { EncounterForm } from "@/components/admin/EncounterForm";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
@@ -248,6 +248,9 @@ export function EncountersBrowser({
             return (
               <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
+                {discipline === null ? (
+                  <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
+                ) : null}
                 <p className="truncate text-xs text-muted-foreground">
                   {scopeLabel ? `${scopeLabel} · ` : null}R{row.original.round} ·{" "}
                   <span className="tabular-nums">
