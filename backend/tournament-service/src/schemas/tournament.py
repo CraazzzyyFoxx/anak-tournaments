@@ -61,7 +61,7 @@ class TournamentRead(BaseRead):
     is_finished: bool
     is_hidden: bool = False
     # Branding uploaded through the dedicated image subjects, never through
-    # `TournamentUpdate` (issue #95): the cover is the wide page banner, the logo
+    # `TournamentUpdate`: the cover is the wide page banner, the logo
     # the square mark. Both nullable — a tournament with neither renders the
     # gradient fallback.
     cover_image_url: str | None = None
@@ -89,7 +89,7 @@ class TournamentRead(BaseRead):
     # The tournament's draft format rule; None = the snake default. Always
     # exposed: it costs no query.
     draft_format_json: dict[str, typing.Any] | None = None
-    # Opt-in entities (D16): TournamentRead is nested in six other schemas that
+    # Opt-in entities: TournamentRead is nested in six other schemas that
     # are built from ORM rows without a session, so neither of these can be
     # required -- filling them unconditionally would cost a query per nested row.
     roster_shape: RosterShapeRead | None = None
@@ -108,7 +108,7 @@ class TournamentRead(BaseRead):
     @computed_field
     @property
     def identity_provider(self) -> str:
-        """The discipline's player identity provider (D90)."""
+        """The discipline's player identity provider."""
         return discipline_identity_provider(self.discipline)
 
 

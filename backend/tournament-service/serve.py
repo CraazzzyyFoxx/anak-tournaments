@@ -91,7 +91,7 @@ _JOBS_CHANNEL = Channel(prefetch_count=4)
 set_worker_broker(broker)
 
 # The cashews cache is a process-global singleton; the worker must configure it
-# (like the API does) or after-commit cache invalidation raises NotConfiguredError.
+# or after-commit cache invalidation raises NotConfiguredError.
 configure_cache()
 
 # Same reason, same place: ``emit`` publishes through this Redis URL and drops
@@ -142,11 +142,10 @@ registration_team_binary.register(broker, logger)
 # Tournament cover/logo upload/delete — same wire format, two slots.
 tournament_binary.register(broker, logger)
 team_format.register(broker, logger)
-# Ad-hoc scrim rooms (docs/plans/2026-08-12-scrim-rooms.md). Provisioning only —
-# a room is then played through the pre-game subjects registered just above.
+# Ad-hoc scrim rooms. Provisioning only — a room is then played through the
+# pre-game subjects registered just above.
 scrim.register(broker, logger)
-# Recalculation-event consumers (tournament.changed / standings.invalidated).
-# Previously mounted by the deleted HTTP main.py; the worker now hosts them so
+# Recalculation-event consumers (tournament.changed / standings.invalidated):
 # cache invalidation + standings recalculation run on those domain events.
 broker.include_router(recalculation_events.task_router)
 # Ingest evidence (match.ingested): the match layer alone decides whether a log becomes official.
@@ -191,12 +190,11 @@ async def purge_stale_realtime_events(
 ) -> None:
     """Drop realtime rows nobody can still replay: brackets, invalidations, chat.
 
-    Three statements, one per topic family, each a single unbatched DELETE (design
-    decision D2 of docs/plans/2026-08-24-realtime-shared-library.md). Bracket and
-    invalidation only, never pregame/draft: those sessions have no upper bound on
-    duration, so a 7-day floor would cut a live one. ``%:chat`` joins them because
-    chat history moved to ``chat_message`` (the chat01 migration copied these rows
-    across); what is left here is a duplicate nothing reads any more.
+    Three statements, one per topic family, each a single unbatched DELETE.
+    Bracket and invalidation only, never pregame/draft: those sessions have no
+    upper bound on duration, so a 7-day floor would cut a live one. ``%:chat``
+    joins them because chat history lives in ``chat_message``; the rows here are
+    a duplicate nothing reads.
 
     The patterns are BOUND, not inlined: a literal `:` inside ``text()`` is
     parsed as a bind-parameter marker (here `:bracket`), not a plain character,
@@ -324,9 +322,8 @@ async def stop_scheduler() -> None:
     # (per encounter / per batch) and are idempotent on re-run, so an
     # interrupted job resumes cleanly on the next tick.
     scheduler.shutdown(wait=False)
-    # The realtime publisher's pooled client: unclosed, it leaks a connection per
-    # worker restart (the same leak challonge.sync's own client was fixed for
-    # — that fix was never applied to challonge.sync itself; it is now).
+    # The realtime publisher's and challonge.sync's pooled clients: unclosed,
+    # each leaks a connection per worker restart.
     await close_realtime_redis()
     await challonge_sync.close_redis()
     # Third pooled client, same leak: the quota gate opened its own above.

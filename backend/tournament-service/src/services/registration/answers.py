@@ -1,11 +1,8 @@
 """The one answer pipeline: validate a submission, write it, project it back.
 
-A registration answer has exactly three jobs, and they used to live in five
-places: the ten-keyword ``create_registration``, the ``setattr``-per-key
-``update_registration``, the per-field branches of ``lifecycle`` and the whole
-of the deleted ``validation.py``. Here they are three methods over one flat
-``{field key -> value}`` document, so adding a question to the form costs an
-organizer a schema edit and nothing else.
+A registration answer has exactly three jobs, and here they are three methods
+over one flat ``{field key -> value}`` document, so adding a question to the
+form costs an organizer a schema edit and nothing else.
 
 ``validate`` runs the three stages -- normalisation, role composition, verified
 identity -- and collects errors from ALL of them before raising, so a registrant
@@ -275,8 +272,7 @@ class RegistrationAnswerService:
         player_id: int,
         providers: set[str],
     ) -> dict[str, set[str]]:
-        # Multi-column projection over one player's verified handles — a
-        # row-tuple read, not a CRUD fetch, so it stays here.
+        # Analytical: a two-column projection over one player's verified handles.
         rows = (
             await session.execute(
                 sa.select(models.SocialAccount.provider, models.SocialAccount.username_normalized).where(

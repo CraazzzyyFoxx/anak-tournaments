@@ -108,7 +108,7 @@ class SwissRoundsService:
                 # No stopped-scope shortcut: a scope that once had no
                 # rematch-free pairing may have one again after a round is
                 # re-generated, and generation re-marks it when it truly does
-                # not. Skipping on the flag made the stop permanent.
+                # not. Skipping on the flag would make the stop permanent.
                 if not stage_item_ready_for_next_round(item_encounters):
                     continue
                 next_round = next_round_number(item_encounters)
@@ -132,14 +132,6 @@ class SwissRoundsService:
                     )
                 )
         return generated
-
-    async def enqueue_swiss_next_rounds(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> list[models.Encounter]:
-        """Backward-compatible name: generate ready rounds in-process."""
-        return await self.generate_ready_rounds(session, tournament_id)
 
     async def generate_next_swiss_round(
         self,

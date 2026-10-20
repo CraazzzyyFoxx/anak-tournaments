@@ -200,8 +200,7 @@ class AdminEncounterReportsService:
 
     Both methods are analytical, not CRUD — a window-function join for the newest
     audit row per encounter, aggregate chip counters, and pagination — so the
-    statements stay here rather than behind repository methods
-    (``backend/docs/repository-boundaries.md``). There is nothing to inject.
+    statements stay here rather than behind repository methods.
     """
 
     def _row(

@@ -1,8 +1,4 @@
-"""Guards protecting tournament write-paths from conflicting draft state.
-
-Shared by the duplicated admin update paths in tournament-service and
-stats-service (mid-extraction write-path, CG-O6).
-"""
+"""Guards protecting tournament write-paths from conflicting draft state."""
 
 from __future__ import annotations
 
@@ -47,12 +43,7 @@ async def unfinished_draft_session_status(session: AsyncSession, tournament_id: 
 
 
 def unfinished_draft_clause() -> ColumnElement[bool]:
-    """What "in flight" means, for callers that scope it differently.
-
-    ``roster_shape_guards`` asks the same question across every tournament of a
-    workspace, so the status set lives here once instead of being restated per
-    query.
-    """
+    """What "in flight" means, shared by the per-tournament and per-page reads."""
     return DraftSession.status.notin_(_TERMINAL_DRAFT_STATUSES)
 
 
@@ -83,10 +74,9 @@ async def assert_no_active_draft_session(
     """Raise a business error when the tournament has an in-flight draft session.
 
     Changing ``team_formation`` -- or the roster shape the draft is picking into
-    -- while a draft is in flight would orphan the session (SK-O2), so callers
-    invoke this before applying such a change. ``change`` names the edit in the
-    error message; its default keeps the original ``team_formation`` wording for
-    the callers that predate the parameter.
+    -- while a draft is in flight would orphan the session, so callers invoke
+    this before applying such a change. ``change`` names the edit in the error
+    message.
     """
     active_status = await unfinished_draft_session_status(session, tournament_id)
     if active_status is not None:

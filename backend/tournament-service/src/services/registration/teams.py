@@ -1,7 +1,6 @@
 """Team registration flows: create, invite, accept, and roster edits.
 
-See ``docs/plans/2026-08-20-team-registration.md`` §4. Three properties shape
-every method here.
+Three properties shape every method here.
 
 **One registration per player, always.** A team member's registration is an
 ordinary :class:`BalancerRegistration` row with three extra columns set, so every
@@ -15,13 +14,14 @@ rather than writing rows themselves.
 takes ``SELECT … FOR UPDATE`` on the team row *before* reading occupancy, and the
 write lands before that lock is released. Without it two invitees accept the last
 ``damage`` slot and the roster silently overflows the shape, which the export would
-then materialize as an over-sized team. Most flows lock exactly one team row. Organizer placement of a player who
-already sits on another team is the exception: both teams are locked in id order
-so two concurrent moves cannot deadlock.
+then materialize as an over-sized team. Most flows lock exactly one team row.
+Organizer placement of a player who already sits on another team is the
+exception: both teams are locked in id order so two concurrent moves cannot
+deadlock.
 
-**A dead invite must say why it is dead.** §3.3's guarded ``UPDATE`` collapses
-expired / revoked / already-accepted into one rowcount 0. §12.1 requires a distinct
-machine code per case, so :func:`_diagnose_dead_invite` re-reads the row *for
+**A dead invite must say why it is dead.** The guarded ``UPDATE`` collapses
+expired / revoked / already-accepted into one rowcount 0, and each case needs a
+distinct machine code, so :func:`_diagnose_dead_invite` re-reads the row *for
 reporting only* — after the guard has already decided, where it cannot reintroduce
 the race.
 """
@@ -103,14 +103,14 @@ INVITE_REVOKED = "revoked"
 DEFAULT_INVITE_TTL = timedelta(days=7)
 
 #: Statuses that release a roster slot. A withdrawn member frees their slot for a
-#: replacement (decision 12); a rejected registration was never on the roster.
+#: replacement; a rejected registration was never on the roster.
 _SLOT_RELEASING_STATUSES = frozenset({"withdrawn", "rejected"})
 
 
 def _fail(status_code: int, code: str, msg: str) -> ApiHTTPException:
     """Build a rejection carrying a stable machine code.
 
-    §12.2: these surfaces are public and Russian-first, so the frontend maps
+    These surfaces are public and Russian-first, so the frontend maps
     ``code`` to a translated string. A bare ``detail`` string would be rendered
     verbatim in English.
     """
@@ -166,9 +166,9 @@ def _owned_by(auth_user_id: int) -> sa.ColumnElement[bool]:
     """Is this registration owned by that account?
 
     ``workspace_member`` carries no ``auth_user_id`` — identity runs through
-    ``player_id`` (``dbarch02`` dropped the direct column), so the chain is
-    member -> player -> auth user. Same predicate ``get_registration`` uses;
-    spelled once here so the team flows cannot drift from it.
+    ``player_id``, so the chain is member -> player -> auth user. Same predicate
+    ``get_registration`` uses; spelled once here so the team flows cannot drift
+    from it.
     """
     return models.BalancerRegistration.workspace_member.has(
         models.WorkspaceMember.player.has(models.User.auth_user_id == auth_user_id)
@@ -176,7 +176,7 @@ def _owned_by(auth_user_id: int) -> sa.ColumnElement[bool]:
 
 
 def _diagnose_dead_invite(invite: models.BalancerRegistrationTeamInvite) -> ApiHTTPException:
-    """Turn a rowcount-0 guard result into a distinct machine code (§12.1).
+    """Turn a rowcount-0 guard result into a distinct machine code.
 
     Called only *after* the guarded ``UPDATE`` has already decided, so this read
     cannot reintroduce the race it is explaining. Four situations with four
@@ -371,7 +371,7 @@ class RegistrationTeamService:
     ) -> tuple[models.BalancerRegistrationTeam, RegistrationRead]:
         """Register a new team, with the caller as captain occupying one slot.
 
-        The captain is a member like any other — decision 5: they take a real slot and
+        The captain is a member like any other: they take a real slot and
         their own registration goes through the same validation as a solo entrant. One
         transaction, so a team can never exist without its captain's registration.
         """
@@ -399,9 +399,9 @@ class RegistrationTeamService:
         try:
             await self.team_repo.create(session, team)
         except IntegrityError as exc:
-            # The partial unique index on (tournament_id, lower(name)) — decision 10,
-            # mirroring the export writer's dedup rule so a silent two-teams-into-one
-            # merge is impossible.
+            # The partial unique index on (tournament_id, lower(name)) matches the
+            # export writer's dedup rule, so a silent two-teams-into-one merge is
+            # impossible.
             raise _fail(409, "team_name_taken", "A team with this name is already registered") from exc
 
         # An empty roster: the captain's own slot must exist in the shape, and this is
@@ -437,8 +437,8 @@ class RegistrationTeamService:
         try:
             await session.commit()
         except IntegrityError as exc:
-            # ``commit=False`` moved the duplicate-registration and duplicate-name
-            # races out of the submit helper's own ``try``, so they surface here.
+            # With ``commit=False`` the duplicate-registration and duplicate-name races
+            # fire here, outside the submit helper's own ``try``.
             raise _fail(409, "already_registered", "You are already registered for this tournament") from exc
         return team, read
 
@@ -615,14 +615,13 @@ class RegistrationTeamService:
         """Offer one roster slot. Returns the invite and, for a link invite, the raw
         token — which is shown exactly once and never stored.
 
-        Decision 3: two addressing modes on one entity. ``target_registration_id`` is
+        Two addressing modes on one entity. ``target_registration_id`` is
         an in-app offer to a free agent already in this tournament; without it the
         invite is a shareable link for someone who has no account yet.
 
         A targeted invite gets NO token. That is the point: nothing to paste, nothing
         to leak, nothing to forward to the wrong person. Its recipient learns of it from
-        their own registration card, which is why that read had to exist before this
-        mode was reachable at all.
+        their own registration card.
         """
         # Metered BEFORE the row lock: a limiter behind the lock would let a flood
         # serialize on the team row and hold it, turning the throttle into a
@@ -636,7 +635,7 @@ class RegistrationTeamService:
         await self._assert_staff_editable(session, team, auth_user)
         tournament = await self._assert_registration_open(session, team.tournament_id)
 
-        # §7 control 2: the slot reservation caps *concurrent* pending invites, but an
+        # The slot reservation caps *concurrent* pending invites, but an
         # invite -> revoke -> invite loop stays inside every slot rule. This cumulative
         # ceiling counts every invite ever created for the team, so the loop ends.
         issued = await self.count_invites_against_cap(session, team)
@@ -788,12 +787,10 @@ class RegistrationTeamService:
         terminal rows in would make a declined offer hold a place. This is also why the
         section is collapsed in the UI: nothing pays for it until someone asks.
 
-        The gap this closes: the cap counts every invite ever created, but only pending
-        ones were visible. A captain cycling invite -> revoke -> invite burned the
-        ceiling invisibly and hit a refusal whose cause was nowhere on screen. Worse, a
-        DECLINED offer simply vanished — the slot reopened and the captain could not
-        tell whether they were refused or the link merely lapsed, which are different
-        situations with different next moves.
+        The cap counts every invite ever created, so every one must be visible:
+        otherwise an invite -> revoke -> invite cycle burns the ceiling with no cause
+        on screen, and a DECLINED offer is indistinguishable from a lapsed link —
+        different situations with different next moves.
 
         ``tournament_id`` is the caller's already-authorized tournament (organizer
         permission checked against it, or the captain's own tournament in the public
@@ -1041,7 +1038,7 @@ class RegistrationTeamService:
         # ``offering=False``: this invite must not block its own acceptance.
         _check_slot(occupancy, invite.slot_code, is_substitute=bool(invite.is_substitute), offering=False)
 
-        # §3.3's guard: state and expiry are checked *in the UPDATE*, so two
+        # The guard: state and expiry are checked *in the UPDATE*, so two
         # simultaneous redemptions of one link cannot both win. ``consume_if_pending``
         # is that one conditional statement, decided by whether its RETURNING produced
         # a row — never split into a read-then-write.
@@ -1056,19 +1053,15 @@ class RegistrationTeamService:
             await session.refresh(invite)
             raise _diagnose_dead_invite(invite)
 
-        # A player who already registered solo is a FREE AGENT, not a duplicate.
-        #
-        # There is exactly one registration row per player per tournament (the partial
-        # unique index guarantees it), so "solo registration" and "team registration"
-        # are the same row in two states. Accepting an invite therefore *attaches* the
-        # existing row to the team rather than creating a second one — which the index
-        # would reject anyway, and which `submit_public_registration` used to turn into
-        # an `already_registered` 409. That 409 left a solo registrant permanently
-        # unable to join any team: withdrawal is final, so there was no way out.
+        # A player who already registered solo is a FREE AGENT, not a duplicate: the
+        # partial unique index allows one registration row per player per tournament,
+        # so accepting *attaches* the existing row to the team. A second row would be
+        # an `already_registered` 409 and, since withdrawal is final, would lock a solo
+        # registrant out of every team.
         #
         # The submitted ``body`` is deliberately IGNORED on this path: the player
-        # already answered the form, and the only thing the invite decides is which
-        # slot they occupy. Their recorded roles and ranks stand.
+        # already answered the form, and the invite only decides which slot they
+        # occupy. Their recorded roles and ranks stand.
         existing = await self.registrations.get_registration(session, team.tournament_id, auth_user.id)
         if existing is not None:
             if existing.status in _SLOT_RELEASING_STATUSES:
@@ -1272,9 +1265,9 @@ class RegistrationTeamService:
         team_id: int,
         auth_user: models.AuthUser,
     ) -> None:
-        """A member withdraws themselves. Symmetric with :meth:`kick_member` by
-        decision 12 — but a captain must transfer or disband, never silently vanish
-        from a team other people have already joined."""
+        """A member withdraws themselves. Symmetric with :meth:`kick_member`, but a
+        captain must transfer or disband, never silently vanish from a team other
+        people have already joined."""
         team = await self._lock_team(session, team_id)
         _assert_mutable(team)
         self._assert_unlocked(team)
@@ -1334,25 +1327,21 @@ class RegistrationTeamService:
     ) -> None:
         """Captain dissolves the team.
 
-        Members' registrations survive as withdrawn rows — decision from step 3, and
-        the reason the captain FK is ``SET NULL`` rather than a cascade: a captain
-        walking away must not delete other people's entries.
+        Members' registrations survive as withdrawn rows, which is why the captain FK
+        is ``SET NULL`` rather than a cascade: a captain walking away must not delete
+        other people's entries.
         """
         team = await self._lock_team(session, team_id)
         _assert_mutable(team)
         await self._assert_registration_open(session, team.tournament_id)
         await self._assert_captain(session, team, auth_user)
 
-        # Only the STATUS changes: the team link is retained deliberately.
-        #
-        # Clearing it (as ``kick_member``/``leave_team`` correctly do) would leave the
-        # member with a withdrawn registration and no explanation — §12.5's exact dead
-        # end, since the "your team was disbanded" line on their own card is derived
-        # from this FK. Keeping it costs nothing: ``_roster_members`` filters withdrawn
-        # rows out, so slot accounting and the export are unaffected.
-        #
-        # The distinction is meaningful: kick/leave means "you are not on this team",
-        # disband/reject means "this team ended".
+        # Only the STATUS changes; the team link is retained deliberately. The "your
+        # team was disbanded" line on the member's own card is derived from this FK,
+        # so clearing it (as ``kick_member``/``leave_team`` do) would leave a withdrawn
+        # registration with no explanation. ``_roster_members`` filters withdrawn rows
+        # out, so slot accounting and the export are unaffected. Kick/leave means "you
+        # are not on this team"; disband/reject means "this team ended".
         members = await self._roster_members(session, team.id)
         tournament = await self.tournament_repo.get(session, team.tournament_id)
         await self._notify_roster(
@@ -1441,7 +1430,7 @@ class RegistrationTeamService:
         include_terminal_for_auth_user_id: int | None = None,
     ) -> list[tuple[models.BalancerRegistrationTeam, RosterOccupancy]]:
         """Every registered team with its live occupancy — the organizer's answer to
-        "who is incomplete, and what are they missing?" (§8).
+        "who is incomplete, and what are they missing?".
 
         Occupancy is recomputed rather than read off ``status``: the denormalized
         column answers "complete?" for indexed filtering, but the organizer needs the
@@ -1535,7 +1524,7 @@ class RegistrationTeamService:
                 # Returning to the solo pool DOES mean leaving the team, so here the
                 # link is cleared. When members are withdrawn it is retained, so their
                 # own card can say the team was rejected rather than leaving them with
-                # an unexplained withdrawal (§12.5).
+                # an unexplained withdrawal.
                 registration.registration_team_id = None
                 registration.team_slot_code = None
                 registration.is_substitute = False
@@ -1619,9 +1608,7 @@ class RegistrationTeamService:
             workspace = await session.scalar(
                 sa.select(models.Workspace).where(models.Workspace.id == team.workspace_id)
             )
-            from shared.services.discord_client import DiscordClient
-            from src.core.broker import optional_broker
-            from src.core.config import settings
+            from src.core.clients import discord_client
             from src.schemas.registration_team import TeamEligibilityIssueRead
             from src.services.registration.team_eligibility import team_eligibility
 
@@ -1632,9 +1619,7 @@ class RegistrationTeamService:
                 form=form,
                 shape=shape,
                 workspace=workspace,
-                discord=DiscordClient(
-                    broker=optional_broker(), bot_token=settings.discord_token, proxy=settings.proxy_url
-                ),
+                discord=discord_client(),
             )
             eligibility_issues = [
                 TeamEligibilityIssueRead(
@@ -1716,9 +1701,8 @@ class RegistrationTeamService:
     ) -> list[RegistrationTeamInviteOffer]:
         """Targeted invites addressed to the caller in this tournament.
 
-        The whole reason targeted invites are reachable: they carry no token, so this
-        read is the ONLY way their recipient can learn one exists. Without it the mode
-        was strictly worse than a link — nothing to copy and nowhere to see it.
+        Targeted invites carry no token, so this read is the ONLY way their recipient
+        can learn one exists; without it the mode would be strictly worse than a link.
 
         Link invites are excluded because they have no addressee; a bearer credential
         is not "yours" until you hold it, and listing them here would hand every

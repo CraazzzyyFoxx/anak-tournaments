@@ -2,10 +2,9 @@
 
 Minimal admin surface: raw ids typed by hand (role ids, broadcaster id). The Discord
 guild id is NOT typed here -- it belongs to the workspace, and the list response
-echoes it back read-only. Resolving Discord role names through the API and offering
-a picker is a deliberate follow-up, not part of this.
+echoes it back read-only.
 
-Two rules carry the weight here:
+Three rules carry the weight here:
 
 - **Plaintext codes are never persisted.** The admin types a code, the server keeps
   only its SHA-256, and the read model returns neither the code nor the digest — a
@@ -129,8 +128,8 @@ def serialize_provider_config(row: Any) -> SubscriptionProviderConfigRead:
             )
             for entry in config.get("codes") or []
         ],
-        # Through the runtime parser, not the raw blob: a stored value the code no
-        # longer knows must read back as `any`, matching what the gate will do.
+        # Through the runtime parser, not the raw blob: a stored value the code does
+        # not recognise must read back as `any`, matching what the gate will do.
         verification_method=parse_verification_method(config),
     )
 
@@ -198,10 +197,10 @@ class SubscriptionConfigService:
         )
         await session.commit()
 
-        # `populate_existing` is load-bearing, not decoration: the INSERT ... ON
-        # CONFLICT above changes the row behind the ORM's back, so a plain SELECT would
-        # be served from the identity map and return the PRE-upsert `config_json`. That
-        # silently made an explicit `codes: []` look like it had not cleared anything.
+        # `populate_existing` is load-bearing: the INSERT ... ON CONFLICT above changes
+        # the row behind the ORM's back, so a plain SELECT would be served from the
+        # identity map and return the PRE-upsert `config_json` -- an explicit
+        # `codes: []` would read back uncleared.
         row = await self.provider_repo.get_for_provider(
             session,
             workspace_id=workspace_id,
@@ -214,8 +213,8 @@ class SubscriptionConfigService:
         """The workspace's default rule as a raw blob, or ``{}`` when it has none.
 
         One scalar read, used both by the admin endpoint and by the registration-form read
-        projection -- which still carries the rule so the public check-in dialog does not
-        have to learn about a second table.
+        projection -- which carries the rule so the public check-in dialog does not have to
+        learn about a second table.
         """
         return await self.requirement_repo.get_default_blob(session, workspace_id)
 
@@ -246,7 +245,7 @@ class SubscriptionConfigService:
                     models.Tournament.workspace_id == workspace_id,
                     models.Tournament.is_finished.is_(False),
                     form.require_subscription.is_(True),
-                    # Openness is the REGISTRATION schedule window now, not a form flag.
+                    # Openness is the REGISTRATION schedule window, not a form flag.
                     registration_open_clause(),
                 )
             )
@@ -273,8 +272,7 @@ class SubscriptionConfigService:
 
         Conflicts on ``(workspace_id, name)`` rather than on the partial "one default per
         workspace" index: the named constraint is the stable target, and ``name`` is
-        ``'default'`` until presets arrive (at which point this function gains the name and
-        nothing else about the shape changes).
+        always ``'default'``.
         """
         await self.requirement_repo.upsert_default(
             session,

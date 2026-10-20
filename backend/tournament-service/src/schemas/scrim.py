@@ -1,4 +1,4 @@
-"""Wire shapes for ad-hoc scrim rooms (``docs/plans/2026-08-12-scrim-rooms.md``).
+"""Wire shapes for ad-hoc scrim rooms.
 
 The custom-pool entry deliberately mirrors ``rpc/pick_ban_admin.PickBanConfigUpsert``
 field for field, minus the cascade coordinates (``stage_id``/``round``), which a
@@ -88,8 +88,7 @@ class ScrimPoolConfigInput(BaseModel):
     mode: MapVetoMode = MapVetoMode.POOL
     first_pick_rule: FirstPickRule = FirstPickRule.HIGHER_SEED
     first_ban_rotation: FirstBanRotation = FirstBanRotation.FIXED
-    #: Ruleset v2 document (docs/plans/2026-09-28-pick-ban-constructor.md §1),
-    #: validated by the same engine call the organizer's upsert runs.
+    #: Ruleset v2 document, validated by the same engine call the organizer's upsert runs.
     ruleset: dict[str, Any]
     item_ids: list[int] = Field(default_factory=list)
     slots: list[ScrimPoolSlotInput] = Field(default_factory=list)
@@ -122,7 +121,7 @@ ScrimPoolInput = Annotated[ScrimPoolCopy | ScrimPoolCustom, Field(discriminator=
 
 class ScrimCreateRequest(BaseModel):
     workspace_id: int
-    #: The game the room is played in; it must be enabled for the workspace (D89). Never defaulted:
+    #: The game the room is played in; it must be enabled for the workspace. Never defaulted:
     #: a room's pool, maps and rosters are all read in this discipline.
     discipline: str = Field(min_length=1)
     label: str = Field(min_length=1, max_length=255)

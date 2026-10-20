@@ -18,21 +18,20 @@ from shared.repository import (
     TournamentRepository,
 )
 from shared.repository.stats_reads import MatchReadContext, get_match_reads
-from shared.services.bracket.advancement import reset_downstream
-from shared.services.bracket.swiss_state import remove_swiss_bye_round
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 from src.core import enums
+from src.services.bracket.advancement import reset_downstream
+from src.services.bracket.swiss_state import remove_swiss_bye_round
 from src.services.notifications.lifecycle import after_encounter_teams_changed, lifecycle_notifier
 from src.services.tournament.events import enqueue_tournament_recalculation
 
 # ``enqueue_tournament_recalculation`` emits ``tournament.encounters``, and the
 # realtime rail drops this service's cached encounter reads from that emit's
-# after-commit hook, before the event reaches any client. The explicit
-# post-commit purge these writes used to do was the same drop, minus that
-# ordering guarantee.
+# after-commit hook, before the event reaches any client -- so these writes do
+# no cache purge of their own.
 
 # What an admin may still edit on a lobby: it has no sides, no series score and
 # no bracket slot, so every other column of the duel-shaped row is meaningless.
@@ -42,10 +41,10 @@ _FFA_EDITABLE_FIELDS = frozenset({"name", "scheduled_at", "started_at", "ended_a
 def _reject_completed_status(new_status: str | None) -> None:
     """Completion is not a field edit.
 
-    ``COMPLETED`` is now reachable only through the result endpoint, which moves
-    ``status``, ``result_status``, the score and the audit row together. Letting
-    a plain field update land it here is what allowed ``completed`` +
-    ``disputed`` — a state no endpoint could repair.
+    ``COMPLETED`` is reachable only through the result endpoint, which moves
+    ``status``, ``result_status``, the score and the audit row together. A plain
+    field update landing it could leave ``completed`` + ``disputed`` — a state no
+    endpoint can repair.
     """
     if new_status is not None and new_status.lower() == enums.EncounterStatus.COMPLETED.value:
         raise HTTPException(
@@ -62,13 +61,12 @@ def _reject_settled_result_edits(encounter: models.Encounter, update_data: dict)
     Into ``COMPLETED``: the result endpoint owns it (``_reject_completed_status``).
     Out of it, the reopen endpoint owns it: that one clears
     ``result_status``/``confirmed_at``/``result_source`` and unwinds whatever the
-    old result advanced downstream. The bare status write this used to allow left
+    old result advanced downstream. A bare status write would leave
     ``result_status='confirmed'`` beside a non-COMPLETED status, which the
-    database refuses outright (``ck_encounter_confirmed_completed``), so the edit
-    died on an IntegrityError instead of on a message naming the endpoint that
-    can do it. The standing and the seats are not in this payload at all any
-    more: they live on the participations, which only the result writer and the
-    slot swap touch.
+    database refuses (``ck_encounter_confirmed_completed``) with an
+    IntegrityError instead of a message naming the endpoint that can do it. The
+    standing and the seats are not in this payload: they live on the
+    participations, which only the result writer and the slot swap touch.
 
     Repeating the encounter's current status is not a transition: the admin form
     posts every field, so renaming a completed encounter must not trip the
@@ -237,7 +235,6 @@ class AdminEncounterService:
         """Create a new encounter and seat the teams the payload names."""
         _reject_completed_status(data.status)
 
-        # Verify tournament exists
         tournament = await self.tournament_repo.get(session, data.tournament_id)
 
         if not tournament:
@@ -271,15 +268,13 @@ class AdminEncounterService:
         )
         stage = await self.stage_repo.get(session, stage_id)
 
-        # Parse status
         try:
             encounter_status = enums.EncounterStatus(data.status)
         except ValueError:
             encounter_status = enums.EncounterStatus.OPEN
 
-        # Create encounter. The workspace, the discipline and the scoring rule
-        # are copies of the owner's (D62): an encounter is played under the
-        # rule of the stage it sits in.
+        # The workspace, the discipline and the scoring rule are copies of the
+        # owner's: an encounter is played under the rule of the stage it sits in.
         encounter = models.Encounter(
             workspace_id=tournament.workspace_id,
             discipline=tournament.discipline,
@@ -296,7 +291,7 @@ class AdminEncounterService:
         )
 
         # Not ``repo.create``: that flushes, and the enqueue below must stay the
-        # first write of this transaction (see the outbox-ordering regression test).
+        # first write of this transaction (outbox ordering).
         session.add(encounter)
         await enqueue_tournament_recalculation(session, data.tournament_id)
         # After the enqueue, whose flush is what gives the row its id.
@@ -309,7 +304,7 @@ class AdminEncounterService:
                 round=data.round,
             )
         )
-        # ``None`` seats nobody: a TBD slot is a slot with no active participation (D55).
+        # ``None`` seats nobody: a TBD slot is a slot with no active participation.
         for seat in sorted((row for row in data.teams if row.team_id is not None), key=lambda row: row.slot):
             await place_team(
                 session,
@@ -342,7 +337,6 @@ class AdminEncounterService:
         if not encounter:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 
-        # Update fields
         update_data = data.model_dump(exclude_unset=True)
         if encounter.scoring_preset == "points":
             refused = sorted(set(update_data) - _FFA_EDITABLE_FIELDS)
@@ -439,7 +433,7 @@ class AdminEncounterService:
         encounter is refused rather than silently re-teamed under its result.
 
         A seat does not change hands in place: the occupant is retired and a new
-        participation written (D55), so the games the old one played stay
+        participation written, so the games the old one played stay
         attached to the row that played them.
 
         Both an initial seed and a derived seat may be swapped, so the origin

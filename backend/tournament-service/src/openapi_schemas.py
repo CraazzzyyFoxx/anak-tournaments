@@ -15,7 +15,6 @@ from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
 from shared.schemas.match import MatchEventsRead
 from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
-from shared.services.bracket.template import BracketTemplate
 from shared.services.chat import (
     HISTORY_DEFAULT,
     HISTORY_MAX,
@@ -28,6 +27,7 @@ from shared.services.chat import (
     ChatSettingsInput,
 )
 from src import schemas
+from src.domain.bracket import BracketTemplate
 from src.rpc import pick_ban_admin
 from src.schemas import captain as captain_schemas
 from src.schemas import encounter_report_form as report_form_schemas
@@ -218,7 +218,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.challonge_fetch_tournament": Op(response=schemas.ChallongeTournament),
     "rpc.tournament.challonge_fetch_participants": Op(response=schemas.ChallongeParticipant, response_array=True),
     "rpc.tournament.challonge_fetch_matches": Op(response=schemas.ChallongeMatch, response_array=True),
-    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    # ── bootstrap importers ────────────────────────────────────────────────
     "rpc.tournament.challonge_create_tournament": Op(
         response=schemas.TournamentRead,
         query_params=(
@@ -433,7 +433,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.saved_view_create": Op(
         request=schemas.EncounterSavedViewCreate, response=schemas.EncounterSavedViewRead
     ),
-    # ── scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────────────
+    # ── scrim rooms ────────────────────────────────────────────────────────
     # Unlike the pre-game pick-ban subjects a room is played through, these five
     # return whole typed models, so they carry request/response maps rather than
     # falling back to a generic object.

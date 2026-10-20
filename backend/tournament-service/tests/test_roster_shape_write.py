@@ -17,9 +17,9 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 os.environ["DEBUG"] = "true"
 
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.services.draft_guards import assert_no_active_draft_session  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.admin import tournament as admin_tournament  # noqa: E402
+from src.services.draft_guards import assert_no_active_draft_session  # noqa: E402
 
 # The exact detail the guard produced before it took a ``change`` argument. Its
 # two existing callers pass no ``change``, so this string must stay byte-identical.

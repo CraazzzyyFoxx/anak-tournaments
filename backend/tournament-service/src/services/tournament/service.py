@@ -23,16 +23,7 @@ def _is_desc(order: typing.Any) -> bool:
 
 
 def tournament_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    """
-    Constructs a list of SQLAlchemy load options for querying related entities of a `Tournament` model.
-
-    Args:
-        in_entities: A list of strings representing the names of related entities to load.
-        child: An optional SQLAlchemy relationship or join entity to chain the load options.
-
-    Returns:
-        A list of SQLAlchemy load options (`_AbstractLoad`) for the specified entities.
-    """
+    """Loader options for a tournament's requested relations; ``child`` chains them under a parent load."""
     entities = []
     if "stages" in in_entities:
         stage_entity = child.selectinload(models.Tournament.stages) if child else selectinload(models.Tournament.stages)
@@ -47,17 +38,7 @@ class TournamentService:
         self.tournament_repo = tournament_repo
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
-        """
-        Retrieves a `Tournament` model instance by its ID, optionally including related entities.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            id: The ID of the tournament to retrieve.
-            entities: A list of strings representing the names of related entities to include.
-
-        Returns:
-            A `Tournament` model instance if found, otherwise `None`.
-        """
+        """Return the tournament by id with ``entities`` loaded, or None."""
         return await self.tournament_repo.get(session, id, options=tournament_entities(entities))
 
     async def get_all(
@@ -67,24 +48,13 @@ class TournamentService:
         *,
         visibility: sa.ColumnElement[bool] | None = None,
     ) -> tuple[typing.Sequence[models.Tournament], int]:
-        """
-        Retrieves a paginated list of `Tournament` model instances based on filtering and sorting parameters.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            params: An instance of `SearchPaginationParams` containing pagination, sorting, and filtering parameters.
-
-        Returns:
-            A tuple containing:
-            1. A sequence of `Tournament` model instances.
-            2. The total count of tournaments matching the filtering criteria.
-        """
+        """Return one page of tournaments and the total matching count; ``visibility`` filters both."""
         query = self.tournament_repo.select().options(*tournament_entities(params.entities))
         total_query = sa.select(sa.func.count(models.Tournament.id))
         if params.sort == "participants_count":
             # Not a column: the count lives in `player`, so `apply_pagination_sort`
             # (which resolves the sort through `Tournament.depth_get_column`) cannot
-            # express it. Same grouped-subquery shape as `get_history_tournaments`.
+            # express it.
             players_sq = (
                 sa.select(
                     models.Player.tournament_id,
@@ -125,17 +95,15 @@ class TournamentService:
             query = query.where(models.Tournament.status == params.status)
             total_query = total_query.where(models.Tournament.status == params.status)
 
-        # Hidden-tournament visibility filter (issue #115): applied to BOTH the page
-        # and count query so hidden tournaments never leak into results OR totals.
+        # Hidden-tournament visibility filter: applied to BOTH the page and count
+        # query so hidden tournaments never leak into results OR totals.
         if visibility is not None:
             query = query.where(visibility)
             total_query = total_query.where(visibility)
 
         # Unconditional tie-breaker. Neither `start_date` nor the participant count
         # is unique, and OFFSET/LIMIT over a non-unique ORDER BY is free to return
-        # a row on page 2 that already appeared on page 1 (and drop another
-        # entirely). Invisible while the client fetched everything in one
-        # `per_page=-1` request; guaranteed to bite as soon as it pages.
+        # a row on page 2 that already appeared on page 1 (and drop another entirely).
         query = query.order_by(models.Tournament.id.desc())
 
         return await execute_page_with_total(
@@ -152,21 +120,9 @@ class TournamentService:
         session: AsyncSession,
         workspace_id: int | None = None,
     ) -> typing.Sequence[tuple[models.Tournament, int, float, float]]:
-        """
-        Retrieves historical statistics for tournaments, including player count, average SR, and average closeness.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-
-        Returns:
-            A sequence of tuples containing:
-            1. A `Tournament` model instance.
-            2. The number of players in the tournament.
-            3. The average SR of teams in the tournament.
-            4. The average closeness of encounters in the tournament.
-        """
-        # One pass with grouped subqueries LEFT JOINed on tournament_id instead of
-        # three correlated scalar subqueries evaluated per tournament row.
+        """Return (tournament, players_count, avg team SR, avg encounter closeness) per non-league tournament."""
+        # Grouped subqueries LEFT JOINed on tournament_id: one pass, not a
+        # correlated subquery per tournament row.
         players_sq = (
             sa.select(
                 models.Player.tournament_id,
@@ -197,8 +153,7 @@ class TournamentService:
         query = (
             sa.select(
                 models.Tournament,
-                # The correlated count() form returned 0 for tournaments without
-                # players; LEFT JOIN yields NULL there, so coalesce to keep parity.
+                # LEFT JOIN yields NULL for a tournament without players; report 0.
                 sa.func.coalesce(players_sq.c.players_count, 0),
                 teams_sq.c.avg_sr,
                 encounters_sq.c.avg_closeness,
@@ -263,18 +218,11 @@ class TournamentService:
     async def get_tournaments_overall(
         self, session: AsyncSession, workspace_id: int | None = None
     ) -> schemas.OverallStatistics:
-        """
-        Retrieves overall statistics: how many tournaments, teams, players and champions
-        there are, plus how much was actually played (encounters, maps, days, hours).
+        """Return tournament/team/player/champion counts and played volume (encounters, maps, days, hours).
 
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            workspace_id: Restrict every count to one workspace, or None for the platform.
-
-        Returns:
-            An `OverallStatistics` schema instance.
+        ``workspace_id`` restricts every count to one workspace; None means the platform.
         """
-        # Hidden tournaments (issue #115) never contribute to public overall stats.
+        # Hidden tournaments never contribute to public overall stats.
         ws_filters = [models.Tournament.is_hidden.is_(False)]
         if workspace_id is not None:
             ws_filters.append(models.Tournament.workspace_id == workspace_id)
@@ -395,17 +343,7 @@ class TournamentService:
     async def get_bulk_tournament(
         self, session: AsyncSession, tournaments_ids: list[int], entities: list[str]
     ) -> typing.Sequence[models.Tournament]:
-        """
-        Retrieves a list of `Tournament` model instances by their IDs.
-
-        Args:
-            session: An SQLAlchemy `AsyncSession` for database interaction.
-            tournaments_ids: A list of tournament IDs to retrieve.
-            entities: A list of strings representing the names of related entities to include.
-
-        Returns:
-            A sequence of `Tournament` model instances.
-        """
+        """Return the tournaments with the given ids, ``entities`` loaded."""
         return await self.tournament_repo.bulk_get(session, tournaments_ids, options=tournament_entities(entities))
 
 

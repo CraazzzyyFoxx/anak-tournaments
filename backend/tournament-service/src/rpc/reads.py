@@ -1,9 +1,7 @@
-"""Public tournament read methods over RPC (typed; reuse the existing flows).
+"""Public tournament read methods over typed RPC.
 
-Each handler mirrors a public route in ``src/routes/tournament.py`` exactly,
-calling the same flow function and serializing with ``exclude_none=True`` to match
-the routes' ``response_model_exclude_none``. The gateway provides path params as
-``data["id"]`` and query params as ``data["query"][key] = [values]``.
+Most reads serialize with ``exclude_none=True``. The gateway provides path
+params as ``data["id"]`` and query params as ``data["query"][key] = [values]``.
 """
 
 from __future__ import annotations

@@ -332,8 +332,8 @@ class RegistrationStatusCatalogService:
         if description is not None:
             status_row.description = description.strip() or None
 
-        # Persisted after the field edits so a fresh override is still ONE insert,
-        # exactly as the previous ``session.add`` + single ``commit`` behaved.
+        # Created after the field edits: the repository's create() flushes, so a fresh
+        # override stays ONE insert instead of an INSERT plus an UPDATE.
         if is_new:
             await self.status_repo.create(session, status_row)
         await session.commit()

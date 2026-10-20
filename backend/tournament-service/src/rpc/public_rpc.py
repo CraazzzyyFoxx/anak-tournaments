@@ -1,19 +1,12 @@
 """Public / captain tournament methods over typed RPC.
 
-Each handler preserves the contract of the former HTTP route it replaced (the
-``src/routes/`` HTTP service has been decommissioned): it rehydrates the
-gateway-injected identity where a user was required, validates the SAME body
-schema, calls the SAME service function with the SAME args, and serializes the
-SAME way the route returned. The request schemas and read-model builders now
-live in ``src/schemas/{captain,registration,registration_build}.py``.
-
-Serialization parity:
-- captain handlers return custom dicts -> returned verbatim.
-- registration handlers do NOT use ``response_model_exclude_none`` -> plain
-  ``model_dump(mode="json")`` (keep nulls). ``RegistrationFormRead | None`` and
-  ``RegistrationRead | None`` may serialize to ``None``.
-- saved-view writes DID use ``response_model_exclude_none=True`` ->
-  ``model_dump(mode="json", exclude_none=True)``; the delete returns 204 -> None.
+Serialization:
+- captain handlers return custom dicts verbatim.
+- registration handlers return plain ``model_dump(mode="json")`` (nulls kept);
+  ``RegistrationFormRead | None`` and ``RegistrationRead | None`` may serialize
+  to ``None``.
+- saved-view writes return ``model_dump(mode="json", exclude_none=True)``; the
+  delete returns None.
 
 Commit semantics: every write service called here commits internally
 (captain.submit_team_report,
@@ -22,7 +15,6 @@ encounter service.upsert_saved_view/delete_saved_view), so the handlers add no
 extra commit. The pick-ban state read commits nothing at all: it is a pure
 read, and the room's healing belongs to ``encounter.room_reconcile``.
 
-
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
 ``data["query"][key] = [values]``, and the JSON body as ``data["payload"]``.
@@ -30,24 +22,18 @@ The gateway passes path params as ``data["<name>"]`` (and the primary id as
 
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 from typing import Any
 
-import sqlalchemy as sa
-from cashews import cache
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
-from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import identity_provider
 from shared.domain.forms import schema_from_form
 from shared.rpc.identity import rehydrate_user
-from shared.services.admission import AdmissionStage
-from shared.services.bracket.usability import assert_encounter_live
 from shared.services.chat import (
     HISTORY_DEFAULT,
     ChatMuteInput,
@@ -57,12 +43,11 @@ from shared.services.chat import (
 )
 from shared.services.encounter.participants import active_teams
 from shared.services.subscriptions.realtime import emit_subscriptions_updated
-from shared.services.subscriptions.wiring import build_resolver, build_store
+from shared.services.subscriptions.wiring import build_store
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from src import models, schemas
 from src.core import db
-from src.core.broker import optional_broker
-from src.core.config import settings
+from src.core.clients import subscription_resolver
 from src.rpc._helpers import (
     _dump,
     _identity,
@@ -112,6 +97,8 @@ from src.schemas.registration_team import (
     serialize_invite,
 )
 from src.services import visibility_resolvers
+from src.services.admission import AdmissionStage
+from src.services.bracket.usability import assert_encounter_live
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import pick_ban_action as pick_ban_action
 from src.services.encounter.captain import ReportResultIn, captain_service
@@ -124,20 +111,18 @@ from src.services.encounter.replay_codes import replay_codes_by_encounter
 from src.services.encounter.report_form import report_form_service
 from src.services.registration import _common as reg_common
 from src.services.registration import audit as reg_audit
+from src.services.registration import public_list
 from src.services.registration import service as reg_service
-from src.services.registration import subscription_config
 from src.services.registration import teams as team_service
 from src.services.registration.admission import assert_admitted_at
 from src.services.registration.answers import answer_service
 from src.services.registration.recheck import assert_recheck_allowed, recheck_registration
 from src.services.registration.self_edit import SelfEditPolicy, self_edit_policy, submitted_late
-from src.services.registration.serializers import serialize_registration_form
 from src.services.registration.subscription_codes import redeem_challenge_code
 from src.services.registration.subscription_status import (
     assert_redeem_attempt_allowed,
     subscription_status_for_user,
 )
-from src.services.registration.windows import windows_service
 
 
 async def _require_tournament(session: Any, tournament_id: int) -> models.Tournament:
@@ -167,21 +152,6 @@ async def _me_read_context(
     return policy, submitted_late(registration, tournament)
 
 
-def _subscription_resolver(session: Any) -> Any:
-    """Resolver wired with this service's provider credentials.
-
-    Built per request: the Discord strategy memoizes a guild's role list, and that
-    memo must not outlive the request that filled it.
-    """
-    return build_resolver(
-        session,
-        discord_bot_token=settings.discord_token,
-        twitch_client_id=settings.twitch_client_id,
-        broker=optional_broker(),
-        proxy=settings.proxy_url,
-    )
-
-
 # --- helpers -----------------------------------------------------------------
 
 
@@ -194,56 +164,6 @@ def _optional_identity(data: dict[str, Any]) -> models.AuthUser | None:
     if not data.get("identity"):
         return None
     return rehydrate_user(data.get("identity"))
-
-
-# Coalesces concurrent rebuilds of the public registration list for the same
-# tournament. A registration mutation notifies every connected viewer at once
-# (the "realtime invalidation herd" -- see the channel comment on
-# ``_reg_pub_list`` below), so without this a burst of N viewers refetching
-# after one mutation triggers N identical, expensive read-model builds that
-# queue behind the channel's ``prefetch_count`` -- the actual driver of this
-# endpoint's p95 tail latency. Followers join the leader's task instead of
-# starting their own: still exactly one live DB read per burst, just shared by
-# everyone asking for the same tournament_id at the same instant. Keyed by
-# tournament_id only -- the viewer-dependent visibility check always runs on
-# the caller's own session before this is ever reached (see
-# ``assert_tournament_viewable``'s cache note), so a hidden tournament's gate
-# is never skipped for a follower.
-_reg_pub_list_inflight: dict[int, asyncio.Task[Any]] = {}
-
-
-# `v2`: the cached list changed shape (`top_characters` replaced `top_heroes`,
-# `TournamentHistoryEntry.discipline` is required). Values outlive a deploy in
-# Redis and come back unvalidated, so a shape change takes a new name; the
-# invalidation glob (`cache_resources.py`) matches both names.
-@cache(
-    ttl=settings.tournaments_cache_ttl,
-    key="registration_list:v2:{tournament_id}:",
-    prefix="fastapi:",
-)
-async def _build_registration_list(tournament_id: int) -> Any:
-    async with db.async_session_maker() as session:
-        return await reg_service.registration_service.build_public_registration_list(
-            session, tournament_id=tournament_id
-        )
-
-
-async def _coalesced_registration_list(tournament_id: int) -> Any:
-    task = _reg_pub_list_inflight.get(tournament_id)
-    if task is None:
-        task = asyncio.create_task(_build_registration_list(tournament_id))
-        _reg_pub_list_inflight[tournament_id] = task
-
-        def _cleanup(done: asyncio.Task[Any]) -> None:
-            if _reg_pub_list_inflight.get(tournament_id) is done:
-                del _reg_pub_list_inflight[tournament_id]
-
-        task.add_done_callback(_cleanup)
-    # Shielded: a follower's own cancellation (its caller disconnected/timed
-    # out) must not cancel the shared build out from under every other
-    # follower -- and unlike a plain ``await task``, ``Task.cancel()`` DOES
-    # propagate into whatever future a task is currently awaiting.
-    return await asyncio.shield(task)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -273,7 +193,7 @@ def register(broker: Any, logger: Any) -> None:
             # The reporter is the CALLER's seat, never the body's: a captain
             # files their own report and nobody else's.
             participation, player_id = await captain_service.resolve_participation(session, user, encounter)
-            # submit_team_report commits internally; route returns a custom dict.
+            # submit_team_report commits internally.
             encounter = await captain_service.submit_team_report(
                 session,
                 encounter_id,
@@ -621,30 +541,7 @@ def register(broker: Any, logger: Any) -> None:
             # Public route — no identity required, but hidden tournaments 404.
             tournament_id = _path_int(data, "tournament_id")
             await ensure_tournament_viewable(session, _optional_identity(data), tournament_id)
-            form = await reg_common._common_service.get_registration_form(session, tournament_id)
-            if form is None:
-                return None
-            discipline = await session.scalar(
-                sa.select(models.Tournament.discipline).where(models.Tournament.id == form.tournament_id)
-            )
-            subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id, discipline=discipline)
-            # The rule is the workspace's now; fetched once here so the sync serializer
-            # below stays free of round trips.
-            requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(
-                session, form.workspace_id
-            )
-            is_open, registration_late = await windows_service.load_registration_state(session, tournament_id)
-            return _dump(
-                serialize_registration_form(
-                    form,
-                    discipline=discipline,
-                    is_open=is_open,
-                    registration_late=registration_late,
-                    subrole_catalog=subrole_catalog,
-                    subscription_requirement=requirement,
-                    stale_registrations=None,
-                )
-            )
+            return _dump(await reg_service.registration_service.get_public_form(session, tournament_id))
 
         return await _run(logger, op)
 
@@ -697,11 +594,8 @@ def register(broker: Any, logger: Any) -> None:
             form = await reg_common._common_service.get_registration_form(session, tournament_id)
             show_ranks = form.show_ranks if form is not None else False
             # The registrant's own card goes through the SAME resolver as the
-            # participants list and the admin table -- one batch of one row. That is
-            # the point of the layer: this handler used to resolve the profile
-            # verdict and the subscription verdicts itself, with its own two calls,
-            # and "why am I not admitted" was therefore answerable differently here
-            # than on the list the player was reading it next to.
+            # participants list and the admin table -- one batch of one row -- so
+            # "why am I not admitted" answers identically on every surface.
             admissions = await reg_service.registration_service.resolve_admission_list(session, [reg], form=form)
             chips = AdmissionChips.of(admissions.get(reg.id))
             workspace_id = (
@@ -757,8 +651,8 @@ def register(broker: Any, logger: Any) -> None:
                 answers=body.answers,
                 partial=True,
                 enforce_required=True,
-                # get_registration eager-loads workspace_member (the
-                # registration's only identity anchor since dbarch02).
+                # get_registration eager-loads workspace_member, the
+                # registration's only identity anchor.
                 player_id=reg.workspace_member.player_id if reg.workspace_member is not None else None,
                 workspace_id=form.workspace_id,
                 discipline=reg.tournament.discipline,
@@ -836,23 +730,15 @@ def register(broker: Any, logger: Any) -> None:
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
 
-            # Admission gate, check-in stage: ONE call, every requirement. The
-            # profile rule used to be an inline `if` right here and the subscription
-            # rule a call into another module, so "what refuses a check-in" could
-            # only be answered by reading two places and trusting there was no
-            # third. Both are registry entries now, and adding a requirement needs
-            # no edit to this handler at all.
+            # Admission gate, check-in stage: ONE call, every requirement armed at
+            # check-in. Only a CONFIRMED refusal blocks, so a provider outage or a
+            # BattleTag nobody has polled yet can never lock somebody out of a live
+            # check-in.
             #
-            # Only a CONFIRMED refusal blocks, so a provider outage or a BattleTag
-            # nobody has polled yet can never lock somebody out of a live check-in.
-            #
-            # The admin path (`registration_admin.py::_reg_check_in`) deliberately
-            # has NO gate: it IS the organizer's override mechanism, and
-            # `AdmissionEvaluation.overridden` is what finally makes the result of
-            # using it visible instead of the badge re-deriving a refusal forever
-            # (D2/D4). Do not add a gate there, and do not add an `override=True`
-            # parameter here -- a parameter whose only job is to skip the call is
-            # the same call written twice.
+            # The admin path (`registration_admin.py::_reg_check_in`) has NO gate: it
+            # IS the organizer's override, and `AdmissionEvaluation.overridden` is what
+            # makes using it visible instead of the badge re-deriving a refusal
+            # forever. Do not add a gate there, nor an `override=True` parameter here.
             await assert_admitted_at(
                 session,
                 reg,
@@ -932,7 +818,7 @@ def register(broker: Any, logger: Any) -> None:
                 await subscription_status_for_user(
                     form=form,
                     auth_user_id=user.id,
-                    resolver=_subscription_resolver(session),
+                    resolver=subscription_resolver(session),
                 )
             )
 
@@ -976,7 +862,7 @@ def register(broker: Any, logger: Any) -> None:
                 await subscription_status_for_user(
                     form=form,
                     auth_user_id=user.id,
-                    resolver=_subscription_resolver(session),
+                    resolver=subscription_resolver(session),
                 )
             )
 
@@ -985,19 +871,17 @@ def register(broker: Any, logger: Any) -> None:
     # Isolated QoS: the participants list is the heaviest public read and fans
     # out to every connected viewer after each registration mutation (the
     # realtime invalidation herd). On its own channel a burst of list rebuilds
-    # can no longer occupy the default channel's RPC_PREFETCH_COUNT slots and
-    # starve the write RPCs (check-in/register) queued behind it — mirrors
-    # recalculation_events._EVENTS_CHANNEL.
+    # cannot occupy the default channel's RPC_PREFETCH_COUNT slots and starve the
+    # write RPCs (check-in/register) queued behind it.
     @broker.subscriber("rpc.tournament.reg_pub_list", channel=Channel(prefetch_count=8))
     async def _reg_pub_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             # Public route — no identity required. The visibility check is
-            # viewer-dependent and always runs on this call's own session; the
-            # (expensive, viewer-agnostic) read-model build below is coalesced
-            # across concurrent callers -- see ``_coalesced_registration_list``.
+            # viewer-dependent and runs on this call's own session; the expensive,
+            # viewer-agnostic build is coalesced across concurrent callers.
             tournament_id = _path_int(data, "tournament_id")
             await ensure_tournament_viewable(session, _optional_identity(data), tournament_id)
-            return _dump(await _coalesced_registration_list(tournament_id))
+            return _dump(await public_list.coalesced_registration_list(db.async_session_maker, tournament_id))
 
         return await _run(logger, op)
 
@@ -1071,7 +955,7 @@ def register(broker: Any, logger: Any) -> None:
     # Every handler here is a *public* surface: the invitee flows in particular are
     # reachable by anyone holding a link. The service layer owns the row lock, the
     # slot decision and the machine error codes; these handlers only translate
-    # transport to arguments. See docs/plans/2026-08-20-team-registration.md §4.
+    # transport to arguments.
 
     @broker.subscriber("rpc.tournament.regteam_create")
     async def _regteam_create(data: dict, msg: RabbitMessage) -> dict:
@@ -1405,7 +1289,7 @@ def register(broker: Any, logger: Any) -> None:
             if not user.is_workspace_member(workspace_id):
                 raise HTTPException(status_code=403, detail="Not a member of this workspace")
             body = schemas.EncounterSavedViewCreate.model_validate(_payload(data))
-            # upsert_saved_view commits internally; route uses response_model_exclude_none=True.
+            # save_view commits internally.
             saved_view = await encounter_flows.flows_service.save_view(
                 session,
                 workspace_id=workspace_id,
@@ -1424,7 +1308,7 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _require_q1(data, "workspace_id", int)
             if not user.is_workspace_member(workspace_id):
                 raise HTTPException(status_code=403, detail="Not a member of this workspace")
-            # delete_saved_view commits internally; route returns 204 (no body).
+            # delete_saved_view commits internally.
             await encounter_flows.flows_service.delete_saved_view(
                 session,
                 workspace_id=workspace_id,

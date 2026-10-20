@@ -3,8 +3,7 @@
 Resolves the configured chain of rank sources (OW weekly composite, balancer
 division history, tournament analytics history — see ``rank_sources``), builds
 the per-registration preview plan and, on ``apply``, writes the chosen ranks
-back and optionally adds ready registrations to the balancer. Everything here
-is re-exported by the ``admin`` facade.
+back and optionally adds ready registrations to the balancer.
 """
 
 from __future__ import annotations
@@ -58,7 +57,7 @@ class _ResolvedAutofillStage:
 
 def autofill_sources(enabled: set[str], discipline_code: str | None) -> set[str]:
     """The enabled stages a tournament of ``discipline_code`` can draw on: the OverFast ``ow`` stage reads Overwatch's
-    native layer (D87), so a game whose module declares none never gets an OW candidate (scan F4)."""
+    native layer, so a game whose module declares none never gets an OW candidate."""
     if discipline_code is None or discipline(discipline_code).native_ranks is None:
         return enabled - {"ow"}
     return enabled
@@ -112,10 +111,10 @@ def build_registration_rank_autofill_plan(
     """Build the rank autofill preview row and pending role updates.
 
     The role set is the registration's resolved ``roster`` -- every role the
-    tournament has it declaring, in priority order, playable or not. Reading the
-    raw ``is_active`` column instead is what used to make autofill skip exactly
-    the rows it exists to fill: under a non-optional flex mode all three roles are
-    the player's, and a sheet row whose rank did not parse landed inactive.
+    tournament has it declaring, in priority order, playable or not -- not the raw
+    ``is_active`` column: under a non-optional flex mode all three roles are the
+    player's, and a sheet row whose rank did not parse lands inactive, so
+    ``is_active`` would skip exactly the rows autofill exists to fill.
 
     Parsed ranks are expected to come from the registration's main owner-provider handle
     only. With ``allow_partial`` the found role ranks are still applied when other
@@ -233,9 +232,8 @@ def _roles_ranked_after_updates(
     """Would every declared role carry a rank once ``updates`` land?
 
     ``is_playable`` already folds in the inherited layers, so a role whose number
-    only exists as the workspace canon counts as ranked here -- which is the point:
-    those registrations used to be told they were "missing active role ranks" and
-    kept out of the pool.
+    only exists as the workspace canon counts as ranked here: such a registration
+    must not be reported as missing role ranks and kept out of the pool.
     """
     if roster is None or not roster.roles:
         return False
@@ -261,7 +259,7 @@ def _rank_autofill_balancer_addition(
     return True, None
 
 
-# Legacy ``mode`` presets, expressed as a default stage order. Used only when no explicit stage
+# ``mode`` presets, expressed as a default stage order. Used only when no explicit stage
 # chain is supplied on the request.
 _DEFAULT_STAGE_ORDER_BY_MODE: dict[str, tuple[str, ...]] = {
     "ow_first": ("ow", "division_history", "analytics"),
@@ -276,7 +274,7 @@ def resolve_autofill_stages(
     """Resolve the effective, ordered list of enabled autofill stages.
 
     When ``stages`` is non-empty it wins: disabled entries are dropped and duplicate sources are
-    de-duplicated (first occurrence kept), preserving order. Otherwise the legacy ``mode`` preset
+    de-duplicated (first occurrence kept), preserving order. Otherwise the ``mode`` preset
     order is used, with no lookback windows. ``stages`` items are duck-typed (``source``,
     ``enabled``, ``lookback_tournaments``, ``lookback_days``, ``ow_value``) so unit tests can pass
     simple objects.
@@ -356,7 +354,6 @@ class RankAutofillService:
         if registration_ids is not None:
             registration_ids = list(dict.fromkeys(int(registration_id) for registration_id in registration_ids))
 
-        # Resolve the effective, ordered chain of enabled sources (explicit ``stages`` win over ``mode``).
         resolved_stages = resolve_autofill_stages(mode, stages)
         order = tuple(stage.source for stage in resolved_stages)
         enabled_sources = set(order)

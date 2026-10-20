@@ -23,10 +23,8 @@ from shared.repository import (
 from shared.schemas.team_format import TeamFormatWrite
 from shared.services.division_grid import cache as division_grid_cache
 from shared.services.division_grid.access import get_workspace_division_grid_version_id, require_event_grid
-from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.ontology import assert_discipline_enabled
 from shared.services.realtime import Resource, Scope, emit
-from shared.services.registration_team_guards import assert_no_registered_teams
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.services.team_format import copy_for_tournament, save_tournament_format
 from shared.services.tournament.computation import request_bracket_job
@@ -34,11 +32,13 @@ from shared.services.tournament.slug import generate_unique_tournament_slug
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.services.admin.stage import stage_service
+from src.services.draft_guards import assert_no_active_draft_session
 
-# ``src.services.challonge.sync`` is loaded inside ``create_from_challonge``:
+# ``src.services.challonge.sync`` is loaded inside ``create_tournament_from_challonge``:
 # importing a remote bracket is one path out of this whole service, and at
 # module scope it would make every tournament write depend on the exporter.
 from src.services.notifications.lifecycle import lifecycle_notifier
+from src.services.registration_team_guards import assert_no_registered_teams
 from src.services.tournament.events import (
     STRUCTURE_RESOURCES,
     enqueue_tournament_state_changed,
@@ -106,9 +106,8 @@ class AdminTournamentService:
     ) -> None:
         """Create/update the tournament-scoped ``challonge_source`` row.
 
-        Replaces the legacy ``tournament.challonge_id`` / ``challonge_slug`` write:
-        the normalized ``challonge_source`` (source_type='tournament') is now the
-        sole persistence target for the tournament↔Challonge link.
+        That row (source_type='tournament') is the sole persistence target for the
+        tournament↔Challonge link.
         """
         source = await self.challonge_source_repo.get_tournament_source(session, tournament.id)
         if source is None:
@@ -311,7 +310,6 @@ class AdminTournamentService:
     async def update_tournament(
         self, session: AsyncSession, tournament_id: int, data: schemas.TournamentUpdate
     ) -> models.Tournament:
-        """Update tournament fields"""
         tournament = await self.tournament_repo.get(
             session,
             tournament_id,
@@ -325,7 +323,6 @@ class AdminTournamentService:
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-        # Update fields
         update_data = data.model_dump(exclude_unset=True)
         if "team_formation" in update_data and update_data["team_formation"] != tournament.team_formation:
             await assert_no_active_draft_session(session, tournament_id)
@@ -403,13 +400,8 @@ class AdminTournamentService:
         """Bootstrap a new tournament from an existing Challonge bracket: fetch it
         (its name/description become the tournament's), create the tournament, link
         the bracket the same way ``update_tournament(challonge_slug=...)`` does, then
-        pull its current structure and results in one shot.
-
-        Supersedes parser-service's old ``tournament.create_with_groups`` (which only
-        parsed empty ``TournamentGroup`` rows out of the bracket's matches without
-        persisting them) -- ``sync_service.import_tournament`` builds the full
-        stage/group/stage-item structure AND imports any already-recorded results,
-        exactly like a manual "Sync from Challonge" run would.
+        pull its current structure and results in one shot, exactly like a manual
+        "Sync from Challonge" run would.
         """
         challonge_tournament = await challonge_client.fetch_tournament(_normalize_challonge_slug(challonge_slug))
 
@@ -460,8 +452,8 @@ class AdminTournamentService:
         await division_grid_cache.invalidate_workspace(workspace_id)
 
     async def _stage_has_encounters(self, session: AsyncSession, stage_id: int) -> bool:
-        # Analytical: grouped count, not a CRUD row read. The encounter's stage
-        # is its bracket POSITION now (D22), so the count is over that table.
+        # Analytical: grouped count, not a CRUD row read. An encounter's stage is
+        # its bracket POSITION, so the count is over that table.
         count = await session.scalar(
             sa.select(sa.func.count(models.BracketEncounter.encounter_id)).where(
                 models.BracketEncounter.stage_id == stage_id
@@ -528,11 +520,8 @@ class AdminTournamentService:
     async def toggle_finished(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
         """The hub's "mark finished / reopen" button, as a two-way COMPLETED move.
 
-        It used to write ``status``, ``is_finished`` and ``auto_transitions_enabled``
-        by hand, which made it a second writer of the lifecycle beside
-        ``transition_status`` — same three fields, same two events, no matrix
-        validation, and free to drift. It now delegates, so the state machine has
-        exactly one entry point.
+        Delegates to ``transition_status`` so the lifecycle state machine has
+        exactly one writer.
 
         ``force=True`` because reopening walks COMPLETED -> LIVE, an edge the matrix
         deliberately omits: this button is the only sanctioned way back, and the
@@ -575,12 +564,11 @@ class AdminTournamentService:
 
         REGISTRATION additionally requires a saved registration form. The status
         is what the public page announces and what the register button reads, so
-        entering it without a form advertises a sign-up that cannot be completed
-        — the exact mismatch ANNOUNCEMENT was added to end. ``force`` bypasses
-        this the same way it bypasses the transition matrix: it is the
-        superuser-only "I know what I am doing" switch, and a Challonge-sourced
-        tournament that never takes its own registrations is the case that needs
-        it.
+        entering it without a form advertises a sign-up that cannot be completed.
+        ``force`` bypasses this the same way it bypasses the transition matrix: it
+        is the superuser-only "I know what I am doing" switch, and a
+        Challonge-sourced tournament that never takes its own registrations is the
+        case that needs it.
         """
         tournament = await self.tournament_repo.get(
             session,

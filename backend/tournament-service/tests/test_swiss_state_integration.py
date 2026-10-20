@@ -28,7 +28,7 @@ from shared.core import enums  # noqa: E402
 from shared.models.encounter import ScoringRule  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Stage, StageItem, SwissStoppedScope, Team, Tournament  # noqa: E402
-from shared.services.bracket import swiss_state  # noqa: E402
+from src.services.bracket import swiss_state  # noqa: E402
 
 
 async def _seed(session: Any) -> SimpleNamespace:

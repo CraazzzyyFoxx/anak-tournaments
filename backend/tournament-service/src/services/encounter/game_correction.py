@@ -1,4 +1,4 @@
-"""Admin correction of one position's result (spec §6.5 cases 1-3).
+"""Admin correction of one position's result.
 
 A confirmed game is locked against participants -- ``submit_game_claim`` refuses
 it with ``result_locked`` -- so this is the only way its numbers ever change,
@@ -7,13 +7,12 @@ and it always carries a reason into the result journal.
 The hard part is not the numbers: it is what the OLD result already decided.
 A correction that changes who won position N changes the encounter's standing,
 and a standing is what the bracket advanced on. So when the encounter's result
-was already confirmed, the correction is the full sequence Task 5's engine
-defines -- ``reopen`` the encounter, ``reset_downstream`` to un-seat and
-re-state everything it fed, write the new game result, then
-``advance_after_result`` on what the games now say. Anything less leaves a later
-round holding a team that no longer won.
+was already confirmed, the correction is the full sequence -- ``reopen`` the
+encounter, ``reset_downstream`` to un-seat and re-state everything it fed,
+write the new game result, then ``advance_after_result`` on what the games now
+say. Anything less leaves a later round holding a team that did not win.
 
-The old result also opened the room's NEXT round under a result rotation. An
+That result also opened the room's NEXT round under a result rotation. An
 untouched one is scrapped and re-appended for the corrected opener; one already
 in use refuses the whole correction (409 ``dependent_round_started``) before
 the audit and before any write -- guard, audit, correction, one commit.
@@ -35,8 +34,8 @@ from shared.core.enums import (
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.encounter.encounter import Encounter
-from shared.services.bracket import advancement
 from shared.services.encounter.result import lock_encounter, reopen
+from src.services.bracket import advancement
 from src.services.encounter.games import (
     EncounterGameService,
     GameResultIn,

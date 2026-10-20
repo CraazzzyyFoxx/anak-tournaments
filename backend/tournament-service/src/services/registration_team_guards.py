@@ -1,16 +1,15 @@
 """Guards protecting tournament write-paths from conflicting registered teams.
 
-Sibling of :mod:`shared.services.draft_guards`, and the same shape: one SELECT
-that names the blocker, a boolean wrapper for the read-side flag, and an
-assertion for the write path.
+Same shape as :mod:`src.services.draft_guards`: one SELECT that names the
+blocker, a boolean wrapper for the read-side flag, and an assertion for the
+write path.
 
 Why the roster shape needs this at all: every registered team's members carry a
 ``team_slot_code`` assigned from the shape that was in force when they accepted.
 Changing the tournament's team format afterwards silently invalidates those rosters — a
 5-slot team becomes over- or under-full against a shape nobody agreed to, and the
 completeness check that gates materialization starts answering a different
-question. A draft in flight is protected the same way (``roster_locked_by_draft``);
-this is the missing half for teams.
+question. A draft in flight is protected the same way (``roster_locked_by_draft``).
 """
 
 from __future__ import annotations
@@ -58,11 +57,7 @@ async def registered_team_status(session: AsyncSession, tournament_id: int) -> s
 
 
 def teams_holding_slots_clause() -> ColumnElement[bool]:
-    """What "still holding roster slots" means, for differently scoped callers.
-
-    ``roster_shape_guards`` asks it across every tournament of a workspace, so
-    the three conditions live here once rather than per query.
-    """
+    """What "still holding roster slots" means, shared by the per-tournament and per-page reads."""
     return and_(
         BalancerRegistrationTeam.deleted_at.is_(None),
         BalancerRegistrationTeam.status.notin_(_RELEASED_TEAM_STATUSES),

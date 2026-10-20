@@ -8,8 +8,7 @@ normalisation.
 
 Every rule RETURNS a :class:`FieldError` instead of raising, and every rule
 runs: a registrant sees the whole verdict on one round trip rather than the
-first complaint. The order of the collected errors is the order the old
-first-failure validator would have raised them in.
+first complaint.
 """
 
 from __future__ import annotations
@@ -71,7 +70,7 @@ def _allowed_subroles(
     the ``roles`` field wins; otherwise fall back to the workspace catalog.
     Returns ``None`` when nothing is configured anywhere (lenient — nothing to
     validate against). A configured *empty* list is a constraint, not an
-    absence: it allows nothing, exactly as the pre-schema config did.
+    absence: it allows nothing.
     """
     configured = params.subroles.get(role_code)
     if configured is not None:

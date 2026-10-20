@@ -1,13 +1,12 @@
 """Undo the last pick-ban step, once BOTH captains have agreed to it.
 
-A captain who banned the wrong hero used to have one way out: ask an organizer
-to reset the session, scrapping the whole round. This is the captains' own,
-surgical alternative -- and it is deliberately a two-sided consent rather than a
-unilateral take-back, because a settled step is information the opponent has
-already acted on. (The unilateral door exists too, but only for a BLIND step
+The captains' own, surgical alternative to an organizer resetting the session
+(which scraps the whole round) -- and deliberately a two-sided consent rather
+than a unilateral take-back, because a settled step is information the opponent
+has already acted on. (The unilateral door exists too, but only for a BLIND step
 that both sides replay from scratch: ``pick_ban_action.dispute_step``.) Same
 shape as the two other agreements this room runs on (``EncounterReadiness``,
-``EncounterMapReport``): one side records its consent, the other side's
+``EncounterGameClaim``): one side records its consent, the other side's
 matching call is what applies it.
 
 What "the last step" means is ``pick_ban_rules.undo_target``: the latest step
@@ -277,15 +276,14 @@ class PickBanUndoService:
         withdrawn, so taking the pick back with bans already committed against it
         would leave those bans attached to a map nobody has picked. The captains'
         way through is the composable one: undo the hero actions first (they are the
-        last actions of THEIR session), then the map pick — reverted hero entries no
-        longer count as committed, so this releases on its own.
+        last actions of THEIR session), then the map pick — reverted hero entries do
+        not count as committed, so this releases on its own.
         """
         hero_session = await self.sessions.get_pick_ban_session(session, encounter_id, PickBanKind.HERO)
         if hero_session is None:
             return
-        # Grouped count with a conditional round predicate, not a CRUD read: stays
-        # here rather than becoming a repository method. A carried ban never counts
-        # -- it carries no `action_index`, being a fixed copy of an earlier round's.
+        # A carried ban never counts -- it carries no `action_index`, being a
+        # fixed copy of an earlier round's.
         committed = await session.scalar(
             select(sa.func.count())
             .select_from(PickBanEntry)

@@ -38,28 +38,24 @@ from shared.repository import (
     TeamRepository,
     TournamentRepository,
 )
-from shared.services.bracket import round_robin
-from shared.services.bracket.engine import generate_bracket, placeholder_bracket, placeholder_seeds
-from shared.services.bracket.persist import SeatTeam, persist_skeleton
-from shared.services.bracket.swiss import SwissPairingImpossibleError, SwissStanding
-from shared.services.bracket.swiss_state import (
-    clear_swiss_byes,
-    clear_swiss_scope_stopped,
-    mark_swiss_scope_stopped,
-    record_swiss_bye,
-    swiss_bye_team_ids,
-)
-from shared.services.bracket.template import (
-    BracketTemplate,
-    skeleton_to_template,
-    template_to_skeleton,
-    validate_template,
-)
-from shared.services.bracket.types import BracketSkeleton, Pairing
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 from src.domain.admin.best_of import best_of_config, resolve_best_of
+from src.domain.bracket import (
+    BracketSkeleton,
+    BracketTemplate,
+    Pairing,
+    SwissPairingImpossibleError,
+    SwissStanding,
+    generate_bracket,
+    placeholder_bracket,
+    placeholder_seeds,
+    round_robin,
+    skeleton_to_template,
+    template_to_skeleton,
+    validate_template,
+)
 from src.domain.stage.lifecycle import stage_lifecycle
 from src.domain.stage.seeds import (
     GroupSlice,
@@ -90,6 +86,14 @@ from src.services.admin.stage_common import (
     _apply_seeding,
     _bracket_seeds,
     _pick_ban_config_signature,
+)
+from src.services.bracket.persist import SeatTeam, persist_skeleton
+from src.services.bracket.swiss_state import (
+    clear_swiss_byes,
+    clear_swiss_scope_stopped,
+    mark_swiss_scope_stopped,
+    record_swiss_bye,
+    swiss_bye_team_ids,
 )
 from src.services.encounter.ffa import ffa_encounter_service
 from src.services.encounter.room_reconcile import request_stage_reconcile
@@ -138,8 +142,8 @@ def _apply_stage_fields(stage: models.Stage, fields: dict[str, Any]) -> None:
     if "best_of" in fields:
         best_of = fields.pop("best_of") or {}
         # ``model_dump(exclude_unset=True)`` drops a nested default, so a body
-        # of ``{default, by_round}`` has no ``final`` key. Reading it blindly
-        # 500'd. Omitted final is the schema default: no final override.
+        # of ``{default, by_round}`` has no ``final`` key. Omitted final is the
+        # schema default: no final override.
         if best_of.get("default") is not None:
             stage.best_of_default = best_of["default"]
         stage.best_of_final = best_of.get("final")
@@ -158,14 +162,13 @@ def _apply_stage_fields(stage: models.Stage, fields: dict[str, Any]) -> None:
 
 
 def rule_values(stage_type: enums.StageType, block: dict[str, Any]) -> dict[str, Any]:
-    """The ``encounter.scoring_rule`` row a stage's ``scoring`` block means (D51).
+    """The ``encounter.scoring_rule`` row a stage's ``scoring`` block means.
 
     Every rule field of the block is nullable and reads as "the preset's own",
     and the preset itself defaults to the one the stage TYPE implies -- a lobby
     stage is scored by points, everything else by wins. The two end formulas are
     the preset's, never the organizer's: when a series or a lobby is OVER is a
-    property of the format, and the same two strings ``enclayer01`` wrote into
-    every migrated row.
+    property of the format.
     """
     preset = block.get("preset") or ("points" if stage_type == enums.StageType.FFA_LEAGUE else "wins")
     if preset == "wins":
@@ -283,8 +286,8 @@ class AdminStageService:
         stage = await self.get_stage(session, stage_id)
 
         # DISTINCT projection of a single column: the round numbers only, never
-        # the encounters themselves. The round lives on the bracket position
-        # now, so the stage's rounds are a read of that table alone (D22).
+        # the encounters themselves. The round lives on the bracket position,
+        # so the stage's rounds are a read of that table alone.
         generated = await session.execute(
             select(models.BracketEncounter.round).where(models.BracketEncounter.stage_id == stage_id).distinct()
         )
@@ -426,7 +429,7 @@ class AdminStageService:
     async def _count_stage_encounters(self, session: AsyncSession, stage_id: int, **filters: Any) -> int:
         """How many encounters sit in this stage. One count over
         ``tournament.bracket_encounter``, which is where a stage's encounters
-        are listed now (D22); ``filters`` are extra ``Encounter`` column equals."""
+        are listed; ``filters`` are extra ``Encounter`` column equals."""
         query = (
             select(func.count())
             .select_from(models.BracketEncounter)
@@ -512,8 +515,8 @@ class AdminStageService:
         """The upper/lower seed counts the preceding group stage will feed into
         ``stage``, mirroring ``_auto_wire_from_groups``: each group of the nearest
         earlier Swiss/round-robin stage sends its own ``advance_count`` (falling
-        back to the stage's), split per group by ``advance_upper_count`` (spec
-        §3.2). Only a DOUBLE_ELIMINATION stage has a lower bracket, so anywhere
+        back to the stage's), split per group by ``advance_upper_count``. Only a
+        DOUBLE_ELIMINATION stage has a lower bracket, so anywhere
         else the split is ignored and everyone advancing is an upper seed.
         ``(0, 0)`` when there is no such source, or nothing is configured
         to advance."""
@@ -596,8 +599,7 @@ class AdminStageService:
                         "is_completed": total > 0 and completed == total,
                     }
                 )
-            # Also include encounters with NULL stage_item_id (shouldn't happen
-            # after Phase A backfill, but safe).
+            # Encounters with no stage_item_id still count toward the stage total.
             total, completed = agg.get((stage.id, None), [0, 0])
             stage_total += total
             stage_completed += completed
@@ -622,15 +624,14 @@ class AdminStageService:
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-        # The deprecated stage.challonge_id/slug columns are no longer written: a
-        # supplied Challonge link becomes a normalized challonge_source row scoped to
-        # the new stage instead.
+        # A supplied Challonge link becomes a challonge_source row scoped to the
+        # new stage, not a stage column.
         payload = data.model_dump()
         challonge_id = payload.pop("challonge_id", None)
         challonge_slug = payload.pop("challonge_slug", None)
         stage = models.Stage(tournament_id=tournament_id)
         # Before the stage: ``stage.scoring_rule_id`` is NOT NULL, and every
-        # encounter this stage generates points at the same row (D51).
+        # encounter this stage generates points at the same row.
         stage.scoring_rule = models.ScoringRule(
             workspace_id=tournament.workspace_id,
             **rule_values(data.stage_type, payload.get("scoring") or {}),
@@ -717,7 +718,7 @@ class AdminStageService:
         before: dict[str, Any],
         after: dict[str, Any],
     ) -> None:
-        """The scoring-rule edits a stage in play cannot take (plan §6).
+        """The scoring-rule edits a stage in play cannot take.
 
         Re-ranking edits (the preset, the formula, the placement points, the
         column keys, their ``better``) are refused once a playoff seeded off this
@@ -811,9 +812,11 @@ class AdminStageService:
         source_stage_ids: list[int],
         kind: enums.PickBanKind,
     ) -> None:
-        """Generalizes ``_merge_map_veto_configs`` onto ``PickBanConfig``, scoped
-        by ``kind`` -- called once per kind so a tournament's map and hero configs
-        are deduped independently."""
+        """Collapse the source stages' ``kind`` pick-ban configs onto ``target_stage``.
+
+        The target's own config wins; otherwise the sources must agree and one
+        of them moves over. Called once per kind so a tournament's map and hero
+        configs are deduped independently."""
         target_configs = list(
             await self.pick_ban_config_repo.list_for_stages(
                 session,
@@ -884,11 +887,11 @@ class AdminStageService:
         source_stage_ids: list[int],
         target_name: str | None = None,
     ) -> models.Stage:
-        """Merge old one-group stages into one grouped stage.
+        """Merge one-group stages into one grouped stage.
 
-        Old tournaments were migrated as A/B/C/D separate Stage rows. The modern
-        shape is one grouped Stage with A/B/C/D as StageItem rows, so this moves
-        source items and all stage-scoped references to the selected target stage.
+        Some tournaments carry A/B/C/D as separate Stage rows; the canonical shape
+        is one grouped Stage with A/B/C/D as StageItem rows, so this moves source
+        items and all stage-scoped references to the selected target stage.
         """
         target_stage = await self.get_stage(session, target_stage_id)
         if target_stage.stage_type not in GROUPED_GENERATION_STAGE_TYPES:
@@ -979,8 +982,8 @@ class AdminStageService:
             )
 
         for model in (
-            # The encounter's stage is its bracket POSITION now (D22), so that
-            # is the row a merge moves; the encounter itself has no stage.
+            # The encounter's stage is its bracket POSITION, so that is the
+            # row a merge moves; the encounter itself has no stage.
             models.BracketEncounter,
             models.Standing,
             models.ChallongeSource,
@@ -1072,10 +1075,9 @@ class AdminStageService:
     ) -> models.StageItemInput | None:
         """The invariants every seed slot has to satisfy, whoever writes it.
 
-        Creation used to check none of these while editing checked most of them,
-        so an input the update endpoint refuses could be created outright: a
-        second input on one slot, or a team from a different tournament (the FK
-        only proves the team exists).
+        Creation and editing both go through here, so neither can write a second
+        input on one slot, or a team from a different tournament (the FK only
+        proves the team exists).
 
         Returns the OTHER input of this stage that already holds ``team_id``, if
         there is one -- editing swaps the two teams, creating has nothing to swap
@@ -1360,8 +1362,8 @@ class AdminStageService:
         stage.is_published = True
         # That flag IS the room's "is this bracket live" gate, so activation is
         # what makes a preview stage's encounters owe their pick-ban sessions.
-        # Nothing else about them is written here, and the room's state read no
-        # longer opens a session on the way past.
+        # Nothing else about them is written here, and the room's state read
+        # does not open a session on the way past either.
         request_stage_reconcile(session, stage.id)
 
         source_item_ids = {
@@ -1420,7 +1422,7 @@ class AdminStageService:
         encounters at once, and a dozen channel posts is spam.
         """
         # Fully seated, not "both team columns set": a pairing is complete when
-        # it has as many live participations as it has slots (D55), which is the
+        # it has as many live participations as it has slots, which is the
         # same question for a duel and for a lobby.
         seated = (
             select(func.count())
@@ -1449,9 +1451,9 @@ class AdminStageService:
     ) -> models.Stage:
         """Revert an accidentally-activated stage back to Draft/preview.
 
-        ``is_published`` is documented (and, until now, enforced) as sticky
+        ``is_published`` is otherwise sticky
         because it gates whether an encounter is live for reporting/pick-ban
-        (``shared.services.bracket.usability.is_encounter_live``) -- once a
+        (``src.services.bracket.usability.is_encounter_live``) -- once a
         captain has acted on a match, taking that gate back down would strand
         real data behind a bracket that looks like a preview again. So this only
         allows the revert while every one of the stage's encounters is still
@@ -1564,8 +1566,8 @@ class AdminStageService:
 
         swiss_round = max(round_number for _encounter_id, round_number in rounds) + 1
         # The pairs this scope already played, off the participations: a Swiss
-        # pairing refuses a rematch, and who met whom is the seats of each card
-        # (D55). A seat that was taken over still counts as a meeting.
+        # pairing refuses a rematch, and who met whom is the seats of each card.
+        # A seat that was taken over still counts as a meeting.
         seats = (
             await session.execute(
                 select(models.EncounterTeam.encounter_id, models.EncounterTeam.team_id).where(
@@ -1955,7 +1957,7 @@ class AdminStageService:
         ``advance_upper_count`` overriding that. A group's lower-bracket band
         starts right after its own upper band, so uneven groups do not share one
         offset. Lower-bracket starters require a DOUBLE_ELIMINATION target; its
-        BRACKET_LOWER stage item is created here when it has none (spec §3.2).
+        BRACKET_LOWER stage item is created here when it has none.
 
         Idempotent: existing FINAL inputs are preserved; existing TENTATIVE inputs
         with the same slot are overwritten.
@@ -2028,9 +2030,7 @@ class AdminStageService:
         if sum(lower for _, _, lower in counts) > 0:
             # Only a DE target can get here: the collapse above zeroes the rest.
             if lb_item is None:
-                # Spec §3.2 (amended): a DE stage that sends teams lower gets its
-                # Lower bracket item here, exactly as the bsplit01 migration made
-                # one for the stages that predate the split.
+                # A DE stage that sends teams lower gets its Lower bracket item here.
                 lb_item = models.StageItem(
                     stage_id=target_stage.id,
                     name="Lower bracket",
@@ -2088,7 +2088,7 @@ class AdminStageService:
     async def _check_upstream_stages_completed(self, session: AsyncSession, stage: models.Stage) -> list[int]:
         """Return ids of upstream stages that feed into ``stage`` via TENTATIVE
         inputs but are NOT yet marked ``is_completed``. Empty list means safe
-        to activate. Used by /activate-and-generate to prevent admins from
+        to activate. Used by ``activate_and_generate`` to prevent admins from
         freezing playoff seeds before groups finish.
         """
         source_item_ids = list(
@@ -2228,8 +2228,8 @@ class AdminStageService:
         """Re-resolve frozen qualification seeds that recomputed standings moved.
 
         Activation turns a TENTATIVE input into a FINAL one, which is what makes
-        the playoff's participants stable -- and, until now, also what made a
-        later correction of the group result invisible to it. This re-reads every
+        the playoff's participants stable -- and would hide a later correction of
+        the group result from it. This re-reads every
         FINAL input that still remembers where it came from and rewrites it, plus
         the encounter slot and name holding the old team, when the source
         standings now name somebody else.
@@ -2307,7 +2307,7 @@ class AdminStageService:
         """Move every ``old -> new`` slot of an untouched stage item at once,
         renaming the encounters and resetting their pick-ban.
 
-        A seat changes hands the only way it can (D55): the occupant is retired
+        A seat changes hands the only way it can: the occupant is retired
         and the replacement is seated in the same slot. The item is untouched --
         nothing was played in it -- so the retired rows carry no result with them.
         """
@@ -2404,8 +2404,7 @@ class AdminStageService:
         source_stage_id: int | None = None,
     ) -> bool:
         """Derive playoff seeding from a group stage's ``advance_count`` and
-        ``advance_upper_count``, then wire TENTATIVE inputs (cross seeding).
-        Replaces the manual Automation block.
+        ``advance_upper_count``, then wire TENTATIVE inputs (snake seeding).
 
         ``source_stage_id`` names the feeding group stage explicitly — required
         when several divisions share the earlier phase, since none of them is
@@ -2461,7 +2460,7 @@ class AdminStageService:
             return False
 
         # ``default_advance = source.advance_count``, ``default_upper =
-        # source.advance_upper_count`` (NULL → everyone starts upper), spec §3.2.
+        # source.advance_upper_count`` (NULL → everyone starts upper).
         # A single elimination playoff has no lower bracket, so the source's split
         # is ignored there and every advancing team starts in the bracket.
         #
@@ -2530,9 +2529,9 @@ class AdminStageService:
         groups are actually finished.
         """
         stage = await self.get_stage(session, stage_id)
-        # Auto-wire playoff seeds from the preceding group stage (replaces the manual
-        # Automation block). Runs BEFORE the upstream-completion check so that check
-        # sees the freshly created TENTATIVE inputs.
+        # Auto-wire playoff seeds from the preceding group stage. Runs BEFORE the
+        # upstream-completion check so that check sees the freshly created
+        # TENTATIVE inputs.
         await self._auto_wire_from_groups(session, stage)
         if not force:
             pending = await self._check_upstream_stages_completed(session, stage)
@@ -2621,7 +2620,7 @@ class AdminStageService:
         stage: models.Stage,
         existing_by_item: dict[int | None, int],
     ) -> list[models.Encounter]:
-        """One lobby per group that has none yet (plan §5.1). A lobby is not a
+        """One lobby per group that has none yet. A lobby is not a
         bracket: nothing here goes through ``generate_bracket``/``Pairing``."""
         items = [
             item
@@ -2749,7 +2748,7 @@ class AdminStageService:
         is_elimination = stage.stage_type in BRACKET_STAGE_TYPES
 
         # ``EncounterRepository.list_by_stage`` also predicates on tournament_id
-        # and orders the rows; neither matches this backfill's original scan.
+        # and orders the rows; neither matches this backfill's scan.
         result = await session.execute(
             select(models.Encounter, models.BracketEncounter.round)
             .join(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
@@ -2770,7 +2769,7 @@ class AdminStageService:
             encounter.best_of = target
             changed += 1
             # A lobby's completion is derived from "confirmed games >= best_of",
-            # so moving the bar here settles or reopens it (plan §5.4). A duel's
+            # so moving the bar here settles or reopens it. A duel's
             # is decided by its series score, which this does not touch.
             if encounter.scoring_preset == "points":
                 await ffa_encounter_service.refresh_completion(session, encounter, actor_user_id=None)

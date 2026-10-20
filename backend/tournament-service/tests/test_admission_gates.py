@@ -29,7 +29,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.services.admission import (  # noqa: E402
+from shared.services.subscriptions import parse_requirement  # noqa: E402
+from src.services.admission import (  # noqa: E402
     AdmissionConfig,
     AdmissionDecision,
     AdmissionEvaluation,
@@ -39,8 +40,7 @@ from shared.services.admission import (  # noqa: E402
     RequirementVerdict,
     reason,
 )
-from shared.services.admission.gates import assert_admitted, describe_requirement  # noqa: E402
-from shared.services.subscriptions import parse_requirement  # noqa: E402
+from src.services.admission.gates import assert_admitted, describe_requirement  # noqa: E402
 
 BOOSTY_TIER_2 = {"mode": "all", "requirements": [{"provider": "boosty", "min_tier_rank": 2}]}
 BOTH = {"mode": "all", "requirements": [{"provider": "boosty"}, {"provider": "twitch"}]}

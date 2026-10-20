@@ -20,9 +20,9 @@ from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
 from shared.repository import BracketEncounterRepository, EncounterRepository
-from shared.services.bracket.advancement import persist_advancement_edges
-from shared.services.bracket.types import BracketSkeleton
 from shared.services.encounter.participants import MemberSnapshot, place_team
+from src.domain.bracket import BracketSkeleton
+from src.services.bracket.advancement import persist_advancement_edges
 
 __all__ = ("SeatTeam", "persist_skeleton")
 
@@ -60,7 +60,7 @@ async def persist_skeleton(
     ``best_of_for_round(round_number, *, is_final)`` resolves BoN. Negative
     rounds go to ``lb_stage_item_id`` when that item exists. A team id the
     skeleton seeds but ``teams_by_id`` does not name is seated anyway, under
-    the name "TBD" -- the same leniency the display name has always had.
+    the name "TBD", as the display name shows it.
     """
     tournament = await session.get_one(Tournament, stage.tournament_id)
     names_by_id = {team_id: seat.name for team_id, seat in teams_by_id.items()}

@@ -4,12 +4,12 @@ A template is a ``BracketSkeleton`` written slot-first so an editor can store it
 ``U3`` is the third upper-bracket seed and ``L1`` the first lower one, in engine
 seed order (``placeholder_seeds``: ``Uk`` -> ``-k``, ``Lk`` -> ``-(upper_seeds + k)``).
 
-A match lists its ``slots``, numbered ``1..n`` the way the encounter seats them
-(D55), and a slot that waits for a result names the match it waits on plus the
-``source_position`` it takes -- 1 being the old "winner" and 2 the old "loser".
+A match lists its ``slots``, numbered ``1..n`` the way the encounter seats them,
+and a slot that waits for a result names the match it waits on plus the
+``source_position`` it takes -- 1 being the winner and 2 the loser.
 Generation, preview and seed fill consume ``template_to_skeleton`` like any
 generated skeleton; ``validate_template`` keeps a template to the conventions
-they rely on (spec 2026-10-01 §5.2).
+they rely on.
 """
 
 from __future__ import annotations
@@ -153,7 +153,7 @@ def skeleton_to_template(skeleton: BracketSkeleton, *, upper_seeds: int, lower_s
 
 
 def validate_template(template: BracketTemplate, stage_type: StageType) -> list[TemplateProblem]:
-    """Every way ``template`` breaks spec §5.2, in match order; ``[]`` when it is sound."""
+    """Every convention ``template`` breaks, in match order; ``[]`` when it is sound."""
     problems: list[TemplateProblem] = []
 
     def add(code: str, message: str, match_id: int | None = None, slot: int | None = None) -> None:

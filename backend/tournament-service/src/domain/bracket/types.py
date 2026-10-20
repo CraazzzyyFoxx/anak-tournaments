@@ -1,10 +1,9 @@
 """The format-neutral shape of a bracket: seats and places, not sides.
 
-An encounter seats ``slot_count`` participations (D55), so a pairing is a
-sequence of team ids -- index ``i`` is slot ``i + 1`` -- and an edge between two
-of them names the PLACE it moves (``source_position``: 1 is the old "winner", 2
-the old "loser") and the SEAT it fills (``target_slot``). Nothing here knows
-about home and away.
+An encounter seats ``slot_count`` participations, so a pairing is a sequence
+of team ids -- index ``i`` is slot ``i + 1`` -- and an edge between two of them
+names the PLACE it moves (``source_position``: 1 is the winner, 2 the loser)
+and the SEAT it fills (``target_slot``). Nothing here knows about home and away.
 """
 
 from dataclasses import dataclass, field

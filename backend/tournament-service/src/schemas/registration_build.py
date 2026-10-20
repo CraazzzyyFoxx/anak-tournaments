@@ -1,9 +1,8 @@
 """Registration read-model builders and tournament-history aggregation.
 
-Extracted verbatim from the decommissioned ``src/routes/registration.py`` so the
-typed-RPC handlers in ``src/rpc/public_rpc.py`` build the SAME ``RegistrationRead``
-/ ``RegistrationFormRead`` payloads and the SAME participant tournament-history
-envelope. This module must NOT import fastapi.
+The typed-RPC handlers build every ``RegistrationRead`` / ``RegistrationFormRead``
+payload and the participant tournament-history envelope through here. This module
+must NOT import fastapi.
 """
 
 from __future__ import annotations
@@ -23,9 +22,6 @@ from shared.domain.forms import RolesParams, schema_from_form, schema_from_versi
 from shared.domain.roster import PlayerRoster
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
 from shared.schemas.role import RoleRef
-from shared.services.admission.requirements.open_profile import KEY as OPEN_PROFILE_KEY
-from shared.services.admission.requirements.subscription import KEY as SUBSCRIPTION_KEY
-from shared.services.admission.types import AdmissionEvaluation
 from shared.services.division_grid.access import (
     get_effective_division_grid_version_ids,
     load_division_grid_snapshots,
@@ -42,6 +38,9 @@ from src.schemas.registration import (
     RegistrationTeamBrief,
     TournamentHistoryEntry,
 )
+from src.services.admission.requirements.open_profile import KEY as OPEN_PROFILE_KEY
+from src.services.admission.requirements.subscription import KEY as SUBSCRIPTION_KEY
+from src.services.admission.types import AdmissionEvaluation
 from src.services.registration.answers import answer_service
 
 
@@ -53,8 +52,8 @@ class AdmissionChips:
     signals the requirements were evaluated FROM, which is why they stay separate
     columns on the read. They are lifted out of ``requirements[].detail`` rather
     than resolved a second time: the batch already paid for the
-    ``battle_tag_state`` row and the entitlement pass, and a second resolution is
-    precisely how the admin column and the player's own card came to disagree.
+    ``battle_tag_state`` row and the entitlement pass, and a second resolution
+    could make the admin column and the player's own card disagree.
 
     Both list handlers -- public participants and admin registrations -- build
     their reads through here, so the ``detail`` key names live in one place and
@@ -72,10 +71,9 @@ class AdmissionChips:
 
         ``.get`` on ``detail``, not ``detail[...]``: a requirement this tournament
         switched off is present as ``not_applicable`` with an EMPTY detail, and the
-        chips must then read ``None`` -- the value they have carried all along for a
-        tournament that does not require the thing. An empty dict in that slot
-        would make the client render an empty Subscription column instead of no
-        column at all.
+        chips must then read ``None``, meaning "not required". An empty dict in
+        that slot would make the client render an empty Subscription column
+        instead of no column at all.
         """
         if evaluation is None:
             return cls(admission=AdmissionRead.unknown())
@@ -101,9 +99,9 @@ def registration_read_loaders() -> tuple[Any, ...]:
     to the roster engine for their ranks: it reads roles, their heroes and the
     member's player, and a lazy load there would raise ``MissingGreenlet``.
 
-    ``tournament`` labels ``queue_role``. A post-commit ``populate_existing`` reload
-    resets it to lazy, which only resolved while the Tournament happened to still
-    sit in the identity map (P8-D1).
+    ``tournament`` labels ``queue_role`` and must be eager: a post-commit
+    ``populate_existing`` reload resets it to lazy, and it then resolves only
+    while the Tournament still sits in the identity map.
     """
     return (
         *registration_load_options(),
@@ -117,19 +115,12 @@ def registration_read_loaders() -> tuple[Any, ...]:
 # full list is capped here and the true total is surfaced via ``tournament_history_count``.
 HISTORY_LIMIT = 10
 
-# HTTP 404 Not Found — raised below without importing fastapi so this module stays
-# fastapi-free. The RPC ``_run`` envelope catches fastapi ``HTTPException`` by type,
-# so we raise the genuine class via a lazy import to preserve the 404 contract.
+# The RPC envelope maps a ``BaseAPIException``'s ``status_code`` to the error code.
 _HTTP_404_NOT_FOUND = 404
 
 
 def _http_exception(status_code: int, detail: str) -> Exception:
-    """Build the canonical fastapi ``HTTPException`` without a module-level import.
-
-    The RPC envelope (``public_rpc._run``) maps a fastapi ``HTTPException`` to the
-    error code; raising the genuine class keeps the status-code contract intact
-    while keeping this module free of a top-level fastapi import.
-    """
+    """Build the ``BaseAPIException`` the RPC envelope maps to an error code by ``status_code``."""
     from shared.core.errors import BaseAPIException as HTTPException
 
     return HTTPException(status_code=status_code, detail=detail)
@@ -195,7 +186,7 @@ def registration_public_keys(
     version, so this parses the schema once rather than once per row. Requires
     ``form_version`` to be eager-loaded (``registration_load_options``); a row
     without it falls back to the form's current public keys, which is exactly the
-    legacy/manual case where ``form_version_id`` is NULL.
+    manual/unversioned case where ``form_version_id`` is NULL.
 
     ``reserve`` is the one key added unconditionally. Its visibility is FIXED
     public by the builtin catalog, so no version can have collected it in
@@ -288,13 +279,12 @@ def _reg_to_read(
     ``admission`` defaults to ``AdmissionRead.unknown()`` rather than staying
     ``None``: the single-registration write paths (create, self-update) return a
     read the caller refetches anyway, and a nullable object here would put a null
-    branch in every consumer -- which is how the five client-side re-derivations
-    of this answer got started.
+    branch in every consumer.
     """
     if roster is not None:
         # The roster, not the rows: under ``all_roles``/``forced`` the engine
-        # synthesizes the roles the DB never stored, and the public table used to
-        # publish one role while the balancer and the draft acted on three.
+        # synthesizes the roles the DB never stored, so the public table publishes
+        # exactly the roles the balancer and the draft act on.
         # ``is_primary``/``priority`` come from the same place for the same reason.
         roles = [
             RegistrationRoleRead(
@@ -303,7 +293,7 @@ def _reg_to_read(
                 priority=entry.priority,
                 # The engine's answer, or nothing: a role it did not rate is a role
                 # the player cannot be picked on, and printing the raw column there
-                # advertised a rating the balancer would never honour.
+                # would advertise a rating the balancer never honours.
                 rank_value=roster.rank_on(entry.role) if show_ranks else None,
                 top_characters=[character.slug for character in entry.top_characters],
             )
@@ -347,8 +337,7 @@ def _reg_to_read(
         id=reg.id,
         tournament_id=reg.tournament_id,
         workspace_id=workspace_id,
-        # API shape preserved: user_id stays in the payload, derived from the
-        # workspace_member anchor (callers eager-load it; see helper).
+        # Derived from the workspace_member anchor (callers eager-load it; see helper).
         user_id=_registration_player_id(reg),
         primary_handle=(identity.handle if (identity := reg.primary_game_identity(provider=provider)) else None),
         answers=answers,
@@ -392,7 +381,7 @@ async def _public_rosters(session: AsyncSession, registrations: Sequence[Any]) -
     roster (``all_roles``/``forced`` synthesize roles no DB row names), and
     ``show_ranks`` only decides whether ``_reg_to_read`` prints the number.
 
-    The workspace is resolved here rather than pushed onto all five call sites:
+    The workspace is resolved here rather than by every call site:
     every caller already has the registrations, and one tournament's worth of
     them shares a tenancy. Rows must carry ``registration_read_loaders()``, which
     folds in everything the engine reads.
@@ -416,12 +405,11 @@ async def _build_tournament_history(
 ]:
     """Batch-query past tournament participation from the analytics system.
 
-    Uses tournament.player (the analytics table) — if a player record exists,
-    they definitely participated. No extra checks needed.
+    Uses tournament.player (the analytics table): a player record means they
+    participated.
 
     The player id (players.user.id) is resolved via workspace_member ->
-    player_id — the registration's only identity anchor since dbarch02
-    dropped user_id.
+    player_id, the registration's only identity anchor.
 
     Callers must eager-load ``BalancerRegistration.workspace_member`` for the
     resolution to see anything (a lazy load here would run outside the
@@ -530,9 +518,9 @@ async def _build_tournament_history(
 
     # --- Step 3: resolve division-grid versions for every distinct historical
     # tournament in one batch -- a constant number of Redis/DB round trips no
-    # matter how many distinct tournaments this player's history spans (was a
-    # sequential per-tournament await; see get_effective_division_grid_version_ids's
-    # docstring for why that can't just be asyncio.gather'd instead).
+    # matter how many distinct tournaments this player's history spans (see
+    # get_effective_division_grid_version_ids's docstring for why a per-tournament
+    # asyncio.gather is not an option).
     tournament_ids_with_rank = {row[0] for row in rows if row[3] is not None}
     tournament_to_version = await get_effective_division_grid_version_ids(session, tournament_ids_with_rank)
 

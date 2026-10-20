@@ -1,6 +1,6 @@
 """Double-elimination bracket generator.
 
-Convention (matching the historical codebase):
+Convention:
   round > 0  → upper (winners) bracket
   round < 0  → lower (losers) bracket
   last positive round = Grand Final (and optional Grand Final Reset)

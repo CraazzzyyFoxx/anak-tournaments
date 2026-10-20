@@ -4,12 +4,9 @@ Listing, manual creation, profile edits, review transitions
 (approve/reject/withdraw/restore), soft delete, balancer inclusion/status and
 check-in.
 
-Note for tests: ``lifecycle_service`` resolves its collaborators from
-constructor-injected attributes (``self.registration_repo``, ``self.common``,
-``self.registrations``), so intercept e.g. ``get_registration_by_id`` by
-patching the attribute or the method on ``lifecycle_service`` — not a module
-global. Free functions imported here (``enqueue_registration_approved`` and
-friends) are still module globals of *this* module and patch as before.
+Collaborators are constructor-injected attributes of ``lifecycle_service``
+(``registration_repo``, ``common``, ``registrations``): tests patch those, not
+module globals.
 """
 
 from __future__ import annotations
@@ -22,7 +19,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import balancer_pool_excluded_clause, balancer_pool_included_clause
+from shared.balancer_registration_statuses import (
+    balancer_pool_excluded_clause,
+    balancer_pool_included_clause,
+    get_status_metas_map,
+)
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import identity_provider
@@ -36,8 +37,8 @@ from shared.repository import (
     TournamentRepository,
 )
 from shared.services.roster import registration_load_options, roster_engine
-from src import models
-from src.schemas.registration_build import _resolve_top_heroes_config, registration_read_loaders
+from src import models, schemas
+from src.schemas.registration_build import AdmissionChips, _resolve_top_heroes_config, registration_read_loaders
 from src.services.registration._common import (
     AUTO_MANAGED_BALANCER_STATUSES,
     EXCLUDED_BALANCER_STATUS,
@@ -52,6 +53,8 @@ from src.services.registration._common import (
     sync_included_balancer_status,
 )
 from src.services.registration.answers import answer_service
+from src.services.registration.rank_sources import native_ranks_by_registration
+from src.services.registration.serializers import serialize_registration
 from src.services.registration.service import RegistrationService, registration_service
 from src.services.tournament.events import (
     enqueue_registration_approved,
@@ -180,6 +183,62 @@ class RegistrationLifecycleService:
         result = await session.execute(query)
         return list(result.scalars().all())
 
+    async def list_registration_reads(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        *,
+        workspace_id: int,
+        status_filter: str | None = None,
+        inclusion_filter: str | None = None,
+        source_filter: str | None = None,
+        include_deleted: bool = False,
+    ) -> list[schemas.BalancerRegistrationRead]:
+        """The admin registrations table: each filtered row with its status meta, native ranks, roster and admission."""
+        registrations = await self.list_registrations(
+            session,
+            tournament_id,
+            status_filter=status_filter,
+            inclusion_filter=inclusion_filter,
+            source_filter=source_filter,
+            include_deleted=include_deleted,
+        )
+        status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id) if registrations else None
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        grid = await self.common.get_tournament_grid(session, tournament_id)
+        ow_ranks = await native_ranks_by_registration(
+            session, registrations, discipline_code=tournament.discipline, grid=grid
+        )
+        # The form and the grid are already in hand, so the engine reuses them
+        # instead of re-reading either; this is the same roster the balancer
+        # payload and the draft pool are built from.
+        form = await self.common.get_registration_form(session, tournament_id)
+        rosters = await roster_engine.resolve(
+            session, registrations, workspace_id=workspace_id, tournament_id=tournament_id, form=form, grid=grid
+        )
+        # Same resolution the public participants list uses, so the admin
+        # Admission / Subscription / Profile columns are byte-identical to what
+        # the player sees on their own card.
+        admissions = await self.registrations.resolve_admission_list(session, registrations, form=form)
+        provider = identity_provider(tournament.discipline)
+        reads = []
+        for registration in registrations:
+            chips = AdmissionChips.of(admissions.get(registration.id))
+            reads.append(
+                serialize_registration(
+                    registration,
+                    workspace_id=workspace_id,
+                    provider=provider,
+                    status_meta_map=status_meta_map,
+                    ow_ranks_for_user=ow_ranks.get(registration.id),
+                    admission=chips.admission,
+                    profiles_open=chips.profiles_open,
+                    subscription_outcome=chips.subscription_outcome,
+                    roster=rosters.get(registration.id),
+                )
+            )
+        return reads
+
     async def get_registration_by_id(self, session: AsyncSession, registration_id: int) -> models.BalancerRegistration:
         registration = await self.registration_repo.get(session, registration_id, options=_registration_read_options())
         if registration is None:
@@ -222,11 +281,10 @@ class RegistrationLifecycleService:
         the ``require_verified`` gate off.
 
         A tournament with no form (or no version yet) is validated against
-        ``default_schema(identity_provider(discipline))``, the same fallback the sheet-sync feed uses: before
-        the form schema existed an organizer's input was written unconditionally,
-        and refusing it here would silently drop every battle tag, handle and note
-        they type on such a tournament. THE resolver for both callers, so the
-        fallback cannot apply to one and not the other.
+        ``default_schema(identity_provider(discipline))``, the same fallback the
+        sheet-sync feed uses: refusing the input would silently drop every battle
+        tag, handle and note an organizer types on such a tournament. THE resolver
+        for both callers, so the fallback cannot apply to one and not the other.
         """
         schema = schema_from_form(form) or default_schema(identity_provider(discipline))
         # ``_resolve_top_heroes_config`` reads a real form; no form means no
@@ -324,8 +382,8 @@ class RegistrationLifecycleService:
         await self.registration_repo.create(session, registration)
         # Unconditional, and with the workspace: a manual registration has no auth
         # account, but its game handle is still the identity every inherited rank
-        # layer is read through. Gating this on ``auth_user_id`` left admin-created
-        # rows with no ``workspace_member``, hence no canon to inherit.
+        # layer is read through. Gating this on ``auth_user_id`` would leave
+        # admin-created rows with no ``workspace_member``, hence no canon to inherit.
         await self.registrations.ensure_player_identity(
             session, registration, provider=provider, auth_user_id=auth_user_id, workspace_id=workspace_id
         )
@@ -548,9 +606,6 @@ class RegistrationLifecycleService:
     ) -> models.BalancerRegistration:
         """Put an approved registration into the pool, rating it from its resolved
         roster (`ready` if every declared role carries a rank, else `incomplete`).
-
-        Replaces the former `set_registration_exclusion(..., exclude_from_balancer=False)`
-        path -- the "(re)include" half of the old exclusion toggle.
         """
         registration = await self.get_registration_by_id(session, registration_id)
         if registration.status != "approved":
@@ -647,8 +702,8 @@ class RegistrationLifecycleService:
         """Admin check-in. Deliberately ungated by the CHECK_IN phase window --
         organizers check people in before the phase opens, after it closes, and
         during LIVE when someone shows up late. The window gate belongs to the
-        self-service path only (``registration_service.check_in_registration``),
-        and undo (``uncheck_in_registration``) has never had one either.
+        self-service path only (``registration_service.check_in_registration``);
+        undo (``uncheck_in_registration``) is ungated too.
         """
         registration = await self.get_registration_by_id(session, registration_id)
         registration.checked_in = True

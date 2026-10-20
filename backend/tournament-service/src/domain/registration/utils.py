@@ -1,10 +1,4 @@
-"""Shared utility functions and constants for the balancer subsystem.
-
-This module contains pure functions and constants used by both the legacy
-sheet-based balancer (balancer.py) and the registration-based balancer
-(balancer_registration.py). Consolidating them here eliminates duplication
-and ensures consistent behavior across both systems.
-"""
+"""Pure helpers and constants for Google Sheets registration parsing and sync."""
 
 from __future__ import annotations
 
@@ -65,9 +59,6 @@ DEFAULT_BOOLEAN_TRUE_VALUES = {
     "буду",
     "конечно",
 }
-
-# Legacy alias (same values, used in balancer.py)
-STREAM_TRUE_VALUES = DEFAULT_BOOLEAN_TRUE_VALUES
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +159,6 @@ def parse_datetime(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
-
-
-# Alias for backward compatibility in balancer.py callers
-parse_submitted_at = parse_datetime
 
 
 def parse_boolean_value(value: str | None, true_values: set[str] | None = None) -> bool:

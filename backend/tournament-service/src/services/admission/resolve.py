@@ -1,30 +1,19 @@
 """All the I/O, paid once per list.
 
-Two entry points, and the split between them is NOT the stage:
+Two entry points, split by "deciding vs displaying", not by stage: a
+participants page and a check-in gate ask about the same stage.
 
 - :func:`resolve_admission` answers for a whole list without touching a provider.
-  Participants pages and the admin table use it, and it is the reason every read
-  below is batched: resolving per registration serializes behind Discord's
-  per-guild rate-limit bucket, so a 200-row page would spend minutes in one
-  bucket. It passes ``allow_stale`` -- a stored ``active`` of any age is fine for
-  a badge, and a user nobody has collected yet is ``unknown`` until the
-  collector's next sweep. Refreshing from the list read is what made every other
-  page load of a 120-row table cost one Twitch call per registrant.
+  Every read is batched, because resolving per registration serializes behind
+  Discord's per-guild rate-limit bucket. It passes ``allow_stale``: a stored
+  ``active`` of any age is fine for a badge, and an uncollected user is
+  ``unknown`` until the collector's next sweep.
 - :func:`resolve_admission_for_gate` answers for ONE registration and forces a
-  live provider look. That is the moment a stale ``active`` must not be trusted,
-  and one user is one provider call, so it is cheap.
+  live provider look: that is the moment a stale ``active`` must not be trusted,
+  and one user is one provider call.
 
-The earlier sketch of this module derived ``force_refresh`` from the stage. That
-was wrong: a participants page and a check-in gate ask about the SAME stage and
-must behave differently, because the difference is "am I deciding or displaying",
-not "which gate". Encoding it as a boolean parameter on one function would have
-put the two behaviours one typo apart at every call site, so they are two
-functions instead, each with one behaviour.
-
-Everything here depends on Protocols only (``RequirementEvaluator``), never on a
-concrete resolver. That is what keeps the planned Discord transport change --
-RPC into discord-service, reading discord.py's gateway-pushed member cache --
-confined to ``providers/discord_role.py``, with nothing in this layer to touch.
+Depends only on the ``RequirementEvaluator`` Protocol, never on a concrete
+resolver.
 """
 
 from __future__ import annotations
@@ -38,15 +27,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core.enums import SubscriptionCollectionSource
 from shared.domain.team_subscription import team_subscription_is_current
-from shared.services.admission.config import AdmissionConfig
-from shared.services.admission.evaluate import evaluate, stage_reached
-from shared.services.admission.registry import REQUIREMENTS
-from shared.services.admission.requirements.subscription import build_subscription_signal
-from shared.services.admission.signals import AdmissionSignals, ProfileSignal, SubscriptionSignal
-from shared.services.admission.types import AdmissionEvaluation, AdmissionStage
-from shared.services.profile_visibility import resolve_profiles_open
 from shared.services.subscriptions import Outcome, SubscriptionRequirement, SubscriptionVerdict
 from shared.services.subscriptions.requirement import evaluate_requirement
+from src.services.admission.config import AdmissionConfig
+from src.services.admission.evaluate import evaluate, stage_reached
+from src.services.admission.profile_visibility import resolve_profiles_open
+from src.services.admission.registry import REQUIREMENTS
+from src.services.admission.requirements.subscription import build_subscription_signal
+from src.services.admission.signals import AdmissionSignals, ProfileSignal, SubscriptionSignal
+from src.services.admission.types import AdmissionEvaluation, AdmissionStage
 
 __all__ = ("load_auth_user_ids", "resolve_admission", "resolve_admission_for_gate")
 
@@ -60,7 +49,7 @@ _GATE_SOURCE: dict[AdmissionStage, SubscriptionCollectionSource] = {
 
 
 class RequirementEvaluator(Protocol):
-    """The slice of ``SubscriptionResolver`` this module needs. Deliberately narrow."""
+    """The slice of ``SubscriptionResolver`` this module needs."""
 
     async def evaluate(
         self,
@@ -157,19 +146,13 @@ async def _profiles(
 def _subscription_target(config: AdmissionConfig, stage: AdmissionStage) -> tuple[int, SubscriptionRequirement] | None:
     """The workspace and rule to resolve against, or ``None`` when there is none.
 
-    ``enforces_subscription`` already proves the first two values are set, but
-    re-reading them here rather than asserting is deliberate: an ``assert``
-    narrowing a production path disappears under ``-O``, and what it would leave
-    behind is a ``None`` reaching ``resolver.evaluate`` as a workspace id. An early
-    ``None`` degrades to "nothing to enforce", which is the direction this whole
-    layer fails in.
+    Re-checks what ``enforces_subscription`` already proved rather than asserting
+    (asserts vanish under ``-O``); ``None`` degrades to "nothing to enforce".
 
-    ``stage`` is the third condition and it is not an optimisation. A rule staged
-    at check-in cannot bite during sign-up, so resolving it there would pay a
-    forced provider call whose answer ``blocks_at`` then correctly discards -- and
-    would write a ``source="registration"`` row into the check log, attributing a
-    sign-up decision to a tournament that does not gate sign-up. The gate this
-    layer replaced returned before any I/O for exactly this case.
+    A rule not yet due at ``stage`` returns ``None`` before any I/O: resolving it
+    would pay a forced provider call ``blocks_at`` discards, and write a
+    ``source="registration"`` check-log row for a tournament that does not gate
+    sign-up.
     """
     if not config.enforces_subscription or config.workspace_id is None or config.subscription_rule is None:
         return None
@@ -191,9 +174,8 @@ async def _subscriptions(
 ) -> dict[int, SubscriptionSignal]:
     """One composed outcome per registration, in one resolver pass.
 
-    Guards are ordered cheapest-first for a reason inherited from
-    ``build_subscription_reads``: a list whose registrations all lack a linked
-    account must not pay for the rule read it would discard one line later.
+    Guards run cheapest-first, so a list with no linked accounts never reaches
+    the resolver.
     """
     target = _subscription_target(config, stage)
     if resolver is None or target is None:
@@ -240,12 +222,10 @@ async def _soften_deferred(
 ) -> SubscriptionSignal:
     """Re-compose one refusal that a challenge code could still fix.
 
-    Only meaningful at sign-up. The ``phrase`` field where a patron pastes a code
-    exists on the check-in screen and nowhere else, so refusing a sign-up over a
-    provider the player is one paste away from satisfying would be wrong -- and
-    under ``mode="any"`` it would refuse a rule they can still satisfy on the
-    other side. Check-in never routes through here: the field is right there, so
-    every refusal at that gate is final.
+    Sign-up only: the code ``phrase`` field exists on the check-in screen alone,
+    so a provider the player is one paste away from satisfying must not refuse
+    sign-up (under ``mode="any"`` the rule may still be satisfiable). At check-in
+    every refusal is final.
     """
     target = _subscription_target(config, AdmissionStage.registration)
     if target is None:
@@ -273,12 +253,9 @@ def _signals_for(
 ) -> AdmissionSignals:
     """Lifecycle facts for one registration, or for somebody who has none yet.
 
-    ``registration is None`` is the sign-up gate: it runs BEFORE the row exists, so
-    the subject of the question is the auth user, not a registration. Every
-    lifecycle fact is then falsy, which makes ``ready`` false and therefore
-    ``decision`` ``not_admitted`` -- correct but useless, and the reason the sign-up
-    gate reads ``blockers`` and never ``decision``. A prospective registrant is not
-    "not admitted", they are "not yet anything".
+    ``registration is None`` is the sign-up gate, which runs before the row
+    exists. Every lifecycle fact is then falsy, so ``decision`` is
+    ``not_admitted``; that gate reads ``blockers``, never ``decision``.
     """
     if registration is None:
         return AdmissionSignals(
@@ -309,11 +286,9 @@ async def resolve_admission(
 ) -> dict[int, AdmissionEvaluation]:
     """Evaluate a whole list without forcing a provider call.
 
-    ``stage`` defaults to ``check_in`` and display surfaces should leave it there.
-    That is not a shrug: stages are ordered, ``registration`` implies ``check_in``,
-    so the last gate is the only one at which every requirement is in force -- and
-    a badge that showed a requirement as harmless because its gate is still ahead
-    would tell a player they are fine right up until check-in refuses them.
+    Display surfaces should keep the default ``stage=check_in``: it is the last
+    gate, the only one at which every requirement is in force, so a badge never
+    shows a requirement as harmless right up until check-in refuses the player.
     """
     if not registrations:
         return {}
@@ -351,22 +326,13 @@ async def resolve_admission_for_gate(
 ) -> AdmissionEvaluation:
     """Evaluate ONE subject for a blocking decision, forcing a live look.
 
-    Forces because this is the instant a cached ``active`` must not be trusted,
-    and it is one user rather than a list. At ``stage=registration`` the refusal is
-    additionally softened by any provider a challenge code could still satisfy
-    (see :func:`_soften_deferred`).
+    At ``stage=registration`` a refusal is softened by any provider a challenge
+    code could still satisfy (see :func:`_soften_deferred`).
 
-    ``registration`` may be ``None``, and ``auth_user_id`` exists because of it. The
-    sign-up gate runs before the row exists, so deriving the auth user from
-    ``registration.id`` -- which is what this function did first -- found nothing,
-    skipped the subscription resolve, answered ``undetermined``, failed open, and
-    silently stopped blocking sign-ups. That is a live regression against the
-    behaviour ``assert_subscription_allows_registration`` had, not a test artifact,
-    and the fix is to let the caller pass the subject it already holds: at both
-    sign-up sites the acting user's id is right there in the request.
-
-    When both are given, ``auth_user_id`` wins and the join is skipped -- a caller
-    who knows the answer should not pay a query to be told it.
+    ``registration`` is ``None`` at sign-up (the row does not exist yet), so the
+    caller passes ``auth_user_id``; without it the subscription resolve is
+    skipped and fails open, silently not gating sign-up. When both are given,
+    ``auth_user_id`` wins and the join is skipped.
     """
     if registration is None and auth_user_id is None:
         raise ValueError("resolve_admission_for_gate needs a registration or an auth_user_id")

@@ -52,12 +52,8 @@ def is_registration_open(
     The tournament's REGISTRATION schedule window plus one override: no row means
     closed, COMPLETED/ARCHIVED is always closed, and ``allow_late_registration``
     lifts the window's ``ends_at`` so latecomers can be admitted without editing
-    away the intended closing time. The former
-    ``BalancerRegistrationForm.is_open`` kill switch is gone, and the tournament's
-    own phase no longer participates.
-
-    ``form`` is no longer a parameter: keeping it would imply the form still has
-    a say.
+    away the intended closing time. Neither the tournament's phase nor the
+    registration form has a say.
     """
     return is_registration_window_open(
         tournament.status,

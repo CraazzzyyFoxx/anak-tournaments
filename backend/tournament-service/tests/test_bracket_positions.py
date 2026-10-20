@@ -1,11 +1,9 @@
-"""The bracket engine on positions and slots (D13, D55, D65). Needs the test Postgres.
+"""The bracket engine on positions and slots. Needs the test Postgres.
 
-An advancement edge is no longer "winner goes home": it is "whoever finished at
-``source_position`` takes ``target_slot``". These cases persist real skeletons
-and play them out through the participation and result writers, because the seat
-swap a correction performs -- a retired participation, its unplayed games
-cancelled, a new occupant in the same slot -- is exactly what an in-memory double
-gets wrong.
+An advancement edge means "whoever finished at ``source_position`` takes ``target_slot``". These cases persist real
+skeletons and play them out through the participation and result writers, because the seat swap a correction
+performs -- a retired participation, its unplayed games cancelled, a new occupant in the same slot -- is exactly what
+an in-memory double gets wrong.
 """
 
 from __future__ import annotations
@@ -32,9 +30,10 @@ from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage, StageItem
 from shared.models.tournament.team import Team
-from shared.services.bracket import advancement, engine, persist, swiss, swiss_state, template, usability
 from shared.services.encounter import participants, result
 from shared.tests.encounter_writer_case import EncounterWriterCase
+from src.domain.bracket import engine, swiss, template
+from src.services.bracket import advancement, persist, swiss_state, usability
 
 #: ``players.user.name`` is globally unique, so the extra players a deep
 #: bracket needs are tagged per test, like the writer case's own.

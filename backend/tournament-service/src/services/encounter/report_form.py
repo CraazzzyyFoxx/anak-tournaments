@@ -59,7 +59,7 @@ def series_map_indices(settled_indices: Iterable[int], best_of: int | None) -> l
     """The ``map_index`` slots a captain is offered a code field for.
 
     Server-side mirror of ``buildMapCodeSlots``: the 1-based positions of the
-    maps the veto has settled (``captain._picked_map_ids``) when it has settled
+    maps the veto has settled (``captain._position_map_ids``) when it has settled
     any, else ``1..best_of``.
     """
     settled = sorted(set(settled_indices))

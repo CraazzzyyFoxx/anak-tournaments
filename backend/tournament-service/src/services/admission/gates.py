@@ -1,31 +1,17 @@
 """The HTTP projection: ``blockers`` turned into a 400, and nothing else.
 
-This gate makes no decision. It is a PROJECTION of
-:attr:`AdmissionEvaluation.blockers`, exactly like the badge and the sort ordinal
-are projections of the same structure, and that is the point of the file. Before
-this layer, the subscription composition lived in ``subscription_gate`` while the
-profile rule was an inline ``if`` in one RPC handler -- two gates in two shapes,
-neither aware the other existed, so "what refuses a check-in" could only be
-answered by reading two files and hoping there was no third. Deciding here again
-would recreate that: the decision belongs to ``evaluate``, once, and every other
-surface reads it.
+This gate makes no decision: it projects :attr:`AdmissionEvaluation.blockers`,
+like the badge and the sort ordinal do, so a server refusal and a client-rendered
+refusal come from the same
+:class:`~src.services.admission.types.RequirementVerdict` list.
 
-Because it only projects, it also cannot disagree with the badge. A refusal the
-server raises and a refusal the client renders now come from the same
-:class:`~shared.services.admission.types.RequirementVerdict` list.
+One ``ApiExc`` per blocker, carrying the reason's machine ``code`` (the
+convention ``teams.py`` uses and ``lib/registration/team-errors.ts`` consumes),
+so the client translates a refusal without re-deriving the rule; ``msg`` is the
+Russian fallback for a code it cannot translate yet.
 
-**One ``ApiExc`` per blocker, carrying the reason's machine ``code``** (D13, the
-convention ``teams.py`` already established and ``lib/registration/team-errors.ts``
-already consumes). The code is what lets the client translate a refusal it did
-not compute: it never ran the Kleene composition, so without a stable code its
-only options are to re-derive the rule -- the duplication this layer deletes -- or
-to print the server's Russian verbatim. The ``msg`` is a Russian sentence because
-these surfaces are public and Russian-first (§12.2); it is the fallback for a
-code the client has no translation for yet, not the primary channel.
-
-Emitting every blocker rather than only the first is deliberate: a player refused
-for a closed profile AND an expired subscription would otherwise fix one, retry,
-and be refused again for the other.
+Every blocker is emitted, not just the first, so a player refused for two
+reasons is not refused again after fixing one.
 """
 
 from __future__ import annotations
@@ -34,19 +20,17 @@ from typing import TYPE_CHECKING, Final
 
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.social import PROVIDERS
-from shared.services.admission.requirements import open_profile, subscription
-from shared.services.admission.types import AdmissionEvaluation, AdmissionStage, RequirementVerdict
+from src.services.admission.requirements import open_profile, subscription
+from src.services.admission.types import AdmissionEvaluation, AdmissionStage, RequirementVerdict
 
 if TYPE_CHECKING:
-    from shared.services.admission.config import AdmissionConfig
     from shared.services.subscriptions import SubscriptionRequirement
+    from src.services.admission.config import AdmissionConfig
 
 __all__ = ("assert_admitted", "describe_requirement")
 
-#: The gate being refused at, in the genitive the sentences below need. Indexed
-#: rather than ``.get``-ed: :class:`AdmissionStage` has two members and both are
-#: here, so a miss means a new stage landed without its wording, which is a thing
-#: to notice in tests rather than paper over with a blank.
+#: The gate being refused at, in the genitive the sentences below need. Indexed,
+#: not ``.get``-ed: a new stage without wording should fail loudly in tests.
 _STAGE_NOUNS: Final[dict[AdmissionStage, str]] = {
     AdmissionStage.registration: "регистрации",
     AdmissionStage.check_in: "чек-ина",
@@ -59,12 +43,6 @@ def describe_requirement(requirement: SubscriptionRequirement) -> str:
     The message must name the ACTUAL rule: under ``any`` a patron who satisfies
     one of two providers is admitted, so a generic "subscription required" would
     leave a refused patron unable to tell which side to fix.
-
-    Lives in ``shared`` beside the gate that needs it rather than in
-    ``tournament-service``, where it started: a gate importing a service to build
-    its own sentence is a dependency pointing the wrong way, and the read schema
-    in that service still uses it (``SubscriptionStatusRead.rule``) so it had to
-    end up somewhere both can reach.
     """
     parts = []
     for req in requirement.requirements:
@@ -78,13 +56,10 @@ def describe_requirement(requirement: SubscriptionRequirement) -> str:
 
 
 def _code(verdict: RequirementVerdict) -> str:
-    """The machine code for one refusal.
+    """The machine code for one refusal: the first reason's, which the player acts on.
 
-    The first reason, because the reasons are ordered by the resolver and the
-    first is the one the player acts on. ``{key}_blocked`` is the fallback for a
-    ``blocked`` verdict carrying no reasons at all: that is a resolver bug (see
-    ``reason()``'s docstring on the same case), and a 400 with an empty code would
-    hand the client nothing to translate while still refusing the player.
+    ``{key}_blocked`` covers a ``blocked`` verdict with no reasons (a resolver
+    bug), so the client still gets something to translate.
     """
     if verdict.reasons:
         return verdict.reasons[0].code
@@ -96,8 +71,7 @@ def _message(verdict: RequirementVerdict, stage: AdmissionStage, config: Admissi
 
     Keyed on the GATE stage, not ``verdict.stage``: a requirement armed at
     ``registration`` also blocks check-in, and a patron refused at check-in must
-    not read a sign-up message. That distinction used to be encoded by having two
-    whole functions.
+    not read a sign-up message.
     """
     if verdict.key == subscription.KEY:
         head = f"Для {_STAGE_NOUNS[stage]} нужна активная подписка"
@@ -118,16 +92,11 @@ def assert_admitted(
 ) -> None:
     """Raise 400 iff ``evaluation`` has blockers. Never decides anything itself.
 
-    ``blockers`` already encodes both halves of "does this refuse": only
-    ``blocked`` is in it (``undetermined`` fails open, so an outage cannot
-    un-admit a subscriber) and only requirements whose gate has arrived. It is
-    also empty once the registration is checked in -- D2, check-in spends every
-    requirement -- which is what makes an organizer's manual check-in an override
-    rather than a state the player is re-refused out of.
+    ``blockers`` holds only ``blocked`` verdicts whose gate has arrived, and is
+    empty once checked in, which makes an organizer's manual check-in an override.
 
-    ``config`` is optional and supplies nothing but wording: it is where the
-    subscription rule is spelled out for the message. Omitting it costs the rule
-    text, never a refusal, so a caller that has no config still gates correctly.
+    ``config`` supplies only wording (the subscription rule in the message);
+    omitting it costs the rule text, never a refusal.
     """
     if not evaluation.blockers:
         return

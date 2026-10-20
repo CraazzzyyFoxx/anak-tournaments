@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import SubscriptionCollectionSource
 from shared.core.errors import ApiExc, ApiHTTPException
+from src.core.clients import subscription_resolver
 from src.services.registration._common import _common_service
-from src.services.registration.admission import build_admission_resolver
 from src.services.registration.subscription_status import _client as _redis_client
 from src.services.tournament.events import enqueue_registration_rank_check
 
@@ -63,7 +63,7 @@ async def recheck_registration(session: AsyncSession, registration: Any, *, auth
     if form is None:
         return
     if form.require_subscription:
-        resolver = build_admission_resolver(session)
+        resolver = subscription_resolver(session)
         rule = await resolver.load_requirement(workspace_id=form.workspace_id)
         if rule is not None:
             await resolver.evaluate(

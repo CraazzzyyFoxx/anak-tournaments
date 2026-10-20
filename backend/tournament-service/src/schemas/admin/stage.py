@@ -113,10 +113,10 @@ class StageItemInputUpdate(BaseModel):
 
 
 class MergeGroupStagesRequest(BaseModel):
-    """Merge legacy one-group stages into one grouped stage.
+    """Merge one-group stages into one grouped stage.
 
     ``source_stage_ids`` are removed after their stage_items and stage-scoped
-    references are moved under the target stage from the route path.
+    references are moved under the target stage named by the path.
     """
 
     source_stage_ids: list[int] = Field(min_length=1)

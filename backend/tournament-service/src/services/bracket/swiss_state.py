@@ -6,10 +6,9 @@ one stage item, or the whole stage when it has none (``stage_item_id`` NULL).
 
 :func:`played_pairs` lives here too: "who has already met" is the other half of
 what the generator needs from the database, and it is read off the live
-participations (D55) rather than two columns on the encounter.
+participations rather than two columns on the encounter.
 
-Writes go through the caller's session and are flushed with it; nothing here
-commits.
+Writes go through the caller's session; nothing here commits.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.stage import SwissBye, SwissStoppedScope
+from shared.repository import SwissByeRepository, SwissStoppedScopeRepository
 
 __all__ = (
     "bye_counts_by_scope",
@@ -38,9 +38,8 @@ __all__ = (
 
 Scope = tuple[int, int | None]
 
-
-def _in_scope(model: type[SwissBye] | type[SwissStoppedScope], stage_id: int, stage_item_id: int | None) -> tuple:
-    return model.stage_id == stage_id, model.stage_item_id.is_not_distinct_from(stage_item_id)
+_byes = SwissByeRepository()
+_stopped = SwissStoppedScopeRepository()
 
 
 async def played_pairs(session: AsyncSession, encounter_ids: Collection[int]) -> set[frozenset[int]]:
@@ -68,10 +67,7 @@ async def played_pairs(session: AsyncSession, encounter_ids: Collection[int]) ->
 
 async def swiss_bye_team_ids(session: AsyncSession, stage_id: int, stage_item_id: int | None) -> list[int]:
     """Every team that had a bye in the scope, once per bye, oldest first."""
-    result = await session.execute(
-        sa.select(SwissBye.team_id).where(*_in_scope(SwissBye, stage_id, stage_item_id)).order_by(SwissBye.id)
-    )
-    return list(result.scalars().all())
+    return await _byes.team_ids(session, stage_id, stage_item_id)
 
 
 async def bye_counts_by_scope(session: AsyncSession, stage_ids: Collection[int]) -> dict[Scope, dict[int, int]]:
@@ -90,7 +86,9 @@ async def bye_counts_by_scope(session: AsyncSession, stage_ids: Collection[int])
 async def record_swiss_bye(
     session: AsyncSession, stage_id: int, stage_item_id: int | None, team_id: int, *, round_number: int
 ) -> None:
-    session.add(SwissBye(stage_id=stage_id, stage_item_id=stage_item_id, team_id=team_id, round=round_number))
+    await _byes.create(
+        session, SwissBye(stage_id=stage_id, stage_item_id=stage_item_id, team_id=team_id, round=round_number)
+    )
 
 
 async def remove_swiss_bye_round(
@@ -101,13 +99,11 @@ async def remove_swiss_bye_round(
     A bye stored without a round predates round tracking: there is no way to tell
     which round it belonged to, so it is kept.
     """
-    await session.execute(
-        sa.delete(SwissBye).where(*_in_scope(SwissBye, stage_id, stage_item_id), SwissBye.round == round_number)
-    )
+    await _byes.delete_round(session, stage_id, stage_item_id, round_number)
 
 
 async def clear_swiss_byes(session: AsyncSession, stage_id: int, stage_item_id: int | None) -> None:
-    await session.execute(sa.delete(SwissBye).where(*_in_scope(SwissBye, stage_id, stage_item_id)))
+    await _byes.delete_scope(session, stage_id, stage_item_id)
 
 
 async def stopped_scopes(session: AsyncSession, stage_ids: Collection[int]) -> set[Scope]:
@@ -123,12 +119,8 @@ async def stopped_scopes(session: AsyncSession, stage_ids: Collection[int]) -> s
 
 
 async def mark_swiss_scope_stopped(session: AsyncSession, stage_id: int, stage_item_id: int | None) -> None:
-    exists = await session.scalar(
-        sa.select(SwissStoppedScope.id).where(*_in_scope(SwissStoppedScope, stage_id, stage_item_id))
-    )
-    if exists is None:
-        session.add(SwissStoppedScope(stage_id=stage_id, stage_item_id=stage_item_id))
+    await _stopped.mark(session, stage_id, stage_item_id)
 
 
 async def clear_swiss_scope_stopped(session: AsyncSession, stage_id: int, stage_item_id: int | None) -> None:
-    await session.execute(sa.delete(SwissStoppedScope).where(*_in_scope(SwissStoppedScope, stage_id, stage_item_id)))
+    await _stopped.delete_scope(session, stage_id, stage_item_id)

@@ -1,16 +1,15 @@
-"""Per-actor rate limits for the public team-registration flows (§7 control 1).
+"""Per-actor rate limits for the public team-registration flows.
 
 These are the only *authenticated* rate limits in the stack. The gateway's
 ``internal/ratelimit`` is per-IP, per-process and scoped to ``/api/auth/*``; nginx
 provides a coarse outer layer. Neither bounds what one logged-in account can do,
 which is exactly the surface the captain and invitee flows open.
 
-**The fail direction is deliberately not uniform, and that is the whole design
-decision here.**
+**The fail direction is deliberately not uniform.**
 
 * ``invite`` **fails closed.** Each call mints a bearer credential — a token whose
-  holder can write a registration into someone else's roster — and (once step 6
-  lands) sends a notification. That makes it an amplifier, so losing Redis must not
+  holder can write a registration into someone else's roster — and, for a targeted
+  invite, sends a notification. That makes it an amplifier, so losing Redis must not
   turn it into an unmetered one. The cost is real and accepted: during a Redis
   outage captains cannot invite.
 
@@ -21,11 +20,6 @@ decision here.**
   is the worse outcome, and — unlike invite — a *successful* accept is
   self-limiting: one registration per player per tournament means the second one
   cannot succeed at all.
-
-Uniform fail-closed was the original note in the design; splitting it is a
-correction, not a shortcut. Applying invite's reasoning to accept would trade a
-real availability loss for protection against an attack that 256 bits of entropy
-already prevents.
 """
 
 from __future__ import annotations
@@ -56,7 +50,7 @@ INVITE_WINDOW_SECONDS = 600
 ACCEPT_ATTEMPT_LIMIT = 20
 ACCEPT_WINDOW_SECONDS = 600
 
-#: §7 control 2, the part the slot reservation cannot cover. Reserving a slot caps
+#: Covers what the slot reservation cannot. Reserving a slot caps
 #: *concurrent* pending invites at the number of open slots, but says nothing about
 #: churn: invite -> revoke -> invite in a loop stays within every slot rule. This
 #: is a cumulative ceiling on invites ever created for one team, counting revoked

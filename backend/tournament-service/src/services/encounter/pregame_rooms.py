@@ -5,9 +5,9 @@ encounter that plays a pick-ban room, carrying the phase it sits in, the open
 step of each kind and the handful of attention flags staff act on (a dispute,
 an expired timer, a match that started with a captain still not ready).
 
-STRICTLY read-only, and so is the room's own read now
-(``pick_ban_action.get_pick_ban_state``) -- but this one has a second reason to
-be: it answers a whole tournament at once. Nothing here calls
+STRICTLY read-only, like the room's own read
+(``pick_ban_action.get_pick_ban_state``), and for a second reason too: it
+answers a whole tournament at once. Nothing here calls
 ``ensure_pick_ban_session``, ``get_pick_ban_state`` or ``_settle``, nothing
 commits, nothing emits and nothing asks the healer for a pass. What it does
 instead is read the same rows in BULK (a constant number of queries, never one

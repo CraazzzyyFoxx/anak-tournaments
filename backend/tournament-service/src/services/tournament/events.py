@@ -17,7 +17,6 @@ from shared.schemas.events import (
     TournamentStateChangedEvent,
 )
 from shared.schemas.identity import PlayerIdentityRead
-from shared.services.encounter import events as shared_encounter_events
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit, enqueue_invalidation_outbox
 from shared.services.scrim_scope import is_scrim_container
@@ -37,7 +36,7 @@ _TOURNAMENT_NAMES_KEY = "notification_tournament_names"
 #: twice -- once from the settlement, once from the caller's own unconditional
 #: request (a lobby game, an accepted log, a game correction) -- and a second
 #: request bumps the generation past the job the first one created, so that job
-#: was followed by a second full recompute over the very data it had just ranked.
+#: would be followed by a second full recompute over the very data it just ranked.
 _STANDINGS_REQUESTED_KEY = "standings_recalculation_requested"
 
 #: Resources that a write to the tournament's shape (stages, teams, the
@@ -117,13 +116,12 @@ async def enqueue_tournament_recalculation(
     tournament_id: int,
 ) -> None:
     # A scrim container has nothing to recalculate: every one of its stages is a
-    # single ad-hoc room with no stage items, no seeds and no rosters
-    # (docs/plans/2026-08-12-scrim-rooms.md §4.1). Recalculating it does not
-    # merely waste a job — the elimination branch of the standings builder
-    # derives participants from encounters when seeds are absent, so it invents a
-    # "1st place" Standing row for every room's two rosterless teams and flips
-    # their Stage.is_completed, and it does that for EVERY room in the workspace
-    # on every captain report of any one of them.
+    # single ad-hoc room with no stage items, no seeds and no rosters.
+    # Recalculating it does not merely waste a job — the elimination branch of
+    # the standings builder derives participants from encounters when seeds are
+    # absent, so it invents a "1st place" Standing row for every room's two
+    # rosterless teams and flips their Stage.is_completed, for EVERY room in the
+    # workspace on every captain report of any one of them.
     #
     # Skipped here, at the only automatic door into the standings queue, rather
     # than no-opped in the worker: a job that is created, delivered and then
@@ -141,27 +139,6 @@ async def enqueue_tournament_recalculation(
         scope=Scope.tournament(tournament_id),
         invalidates=[Resource.TOURNAMENT_ENCOUNTERS],
     )
-
-
-async def enqueue_encounter_completed(
-    session: AsyncSession,
-    encounter: models.Encounter,
-) -> None:
-    """Announce a completed encounter — unless it is a scrim room.
-
-    This event has exactly one consumer: stats-service republishes it as an
-    ``AchievementEvaluateEvent``. For a scrim that evaluation is verifiably
-    empty — every achievement condition reaches its users through an inner join
-    on ``Player`` or through native player facts, and a scrim room has neither
-    (docs/plans/2026-08-12-scrim-rooms.md §4.1, §5). It is not free though: it
-    costs an outbox row, a queue round trip, an ``EvaluationRun`` audit row and
-    one full query per encounter-dependent rule, per scrim result. Not
-    publishing beats publishing and discarding — the same decision
-    ``enqueue_tournament_recalculation`` above makes.
-    """
-    if await is_scrim_container(session, encounter.tournament_id):
-        return
-    await shared_encounter_events.enqueue_encounter_completed(session, encounter, source_service="tournament-service")
 
 
 async def get_registration_workspace_id(session: AsyncSession, tournament_id: int) -> int:
@@ -203,9 +180,9 @@ async def get_registration_player_id(
 ) -> int | None:
     """The registration's domain player id (players.user.id), via its member.
 
-    workspace_member_id is the row's only identity anchor (dbarch02 dropped
-    user_id); an explicit scalar query avoids lazy-loading the relationship in
-    async code. Registrations without a member have no player identity.
+    workspace_member_id is the row's only identity anchor; an explicit scalar
+    query avoids lazy-loading the relationship in async code. Registrations
+    without a member have no player identity.
     """
     if registration.workspace_member_id is None:
         return None
@@ -237,10 +214,10 @@ async def _notify_registration_decision(
     # The admin review paths (`approve_registration`, `reject_registration`,
     # `update_registration_profile`) reach here with a registration loaded by
     # `get_registration_by_id`, whose options already eager-load
-    # `workspace_member.player` and `tournament` -- the two rows this used to
-    # re-read. Read them off the instance dict rather than the attribute:
-    # touching an unloaded relationship on an async session raises instead of
-    # lazy-loading, which is why `lifecycle._workspace_id_for` does the same.
+    # `workspace_member.player` and `tournament`. Read them off the instance dict
+    # rather than the attribute: touching an unloaded relationship on an async
+    # session raises instead of lazy-loading, which is why
+    # `lifecycle._workspace_id_for` does the same.
     member = registration.__dict__.get("workspace_member")
     player = member.__dict__.get("player") if member is not None else None
     if player is not None:

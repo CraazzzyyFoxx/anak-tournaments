@@ -1,7 +1,6 @@
 """Resolve the owning ``tournament_id`` for entity-level reads so the shared
-hidden-tournament guard can gate them. Lightweight scalar queries mirroring the
-workspace resolvers in ``src/core/auth.py``; each raises 404 when the entity is
-absent (indistinguishable from a hidden tournament to outsiders).
+hidden-tournament guard can gate them. Each resolver raises 404 when the entity
+is absent (indistinguishable from a hidden tournament to outsiders).
 """
 
 from __future__ import annotations
@@ -17,9 +16,8 @@ from src import models
 class VisibilityResolverService:
     """Scalar ``tournament_id`` lookups.
 
-    Deliberately not repository ``get()`` calls: each resolver reads exactly one
-    column, so loading the whole ORM row (and populating the identity map with it)
-    would cost more than the guard it feeds.
+    Each resolver reads exactly one column: loading the whole ORM row (and
+    populating the identity map with it) would cost more than the guard it feeds.
     """
 
     async def _scalar_or_404(self, session: AsyncSession, stmt: sa.Select, detail: str) -> int:

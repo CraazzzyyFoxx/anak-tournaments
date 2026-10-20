@@ -1,23 +1,20 @@
 """Reason code -> who can fix it.
 
-One static map over both taxonomies. The subscription codes already existed
-(``SubscriptionVerdict.evidence["reason"]``, written by the providers in
-``shared/services/subscriptions/providers/``); the profile codes are new, because
-``resolve_profiles_open`` used to collapse seven ``RankCollectionStatus`` values
-plus "no BattleTag at all" into ``bool | None`` and lose the why entirely.
+One static map over both taxonomies: the subscription codes the providers in
+``shared/services/subscriptions/providers/`` write to
+``SubscriptionVerdict.evidence["reason"]``, and the profile codes derived from
+``RankCollectionStatus``.
 
-An unrecognised code resolves to :attr:`ReasonActor.system` rather than raising.
-A provider added later stays explainable -- just less precisely -- and one unknown
-string never turns a participants list into a 500. Same discipline as
-``shared.services.admission.gates.describe_requirement``, which falls back to the
-raw provider key rather than dropping an unnamed provider out of its sentence.
+An unrecognised code resolves to :attr:`ReasonActor.system` rather than raising,
+so a new provider stays explainable and one unknown string never turns a
+participants list into a 500.
 """
 
 from __future__ import annotations
 
 from typing import Final
 
-from shared.services.admission.types import AdmissionReason, ReasonActor
+from src.services.admission.types import AdmissionReason, ReasonActor
 
 __all__ = (
     "PROFILE_REASON_CODES",

@@ -1,13 +1,14 @@
 """The tournament consumer of ``tournament.encounter.challonge_push_requested`` (confirmed result -> Challonge).
 
 Every path that leaves a Challonge-linked encounter confirmed stages the request in the transaction that wrote the
-result (``settle.enqueue_challonge_push``); this handler makes the external call, with the queue's retry instead of
-the request's swallowed error. A request whose ``result_version`` is no longer the encounter's was superseded (a
-reopen or a re-confirmation, which queued its own) and is acked without a call, as is one for an encounter no longer
-linked to a Challonge match. A transient failure -- transport error or timeout, Challonge rate-limiting or failing
-(the client's 503), a retryable database error -- is requeued; anything else (a missing participant mapping,
-Challonge refusing the request) propagates and lands in ``tournament_challonge_push.dlq``. Every failed attempt is
-also journaled in the Challonge sync log by ``auto_push_on_confirm``.
+result (``settle.enqueue_challonge_push``); this handler makes the external call, so a failure gets the queue's
+retry rather than being swallowed inside the result write. A request whose ``result_version`` is not the
+encounter's current one was superseded (a reopen or a re-confirmation, which queued its own) and is acked without a
+call, as is one for an encounter not linked to a Challonge match. A transient failure -- transport error or timeout,
+Challonge rate-limiting or failing (the client's 503), a retryable database error -- is requeued; anything else (a
+missing participant mapping, Challonge refusing the request) propagates and lands in
+``tournament_challonge_push.dlq``. Every failed attempt is also journaled in the Challonge sync log by
+``auto_push_on_confirm``.
 
 ``ponytail:`` the requeue waits a fixed few seconds in the handler; add a delayed retry queue if Challonge outages
 outlast it.

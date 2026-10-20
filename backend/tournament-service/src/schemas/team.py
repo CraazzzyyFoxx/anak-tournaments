@@ -98,11 +98,9 @@ class PlayerFilterParams(pagination.PaginationSortParams):
     team_id: int | None = None
 
 
-# PlayerRead.team is a forward reference to TeamRead, which is defined below it.
-# Pydantic leaves such a model's serializer as a MockValSer placeholder and only
-# tries to materialise it lazily on first use — and that lazy path fails with
-# "'MockValSer' object cannot be converted to 'SchemaSerializer'" when the first
-# use is a model_dump() reached through a cached/nested value rather than through
-# validation. Rebuilding at import time makes it deterministic.
+# PlayerRead.team forward-references TeamRead, defined below it. Pydantic leaves
+# such a serializer as a MockValSer placeholder whose lazy rebuild fails ("'MockValSer'
+# object cannot be converted to 'SchemaSerializer'") when the first use is a
+# model_dump() of a cached/nested value; rebuilding at import time avoids that.
 PlayerRead.model_rebuild()
 TeamRead.model_rebuild()

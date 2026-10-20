@@ -2,13 +2,11 @@
 
 The boundary between I/O and decision. Everything expensive -- the
 ``battle_tag_state`` read, the entitlement read, any provider call -- happens once
-per LIST in ``resolve.py`` and lands here as plain data. The requirement
-evaluators and :func:`~shared.services.admission.evaluate.evaluate` then take no
-session and cannot fan out per registration even by accident.
+per LIST in ``resolve.py`` and lands here as plain data.
 
-That is not stylistic. Resolving per registration serializes behind Discord's
-per-guild rate-limit bucket, which makes a 200-row participants page unusable; the
-guarantee used to be a docstring promise and is now a type signature.
+The evaluators and :func:`~src.services.admission.evaluate.evaluate` therefore
+take no session and cannot fan out per registration, which would serialize
+behind Discord's per-guild rate-limit bucket.
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.services.admission.types import (
+from src.services.admission.types import (
     APPROVED_REGISTRATION_STATUS,
     READY_BALANCER_STATUS,
     AdmissionReason,
@@ -29,9 +27,8 @@ __all__ = ("AdmissionSignals", "ProfileSignal", "SubscriptionSignal")
 class ProfileSignal:
     """Outcome of the "all profiles open" collection for one registration.
 
-    ``is_open`` keeps the tri-state ``resolve_profiles_open`` has always returned:
-    ``True`` public, ``False`` confirmed closed, ``None`` unknown. ``reasons``
-    is what used to be thrown away -- which tag, and why it is not a ``True``.
+    ``is_open`` is ``True`` public, ``False`` confirmed closed, ``None`` unknown.
+    ``reasons`` says which tag, and why it is not ``True``.
     """
 
     is_open: bool | None
@@ -78,9 +75,7 @@ class AdmissionSignals:
     def ready(self) -> bool:
         """Approved AND holding a rank in the balancer pool.
 
-        Compares the two literals the client has compared since the badge was
-        written. Custom statuses carrying ``excludes_from_ready`` are deliberately
-        NOT folded in: that would change who counts as admitted, which is a
-        product decision and not part of consolidating the rule.
+        Custom statuses carrying ``excludes_from_ready`` are deliberately NOT
+        folded in: that would change who counts as admitted, a product decision.
         """
         return self.status == APPROVED_REGISTRATION_STATUS and self.balancer_status == READY_BALANCER_STATUS

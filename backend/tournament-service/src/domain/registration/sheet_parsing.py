@@ -3,8 +3,7 @@
 Pure (no DB, no network) transformation of raw sheet rows into structured
 registration payloads: token/value parsers, mapping suggestion from headers,
 the per-row detailed parser and the role-payload builder. The feed CRUD and
-the sync orchestration live in ``sheet_sync``; everything here is re-exported
-by the ``admin`` facade.
+the sync orchestration live in ``services.registration.sheet_sync``.
 """
 
 from __future__ import annotations
@@ -281,7 +280,7 @@ def suggest_mapping_from_headers(
         targets[spec.key] = {"mode": "columns", "columns": columns, "parser": spec.default_parser}
 
     # The game-handle column also seeds the display name. For BattleNet it seeds the dedup
-    # key too (legacy behavior). Any other provider's key is inferred from its normalized
+    # key too. Any other provider's key is inferred from its normalized
     # primary handle at parse time, so no ``source_record_key`` may be SUGGESTED for it at
     # all (not from the alias loop either): ``battle_tag`` parsing would strip the internal
     # spaces a Riot name may carry, and a shared BattleTag column would collapse distinct
@@ -369,7 +368,7 @@ def parse_target_value(
         if is_list:
             return parse_role_token_list(values, value_mapping, role_codes=role_codes)
         return map_role_token(values[0] if values else None, value_mapping, role_codes=role_codes)
-    if parser == "role_token_list":  # backward compat — treated as role_token + is_list=True
+    if parser == "role_token_list":  # same as role_token + is_list=True
         return parse_role_token_list(values, value_mapping, role_codes=role_codes)
     if parser == "subrole_token":
         return map_subrole_token(values[0] if values else None, value_mapping, subrole_catalog)

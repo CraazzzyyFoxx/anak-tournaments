@@ -1,9 +1,8 @@
-"""Shared pick-ban helpers that outlived the legacy map-veto session.
+"""Shared pick-ban helpers: round-1 seeding and the room's side-pick gates.
 
-``VetoSessionService`` and the ``MapVetoConfig`` tables are gone. What remains
-is the seed vocabulary ``pick_ban_session`` still calls -- which PARTICIPATION
-opens round 1, and where that answer came from -- plus the two gates the RESULT
-paths have to ask of the room: :func:`side_pick_pending` and
+The seed vocabulary ``pick_ban_session`` calls -- which PARTICIPATION opens
+round 1, and where that answer came from -- plus the two gates the RESULT paths
+have to ask of the room: :func:`side_pick_pending` and
 :func:`side_pick_required`.
 
 Seeding reads the bracket, never the card's order: a seat's slot says where a
@@ -52,7 +51,7 @@ ROOM_SLOT_COUNT = 2
 
 
 def side_codes(encounter: models.Encounter) -> tuple[str, ...]:
-    """The sides a ``side_pick`` step hands out for this encounter (D25).
+    """The sides a ``side_pick`` step hands out for this encounter.
 
     Empty for a discipline with no sides, and for one whose side count does
     not match the card -- the same gate the ruleset validator applies, so a
@@ -68,8 +67,8 @@ def rounds_are_progressive(config: PickBanConfig, kind: PickBanKind) -> bool:
 
     Slot mode says so structurally -- one slot IS one map of the series -- and
     every hero config says so by domain: heroes are banned per map, never once
-    per series (design §4). A flat ``kind=map`` config is the legacy classic
-    veto, one sequence that settles the whole series' map order up front, and
+    per series. A flat ``kind=map`` config is the classic veto, one sequence
+    that settles the whole series' map order up front, and
     stays single-round (``PickBanEntry.round IS NULL``).
     """
     return config.mode == MapVetoMode.SLOTS or kind == PickBanKind.HERO
@@ -78,8 +77,8 @@ def rounds_are_progressive(config: PickBanConfig, kind: PickBanKind) -> bool:
 async def side_pick_pending(session: AsyncSession, encounter_id: int, position: int) -> bool:
     """Whether series position ``position`` still owes a ``side_pick`` an answer.
 
-    A game cannot START while the side it is played on is undecided (spec §6
-    row 9): the position may be named, but no claim and no accepted result may
+    A game cannot START while the side it is played on is undecided: the
+    position may be named, but no claim and no accepted result may
     land on it until the pick resolves -- or the clock flips a coin for it.
 
     Read straight off ``resolved_sequence_json`` and the submission log rather
@@ -190,8 +189,7 @@ def decide_seeds(ordered: list[EncounterTeam], seeds: dict[int, int], source: Ve
     """Pure seed decision: the lowest seed opens, ties fall back to the first slot.
 
     ``ordered`` is the encounter's live seats in slot order, so "the first
-    slot" is simply the first of them -- the same tiebreak the two-sided
-    version spelled ``home``.
+    slot" is simply the first of them.
     """
     ranked = [(seeds[team.id], team.slot, team.id) for team in ordered if team.id in seeds]
     if len(ranked) == len(ordered) and len({seed for seed, _slot, _id in ranked}) == len(ranked):

@@ -1,16 +1,12 @@
 """Translate the composed subscription answer into the admission vocabulary.
 
-``shared/services/subscriptions`` owns WHETHER the rule is satisfied: the Kleene
-composition over providers, the tier comparison, ``any`` versus ``all``. That
-layer is correct and stays where it is. This module owns only the translation of
-its answer into a :class:`RequirementState` plus reasons, and deliberately holds
-no composition logic of its own -- a second Kleene implementation here is exactly
-how ``any[refused, unknown]`` ends up blocking in one reader and passing in
-another, which is the class of bug this whole layer exists to remove.
+``shared/services/subscriptions`` owns WHETHER the rule is satisfied (Kleene
+composition, tiers, ``any``/``all``); this module only maps that answer to a
+:class:`RequirementState` plus reasons. No composition logic here: a second
+Kleene implementation is how ``any[refused, unknown]`` diverges between readers.
 
-One rule survives the translation intact: only ``REFUSED`` blocks. Everything
-else -- including a composed value this module has never heard of -- resolves to
-``undetermined`` and fails open.
+Only ``REFUSED`` blocks. Everything else -- including an unknown composed value
+-- resolves to ``undetermined`` and fails open.
 """
 
 from __future__ import annotations
@@ -18,11 +14,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Final
 
-from shared.services.admission.config import AdmissionConfig
-from shared.services.admission.reasons import reason
-from shared.services.admission.signals import AdmissionSignals, SubscriptionSignal
-from shared.services.admission.types import AdmissionStage, RequirementState, RequirementVerdict
 from shared.services.subscriptions import Outcome, SubscriptionState, SubscriptionVerdict
+from src.services.admission.config import AdmissionConfig
+from src.services.admission.reasons import reason
+from src.services.admission.signals import AdmissionSignals, SubscriptionSignal
+from src.services.admission.types import AdmissionStage, RequirementState, RequirementVerdict
 
 __all__ = ("KEY", "build_subscription_signal", "eval_subscription", "serialize_verdicts")
 
@@ -65,21 +61,13 @@ def build_subscription_signal(
 ) -> SubscriptionSignal:
     """Pack an already-composed outcome and its per-provider detail into a signal.
 
-    ``reasons`` carries one entry per provider that is not ``active``, tied to
-    that provider through ``AdmissionReason.subject``. Under ``mode="any"`` two
-    unresolved providers genuinely produce TWO reasons: the composed outcome only
-    says the rule is unmet, and keeping one provider's reason would hide half of
-    why. Providers are walked in sorted order, because an organizer who reloads
-    an aggregate must not see the list reshuffle between requests over nothing
-    but ``dict`` insertion order.
+    ``reasons`` has one entry per non-``active`` provider (``subject`` = provider),
+    in sorted order so an aggregate does not reshuffle between requests. Under
+    ``mode="any"`` two unresolved providers yield two reasons.
 
-    A verdict carrying no ``evidence["reason"]`` still yields a reason (code
-    ``"unknown"``, actor ``system``). ``SubscriptionVerdict`` says in its own
-    docstring that such a verdict is a provider bug; dropping it would turn the
-    bug into an empty reason list, which reads as "no problem here".
-
-    ``providers`` is :func:`serialize_verdicts` — one projection for admission
-    chips and the registration read.
+    A verdict with no ``evidence["reason"]`` (a provider bug) still yields an
+    ``"unknown"``/``system`` reason rather than an empty list that reads as "no
+    problem here".
     """
     return SubscriptionSignal(
         outcome=outcome.value,
@@ -99,22 +87,15 @@ def eval_subscription(
 ) -> RequirementVerdict:
     """Map one registration's subscription signal to its verdict.
 
-    ``signals.subscription is None`` means the resolver never asked -- the
-    requirement is off for this tournament, or the registration carries no linked
-    site user to ask about. That is ``undetermined``, never "not subscribed": the
-    distance between "we did not look" and "we looked and found nothing" is the
-    distance between admitting a patron and refusing one mid-check-in.
+    ``signals.subscription is None`` means the resolver never asked (requirement
+    off, or no linked site user): ``undetermined``, never "not subscribed".
 
-    An unrecognised outcome string lands on ``undetermined`` through the ``_STATES``
-    default. Raising instead would let a future ``Outcome`` member, or a signal
-    built by a caller this module has not met, turn a live check-in into a mass
-    refusal; failing open degrades to "we could not tell", which every consumer
-    already handles.
+    An unrecognised outcome lands on ``undetermined`` via the ``_STATES`` default
+    rather than raising, so a new ``Outcome`` member cannot turn check-in into a
+    mass refusal.
 
-    ``stage`` is the argument, not ``config.subscription_stage``. The registry
-    resolved the stage from the config already, and reading that column a second
-    time here is how a second source of truth for "when does this bite" starts --
-    it had seven readers before this layer existed.
+    Uses the ``stage`` argument, never ``config.subscription_stage``: the registry
+    is the single reader of that column.
     """
     signal = signals.subscription
     if signal is None:

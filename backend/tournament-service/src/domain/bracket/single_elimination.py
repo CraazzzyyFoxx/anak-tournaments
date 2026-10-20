@@ -6,8 +6,8 @@ Generates pairings for a full single-elim bracket with:
 - explicit advancement edges (position 1 of match X → slot Y of match Z)
 
 The generator populates ``local_id`` on every :class:`Pairing` and a list of
-:class:`AdvancementEdge` on the :class:`BracketSkeleton`. The admin service is
-expected to translate ``local_id`` → real ``Encounter.id`` when persisting.
+:class:`AdvancementEdge` on the :class:`BracketSkeleton`;
+``persist_skeleton`` translates ``local_id`` → real ``Encounter.id``.
 """
 
 from __future__ import annotations

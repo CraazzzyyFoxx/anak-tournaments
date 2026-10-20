@@ -6,9 +6,7 @@ without that ordering a client reacting to the event could repopulate a gateway
 entry from a value we were a millisecond away from clearing.
 
 WHICH keys a resource maps to is ``cache_resources.py``'s business; this module
-is only the loop that applies them. It replaced the old
-reason-keyed pattern table, which asked the caller for a WHY and re-derived the
-WHAT from it.
+is only the loop that applies them.
 """
 
 from __future__ import annotations

@@ -44,16 +44,16 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from shared.core.enums import RankCollectionStatus  # noqa: E402
-from shared.services.admission.config import AdmissionConfig  # noqa: E402
-from shared.services.admission.requirements.open_profile import KEY, eval_open_profile  # noqa: E402
-from shared.services.admission.signals import AdmissionSignals, ProfileSignal  # noqa: E402
-from shared.services.admission.types import (  # noqa: E402
+from src.services.admission.config import AdmissionConfig  # noqa: E402
+from src.services.admission.profile_visibility import resolve_profiles_open  # noqa: E402
+from src.services.admission.requirements.open_profile import KEY, eval_open_profile  # noqa: E402
+from src.services.admission.signals import AdmissionSignals, ProfileSignal  # noqa: E402
+from src.services.admission.types import (  # noqa: E402
     AdmissionReason,
     AdmissionStage,
     ReasonActor,
     RequirementState,
 )
-from shared.services.profile_visibility import resolve_profiles_open  # noqa: E402
 
 MAIN = "Player#2100"
 SMURF_A = "Smurf#1111"

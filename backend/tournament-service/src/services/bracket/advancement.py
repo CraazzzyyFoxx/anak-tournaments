@@ -1,4 +1,4 @@
-"""Advancement: a bracket moves PLACES into SEATS (D13, D55, D65).
+"""Advancement: a bracket moves PLACES into SEATS.
 
 An ``EncounterLink`` says "whoever finished at ``source_position`` of this
 encounter takes ``target_slot`` of that one". There is no winner/loser enum and
@@ -42,9 +42,9 @@ from shared.models.encounter.team import EncounterTeam, EncounterTeamMember, Enc
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage
-from shared.services.bracket.types import AdvancementEdge
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from shared.services.encounter.result import lock_encounter, refresh_from_games, reopen
+from src.domain.bracket import AdvancementEdge
 
 __all__ = (
     "AdvanceOutcome",
@@ -86,12 +86,11 @@ class AdvanceOutcome:
 async def resolve_slot_sources(session: AsyncSession, encounter_ids: Iterable[int]) -> dict[int, list[SlotSource]]:
     """Incoming advancement edges, keyed by TARGET encounter id.
 
-    ``EncounterLink`` is the bracket's real topology, but a reader used to have
-    to infer where an empty slot's team would come from out of round numbers
-    and match counts. That inference cannot tell a lower bracket seeded
-    straight from the group stage -- whose round 1 holds seeds, so its slots
-    really are TBD -- from a standard one whose round 1 holds the upper
-    bracket's first losers. Handing the edges out removes the guess.
+    ``EncounterLink`` is the bracket's real topology. Round numbers and match
+    counts cannot say where an empty slot's team comes from: they cannot tell a
+    lower bracket seeded straight from the group stage -- whose round 1 holds
+    seeds, so its slots really are TBD -- from a standard one whose round 1
+    holds the upper bracket's first losers.
     """
     targets = {encounter_id for encounter_id in encounter_ids if encounter_id is not None}
     if not targets:

@@ -1,19 +1,13 @@
 """What the tournament and its workspace decided, as one value.
 
-Assembled ONCE per request and passed by value. Two owners are folded in here on
-purpose, because that split is correct and should not leak further:
+Assembled once per request and passed by value. The tournament's
+``registration_form`` holds the TOGGLES (whether a requirement is on, and from
+which stage); the workspace's ``subscriptions.requirement`` holds the RULE, so a
+new tournament does not re-ask which providers count.
 
-- the tournament's ``registration_form`` holds the TOGGLES (does this tournament
-  require the thing, and from which stage);
-- the workspace's ``subscriptions.requirement`` holds the RULE itself, so a new
-  tournament does not re-ask which providers count (the 2026-08-05 design).
-
-No session, no loader. ``shared`` cannot import tournament-service's form reader,
-and the gates are handed duck-typed form objects anyway -- the ORM row in
-production, a stub in the unit tests -- so every read below is a defensive
-``getattr``. That is inherited behaviour, not caution for its own sake: the gate
-this layer replaced read its form the same way, because a form that predates a
-column must behave like the default rather than raise mid-admission.
+Forms are duck-typed (the ORM row, or a stub in unit tests), so every read is a
+defensive ``getattr``: a form that predates a column must behave like the
+default rather than raise mid-admission.
 """
 
 from __future__ import annotations
@@ -21,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from shared.services.admission.types import AdmissionStage
+from src.services.admission.types import AdmissionStage
 
 if TYPE_CHECKING:
     from shared.services.subscriptions import SubscriptionRequirement
@@ -32,11 +26,8 @@ __all__ = ("AdmissionConfig",)
 def _stage(raw: Any) -> AdmissionStage:
     """Read a stored stage value, defaulting to the LOOSER gate.
 
-    Anything unrecognised means check-in. An unknown stage is a config or
-    migration error, and the safe reading of one is the LATER gate: a typo must
-    not start refusing sign-ups nobody asked it to refuse. This preserves verbatim
-    the rule the deleted ``subscription_gate.enforces_at_registration`` carried --
-    do not tighten it into a strict parse.
+    Anything unrecognised means check-in: a typo or migration error must not start
+    refusing sign-ups nobody asked it to refuse. Do not tighten into a strict parse.
     """
     if raw is None:
         return AdmissionStage.check_in
@@ -48,11 +39,9 @@ def _stage(raw: Any) -> AdmissionStage:
 
 @dataclass(frozen=True, slots=True)
 class AdmissionConfig:
-    #: Owner of the subscription rule and the provider configs. Nullable because
-    #: the config is also built from stubs and from ``form is None``; a subscription
-    #: requirement without it cannot be resolved at all, which
-    #: ``enforces_subscription`` below treats as "nothing to enforce" rather than
-    #: as a refusal.
+    #: Owner of the subscription rule and provider configs. ``None`` (stubs,
+    #: ``form is None``) makes ``enforces_subscription`` false: nothing to
+    #: enforce, never a refusal.
     workspace_id: int | None = None
     require_open_profile: bool = False
     open_profile_scope: Literal["main", "all"] = "main"
@@ -100,9 +89,7 @@ class AdmissionConfig:
     def enforces_subscription(self) -> bool:
         """Whether the subscription requirement can block anything at all.
 
-        Three conditions, and the last two are not paranoia: an armed toggle over
-        an empty workspace rule, or over a form that cannot name its workspace,
-        must disarm itself. The alternative -- treating "I cannot read the rule" as
-        "you fail the rule" -- refuses every registrant in the tournament.
+        An armed toggle over an empty rule, or over a form that cannot name its
+        workspace, disarms itself: "cannot read the rule" must not mean "fails the rule".
         """
         return self.require_subscription and self.subscription_rule is not None and self.workspace_id is not None

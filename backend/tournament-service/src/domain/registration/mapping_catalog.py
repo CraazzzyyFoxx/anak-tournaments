@@ -9,8 +9,8 @@ This module is the single source of truth for:
 * row **disposition** classification (create / update / skip) used by the preview;
 * type-aware coercion of sheet values into **custom fields**.
 
-It is intentionally pure: no FastAPI, no SQLAlchemy, no network. Everything here
-is unit-testable without a database, mirroring the existing registration tests.
+It is intentionally pure -- no SQLAlchemy, no network -- so everything here is
+unit-testable without a database.
 """
 
 from __future__ import annotations

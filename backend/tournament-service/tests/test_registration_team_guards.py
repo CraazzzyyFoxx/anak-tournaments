@@ -18,7 +18,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.services.registration_team_guards import (  # noqa: E402
+from src.services.registration_team_guards import (  # noqa: E402
     assert_no_registered_teams,
     has_registered_teams,
     registered_team_status,

@@ -9,7 +9,7 @@ from __future__ import annotations
 DOCS: dict[str, dict] = {
     "rpc.tournament.team_format.get": {
         "summary": "Get a tournament's team format",
-        "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).",
+        "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection.",
     },
     "rpc.tournament.team_format.put": {
         "summary": "Replace a tournament's team format",
@@ -57,7 +57,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get tournament standings",
         "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns the standings for a tournament with optionally hydrated related entities selected via the entities query param.",
     },
-    # ── ffa lobbies (docs/plans/2026-09-24-ffa-encounters.md) ─────────────
+    # ── ffa lobbies ────────────────────────────────────────────────────────
     "rpc.tournament.ffa_stage": {
         "summary": "Get FFA stage lobbies",
         "description": (
@@ -462,7 +462,7 @@ DOCS: dict[str, dict] = {
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": {
         "summary": "Toggle tournament finished",
-        "description": "Permission: superuser only. Toggles a tournament's legacy finished flag and returns it with stages.",
+        "description": "Permission: superuser only. Toggles a tournament's `is_finished` flag and returns it with stages.",
     },
     "rpc.tournament.tournament_status": {
         "summary": "Transition tournament status",
@@ -572,7 +572,7 @@ DOCS: dict[str, dict] = {
         "summary": "Delete pick-ban config",
         "description": "Permission: workspace `match.update` on the workspace of the config's tournament. Deletes a pick-ban config by id (running sessions keep their snapshot).",
     },
-    # ── bespoke: scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────
+    # ── bespoke: scrim rooms ───────────────────────────────────────────────
     "rpc.tournament.scrim_create": {
         "summary": "Create scrim room",
         "description": "Permission: authenticated user who is a member of the target workspace (membership only — no resource grant is checked; superusers pass). Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. 409s when the caller's active-room cap is reached.",
@@ -784,7 +784,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get Challonge sync log",
         "description": "Permission: workspace `challonge.read` on the tournament's workspace. Returns recent Challonge sync-log entries for a tournament (limit-bounded).",
     },
-    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    # ── bootstrap importers ────────────────────────────────────────────────
     "rpc.tournament.challonge_create_tournament": {
         "summary": "Create tournament from Challonge",
         "description": "Permission: workspace `tournament.create` on the target workspace. Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot.",

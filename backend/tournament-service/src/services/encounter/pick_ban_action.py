@@ -3,13 +3,13 @@ a step (``act`` for an open step, ``submit`` for a blind one), the write-side
 healing that keeps the room in step with its own rules, and the state payload
 the room renders.
 
-Submissions are the source of truth (design D2/D3): every mutation writes a
+Submissions are the source of truth: every mutation writes a
 ``PickBanSubmission`` and then RE-PROJECTS ``PickBanEntry`` from the whole log,
 so the board can never drift from the actions behind it and a reopened step
 (dispute / admin) simply replaces its rows. The cursor is derived the same way
 -- there is no step counter column to get out of step with the entries.
 
-Everything the room names is a PARTICIPATION (§13.4): who may act, whose draft
+Everything the room names is a PARTICIPATION: who may act, whose draft
 is private, who a journal row belongs to. ``encounter_team_id IS NULL`` on a
 submission is the engine, and nothing else.
 
@@ -19,13 +19,10 @@ restarts the clock whenever the current step changes. It runs before every
 mutation and inside ``reconcile_room``, under the session lock.
 
 ``get_pick_ban_state`` is a PURE READ -- no row lock, no write, no commit, no
-signal. Healing it would otherwise do lives in :meth:`PickBanActionService.
-reconcile_room`, driven by ``room_reconcile``: a post-commit trigger after
-every room write plus two scheduled sweeps. A viewer's poll taking the
-encounter's row lock put every spectator behind the captains and behind each
-other, which is what this split exists to prevent.
-
-Design: docs/plans/2026-09-28-pick-ban-constructor.md §5, §7, §9.
+signal. Healing lives in :meth:`PickBanActionService.reconcile_room`, driven by
+``room_reconcile``: a post-commit trigger after every room write plus two
+scheduled sweeps. A viewer's poll that took the encounter's row lock would
+queue every spectator behind the captains and behind each other.
 """
 
 from __future__ import annotations
@@ -56,9 +53,9 @@ from shared.repository import (
     PickBanEntryRepository,
     PickBanSubmissionRepository,
 )
-from shared.services.bracket.usability import is_encounter_live
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src.core.workspace import get_division_grid
+from src.services.bracket.usability import is_encounter_live
 from src.services.encounter import pick_ban_undo
 from src.services.encounter.games import OPEN_STATES, EncounterGameService, encounter_game_service
 from src.services.encounter.pick_ban_session import (
@@ -361,7 +358,7 @@ class PickBanActionService:
             row = rows.get(team_id)
             if row is None:
                 row = EncounterGameTeam(game_id=game.id, encounter_id=rt.encounter.id, encounter_team_id=team_id)
-                session.add(row)
+                self.games.line_repo.add(session, row)
                 rows[team_id] = row
             row.starting_side = side if team_id == actor else (remaining.pop(0) if remaining else None)
         await session.flush()
@@ -423,9 +420,9 @@ class PickBanActionService:
     def side_pick_pending(self, rt: _Runtime, position: int) -> bool:
         """Whether position ``position`` still owes a ``side_pick`` an answer.
 
-        A game cannot START while the side it is played on is undecided (spec
-        §6 row 9): the position stays ``planned`` -- named, but not open for
-        claims -- until the pick resolves or the clock flips a coin for it.
+        A game cannot START while the side it is played on is undecided: the
+        position stays ``planned`` -- named, but not open for claims -- until the
+        pick resolves or the clock flips a coin for it.
         """
         if not side_codes(rt.encounter):
             return False
@@ -529,7 +526,7 @@ class PickBanActionService:
                 state=state,
                 items_json=normalized,
             )
-            session.add(row)
+            self.submission_repo.add(session, row)
             rt.submissions.append(row)
         else:
             row.items_json = normalized
@@ -742,7 +739,7 @@ class PickBanActionService:
                 state=pbr.DRAFT,
                 items_json=[] if side_pick else previous.get(actor, []),
             )
-            session.add(row)
+            self.submission_repo.add(session, row)
             rt.submissions.append(row)
         if side_pick:
             # The `apply_undo` rule: `_bind_side_actors` rebinds only unbound steps.
@@ -1013,7 +1010,7 @@ class PickBanActionService:
     ) -> dict[str, Any]:
         """The organizer's version of a dispute: the same replay, without the
         per-step attempt limit and without needing the step to allow disputes at
-        all (design §5) -- the escape hatch for a room that revealed something
+        all -- the escape hatch for a room that revealed something
         wrong under a rule nobody anticipated."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=False)
         rt = await self._load(session, pick_ban, encounter, refresh=True)
@@ -1116,7 +1113,7 @@ class PickBanActionService:
         what changed. Returns whether anything did.
 
         This is the ONLY place the room heals itself. The state read is pure
-        (design: a viewer's poll must never queue behind a captain's write), so
+        (a viewer's poll must never queue behind a captain's write), so
         every "a map just got picked", "the clock ran out", "a position was
         confirmed and the next map's bans are owed", "the series owes a
         position" catches up here -- after every room write (``room_reconcile``'s
@@ -1239,11 +1236,11 @@ class PickBanActionService:
         """The room as it stands RIGHT NOW. A pure read: no lock, no write, no
         commit, no signal.
 
-        It used to heal the room it was about to render, which put every viewer's
-        poll behind the encounter's row lock -- and so behind the captains and
-        behind each other. Whatever this read finds un-healed is owed to
-        :meth:`reconcile_room`, which runs after every room write and on a one-
-        second sweep, and which signals the room when it lands.
+        Healing here would put every viewer's poll behind the encounter's row
+        lock -- and so behind the captains and behind each other. Whatever this
+        read finds un-healed is owed to :meth:`reconcile_room`, which runs after
+        every room write and on a one-second sweep, and which signals the room
+        when it lands.
         """
         encounter = await self.encounter_repo.get(session, encounter_id)
         if encounter is None:
@@ -1272,7 +1269,7 @@ class PickBanActionService:
         return await self._build_state(session, rt, kind, readiness=readiness, viewer=viewer)
 
     async def _series(self, session: AsyncSession, encounter: Encounter) -> dict[str, Any]:
-        """What the confirmed games add up to, per participation (D57)."""
+        """What the confirmed games add up to, per participation."""
         standing = await self.games.standing(session, encounter)
         return {
             "ended": standing.ended,
@@ -1360,7 +1357,7 @@ class PickBanActionService:
             "draft_issues": draft_issues,
             "targets": targets,
             #: The discipline's side codes, in the order a ``side_pick`` indexes
-            #: them; empty when the game has no sides (D25).
+            #: them; empty when the game has no sides.
             "sides": list(side_codes(rt.encounter)),
             "dispute": pbr.dispute_target(
                 rt.steps,

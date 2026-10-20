@@ -82,14 +82,14 @@ def serialize_registration(
     roles = loaded_relationship_or_none(registration, "roles") or []
     reviewer = loaded_relationship_or_none(registration, "reviewer")
     checked_in_by_user = loaded_relationship_or_none(registration, "checked_in_by_user")
-    # API shape: user_id stays in the payload (frontend depends on it) but is
-    # now derived from the member anchor — callers must eager-load
-    # workspace_member (loaded_relationship_or_none never lazy-loads).
+    # API shape: ``user_id`` (the frontend depends on it) is derived from the
+    # member anchor — callers must eager-load workspace_member
+    # (loaded_relationship_or_none never lazy-loads).
     workspace_member = loaded_relationship_or_none(registration, "workspace_member")
     tournament = loaded_relationship_or_none(registration, "tournament")
     sorted_roles = sorted(roles, key=lambda item: (item.priority, item.role))
-    # Every role row is still reported (the editor toggles the ones the engine
-    # left out of the roster); the roster is what rates them.
+    # Every role row is reported (the editor toggles the ones the engine left
+    # out of the roster); the roster is what rates them.
     entry_by_role = {entry.role: entry for entry in roster.roles} if roster is not None else {}
     resolved_status_meta = (
         status_meta_map["registration"].get(registration.status) if status_meta_map is not None else None
@@ -113,7 +113,7 @@ def serialize_registration(
         # The roster is the one flex predicate (``PlayerRoster.is_full_flex``,
         # computed over playable declared roles). Without a roster there is no
         # rank information here, so fall back to the write-path predicate over
-        # the declared-active rows -- never a third inline copy.
+        # the declared-active rows.
         is_flex=(
             roster.is_full_flex
             if roster is not None
@@ -158,15 +158,15 @@ def serialize_registration_form(
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
     stale_registrations: int | None = None,
 ) -> RegistrationFormRead:
-    """``subscription_requirement`` is the WORKSPACE's rule, passed in by the caller.
+    """Project a registration form for the client.
 
-    An argument rather than a lookup because this stays sync and must not issue a
-    second round trip per call; the async RPC handler already has the session and
-    fetches it once via ``subscription_config.load_workspace_requirement_blob``.
+    ``subscription_requirement`` is the WORKSPACE's rule, passed in rather than
+    looked up because this stays sync and must not issue a second round trip per
+    call; the async RPC handler fetches it once via
+    ``subscription_config.load_workspace_requirement_blob``.
 
-    ``is_open`` is passed in for the same reason, and is now DERIVED from the
-    tournament's REGISTRATION schedule window rather than read off the form — the
-    form no longer has a say in whether registration is open.
+    ``is_open`` is passed in for the same reason; it is derived from the
+    tournament's REGISTRATION schedule window, not from the form.
 
     ``registration_late`` says the window's ``ends_at`` has passed and only
     ``allow_late_registration`` keeps the form open: everyone signing up now is

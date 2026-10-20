@@ -19,8 +19,8 @@ fresh notification.
 ``ponytail:`` a window that opens *lazily* -- a manual transition made before
 ``starts_at``, a ``set_schedule`` landing a start time already in the past, or
 ``allow_late_registration`` flipped on later -- notifies nobody, because only a
-status write reaches this module. The upgrade path is the reminders tick
-(spec §10), which detects the window crossing itself.
+status write reaches this module. The upgrade path is the reminders tick,
+which detects the window crossing itself.
 """
 
 from __future__ import annotations
@@ -40,12 +40,12 @@ from shared.repository.tournament import (
     TournamentPhaseScheduleRepository,
     TournamentRepository,
 )
-from shared.services.bracket.advancement import AdvanceOutcome, advance_after_result
-from shared.services.bracket.usability import is_encounter_live
 from shared.services.encounter.participants import active_teams
 from shared.services.notifications import broadcast, notify
 from shared.services.registration_window import is_registration_window_open
 from src import models
+from src.services.bracket.advancement import AdvanceOutcome, advance_after_result
+from src.services.bracket.usability import is_encounter_live
 
 
 def _pick_ban_sessions():
@@ -208,8 +208,8 @@ class LifecycleNotifier:
         preview bracket nobody can enter, a started or completed encounter
         (backfilled results, Challonge imports), a finished tournament.
 
-        "Fully seated" is as many live participations as the card has slots
-        (D55), which is the same question for a duel and for a lobby.
+        "Fully seated" is as many live participations as the card has slots,
+        which is the same question for a duel and for a lobby.
 
         ``channel=False`` keeps the event personal. Bulk producers (stage
         activation, Swiss rounds, requalification, Challonge sync) fill a
@@ -238,9 +238,6 @@ class LifecycleNotifier:
         # re-save of an unchanged time would read as a reschedule.
         scheduled_at = _as_utc(encounter.scheduled_at) if encounter.scheduled_at is not None else None
         team_ids: Sequence[int] = [seat.team_id for seat in seats]
-        # The participation's own snapshot is the name this encounter was played
-        # under; the source team's current name is the fallback for a seat
-        # written before snapshots existed.
         names = {team.id: team.name for team in await self.team_repo.bulk_get(session, list(team_ids))}
         team_names = [names.get(seat.team_id) or seat.name for seat in seats]
         payload = {
@@ -279,8 +276,8 @@ class LifecycleNotifier:
         """Whether this encounter's coordinate resolves to a pick-ban with a
         pool -- the same question ``PregameRoomLink`` asks on the frontend.
 
-        The coordinate is the bracket POSITION now (D22): an encounter with no
-        row there -- a scrim, a mix -- resolves at the tournament level only.
+        The coordinate is the bracket position: an encounter with no row there
+        -- a scrim, a mix -- resolves at the tournament level only.
 
         Sessions are not consulted: they only exist once both captains are
         ready, which is after the message this flag is for.

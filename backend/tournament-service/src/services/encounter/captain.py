@@ -1,5 +1,5 @@
 """Per-participation reporting of the WHOLE encounter, and the admin overrides
-that settle it (D50, D54, D59).
+that settle it.
 
 Each participation files its own report -- the final standing, how many games it
 took, a closeness rating, an optional comment and the organizer's custom fields
@@ -8,7 +8,7 @@ is DERIVED from them:
 
 - not every live participation has reported -> ``pending_confirmation``;
 - all reported, standings agree -> ``confirmed`` with source ``series_claim``,
-  and the positions nobody played are cancelled (D54, D59);
+  and the positions nobody played are cancelled;
 - all reported, standings differ -> ``disputed``, for an organizer to settle.
 
 A report is checked against the games already on record by
@@ -55,18 +55,19 @@ from shared.repository import (
     EncounterTeamReportRepository,
     UserRepository,
 )
-from shared.services.bracket import advancement
-from shared.services.bracket.usability import is_encounter_live
+from shared.services.encounter.events import enqueue_encounter_completed
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import apply_result, hold_result, lock_encounter, reopen
 from src import models, schemas
+from src.services.bracket import advancement
+from src.services.bracket.usability import is_encounter_live
 from src.services.encounter import report_form
-from src.services.encounter.dispute_review import notify_dispute_review
+from src.services.encounter.dispute_review import notify_dispute
 from src.services.encounter.games import EncounterGameService, encounter_game_service, require_filled_seats
 from src.services.encounter.report_form import ReportFormService, report_form_service
 from src.services.encounter.room_journal import record_room_event
 from src.services.encounter.settle import enqueue_challonge_push, settle_confirmed
-from src.services.tournament.events import enqueue_encounter_completed, enqueue_tournament_recalculation
+from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = ("CaptainService", "ReportResultIn", "captain_service", "serialize_team_report")
 
@@ -423,9 +424,8 @@ class CaptainService:
     ) -> None:
         """Refuse a standing this encounter cannot have ended on.
 
-        The whole check is :func:`series_claim_errors` -- one implementation of
-        "can this card end like that", shared with the admin write, rather than
-        a second copy of the end rule spelled out in Python.
+        The whole check is :func:`series_claim_errors`, the one implementation
+        of "can this card end like that", shared with the admin write.
         """
         errors = series_claim_errors(
             await self.games.rules(session, encounter),
@@ -463,8 +463,7 @@ class CaptainService:
         """Store the reporter's replay codes on the positions they name.
 
         The code belongs to the participation that played the position
-        (``game_team.replay_code``), which is what replaced the old per-report
-        ``encounter_map_code`` table. A freeplay card opens its games as claims
+        (``game_team.replay_code``). A freeplay card opens its games as claims
         arrive, so a captain who reports the series straight away names
         positions with no row yet: those are opened (planned, every live seat
         in them, like ``ensure_next_game`` does) rather than losing the code.
@@ -534,7 +533,7 @@ class CaptainService:
         games = {row.games_played for row in reports if row.encounter_team_id in live}
         if len(standing) > 1 or len(games) > 1:
             await self._mark_disputed(session, encounter, actor_user_id=actor_user_id)
-            await self._notify_dispute(session, encounter, seats, actor_auth_user_id=actor_auth_user_id)
+            await notify_dispute(session, encounter, seats=seats, actor_auth_user_id=actor_auth_user_id)
             return False
 
         agreed = next(row for row in reports if row.encounter_team_id in live)
@@ -555,9 +554,9 @@ class CaptainService:
         )
         # The card's unplayed tail is history the encounter never had: the
         # report IS the result, so a PLANNED position left open would offer a
-        # game nobody may play (D54, D59).
+        # game nobody may play.
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
-        await enqueue_encounter_completed(session, encounter)
+        await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
         await settle_confirmed(session, encounter)
         return True
 
@@ -609,27 +608,6 @@ class CaptainService:
             actor_user_id=actor_user_id,
         )
 
-    async def _notify_dispute(
-        self,
-        session: AsyncSession,
-        encounter: Encounter,
-        seats: Sequence[EncounterTeam],
-        *,
-        actor_auth_user_id: int | None,
-    ) -> None:
-        """The participants learn the outcome from the response they are
-        holding; the organizers who can adopt a report learn it from here."""
-        workspace_id = await session.scalar(
-            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == encounter.tournament_id)
-        )
-        await notify_dispute_review(
-            session,
-            encounter,
-            workspace_id=None if workspace_id is None else int(workspace_id),
-            team_names=[seat.name for seat in seats],
-            actor_auth_user_id=actor_auth_user_id,
-        )
-
     # -- the organizer's overrides -----------------------------------------
     async def set_encounter_result(
         self,
@@ -645,11 +623,11 @@ class CaptainService:
         """Confirm an encounter result as an organizer, in one transaction.
 
         THE admin write: the standing, ``status``, ``result_status`` and the
-        journal row move together, so a dispute can never be left half-resolved
-        the way "edit the score, then confirm" could. ``reason`` is required --
-        an admin result overrides what the participants said, and the journal
-        has to say why. Pass ``adopt_report_team_id`` to take one participation's
-        report as truth instead of stating the numbers.
+        journal row move together, so a dispute can never be left half-resolved.
+        ``reason`` is required -- an admin result overrides what the
+        participants said, and the journal has to say why. Pass
+        ``adopt_report_team_id`` to take one participation's report as truth
+        instead of stating the numbers.
         """
         if not (reason or "").strip():
             raise HTTPException(
@@ -724,7 +702,7 @@ class CaptainService:
             if latest is not None:
                 latest.adopted_team_id = adopted_team_id
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
-        await enqueue_encounter_completed(session, encounter)
+        await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
         await settle_confirmed(session, encounter)
         await enqueue_challonge_push(session, encounter)
         await session.commit()

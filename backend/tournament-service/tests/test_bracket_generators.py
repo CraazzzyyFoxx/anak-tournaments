@@ -1,9 +1,8 @@
 """Invariant tests for bracket generators.
 
-Phase C: these assertions lock in the structural guarantees of each bracket
-type so future engine refactors cannot silently break them.
+These assertions lock in the structural guarantees of each bracket type.
 
-Does not touch the database — purely tests the pure-function shared library.
+Does not touch the database: ``src.domain.bracket`` is pure.
 """
 
 from __future__ import annotations
@@ -20,13 +19,13 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 
 from shared.core.enums import StageItemInputType, StageType  # noqa: E402
-from shared.services.bracket import (  # noqa: E402
+from src.domain.bracket import (  # noqa: E402
     double_elimination,
     round_robin,
     single_elimination,
     swiss,
 )
-from shared.services.bracket.engine import (  # noqa: E402
+from src.domain.bracket.engine import (  # noqa: E402
     generate_bracket,
     placeholder_bracket,
     placeholder_seeds,
@@ -149,8 +148,8 @@ class DoubleEliminationInvariants(TestCase):
         self.assertEqual([], [p for p in s.pairings if "Reset" in p.name])
 
     def test_uneven_lower_split_keeps_every_team(self) -> None:
-        # 2 upper, 3 lower: the odd lower survivor used to have no onward match
-        # and silently vanished from the bracket.
+        # 2 upper, 3 lower: the odd lower survivor needs an onward match or it
+        # silently vanishes from the bracket.
         s = double_elimination.generate([1, 2], lower_bracket_team_ids=[3, 4, 5])
 
         seeded = {tid for p in s.pairings for tid in p.team_ids if tid is not None}
@@ -494,9 +493,9 @@ class SwissInvariants(TestCase):
         self.assertEqual(2, len(skeleton.pairings))
 
     def test_six_teams_play_every_round_without_stranding_the_field(self) -> None:
-        """Round 3 used to strand a six-team group: the pairing it picked left
-        two teams whose only remaining opponents were each other's, so round 4
-        had no rematch-free pairing and the Swiss scope ended three rounds early."""
+        """Round 3 must not strand a six-team group: two teams whose only remaining
+        opponents are each other's leave round 4 with no rematch-free pairing and
+        end the Swiss scope three rounds early."""
         team_ids = [1, 2, 3, 4, 5, 6]
         points = dict.fromkeys(team_ids, 0.0)
         played_pairs: set[frozenset[int]] = set()

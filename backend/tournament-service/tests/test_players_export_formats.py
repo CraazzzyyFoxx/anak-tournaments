@@ -31,6 +31,7 @@ from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.rpc import _helpers as helpers  # noqa: E402
 from src.rpc import integrations  # noqa: E402
+from src.services.registration import player_export  # noqa: E402
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity  # noqa: E402
 
 SUBJECT = "rpc.tournament.sheet_players_export"
@@ -100,17 +101,15 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
         async def fake_ws_id(_session, _tournament_id):
             return 3
 
-        session = SimpleNamespace(
-            execute=self._fake_execute,
-            scalar=self._fake_scalar,
-            add=lambda _row: None,
-        )
+        session = SimpleNamespace(execute=self._fake_execute, add=lambda _row: None)
         with (
             patch.object(helpers.db, "async_session_maker", FakeSessionMaker(session)),
             patch.object(integrations.auth, "require_tournament_id_permission", fake_permission),
-            patch.object(integrations.roster_engine, "for_tournament", fake_for_tournament),
-            patch.object(integrations, "tournament_slot_shape", fake_shape),
-            patch.object(integrations, "get_effective_division_grid", fake_grid),
+            patch.object(player_export.roster_engine, "for_tournament", fake_for_tournament),
+            patch.object(player_export, "tournament_slot_shape", fake_shape),
+            patch.object(player_export, "get_effective_division_grid", fake_grid),
+            # No registration form row -> the flex mode falls back to "optional".
+            patch.object(player_export.form_service, "get_form", AsyncMock(return_value=None)),
             patch.object(integrations.auth, "get_tournament_workspace_id", fake_ws_id),
             patch.object(integrations, "quota", SimpleNamespace(charge=AsyncMock())),
         ):
@@ -121,10 +120,6 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
 
     async def _fake_execute(self, _query):
         return _FakeResult(SimpleNamespace(id=TOURNAMENT_ID, name="OWT #12", workspace_id=3, discipline="overwatch"))
-
-    async def _fake_scalar(self, _query):
-        # No registration form row -> the flex mode falls back to "optional".
-        return None
 
     @staticmethod
     def _result(envelope: dict) -> dict:
@@ -162,7 +157,7 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
         with (
             patch.object(self, "_fake_execute", AsyncMock(return_value=_FakeResult(owner))),
             patch.object(
-                integrations,
+                player_export,
                 "discipline",
                 return_value=SimpleNamespace(rated_dimension=SimpleNamespace(code="position")),
             ) as module,

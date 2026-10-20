@@ -33,22 +33,22 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from shared.core.enums import SubscriptionCollectionSource  # noqa: E402
-from shared.services.admission import (  # noqa: E402
-    AdmissionConfig,
-    AdmissionDecision,
-    AdmissionStage,
-    RequirementState,
-)
-from shared.services.admission.resolve import (  # noqa: E402
-    resolve_admission,
-    resolve_admission_for_gate,
-)
 from shared.services.subscriptions import (  # noqa: E402
     Outcome,
     ProviderRequirement,
     SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
+)
+from src.services.admission import (  # noqa: E402
+    AdmissionConfig,
+    AdmissionDecision,
+    AdmissionStage,
+    RequirementState,
+)
+from src.services.admission.resolve import (  # noqa: E402
+    resolve_admission,
+    resolve_admission_for_gate,
 )
 
 NOW = datetime(2026, 9, 2, tzinfo=UTC)

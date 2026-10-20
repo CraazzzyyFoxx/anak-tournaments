@@ -13,6 +13,7 @@ Layout:
 - ``registry.py`` -- the requirement list; adding one is an entry plus a resolver
 - ``evaluate.py`` -- the pure decision; synchronous, no I/O, ever
 - ``resolve.py``  -- all the I/O, batched once per list
+- ``profile_visibility.py`` -- the batched ``battle_tag_state`` read -> :class:`ProfileSignal`
 - ``gates.py``    -- HTTP projection: raise from ``blockers``
 
 ``requirements/`` holds one module per requirement: the mapping from its raw
@@ -21,11 +22,11 @@ signal to a :class:`RequirementVerdict`, next to nothing else.
 
 from __future__ import annotations
 
-from shared.services.admission.config import AdmissionConfig
-from shared.services.admission.reasons import REASON_ACTORS, actor_for, reason
-from shared.services.admission.requirements.subscription import serialize_verdicts
-from shared.services.admission.signals import AdmissionSignals, ProfileSignal, SubscriptionSignal
-from shared.services.admission.types import (
+from src.services.admission.config import AdmissionConfig
+from src.services.admission.reasons import REASON_ACTORS, actor_for, reason
+from src.services.admission.requirements.subscription import serialize_verdicts
+from src.services.admission.signals import AdmissionSignals, ProfileSignal, SubscriptionSignal
+from src.services.admission.types import (
     AdmissionDecision,
     AdmissionEvaluation,
     AdmissionReason,

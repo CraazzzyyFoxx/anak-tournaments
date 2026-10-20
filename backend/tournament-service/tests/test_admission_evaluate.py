@@ -26,10 +26,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from shared.services.admission.config import AdmissionConfig  # noqa: E402
-from shared.services.admission.evaluate import evaluate  # noqa: E402
-from shared.services.admission.signals import AdmissionSignals  # noqa: E402
-from shared.services.admission.types import (  # noqa: E402
+from src.services.admission.config import AdmissionConfig  # noqa: E402
+from src.services.admission.evaluate import evaluate  # noqa: E402
+from src.services.admission.signals import AdmissionSignals  # noqa: E402
+from src.services.admission.types import (  # noqa: E402
     APPROVED_REGISTRATION_STATUS,
     READY_BALANCER_STATUS,
     AdmissionDecision,

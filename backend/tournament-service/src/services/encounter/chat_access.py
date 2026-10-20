@@ -3,8 +3,7 @@
 The encounter half of ``shared.services.chat.ChatAccess``: a domain question
 only ("captain of a side, organizer of the owning workspace, or just
 watching?"). Whether a spectator may actually READ, and whether this account is
-muted, are room policy and belong to ``ChatService`` — see
-docs/plans/2026-09-21-shared-room-chat.md.
+muted, are room policy and belong to ``ChatService``.
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ class EncounterChatAccess:
         room: ChatRoom,
     ) -> ChatMembership:
         # Format-agnostic: a lobby has a pre-game room too, and its chat is not
-        # a series feature (plan 2026-09-24-ffa-encounters §5.6).
+        # a series feature.
         encounter = await captain_service.load_encounter_any_format(session, room.ref_id)
         # Before anything else: an outsider must not learn that a hidden
         # tournament's encounter exists, chat setting or not.
@@ -60,16 +59,13 @@ class EncounterChatAccess:
             )
 
         workspace_id = await auth.get_encounter_workspace_id(session, encounter.id)
-        # Organizer staff, NOT the workspace roster. ``workspace_member`` rows --
-        # and the baseline ``member`` role they autofill -- are created for every
-        # registrant (``RegistrationService._anchor_registration_member``), and
-        # the token's ``workspaces`` list is built from exactly those rows, so
-        # ``is_workspace_member`` handed moderation (and a closed room's lobby
-        # code) to every player who ever signed up in this workspace.
-        # ``has_admin_panel_access`` is the scoped organizer predicate already
-        # used as the admin gate: superuser, a global admin-panel role, or any
-        # non-read grant in THIS workspace -- a read-only ``member``/``player``
-        # and a mix ``host`` are excluded.
+        # Organizer staff, NOT the workspace roster: every registrant gets a
+        # ``workspace_member`` row (``RegistrationService._anchor_registration_member``)
+        # and the token's ``workspaces`` list is built from those rows, so
+        # membership would hand moderation (and a closed room's lobby code) to
+        # every player. ``has_admin_panel_access`` is the scoped organizer gate:
+        # superuser, a global admin-panel role, or a non-read grant in THIS
+        # workspace -- a read-only ``member``/``player`` and a mix ``host`` are out.
         if auth_user.has_admin_panel_access(workspace_id):
             return ChatMembership(
                 role="staff",

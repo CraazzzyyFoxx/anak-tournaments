@@ -5,11 +5,11 @@ Cross-cutting building blocks used by more than one of the admin modules
 ``export``): tournament/form lookups, division-grid resolution, role
 replacement and the balancer-status verdict.
 
-Nothing here derives a role's rank or playability any more: that answer comes
-from :mod:`shared.services.roster`, and the ``ready``/``incomplete`` verdict is
-a straight read of :attr:`~shared.domain.roster.PlayerRoster.is_ranked_complete`.
-What stays local is the WRITE side (``apply_all_roles`` /
-``replace_registration_roles``), which the engine never touches.
+A role's rank and playability come from :mod:`shared.services.roster`, and the
+``ready``/``incomplete`` verdict is a straight read of
+:attr:`~shared.domain.roster.PlayerRoster.is_ranked_complete`. Only the WRITE
+side (``apply_all_roles`` / ``replace_registration_roles``) lives here; the
+engine never touches it.
 """
 
 from collections.abc import Mapping, Sequence
@@ -239,7 +239,7 @@ def included_balancer_status(roster: PlayerRoster | None) -> str:
     """The pool verdict: ``ready`` once every declared role carries a rank.
 
     No roster at all (a registration the engine did not resolve) reads as
-    ``incomplete`` -- the same answer the old role-less case gave.
+    ``incomplete``.
     """
     return "ready" if roster is not None and roster.is_ranked_complete else "incomplete"
 
@@ -250,9 +250,9 @@ def sync_included_balancer_status(
 ) -> None:
     """Recompute `ready`/`incomplete` from the resolved roster -- the only two
     balancer statuses a role edit is allowed to change. `not_in_balancer`,
-    `excluded` and any custom status are exclusively admin-managed: they can
-    no longer be picked FOR ready/incomplete (see `set_balancer_status`), so
-    there is nothing left for a role-driven resync to fight over.
+    `excluded` and any custom status are exclusively admin-managed
+    (`set_balancer_status` rejects ready/incomplete), so a role-driven resync
+    never overrides them.
     """
     current_balancer_status = getattr(registration, "balancer_status", None)
     if (
@@ -326,6 +326,13 @@ class RegistrationCommonService:
         if tournament is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
         return tournament
+
+    async def get_tournament_discipline(self, session: AsyncSession, tournament_id: int) -> str:
+        """The tournament's discipline code without loading the row; 404 when it does not exist."""
+        owner = await self.tournament_repo.get_owner(session, tournament_id)
+        if owner is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        return owner[1]
 
     async def get_registration_form(
         self,

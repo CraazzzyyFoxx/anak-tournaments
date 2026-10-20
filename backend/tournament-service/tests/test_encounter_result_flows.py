@@ -29,13 +29,13 @@ from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Team
-from shared.services.bracket import advancement
 from shared.services.encounter import participants
 from shared.tests.encounter_writer_case import EncounterWriterCase
 from src import schemas
 from src.services.admin.encounter import encounter_service as admin_encounter_service
 from src.services.admin.encounter_reports import encounter_reports_service
 from src.services.admin.stage import stage_service
+from src.services.bracket import advancement
 from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.ffa import ffa_encounter_service
 from src.services.encounter.flows import flows_service, to_summary
@@ -690,7 +690,7 @@ class SeriesReportTests(ResultFlowCase):
 class DisputeNotificationTests(ResultFlowCase):
     """A real disagreement through the public flow reaches the inbox.
 
-    The two producers (``map_report._notify_dispute``, ``captain._notify_dispute``)
+    The two disputes (per-game and series, both through ``dispute_review.notify_dispute``)
     validate their payloads against the ``extra="forbid"`` notification schemas,
     so a field the schema does not know is a ValidationError that rolls the
     whole claim back. Driving the claim itself is what proves the wiring.

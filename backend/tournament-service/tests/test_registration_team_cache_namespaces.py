@@ -24,7 +24,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 os.environ["DEBUG"] = "true"
 
-public_rpc = importlib.import_module("src.rpc.public_rpc")
+public_list = importlib.import_module("src.services.registration.public_list")
 team_flows = importlib.import_module("src.services.team.flows")
 schemas = importlib.import_module("src.schemas")
 invalidation = importlib.import_module("src.services.tournament.cache_invalidation")
@@ -55,8 +55,7 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
         self.page = AsyncMock(return_value=([], 0))
         service = team_flows.flows_service
         for patcher in (
-            patch.object(public_rpc.db, "async_session_maker", _no_session),
-            patch.object(public_rpc.reg_service.registration_service, "build_public_registration_list", self.build),
+            patch.object(public_list.registration_service, "build_public_registration_list", self.build),
             patch.object(team_flows.tournament_flows_service, "get", AsyncMock()),
             patch.object(service.teams, "get_by_tournament", self.by_tournament),
             patch.object(service.teams, "get_all", self.page),
@@ -69,7 +68,7 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
 
     @staticmethod
     async def _registration_list(tournament_id: int):
-        return await public_rpc._build_registration_list(tournament_id)
+        return await public_list.build_registration_list(_no_session, tournament_id)
 
     @staticmethod
     async def _teams_by_tournament(tournament_id: int):

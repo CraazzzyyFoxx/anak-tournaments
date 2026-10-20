@@ -13,7 +13,6 @@ from shared.repository import (
 )
 from shared.repository.stats_reads import MatchReadContext
 from shared.schemas.match import MatchEventsRead
-from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
     resolve_encounter_challonge,
@@ -22,6 +21,7 @@ from shared.services.challonge_refs import (
 from shared.services.match_reads import match_events_read, match_header_fields, match_statistics_read
 from src import models, schemas
 from src.core import config, errors, pagination, utils
+from src.services.bracket.advancement import SlotSource, resolve_slot_sources
 from src.services.encounter.service import EncounterService, encounter_service
 from src.services.map.flows import MapFlowsService, map_to_read
 from src.services.map.flows import flows_service as map_flows_service
@@ -30,12 +30,11 @@ from src.services.team.flows import flows_service as team_flows_service
 from src.services.tournament.flows import TournamentFlowsService
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
-# Both families embed ``MatchRead`` (and ``EncounterGameRead.map``), whose wire the native match cutover replaced.
-# Their values are pickled in a persistent Redis that outlives a deploy and cashews returns an unpickled value as it is,
-# without re-validating its nested models, so the cutover renamed the namespaces (``native_``) instead of relying on
-# the TTL: a pre-cutover entry sits under a name no reader asks for any more. ``cache_resources._encounters`` evicts
-# both through ``*encounters*:{tournament_id}:*``; ``tests/test_encounter_cache_namespaces.py`` pins that against the
-# keys cashews renders from these templates.
+# Both families embed ``MatchRead`` (and ``EncounterGameRead.map``). Their values are pickled in a persistent Redis
+# that outlives a deploy and cashews returns an unpickled value as it is, without re-validating its nested models,
+# so a wire change to those models needs a new namespace (``native_``), not a TTL wait. ``cache_resources._encounters``
+# evicts both through ``*encounters*:{tournament_id}:*``; ``tests/test_encounter_cache_namespaces.py`` pins that
+# against the keys cashews renders from these templates.
 _ENCOUNTER_QUERY_KEY = (
     "{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:"
     "{params.entities}:{params.only_count}:{params.query}:{params.fields}:{params.stage_id}:{params.stage_item_id}:"
@@ -67,8 +66,8 @@ def seat_to_read(seat: models.EncounterTeam, team: schemas.TeamRead | None = Non
 
 
 def _position_fields(position: models.BracketEncounter | None) -> dict[str, typing.Any]:
-    """The bracket coordinate, which moved to ``tournament.bracket_encounter``
-    (D22): an encounter with no position reads as round 0 and no stage."""
+    """The bracket coordinate from ``tournament.bracket_encounter``: an
+    encounter with no position reads as round 0 and no stage."""
     return {
         "round": 0 if position is None else position.round,
         "stage_id": None if position is None else position.stage_id,
@@ -140,28 +139,19 @@ class EncounterFlowsService:
         tournament_cache: dict[int, schemas.TournamentRead] | None = None,
         team_cache: dict[int, schemas.TeamRead] | None = None,
     ) -> schemas.EncounterRead:
-        """
-        Converts an Encounter model instance to a Pydantic schema (EncounterRead), including related entities.
+        """Serialize one encounter to ``EncounterRead`` with the requested ``entities``.
 
         Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            encounter (models.Encounter): The Encounter model instance to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["tournament", "teams"]).
             challonge_match_ids: Optional prefetched ``encounter_id -> challonge_match_id``
-                map DERIVED from ``challonge_match_mapping`` (see
-                ``shared.services.challonge_refs``). The KEPT ``challonge_id`` response
-                field (a bracket key for the frontend) is populated from it instead of
-                the deprecated ``encounter.challonge_id`` column; omitted → ``None``.
+                map derived from ``challonge_match_mapping`` (see
+                ``shared.services.challonge_refs``); it fills the ``challonge_id``
+                response field (a bracket key for the frontend); omitted → ``None``.
             tournament_challonge_refs: Optional prefetched ``tournament_id -> (challonge_id,
                 slug)`` map used the same way for the nested ``tournament``.
-
             slot_sources: Optional prefetched ``target encounter_id -> incoming
                 advancement edges`` map (see ``resolve_slot_sources``). Populates the
                 ``sources`` field a reader labels an unresolved bracket slot from;
                 omitted → empty, which reads as "the bracket's shape is unknown".
-
-        Returns:
-            schemas.EncounterRead: The Pydantic schema representing the encounter.
         """
         stage: schemas.StageSummaryRead | None = None
         stage_item: schemas.StageItemSummaryRead | None = None
@@ -170,15 +160,15 @@ class EncounterFlowsService:
         matches_read: list[schemas.MatchRead] = []
         games_read: list[schemas.EncounterGameRead] = []
 
-        # The bracket position and the two seated teams, both off the rows that
-        # replaced the dropped columns: one encounter read, one extra statement.
+        # The bracket position and the seated teams: one encounter read, one
+        # extra statement.
         position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         seats = _seats(encounter)
         if "stage" in entities and position is not None and position.stage_id is not None:
             row = await self.stage_repo.get(session, position.stage_id)
             if row is not None:
-                # Nested stage challonge is derived at the top-level tournament
-                # read, so the legacy ``stage`` columns are never read here.
+                # A nested stage's challonge ref is derived at the top-level
+                # tournament read, not here.
                 stage = schemas.StageSummaryRead.model_validate(row, from_attributes=True).model_copy(
                     update={"challonge_id": None, "challonge_slug": None}
                 )
@@ -213,16 +203,12 @@ class EncounterFlowsService:
                 if team_cache is not None and seat.team_id in team_cache:
                     team_read = team_cache[seat.team_id]
                 else:
-                    # The team's own nested entities (``tournament``, ``players``,
-                    # ``captain``) have to be eager-loaded here: a bare ``get``
-                    # would leave ``to_pydantic`` touching unloaded relationships,
-                    # which is implicit IO and ``MissingGreenlet`` under async
-                    # SQLAlchemy. ``populate_existing`` is what makes the options
-                    # actually apply: ``session.get`` returns an identity-mapped row
-                    # exactly as it was FIRST loaded and silently ignores them, so a
-                    # read that reached the same team through a shallower path
-                    # earlier through a native match read would otherwise hand
-                    # this loop a bare instance.
+                    # The team's nested entities (``tournament``, ``players``,
+                    # ``captain``) are eager-loaded here, or ``to_pydantic`` touches
+                    # unloaded relationships (``MissingGreenlet``). ``populate_existing``
+                    # makes the options apply: ``session.get`` otherwise returns the
+                    # identity-mapped row as it was FIRST loaded (e.g. bare, via a
+                    # native match read) and ignores them.
                     source = await self.team_repo.get(
                         session,
                         seat.team_id,
@@ -286,9 +272,8 @@ class EncounterFlowsService:
             ]
 
         encounter_dict = encounter.to_dict()
-        # ``challonge_id`` (a bracket key) is DERIVED from challonge_match_mapping, not
-        # read from the deprecated ``encounter.challonge_id`` column. Always set it so
-        # the value survives the column being dropped; ``None`` when not prefetched.
+        # ``challonge_id`` (a bracket key) is derived from challonge_match_mapping;
+        # ``None`` when not prefetched.
         encounter_dict["challonge_id"] = (
             challonge_match_ids.get(encounter.id) if challonge_match_ids is not None else None
         )
@@ -380,20 +365,7 @@ class EncounterFlowsService:
     async def get_encounter(
         self, session: AsyncSession, encounter_id: int, entities: list[str]
     ) -> schemas.EncounterRead:
-        """
-        Retrieves an encounter by its ID and converts it to a Pydantic schema.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            encounter_id (int): The ID of the encounter to retrieve.
-            entities (list[str]): A list of related entities to include (e.g., ["tournament", "teams"]).
-
-        Returns:
-            schemas.EncounterRead: The Pydantic schema representing the encounter.
-
-        Raises:
-            errors.ApiHTTPException: If the encounter is not found.
-        """
+        """One encounter as ``EncounterRead`` with ``entities``; 404 when it does not exist."""
         encounter = await self.encounters.get_encounter(session, encounter_id, entities)
         if not encounter:
             raise errors.ApiHTTPException(
@@ -423,17 +395,7 @@ class EncounterFlowsService:
         workspace_id: int | None = None,
         viewer_auth_user_id: int | None = None,
     ) -> pagination.Paginated[schemas.EncounterRead]:
-        """
-        Retrieves a paginated list of encounters and converts them to Pydantic schemas.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            params (schemas.EncounterSearchParams): Search, pagination, and sorting parameters.
-            workspace_id (int | None): Optional workspace ID to filter encounters.
-
-        Returns:
-            pagination.Paginated[schemas.EncounterRead]: A paginated list of Pydantic schemas representing the encounters.
-        """
+        """One page of encounters matching ``params``, serialized."""
         encounters, total = await self.encounters.get_all_encounters(
             session,
             params,
@@ -514,9 +476,8 @@ class EncounterFlowsService:
         prefix="fastapi:",
         # NB: no ``lock=True`` — cashews builds the herd-lock key WITHOUT the
         # ``prefix``, and this codebase routes backends purely by key prefix (no
-        # default backend), so the lock raises NotConfiguredError (same bug class
-        # as lesson_cashews_prefixless_delete_match). TTL rollover herds are
-        # mitigated by the FILTER-consolidated aggregate query instead.
+        # default backend), so the lock raises NotConfiguredError. TTL rollover
+        # herds are mitigated by the FILTER-consolidated aggregate query instead.
     )
     async def get_encounters_overview(
         self,
@@ -648,17 +609,7 @@ class EncounterFlowsService:
     async def get_all_matches(
         self, session: AsyncSession, params: schemas.MatchSearchParams, workspace_id: int | None = None
     ) -> pagination.Paginated[schemas.MatchRead]:
-        """
-        Retrieves a paginated list of matches and converts them to Pydantic schemas.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            params (schemas.MatchSearchParams): Search, pagination, and sorting parameters.
-            workspace_id (int | None): Optional workspace ID to filter matches by workspace.
-
-        Returns:
-            pagination.Paginated[schemas.MatchRead]: A paginated list of Pydantic schemas representing the matches.
-        """
+        """One page of matches matching ``params``, serialized."""
         matches, total = await self.encounters.get_all_matches(session, params, workspace_id=workspace_id)
         team_cache: dict[int, schemas.TeamRead] = {}
         tournament_cache: dict[int, schemas.TournamentRead] = {}
@@ -685,20 +636,7 @@ class EncounterFlowsService:
         entities: list[str],
         workspace_id: int | None = None,
     ) -> schemas.MatchRead:
-        """
-        Retrieves a match by its ID and converts it to a Pydantic schema.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            match_id (int): The ID of the match to retrieve.
-            entities (list[str]): A list of related entities to include (e.g., ["map", "encounter"]).
-
-        Returns:
-            schemas.MatchRead: The Pydantic schema representing the match.
-
-        Raises:
-            errors.ApiHTTPException: If the match is not found.
-        """
+        """One match as ``MatchRead`` with ``entities``; 404 when it is not readable."""
         match = await self._get_context(session, match_id, entities, workspace_id)
         return await self.to_pydantic_match(session, match, entities)
 
@@ -706,7 +644,7 @@ class EncounterFlowsService:
         ttl=config.settings.match_cache_ttl,
         # No tournament_id in the args, so this key can't participate in the
         # targeted invalidation patterns — staleness is bounded by the short TTL.
-        # ``native_`` names the participant/fact document: a pre-cutover entry under the old key never matches it.
+        # ``native_`` namespaces the participant/fact document shape: a cached value of another shape is never read.
         key="native_match_stats:{match_id}:{entities}:{workspace_id}",
         prefix="fastapi:",
     )
@@ -717,20 +655,7 @@ class EncounterFlowsService:
         entities: list[str],
         workspace_id: int | None = None,
     ) -> schemas.MatchReadWithStats:
-        """
-        Retrieves a match by its ID with its native statistics document.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            match_id (int): The ID of the match to retrieve.
-            entities (list[str]): A list of related entities to include (e.g., ["map", "map.parent"]).
-
-        Returns:
-            schemas.MatchReadWithStats: The header, participants and every member, segment and fact.
-
-        Raises:
-            errors.ApiHTTPException: If the match is not found.
-        """
+        """One match with its native statistics document (participants, members, segments, facts); 404 when absent."""
         match = await self._get_context(session, match_id, entities, workspace_id)
         return schemas.MatchReadWithStats(
             **await self._match_fields(session, match, entities),

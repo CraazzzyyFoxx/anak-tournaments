@@ -133,7 +133,7 @@ def test_same_value_patch_not_blocked_by_active_draft() -> None:
 
 from types import SimpleNamespace  # noqa: E402
 
-from shared.services.draft_guards import assert_no_active_draft_session  # noqa: E402
+from src.services.draft_guards import assert_no_active_draft_session  # noqa: E402
 
 
 class _FakeResult:

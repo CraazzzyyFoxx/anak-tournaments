@@ -1,29 +1,17 @@
 """Resolve whether registrants' Overwatch profiles are public, and why not.
 
-Reads the collected `overwatch_rank.battle_tag_state` (populated by the parser)
-and produces a per-registration :class:`ProfileSignal` for the "All Profiles
-Open" admission requirement. Lives in `shared` because both tournament-service
-(public reads) and balancer-service (admin reads) need it.
+Reads the collected `overwatch_rank.battle_tag_state` in one batch and produces a
+per-registration :class:`ProfileSignal` for the "All Profiles Open" requirement:
+the tri-state (`True` public / `False` confirmed closed / `None` unknown) plus the
+reasons behind anything that is not `True`.
 
-Returns `dict[int, ProfileSignal]`: the tri-state verdict this function has
-always answered (`True` public / `False` confirmed closed / `None` unknown)
-**plus** the reasons behind anything that is not a `True`.
-
-The reason is produced here rather than reconstructed by a caller because it
-only exists here. Seven `RankCollectionStatus` values plus "the registration
-carries no BattleTag at all" collapse into three verdicts, and once the loop
-below has answered `None` a caller holding that `None` can no longer tell an
-unpolled tag from a rate-limited fetch from an organizer who switched collection
-off -- three situations with three different people to chase. Under
-`scope="all"` it is worse: a registrant may carry three tags with exactly one
-closed, and the `False` names none of them. Reconstructing any of that would
-mean a second `battle_tag_state` read on the caller's side, per registration,
-which is the fan-out this function's batching exists to prevent.
+Reasons are produced here because only this loop still knows which tag and which
+`RankCollectionStatus` produced a `None` or `False`; a caller would need a second
+per-registration `battle_tag_state` read to reconstruct them.
 
 `private` and `not_found` are the only BLOCKING statuses. Everything else is an
-unfinished or failed collection and stays `None`, which fails open: refusing a
-player because nobody has polled their tag yet would turn a stalled parser into
-a mass refusal mid-check-in.
+unfinished or failed collection and stays `None`, which fails open: a stalled
+parser must not become a mass refusal mid-check-in.
 """
 
 from __future__ import annotations
@@ -37,9 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums
 from shared.core.social import SocialProvider
-from shared.services.admission.reasons import reason
-from shared.services.admission.signals import ProfileSignal
-from shared.services.admission.types import AdmissionReason
+from src.services.admission.reasons import reason
+from src.services.admission.signals import ProfileSignal
+from src.services.admission.types import AdmissionReason
 
 # A tag whose last fetch landed here counts as a *closed* profile.
 _CLOSED_STATUSES = frozenset(
@@ -49,11 +37,9 @@ _CLOSED_STATUSES = frozenset(
     }
 )
 
-#: Status -> reason code. ``ok`` is deliberately absent (a public profile has
-#: nothing to explain), and so is any status the enum grows later: ``.get``
-#: then yields ``None``, which :func:`reason` turns into the ``"unknown"`` code
-#: owned by ``system``. A status this map has not learned yet must read as an
-#: unexplained collection, never as a closed profile.
+#: Status -> reason code. ``ok`` is absent (nothing to explain); an unmapped status
+#: yields ``None``, which :func:`reason` turns into ``"unknown"`` (owned by
+#: ``system``), never a closed profile.
 _REASON_BY_STATUS: Final[dict[str | None, str]] = {
     # No row at all: nobody has polled this tag yet.
     None: "never_fetched",
@@ -91,7 +77,7 @@ async def resolve_profiles_open(
 ) -> dict[int, ProfileSignal]:
     """Map ``registration.id`` → :class:`ProfileSignal`.
 
-    ``is_open`` keeps the precedence it has always had:
+    ``is_open`` precedence:
 
     - ``False`` — at least one relevant tag is private/not_found (closed wins),
       carrying one reason per CLOSED tag.

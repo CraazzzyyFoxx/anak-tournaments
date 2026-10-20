@@ -62,9 +62,9 @@ class TournamentScheduleService:
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
         await session.commit()
 
-        # Fresh read (pattern of admin transition_status); populate_existing forces
-        # the eager ``phase_schedule`` relationship past the identity-map hit
-        # (expire_on_commit=False) so it reflects the new rows.
+        # Fresh read: populate_existing forces the eager ``phase_schedule``
+        # relationship past the identity-map hit (expire_on_commit=False) so it
+        # reflects the new rows.
         refreshed = await self.tournament_repo.get(
             session, tournament_id, options=_TOURNAMENT_LOAD, populate_existing=True
         )

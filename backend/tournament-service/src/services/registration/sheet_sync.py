@@ -254,10 +254,9 @@ class SheetSyncService:
         a catalog that offers a target the validator rejects, or a validator
         that accepts one the sync ignores, is worse than either rule alone.
 
-        A tournament with no form (or no version yet) falls back to
-        the discipline's default schema, matching ``lifecycle._validated_answers`` — before
-        the schema existed the sheet wrote its columns unconditionally, and
-        dropping every battle tag on such a tournament is not a fix.
+        A tournament with no form (or no version yet) falls back to the
+        discipline's default schema, as ``lifecycle._validated_answers`` does, so
+        its sheet still lands every battle tag.
         """
         schema = schema_from_form(await self.common.get_registration_form(session, tournament_id))
         if schema is not None:
@@ -507,7 +506,7 @@ class SheetSyncService:
             "create_count": create_count,
             "update_count": update_count,
             "skip_count": skip_count,
-            # Back-compat single-row fields (populated from the first row).
+            # The first preview row's fields, for single-row consumers.
             "sample_raw_row": first.get("sample_raw_row", {}),
             "parsed_fields": first.get("parsed_fields", {}),
         }
@@ -618,7 +617,7 @@ class SheetSyncService:
         # row itself for ``current_version_id``.
         provider = identity_provider(tournament.discipline)
         schema = schema_from_form(form) or default_schema(provider)
-        # The sheet sync is the one role-write path that never read the form. In a
+        # The sheet sync is the one role-write path that does not go through the form. In a
         # non-optional flex mode a sheet row must land with the same role set as any
         # other, so the mode is resolved once per sync rather than per row.
         mode = flex_role_mode_from_schema(schema)
@@ -685,11 +684,9 @@ class SheetSyncService:
             )
             bindings_by_key = {binding.source_record_key: binding for binding in existing_bindings}
 
-            # Bulk prefetches for the per-row loop (this sync runs every 5 minutes
-            # per tournament; per-row lookups used to cost 2-4 queries even for
-            # unchanged rows):
-            # 1. Active registrations keyed by normalized primary game handle —
-            #    replaces the per-new-row reuse query.
+            # Bulk prefetches for the per-row loop, which runs every 5 minutes per
+            # tournament, so per-row lookups would cost queries even for unchanged rows:
+            # 1. Active registrations keyed by normalized primary game handle.
             reuse_rows = await session.execute(
                 self.registration_repo.select()
                 .where(
@@ -807,15 +804,11 @@ class SheetSyncService:
                         registration.status = "approved"
                     updated += 1
 
-                # Resolve/provision the domain player so sheet-imported registrations
-                # are anchored on a workspace_member (mirrors create_registration).
-                # Without this, OW-rank lookup — which resolves the player via
-                # workspace_member.player_id — finds nothing and the balancer
-                # rank-delta UI stays empty. Idempotent: respects an already-anchored
-                # workspace_member_id, so re-syncs and already-linked rows are
-                # untouched. known_handles makes the call a zero-query no-op for rows
-                # whose identity is already fully provisioned (the common case on the
-                # 5-minute re-sync of an unchanged sheet).
+                # Anchor sheet-imported registrations on a workspace_member: OW-rank
+                # lookup resolves the player via workspace_member.player_id, so an
+                # unanchored row leaves the balancer rank-delta UI empty. Idempotent
+                # for already-anchored rows; known_handles makes it a zero-query no-op
+                # for rows whose identity is already fully provisioned.
                 await registration_service.ensure_player_identity(
                     session,
                     registration,
@@ -923,7 +916,7 @@ async def sync_due_google_sheet_feeds(
 
     Function-shaped on purpose — it takes a *session factory*, not a session, and
     owns one unit of work per feed, so it is the caller of the service rather than
-    a method on it (plan §2.1 rule 3).
+    a method on it.
     """
     async with session_factory() as session:
         feeds = await sheet_sync_service._list_auto_sync_feeds(session)

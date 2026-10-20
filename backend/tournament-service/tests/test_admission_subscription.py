@@ -29,7 +29,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from shared.services.admission import (  # noqa: E402
+from shared.services.subscriptions import Outcome, SubscriptionVerdict  # noqa: E402
+from src.services.admission import (  # noqa: E402
     AdmissionConfig,
     AdmissionSignals,
     AdmissionStage,
@@ -37,13 +38,12 @@ from shared.services.admission import (  # noqa: E402
     RequirementState,
     SubscriptionSignal,
 )
-from shared.services.admission.requirements.subscription import (  # noqa: E402
+from src.services.admission.requirements.subscription import (  # noqa: E402
     KEY,
     build_subscription_signal,
     eval_subscription,
     serialize_verdicts,
 )
-from shared.services.subscriptions import Outcome, SubscriptionVerdict  # noqa: E402
 
 #: The exact public key set of the per-provider projection.
 #:
