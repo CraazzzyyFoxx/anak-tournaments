@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import type { GameScope } from "@/lib/site/discipline-scope";
 import { navigation } from "@/test/url-navigation";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Encounter } from "@/types/encounter.types";
@@ -27,6 +28,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const mocks = vi.hoisted(() => ({
   getAll: vi.fn(),
   getOverview: vi.fn(),
+  getSavedViews: vi.fn(),
   lookup: vi.fn(),
   list: vi.fn()
 }));
@@ -34,7 +36,7 @@ const mocks = vi.hoisted(() => ({
 // `vi.mock` factories run before the file's static imports exist, hence the import inside.
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
 vi.mock("@/services/encounter.service", () => ({
-  default: { getAll: mocks.getAll, getOverview: mocks.getOverview, getSavedViews: vi.fn() }
+  default: { getAll: mocks.getAll, getOverview: mocks.getOverview, getSavedViews: mocks.getSavedViews }
 }));
 vi.mock("@/services/tournament.service", () => ({ default: { lookup: mocks.lookup } }));
 vi.mock("@/services/discipline.service", () => ({ default: { list: mocks.list } }));
@@ -163,6 +165,7 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (...args: ListArgs) => pageOf(args[7].discipline, args[0]));
   mocks.getOverview.mockReset().mockResolvedValue(EMPTY_OVERVIEW);
+  mocks.getSavedViews.mockReset().mockResolvedValue([]);
   mocks.lookup.mockReset().mockImplementation(async (_workspace: unknown, game: string) => TOURNAMENTS[game]);
   mocks.list.mockReset().mockResolvedValue(GAMES);
   document.body.innerHTML = "";
@@ -180,6 +183,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
+  useAuthProfileStore.setState({ status: "idle", user: undefined });
 });
 
 describe("the encounters index across games", () => {
@@ -342,5 +346,54 @@ describe("the encounters index across games", () => {
     expect(pushed.has("stage_id")).toBe(false);
     // Not game-bound: kept.
     expect(pushed.get("best_of")).toBe("3");
+  });
+
+  it("under every game no tournament/stage reaches a read or the URL: not the landing URL's, nor a saved view's", async () => {
+    // A signed-in viewer's saved view narrowed to one game's stage.
+    useAuthProfileStore.setState({ status: "authenticated", user: { username: "fan" } as never });
+    mocks.getSavedViews.mockResolvedValue([
+      { id: 7, workspace_id: 1, name: "Stage five", filters: { stage_id: 5, best_of: 5 }, sort_order: 0 }
+    ]);
+    const url = "/encounters?tournament_id=11&best_of=3";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(null, 1, { ...DEFAULT_FILTERS, tournament_id: 11, best_of: 3 });
+
+    expect(mocks.getAll).toHaveBeenCalledTimes(1);
+    expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null));
+    expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, best_of: 3 });
+    expect(mocks.getOverview).toHaveBeenCalledWith(
+      "",
+      expect.objectContaining({ discipline: null, tournament_id: null, best_of: 3 }),
+      "all",
+      { signal: expect.any(AbortSignal) }
+    );
+
+    const saved = [...container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Stage five");
+    await act(async () => saved?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await tick();
+
+    expect((mocks.getAll.mock.lastCall as ListArgs)[7]).toMatchObject({ discipline: null, stage_id: null, best_of: 5 });
+    expect(window.location.search).toBe("?best_of=5");
+  });
+
+  it("leaving an unknown requested game for every game drops its tournament/stage and starts on the first page", async () => {
+    const url = "/encounters?discipline=xx&page=2&tournament_id=11&stage_id=5&best_of=3";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(null, 2, { ...DEFAULT_FILTERS, tournament_id: 11, stage_id: 5, best_of: 3 });
+
+    const showAll = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === en.common.discipline.showAll
+    );
+    await act(async () => showAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await tick();
+
+    expect(navigation.pushes).toEqual(["/encounters?best_of=3"]);
+    expect(mocks.getAll).toHaveBeenCalledTimes(1);
+    expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null, 1));
+    expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null, best_of: 3 });
+    expect(window.location.search).toBe("?best_of=3");
+    expect(rows()).toEqual(["overwatch", "lol"]);
   });
 });

@@ -41,7 +41,7 @@ type EncountersClientProps = {
 };
 
 /** The URL params of one game's tournament/stage: a game picked in the scope pill drops them (ruling R5). */
-const GAME_SCOPED_PARAMS: readonly string[] = Object.keys(GAME_SCOPED_FILTERS);
+const GAME_SCOPED_PARAMS = Object.keys(GAME_SCOPED_FILTERS);
 
 /**
  * The encounters index (spec §5, multi): every game under "all games", one game under a game. Filter/URL state and
@@ -63,8 +63,10 @@ export default function EncountersClient({
   const { resolution } = gameScope;
   const discipline = gameScope.game;
   const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
-  // "all" or the game once resolved, `null` while resolving: a change of it drops the game-bound filters.
-  const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : null;
+  // The game the filters belong to — "all", the game, or an invalid request's code — `null` while resolving: a change
+  // of it (a recovery from an invalid request included) drops the game-bound filters and returns to the first page.
+  const invalidRequest = resolution?.game.kind === "invalid" ? resolution.game.requested : null;
+  const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : invalidRequest;
   const controls = useEncountersFilters(initialFilters, initialPage, gameKey);
   const { effectiveFilters, page } = controls;
   const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
@@ -89,7 +91,7 @@ export default function EncountersClient({
   const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, total);
 
   if (resolution?.game.kind === "invalid" || resolution?.game.kind === "empty") {
-    return <GameScopeControl scope={gameScope} variant="multi" />;
+    return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_SCOPED_PARAMS} />;
   }
   if (!ready) {
     return gameScope.isError ? (

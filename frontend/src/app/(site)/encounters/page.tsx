@@ -12,6 +12,7 @@ import {
   EMPTY_OVERVIEW,
   ENCOUNTERS_PAGE_SIZE,
   filtersToApiFilters,
+  GAME_SCOPED_FILTERS,
   normalizeEncounterFilters,
   type EncounterFilterState,
 } from "./_components/encounters.helpers";
@@ -128,11 +129,13 @@ export default async function EncountersPage({ searchParams }: Readonly<Encounte
     resolveServerPageGame("multi", raw.discipline),
   ]);
   const game = browsing.resolution?.game;
+  // Under every game one game's tournament/stage never narrows a read (spec §6.2), the URL's included.
+  const filters = game?.kind === "all" ? { ...params.filters, ...GAME_SCOPED_FILTERS } : params.filters;
 
   return (
     <EncountersContent
       page={params.page}
-      filters={params.filters}
+      filters={filters}
       scope={scope}
       initial={browsing.init}
       read={game?.kind === "all" || game?.kind === "game"}

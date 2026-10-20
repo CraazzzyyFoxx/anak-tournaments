@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useDebounce } from "use-debounce";
 
-import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
+import { ALL_DISCIPLINES, DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 
 import {
   DEFAULT_FILTERS,
@@ -16,7 +16,10 @@ import {
 export interface EncountersFilterControls {
   /** Raw (undebounced) filter state — what the controls are bound to. */
   filters: EncounterFilterState;
-  /** `filters` with the debounced search term folded in — what the queries read. */
+  /**
+   * `filters` with the debounced search term folded in and, under every game, no
+   * tournament/stage — what the queries read.
+   */
   effectiveFilters: EncounterFilterState;
   searchValue: string;
   page: number;
@@ -37,8 +40,10 @@ export interface EncountersFilterControls {
  * keystroke. The previous-value ref keeps the very first render (which already
  * matches the server-rendered URL) from writing a redundant entry. The game is the
  * scope's, not a filter: the mirror keeps an explicit `?discipline=` as it found it and
- * never adds one, and another game (`gameKey` — "all" or a code; `null` while resolving)
- * starts again from its first page without the old game's tournament/stage filters.
+ * never adds one, and another game (`gameKey` — "all", a code, or an invalid request's
+ * code; `null` while resolving) starts again from its first page without the old game's
+ * tournament/stage filters. Under every game those filters never take effect at all,
+ * whatever put them in the state (the URL, a saved view): nothing reads or mirrors them.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
@@ -61,8 +66,12 @@ export function useEncountersFilters(
   }
   const previousUrlRef = useRef({ page: initialPage, filters: initialFilters });
   const effectiveFilters = useMemo(
-    () => ({ ...filters, query: debouncedSearch }),
-    [debouncedSearch, filters]
+    () => ({
+      ...filters,
+      query: debouncedSearch,
+      ...(gameKey === ALL_DISCIPLINES ? GAME_SCOPED_FILTERS : null)
+    }),
+    [debouncedSearch, filters, gameKey]
   );
 
   useEffect(() => {
