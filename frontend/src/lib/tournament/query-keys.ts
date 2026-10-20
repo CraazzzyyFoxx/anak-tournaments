@@ -142,6 +142,8 @@ export const tournamentQueryKeys = {
   ) => ["pick-ban-rules", "preview", tournamentId, kind, mode, bestOf, ruleset, pool] as const,
   /** The public tournament list, and the bare prefix every admin write drops. */
   list: () => ["tournaments"] as const,
+  /** The admin list of one game, or of every game under `"all"`; under `list()`, so every admin write drops it. */
+  adminList: (discipline: KeyPart) => ["tournaments", "admin", discipline] as const,
   /** `discipline` is a concrete code, or `"all"` for the all-games directory view. */
   listPage: (
     workspaceId: KeyPart,

@@ -54,14 +54,17 @@ export default class tournamentService {
     }).then((res) => res.json());
   }
 
+  /** Every row at `per_page: -1`; `discipline` narrows to one installed game, absent lists every game's. */
   static async getAll(
     isLeague: boolean | null = null,
-    workspaceId?: number | "all" | null
+    workspaceId?: number | "all" | null,
+    discipline?: string | null
   ): Promise<PaginatedResponse<Tournament>> {
     return apiFetch(`/api/v1/tournaments`, {
       query: {
         is_league: isLeague,
         workspace_id: workspaceId,
+        discipline,
         page: 1,
         per_page: -1,
         sort: "id",

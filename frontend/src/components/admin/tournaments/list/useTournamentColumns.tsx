@@ -6,26 +6,32 @@ import type { ColumnDef } from "@tanstack/react-table";
 
 import { createKebabColumn } from "@/components/data-table";
 import { StatusPill } from "@/components/kit/StatusPill";
+import { GameLabel } from "@/components/workspace/GameLabel";
 import { TOURNAMENT_STATUS_TONE } from "@/app/admin/tournaments/[id]/components/tournamentWorkspace.helpers";
 import { formatDateRange } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatTournamentStages } from "@/lib/tournament/stages";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Tournament } from "@/types/tournament.types";
 
 /** The tournament row: what it is, whether it wants attention, when, and how it is staged. */
 export function useTournamentColumns({
   canCreate,
   canDelete,
-  onDelete
+  onDelete,
+  games
 }: Readonly<{
   /** `tournament.create`: the wizard a stage-less draft resumes in. */
   canCreate: boolean;
   canDelete: boolean;
   /** Stable identity required: the kebab closes over it. */
   onDelete: (tournament: Tournament) => void;
+  /** Installed games by code, passed only under "all games" of a multi-game area: adds the "Игра" column (§6.1). */
+  games?: Map<string, DisciplineDescriptor>;
 }>): ColumnDef<Tournament>[] {
   const t = useTranslations("adminTournaments.list");
   const tStatus = useTranslations("common.statusBadge");
+  const tDiscipline = useTranslations("common.discipline");
   const format = useFormatter();
   return useMemo<ColumnDef<Tournament>[]>(
     () => [
@@ -43,6 +49,17 @@ export function useTournamentColumns({
           </span>
         )
       },
+      ...(games
+        ? [
+            {
+              id: "discipline",
+              accessorKey: "discipline",
+              header: tDiscipline("column"),
+              enableSorting: false,
+              cell: ({ row }) => <GameLabel code={row.original.discipline} games={games} />
+            } satisfies ColumnDef<Tournament>
+          ]
+        : []),
       {
         accessorKey: "status",
         header: t("columns.status"),
@@ -110,6 +127,6 @@ export function useTournamentColumns({
         { rowLabel: (tournament) => tournament.name }
       )
     ],
-    [canCreate, canDelete, format, onDelete, t, tStatus]
+    [canCreate, canDelete, format, games, onDelete, t, tDiscipline, tStatus]
   );
 }
