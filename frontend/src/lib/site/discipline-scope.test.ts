@@ -40,6 +40,9 @@ describe("pageClassOf", () => {
         "/balancer/mix",
         "/encounters",
         "/achievements",
+        "/statistics",
+        "/workspace/community",
+        "/workspace/community/",
         "/admin/tournaments",
         "/admin/teams",
         "/admin/settings/divisions"
@@ -53,7 +56,7 @@ describe("pageClassOf", () => {
   });
 
   it("classifies the game-bound site pages as single until their cross-game reads land", () => {
-    expectClass(["/statistics", "/users", "/users/", "/users/some-player", "/workspace/community"], "single");
+    expectClass(["/users", "/users/", "/users/some-player"], "single");
   });
 
   it("classifies the game-bound admin pages as single until their cross-game reads land", () => {

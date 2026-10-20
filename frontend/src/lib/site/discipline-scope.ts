@@ -71,7 +71,6 @@ const PLATFORM_ROOTS: readonly string[] = [
 const SINGLE_PATHS: readonly string[] = [
   "/users/compare",
   "/users/heroes-compare",
-  "/statistics",
   "/users",
   "/admin/matches",
   "/admin/achievements",
@@ -79,7 +78,7 @@ const SINGLE_PATHS: readonly string[] = [
   "/admin/settings/registration-forms",
   "/admin/ranks"
 ];
-const SINGLE_PREFIXES: readonly string[] = ["/users/", "/workspace/"];
+const SINGLE_PREFIXES: readonly string[] = ["/users/"];
 /** Creation flows are not a class (spec §5): they carry their own game field. */
 const NONE_PATHS: readonly string[] = ["/admin/tournaments/new"];
 const MULTI_PATHS: readonly string[] = [
@@ -88,10 +87,12 @@ const MULTI_PATHS: readonly string[] = [
   "/balancer/mix",
   "/encounters",
   "/achievements",
+  "/statistics",
   "/admin/tournaments",
   "/admin/teams",
   "/admin/settings/divisions"
 ];
+const MULTI_PREFIXES: readonly string[] = ["/workspace/"];
 const OWNER_PATHS: readonly string[] = ["/balancer"];
 const OWNER_PREFIXES: readonly string[] = [
   "/tournaments/",
@@ -118,6 +119,7 @@ export function pageClassOf(pathname: string): PageClass {
   if (NONE_PATHS.includes(path)) return "none";
   if (MULTI_PATHS.includes(path)) return "multi";
   if (OWNER_PATHS.includes(path) || OWNER_PREFIXES.some((prefix) => path.startsWith(prefix))) return "owner";
+  if (MULTI_PREFIXES.some((prefix) => path.startsWith(prefix))) return "multi";
   if (SINGLE_PREFIXES.some((prefix) => path.startsWith(prefix))) return "single";
   return "none";
 }

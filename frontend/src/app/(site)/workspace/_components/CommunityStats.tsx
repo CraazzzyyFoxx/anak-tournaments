@@ -85,11 +85,15 @@ export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace
   );
 }
 
-/** Three readings of the community's whole history: turnout, and (of the browsed game) skill and characters. */
+/**
+ * Three readings of the community's whole history: turnout, and (of the block's game) skill and characters. Under
+ * "all games" the two game-bound columns carry their own game tabs (`tabs`, spec §6.4).
+ */
 export async function CommunityStats({
   workspace,
-  discipline
-}: Readonly<{ workspace: Workspace; discipline: string | null }>) {
+  discipline,
+  tabs = null
+}: Readonly<{ workspace: Workspace; discipline: string | null; tabs?: React.ReactNode }>) {
   const workspaceId = workspace.id;
   const t = await getTranslations("workspace");
 
@@ -114,6 +118,7 @@ export async function CommunityStats({
 
   return (
     <Shell workspace={workspace}>
+      {tabs ? <div className="mb-4">{tabs}</div> : null}
       <StatsGrid>
         <ActivityColumn history={history} />
         {discipline ? (

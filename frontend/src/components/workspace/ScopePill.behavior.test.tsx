@@ -306,11 +306,11 @@ describe("the site scope pill", () => {
     );
 
     it("keeps all games on an interim single page after a tab pick, which narrows only the page", async () => {
-      navigation.reset("/statistics");
+      navigation.reset("/users");
       await mount(page);
       await pick("League of Legends");
 
-      expect(navigation.pushes).toEqual(["/statistics?discipline=lol"]);
+      expect(navigation.pushes).toEqual(["/users?discipline=lol"]);
       expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
       expect(trigger()?.getAttribute("aria-label")).toBe("All communities · All games — change scope");
     });
