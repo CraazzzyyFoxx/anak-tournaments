@@ -127,11 +127,23 @@ describe("the rule catalog under the game scope", () => {
     expect(headers()).not.toContain("Game");
   });
 
-  it("names each rule's game in the phone card under all games", async () => {
+  it("names each rule and its game in the phone card under all games", async () => {
     Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
     await mount(null, true);
 
     const cards = Array.from(container.querySelectorAll("ul[aria-label='Rows'] > li")).map((card) => card.textContent ?? "");
-    expect(cards.find((text) => text.includes("rule-2"))).toContain("League of Legends");
+    const card = cards.find((text) => text.includes("rule-2"));
+    expect(card).toContain("Pentakill");
+    expect(card).toContain("League of Legends");
+  });
+
+  it("names each rule without a game in the phone card under one game", async () => {
+    getAchievementRules.mockResolvedValue({ results: [rule(2, "lol", "Pentakill")], total: 1, page: 1, per_page: 15 });
+    Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+    await mount("lol", false);
+
+    const card = container.querySelector("ul[aria-label='Rows'] > li")?.textContent ?? "";
+    expect(card).toContain("Pentakill");
+    expect(card).not.toContain("League of Legends");
   });
 });

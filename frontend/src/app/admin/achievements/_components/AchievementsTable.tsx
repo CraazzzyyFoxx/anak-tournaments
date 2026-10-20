@@ -9,7 +9,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
-import { gameColumn } from "@/components/workspace/game-column";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import type { AchievementRule } from "@/types/admin.types";
 
 import { countLeafConditions } from "../achievement-form.model";
@@ -114,9 +114,9 @@ export function AchievementsTable({
     ),
   ];
 
-  // Right after enabled: the game is among the first three columns, so the phone card (the first three) shows it too.
+  // After enabled, slug and name: the game names the rule before its category.
   const columns = showGame
-    ? [base[0], gameColumn<AchievementRule>(tGame("column"), (rule) => rule.discipline), ...base.slice(1)]
+    ? [...base.slice(0, 3), gameColumn<AchievementRule>(tGame("column"), (rule) => rule.discipline), ...base.slice(3)]
     : base;
 
   return (
@@ -136,6 +136,20 @@ export function AchievementsTable({
       searchPlaceholder={t("list.search")}
       emptyMessage={t("list.empty")}
       onRowClick={(row) => actions.onOpen(row.original)}
+      // The first three columns (enabled, slug, name) leave no room for the game; the card names the rule, its game
+      // under "all games", its slug, and only the exceptional state.
+      renderMobileCard={(row) => (
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p className="truncate text-sm font-medium">{row.original.name}</p>
+          {showGame ? (
+            <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
+          ) : null}
+          <p className="truncate font-mono text-xs text-muted-foreground">{row.original.slug}</p>
+          {row.original.enabled ? null : (
+            <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />
+          )}
+        </div>
+      )}
     />
   );
 }
