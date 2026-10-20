@@ -25,6 +25,7 @@ __all__ = (
     "UserDraftCardRole",
     "UserDraftCardTournament",
     "UserRole",
+    "UserGameSummary",
     "UserTournamentWithStats",
     "UserTournament",
     "UserTournamentSummary",
@@ -93,6 +94,15 @@ class UserRole(BaseModel):
     division_grid_version: DivisionGridVersionRead | None = None
 
 
+class UserGameSummary(BaseModel):
+    """One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it."""
+
+    discipline: str
+    roles: list[UserRole]
+    tournaments_count: int
+    tournaments_won: int
+
+
 class UserTournamentSummary(BaseModel):
     """Tournament card shown in user profile / achievement filter lists.
 
@@ -102,6 +112,8 @@ class UserTournamentSummary(BaseModel):
 
     id: int
     name: str
+    #: The tournament's game: a cross-game profile tags every card with it.
+    discipline: str
     is_league: bool
     is_finished: bool = False
     status: enums.TournamentStatus | None = None
@@ -400,6 +412,8 @@ class UserProfile(BaseModel):
 
     roles: list[UserRole]
     tournaments: list[UserTournamentSummary]
+    #: Without a game: one summary per game played, most tournaments first (ties: installed order). Empty with one.
+    games: list[UserGameSummary] = Field(default_factory=list)
     character_statistics: list[schemas.CharacterPlaytime]
 
 

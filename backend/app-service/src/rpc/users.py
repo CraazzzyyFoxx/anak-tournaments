@@ -186,9 +186,11 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.get_profile")
     async def _get_profile(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
-            return await stats.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
+            discipline = c.optional_discipline(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
+            return await UserService.of(discipline).get_profile(
+                session, c.require_id(data), workspace_id=ws.id, grid=ws.grid
+            )
 
         return await c.envelope(logger, "users.get_profile", op, session_factory=_SF)
 

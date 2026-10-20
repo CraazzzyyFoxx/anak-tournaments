@@ -70,10 +70,10 @@ export default class userService {
       next: { revalidate: USER_TTL_SECONDS, tags: ["users"] }
     }).then((res) => res.json());
   }
-  /** Every stats read below names its game: `discipline` is required by the server and never defaulted. */
-  static async getUserProfile(id: number, discipline: string, scope?: StatsScope): Promise<UserProfile> {
+  /** A player's profile in one game, or across every game (`discipline: null`, spec §6.6). */
+  static async getUserProfile(id: number, discipline: string | null, scope?: StatsScope): Promise<UserProfile> {
     return apiFetch(`/api/v1/users/${id}/profile`, {
-      query: { ...scopeQuery(scope), discipline },
+      query: { ...scopeQuery(scope), discipline: discipline ?? undefined },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }

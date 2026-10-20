@@ -7,6 +7,7 @@ from statistics import mean
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core.errors import BaseAPIException
 from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid
 from shared.schemas.role import RoleRef
@@ -27,7 +28,7 @@ from shared.services.division_grid.resolution import (
 from src import models, schemas
 from src.core import config, enums, errors, pagination
 from src.core.db import async_session_maker
-from src.core.workspace import get_division_grid_version
+from src.core.workspace import get_division_grid, get_division_grid_version
 from src.services.discipline_queries import DisciplineQueries
 from src.services.hero.service import heroes as hero_service
 from src.services.statistics.queries import StatisticsQueries
@@ -1124,7 +1125,7 @@ class UserService(DisciplineQueries):
     # changes are rare; a TournamentChangedEvent invalidates all user_* keys.
     @cache(
         ttl=config.settings.user_profile_cache_ttl,
-        key="backend:user_profile:{id}:{self.discipline}:{workspace_id}:native",
+        key="backend:user_profile:{id}:{self._discipline}:{workspace_id}:native",
     )
     async def get_profile(
         self,
@@ -1132,47 +1133,32 @@ class UserService(DisciplineQueries):
         id: int,
         workspace_id: int | None = None,
         *,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         normalizer: DivisionGridNormalizer | None = None,
     ) -> schemas.UserProfile:
-        """A user's profile: overall statistics, roles and tournament history."""
+        """A user's profile: overall statistics, roles and tournament history.
+
+        Bound to a game it is that game's profile. Unbound (spec §8.2) the header spans every game, the game-bound
+        parts (roles, characters) stay empty and ``games`` carries one summary per game played.
+        """
         user = await self.get(session, id, [])
         matches = await self.profile.get_overall_statistics(session, user.id, workspace_id=workspace_id)
         matches_won, matches_lose, avg_closeness = 0, 0, 0
         if matches:
             matches_won, matches_lose, avg_closeness = matches
-        if workspace_id is not None and normalizer is None:
-            try:
-                normalizer = await build_workspace_division_grid_normalizer(
-                    session,
-                    workspace_id,
-                    require_complete=False,
-                    discipline=self.discipline,
-                )
-            except DivisionGridNormalizationError:
-                normalizer = None
 
-        current_grid_version_model = await get_division_grid_version(session, workspace_id, discipline=self.discipline)
-        current_grid_version = (
-            schemas.DivisionGridVersionRead.model_validate(current_grid_version_model, from_attributes=True)
-            if current_grid_version_model is not None
-            else None
-        )
-
-        roles = await self.get_roles(
-            session,
-            user.id,
-            workspace_id=workspace_id,
-            grid=grid,
-            normalizer=normalizer,
-            division_grid_version=current_grid_version,
-        )
-        hero_statistics = await hero_service.get_playtime(
-            session,
-            schemas.CharacterPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
-            discipline=self.discipline,
-            workspace_id=workspace_id,
-        )
+        roles: list[schemas.UserRole] = []
+        hero_statistics = None
+        if self._discipline is not None:
+            roles = await self._roles_on_game_grid(
+                session, user.id, workspace_id=workspace_id, grid=grid, normalizer=normalizer
+            )
+            hero_statistics = await hero_service.get_playtime(
+                session,
+                schemas.CharacterPlaytimePaginationParams(user_id=user.id, sort="playtime", order="desc"),
+                discipline=self.discipline,
+                workspace_id=workspace_id,
+            )
 
         teams, _ = await self.profile.get_teams(
             session,
@@ -1224,6 +1210,11 @@ class UserService(DisciplineQueries):
                 else:
                     placements_group.append(standing.position)
 
+        games = (
+            await self._game_summaries(session, user.id, teams, workspace_id=workspace_id)
+            if self._discipline is None
+            else []
+        )
         return schemas.UserProfile(
             tournaments_count=tournaments_count,
             tournaments_won=tournaments_won,
@@ -1233,12 +1224,95 @@ class UserService(DisciplineQueries):
             avg_playoff_placement=(round(mean(placements_playoff), 2) if placements_playoff else None),
             avg_group_placement=(round(mean(placements_group), 2) if placements_group else None),
             avg_closeness=round(avg_closeness, 2) if avg_closeness else 0,
-            most_played_character=(hero_statistics.results[0].entity if hero_statistics.results else None),
-            characters_count=hero_statistics.total,
+            most_played_character=(
+                hero_statistics.results[0].entity if hero_statistics is not None and hero_statistics.results else None
+            ),
+            characters_count=hero_statistics.total if hero_statistics is not None else 0,
             roles=roles,
-            character_statistics=hero_statistics.results,
+            character_statistics=hero_statistics.results if hero_statistics is not None else [],
             tournaments=sorted(tournaments, key=lambda x: x.id, reverse=True),
+            games=games,
         )
+
+    async def _roles_on_game_grid(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        *,
+        workspace_id: int | None,
+        grid: DivisionGrid,
+        normalizer: DivisionGridNormalizer | None,
+    ) -> list[schemas.UserRole]:
+        """This game's per-role record, divisions normalized onto the viewed workspace's grid of the game."""
+        if workspace_id is not None and normalizer is None:
+            try:
+                normalizer = await build_workspace_division_grid_normalizer(
+                    session,
+                    workspace_id,
+                    require_complete=False,
+                    discipline=self.discipline,
+                )
+            except DivisionGridNormalizationError:
+                normalizer = None
+        current_grid_version_model = await get_division_grid_version(session, workspace_id, discipline=self.discipline)
+        current_grid_version = (
+            schemas.DivisionGridVersionRead.model_validate(current_grid_version_model, from_attributes=True)
+            if current_grid_version_model is not None
+            else None
+        )
+        return await self.get_roles(
+            session,
+            user_id,
+            workspace_id=workspace_id,
+            grid=grid,
+            normalizer=normalizer,
+            division_grid_version=current_grid_version,
+        )
+
+    async def _game_summaries(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        teams: typing.Sequence[models.Team],
+        *,
+        workspace_id: int | None,
+    ) -> list[schemas.UserGameSummary]:
+        """One summary per game played (spec §6.6): most tournaments first, ties in installed order.
+
+        Each game's roles sit on that game's grid. A game the viewed workspace has no grid for
+        (``division_grid_required``) still gets its card, without roles.
+        """
+        tallies: dict[str, list[int]] = {}
+        for team in teams:
+            tally = tallies.setdefault(team.tournament.discipline, [0, 0])
+            if team.tournament.is_league:
+                continue
+            tally[0] += 1
+            if _mappers.resolve_team_placement(team) == 1:
+                tally[1] += 1
+        installed = {code: index for index, code in enumerate(DISCIPLINES)}
+        ordered = sorted(tallies, key=lambda code: (-tallies[code][0], installed.get(code, len(installed))))
+
+        summaries: list[schemas.UserGameSummary] = []
+        for code in ordered:
+            try:
+                game_grid = await get_division_grid(session, workspace_id, discipline=code)
+                roles = await UserService.of(code)._roles_on_game_grid(
+                    session, user_id, workspace_id=workspace_id, grid=game_grid, normalizer=None
+                )
+            except BaseAPIException as exc:
+                if "division_grid_required" not in str(exc.detail):
+                    raise
+                roles = []
+            summaries.append(
+                schemas.UserGameSummary(
+                    discipline=code,
+                    roles=roles,
+                    tournaments_count=tallies[code][0],
+                    tournaments_won=tallies[code][1],
+                )
+            )
+        return summaries
 
     @cache(
         ttl=config.settings.users_cache_ttl,

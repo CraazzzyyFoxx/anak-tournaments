@@ -301,3 +301,52 @@ class UserReadsOneGameTest(IsolatedAsyncioTestCase):
         self.assertEqual(
             (stats.role_counts, stats.division_counts, stats.flex_count, stats.flex_declared_count), ({}, [], 0, 0)
         )
+
+    async def test_profile_without_a_game_summarises_each_game_played(self) -> None:
+        await self._tournament(LOL, "l3", [("a",)], ("c",), (1, 0))
+        await self._tournament(LOL, "l4", [("b",)], ("c",), (0, 2))
+        unbound = UserService.of(None)
+
+        profile_a = await unbound.get_profile(
+            self.session, self.users["a"].id, workspace_id=self.ws.id, grid=DEFAULT_GRID
+        )
+        # a: T1, T2 (Overwatch) and L1, L3 (League) -- a tie, which the installed order breaks.
+        self.assertEqual([(game.discipline, game.tournaments_count) for game in profile_a.games], [(OW, 2), (LOL, 2)])
+        # The header spans both games: four tournaments; Overwatch 5-1, L1 0-2, L3 1-0.
+        self.assertEqual(profile_a.tournaments_count, 4)
+        self.assertEqual((profile_a.maps_won, profile_a.maps_total), (6, 9))
+        self.assertEqual({tournament.discipline for tournament in profile_a.tournaments}, {OW, LOL})
+        # Roles and characters are one game's: none in the cross-game header.
+        self.assertEqual((profile_a.roles, profile_a.character_statistics), ([], []))
+        self.assertIsNone(profile_a.most_played_character)
+        self.assertEqual(profile_a.characters_count, 0)
+
+        profile_c = await unbound.get_profile(
+            self.session, self.users["c"].id, workspace_id=self.ws.id, grid=DEFAULT_GRID
+        )
+        # c: League L1, L3, L4 outnumber Overwatch T1, T2 (L2 had no encounter: not a played event).
+        self.assertEqual([(game.discipline, game.tournaments_count) for game in profile_c.games], [(LOL, 3), (OW, 2)])
+
+    async def test_profile_without_a_game_needs_no_grid_even_when_the_first_game_has_none(self) -> None:
+        from src.core.workspace import resolve_workspace_context
+
+        # League first and without a division grid here: the cross-game profile never asks for one (R13).
+        self.ws.disciplines_enabled = [LOL, OW]
+        await self.session.flush()
+        ctx = await resolve_workspace_context(self.session, self.ws.id, discipline=None)
+        self.assertIsNone(ctx.grid)
+
+        profile = await UserService.of(None).get_profile(
+            self.session, self.users["a"].id, workspace_id=ctx.id, grid=ctx.grid
+        )
+        # a: T1, T2 (Overwatch) and L1 (League); League's card has no roles without its grid.
+        self.assertEqual(profile.tournaments_count, 3)
+        self.assertEqual([(game.discipline, game.tournaments_count) for game in profile.games], [(OW, 2), (LOL, 1)])
+
+    async def test_profile_in_one_game_has_no_game_list_and_tags_its_tournaments(self) -> None:
+        profile = await UserService.of(OW).get_profile(
+            self.session, self.users["c"].id, workspace_id=self.ws.id, grid=DEFAULT_GRID
+        )
+
+        self.assertEqual(profile.games, [])
+        self.assertEqual([tournament.discipline for tournament in profile.tournaments], [OW, OW])

@@ -86,7 +86,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.get_profile": {
         "summary": "User profile",
-        "description": "Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.",
+        "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.",
     },
     "rpc.app.users.draft_card": {
         "summary": "User draft card",

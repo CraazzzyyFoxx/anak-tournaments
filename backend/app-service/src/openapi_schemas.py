@@ -92,7 +92,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.app.statistics.tournament_readiness": Op(response=schemas.TournamentReadiness),
     # ── users (bespoke reads) ──────────────────────────────────────────────
-    "rpc.app.users.get_profile": Op(response=schemas.UserProfile, query_params=(_DISCIPLINE, _WS)),
+    "rpc.app.users.get_profile": Op(response=schemas.UserProfile, query_params=(_OPTIONAL_DISCIPLINE, _WS)),
     "rpc.app.users.draft_card": Op(response=schemas.UserDraftCard, query_params=(_DISCIPLINE, _WS)),
     "rpc.app.users.search": Op(
         response=schemas.UserSearch,

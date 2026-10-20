@@ -81,6 +81,7 @@ def to_user_tournament_summary(
     return schemas.UserTournamentSummary(
         id=tournament.id,
         name=tournament.name,
+        discipline=tournament.discipline,
         is_league=tournament.is_league,
         is_finished=tournament.is_finished,
         status=tournament.status,
