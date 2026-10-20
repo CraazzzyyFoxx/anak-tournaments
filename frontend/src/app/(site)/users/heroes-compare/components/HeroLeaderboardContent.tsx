@@ -16,13 +16,19 @@ import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntit
 import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import ProfileWidget from "@/components/profile/ProfileWidget";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useGameScope } from "@/hooks/useGameScope";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /** The URL params the page itself owns; everything else (a module's board state) is the board's. */
 const PAGE_PARAMS = ["discipline", "hero_id", "tournament_id"];
+/**
+ * The URL ids of one game (the page's own params but the game): a tab or a pill pick of another game
+ * leaves them behind (spec §4.4, R5).
+ */
+const HERO_GAME_PARAMS = PAGE_PARAMS.filter((param) => param !== "discipline");
 
 /**
  * Character comparison: the host resolves the browsed game, checks the picked character against that game's
@@ -52,8 +58,9 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     router.replace(`${pathname}?${params.toString()}`);
   };
 
-  const browsing = useBrowsingDiscipline({ allowsAll: false });
-  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const gameScope = useGameScope({ pageClass: "single" });
+  useGameBoundParams(HERO_GAME_PARAMS);
+  const discipline = gameScope.game;
   const heroesQuery = useCatalogEntities(discipline, "character");
   // The id comes from the URL: it must belong to this game's catalog before its statistics are requested (§3.4).
   const heroSelection = useCatalogSelection(discipline, "character", heroId);
@@ -67,7 +74,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { axis } = browsing;
+  const { axis } = gameScope;
 
   const heroOptions: SearchableImageOption[] = useMemo(
     () =>
@@ -103,27 +110,15 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     axis
   };
 
-  if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={browsing.resolved}
-        disciplines={browsing.disciplines ?? []}
-        allowsAll={false}
-        onSelect={browsing.select}
-      />
-    );
+  if (gameScope.resolution?.game.kind === "invalid" || gameScope.resolution?.game.kind === "empty") {
+    return <GameScopeControl scope={gameScope} variant="single" dropParams={HERO_GAME_PARAMS} />;
   }
 
   return (
     <div className="space-y-[22px]">
-      {browsing.disciplines ? (
+      {gameScope.resolution?.tabs ? (
         <div className="flex justify-end">
-          <DisciplineSelector
-            disciplines={browsing.disciplines}
-            value={discipline ?? undefined}
-            allowsAll={false}
-            onSelect={browsing.select}
-          />
+          <GameScopeControl scope={gameScope} variant="single" dropParams={HERO_GAME_PARAMS} />
         </div>
       ) : null}
       <HeroCompareHero
@@ -167,7 +162,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           state="error"
           title={t("users.heroesCompare.invalidHero.title")}
           description={t("users.heroesCompare.invalidHero.description", {
-            game: browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? ""
+            game: gameScope.games?.find((entry) => entry.code === discipline)?.name ?? discipline ?? ""
           })}
         />
       ) : heroId !== undefined && !heroChecked ? (
@@ -190,7 +185,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           fallback={
             <PageStateCard
               state="empty"
-              title={browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline}
+              title={gameScope.games?.find((entry) => entry.code === discipline)?.name ?? discipline}
               description={t("common.discipline.widgetUnsupported")}
             />
           }

@@ -14,6 +14,8 @@ import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { catalogEntity } from "@/test/catalog";
 import { navigation } from "@/test/url-navigation";
+import { PillPick } from "@/test/pill-pick";
+import type { CatalogKind } from "@/types/catalog.types";
 
 import CompareClient from "./CompareClient";
 
@@ -33,8 +35,8 @@ vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).n
 vi.mock("@/services/discipline.service", () => ({
   default: {
     list: async () => [
-      { code: "overwatch", name: "Overwatch", enabled: true, kinds: { character: "Hero", map: "Map", mode: "Mode" } },
-      { code: "lol", name: "League of Legends", enabled: true, kinds: { character: "Champion", map: "Map" } }
+      { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true, kinds: { character: "Hero", map: "Map", mode: "Mode" } },
+      { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true, kinds: { character: "Champion", map: "Map" } }
     ],
     // The browsed game's per-character vocabulary is what the character comparison requests.
     metadata: async () => ({
@@ -85,6 +87,7 @@ async function mount(url: string, scope: StatsScope = "all") {
       <NextIntlClientProvider locale="en" messages={messages}>
         <QueryClientProvider client={client}>
           <CompareClient scope={scope} />
+          <PillPick code="lol" />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -102,7 +105,8 @@ beforeEach(() => {
     removeListener: () => {},
     dispatchEvent: () => false
   })) as unknown as typeof window.matchMedia;
-  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null });
+  // A tab or pill pick writes the last game and the scope into the store: every test starts from no last game.
+  useWorkspaceStore.setState({ gameScope: "all", lastGame: null, hostLockedWorkspaceId: null, currentWorkspaceId: null });
   mocks.getEntity.mockReset();
   mocks.listEntities.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   mocks.heroCompare.mockReset().mockResolvedValue({ metrics: [], subject: { name: "A" }, baseline: { sample_size: 0 } });
@@ -197,6 +201,61 @@ describe("compare selection", () => {
       expect(mocks.getEntity.mock.calls.length).toBeGreaterThan(callsBefore);
       expect(container.textContent).not.toContain("Could not check that selection");
     });
+  });
+});
+
+describe("the game of the comparison", () => {
+  // The URL's hero and map are the shown game's own: their catalog lookups resolve.
+  beforeEach(() => {
+    mocks.getEntity.mockImplementation(async (_game: string, kind: CatalogKind, id: number) => catalogEntity({ id, kind }));
+  });
+
+  it("offers the area's games as tabs under all games; a tab writes the game and drops another game's ids", async () => {
+    await mount("/users/compare?user_id=5&scope=hero&left_hero_id=7&map_id=3");
+
+    const tab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
+      node.textContent?.includes("League of Legends")
+    );
+    expect(tab).toBeTruthy();
+    await act(async () => {
+      tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    await settle();
+
+    const url = new URL(navigation.pushes.at(-1)!, "http://x");
+    expect(url.pathname).toBe("/users/compare");
+    expect(url.searchParams.get("discipline")).toBe("lol");
+    expect(url.searchParams.get("user_id")).toBe("5");
+    expect(url.searchParams.has("left_hero_id")).toBe(false);
+    expect(url.searchParams.has("map_id")).toBe(false);
+    // A tab is a last-game pick, never a scope change.
+    expect(useWorkspaceStore.getState().lastGame).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("all");
+  });
+
+  it("shows no tabs when the scope is a game, and compares in that game", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol" });
+    mocks.getEntity.mockRejectedValue(new ApiError(404, [{ msg: "not found" }]));
+
+    await mount(`/users/compare?${HERO_QUERY}`);
+
+    expect(container.querySelector('[role="tab"]')).toBeNull();
+    expect(mocks.getEntity.mock.calls.map((call) => call.slice(0, 3))).toContainEqual(["lol", "character", 7]);
+  });
+
+  it("a game picked in the scope pill drops this page's game-bound ids and keeps the player", async () => {
+    await mount("/users/compare?user_id=5&scope=hero&left_hero_id=7&map_id=3&role=tank");
+
+    await act(async () => {
+      container.querySelector("[data-pill-pick=lol]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    const url = new URL(navigation.pushes.at(-1)!, "http://x");
+    expect(url.searchParams.get("discipline")).toBe("lol");
+    expect(url.searchParams.get("user_id")).toBe("5");
+    for (const param of ["left_hero_id", "map_id", "role"]) expect(url.searchParams.has(param), param).toBe(false);
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
   });
 });
 

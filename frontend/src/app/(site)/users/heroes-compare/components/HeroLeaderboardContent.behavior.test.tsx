@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/error";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { catalogEntity } from "@/test/catalog";
 import { navigation } from "@/test/url-navigation";
+import { PillPick } from "@/test/pill-pick";
 
 import HeroLeaderboardContent from "./HeroLeaderboardContent";
 
@@ -71,6 +72,7 @@ async function mount(url: string, keepClient = false) {
       <NextIntlClientProvider locale="en" messages={messages}>
         <QueryClientProvider client={client}>
           <HeroLeaderboardContent scope="all" />
+          <PillPick code="lol" />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -79,7 +81,7 @@ async function mount(url: string, keepClient = false) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null });
+  useWorkspaceStore.setState({ gameScope: "all", lastGame: null, hostLockedWorkspaceId: null, currentWorkspaceId: null });
   mocks.getEntity.mockReset();
   mocks.listEntities.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
   mocks.leaderboard.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 });
@@ -131,6 +133,39 @@ describe("hero leaderboard selection", () => {
     expect(container.textContent).toContain(messages.common.discipline.widgetUnsupported);
     expect(container.textContent).not.toContain(messages.users.heroesCompare.hero.bestKd);
     expect(mocks.leaderboard).not.toHaveBeenCalled();
+  });
+
+  it("drops the picked hero when a tab switches the game", async () => {
+    mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
+    await mount("/users/heroes-compare?hero_id=7");
+
+    const tab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
+      node.textContent?.includes("League of Legends")
+    );
+    expect(tab).toBeTruthy();
+    await act(async () => {
+      tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    await settle();
+
+    const url = new URL(navigation.pushes.at(-1)!, "http://x");
+    expect(url.searchParams.get("discipline")).toBe("lol");
+    expect(url.searchParams.has("hero_id")).toBe(false);
+  });
+
+  it("a game picked in the scope pill drops the picked hero and tournament", async () => {
+    mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
+    await mount("/users/heroes-compare?hero_id=7&tournament_id=4");
+
+    await act(async () => {
+      container.querySelector("[data-pill-pick=lol]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+
+    const url = new URL(navigation.pushes.at(-1)!, "http://x");
+    expect(url.searchParams.get("discipline")).toBe("lol");
+    expect(url.searchParams.has("hero_id")).toBe(false);
+    expect(url.searchParams.has("tournament_id")).toBe(false);
   });
 
   it("asks for nothing while the id has not been checked yet", async () => {
