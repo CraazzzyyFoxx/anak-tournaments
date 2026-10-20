@@ -1070,7 +1070,7 @@ class UserService(DisciplineQueries):
         user_id: int,
         workspace_id: int | None = None,
         *,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         normalizer: DivisionGridNormalizer | None = None,
         division_grid_version: schemas.DivisionGridVersionRead | None = None,
     ) -> list[schemas.UserRole]:
@@ -1079,7 +1079,9 @@ class UserService(DisciplineQueries):
         ``grid`` resolves divisions from the raw player rank, and ``workspace_id`` scopes
         the roles to a single workspace when given. Without a workspace there is no
         single target grid to normalize to, so each role reports the division — and
-        the grid version — of the tournament its latest rank comes from.
+        the grid version — of the tournament its latest rank comes from. ``grid`` is
+        ``None`` only there, for a game without a system-wide grid: a role whose own
+        grid is unknown has no division to report and is left out.
         """
         roles = await self.profile.get_roles(session, user_id, workspace_id=workspace_id)
         latest_by_role = [
@@ -1099,6 +1101,10 @@ class UserService(DisciplineQueries):
         payload: list[schemas.UserRole] = []
         for role, maps_won, maps_lost, division, latest_role in latest_by_role:
             source_version_id = latest_role["division_grid_version_id"]
+            source_grid = grids_by_version.get(source_version_id)
+            fallback_grid = grid or source_grid
+            if fallback_grid is None:
+                continue
             payload.append(
                 schemas.UserRole(
                     role=role,
@@ -1108,9 +1114,9 @@ class UserService(DisciplineQueries):
                     division=resolve_workspace_division(
                         latest_role["rank"],
                         source_version_id=source_version_id,
-                        fallback_grid=grid,
+                        fallback_grid=fallback_grid,
                         normalizer=normalizer,
-                        source_grid=grids_by_version.get(source_version_id),
+                        source_grid=source_grid,
                     ),
                     division_grid_version=(
                         version_reads.get(source_version_id) if all_workspaces else division_grid_version
@@ -1240,7 +1246,7 @@ class UserService(DisciplineQueries):
         user_id: int,
         *,
         workspace_id: int | None,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         normalizer: DivisionGridNormalizer | None,
     ) -> list[schemas.UserRole]:
         """This game's per-role record, divisions normalized onto the viewed workspace's grid of the game."""
@@ -1279,8 +1285,9 @@ class UserService(DisciplineQueries):
     ) -> list[schemas.UserGameSummary]:
         """One summary per game played (spec §6.6): most tournaments first, ties in installed order.
 
-        Each game's roles sit on that game's grid. A game the viewed workspace has no grid for
-        (``division_grid_required``) still gets its card, without roles.
+        Each game's roles sit on that game's grid; across communities each role keeps its own tournament's grid.
+        A game the viewed workspace has no grid for (``division_grid_required``) still gets its card, without roles;
+        across communities such a game only drops the roles whose own grid is unknown.
         """
         tallies: dict[str, list[int]] = {}
         for team in teams:
@@ -1297,13 +1304,17 @@ class UserService(DisciplineQueries):
         for code in ordered:
             try:
                 game_grid = await get_division_grid(session, workspace_id, discipline=code)
-                roles = await UserService.of(code)._roles_on_game_grid(
-                    session, user_id, workspace_id=workspace_id, grid=game_grid, normalizer=None
-                )
             except BaseAPIException as exc:
                 if "division_grid_required" not in str(exc.detail):
                     raise
-                roles = []
+                game_grid = None
+            roles = (
+                await UserService.of(code)._roles_on_game_grid(
+                    session, user_id, workspace_id=workspace_id, grid=game_grid, normalizer=None
+                )
+                if game_grid is not None or workspace_id is None
+                else []
+            )
             summaries.append(
                 schemas.UserGameSummary(
                     discipline=code,

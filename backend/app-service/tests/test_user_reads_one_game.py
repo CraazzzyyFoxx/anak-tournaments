@@ -342,6 +342,39 @@ class UserReadsOneGameTest(IsolatedAsyncioTestCase):
         # a: T1, T2 (Overwatch) and L1 (League); League's card has no roles without its grid.
         self.assertEqual(profile.tournaments_count, 3)
         self.assertEqual([(game.discipline, game.tournaments_count) for game in profile.games], [(OW, 2), (LOL, 1)])
+        self.assertEqual(profile.games[1].roles, [])
+
+    async def test_profile_across_communities_reads_a_games_roles_on_their_own_grid_without_a_system_grid(self) -> None:
+        from shared.core.errors import BaseAPIException
+        from src.core.workspace import get_division_grid
+
+        # League has no system-wide grid and no native ladder: there is no fallback grid across communities ...
+        with self.assertRaises(BaseAPIException):
+            await get_division_grid(self.session, None, discipline=LOL)
+        # ... but L1 pinned a League grid of this community, which a's League role is read on.
+        version = models.DivisionGridVersion(
+            grid=models.DivisionGrid(workspace_id=self.ws.id, discipline=LOL, slug=f"lol-{self.tag}", name="lol"),
+            version=1,
+            label="lol",
+            status="published",
+            tiers=[
+                models.DivisionGridTier(
+                    slug="lol", number=9, name="lol", sort_order=0, rank_min=0, rank_max=None, icon_url=""
+                )
+            ],
+        )
+        self.session.add(version)
+        await self.session.flush()
+        self.tournaments["l1"].division_grid_version_id = version.id
+        await self.session.flush()
+
+        profile = await UserService.of(None).get_profile(self.session, self.users["a"].id, workspace_id=None, grid=None)
+
+        league = next(game for game in profile.games if game.discipline == LOL)
+        self.assertEqual(
+            [(role.division, role.division_grid_version and role.division_grid_version.id) for role in league.roles],
+            [(9, version.id)],
+        )
 
     async def test_profile_in_one_game_has_no_game_list_and_tags_its_tournaments(self) -> None:
         profile = await UserService.of(OW).get_profile(
