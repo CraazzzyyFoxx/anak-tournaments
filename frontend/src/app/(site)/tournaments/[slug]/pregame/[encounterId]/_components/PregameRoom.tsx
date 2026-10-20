@@ -192,9 +192,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     <>
       <PregameHeader
         encounter={encounter}
-        session={
-          loop.statesByKind[loop.phase === "hero" || !loop.mapApplies ? "hero" : "map"].session
-        }
+        state={loop.statesByKind[loop.phase === "hero" || !loop.mapApplies ? "hero" : "map"]}
         activePhase={loop.phase}
         phases={loop.phases}
         round={loop.round}
