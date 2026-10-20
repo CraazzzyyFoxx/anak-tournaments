@@ -2675,7 +2675,7 @@
       "summary": "User draft card"
     },
     "rpc.app.users.encounters": {
-      "description": "Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.",
+      "description": "Permission: public; no authentication required. Returns a player's paginated encounters \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` \u2014 filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.",
       "query_params": [
         {
           "name": "page",
@@ -2744,9 +2744,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         },
@@ -3733,13 +3733,13 @@
       "summary": "Tournament stat leaderboard"
     },
     "rpc.app.users.tournaments": {
-      "description": "Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.",
+      "description": "Permission: public; no authentication required. Returns the tournaments a player participated in \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) \u2014 scoped to the workspace context and grid; each row names its own `discipline`.",
       "query_params": [
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         },
@@ -15632,6 +15632,10 @@
           "default": null,
           "title": "Closeness"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "has_logs": {
           "default": false,
           "title": "Has Logs",
@@ -15732,6 +15736,7 @@
         "name",
         "round",
         "tournament_id",
+        "discipline",
         "status"
       ],
       "title": "EncounterReadWithUserStats",

@@ -12,15 +12,19 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from inspect import unwrap
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared.division_grid import DEFAULT_GRID
+from shared.testing import configure_test_cache
 from shared.testing.stats_parity import BASE, STAMP, seed_native_sentinel
 from src.core import pagination
 from src.services.statistics.service import statistics
+from src.services.user.service import UserService
 
 OW = "overwatch"
 LOL = "lol"
@@ -108,6 +112,66 @@ def test_leaderboards_without_a_game_rank_every_games_results(
                 assert ids["player"] in ow and ids["player"] in every, reader.__name__
                 assert ids["player_away"] not in ow, reader.__name__
                 assert ids["player_away"] in every, reader.__name__
+            await session.rollback()
+
+    asyncio.run(run())
+
+
+async def _uncached(method: Any, *args: Any, **kwargs: Any) -> Any:
+    """Invoke the real decorated service body, never a cached value."""
+    return await unwrap(method.__func__)(method.__self__, *args, **kwargs)
+
+
+def test_profile_tournaments_without_a_game_list_every_games_rows(
+    stats_parity_database: tuple[str, dict[str, int]],
+) -> None:
+    url, ids = stats_parity_database
+
+    async def run() -> None:
+        configure_test_cache()
+        async with _session(url) as session:
+            await session.run_sync(lambda sync: seed_native_sentinel(sync.connection(), ids))
+            await session.run_sync(lambda sync: _seed_lol_roster(sync.connection(), ids))
+
+            async def history(discipline: str | None) -> dict[int, str]:
+                service = UserService.of(discipline)
+                rows = await _uncached(service.get_tournaments, session, ids["player"], grid=DEFAULT_GRID)
+                return {row.id: row.discipline for row in rows}
+
+            only_ow = await history(OW)
+            assert ids["tournament_lol"] not in only_ow
+            assert set(only_ow.values()) == {OW}
+            assert await history(None) == {**only_ow, ids["tournament_lol"]: LOL}
+            await session.rollback()
+
+    asyncio.run(run())
+
+
+def test_profile_encounters_without_a_game_list_every_games_rows(
+    stats_parity_database: tuple[str, dict[str, int]],
+) -> None:
+    url, ids = stats_parity_database
+
+    async def run() -> None:
+        configure_test_cache()
+        async with _session(url) as session:
+            await session.run_sync(lambda sync: seed_native_sentinel(sync.connection(), ids))
+            params = pagination.PaginationSortParams(per_page=100, sort="played_at")
+
+            async def page(discipline: str | None) -> Any:
+                service = UserService.of(discipline)
+                return await _uncached(service.get_encounters_by_user, session, ids["player"], params)
+
+            only_ow, every = await page(OW), await page(None)
+            assert ids["encounter_lol"] not in {row.id for row in only_ow.results}
+            assert {row.discipline for row in only_ow.results} == {OW}
+            assert every.total == only_ow.total + 1
+            league = next(row for row in every.results if row.id == ids["encounter_lol"])
+            assert league.discipline == LOL
+            # The match reads its own game's facts: the viewer's League totals.
+            (match,) = league.matches
+            assert match.viewer is not None
+            assert match.viewer.facts["hero_damage_dealt"] == 1_000_000.0
             await session.rollback()
 
     asyncio.run(run())

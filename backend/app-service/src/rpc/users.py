@@ -196,8 +196,10 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.tournaments")
     async def _tournaments(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            # Optional game (spec §6.6, §8.1): absent or "all" lists every game's tournaments, each naming its own.
+            discipline = c.optional_discipline(data)
+            stats = UserService.of(discipline)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
             return await stats.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.tournaments", op, session_factory=_SF)
@@ -280,7 +282,13 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.encounters")
     async def _encounters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
+            # Optional game (spec §6.6, §8.1): absent or "all" lists every game's encounters, each naming its own.
+            discipline = c.optional_discipline(data)
+            mvp1 = c.q1(data, "mvp1", c.qbool, False)
+            if mvp1 and discipline is None:
+                # MVP placement is ranked on one game's facts.
+                raise HTTPException(status_code=422, detail="mvp1 requires discipline")
+            stats = UserService.of(discipline)
             qp = build_query_model(pagination.PaginationSortQueryParams[_ENCOUNTER_SORT], data.get("query"))
             return await stats.get_encounters_by_user(
                 session,
@@ -289,7 +297,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=_ws_id(data),
                 result_filter=c.q1(data, "result", str, None),
                 stage=c.q1(data, "stage", str, None),
-                mvp1=c.q1(data, "mvp1", c.qbool, False),
+                mvp1=mvp1,
                 has_logs=c.q1(data, "has_logs", c.qbool, None),
                 opponent=c.q1(data, "opponent", str, None),
             )

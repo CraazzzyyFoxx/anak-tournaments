@@ -111,7 +111,8 @@ class WorkspaceContext:
     """
 
     id: int | None
-    grid: DivisionGrid
+    #: ``None`` for a no-game (cross-game) read: divisions live on one game's grid, and there is no game (R13).
+    grid: DivisionGrid | None
     normalizer: DivisionGridNormalizer | None = None
 
 
@@ -130,6 +131,9 @@ async def resolve_workspace_context(
     scope (``None``) raises ``400`` instead of silently spanning every workspace.
     """
     resolved_id = require_workspace_scope(workspace_id)
+    if discipline is None:
+        # A no-game read reads no division (R13): never the first game's grid, never `division_grid_required`.
+        return WorkspaceContext(id=resolved_id, grid=None)
     grid = await get_effective_division_grid(session, resolved_id, tournament_id=tournament_id, discipline=discipline)
     normalizer: DivisionGridNormalizer | None = None
     if resolved_id is not None:

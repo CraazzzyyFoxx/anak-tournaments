@@ -226,6 +226,8 @@ class EncounterReadWithUserStats(BaseModel):
     round: int
     best_of: int = 3
     tournament_id: int
+    #: The encounter's game: a cross-game list (spec §6.6) marks each row with it.
+    discipline: str
     status: str
     closeness: float | None = None
     has_logs: bool = False

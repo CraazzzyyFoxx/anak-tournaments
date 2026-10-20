@@ -91,7 +91,7 @@ def to_user_tournament_summary(
 def to_user_tournament_player(
     player: models.Player,
     *,
-    grid: DivisionGrid,
+    grid: DivisionGrid | None,
     avg_mvp: float | None = None,
     characters: list[models.CatalogEntity] | None = None,
 ) -> schemas.UserTournamentPlayer:
@@ -249,6 +249,7 @@ def to_encounter_with_user_stats(
         round=context.position.round if context.position is not None else 0,
         best_of=encounter.best_of,
         tournament_id=encounter.tournament_id,
+        discipline=encounter.discipline,
         status=encounter.status,
         closeness=encounter.closeness,
         has_logs=encounter.has_logs,

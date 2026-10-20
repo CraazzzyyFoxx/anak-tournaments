@@ -1343,10 +1343,10 @@ class UserService(DisciplineQueries):
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournaments:{id}:{self.discipline}:{workspace_id}:native",
+        key="backend:user_tournaments:{id}:{self._discipline}:{workspace_id}:native",
     )
     async def get_tournaments(
-        self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid
+        self, session: AsyncSession, id: int, workspace_id: int | None = None, *, grid: DivisionGrid | None
     ) -> list[schemas.UserTournament]:
         """
         Retrieves a user's tournament history with per-event stats (record,
@@ -1377,10 +1377,18 @@ class UserService(DisciplineQueries):
                 if player.workspace_member is not None
             }
         )
-        avg_mvp_map = await self.encounters.get_roster_avg_mvp_bulk(session, tournaments_ids, roster_user_ids)
-        top_characters_map = await self.encounters.get_roster_top_characters_bulk(
-            session, tournaments_ids, roster_user_ids
-        )
+        # Roster MVP and characters are facts of each tournament's own game: read per game (one game when bound).
+        tournaments_by_game: dict[str, list[int]] = {}
+        for team, *_ in tournaments:
+            tournaments_by_game.setdefault(team.tournament.discipline, []).append(team.tournament_id)
+        avg_mvp_map: dict[tuple[int, int], float] = {}
+        top_characters_map: dict[tuple[int, int], list[models.CatalogEntity]] = {}
+        for game, game_tournament_ids in tournaments_by_game.items():
+            game_encounters = UserEncounterQueries.of(game)
+            avg_mvp_map |= await game_encounters.get_roster_avg_mvp_bulk(session, game_tournament_ids, roster_user_ids)
+            top_characters_map |= await game_encounters.get_roster_top_characters_bulk(
+                session, game_tournament_ids, roster_user_ids
+            )
         version_by_tournament, tournament_version_reads = await _tournament_grid_versions(session, tournaments_ids)
         grids_by_version = await load_division_grids(
             session,
@@ -1463,7 +1471,7 @@ class UserService(DisciplineQueries):
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:v5:{id}:{self.discipline}:{tournament_id}",
+        key="backend:user_tournament_encounters:v6:{id}:{self.discipline}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self, session: AsyncSession, id: int, tournament_id: int
@@ -1820,7 +1828,7 @@ class UserService(DisciplineQueries):
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:v5:{user_id}:{self.discipline}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v6:{user_id}:{self._discipline}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,

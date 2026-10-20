@@ -4167,7 +4167,7 @@ export interface paths {
         };
         /**
          * User encounters
-         * @description Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.
+         * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.
          *
          *     RPC subject: `rpc.app.users.encounters`
          */
@@ -4321,7 +4321,7 @@ export interface paths {
         };
         /**
          * User tournaments
-         * @description Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.
+         * @description Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.
          *
          *     RPC subject: `rpc.app.users.tournaments`
          */
@@ -12498,6 +12498,8 @@ export interface components {
              * @default null
              */
             closeness: number | null;
+            /** Discipline */
+            discipline: string;
             /**
              * Has Logs
              * @default false
@@ -43597,14 +43599,14 @@ export interface operations {
     };
     get__api_v1_users__id__encounters: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersIdEncountersGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
                 result?: string;
                 stage?: string;
                 mvp1?: boolean;
@@ -44077,8 +44079,8 @@ export interface operations {
     };
     get__api_v1_users__id__tournaments: {
         parameters: {
-            query: {
-                discipline: string;
+            query?: {
+                discipline?: string;
                 workspace_id?: number;
             };
             header?: never;

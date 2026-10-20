@@ -74,6 +74,10 @@ def _json(value: Any) -> Any:
             # The owner context P7 added to a user's tournament row and tournament stats; it is not reader output the
             # frozen capture had.
             del result["workspace_id"], result["discipline"]
+        if {"slot_count", "user_team_id", "discipline"} <= result.keys():
+            # The game a user's encounter row gained for the cross-game tabs (spec §6.6); not reader output the frozen
+            # capture had.
+            del result["discipline"]
         return result
     if isinstance(value, (list, tuple)):
         return [_json(item) for item in value]

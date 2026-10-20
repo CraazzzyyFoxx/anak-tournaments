@@ -195,6 +195,8 @@ export interface EncounterWithUserStats {
   round: number;
   best_of: number;
   tournament_id: number;
+  /** The encounter's game: a cross-game list (spec §6.6) marks each row with it. */
+  discipline: string;
   status: string;
   closeness: number | null;
   has_logs: boolean;

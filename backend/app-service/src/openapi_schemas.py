@@ -118,7 +118,7 @@ OPERATIONS: dict[str, Op] = {
     ),
     "rpc.app.users.by_name": Op(response=schemas.UserRead),
     "rpc.app.users.tournaments": Op(
-        response=schemas.UserTournament, response_array=True, query_params=(_DISCIPLINE, _WS)
+        response=schemas.UserTournament, response_array=True, query_params=(_OPTIONAL_DISCIPLINE, _WS)
     ),
     "rpc.app.users.tournament": Op(response=schemas.UserTournamentWithStats),
     "rpc.app.users.tournament_encounters": Op(response=schemas.EncounterReadWithUserStats, response_array=True),
@@ -133,7 +133,7 @@ OPERATIONS: dict[str, Op] = {
         response=Paginated[schemas.EncounterReadWithUserStats],
         query=PaginationSortQueryParams[_ENC_SORT],
         query_params=(
-            _DISCIPLINE,
+            _OPTIONAL_DISCIPLINE,
             QueryParam("result"),
             QueryParam("stage"),
             QueryParam("mvp1", "boolean"),

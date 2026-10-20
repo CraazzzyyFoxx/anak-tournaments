@@ -108,11 +108,12 @@ export default class userService {
         return null;
       });
   }
-  /** One game's tournaments of a player. `workspaceId` pins the read: a number/`null` behaves as before, `"all"`
-   *  reads every workspace (platform apex only). */
+  /** A player's tournaments: one game's, or every game's when `discipline` is `null` (each row names its own).
+   *  `workspaceId` pins the read: a number/`null` behaves as before, `"all"` reads every workspace (platform apex
+   *  only). */
   static async getUserTournaments(
     id: number,
-    discipline: string,
+    discipline: string | null,
     workspaceId?: number | "all" | null
   ): Promise<UserTournament[]> {
     const query = { discipline, ...(workspaceId != null ? { workspace_id: workspaceId } : {}) };
@@ -210,9 +211,10 @@ export default class userService {
       }
     }).then((res) => res.json());
   }
+  /** A player's encounters: one game's, or every game's when `discipline` is `null` (each row names its own). */
   static async getUserEncounters(
     id: number,
-    discipline: string,
+    discipline: string | null,
     page: number,
     perPage: number = 10,
     sort: string = "played_at",

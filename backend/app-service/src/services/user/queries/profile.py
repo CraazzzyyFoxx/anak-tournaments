@@ -391,7 +391,7 @@ class UserProfileQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id == user_id,
@@ -432,7 +432,7 @@ class UserProfileQueries(DisciplineQueries):
             )
             .join(agg, agg.c.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             # Newest event first; undated (legacy) tournaments last, by id.
             .order_by(models.Tournament.start_date.desc().nulls_last(), models.Tournament.id.desc())
         )

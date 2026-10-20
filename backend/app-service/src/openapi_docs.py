@@ -147,7 +147,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.tournaments": {
         "summary": "User tournaments",
-        "description": "Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.",
+        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.",
     },
     "rpc.app.users.tournament": {
         "summary": "User tournament stats",
@@ -171,7 +171,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.encounters": {
         "summary": "User encounters",
-        "description": "Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.",
+        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.",
     },
     "rpc.app.users.matches_summary": {
         "summary": "User matches summary",

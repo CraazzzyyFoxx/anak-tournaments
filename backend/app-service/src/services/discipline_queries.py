@@ -1,8 +1,9 @@
 """Statistics SQL bound to one discipline's native facts.
 
 Every stat reader of the user/hero/statistics surfaces reads ``player_facts``/``match_context`` of exactly one game.
-That game is the request's (or the owning tournament's) ``discipline`` and is fixed at construction, never a module
-default: ``Queries.of("lol")`` can only ever see League facts, and a game that declares none reads as empty.
+That game is the request's (or the owning tournament's) ``discipline`` and is fixed at construction (an unbound
+reader lists match headers of every game, never facts), never a module default: ``Queries.of("lol")`` can only ever
+see League facts, and a game that declares none reads as empty.
 """
 
 from __future__ import annotations
@@ -51,7 +52,8 @@ class DisciplineQueries:
 
     @functools.cached_property
     def _matches(self) -> sa.Subquery:
-        return match_context(discipline=self.discipline)
+        # Match headers carry their own game: an unbound (cross-game) read spans every game's matches.
+        return match_context(discipline=self._discipline)
 
     @functools.cached_property
     def _duels(self) -> sa.Subquery:
