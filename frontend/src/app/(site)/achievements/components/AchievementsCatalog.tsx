@@ -23,9 +23,11 @@ import { RarityStrip } from "@/components/achievements/RarityStrip";
 import type { Achievement, AchievementCategory } from "@/types/achievement.types";
 import { classifyRarity, rarityVarClass, RARITY_ORDER, type Rarity } from "@/lib/achievements/rarity";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
-import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { ALL_DISCIPLINES, showsGameMarks, type GameScopeInit } from "@/lib/site/discipline-scope";
+import { useGameScope } from "@/hooks/useGameScope";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import AchievementsHero from "./AchievementsHero";
 import AchievementTile from "./AchievementTile";
@@ -54,12 +56,14 @@ const TileSection = ({
   title,
   count,
   rarity,
-  items
+  items,
+  games
 }: {
   title: string;
   count: ReactNode;
   rarity?: Rarity;
   items: Achievement[];
+  games?: Map<string, DisciplineDescriptor>;
 }) => (
   <section className={cn("space-y-3", rarity && rarityVarClass(rarity))}>
     <div className="flex items-baseline gap-3">
@@ -75,22 +79,25 @@ const TileSection = ({
     </div>
     <div className="aqt-ach-tiles">
       {items.map((ach) => (
-        <AchievementTile key={ach.id} achievement={ach} />
+        <AchievementTile key={ach.id} achievement={ach} games={games} />
       ))}
     </div>
   </section>
 );
 
-const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplineInit }>) => {
+const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>) => {
   const t = useTranslations();
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
-  const browsing = useBrowsingDiscipline({ allowsAll: false, initial });
+  const gameScope = useGameScope({ initial });
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   // One value carries the workspace dimension of the read and its cache key.
-  const { axis } = browsing;
+  const { axis, resolution } = gameScope;
   const workspaceName = axis === "all" ? t("common.scope.all") : workspaces.find((w) => w.id === axis)?.name;
-  // Achievements are a concrete-game surface: no `all` is ever resolved here.
-  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  // A multi page (spec §5): every game's rules under "all games", one game's under a game.
+  const discipline = gameScope.game;
+  const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
+  const descriptors = useGameDescriptors();
+  const games = resolution !== null && showsGameMarks(resolution, gameScope.games ?? []) ? descriptors : undefined;
 
   const rarityParam = searchParams.get("rarity");
   const rarityFilter: Rarity | null = isRarity(rarityParam) ? rarityParam : null;
@@ -100,10 +107,10 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplin
   const sort: SortBy = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "rarity";
 
   const { data, isLoading, isError, refetch } = useQuery({
-    // One concrete game per read: the reader pools and divides per game server-side, so the key carries it.
-    queryKey: achievementQueryKeys.all(axis, discipline),
+    // One game, or every game, per read: the reader pools and divides per game server-side, so the key carries it.
+    queryKey: achievementQueryKeys.all(axis, discipline ?? ALL_DISCIPLINES),
     queryFn: ({ signal }) => achievementsService.getAll(1, -1, axis, discipline, { signal }),
-    enabled: discipline !== null
+    enabled: ready
   });
 
   const results = useMemo(() => data?.results ?? [], [data?.results]);
@@ -188,25 +195,19 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplin
   const filtersActive = rarityFilter !== null || categoryFilter !== null || search.trim() !== "";
 
   const clearFilters = () => setParams({ rarity: null, category: null, q: null });
-  const resolved = browsing.resolved;
-  if (resolved === null) {
-    return browsing.isError ? (
+  if (resolution === null) {
+    return gameScope.isError ? (
       <div className="aqt-player">
-        <PageStateCard state="error" description={t("common.loadError")} onAction={browsing.refetch} />
+        <PageStateCard state="error" description={t("common.loadError")} onAction={gameScope.refetch} />
       </div>
     ) : (
       <PageSkeleton />
     );
   }
-  if (resolved.kind === "invalid" || resolved.kind === "empty") {
+  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
     return (
       <div className="aqt-player">
-        <DisciplineUnavailable
-          resolved={resolved}
-          disciplines={browsing.disciplines ?? []}
-          allowsAll={false}
-          onSelect={browsing.select}
-        />
+        <GameScopeControl scope={gameScope} variant="multi" />
       </div>
     );
   }
@@ -268,15 +269,6 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplin
           </div>
         ) : null}
 
-        {browsing.disciplines ? (
-          <DisciplineSelector
-            disciplines={browsing.disciplines}
-            value={discipline ?? undefined}
-            allowsAll={false}
-            onSelect={browsing.select}
-          />
-        ) : null}
-
         <SearchField
           value={search}
           onValueChange={(value) => setParams({ q: value })}
@@ -323,6 +315,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplin
                 title={t(`achievements.rarityName.${r}`)}
                 count={t("achievements.sectionCount", { count: visibleGrouped[r].length })}
                 items={visibleGrouped[r]}
+                games={games}
               />
             ) : null
           )}
@@ -331,6 +324,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplin
               title={t("achievements.notEarned.title")}
               count={t("achievements.sectionCount", { count: visibleNotEarned.length })}
               items={visibleNotEarned}
+              games={games}
             />
           ) : null}
         </>
@@ -339,7 +333,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: BrowsingDisciplin
   );
 };
 
-const AchievementsCatalogPage = ({ initial }: Readonly<{ initial?: BrowsingDisciplineInit }>) => (
+const AchievementsCatalogPage = ({ initial }: Readonly<{ initial?: GameScopeInit }>) => (
   <Suspense fallback={<PageSkeleton />}>
     <AchievementsCatalog initial={initial} />
   </Suspense>

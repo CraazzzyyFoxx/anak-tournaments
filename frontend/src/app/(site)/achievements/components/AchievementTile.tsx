@@ -5,9 +5,11 @@ import { Users } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { AchievementArt } from "@/components/achievements/AchievementArt";
+import { GameLabel } from "@/components/workspace/GameLabel";
 import { cn } from "@/lib/utils";
 import { classifyRarity, localizedText, rarityVarClass } from "@/lib/achievements/rarity";
 import type { Achievement } from "@/types/achievement.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 /**
  * Image-forward catalog tile: the badge art is the hero, the name and the two
@@ -15,7 +17,14 @@ import type { Achievement } from "@/types/achievement.types";
  * bottom scrim, so nothing essential is hover-only. Hover/focus additionally
  * reveals the description. The whole tile is one link to the detail page.
  */
-const AchievementTile = ({ achievement }: { achievement: Achievement }) => {
+const AchievementTile = ({
+  achievement,
+  games
+}: {
+  achievement: Achievement;
+  /** Installed games by code, passed only when the catalogue spans several games (spec §6.1). */
+  games?: Map<string, DisciplineDescriptor>;
+}) => {
   const t = useTranslations();
   const locale = useLocale();
   const holders = achievement.count ?? 0;
@@ -46,6 +55,7 @@ const AchievementTile = ({ achievement }: { achievement: Achievement }) => {
       <span className="aqt-ach-tile__foot">
         <span className="aqt-ach-tile__name">{achievement.name}</span>
         <span className="aqt-ach-tile__meta">
+          {games ? <GameLabel code={achievement.discipline} games={games} /> : null}
           {holders > 0 ? (
             <>
               <span className="aqt-rar-fg tabular-nums">{(achievement.rarity * 100).toFixed(2)}%</span>
