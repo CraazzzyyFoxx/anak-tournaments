@@ -97,11 +97,7 @@ export default function WorkspaceSubRolesSettingsPage() {
               </Button>
             </div>
           ) : null}
-          {game === null ? (
-            <AllGamesSubRoles workspaceId={workspaceId} games={games} />
-          ) : (
-            <GameSubRoleCatalog workspaceId={workspaceId} discipline={game} />
-          )}
+          <SubRoleListing workspaceId={workspaceId} game={game} games={games} />
           {creating ? (
             <CreateSubRoleDialog
               workspaceId={workspaceId}
@@ -135,25 +131,31 @@ function GameSubRoleCatalog({ workspaceId, discipline }: Readonly<{ workspaceId:
 }
 
 /**
- * Every game's sub-roles (spec §6.11): a group per game with its mark. Opening one (`?sub_role=`) shows its game's
- * editor — an owner (spec §5): its game locks the scope pill while it is open.
+ * The page body. An opened sub-role (`?sub_role=`) is an owner (spec §5) under any list scope: its game's editor, its
+ * game locking the scope pill while it is open. Otherwise the scoped list: one game's editor, or every game's
+ * sub-roles grouped by game with its mark (spec §6.11).
  */
-function AllGamesSubRoles({
+function SubRoleListing({
   workspaceId,
+  game,
   games
-}: Readonly<{ workspaceId: number; games: DisciplineDescriptor[] }>) {
+}: Readonly<{ workspaceId: number; game: string | null; games: DisciplineDescriptor[] }>) {
   const t = useTranslations("adminSettings.subRoles");
+  const commonT = useTranslations("common");
   const { searchParams, setParams } = useQueryParams({ mode: "push" });
-  const descriptors = useGameDescriptors();
+  const openedId = searchParams?.get("sub_role") ?? null;
+  // Every game's rows: the all-games list, and the lookup resolving an opened sub-role whatever the scope.
+  const needsCatalog = game === null || openedId !== null;
   const catalog = useQuery({
     queryKey: adminQueryKeys.playerSubRolesAll(workspaceId, ALL_DISCIPLINES),
     queryFn: ({ signal }) =>
-      adminService.getPlayerSubRoles({ workspace_id: workspaceId, include_inactive: true }, signal)
+      adminService.getPlayerSubRoles({ workspace_id: workspaceId, include_inactive: true }, signal),
+    enabled: needsCatalog
   });
   const rows = catalog.data ?? [];
-  const opened = rows.find((entry) => String(entry.id) === searchParams?.get("sub_role"));
+  const opened = openedId === null ? undefined : rows.find((entry) => String(entry.id) === openedId);
 
-  if (catalog.isError) {
+  if (needsCatalog && catalog.isError) {
     return <PageStateCard state="error" title={t("errors.load")} onAction={() => void catalog.refetch()} />;
   }
   if (opened) {
@@ -162,29 +164,29 @@ function AllGamesSubRoles({
         <EntityWorkspace workspaceId={workspaceId} discipline={opened.discipline} />
         <Button type="button" variant="ghost" size="sm" onClick={() => setParams({ sub_role: null, role: null })}>
           <ArrowLeft className="mr-1 size-4" aria-hidden />
-          {t("backToAll")}
+          {game === null ? t("backToAll") : commonT("back")}
         </Button>
         <GameSubRoleCatalog workspaceId={workspaceId} discipline={opened.discipline} />
       </div>
     );
   }
+  if (needsCatalog && catalog.isPending) return <Skeleton className="h-64" />;
+  // An unknown `?sub_role=` (deleted, another community's) opens nothing: the scoped list stays.
+  if (game !== null) return <GameSubRoleCatalog workspaceId={workspaceId} discipline={game} />;
   return (
     <div className="space-y-6">
-      {catalog.isLoading ? (
-        <Skeleton className="h-64" />
-      ) : rows.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       ) : (
-        games.map((game) => {
-          const entries = rows.filter((entry) => entry.discipline === game.code);
+        games.map((entry) => {
+          const entries = rows.filter((row) => row.discipline === entry.code);
           return entries.length === 0 ? null : (
             <GameSubRoleGroup
-              key={game.code}
+              key={entry.code}
               workspaceId={workspaceId}
-              discipline={game.code}
-              games={descriptors}
+              discipline={entry.code}
               entries={entries}
-              onOpen={(entry) => setParams({ sub_role: String(entry.id), role: entry.role })}
+              onOpen={(row) => setParams({ sub_role: String(row.id), role: row.role })}
             />
           );
         })
@@ -197,24 +199,23 @@ function AllGamesSubRoles({
 function GameSubRoleGroup({
   workspaceId,
   discipline,
-  games,
   entries,
   onOpen
 }: Readonly<{
   workspaceId: number;
   discipline: string;
-  games: Map<string, DisciplineDescriptor>;
   entries: PlayerSubRole[];
   onOpen: (entry: PlayerSubRole) => void;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
   const nameOf = useRoleName();
+  const descriptors = useGameDescriptors();
   const metadata = useDisciplineMetadata(workspaceId, discipline);
   const parents = new Map((metadata.data?.roles ?? []).map((role) => [role.code, nameOf(role)]));
   return (
     <section className="space-y-2">
       <h2 className="text-base font-semibold">
-        <GameLabel code={discipline} games={games} />
+        <GameLabel code={discipline} games={descriptors} />
       </h2>
       <ul className="divide-y divide-border border-y border-border">
         {entries.map((entry) => (
@@ -257,6 +258,7 @@ function CreateSubRoleDialog({
   onClose: () => void;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
+  const roleT = useTranslations("common.roleOntology");
   const nameOf = useRoleName();
   const queryClient = useQueryClient();
   const lastGame = useWorkspaceStore((state) => state.lastGame);
@@ -316,20 +318,29 @@ function CreateSubRoleDialog({
       />
       <div className="space-y-1.5">
         <Label id="sub-role-parent-label">{t("parentRole")}</Label>
-        <ToggleGroup
-          type="single"
-          variant="pill"
-          size="sm"
-          aria-labelledby="sub-role-parent-label"
-          value={role ?? ""}
-          onValueChange={(value) => setRole(value || null)}
-        >
-          {roots.map((entry) => (
-            <ToggleGroupItem key={entry.id} value={entry.code}>
-              {nameOf(entry)}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        {/* A game whose roles did not load offers no parent: say so, rather than an empty picker. */}
+        {metadata.isError || (metadata.data && !rated) ? (
+          <PageStateCard
+            state="error"
+            title={roleT("metadataError")}
+            onAction={metadata.isError ? () => void metadata.refetch() : undefined}
+          />
+        ) : (
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            aria-labelledby="sub-role-parent-label"
+            value={role ?? ""}
+            onValueChange={(value) => setRole(value || null)}
+          >
+            {roots.map((entry) => (
+              <ToggleGroupItem key={entry.id} value={entry.code}>
+                {nameOf(entry)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        )}
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="sub-role-label">{t("labelField")}</Label>

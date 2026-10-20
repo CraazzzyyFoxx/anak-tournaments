@@ -10,6 +10,11 @@ import WorkspaceSubRolesSettingsPage from "./page";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getPlayerSubRoles = vi.fn();
 const createPlayerSubRole = vi.fn();
+/** The saved scope: `null` is every game. */
+let scoped: string | null = null;
+/** A game whose metadata read fails. */
+let failingMetadata: string | null = null;
+const refetchMetadata = vi.fn();
 vi.mock("@/services/admin.service", () => ({
   default: {
     getPlayerSubRoles: (...args: unknown[]) => getPlayerSubRoles(...args),
@@ -26,7 +31,7 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/hooks/useGameScope", async () => {
   const { gameScopeState } = await import("@/test/game-scope");
-  return { useGameScope: () => gameScopeState(null) };
+  return { useGameScope: () => gameScopeState(scoped) };
 });
 vi.mock("@/hooks/useGameDescriptors", async () => {
   const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
@@ -50,7 +55,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
   useDisciplineMetadata: (_axis: number, code: string | null) => ({
     data:
-      code === null
+      code === null || code === failingMetadata
         ? undefined
         : {
             discipline: { code },
@@ -74,8 +79,8 @@ vi.mock("@/hooks/useDisciplineMetadata", () => ({
               })
             )
           },
-    isError: false,
-    refetch: vi.fn()
+    isError: code !== null && code === failingMetadata,
+    refetch: refetchMetadata
   })
 }));
 
@@ -130,6 +135,9 @@ beforeEach(() => {
   push.mockClear();
   getPlayerSubRoles.mockReset().mockResolvedValue(CATALOG);
   createPlayerSubRole.mockReset().mockResolvedValue(CATALOG[1]);
+  scoped = null;
+  failingMetadata = null;
+  refetchMetadata.mockClear();
 });
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
@@ -171,6 +179,20 @@ describe("sub-role settings under all games", () => {
     expect(createPlayerSubRole).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol", role: "top", label: "Solo" });
   });
 
+  it("says so with a retry when the picked game's roles fail to load, instead of an empty parent picker", async () => {
+    failingMetadata = "lol";
+    await mount();
+    await click(button("New sub-role"));
+    await click(document.getElementById("sub-role-game")!.querySelectorAll('[role="radio"]')[1]);
+
+    expect(document.querySelector('[aria-labelledby="sub-role-parent-label"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain(
+      "Role metadata is unavailable"
+    );
+    await click(button("Retry"));
+    expect(refetchMetadata).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a sub-role in its own game's editor and locks the pill to that game", async () => {
     await mount();
     await click([...container.querySelectorAll("button")].find((node) => node.textContent?.includes("Main Tank"))!);
@@ -180,5 +202,28 @@ describe("sub-role settings under all games", () => {
     expect(pushed.get("role")).toBe("tank");
     expect(container.querySelector("[data-owner-game]")?.getAttribute("data-owner-game")).toBe("overwatch");
     expect([...container.querySelectorAll("h2")].map((node) => node.textContent)).toContain("Tank");
+  });
+});
+
+describe("an opened sub-role under a saved game", () => {
+  it.each([
+    ["lol", "Top"],
+    ["overwatch", "Tank"]
+  ])("opens in its own game's editor and locks the pill under %s, Back returning to that game", async (saved, first) => {
+    scoped = saved;
+    window.history.replaceState(null, "", "/admin/settings/sub-roles?sub_role=11&role=tank");
+    await mount();
+
+    expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, include_inactive: true }, expect.any(AbortSignal));
+    expect(container.querySelector("[data-owner-game]")?.getAttribute("data-owner-game")).toBe("overwatch");
+    expect([...container.querySelectorAll("nav button")].map((node) => node.textContent)).toEqual([
+      "Tank",
+      "Damage",
+      "Support"
+    ]);
+
+    await click(button("Back"));
+    expect(container.querySelector("[data-owner-game]")).toBeNull();
+    expect(container.querySelector("nav button")?.textContent).toBe(first);
   });
 });
