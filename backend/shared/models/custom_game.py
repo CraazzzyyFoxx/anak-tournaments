@@ -97,7 +97,7 @@ class CustomGame(db.TimeStampIntegerMixin):
     # The mix's general voice: where "return" sends everyone. One of the
     # workspace's general voices (``workspace_config.mix_general_voice_channel_ids``).
     general_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    #: Which game this mix is played in (``catalog.discipline.code``); not on the API until V3.
+    #: Which game this mix is played in (``catalog.discipline.code``); fixed at create, carried on every mix read.
     discipline: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("catalog.discipline.code", name="fk_custom_game_discipline"),

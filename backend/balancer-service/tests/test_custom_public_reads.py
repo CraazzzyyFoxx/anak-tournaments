@@ -113,6 +113,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         row = SimpleNamespace(
             id=3,
             workspace_id=7,
+            discipline="lol",
             host_user_id=5,
             name="Friday mix",
             status="balanced",
@@ -145,6 +146,8 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
 
         self.assertTrue(listed["ok"], listed)
         [item] = listed["data"]
+        # The owner game travels with every row: the board loads that game's metadata, never another's.
+        self.assertEqual("lol", item["discipline"])
         self.assertNotIn("balance_result", item)
         self.assertNotIn("selected_variant_index", item)
         self.assertEqual({"1": "Ravens"}, item["settings"]["team_names"])
@@ -264,6 +267,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
 
         self.assertTrue(read["ok"], read)
         data = read["data"]
+        self.assertEqual("overwatch", data["discipline"])
         self.assertNotIn("balance_result", data)
         by_member = {row["workspace_member_id"]: row for row in data["players"]}
         self.assertEqual(
@@ -330,6 +334,7 @@ class DiscordPostsPayloadTests(IsolatedAsyncioTestCase):
         game = SimpleNamespace(
             id=3,
             workspace_id=7,
+            discipline="overwatch",
             host_user_id=5,
             name="Friday mix",
             status="draft",

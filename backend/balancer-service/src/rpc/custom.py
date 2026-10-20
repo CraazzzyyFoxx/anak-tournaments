@@ -343,6 +343,8 @@ def _dump_game(
     out: dict[str, Any] = {
         "id": game.id,
         "workspace_id": game.workspace_id,
+        # The mix's owner game: the board reads its roles, ranks and grid from this code, never from the browsing game.
+        "discipline": game.discipline,
         "host_user_id": game.host_user_id,
         "host_display_name": host_display_name,
         # Resolved (user_id + display_name) rather than raw ids, so the access
