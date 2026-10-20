@@ -10,15 +10,17 @@ import { MIX_STATUS_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GameLabel } from "@/components/workspace/GameLabel";
 import { cn } from "@/lib/utils";
 import type { CustomGame } from "@/services/custom-game.service";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 type PickupMixListProps = {
   canEdit: boolean;
   games: CustomGame[];
   communities?: Record<number, string>;
-  /** Game names by code, passed under "all games" so every row says which game it is for. */
-  disciplineNames?: Record<string, string>;
+  /** Installed games by code, passed only when the list spans several games: every row names its game (§6.1). */
+  gameMarks?: Map<string, DisciplineDescriptor>;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
@@ -29,7 +31,7 @@ export function PickupMixList({
   canEdit,
   games,
   communities,
-  disciplineNames,
+  gameMarks,
   loading,
   error,
   onRetry,
@@ -120,7 +122,7 @@ export function PickupMixList({
               key={game.id}
               game={game}
               community={communities?.[game.workspace_id]}
-              discipline={disciplineNames ? (disciplineNames[game.discipline] ?? game.discipline) : undefined}
+              gameMarks={gameMarks}
             />
           ))}
         </ul>
@@ -132,8 +134,8 @@ export function PickupMixList({
 function PickupMixRow({
   game,
   community,
-  discipline
-}: Readonly<{ game: CustomGame; community?: string; discipline?: string }>) {
+  gameMarks
+}: Readonly<{ game: CustomGame; community?: string; gameMarks?: Map<string, DisciplineDescriptor> }>) {
   const t = useTranslations("mixes.list");
   const tLobbies = useTranslations("mixes.lobbies");
   const format = useFormatter();
@@ -159,7 +161,9 @@ function PickupMixRow({
         </span>
         <span className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-caption text-[color:var(--aqt-fg-muted)] [overflow-wrap:anywhere]">
           {community ? <span className="min-w-0 max-w-full font-medium">{community}</span> : null}
-          {discipline ? <span className="min-w-0 max-w-full font-medium">{discipline}</span> : null}
+          {gameMarks ? (
+            <GameLabel code={game.discipline} games={gameMarks} className="max-w-full font-medium" />
+          ) : null}
           <span className="min-w-0 max-w-full">
             {t("host", { name: game.host_display_name ?? `#${game.host_user_id}` })}
           </span>
