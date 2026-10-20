@@ -41,6 +41,8 @@ describe("pageClassOf", () => {
         "/encounters",
         "/achievements",
         "/statistics",
+        "/users",
+        "/users/",
         "/workspace/community",
         "/workspace/community/",
         "/admin/tournaments",
@@ -60,7 +62,7 @@ describe("pageClassOf", () => {
   });
 
   it("classifies the game-bound site pages as single until their cross-game reads land", () => {
-    expectClass(["/users", "/users/", "/users/some-player"], "single");
+    expectClass(["/users/some-player"], "single");
   });
 
   it("classifies the game-bound admin pages as single until their cross-game reads land", () => {

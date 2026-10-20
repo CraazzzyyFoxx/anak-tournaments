@@ -76,7 +76,7 @@ export interface UsersIndexParamControls {
  */
 export function useUsersIndexParams(
   scope: StatsScope,
-  /** The browsed game; `null` while unresolved. */
+  /** The browsed game; `null` under "all games" (no role or division filter applies) or while unresolved. */
   discipline: string | null,
   /** Its metadata; `null` while it loads — an explicit `?role=` is kept as typed until then. */
   metadata: DisciplineMetadata | null
@@ -93,9 +93,13 @@ export function useUsersIndexParams(
 
   const query = searchParams?.get("query") ?? "";
   const sort = parseSort(searchParams?.get("sort") ?? null);
-  const divisions = parseDivisions(searchParams?.get("div") ?? null).filter(
-    (division) => clampDivisionToGrid(divisionGrid, division) === division
-  );
+  // Roles and divisions are one game's: under "all games" a leftover `?role=`/`?div=` narrows nothing.
+  const divisions =
+    discipline === null
+      ? []
+      : parseDivisions(searchParams?.get("div") ?? null).filter(
+          (division) => clampDivisionToGrid(divisionGrid, division) === division
+        );
   const params: UsersIndexParams = {
     page: parsePositiveInt(searchParams?.get("page") ?? null, 1),
     perPage: parsePerPage(searchParams?.get("per_page") ?? null),
@@ -103,7 +107,7 @@ export function useUsersIndexParams(
     sort,
     order: parseOrder(searchParams?.get("order") ?? null, sort),
     view: parseView(searchParams?.get("view") ?? null),
-    role: metadata ? parseRoleChip(metadata, rawRole) : (rawRole ?? undefined),
+    role: discipline === null ? undefined : metadata ? parseRoleChip(metadata, rawRole) : (rawRole ?? undefined),
     divisions,
     hasLogs: searchParams?.get("logs") === "1",
     minEncounters: parseMinEncounters(searchParams?.get("min_encounters") ?? null),

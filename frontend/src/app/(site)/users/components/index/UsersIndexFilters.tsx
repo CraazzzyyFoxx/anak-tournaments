@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchField } from "@/components/ui/search-field";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRoleName } from "@/hooks/useRoleName";
@@ -29,20 +30,24 @@ interface RoleChip {
 }
 
 /**
- * The one toolbar for both views: role chips, the division facet, the winrate
- * sample floor, the logs switch, search and the view toggle. Sticky under the
- * site header from `md` up; on a phone it would eat half the viewport.
+ * The one toolbar for both views: role chips and the division facet (the scope
+ * hint under "all games"), the winrate sample floor, the logs switch, search and
+ * the view toggle. Sticky under the site header from `md` up; on a phone it
+ * would eat half the viewport.
  */
 export function UsersIndexFilters({
   controls,
   stats,
   ontology,
+  allGames,
   foundCount
 }: Readonly<{
   controls: UsersIndexParamControls;
   stats: UserOverviewStats | undefined;
   /** The browsed game's role dictionary: its rated roles are the chips (none while it loads). */
   ontology: RoleOntology | null;
+  /** "All games": the role chips and the division facet need a game, so the scope hint stands in for them. */
+  allGames: boolean;
   /** `undefined` while loading, `null` when the list read failed. */
   foundCount: number | null | undefined;
 }>) {
@@ -76,36 +81,42 @@ export function UsersIndexFilters({
   return (
     <div className="z-30 -mx-4 bg-[color:var(--aqt-bg)]/95 px-4 py-2 backdrop-blur md:sticky md:top-[var(--aqt-header-h)] md:-mx-6 md:px-6 xl:-mx-10 xl:px-10">
       <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
-        <FilterChipGroup
-          label={t("users.list.filters.roleGroup")}
-          className="-mx-2.5 flex items-center gap-2 overflow-x-auto px-2.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0"
-        >
-          {roleChips.map((chip) => (
-            <FilterChip
-              key={chip.value ?? "all"}
-              active={role === chip.value}
-              count={chip.count}
-              onClick={() => controls.setRole(chip.value)}
-              className="shrink-0"
-            >
-              {chip.label}
-            </FilterChip>
-          ))}
-        </FilterChipGroup>
+        {allGames ? (
+          <GameFilterHint className="shrink-0" />
+        ) : (
+          <FilterChipGroup
+            label={t("users.list.filters.roleGroup")}
+            className="-mx-2.5 flex items-center gap-2 overflow-x-auto px-2.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0"
+          >
+            {roleChips.map((chip) => (
+              <FilterChip
+                key={chip.value ?? "all"}
+                active={role === chip.value}
+                count={chip.count}
+                onClick={() => controls.setRole(chip.value)}
+                className="shrink-0"
+              >
+                {chip.label}
+              </FilterChip>
+            ))}
+          </FilterChipGroup>
+        )}
 
         {/* One wrapping row of compact controls on a phone; at `md` the wrapper
             dissolves so they are direct children of the toolbar row again. */}
         <div className="flex flex-wrap items-center gap-2 md:contents">
-          <DivisionCombobox
-            multiple
-            values={divisions}
-            onValuesChange={controls.setDivisions}
-            grid={controls.divisionGrid}
-            counts={divisionCounts}
-            placeholder={t("users.list.filters.divisions")}
-            ariaLabel={t("users.list.filters.divisions")}
-            triggerClassName="h-8 w-auto gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
-          />
+          {allGames ? null : (
+            <DivisionCombobox
+              multiple
+              values={divisions}
+              onValuesChange={controls.setDivisions}
+              grid={controls.divisionGrid}
+              counts={divisionCounts}
+              placeholder={t("users.list.filters.divisions")}
+              ariaLabel={t("users.list.filters.divisions")}
+              triggerClassName="h-8 w-auto gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
+            />
+          )}
 
           <Popover>
             <PopoverTrigger asChild>

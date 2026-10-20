@@ -58,6 +58,7 @@ vi.mock("@/services/user.service", () => ({
           id: 7,
           name: "Ana#1234",
           avatar_url: null,
+          disciplines: ["overwatch"],
           roles: [{ role: { dimension: "player_role", role: "tank" }, division: 5, division_grid_version_id: null }],
           tournaments_count: 9,
           achievements_count: 3,
@@ -119,7 +120,8 @@ const settle = async () => {
 beforeEach(() => {
   search.current = new URLSearchParams();
   push.mockClear();
-  useWorkspaceStore.setState({ gameScope: "all", lastGame: null });
+  // The index under one game: its role chips, role divisions and drawer are game-bound.
+  useWorkspaceStore.setState({ gameScope: "overwatch", lastGame: null });
   vi.mocked(userService.getUsersOverview).mockClear();
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -129,6 +131,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  useWorkspaceStore.setState({ gameScope: "all" });
 });
 
 const renderIndex = async () => {
@@ -164,7 +167,7 @@ it("offers the browsed game's own roles as chips, counted per role code", async 
   await renderIndex();
 
   const chips = [...container.querySelectorAll("button")].map((button) => button.textContent ?? "");
-  // The first installed game here is Overwatch: its three roles, then the open slot.
+  // The scope's game here is Overwatch: its three roles, then the open slot.
   expect(chips).toEqual(expect.arrayContaining(["Tank30", "Damage40", "Support30", "Flex8"]));
 });
 
@@ -197,7 +200,7 @@ it("loads the draft card only once a row is expanded", async () => {
   await act(async () => expand?.click());
   await settle();
 
-  // The card is read in the index's resolved game (the first installed one here), in its workspace.
+  // The card is read in the index's game (the scope's), in its workspace.
   expect(getDraftCard).toHaveBeenCalledWith(7, "overwatch", 1);
   expect(container.textContent).toContain("OWT Cup 12");
   expect(container.textContent).toContain(en.users.list.expanded.openProfile);

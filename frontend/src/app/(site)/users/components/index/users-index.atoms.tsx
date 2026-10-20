@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusDot } from "@/components/ui/status-dot";
 import { formatRelative } from "@/components/kit/format-time";
+import { GameMarkButton } from "@/components/workspace/GameMarkButton";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useFormatter } from "@/lib/datetime/client";
 import { winrateColor } from "@/lib/colors";
 import { getPlayerSlug } from "@/lib/player";
@@ -176,5 +178,21 @@ export function CompareCheckbox({
       aria-label={t("users.list.compare.toggle", { name: user.name })}
       title={disabled ? t("users.list.compare.limit") : undefined}
     />
+  );
+}
+
+/** The games a player played, each a mark that narrows the scope to it (spec §6.7). */
+export function GameMarks({
+  codes,
+  onSelect
+}: Readonly<{ codes: readonly string[]; onSelect: (code: string) => void }>) {
+  const games = useGameDescriptors();
+  return (
+    <span className="inline-flex items-center justify-center gap-1">
+      {codes.map((code) => {
+        const game = games.get(code);
+        return game ? <GameMarkButton key={code} discipline={game} onSelect={onSelect} size={18} /> : null;
+      })}
+    </span>
   );
 }

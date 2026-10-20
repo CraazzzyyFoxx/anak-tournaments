@@ -71,7 +71,6 @@ const PLATFORM_ROOTS: readonly string[] = [
 const SINGLE_PATHS: readonly string[] = [
   "/users/compare",
   "/users/heroes-compare",
-  "/users",
   "/admin/settings/registration-forms",
   "/admin/ranks"
 ];
@@ -85,6 +84,7 @@ const MULTI_PATHS: readonly string[] = [
   "/encounters",
   "/achievements",
   "/statistics",
+  "/users",
   "/admin/tournaments",
   "/admin/teams",
   "/admin/matches",
