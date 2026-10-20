@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useDebounce } from "use-debounce";
 
 import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
@@ -36,24 +36,25 @@ export interface EncountersFilterControls {
  * off the query cache either way, and a push would stack one history entry per
  * keystroke. The previous-value ref keeps the very first render (which already
  * matches the server-rendered URL) from writing a redundant entry. The game is the
- * browsing selector's, not a filter: the mirror carries it and never writes a URL
- * without it, and another game starts again from its first page without the old
- * game's tournament/stage filters.
+ * scope's, not a filter: the mirror keeps an explicit `?discipline=` as it found it and
+ * never adds one, and another game (`gameKey` — "all" or a code; `null` while resolving)
+ * starts again from its first page without the old game's tournament/stage filters.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
   initialPage: number,
-  discipline: string | null
+  gameKey: string | null
 ): EncountersFilterControls {
   const pathname = usePathname();
+  const explicitGame = useSearchParams()?.get(DISCIPLINE_PARAM) ?? null;
   const [filters, setFilters] = useState<EncounterFilterState>(initialFilters);
   const [searchValue, setSearchInput] = useState(initialFilters.query);
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
-  const [stateDiscipline, setStateDiscipline] = useState(discipline);
-  if (discipline !== null && discipline !== stateDiscipline) {
-    setStateDiscipline(discipline);
-    if (stateDiscipline !== null) {
+  const [stateGame, setStateGame] = useState(gameKey);
+  if (gameKey !== null && gameKey !== stateGame) {
+    setStateGame(gameKey);
+    if (stateGame !== null) {
       setPage(1);
       setFilters((current) => ({ ...current, ...GAME_SCOPED_FILTERS }));
     }
@@ -65,9 +66,9 @@ export function useEncountersFilters(
   );
 
   useEffect(() => {
-    if (discipline === null) return;
+    if (gameKey === null) return;
     const params = filtersToSearchParams(effectiveFilters, page);
-    params.set(DISCIPLINE_PARAM, discipline);
+    if (explicitGame !== null) params.set(DISCIPLINE_PARAM, explicitGame);
     const nextUrl = `${pathname}?${params.toString()}`;
     const previous = previousUrlRef.current;
     if (
@@ -79,7 +80,7 @@ export function useEncountersFilters(
 
     window.history.replaceState(null, "", nextUrl);
     previousUrlRef.current = { page, filters: effectiveFilters };
-  }, [discipline, effectiveFilters, page, pathname]);
+  }, [gameKey, explicitGame, effectiveFilters, page, pathname]);
 
   return {
     filters,

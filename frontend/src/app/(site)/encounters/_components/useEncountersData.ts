@@ -6,6 +6,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import encounterService from "@/services/encounter.service";
 import tournamentService from "@/services/tournament.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { LookupItem, PaginatedResponse } from "@/types/pagination.types";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -13,9 +14,9 @@ import type { Encounter, EncounterOverview } from "@/types/encounter.types";
 
 import { ENCOUNTERS_PAGE_SIZE, filtersToApiFilters, type EncounterFilterState } from "./encounters.helpers";
 
-/** The server render's reads and the one game they were made for. */
+/** The server render's reads and the game they were made for (`null` = every game). */
 export interface EncountersSeed {
-  discipline: string;
+  discipline: string | null;
   data: PaginatedResponse<Encounter>;
   overview: EncounterOverview;
 }
@@ -27,8 +28,10 @@ export interface EncountersDataInput {
   effectiveFilters: EncounterFilterState;
   page: number;
   scope: StatsScope;
-  /** The resolved browsing game; `null` (resolving, invalid, empty) reads nothing. */
+  /** The page's game; `null` is every game. */
   discipline: string | null;
+  /** The game resolved to every game or one game: nothing is read while resolving, nor for an invalid/empty one. */
+  enabled: boolean;
 }
 
 export interface EncountersData {
@@ -38,12 +41,11 @@ export interface EncountersData {
 }
 
 /**
- * The three reads the encounters index renders from, all of one game. The list and
- * the overview seed off the server-rendered payload only while the game and the
- * filters still match the ones that payload was built for — otherwise the first
- * client-side change would paint another answer as if it were this one. For the same
- * reason the previous page stays on screen while another page or filter of the same
- * game loads, but never another game's rows.
+ * The three reads the encounters index renders from, all of one game or of every game. The list and the overview seed
+ * off the server-rendered payload only while the game and the filters still match the ones that payload was built
+ * for — otherwise the first client-side change would paint another answer as if it were this one. For the same
+ * reason the previous page stays on screen while another page or filter of the same game loads, but never another
+ * game's rows. The tournament picker is one game's (spec §6.2): under every game it is not offered, so not read.
  */
 export function useEncountersData({
   seed,
@@ -52,19 +54,23 @@ export function useEncountersData({
   effectiveFilters,
   page,
   scope,
-  discipline
+  discipline,
+  enabled
 }: EncountersDataInput): EncountersData {
   const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   // One value carries the workspace dimension of every read and its cache key.
   const workspaceId = scope === "all" ? "all" : currentWorkspaceId;
+  const disciplineKey = discipline ?? ALL_DISCIPLINES;
   const apiFilters = useMemo(() => filtersToApiFilters(effectiveFilters), [effectiveFilters]);
   const matchingSeed =
-    seed?.discipline === discipline && JSON.stringify(effectiveFilters) === JSON.stringify(initialFilters)
+    seed !== null &&
+    seed.discipline === discipline &&
+    JSON.stringify(effectiveFilters) === JSON.stringify(initialFilters)
       ? seed
       : null;
 
   const listQuery = useQuery({
-    queryKey: encounterQueryKeys.list(workspaceId, discipline, page, apiFilters, effectiveFilters.query),
+    queryKey: encounterQueryKeys.list(workspaceId, disciplineKey, page, apiFilters, effectiveFilters.query),
     queryFn: ({ signal }) =>
       encounterService.getAll(
         page,
@@ -88,25 +94,27 @@ export function useEncountersData({
         },
         { signal }
       ),
-    enabled: discipline !== null,
+    enabled,
     initialData: page === initialPage ? matchingSeed?.data : undefined,
-    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === discipline ? previous : undefined)
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === disciplineKey ? previous : undefined
   });
 
   const overviewQuery = useQuery({
-    queryKey: encounterQueryKeys.overview(workspaceId, discipline, apiFilters, effectiveFilters.query),
+    queryKey: encounterQueryKeys.overview(workspaceId, disciplineKey, apiFilters, effectiveFilters.query),
     queryFn: ({ signal }) =>
       encounterService.getOverview(effectiveFilters.query, { ...apiFilters, discipline }, workspaceId, { signal }),
-    enabled: discipline !== null,
+    enabled,
     initialData: matchingSeed?.overview,
-    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === discipline ? previous : undefined),
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === disciplineKey ? previous : undefined,
     retry: 1
   });
 
   const tournamentsLookupQuery = useQuery({
-    queryKey: encounterQueryKeys.tournamentsLookup(workspaceId, discipline),
+    queryKey: encounterQueryKeys.tournamentsLookup(workspaceId, disciplineKey),
     queryFn: ({ signal }) => tournamentService.lookup(workspaceId, discipline, { signal }),
-    enabled: discipline !== null,
+    enabled: enabled && discipline !== null,
     staleTime: 5 * 60_000,
     retry: 1
   });

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { cn } from "@/lib/utils";
 import type { EncounterOverview } from "@/types/encounter.types";
 import type { LookupItem } from "@/types/pagination.types";
@@ -32,6 +33,7 @@ export function EncountersFilterBar({
   searchValue,
   kpis,
   tournaments,
+  gameBound,
   onSearchChange,
   onPatch
 }: Readonly<{
@@ -39,6 +41,8 @@ export function EncountersFilterBar({
   searchValue: string;
   kpis: EncounterOverview["kpis"];
   tournaments: LookupItem[];
+  /** The page reads one game: its game-bound filters (the tournament picker) are offered; else the hint is. */
+  gameBound: boolean;
   onSearchChange: (value: string) => void;
   onPatch: (patch: Partial<EncounterFilterState>) => void;
 }>) {
@@ -74,23 +78,27 @@ export function EncountersFilterBar({
           ))}
         </FilterChipGroup>
         <span className={styles.filterDivider} />
-        <FilterSelect
-          label={t("common.tournament")}
-          value={filters.tournament_id == null ? "all" : String(filters.tournament_id)}
-          onValueChange={(value) =>
-            onPatch({ tournament_id: value === "all" ? null : Number(value) })
-          }
-          items={[
-            ["all", t("encounters.filter.tournamentAny")] as [string, string],
-            ...tournaments.map(
-              (item) =>
-                [
-                  String(item.id),
-                  t("encounters.filter.tournamentNamed", { name: item.name })
-                ] as [string, string]
-            )
-          ]}
-        />
+        {gameBound ? (
+          <FilterSelect
+            label={t("common.tournament")}
+            value={filters.tournament_id == null ? "all" : String(filters.tournament_id)}
+            onValueChange={(value) =>
+              onPatch({ tournament_id: value === "all" ? null : Number(value) })
+            }
+            items={[
+              ["all", t("encounters.filter.tournamentAny")] as [string, string],
+              ...tournaments.map(
+                (item) =>
+                  [
+                    String(item.id),
+                    t("encounters.filter.tournamentNamed", { name: item.name })
+                  ] as [string, string]
+              )
+            ]}
+          />
+        ) : (
+          <GameFilterHint />
+        )}
         <FilterSelect
           label={t("encounters.filter.bestOf")}
           value={filters.best_of == null ? "all" : String(filters.best_of)}

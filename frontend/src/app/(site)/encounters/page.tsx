@@ -3,8 +3,8 @@ import encounterService from "@/services/encounter.service";
 import type { Encounter } from "@/types/encounter.types";
 import type { PaginatedResponse } from "@/types/pagination.types";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
-import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
+import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import EncountersClient from "./_components/EncountersClient";
 import type { EncountersSeed } from "./_components/useEncountersData";
@@ -52,8 +52,10 @@ type ParsedSearchParams = {
 
 type EncountersContentProps = ParsedSearchParams & {
   scope: StatsScope;
-  initial: BrowsingDisciplineInit;
-  /** The resolved concrete game; `null` (invalid, empty, unreadable) reads nothing. */
+  initial: GameScopeInit;
+  /** The game resolved to every game or one game; invalid, empty or unreadable reads nothing. */
+  read: boolean;
+  /** The page's game; `null` is every game. */
   game: string | null;
 };
 
@@ -67,7 +69,7 @@ function parseSearchParams(params: Record<string, string | undefined>): ParsedSe
   };
 }
 
-async function EncountersContent({ page, filters, scope, initial, game }: Readonly<EncountersContentProps>) {
+async function EncountersContent({ page, filters, scope, initial, read, game }: Readonly<EncountersContentProps>) {
   const t = await getTranslations();
   const apiFilters = { ...filtersToApiFilters(filters), discipline: game };
   let initialError: string | null = null;
@@ -75,7 +77,7 @@ async function EncountersContent({ page, filters, scope, initial, game }: Readon
   const workspaceId = scope === "all" ? "all" : undefined;
   let seed: EncountersSeed | null = null;
 
-  if (game !== null) {
+  if (read) {
     seed = { discipline: game, data: emptyEncounters(page), overview: EMPTY_OVERVIEW };
     try {
       [seed.data, seed.overview] = await Promise.all([
@@ -123,8 +125,9 @@ export default async function EncountersPage({ searchParams }: Readonly<Encounte
   const params = parseSearchParams(raw);
   const [scope, browsing] = await Promise.all([
     resolveStatsScope(),
-    resolveServerBrowsingDiscipline(raw.discipline),
+    resolveServerPageGame("multi", raw.discipline),
   ]);
+  const game = browsing.resolution?.game;
 
   return (
     <EncountersContent
@@ -132,7 +135,8 @@ export default async function EncountersPage({ searchParams }: Readonly<Encounte
       filters={params.filters}
       scope={scope}
       initial={browsing.init}
-      game={browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null}
+      read={game?.kind === "all" || game?.kind === "game"}
+      game={game?.kind === "game" ? game.code : null}
     />
   );
 }
