@@ -38,8 +38,8 @@ from shared.repository.catalog import CatalogAliasMissRepository
 from shared.repository.stats import IngestJobRepository, StatsMatchRepository
 from shared.schemas.match_doc import IngestIssue, MatchDoc, MatchHint, MatchSource
 from shared.services.audit import record_admin_audit
+from src import schemas
 from src.core.config import settings
-from src.schemas.admin.logs import LogRecordRead, LogRetryRequest
 from src.schemas.ingest import BindIngestRequest, GameObservationRead, IngestJobRead
 from src.services.ingest.binding import (
     BindingMismatch,
@@ -645,11 +645,11 @@ async def retry_log(
     *,
     job_id: int,
     workspace_id: int,
-    request: LogRetryRequest,
+    request: schemas.LogRetryRequest,
     user: AuthUser,
     data: dict[str, Any],
     s3: S3Client,
-) -> LogRecordRead:
+) -> schemas.LogRecordRead:
     """Re-pend a log (optionally re-attaching it), or with ``reparse`` replay a done one under the revision the operator
     saw; either way audited, and answered with the record as the history lists it."""
     if request.reparse:
