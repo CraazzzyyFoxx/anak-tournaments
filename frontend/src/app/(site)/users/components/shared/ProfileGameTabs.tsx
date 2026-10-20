@@ -38,9 +38,11 @@ export default function ProfileGameTabs({ initial, games }: Readonly<{ initial: 
         scope.selectTab(code, { url: false });
         const next = new URLSearchParams(searchParams.toString());
         for (const param of PROFILE_GAME_BOUND_PARAMS) next.delete(param);
-        if (next.size === searchParams.size) router.refresh();
         // Replaced, not pushed: Back must not bring the pin back under the new game.
-        else router.replace(next.size ? `${pathname}?${next}` : pathname);
+        if (next.size !== searchParams.size) router.replace(next.size ? `${pathname}?${next}` : pathname);
+        // Always re-read, after the replace (the router runs it on the new URL): the replace alone can re-show the
+        // client cache's render of a visited URL (`staleTimes.dynamic`), made under the previous game's cookie.
+        router.refresh();
       }}
       className="mb-3.5"
     />
