@@ -109,36 +109,47 @@ vi.mock("next/link", () => ({
   )
 }));
 
-// The page reads its game from the shared browsing resolver and that game's native metadata; both are
-// driven by the URL here (`?discipline=`), exactly as the real hooks resolve an explicit choice.
+// The page reads its game from the shared resolver (the real one, over the URL and a saved scope) and that game's
+// native metadata; both are driven by the URL here (`?discipline=`), exactly as the real hooks resolve it.
 const INSTALLED = [
-  { code: "overwatch", name: "Overwatch", enabled: true },
-  { code: "lol", name: "League of Legends", enabled: true }
+  { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
+  { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true }
 ];
 
-// The real resolver (owner > URL > preference) over the URL; the preference is Overwatch.
-const selectGame = vi.fn();
-vi.mock("@/hooks/useBrowsingDiscipline", async () => {
-  const { resolveDiscipline } = await vi.importActual<typeof import("@/lib/site/discipline-scope")>(
+/** The saved game scope; Overwatch unless a test says otherwise. */
+let stored = "overwatch";
+vi.mock("@/hooks/useGameScope", async () => {
+  const { resolvePageGame } = await vi.importActual<typeof import("@/lib/site/discipline-scope")>(
     "@/lib/site/discipline-scope"
   );
   return {
-    useBrowsingDiscipline: (options: { ownerDiscipline?: string | null }) => ({
-      axis: 1,
-      disciplines: INSTALLED,
-      resolved: resolveDiscipline({
-        ownerDiscipline: options.ownerDiscipline ?? null,
-        explicitDiscipline: new URLSearchParams(window.location.search).get("discipline"),
-        storedDiscipline: "overwatch",
-        disciplines: INSTALLED,
-        allowsAll: false
-      }),
-      isError: false,
-      refetch: vi.fn(),
-      select: selectGame
-    })
+    useGameScope: (options: { pageClass: "multi" | "owner"; ownerGame?: string | null }) => {
+      const resolution = resolvePageGame({
+        pageClass: options.pageClass,
+        ownerGame: options.ownerGame ?? null,
+        explicit: new URLSearchParams(window.location.search).get("discipline"),
+        stored,
+        lastGame: null,
+        games: INSTALLED
+      });
+      return {
+        axis: 1,
+        games: INSTALLED,
+        resolution,
+        game: resolution.game.kind === "game" ? resolution.game.code : null,
+        isError: false,
+        refetch: vi.fn(),
+        selectScope: vi.fn(),
+        selectTab: vi.fn()
+      };
+    }
   };
 });
+vi.mock("@/hooks/useGameDescriptors", () => ({
+  useGameDescriptors: () => new Map(INSTALLED.map((game) => [game.code, game]))
+}));
+// The owner lock is the pill's (its own suite); here it must only not touch the mocked store.
+vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: () => {} }));
 
 function metadataFor(code: string): DisciplineMetadata {
   const native = code === "overwatch";
@@ -287,6 +298,7 @@ function button(text: string) {
 
 beforeEach(() => {
   permitted = true;
+  stored = "overwatch";
   currentWorkspace = {
     id: 1,
     disciplines_enabled: ["overwatch", "lol"],
@@ -727,21 +739,23 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     expect(window.location.search).toBe("?grid=8");
   });
 
-  it("drops the grid pin only when the user changes the game selector", async () => {
-    getDivisionGrids.mockResolvedValue([grid(7, "OW")]);
-    window.history.replaceState(null, "", "/admin/settings/divisions?discipline=overwatch&grid=7");
-    selectGame.mockClear();
-    await mount();
-    expect(selectGame).not.toHaveBeenCalled();
+  it("lists every game's grids, marked, under all games and opens the one in force", async () => {
+    stored = "all";
+    getDivisionGrids.mockResolvedValue([
+      grid(7, "OW grid"),
+      { ...grid(8, "LoL grid"), discipline: "lol", versions: [] }
+    ]);
+    const container = await mount();
 
-    const trigger = document.querySelector<HTMLElement>('button[role="combobox"]');
-    await click(trigger);
-    const option = Array.from(document.querySelectorAll('[role="option"]')).find(
-      (element) => element.textContent?.includes("League of Legends")
-    );
-    await click(option);
+    // No game narrows the index: Overwatch's grid is the one in force, and opened with its own game's ladder.
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+    expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 7);
 
-    expect(selectGame).toHaveBeenCalledWith("lol", { dropParams: ["grid"] });
+    await click(document.querySelector("#division-grid-select"));
+    const options = [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent ?? "");
+    expect(options).toHaveLength(2);
+    expect(options[0]).toContain("Overwatch");
+    expect(options[1]).toContain("League of Legends");
   });
 
   it("opens a portable import on the returned grid AND its game", async () => {

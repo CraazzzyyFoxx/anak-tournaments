@@ -26,13 +26,15 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { GameLabel } from "@/components/workspace/GameLabel";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 
 import { editorHref } from "./model";
 
 /**
  * The open grid's versions, the drafts that can be started from them, and,
- * when the browsed game has more than one grid, which grid is open.
+ * when the index lists more than one grid, which grid is open.
  */
 export function VersionHistorySection({
   canCreate,
@@ -50,6 +52,7 @@ export function VersionHistorySection({
   newDraftPending,
   onLoadStandard,
   loadStandardPending,
+  games,
   children
 }: Readonly<
   Pick<VersionHistoryProps, "activeVersionId" | "tournamentCounts" | "activatable" | "onActivate"> & {
@@ -57,8 +60,10 @@ export function VersionHistorySection({
     versions: DivisionGridVersion[];
     latestVersion: DivisionGridVersion | null;
     ladder: Ladder | null;
-    /** The browsed game's grids. */
+    /** The index's grids: the browsed game's, or every game's under "all games". */
     grids: DivisionGridEntity[];
+    /** Installed games by code, passed only when `grids` spans several games: each option names its game. */
+    games?: Map<string, DisciplineDescriptor>;
     selectedGrid: DivisionGridEntity | null;
     onSelectGrid: (gridId: string) => void;
     onNewDraft: (fromVersionId: number) => void;
@@ -116,6 +121,11 @@ export function VersionHistorySection({
             <SelectContent>
               {grids.map((grid) => (
                 <SelectItem key={grid.id} value={String(grid.id)}>
+                  {games ? (
+                    <>
+                      <GameLabel code={grid.discipline} games={games} /> ·{" "}
+                    </>
+                  ) : null}
                   {grid.archived_at ? t("archivedGrid", { name: grid.name }) : grid.name}
                 </SelectItem>
               ))}
