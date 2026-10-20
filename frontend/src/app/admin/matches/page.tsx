@@ -8,8 +8,9 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -25,24 +26,29 @@ type MatchesView = (typeof VIEWS)[number];
  */
 const SHARED_SCOPE_PARAMS = ["tournament", "stage", "group", "discipline"] as const;
 
+/** The parsed view's tournament scope and map filter are one game's: a pick of another game leaves them behind (R5). */
+const PARSED_GAME_PARAMS = ["map_id", "tournament", "stage", "group"];
+
 /**
- * The workspace-wide parsed maps: a concrete-browsing view, because its map filter lists one game's catalogue. The
- * other four views are game-agnostic lists and never resolve a game.
+ * The workspace-wide parsed maps: one game at a time (its map filter lists one game's catalogue), with local game tabs
+ * under "all games" until the admin matches list filters by game server-side (Task 37, ruling R4). The other four
+ * views are game-agnostic lists and never resolve a game.
  */
 function WorkspaceParsedMatches({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
-  const { disciplines, resolved, select } = useBrowsingDiscipline({ allowsAll: false });
-  if (resolved?.kind === "invalid" || resolved?.kind === "empty") {
-    return <DisciplineUnavailable resolved={resolved} disciplines={disciplines ?? []} allowsAll={false} onSelect={select} />;
+  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+  useGameBoundParams(PARSED_GAME_PARAMS);
+  const kind = scope.resolution?.game.kind;
+  if (kind === "invalid" || kind === "empty") {
+    return <GameScopeControl scope={scope} variant="single" dropParams={PARSED_GAME_PARAMS} />;
   }
-  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
   return (
     <div className="space-y-4">
-      {disciplines && disciplines.length > 1 ? (
+      {scope.resolution?.tabs ? (
         <div className="flex justify-end">
-          <DisciplineSelector disciplines={disciplines} value={discipline ?? undefined} allowsAll={false} onSelect={select} />
+          <GameScopeControl scope={scope} variant="single" dropParams={PARSED_GAME_PARAMS} />
         </div>
       ) : null}
-      <ParsedMatchesBrowser tournamentId={null} discipline={discipline} workspaceId={workspaceId} />
+      <ParsedMatchesBrowser tournamentId={null} discipline={scope.game} workspaceId={workspaceId} />
     </div>
   );
 }

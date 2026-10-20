@@ -28,8 +28,9 @@ import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -47,7 +48,7 @@ import {
   type RankOverviewRow,
 } from "@/services/workspace-player.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { DisciplineDescriptor, DisciplineMetadata } from "@/types/discipline.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 
 const PAGE_SIZE = 30;
 
@@ -77,32 +78,27 @@ export interface RankOverviewTableProps {
   playerId?: number;
 }
 
+/** The role and division filters are one game's: a pick of another game leaves them behind (R5). */
+const RANK_GAME_PARAMS = ["role", "div_min", "div_max"];
+
 /**
- * One game's rank values in the workspace. A concrete-browsing surface: the
- * game is the one `?discipline=` names (or the saved/first-enabled choice), its
- * roles, grid and native layer are that game's own, and an invalid or empty
- * resolution reads nothing. Switching game remounts the table, so no row of the
- * previous game is shown while the next one loads.
+ * One game's rank values in the workspace — a single page with local game tabs under "all games" until the ranks list
+ * spans every game (Task 45). The game's roles, grid and native layer are its own, and an invalid or empty resolution
+ * reads nothing. Switching game remounts the table, so no row of the previous game is shown while the next one loads.
  */
 export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
   const t = useTranslations("admin.rankOverview");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const scope = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
-  const discipline = scope.resolved?.kind === "concrete" ? scope.resolved.code : null;
+  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+  useGameBoundParams(RANK_GAME_PARAMS);
+  const discipline = scope.game;
   const metadata = useDisciplineMetadata(scope.axis, discipline);
 
   if (workspaceId == null) {
     return <EmptyNote>{t("noWorkspace")}</EmptyNote>;
   }
-  if (scope.resolved?.kind === "invalid" || scope.resolved?.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={scope.resolved}
-        disciplines={scope.disciplines ?? []}
-        allowsAll={false}
-        onSelect={scope.select}
-      />
-    );
+  if (scope.resolution?.game.kind === "invalid" || scope.resolution?.game.kind === "empty") {
+    return <GameScopeControl scope={scope} variant="single" dropParams={RANK_GAME_PARAMS} />;
   }
   if (scope.isError || metadata.isError) {
     return (
@@ -120,15 +116,16 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
     return <Skeleton className="h-64" />;
   }
   return (
-    <RankOverviewRows
-      key={`${workspaceId}:${discipline}`}
-      playerId={playerId}
-      workspaceId={workspaceId}
-      discipline={discipline}
-      ontology={metadata.data}
-      disciplines={scope.disciplines ?? []}
-      onSelectDiscipline={scope.select}
-    />
+    <div className="space-y-4">
+      <GameScopeControl scope={scope} variant="single" dropParams={RANK_GAME_PARAMS} />
+      <RankOverviewRows
+        key={`${workspaceId}:${discipline}`}
+        playerId={playerId}
+        workspaceId={workspaceId}
+        discipline={discipline}
+        ontology={metadata.data}
+      />
+    </div>
   );
 }
 
@@ -149,15 +146,11 @@ function RankOverviewRows({
   workspaceId,
   discipline,
   ontology,
-  disciplines,
-  onSelectDiscipline,
 }: Readonly<{
   playerId?: number;
   workspaceId: number;
   discipline: string;
   ontology: DisciplineMetadata;
-  disciplines: readonly DisciplineDescriptor[];
-  onSelectDiscipline: (code: string) => void;
 }>) {
   const t = useTranslations("admin.rankOverview");
   const tBracket = useTranslations("adminBracket");
@@ -475,13 +468,6 @@ function RankOverviewRows({
           filters={filters}
           trailing={
             <div className="flex flex-wrap items-center gap-2">
-              <DisciplineSelector
-                disciplines={disciplines}
-                value={discipline}
-                allowsAll={false}
-                onSelect={onSelectDiscipline}
-                className="w-44"
-              />
               <div className="w-64">
                 <DateRangePicker
                   startDate={dateFrom || undefined}

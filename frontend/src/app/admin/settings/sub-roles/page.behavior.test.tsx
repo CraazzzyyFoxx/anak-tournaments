@@ -20,8 +20,10 @@ vi.mock("@/services/admin.service", () => ({ default: {
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: (permission: string) => !denied.includes(permission) }) }));
 vi.mock("@/stores/workspace.store", () => ({ useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) => selector({ currentWorkspaceId: 1 }) }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({ useBrowsingDiscipline: () => ({ axis: 1, resolved: { kind: "concrete", code: discipline }, disciplines: [], select: vi.fn(), refetch: vi.fn(), isError: false }) }));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({ DisciplineSelector: () => null, DisciplineUnavailable: () => null }));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeStub } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeStub({ kind: "game", code: discipline, source: "url" }, { axis: 1 }) };
+});
 // A wide viewport: the first role opens without a `?role=`.
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => false }));
 // `?role=` is the selection; a push rewrites the URL and re-renders.

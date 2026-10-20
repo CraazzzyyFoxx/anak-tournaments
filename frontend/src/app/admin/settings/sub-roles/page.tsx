@@ -15,8 +15,8 @@ import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useIsMobile } from "@/hooks/useMobile";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -64,8 +64,8 @@ function presentationOf(entry: PlayerSubRole): Presentation {
 export default function WorkspaceSubRolesSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const t = useTranslations("adminSettings.subRoles");
-  const scope = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
-  const code = scope.resolved?.kind === "concrete" ? scope.resolved.code : null;
+  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+  const code = scope.game;
   const metadata = useDisciplineMetadata(scope.axis, code);
 
   if (workspaceId === null) {
@@ -77,15 +77,8 @@ export default function WorkspaceSubRolesSettingsPage() {
       />
     );
   }
-  if (scope.resolved?.kind === "invalid" || scope.resolved?.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={scope.resolved}
-        disciplines={scope.disciplines ?? []}
-        allowsAll={false}
-        onSelect={scope.select}
-      />
-    );
+  if (scope.resolution?.game.kind === "invalid" || scope.resolution?.game.kind === "empty") {
+    return <GameScopeControl scope={scope} variant="single" />;
   }
   if (scope.isError || metadata.isError) {
     return (
@@ -105,14 +98,7 @@ export default function WorkspaceSubRolesSettingsPage() {
 
   return (
     <div className="space-y-4">
-      {(scope.disciplines?.length ?? 0) > 1 ? (
-        <DisciplineSelector
-          disciplines={scope.disciplines ?? []}
-          value={code}
-          allowsAll={false}
-          onSelect={scope.select}
-        />
-      ) : null}
+      <GameScopeControl scope={scope} variant="single" />
       <SubRoleCatalog
         key={`${scope.axis}:${code}`}
         workspaceId={scope.axis}

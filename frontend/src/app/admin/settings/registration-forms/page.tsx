@@ -30,9 +30,9 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
@@ -55,8 +55,8 @@ import { Spinner } from "@/components/ui/spinner";
  */
 export default function WorkspaceRegistrationFormsSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
-  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+  const discipline = scope.game;
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const tErrors = useTranslations("forms.errors");
@@ -108,7 +108,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   // The browsed game's own identity provider: a template starts from the questionnaire the server would
   // build for a fresh tournament OF THAT GAME. A game that declares none has no handle to ask for.
   const identityProvider =
-    browsing.disciplines?.find((entry) => entry.code === discipline)?.identity_provider ?? null;
+    scope.games?.find((entry) => entry.code === discipline)?.identity_provider ?? null;
 
   const createMutation = useMutation({
     mutationFn: (name: string) => {
@@ -194,8 +194,8 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       />
     );
   }
-  if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
-    return <DisciplineUnavailable resolved={browsing.resolved} disciplines={browsing.disciplines ?? []} allowsAll={false} onSelect={browsing.select} />;
+  if (scope.resolution?.game.kind === "invalid" || scope.resolution?.game.kind === "empty") {
+    return <GameScopeControl scope={scope} variant="single" />;
   }
 
   if (listQuery.isError) {
@@ -210,9 +210,8 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {(browsing.disciplines?.length ?? 0) > 1 ? (
-        <DisciplineSelector disciplines={browsing.disciplines ?? []} value={discipline ?? undefined} allowsAll={false} onSelect={browsing.select} disabled={draft !== null} />
-      ) : null}
+      {/* Unsaved questions belong to this game's template: the game tabs wait until they are saved or dropped. */}
+      {draft === null ? <GameScopeControl scope={scope} variant="single" /> : null}
       <MasterDetail
         list={
           <div className="flex flex-col gap-2">

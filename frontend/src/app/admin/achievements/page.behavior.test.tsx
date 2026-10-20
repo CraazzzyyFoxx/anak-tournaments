@@ -58,21 +58,18 @@ vi.mock("./_components/EvaluateAchievementsDialog", () => ({
     <div data-evaluate-open data-selected={[...selectedRuleIds].join(",")} />
   ),
 }));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({
-  DisciplineSelector: ({
-    disciplines,
-    onSelect,
-  }: {
-    disciplines: { code: string }[];
-    onSelect: (game: string) => void;
-  }) => (
+// The game tabs are a Radix list; a button per game is the same `onSelect` contract.
+vi.mock("@/components/workspace/GameTabs", () => ({
+  GameTabs: ({ games, onSelect }: { games: { code: string }[]; onSelect: (code: string) => void }) => (
     <div>
-      {disciplines.map((game) => (
+      {games.map((game) => (
         <button key={game.code} data-pick={game.code} onClick={() => onSelect(game.code)} />
       ))}
     </div>
   ),
-  DisciplineUnavailable: ({ resolved }: { resolved: { kind: string } }) => <p data-unavailable={resolved.kind} />,
+}));
+vi.mock("@/components/workspace/DisciplineUnavailable", () => ({
+  DisciplineUnavailable: ({ game }: { game: { kind: string } }) => <p data-unavailable={game.kind} />,
 }));
 
 function workspace(id: number, disciplines: string[]): Workspace {
@@ -130,6 +127,7 @@ beforeEach(() => {
     currentWorkspaceId: 7,
     statsScope: "workspace",
     gameScope: "all",
+    lastGame: null,
     hostLockedWorkspaceId: null,
     entityWorkspaceId: null,
   });

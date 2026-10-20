@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Spinner } from "@/components/ui/spinner";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AchievementRule } from "@/types/admin.types";
@@ -31,7 +32,6 @@ import { AchievementsTable } from "./_components/AchievementsTable";
 import { DryRunResultPanel } from "./_components/DryRunResultPanel";
 import { EvaluateAchievementsDialog } from "./_components/EvaluateAchievementsDialog";
 import { useAchievementCatalog } from "./_hooks/useAchievementCatalog";
-import { useAchievementDiscipline } from "./_hooks/useAchievementDiscipline";
 import { useAchievementRuleActions } from "./_hooks/useAchievementRuleActions";
 import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
 
@@ -43,14 +43,10 @@ export default function AchievementsPage() {
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const {
-    discipline,
-    resolved,
-    disciplines,
-    select,
-    isError,
-    refetch: refetchDisciplines
-  } = useAchievementDiscipline();
+  // One game at a time, of the page's own workspace — the same `currentWorkspaceId` its requests use — with local
+  // game tabs under "all games" until the rules list reads every game (Task 33).
+  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+  const discipline = scope.game;
 
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   // One domain dialog at a time; it is mounted only while open.
@@ -104,15 +100,16 @@ export default function AchievementsPage() {
   };
 
   if (!workspaceId || !discipline) {
+    const kind = scope.resolution?.game.kind;
     return (
       <div className="space-y-6">
         <AdminPageHeader title={t("common.achievements")} />
         {!workspaceId ? (
           <EmptyNote>{t("list.selectWorkspace")}</EmptyNote>
-        ) : resolved?.kind === "invalid" || resolved?.kind === "empty" ? (
-          <DisciplineUnavailable resolved={resolved} disciplines={disciplines ?? []} allowsAll={false} onSelect={select} />
-        ) : isError ? (
-          <PageStateCard state="error" onAction={refetchDisciplines} />
+        ) : kind === "invalid" || kind === "empty" ? (
+          <GameScopeControl scope={scope} variant="single" />
+        ) : scope.isError ? (
+          <PageStateCard state="error" onAction={scope.refetch} />
         ) : null}
       </div>
     );
@@ -126,15 +123,7 @@ export default function AchievementsPage() {
         title={t("common.achievements")}
         actions={
           <>
-            {disciplines && disciplines.length > 1 ? (
-              <DisciplineSelector
-                disciplines={disciplines}
-                value={discipline}
-                allowsAll={false}
-                onSelect={select}
-                disabled={form.open}
-              />
-            ) : null}
+            <GameScopeControl scope={scope} variant="single" />
             {canCreate && (
               <Button onClick={form.openCreate}>
                 <Plus className="mr-2 h-4 w-4" aria-hidden />

@@ -36,20 +36,10 @@ vi.mock("@/stores/workspace.store", () => ({
     selector({ currentWorkspaceId: 7 })
 }));
 
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({
-  useBrowsingDiscipline: () => ({
-    axis: 7,
-    resolved: { kind: "concrete", code: "overwatch" },
-    disciplines: [],
-    select: vi.fn(),
-    refetch: vi.fn(),
-    isError: false
-  })
-}));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({
-  DisciplineSelector: () => null,
-  DisciplineUnavailable: () => null
-}));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeStub } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeStub({ kind: "game", code: "overwatch", source: "default" }, { axis: 7 }) };
+});
 vi.mock("@/hooks/useDisciplineMetadata", async () => {
   const { OW_METADATA } = await import("@/test/discipline-metadata");
   return { useDisciplineMetadata: () => ({ data: OW_METADATA, isError: false, refetch: vi.fn() }) };

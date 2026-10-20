@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameBoundParams, useScopePillOpen } from "@/components/workspace/scope-pill-store";
+import { useGameScope } from "@/hooks/useGameScope";
 import { navigation } from "@/test/url-navigation";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
@@ -71,6 +73,16 @@ const option = (scope: HTMLElement | undefined, name: string) =>
 async function click(element: HTMLElement | null | undefined) {
   if (!element) throw new Error("nothing to click");
   await act(async () => element.click());
+  await settle();
+}
+
+const tab = (name: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) => node.textContent?.includes(name));
+/** Radix tabs pick on mousedown. */
+async function pick(name: string) {
+  const target = tab(name);
+  if (!target) throw new Error(`no ${name} tab`);
+  await act(async () => target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
   await settle();
 }
 
@@ -286,14 +298,6 @@ describe("the site scope pill", () => {
 
   describe("beside a page's local game tabs", () => {
     const INITIAL = { stored: "all", lastGame: null, axis: "all", hostLockedWorkspaceId: null, disciplines: null } as const;
-    const tab = (name: string) =>
-      [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) => node.textContent?.includes(name));
-    const pick = async (name: string) => {
-      const target = tab(name);
-      if (!target) throw new Error(`no ${name} tab`);
-      await act(async () => target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
-      await settle();
-    };
     const page = (
       <>
         <ScopePill variant="site" />
@@ -355,6 +359,27 @@ describe("the admin scope pill", () => {
     await click(option(group("Communities"), "No League"));
     expect(useWorkspaceStore.getState()).toMatchObject({ currentWorkspaceId: 3, statsScope: "all" });
     expect(option(group("Game"), "Chess")).toBeDefined();
+  });
+
+  it("keeps all games on an interim single admin page after a tab pick, which narrows only the page", async () => {
+    // The game control each interim single admin page renders for its workspace (plan C8).
+    function AdminGameTabs() {
+      const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+      const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+      return <GameScopeControl scope={scope} variant="single" />;
+    }
+    navigation.reset("/admin/ranks");
+    await mount(
+      <>
+        <ScopePill variant="admin" />
+        <AdminGameTabs />
+      </>
+    );
+    await pick("League of Legends");
+
+    expect(navigation.pushes).toEqual(["/admin/ranks?discipline=lol"]);
+    expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
+    expect(trigger()?.getAttribute("aria-label")).toBe("Both Games · All games — change scope");
   });
 
   it("is absent on platform pages", async () => {

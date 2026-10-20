@@ -47,12 +47,7 @@ describe("pageClassOf", () => {
         "/achievements",
         "/admin/tournaments",
         "/admin/teams",
-        "/admin/matches",
-        "/admin/ranks",
-        "/admin/achievements",
-        "/admin/settings/divisions",
-        "/admin/settings/registration-forms",
-        "/admin/settings/sub-roles"
+        "/admin/settings/divisions"
       ],
       "multi"
     );
@@ -64,6 +59,20 @@ describe("pageClassOf", () => {
 
   it("classifies the game-bound site pages as single until their cross-game reads land", () => {
     expectClass(["/statistics", "/users", "/users/", "/users/some-player", "/workspace/community"], "single");
+  });
+
+  it("classifies the game-bound admin pages as single until their cross-game reads land", () => {
+    expectClass(
+      [
+        "/admin/matches",
+        "/admin/achievements",
+        "/admin/achievements/",
+        "/admin/settings/sub-roles",
+        "/admin/settings/registration-forms",
+        "/admin/ranks"
+      ],
+      "single"
+    );
   });
 
   it("classifies every page opened on one object as owner", () => {
