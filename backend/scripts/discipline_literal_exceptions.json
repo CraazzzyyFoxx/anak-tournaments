@@ -2215,7 +2215,7 @@
       "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoom.tsx",
       "rule": "catalog-label",
       "token": "hero",
-      "context": "loop.statesByKind[loop.phase === \"hero\" || !loop.mapApplies ? \"hero\" : \"map\"].session",
+      "context": "state={loop.statesByKind[loop.phase === \"hero\" || !loop.mapApplies ? \"hero\" : \"map\"]}",
       "count": 2,
       "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
       "owner": "P9",
