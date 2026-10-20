@@ -6,6 +6,7 @@ import { ArrowUpRight, Hourglass } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UserTournamentWithStats, UserTournamentSummary } from "@/types/user.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import { type MapResultPip } from "@/app/(site)/users/components/overview/map-results";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { CardSurface } from "@/components/profile/atoms";
@@ -25,6 +26,8 @@ import LobbyLeaderboardModal from "@/app/(site)/users/components/overview/LobbyL
 interface Props {
   /** Its owner workspace and game name and draw the role played (that workspace's sub-roles included). */
   tournament: UserTournamentWithStats;
+  /** The server's read of that workspace and game's metadata, so the first paint names the role. */
+  metadata?: DisciplineMetadata;
   tournaments: UserTournamentSummary[];
   /** Profile owner's user id — the row highlighted in the lobby leaderboard. */
   userId: number;
@@ -59,11 +62,11 @@ const PIP_TITLE_KEY: Record<MapResultPip, string> = {
   draw: "users.overview.lastTournament.mapDraw"
 };
 
-const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }: Props) => {
+const OverviewLastTournamentCard = ({ tournament, metadata, tournaments, userId, mapPips }: Props) => {
   const t = useTranslations();
   const nameOf = useRoleName();
   const format = useFormatter();
-  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
+  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline, metadata).data ?? null;
   const roleNode = ontology ? findRole(ontology, tournament.role) : null;
   // The exact role played, in the game's dictionary; one it does not know keeps its own code.
   const roleLabel = tournament.role === null ? t("common.roles.flex") : roleNode ? nameOf(roleNode) : tournament.role.role;

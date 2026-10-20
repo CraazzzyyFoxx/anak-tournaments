@@ -27,13 +27,13 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { profile } = vi.hoisted(() => {
+const { profile, dossier } = vi.hoisted(() => {
   const support = { dimension: "player_role", role: "support" };
   // A player of both games, one tournament each: Overwatch (area order first) is the overview's game.
   const crossGame = {
     tournaments: [
-      { id: 1, discipline: "overwatch" },
-      { id: 2, discipline: "lol" }
+      { id: 1, name: "Overwatch Open", discipline: "overwatch" },
+      { id: 2, name: "Rift Clash", discipline: "lol" }
     ],
     games: [
       {
@@ -51,6 +51,23 @@ const { profile } = vi.hoisted(() => {
     maps_total: 0
   };
   return {
+    // The overview's last tournament, played as Support, in community 3: its role is drawn from that community's
+    // Overwatch metadata, which no other block reads.
+    dossier: {
+      id: 1,
+      name: "Overwatch Open",
+      workspace_id: 3,
+      discipline: "overwatch",
+      division: 5,
+      division_grid_version: null,
+      role: support,
+      group_placement: 0,
+      playoff_placement: 0,
+      maps_won: 0,
+      maps: 0,
+      playtime: 0,
+      stats: {}
+    },
     profile: (game: string | null) =>
       game === null
         ? crossGame
@@ -74,7 +91,7 @@ vi.mock("@/services/user.service", () => ({
   default: {
     getUserByName: async () => ({ id: 108, name: "IngestH0" }),
     getUserProfile: async (_id: number, game: string | null) => profile(game),
-    getUserTournament: async () => null,
+    getUserTournament: async () => dossier,
     getUserTournamentEncounters: async () => [],
     getUserTournaments: async () => [],
     getUserCharacters: async () => null,
@@ -191,4 +208,19 @@ it("names and paints the role split's roles on the server, and hydrates it where
   expect(html).toContain(">Support<");
   expect(html).toContain("#10b981");
   expect(host?.textContent).toContain("Support");
+});
+
+it("names the last tournament's role on the server, from its own community's metadata, and hydrates it", async () => {
+  const { html, recoverable, mismatches } = await hydrateProfile((client) =>
+    client.setQueryData(disciplineQueryKeys.metadata(3, "overwatch"), OW_METADATA)
+  );
+
+  expect(recoverable.map(String)).toEqual([]);
+  expect(mismatches).toEqual([]);
+  const server = document.createElement("div");
+  server.innerHTML = html;
+  const card = [...server.querySelectorAll(".aqt-card-surface")].find((node) => node.textContent?.includes("Overwatch Open"));
+  expect(card?.querySelector('[title="Support"]')).toBeTruthy();
+  expect(card?.textContent).toContain("Support");
+  expect(html).not.toContain("Unknown role");
 });
