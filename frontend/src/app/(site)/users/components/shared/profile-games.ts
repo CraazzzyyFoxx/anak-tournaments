@@ -3,6 +3,12 @@ import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { UserGameSummary, UserProfile } from "@/types/user.types";
 
 /**
+ * The profile's URL params that pin one game's data — the overview's tournament, the achievements' tournament filter,
+ * the history's selected tournament: a game change, in the scope pill or a per-game tab, drops them (ruling R5).
+ */
+export const PROFILE_GAME_BOUND_PARAMS = ["tournamentId", "achievementTournamentId", "selectedTournamentId"];
+
+/**
  * The player's games, most tournaments first, ties in the area's order (R14): `init.disciplines` is the area's list
  * in area order (the community's `disciplines_enabled`; installed order under all communities).
  */

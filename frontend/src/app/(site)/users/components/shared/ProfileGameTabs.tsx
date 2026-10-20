@@ -1,8 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { PROFILE_GAME_BOUND_PARAMS } from "@/app/(site)/users/components/shared/profile-games";
 import { GameTabs } from "@/components/workspace/GameTabs";
 import { useGameScope } from "@/hooks/useGameScope";
 import type { GameScopeInit } from "@/lib/site/discipline-scope";
@@ -10,12 +11,15 @@ import type { GameScopeInit } from "@/lib/site/discipline-scope";
 /**
  * Local game tabs over the games the player played (spec §6.6), for the profile tabs that read one game under
  * "all games". A pick writes the last game only — a URL game would narrow the whole page — and re-reads the server
- * view, which resolves the same game from that cookie (`blockGameOf`). Absent with one game played, and while a valid
- * `?discipline=` fixes the page's game (the page then shows that game only).
+ * view, which resolves the same game from that cookie (`blockGameOf`); a pinned tournament of the previous game is
+ * dropped from the URL on the way. Absent with one game played, and while a valid `?discipline=` fixes the page's
+ * game (the page then shows that game only).
  */
 export default function ProfileGameTabs({ initial, games }: Readonly<{ initial: GameScopeInit; games: string[] }>) {
   const t = useTranslations("common.discipline");
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const scope = useGameScope({
     pageClass: "single",
     initial,
@@ -32,7 +36,11 @@ export default function ProfileGameTabs({ initial, games }: Readonly<{ initial: 
       label={t("select")}
       onSelect={(code) => {
         scope.selectTab(code, { url: false });
-        router.refresh();
+        const next = new URLSearchParams(searchParams.toString());
+        for (const param of PROFILE_GAME_BOUND_PARAMS) next.delete(param);
+        if (next.size === searchParams.size) router.refresh();
+        // Replaced, not pushed: Back must not bring the pin back under the new game.
+        else router.replace(next.size ? `${pathname}?${next}` : pathname);
       }}
       className="mb-3.5"
     />
