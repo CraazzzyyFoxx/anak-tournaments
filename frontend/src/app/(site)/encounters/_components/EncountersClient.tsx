@@ -63,11 +63,12 @@ export default function EncountersClient({
   const { resolution } = gameScope;
   const discipline = gameScope.game;
   const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
-  // The game the filters belong to — "all", the game, or an invalid request's code — `null` while resolving: a change
-  // of it (a recovery from an invalid request included) drops the game-bound filters and returns to the first page.
+  // The game the filters belong to — "all", the game, or an invalid request's code — `null` while resolving. Arriving
+  // at a valid game from another one (a recovery from an invalid request included) drops the game-bound filters and
+  // returns to the first page; an invalid request itself changes nothing, its URL included.
   const invalidRequest = resolution?.game.kind === "invalid" ? resolution.game.requested : null;
   const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : invalidRequest;
-  const controls = useEncountersFilters(initialFilters, initialPage, gameKey);
+  const controls = useEncountersFilters(initialFilters, initialPage, gameKey, ready);
   const { effectiveFilters, page } = controls;
   const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
     seed,

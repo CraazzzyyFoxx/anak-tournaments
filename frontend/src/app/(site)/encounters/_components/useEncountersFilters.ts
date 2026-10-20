@@ -40,15 +40,20 @@ export interface EncountersFilterControls {
  * keystroke. The previous-value ref keeps the very first render (which already
  * matches the server-rendered URL) from writing a redundant entry. The game is the
  * scope's, not a filter: the mirror keeps an explicit `?discipline=` as it found it and
- * never adds one, and another game (`gameKey` — "all", a code, or an invalid request's
- * code; `null` while resolving) starts again from its first page without the old game's
- * tournament/stage filters. Under every game those filters never take effect at all,
- * whatever put them in the state (the URL, a saved view): nothing reads or mirrors them.
+ * never adds one. `gameKey` is the game the filters belong to — "all", a code, or an
+ * invalid request's code; `null` while resolving — and `ready` says it is a valid one
+ * (every game or one game). Only a valid game is applied: arriving at one from another
+ * game, or from an invalid request, starts again from its first page without the old
+ * game's tournament/stage filters, and only then is the state mirrored, so an invalid
+ * request's URL stays as typed (spec §4.1) and a way back to the previous game finds its
+ * filters intact. Under every game those filters never take effect at all, whatever put
+ * them in the state (the URL, a saved view): nothing reads or mirrors them.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
   initialPage: number,
-  gameKey: string | null
+  gameKey: string | null,
+  ready: boolean
 ): EncountersFilterControls {
   const pathname = usePathname();
   const explicitGame = useSearchParams()?.get(DISCIPLINE_PARAM) ?? null;
@@ -57,7 +62,7 @@ export function useEncountersFilters(
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
   const [stateGame, setStateGame] = useState(gameKey);
-  if (gameKey !== null && gameKey !== stateGame) {
+  if (ready && gameKey !== stateGame) {
     setStateGame(gameKey);
     if (stateGame !== null) {
       setPage(1);
@@ -75,7 +80,7 @@ export function useEncountersFilters(
   );
 
   useEffect(() => {
-    if (gameKey === null) return;
+    if (!ready) return;
     const params = filtersToSearchParams(effectiveFilters, page);
     if (explicitGame !== null) params.set(DISCIPLINE_PARAM, explicitGame);
     const nextUrl = `${pathname}?${params.toString()}`;
@@ -89,7 +94,7 @@ export function useEncountersFilters(
 
     window.history.replaceState(null, "", nextUrl);
     previousUrlRef.current = { page, filters: effectiveFilters };
-  }, [gameKey, explicitGame, effectiveFilters, page, pathname]);
+  }, [ready, explicitGame, effectiveFilters, page, pathname]);
 
   return {
     filters,

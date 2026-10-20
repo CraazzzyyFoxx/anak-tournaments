@@ -396,4 +396,31 @@ describe("the encounters index across games", () => {
     expect(window.location.search).toBe("?best_of=3");
     expect(rows()).toEqual(["overwatch", "lol"]);
   });
+
+  it("a game changed in the URL to an unknown one leaves that URL as typed until the viewer recovers", async () => {
+    const url = "/encounters?discipline=overwatch&page=2&tournament_id=11&stage_id=5&best_of=3";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(seedOf("overwatch", 2), 2, { ...DEFAULT_FILTERS, tournament_id: 11, stage_id: 5, best_of: 3 });
+
+    // A link or the address bar names a game that is not installed; the router moves the address bar with it.
+    const invalid = "/encounters?discipline=xx&page=3&tournament_id=11&stage_id=5&best_of=3";
+    window.history.pushState(null, "", invalid);
+    await act(async () => navigation.push(invalid));
+    await tick();
+
+    expect(container.textContent).toContain('"xx" is not an installed game.');
+    expect(window.location.search).toBe("?discipline=xx&page=3&tournament_id=11&stage_id=5&best_of=3");
+
+    const showAll = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === en.common.discipline.showAll
+    );
+    await act(async () => showAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await tick();
+
+    expect(navigation.pushes.at(-1)).toBe("/encounters?best_of=3");
+    expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null, 1));
+    expect((mocks.getAll.mock.lastCall as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null, best_of: 3 });
+    expect(window.location.search).toBe("?best_of=3");
+  });
 });
