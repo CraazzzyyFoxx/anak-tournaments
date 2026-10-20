@@ -202,6 +202,19 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         both = await self.workspace("both", enabled=("overwatch", "lol"))
         self.assertTrue(all(row["enabled"] for row in (await self.list(both.id))["data"]))
 
+    async def test_a_community_lists_its_own_games_first_in_its_own_order(self) -> None:
+        # Spec §2: the community's order is "the first enabled game" and every tie-break; the rest follow installed.
+        installed = list(DISCIPLINES)
+        reversed_order = await self.workspace("reversed", enabled=tuple(reversed(installed)))
+        reply = await self.list(reversed_order.id)
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(installed[::-1], [row["code"] for row in reply["data"]])
+        last_only = await self.workspace("last-only", enabled=(installed[-1],))
+        listed = (await self.list(last_only.id))["data"]
+        self.assertEqual([installed[-1], *installed[:-1]], [row["code"] for row in listed])
+        self.assertEqual([True] + [False] * (len(installed) - 1), [row["enabled"] for row in listed])
+        self.assertEqual(installed, [row["code"] for row in (await self.list("all"))["data"]])
+
     async def test_a_non_integer_scope_is_422_and_any_unknown_integer_is_the_404(self) -> None:
         for call in (self.list, lambda scope: self.metadata("overwatch", scope)):
             for scope in ("abc", "-3", "1.5", "ALL", " 7"):

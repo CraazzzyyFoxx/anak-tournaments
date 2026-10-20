@@ -1405,7 +1405,7 @@
       "summary": "List catalog alias misses"
     },
     "rpc.app.disciplines.list": {
-      "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
+      "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). Order: declaration order for `all`; for a workspace, its enabled disciplines first in its own `disciplines_enabled` order, then the rest in declaration order. 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
       "query_params": [
         {
           "name": "workspace_id",
