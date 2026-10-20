@@ -1,0 +1,241 @@
+// @vitest-environment happy-dom
+//
+// `/admin/ranks` under "all games" (spec §6.8): every enabled game's rows with a game column, role and rank-range
+// filters replaced by the scope hint, and no rank-value sort (the values live on different grids).
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+
+import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
+import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
+import type { RankOverviewListParams, RankOverviewRow } from "@/services/workspace-player.service";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const OW = {
+  code: "overwatch",
+  name: "Overwatch",
+  short_name: "OW",
+  icon: null,
+  enabled: true,
+  capabilities: { native_rank_collection: true }
+} as unknown as DisciplineDescriptor;
+const LOL = {
+  code: "lol",
+  name: "League of Legends",
+  short_name: "LoL",
+  icon: null,
+  enabled: true,
+  capabilities: { native_rank_collection: false }
+} as unknown as DisciplineDescriptor;
+
+let game: string | null = null;
+let invalid = false;
+let mobile = false;
+const selectScope = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/ranks",
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(window.location.search)
+}));
+vi.mock("next-intl", () => ({
+  useTranslations: () => Object.assign((key: string) => key, { has: () => true, rich: (key: string) => key })
+}));
+vi.mock("@/lib/datetime/client", () => ({
+  useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
+}));
+vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => mobile }));
+vi.mock("@/hooks/useCurrentWorkspace", () => ({
+  useDivisionGrid: () => ({ tiers: [{ number: 1, name: "Bronze", rank_min: 0, rank_max: null, icon_url: "" }] })
+}));
+vi.mock("@/stores/workspace.store", () => ({
+  useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
+    selector({ currentWorkspaceId: 7 })
+}));
+vi.mock("@/hooks/useGameScope", () => ({
+  useGameScope: () => ({
+    axis: 7,
+    games: [OW, LOL],
+    resolution: invalid
+      ? { game: { kind: "invalid", requested: "chess", reason: "unknown" }, pill: { kind: "all" }, tabs: false, scope: "all" }
+      : game === null
+        ? { game: { kind: "all" }, pill: { kind: "all" }, tabs: false, scope: "all" }
+        : { game: { kind: "game", code: game, source: "scope" }, pill: { kind: "game", code: game, locked: false }, tabs: false, scope: game },
+    game: invalid ? null : game,
+    isError: false,
+    refetch: vi.fn(),
+    selectScope,
+    selectTab: vi.fn()
+  })
+}));
+vi.mock("@/hooks/useGameDescriptors", () => ({
+  useGameDescriptors: () => new Map([[OW.code, OW], [LOL.code, LOL]])
+}));
+vi.mock("@/hooks/useDisciplineMetadata", async () => {
+  const { LOL_METADATA, OW_METADATA } = await import("@/test/discipline-metadata");
+  return {
+    useDisciplineMetadata: (_axis: unknown, code: string | null) => ({
+      data: code === null ? undefined : code === "lol" ? LOL_METADATA : OW_METADATA,
+      isError: false,
+      refetch: vi.fn()
+    })
+  };
+});
+
+const listRanks = vi.fn();
+vi.mock("@/services/workspace-player.service", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    workspacePlayerService: {
+      listRanks: (...args: unknown[]) => listRanks(...args),
+      listAuthors: async () => ({ authors: [] })
+    }
+  };
+});
+
+const row = (overrides: Partial<RankOverviewRow>): RankOverviewRow => ({
+  layer: "canon",
+  discipline: "overwatch",
+  player_id: 42,
+  member_id: 9,
+  display_name: "Alice",
+  identity: null,
+  author_user_id: null,
+  author_name: null,
+  role: "tank",
+  rank_value: 3100,
+  division: 1,
+  source: null,
+  sigma: null,
+  delta: null,
+  canon_diff: null,
+  ow_division: null,
+  ow_tier: null,
+  context: null,
+  at: "2026-01-02T03:04:05Z",
+  ...overrides
+});
+
+let container: HTMLElement;
+let root: Root;
+
+async function render(search = "") {
+  window.history.replaceState(null, "", `/admin/ranks${search}`);
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <RankOverviewTable />
+      </QueryClientProvider>
+    );
+  });
+  await act(async () => {
+    const settled = Promise.withResolvers<void>();
+    setTimeout(settled.resolve, 0);
+    await settled.promise;
+  });
+}
+
+const lastParams = () => listRanks.mock.calls.at(-1)?.[1] as RankOverviewListParams;
+const header = (text: string) => [...container.querySelectorAll("th")].find((th) => th.textContent?.trim() === text);
+
+beforeEach(() => {
+  game = null;
+  invalid = false;
+  mobile = false;
+  selectScope.mockReset();
+  listRanks.mockReset();
+  listRanks.mockResolvedValue({
+    page: 1,
+    per_page: 30,
+    total: 2,
+    results: [row({}), row({ discipline: "lol", member_id: 10, role: "jungle", rank_value: 1800 })]
+  });
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+});
+
+it("reads every game: no game, role or rank range on the wire, even from leftover URL filters", async () => {
+  await render("?role=tank&div_min=1");
+
+  expect(lastParams().discipline).toBeUndefined();
+  expect(lastParams().role ?? []).toEqual([]);
+  expect(lastParams().rankMin).toBeUndefined();
+});
+
+it("adds a game column and replaces the game-bound filters with the scope hint", async () => {
+  await render();
+
+  expect(header("column")).toBeDefined();
+  const body = container.querySelector("tbody")?.textContent ?? "";
+  expect(body).toContain("League of Legends");
+  expect(body).toContain("Overwatch");
+  expect(container.textContent).toContain("filterHint");
+  expect(container.textContent).not.toContain("filters.role");
+  expect(container.textContent).not.toContain("filters.divisionMin");
+});
+
+it("registers role and division range as game-bound params (R5)", async () => {
+  game = "overwatch";
+  await render("?role=tank&div_min=1&div_max=1");
+
+  // The pill's game pick passes exactly these as `dropParams` (R5; the drop itself is pinned on /users, Task 41).
+  expect([...useScopePillOpen.getState().gameBoundParams].sort()).toEqual(["div_max", "div_min", "role"]);
+  expect(lastParams().role).toEqual(["tank"]);
+});
+
+it("offers the rank-value sort only under a game", async () => {
+  await render();
+  expect(header("columns.rankValue")?.getAttribute("aria-sort")).toBeNull();
+  await act(async () => root.unmount());
+  container.remove();
+
+  game = "overwatch";
+  await render();
+  expect(header("columns.rankValue")?.getAttribute("aria-sort")).toBe("none");
+  expect(lastParams().discipline).toBe("overwatch");
+});
+
+it("never sends a game's rank or division sort left in the URL or a saved view to the all-games read", async () => {
+  await render("?sort=rank_value&dir=desc");
+  expect(lastParams().sort).toBeUndefined();
+  await act(async () => root.unmount());
+  container.remove();
+
+  game = "overwatch";
+  await render("?sort=rank_value&dir=desc");
+  expect(lastParams()).toMatchObject({ sort: "rank_value", order: "desc" });
+});
+
+it("recovers from an invalid game to all games without the game-bound filters", async () => {
+  invalid = true;
+  await render("?discipline=chess&role=tank&div_min=1");
+
+  expect(listRanks).not.toHaveBeenCalled();
+  const showAll = [...container.querySelectorAll("button")].find((button) => button.textContent === "showAll");
+  await act(async () => showAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+  expect(selectScope).toHaveBeenCalledWith("all", { dropParams: ["role", "div_min", "div_max"] });
+});
+
+it("names each phone card's game under all games", async () => {
+  mobile = true;
+  await render();
+
+  const cards = [...container.querySelectorAll("ul > li")].map((card) => card.textContent ?? "");
+  expect(cards).toHaveLength(2);
+  expect(cards[0]).toContain("Overwatch");
+  expect(cards[1]).toContain("League of Legends");
+});

@@ -42,7 +42,10 @@ vi.mock("@/hooks/useGameScope", async () => {
 });
 vi.mock("@/hooks/useDisciplineMetadata", async () => {
   const { OW_METADATA } = await import("@/test/discipline-metadata");
-  return { useDisciplineMetadata: () => ({ data: OW_METADATA, isError: false, refetch: vi.fn() }) };
+  return {
+    useDisciplineMetadata: () => ({ data: OW_METADATA, isError: false, refetch: vi.fn() }),
+    useDisciplines: () => ({ data: [OW_METADATA.discipline], isError: false, refetch: vi.fn() })
+  };
 });
 
 vi.mock("@/services/workspace-player.service", async (importOriginal) => {

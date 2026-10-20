@@ -77,7 +77,8 @@ vi.mock("@/hooks/useDisciplineMetadata", async () => {
       data: code === "lol" ? LOL_METADATA : OW_METADATA,
       isError: false,
       refetch: vi.fn()
-    })
+    }),
+    useDisciplines: () => ({ data: [OW_METADATA.discipline, LOL_METADATA.discipline], isError: false, refetch: vi.fn() })
   };
 });
 
@@ -225,7 +226,8 @@ describe("rank overview table", () => {
       page: 1,
       per_page: 30,
       total: 2,
-      results: [row({ role: "jungle" }), row({ member_id: 10, role: "tank" })]
+      // A League read returns League rows: each row's role is drawn from its own game's dictionary.
+      results: [row({ discipline: "lol", role: "jungle" }), row({ discipline: "lol", member_id: 10, role: "tank" })]
     });
     await render("");
 

@@ -53,7 +53,8 @@ describe("pageClassOf", () => {
         "/admin/settings/divisions",
         "/admin/settings/sub-roles",
         "/admin/achievements",
-        "/admin/achievements/"
+        "/admin/achievements/",
+        "/admin/ranks"
       ],
       "multi"
     );
@@ -64,7 +65,7 @@ describe("pageClassOf", () => {
   });
 
   it("classifies the game-bound admin pages as single until their cross-game reads land", () => {
-    expectClass(["/admin/settings/registration-forms", "/admin/ranks"], "single");
+    expectClass(["/admin/settings/registration-forms"], "single");
   });
 
   it("classifies every page opened on one object as owner", () => {

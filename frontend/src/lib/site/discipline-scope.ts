@@ -71,8 +71,7 @@ const PLATFORM_ROOTS: readonly string[] = [
 const SINGLE_PATHS: readonly string[] = [
   "/users/compare",
   "/users/heroes-compare",
-  "/admin/settings/registration-forms",
-  "/admin/ranks"
+  "/admin/settings/registration-forms"
 ];
 /** Creation flows are not a class (spec §5): they carry their own game field. */
 const NONE_PATHS: readonly string[] = ["/admin/tournaments/new"];
@@ -89,7 +88,8 @@ const MULTI_PATHS: readonly string[] = [
   "/admin/matches",
   "/admin/settings/divisions",
   "/admin/settings/sub-roles",
-  "/admin/achievements"
+  "/admin/achievements",
+  "/admin/ranks"
 ];
 const MULTI_PREFIXES: readonly string[] = ["/workspace/", "/users/"];
 const OWNER_PATHS: readonly string[] = ["/balancer"];

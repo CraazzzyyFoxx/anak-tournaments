@@ -368,7 +368,7 @@ describe("the admin scope pill", () => {
       const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
       return <GameScopeControl scope={scope} variant="single" />;
     }
-    navigation.reset("/admin/ranks");
+    navigation.reset("/admin/settings/registration-forms");
     await mount(
       <>
         <ScopePill variant="admin" />
@@ -377,7 +377,7 @@ describe("the admin scope pill", () => {
     );
     await pick("League of Legends");
 
-    expect(navigation.pushes).toEqual(["/admin/ranks?discipline=lol"]);
+    expect(navigation.pushes).toEqual(["/admin/settings/registration-forms?discipline=lol"]);
     expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
     expect(trigger()?.getAttribute("aria-label")).toBe("Both Games · All games — change scope");
   });
