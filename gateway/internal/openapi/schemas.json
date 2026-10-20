@@ -1725,7 +1725,7 @@
       "summary": "List achievements"
     },
     "rpc.app.statistics.champion": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -1792,9 +1792,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -2021,7 +2021,7 @@
       "summary": "Tournament readiness checklist"
     },
     "rpc.app.statistics.winrate": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -2088,9 +2088,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -2102,7 +2102,7 @@
       "summary": "Top winrate players"
     },
     "rpc.app.statistics.won_maps": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -2169,9 +2169,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }

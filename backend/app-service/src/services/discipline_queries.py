@@ -22,7 +22,8 @@ class DisciplineQueries:
     """Base of the query classes: ``self._facts`` / ``self._matches`` / ``self._duels`` of ``discipline``.
 
     ``DisciplineQueries()`` (no discipline) is for the few methods that touch no game data (user lookups by id or
-    name); reading the fact subqueries of such an instance is a programming error and raises.
+    name) and for cross-game list reads, which narrow with :meth:`discipline_filter`; reading the fact subqueries of
+    such an instance is a programming error and raises.
     """
 
     def __init__(self, discipline: str | None = None) -> None:
@@ -39,6 +40,10 @@ class DisciplineQueries:
         if self._discipline is None:
             raise RuntimeError(f"{type(self).__name__} is not bound to a discipline")
         return self._discipline
+
+    def discipline_filter(self, column: sa.ColumnElement[str]) -> tuple[sa.ColumnElement[bool], ...]:
+        """``column == discipline`` when bound; nothing when unbound (a cross-game read: every game's rows)."""
+        return () if self._discipline is None else (column == self._discipline,)
 
     @functools.cached_property
     def _facts(self) -> sa.Subquery:

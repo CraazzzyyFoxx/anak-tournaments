@@ -49,3 +49,25 @@ def test_get_champions(
     assert content["page"] == page
     assert content["per_page"] == per_page
     assert content["results"]
+
+
+LEADERBOARDS = ("rpc.app.statistics.champion", "rpc.app.statistics.winrate", "rpc.app.statistics.won_maps")
+
+
+@pytest.mark.parametrize("topic", LEADERBOARDS)
+@pytest.mark.parametrize("discipline", [None, "all"])
+def test_a_leaderboard_without_a_game_is_every_game(rpc: RpcHarness, topic: str, discipline: str | None) -> None:
+    params: dict[str, object] = {"page": 1, "per_page": 10, "sort": "value", "order": "desc"}
+    if discipline is not None:
+        params["discipline"] = discipline
+    env = rpc.call_sync(topic, {"query": build_query(params)})
+    assert env["ok"] is True, env
+    assert env["data"]["page"] == 1
+
+
+@pytest.mark.parametrize("topic", LEADERBOARDS)
+def test_a_leaderboard_never_reads_an_unknown_game(rpc: RpcHarness, topic: str) -> None:
+    env = rpc.call_sync(topic, {"query": build_query({"discipline": "chess", "per_page": 10})})
+    assert env["ok"] is False
+    assert env["error"]["code"] == "not_found"
+    assert env["error"]["details"]["fields"][0]["code"] == "discipline_not_installed"

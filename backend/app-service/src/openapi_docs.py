@@ -58,15 +58,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.statistics.champion": {
         "summary": "Most-champion players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
     "rpc.app.statistics.winrate": {
         "summary": "Top winrate players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
     "rpc.app.statistics.won_maps": {
         "summary": "Top won-maps players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
     "rpc.app.statistics.tournament_readiness": {
         "summary": "Tournament readiness checklist",

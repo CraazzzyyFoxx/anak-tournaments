@@ -56,7 +56,7 @@ class StatisticsQueries(DisciplineQueries):
                 models.Player.is_substitution.is_(False),
                 *extra_filters,
                 models.Tournament.is_hidden.is_(False),
-                models.Tournament.discipline == self.discipline,
+                *self.discipline_filter(models.Tournament.discipline),
                 *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
             )
             .group_by(models.User.id)
@@ -187,7 +187,7 @@ class StatisticsQueries(DisciplineQueries):
                     models.Player.is_substitution.is_(False),
                     models.Tournament.is_league.is_(False),
                     models.Tournament.is_hidden.is_(False),
-                    models.Tournament.discipline == self.discipline,
+                    *self.discipline_filter(models.Tournament.discipline),
                     *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
                 )
             )

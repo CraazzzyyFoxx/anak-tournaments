@@ -3177,7 +3177,7 @@ export interface paths {
         };
         /**
          * Most-champion players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.champion`
          */
@@ -3221,7 +3221,7 @@ export interface paths {
         };
         /**
          * Top winrate players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.winrate`
          */
@@ -3243,7 +3243,7 @@ export interface paths {
         };
         /**
          * Top won-maps players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.won_maps`
          */
@@ -40402,14 +40402,14 @@ export interface operations {
     };
     get__api_v1_statistics_champion: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsChampionGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -40529,14 +40529,14 @@ export interface operations {
     };
     get__api_v1_statistics_winrate: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWinrateGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -40595,14 +40595,14 @@ export interface operations {
     };
     get__api_v1_statistics_won_maps: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWonMapsGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;

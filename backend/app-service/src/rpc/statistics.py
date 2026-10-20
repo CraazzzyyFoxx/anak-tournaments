@@ -1,4 +1,5 @@
-"""Bespoke statistics + dashboard reads (all public, workspace-filtered, one discipline each)."""
+"""Bespoke statistics + dashboard reads (all public, workspace-filtered); the player leaderboards span every game
+unless one is named."""
 
 from __future__ import annotations
 
@@ -106,7 +107,7 @@ def register(broker: Any, logger: Any) -> None:
             return await statistics_service.get_most_champions(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
-                discipline=c.require_discipline(data),
+                discipline=c.optional_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 
@@ -119,7 +120,7 @@ def register(broker: Any, logger: Any) -> None:
             return await statistics_service.get_to_winrate_players(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
-                discipline=c.require_discipline(data),
+                discipline=c.optional_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 
@@ -132,7 +133,7 @@ def register(broker: Any, logger: Any) -> None:
             return await statistics_service.get_to_won_players(
                 session,
                 pagination.PaginationSortParams.from_query_params(qp),
-                discipline=c.require_discipline(data),
+                discipline=c.optional_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 

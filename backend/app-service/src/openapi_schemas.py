@@ -48,6 +48,8 @@ _WS_OR_ALL = QueryParam(
 _TID = QueryParam("tournament_id", "integer")
 # Every statistics read names its game explicitly (no default, no fallback).
 _DISCIPLINE = QueryParam("discipline", required=True, description="Installed discipline code")
+# A list read's optional game (spec §8.1): absent or "all" is every game.
+_OPTIONAL_DISCIPLINE = QueryParam("discipline", description='Installed discipline code; absent or "all": every game')
 
 OPERATIONS: dict[str, Op] = {
     "rpc.app.workspaces.team_format_get": Op(response=TeamFormatRead),
@@ -76,17 +78,17 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.statistics.champion": Op(
         response=Paginated[schemas.PlayerStatistics],
         query=PaginationSortQueryParams[_STAT_SORT],
-        query_params=(_DISCIPLINE,),
+        query_params=(_OPTIONAL_DISCIPLINE,),
     ),
     "rpc.app.statistics.winrate": Op(
         response=Paginated[schemas.PlayerStatistics],
         query=PaginationSortQueryParams[_STAT_SORT],
-        query_params=(_DISCIPLINE,),
+        query_params=(_OPTIONAL_DISCIPLINE,),
     ),
     "rpc.app.statistics.won_maps": Op(
         response=Paginated[schemas.PlayerStatistics],
         query=PaginationSortQueryParams[_STAT_SORT],
-        query_params=(_DISCIPLINE,),
+        query_params=(_OPTIONAL_DISCIPLINE,),
     ),
     "rpc.app.statistics.tournament_readiness": Op(response=schemas.TournamentReadiness),
     # ── users (bespoke reads) ──────────────────────────────────────────────
