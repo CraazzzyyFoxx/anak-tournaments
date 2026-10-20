@@ -52,6 +52,7 @@ describe("pageClassOf", () => {
         "/admin/matches",
         "/admin/settings/divisions",
         "/admin/settings/sub-roles",
+        "/admin/settings/registration-forms",
         "/admin/achievements",
         "/admin/achievements/",
         "/admin/ranks"
@@ -62,10 +63,6 @@ describe("pageClassOf", () => {
 
   it("classifies the one-game-by-nature comparisons as single", () => {
     expectClass(["/users/compare", "/users/heroes-compare", "/users/compare/"], "single");
-  });
-
-  it("classifies the game-bound admin pages as single until their cross-game reads land", () => {
-    expectClass(["/admin/settings/registration-forms"], "single");
   });
 
   it("classifies every page opened on one object as owner", () => {

@@ -28,22 +28,31 @@ import {
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { usePermissions } from "@/hooks/usePermissions";
-import { useGameScope } from "@/hooks/useGameScope";
-import { useQueryParams } from "@/hooks/useQueryParams";
+import { Spinner } from "@/components/ui/spinner";
+import { GameField } from "@/components/workspace/GameField";
+import { GameMarkTag } from "@/components/workspace/GameMarkTag";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
+import { useGameScope } from "@/hooks/useGameScope";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
+import { ALL_DISCIPLINES, defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { FormSchema } from "@/types/forms.types";
-import { Spinner } from "@/components/ui/spinner";
 
 /**
- * Saved questionnaires, shared by every tournament of the workspace (T4).
+ * Saved questionnaires of the workspace (T4), each owned by one game (spec §6.13, §8.4).
+ *
+ * The list is a multi surface: every game's templates (marked) under "all games", one game's under a game. A
+ * selected template is an owner: its game names the editor's roles and metadata and locks the scope pill. "New
+ * template" files under the creation game (the page's, else last, else first enabled), asking that game's identity.
  *
  * The same editor the tournament builder runs, without the tournament: there is
  * no form row to version, no stale-registration count and no policy toggles to
@@ -55,8 +64,12 @@ import { Spinner } from "@/components/ui/spinner";
  */
 export default function WorkspaceRegistrationFormsSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
-  const discipline = scope.game;
+  const lastGame = useWorkspaceStore((state) => state.lastGame) ?? null;
+  const scope = useGameScope({ pageClass: "multi", axis: workspaceId ?? "all" });
+  const kind = scope.resolution?.game.kind;
+  const listGame = scope.game;
+  const games = useMemo(() => scope.games ?? [], [scope.games]);
+  const marks = scope.resolution !== null && showsGameMarks(scope.resolution, games);
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const tErrors = useTranslations("forms.errors");
@@ -77,6 +90,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const setDraft = (schema: FormSchema | null) =>
     setEdit(schema !== null && selectedId !== null ? { templateId: selectedId, schema } : null);
   const [newName, setNewName] = useState("");
+  const [newGame, setNewGame] = useState<string | null>(null);
   /**
    * The destructive action waiting on a confirmation: deleting a shared
    * template, or walking away from unsaved questions. Both are one dialog with
@@ -88,37 +102,54 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   >(null);
 
   const canEdit = canAccessPermission("registration_form.update", workspaceId);
-  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, discipline);
-  const metadata = useDisciplineMetadata(workspaceId ?? "all", workspaceId !== null ? discipline : null);
 
   const listQuery = useQuery({
-    queryKey: registrationFormTemplatesKey(workspaceId ?? 0),
-    queryFn: () => registrationFormTemplatesService.list(workspaceId as number),
-    enabled: workspaceId !== null
+    queryKey: balancerQueryKeys.registrationFormTemplateList(workspaceId ?? 0, listGame),
+    queryFn: () => registrationFormTemplatesService.list(workspaceId as number, listGame),
+    enabled: workspaceId !== null && (kind === "game" || kind === "all")
   });
 
   const templates = useMemo(() => listQuery.data ?? [], [listQuery.data]);
-  const selected = templates.find((template) => template.id === selectedId) ?? null;
+  // The selection is resolved over every game's templates: one of another game than the list's (opened by link,
+  // or just created under another game) still opens in the editor.
+  const outsideList = selectedId !== null && listGame !== null && !templates.some((entry) => entry.id === selectedId);
+  const allTemplatesQuery = useQuery({
+    queryKey: balancerQueryKeys.registrationFormTemplateList(workspaceId ?? 0, null),
+    queryFn: () => registrationFormTemplatesService.list(workspaceId as number, null),
+    enabled: workspaceId !== null && outsideList && listQuery.isSuccess
+  });
+  const selected =
+    templates.find((template) => template.id === selectedId) ??
+    allTemplatesQuery.data?.find((template) => template.id === selectedId) ??
+    null;
   const schema = draft ?? selected?.form_schema ?? null;
   const blocked = schema ? blockedFieldKeys(schema) : null;
+
+  // The selected template is an owner (spec §5): its game drives the editor and locks the pill.
+  const ownerGame = selected?.discipline ?? null;
+  useEntityWorkspace(selected ? workspaceId : null, ownerGame);
+  const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, ownerGame);
+  const metadata = useDisciplineMetadata(workspaceId ?? "all", workspaceId !== null ? ownerGame : null);
+
+  const enabledGames = games.filter((entry) => entry.enabled);
+  // A pick counts only while it is an enabled game of the area; otherwise the default applies again.
+  const pickedGame = newGame !== null && enabledGames.some((entry) => entry.code === newGame) ? newGame : null;
+  const creationGame =
+    pickedGame ?? defaultCreationGame({ scope: listGame ?? ALL_DISCIPLINES, lastGame, games: enabledGames });
+  // A template starts from the questionnaire the server would build for a fresh tournament OF ITS GAME.
+  const identityProvider = games.find((entry) => entry.code === creationGame)?.identity_provider ?? null;
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: registrationFormTemplatesKey(workspaceId ?? 0) });
 
-  // The browsed game's own identity provider: a template starts from the questionnaire the server would
-  // build for a fresh tournament OF THAT GAME. A game that declares none has no handle to ask for.
-  const identityProvider =
-    scope.games?.find((entry) => entry.code === discipline)?.identity_provider ?? null;
-
   const createMutation = useMutation({
     mutationFn: (name: string) => {
-      if (identityProvider === null) throw new Error("no identity provider");
+      if (creationGame === null || identityProvider === null) throw new Error("no creation game");
       // "New template" and "new tournament" never disagree about what a form asks by default.
       return registrationFormTemplatesService.create(
         workspaceId as number,
         name,
-        // An identity provider is only resolved for a resolved game.
-        discipline as string,
+        creationGame,
         defaultFormSchema(identityProvider)
       );
     },
@@ -196,8 +227,17 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       />
     );
   }
-  if (scope.resolution?.game.kind === "invalid" || scope.resolution?.game.kind === "empty") {
-    return <GameScopeControl scope={scope} variant="single" />;
+  // The list reads nothing until the area's games resolve it.
+  if (scope.resolution === null) {
+    return scope.isError ? (
+      <PageStateCard state="error" onAction={scope.refetch} />
+    ) : (
+      <Skeleton className="h-40 w-full rounded-md" />
+    );
+  }
+  if (kind === "invalid" || kind === "empty") {
+    // The way out lands on the list: a selection made under the unknown game does not follow.
+    return <GameScopeControl scope={scope} variant="multi" dropParams={["template"]} />;
   }
 
   if (listQuery.isError) {
@@ -210,10 +250,10 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
     );
   }
 
+  const canCreate = newName.trim().length > 0 && identityProvider !== null && !createMutation.isPending;
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Unsaved questions belong to this game's template: the game tabs wait until they are saved or dropped. */}
-      {draft === null ? <GameScopeControl scope={scope} variant="single" /> : null}
       <MasterDetail
         list={
           <div className="flex flex-col gap-2">
@@ -225,13 +265,14 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                   {templates.map((template) => {
                     const isSelected = template.id === selectedId;
                     return (
-                      <li key={template.id}>
+                      <li key={template.id} className="flex items-center gap-1.5">
+                        {marks ? <GameMarkTag code={template.discipline} /> : null}
                         <button
                           type="button"
                           aria-current={isSelected ? "true" : undefined}
                           onClick={() => openTemplate(template.id)}
                           className={cn(
-                            "w-full truncate rounded-md px-2 py-1.5 text-left text-sm",
+                            "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             isSelected
                               ? "bg-accent/40 font-medium text-foreground"
@@ -248,33 +289,43 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
             ) : null}
 
             {canEdit && (
-              <div className="flex items-center gap-2">
-                <Input
-                  value={newName}
-                  aria-label={t("newTemplateName")}
-                  placeholder={t("newTemplateName")}
-                  onChange={(event) => setNewName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && newName.trim() && identityProvider !== null) {
-                      event.preventDefault();
-                      createMutation.mutate(newName.trim());
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="shrink-0"
-                  disabled={!newName.trim() || identityProvider === null || createMutation.isPending}
-                  onClick={() => createMutation.mutate(newName.trim())}
-                >
-                  {createMutation.isPending ? (
-                    <Spinner className="mr-1 size-3.5" />
-                  ) : (
-                    <Plus className="mr-1 size-3.5" aria-hidden />
-                  )}
-                  {t("add")}
-                </Button>
+              <div className="flex flex-col gap-2">
+                {enabledGames.length > 1 ? (
+                  <GameField
+                    id="registration-template-game"
+                    games={enabledGames}
+                    value={creationGame}
+                    onChange={setNewGame}
+                  />
+                ) : null}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newName}
+                    aria-label={t("newTemplateName")}
+                    placeholder={t("newTemplateName")}
+                    onChange={(event) => setNewName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && canCreate) {
+                        event.preventDefault();
+                        createMutation.mutate(newName.trim());
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={!canCreate}
+                    onClick={() => createMutation.mutate(newName.trim())}
+                  >
+                    {createMutation.isPending ? (
+                      <Spinner className="mr-1 size-3.5" />
+                    ) : (
+                      <Plus className="mr-1 size-3.5" aria-hidden />
+                    )}
+                    {t("add")}
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -338,7 +389,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
           ) : null
         }
         emptyDetail={
-          listQuery.isLoading ? null : (
+          listQuery.isLoading || allTemplatesQuery.isLoading ? null : (
             <PageStateCard
               state="empty"
               title={templates.length === 0 ? t("emptyTitle") : t("pickTitle")}

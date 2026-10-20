@@ -64,14 +64,10 @@ const PLATFORM_ROOTS: readonly string[] = [
   "/admin/notifications",
   "/admin/audit"
 ];
-/**
- * One-game-by-nature pages, then the interim single pages (plan C8, R22): game-bound until their cross-game reads
- * land, when each moves back to its spec §5 class (multi).
- */
+/** One-game-by-nature pages (spec §5). */
 const SINGLE_PATHS: readonly string[] = [
   "/users/compare",
-  "/users/heroes-compare",
-  "/admin/settings/registration-forms"
+  "/users/heroes-compare"
 ];
 /** Creation flows are not a class (spec §5): they carry their own game field. */
 const NONE_PATHS: readonly string[] = ["/admin/tournaments/new"];
@@ -88,6 +84,7 @@ const MULTI_PATHS: readonly string[] = [
   "/admin/matches",
   "/admin/settings/divisions",
   "/admin/settings/sub-roles",
+  "/admin/settings/registration-forms",
   "/admin/achievements",
   "/admin/ranks"
 ];

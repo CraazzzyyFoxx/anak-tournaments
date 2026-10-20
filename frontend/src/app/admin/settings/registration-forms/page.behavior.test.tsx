@@ -60,6 +60,7 @@ vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })
 }));
+vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: vi.fn() }));
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ canAccessPermission: () => true })
 }));
@@ -86,6 +87,7 @@ function template(id: number, name: string, sectionTitle: string) {
   return {
     id,
     workspace_id: 1,
+    discipline: "overwatch",
     name,
     updated_at: "2026-01-01",
     form_schema: {

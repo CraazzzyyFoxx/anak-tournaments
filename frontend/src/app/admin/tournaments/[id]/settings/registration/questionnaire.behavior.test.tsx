@@ -486,6 +486,15 @@ describe("questionnaire builder", () => {
     expect(railText()).toContain("Who are you");
   });
 
+  it("offers only the tournament game's templates to load", async () => {
+    await mount();
+
+    await menuItem("Templates", "Load a template…");
+    await settle();
+
+    expect(listTemplates).toHaveBeenLastCalledWith(1, "overwatch");
+  });
+
   it("files a schema_invalid rejection on the question its path names", async () => {
     upsertRegistrationForm.mockRejectedValueOnce(
       new ApiError(422, [

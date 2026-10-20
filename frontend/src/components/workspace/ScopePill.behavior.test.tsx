@@ -361,14 +361,14 @@ describe("the admin scope pill", () => {
     expect(option(group("Game"), "Chess")).toBeDefined();
   });
 
-  it("keeps all games on an interim single admin page after a tab pick, which narrows only the page", async () => {
-    // The game control each interim single admin page renders for its workspace (plan C8).
+  it("keeps all games on a single page after a tab pick, which narrows only the page", async () => {
+    // The game control a single page renders for the admin's workspace.
     function AdminGameTabs() {
       const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
       const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
       return <GameScopeControl scope={scope} variant="single" />;
     }
-    navigation.reset("/admin/settings/registration-forms");
+    navigation.reset("/users/compare");
     await mount(
       <>
         <ScopePill variant="admin" />
@@ -377,7 +377,7 @@ describe("the admin scope pill", () => {
     );
     await pick("League of Legends");
 
-    expect(navigation.pushes).toEqual(["/admin/settings/registration-forms?discipline=lol"]);
+    expect(navigation.pushes).toEqual(["/users/compare?discipline=lol"]);
     expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
     expect(trigger()?.getAttribute("aria-label")).toBe("Both Games · All games — change scope");
   });
