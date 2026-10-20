@@ -43,6 +43,8 @@ describe("pageClassOf", () => {
         "/statistics",
         "/users",
         "/users/",
+        "/users/some-player",
+        "/users/some-player/",
         "/workspace/community",
         "/workspace/community/",
         "/admin/tournaments",
@@ -59,10 +61,6 @@ describe("pageClassOf", () => {
 
   it("classifies the one-game-by-nature comparisons as single", () => {
     expectClass(["/users/compare", "/users/heroes-compare", "/users/compare/"], "single");
-  });
-
-  it("classifies the game-bound site pages as single until their cross-game reads land", () => {
-    expectClass(["/users/some-player"], "single");
   });
 
   it("classifies the game-bound admin pages as single until their cross-game reads land", () => {

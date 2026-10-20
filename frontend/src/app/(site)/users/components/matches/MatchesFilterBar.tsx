@@ -11,9 +11,17 @@ interface MatchesFilterBarProps {
   onApplyFilter: (key: Filter) => void;
   search: string;
   onSearchChange: (value: string) => void;
+  /** "All games": the MVP filter reads one game's facts, so it is not offered. */
+  allGames?: boolean;
 }
 
-const MatchesFilterBar = ({ activeFilter, onApplyFilter, search, onSearchChange }: MatchesFilterBarProps) => {
+const MatchesFilterBar = ({
+  activeFilter,
+  onApplyFilter,
+  search,
+  onSearchChange,
+  allGames = false
+}: MatchesFilterBarProps) => {
   const t = useTranslations();
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: t("common.all") },
@@ -23,7 +31,7 @@ const MatchesFilterBar = ({ activeFilter, onApplyFilter, search, onSearchChange 
     { key: "group", label: t("users.matches.filters.group") },
     { key: "playoffs", label: t("users.matches.filters.playoffs") },
     { key: "finals", label: t("users.matches.filters.finals") },
-    { key: "mvp1", label: t("users.matches.filters.mvp1") },
+    ...(allGames ? [] : [{ key: "mvp1" as const, label: t("users.matches.filters.mvp1") }]),
     { key: "has_logs", label: t("users.matches.filters.hasLogs") }
   ];
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useDebounce } from "use-debounce";
 import { EncounterWithUserStats } from "@/types/user.types";
@@ -23,6 +23,10 @@ interface Props {
   /** Aggregated server-side over ALL the user's encounters (Matches sidebars). */
   opponents: OpponentStat[];
   stages: StageStats;
+  /** "All games": rows mark their game and the game-bound MVP filter is not offered. */
+  allGames?: boolean;
+  /** Above the sidebars: the per-game tabs of the (game-bound) matches summary under "all games". */
+  sidebarTabs?: ReactNode;
 }
 
 /** Server-side Matches-tab filters (mirrors the encounters endpoint params). */
@@ -34,7 +38,17 @@ export interface MatchesFilters {
   opponent?: string;
 }
 
-const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents, stages }: Props) => {
+const MatchesTable = ({
+  encounters,
+  total,
+  page,
+  perPage,
+  selfUserId,
+  opponents,
+  stages,
+  allGames = false,
+  sidebarTabs
+}: Props) => {
   const { searchParams, setParams } = useQueryParams({ mode: "replace", resetOnChange: ["page"] });
   const t = useTranslations();
   const headers = [
@@ -99,6 +113,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
         onApplyFilter={applyFilter}
         search={search}
         onSearchChange={setSearch}
+        allGames={allGames}
       />
 
       <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[1fr_320px]">
@@ -119,7 +134,7 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
               </thead>
               <tbody>
                 {encounters.map((enc) => (
-                  <MatchRow key={enc.id} enc={enc} selfUserId={selfUserId} />
+                  <MatchRow key={enc.id} enc={enc} selfUserId={selfUserId} showGame={allGames} />
                 ))}
                 {encounters.length === 0 ? (
                   <tr>
@@ -148,7 +163,11 @@ const MatchesTable = ({ encounters, total, page, perPage, selfUserId, opponents,
           />
         </CardSurface>
 
-        <MatchesSidebars opponentStats={opponents} stageStats={stages} />
+        {/* Stretched to the row so the sidebars stay sticky inside it. */}
+        <div className="flex min-w-0 flex-col self-stretch">
+          {sidebarTabs}
+          <MatchesSidebars opponentStats={opponents} stageStats={stages} />
+        </div>
       </div>
     </div>
   );

@@ -26,10 +26,13 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   try {
     const user = await userService.getUserByName(decodePlayerSlug(slug));
     name = user.name;
-    // The card has no URL of its own to carry a game: the scope's game, the last game or the first enabled game.
-    const { resolution } = await resolveServerPageGame("single", undefined);
-    if (resolution?.game.kind !== "game") throw new Error("no game to summarise the player in");
-    const profile = await userService.getUserProfile(user.id, resolution.game.code);
+    // The card has no URL of its own: the scope's game, or the cross-game profile under "all games".
+    const { resolution } = await resolveServerPageGame("multi", undefined);
+    if (resolution === null) throw new Error("the installed games could not be read");
+    const profile = await userService.getUserProfile(
+      user.id,
+      resolution.game.kind === "game" ? resolution.game.code : null
+    );
     const primaryRole = profile.roles.length
       ? profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best))
       : null;

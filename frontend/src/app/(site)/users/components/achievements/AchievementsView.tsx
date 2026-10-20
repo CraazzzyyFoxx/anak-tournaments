@@ -22,6 +22,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { CardSurface } from "@/components/profile/atoms";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { GameMarkTag } from "@/components/workspace/GameMarkTag";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
 
@@ -30,9 +31,11 @@ interface Props {
   tournaments?: UserTournamentSummary[];
   /** Tournament id; `"none"` = earned outside any tournament; `undefined` = all. */
   selectedTournament?: number | "none";
+  /** "All games": every tile marks its rule's game. */
+  showGames?: boolean;
 }
 
-const AchievementsView = ({ achievements, tournaments = [], selectedTournament }: Props) => {
+const AchievementsView = ({ achievements, tournaments = [], selectedTournament, showGames = false }: Props) => {
   const tr = useTranslations();
   const locale = useLocale();
   const tierNames = useMemo(
@@ -256,11 +259,12 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament }
                     <div className="flex min-w-0 flex-col gap-1">
                       <div
                         className={cn(
-                          "truncate text-body font-semibold leading-tight",
+                          "flex min-w-0 items-center gap-1.5 text-body font-semibold leading-tight",
                           locked ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg)]"
                         )}
                       >
-                        {ach.name}
+                        {showGames ? <GameMarkTag code={ach.discipline} /> : null}
+                        <span className="truncate">{ach.name}</span>
                       </div>
                       <div
                         className={cn(

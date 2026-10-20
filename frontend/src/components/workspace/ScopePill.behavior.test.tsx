@@ -305,12 +305,12 @@ describe("the site scope pill", () => {
       </>
     );
 
-    it("keeps all games on an interim single page after a tab pick, which narrows only the page", async () => {
-      navigation.reset("/users/some-player");
+    it("keeps all games on a single page after a tab pick, which narrows only the page", async () => {
+      navigation.reset("/users/compare");
       await mount(page);
       await pick("League of Legends");
 
-      expect(navigation.pushes).toEqual(["/users/some-player?discipline=lol"]);
+      expect(navigation.pushes).toEqual(["/users/compare?discipline=lol"]);
       expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
       expect(trigger()?.getAttribute("aria-label")).toBe("All communities · All games — change scope");
     });

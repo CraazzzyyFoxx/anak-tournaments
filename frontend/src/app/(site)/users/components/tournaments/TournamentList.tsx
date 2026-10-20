@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { UserTournament } from "@/types/user.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { GameMarkTag } from "@/components/workspace/GameMarkTag";
 import { PlaceBadge, LeagueBadge, WdlText, WdlBar } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
 import {
   type TournamentGroup,
@@ -25,6 +26,8 @@ interface Props {
   groups: TournamentGroup[];
   selectedKey: number | null;
   onSelect: (repId: number) => void;
+  /** "All games": each row marks its tournament's game. */
+  showGames?: boolean;
 }
 
 const matchesFilter = (group: TournamentGroup, filter: Filter): boolean => {
@@ -66,11 +69,13 @@ const ChipButton = ({
 const TournamentRow = ({
   group,
   selected,
-  onSelect
+  onSelect,
+  showGames
 }: {
   group: TournamentGroup;
   selected: boolean;
   onSelect: () => void;
+  showGames: boolean;
 }) => {
   const t = useTranslations();
   const league = isLeagueGroup(group);
@@ -94,6 +99,7 @@ const TournamentRow = ({
       <PlaceBadge placement={best} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
+          {showGames ? <GameMarkTag code={lead.discipline} /> : null}
           <span className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">{groupDisplayName(group)}</span>
           {league ? <LeagueBadge>{t("users.tournaments.leagueBadge")}</LeagueBadge> : null}
         </div>
@@ -123,7 +129,7 @@ const TournamentRow = ({
   );
 };
 
-const TournamentList = ({ groups, selectedKey, onSelect }: Props) => {
+const TournamentList = ({ groups, selectedKey, onSelect, showGames = false }: Props) => {
   const t = useTranslations();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -201,6 +207,7 @@ const TournamentList = ({ groups, selectedKey, onSelect }: Props) => {
                 group={group}
                 selected={repId === selectedKey}
                 onSelect={() => onSelect(repId)}
+                showGames={showGames}
               />
             );
           })}
