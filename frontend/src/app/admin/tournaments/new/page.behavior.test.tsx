@@ -10,7 +10,9 @@
 //  4. Continue on step 1 with an empty form warns and does not advance —
 //     validation runs on submit, so the button always stays reachable;
 //  5. "Import from Challonge instead" is a link to `?source=challonge` that
-//     keeps `step`: it is an alternative entry to this same wizard, not a step.
+//     keeps `step`: it is an alternative entry to this same wizard, not a step;
+//  6. the "Game" field defaults to the scope's game, else the last game, else
+//     the area's first (spec §7.2), and the game never rides in the URL.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -25,6 +27,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let currentSearch = "";
 let rerender: (() => void) | null = null;
+/** The saved game scope and the last picked game the creation field defaults from (spec §7.2). */
+let stored = "all";
+let lastGame: string | null = null;
 
 const navigate = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
@@ -57,14 +62,32 @@ vi.mock("@/hooks/usePermissions", () => ({
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
-    selector: (state: {
-      currentWorkspaceId: number;
-      workspaces: unknown[];
-      gameScope: string;
-      setGameScope: () => void;
-    }) => unknown
-  ) => selector({ currentWorkspaceId: 1, workspaces: [], gameScope: "all", setGameScope: () => {} })
+    selector: (state: { currentWorkspaceId: number; workspaces: unknown[]; lastGame: string | null }) => unknown
+  ) => selector({ currentWorkspaceId: 1, workspaces: [], lastGame })
 }));
+// The real resolver over the saved scope and the two installed games; the field's default is the subject.
+vi.mock("@/hooks/useGameScope", async () => {
+  const { resolvePageGame } = await vi.importActual<typeof import("@/lib/site/discipline-scope")>(
+    "@/lib/site/discipline-scope"
+  );
+  const { OW_METADATA, LOL_METADATA } = await import("@/test/discipline-metadata");
+  const games = [OW_METADATA.discipline, LOL_METADATA.discipline];
+  return {
+    useGameScope: () => {
+      const resolution = resolvePageGame({ pageClass: "none", ownerGame: null, explicit: null, stored, lastGame, games });
+      return {
+        axis: 1,
+        games,
+        resolution,
+        game: null,
+        isError: false,
+        refetch: () => {},
+        selectScope: () => {},
+        selectTab: () => {}
+      };
+    }
+  };
+});
 vi.mock("@/services/workspace.service", () => ({
   default: { getDivisionGrids: vi.fn().mockResolvedValue([]) }
 }));
@@ -155,9 +178,16 @@ function heading() {
   return container.querySelector("h2")?.textContent?.trim();
 }
 
+/** The checked option of the "Game" field: the field lists every game, so only the checked one names the pick. */
+function pickedGame() {
+  return container.querySelector('#tournament-game [aria-checked="true"]')?.textContent;
+}
+
 beforeEach(() => {
   navigate.mockClear();
   warning.mockClear();
+  stored = "all";
+  lastGame = null;
   for (const key of Object.keys(permissions)) delete permissions[key];
 });
 
@@ -205,18 +235,17 @@ describe("NewTournamentPage", () => {
   });
 
   it("Continue writes the next step to the URL", async () => {
-    // The URL already names the resolved game, so nothing canonicalizes it and every step keeps it.
-    await render("?step=schedule&discipline=overwatch");
+    await render("?step=schedule");
 
     await click(button("Continue"));
 
-    expect(navigate).toHaveBeenCalledWith("/admin/tournaments/new?step=rules&discipline=overwatch");
+    expect(navigate).toHaveBeenCalledWith("/admin/tournaments/new?step=rules");
     expect(heading()).toBe("Rules");
     expect(currentRailStep()).toContain("Rules");
   });
 
   it("Continue on step 1 warns instead of advancing an empty form", async () => {
-    await render("?discipline=overwatch");
+    await render();
 
     await click(button("Continue"));
 
@@ -226,16 +255,36 @@ describe("NewTournamentPage", () => {
   });
 
   it("offers the Challonge import as a link that keeps the step", async () => {
-    await render("?step=basics&discipline=overwatch");
+    await render("?step=basics");
 
     const link = container.querySelector<HTMLAnchorElement>('a[href*="source=challonge"]');
     expect(link?.textContent).toContain("Import from Challonge instead");
-    expect(link?.getAttribute("href")).toBe("/admin/tournaments/new?step=basics&discipline=overwatch&source=challonge");
+    expect(link?.getAttribute("href")).toBe("/admin/tournaments/new?step=basics&source=challonge");
   });
 
-  it("names the game the tournament is created in, canonicalized into the URL", async () => {
+  it("never writes the game into the URL", async () => {
     await render("?step=basics");
 
-    expect(navigate).toHaveBeenCalledWith("/admin/tournaments/new?step=basics&discipline=overwatch", { scroll: false });
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("defaults the game field to the scope's game", async () => {
+    stored = "lol";
+    await render();
+
+    expect(pickedGame()).toContain("League of Legends");
+  });
+
+  it("under all games defaults the field to the last game the area runs", async () => {
+    lastGame = "lol";
+    await render();
+
+    expect(pickedGame()).toContain("League of Legends");
+  });
+
+  it("under all games with no last game defaults the field to the area's first enabled game", async () => {
+    await render();
+
+    expect(pickedGame()).toContain("Overwatch");
   });
 });
