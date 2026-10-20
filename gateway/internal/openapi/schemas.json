@@ -4435,13 +4435,13 @@
       }
     },
     "rpc.balancer.custom.stats": {
-      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix of one discipline this workspace has run, best record first; `identity` is the member's handle for that discipline's identity provider. The optional `discipline` query parameter defaults to the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
+      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
       "query_params": [
         {
           "name": "discipline",
           "required": false,
           "schema": {
-            "description": "Enabled discipline; defaults to the workspace's first.",
+            "description": "One enabled discipline; omitted or `all` = every game (by_role is then null).",
             "type": "string"
           }
         },

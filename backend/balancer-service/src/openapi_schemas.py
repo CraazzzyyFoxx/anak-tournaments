@@ -175,7 +175,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
     "rpc.balancer.custom.stats": Op(
         query_params=(
-            QueryParam("discipline", description="Enabled discipline; defaults to the workspace's first."),
+            QueryParam(
+                "discipline",
+                description="One enabled discipline; omitted or `all` = every game (by_role is then null).",
+            ),
             QueryParam("since", description="ISO 8601 instant; only matches recorded on or after it."),
         )
     ),
