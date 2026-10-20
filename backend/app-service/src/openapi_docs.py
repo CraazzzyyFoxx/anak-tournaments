@@ -102,7 +102,10 @@ DOCS: dict[str, dict] = {
             "Permission: public; no authentication required. Returns a paginated, workspace-normalized "
             "player overview table built from the workspace grid. `workspace_id=all` reads across every "
             "workspace instead: divisions are then resolved on each row's own tournament grid and every "
-            "referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400."
+            "referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional "
+            "`discipline` narrows every aggregate to one game; without it the aggregates span every game, "
+            "`roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires "
+            "discipline`). Every row lists the games the player played in `disciplines`."
         ),
     },
     "rpc.app.users.overview_stats": {
@@ -110,15 +113,19 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: public; no authentication required. Returns aggregate statistics for the "
             "players-overview table computed against the workspace grid, or across every workspace "
-            "(each row on its own tournament grid) with `workspace_id=all`."
+            "(each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` "
+            "the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and "
+            "`division_counts` are empty; `role`/`divisions` are then a 422."
         ),
     },
     "rpc.app.users.overview_catalog": {
         "summary": "Users overview catalog",
         "description": (
-            "Permission: public; no authentication required. Returns the filter-catalog (facets) for the "
+            "Permission: public; no authentication required. Returns the A-Z player catalog for the "
             "players-overview table from the workspace grid, or across every workspace with "
-            "`workspace_id=all` (see `division_grids`)."
+            "`workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every "
+            "game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` "
+            "are then a 422."
         ),
     },
     "rpc.app.users.compare": {

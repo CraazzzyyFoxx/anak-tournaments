@@ -100,13 +100,19 @@ OPERATIONS: dict[str, Op] = {
         query_params=(QueryParam("query"),),
     ),
     "rpc.app.users.overview": Op(
-        response=schemas.UserOverviewResponse, query=schemas.UserOverviewQueryParams, query_params=(_DISCIPLINE,)
+        response=schemas.UserOverviewResponse,
+        query=schemas.UserOverviewQueryParams,
+        query_params=(_OPTIONAL_DISCIPLINE,),
     ),
     "rpc.app.users.overview_stats": Op(
-        response=schemas.UserOverviewStats, query=schemas.UserOverviewStatsQueryParams, query_params=(_DISCIPLINE,)
+        response=schemas.UserOverviewStats,
+        query=schemas.UserOverviewStatsQueryParams,
+        query_params=(_OPTIONAL_DISCIPLINE,),
     ),
     "rpc.app.users.overview_catalog": Op(
-        response=schemas.UserCatalogResponse, query=schemas.UserCatalogQueryParams, query_params=(_DISCIPLINE,)
+        response=schemas.UserCatalogResponse,
+        query=schemas.UserCatalogQueryParams,
+        query_params=(_OPTIONAL_DISCIPLINE,),
     ),
     "rpc.app.users.compare": Op(
         response=schemas.UserCompareResponse, query=schemas.UserCompareQueryParams, query_params=(_DISCIPLINE,)

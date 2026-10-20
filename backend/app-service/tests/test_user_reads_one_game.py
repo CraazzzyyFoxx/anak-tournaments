@@ -157,7 +157,7 @@ class UserReadsOneGameTest(IsolatedAsyncioTestCase):
     def _ids(self, *keys: str) -> list[int]:
         return [self.users[key].id for key in keys]
 
-    async def _board(self, discipline: str, sort: str) -> list[int]:
+    async def _board(self, discipline: str | None, sort: str) -> list[int]:
         params = schemas.UserOverviewParams(per_page=50, sort=sort, order="desc")
         users, _total = await UserOverviewQueries.of(discipline).get_overview_users(
             self.session, params, DEFAULT_GRID, workspace_id=self.ws.id
@@ -224,3 +224,80 @@ class UserReadsOneGameTest(IsolatedAsyncioTestCase):
         self.assertEqual(await slugs("c", LOL), {lol_rule: 1})
         # Without a game (the admin person hub) every game's rules are listed, as before.
         self.assertEqual(await slugs("b", None), {ow_rule: 1, lol_rule: 0})
+
+    async def test_overview_without_a_game_reads_every_game(self) -> None:
+        # a and b played T1, T2 and L1; c played all four: the tournaments of both games count.
+        self.assertEqual(await self._board(None, "tournaments_count"), self._ids("c", "a", "b"))
+        # b's Overwatch award and c's League award both count; a has none.
+        self.assertEqual(await self._board(None, "achievements_count"), self._ids("b", "c", "a"))
+        records = await UserOverviewQueries.of(None).get_overview_map_records(self.session, self._ids("a"), self.ws.id)
+        # Overwatch 5-1 plus League 0-2, three decided encounters.
+        self.assertEqual(records[self.users["a"].id], (5, 3, 3))
+
+    async def test_overview_rows_name_the_games_played_and_carry_no_game_bound_fields(self) -> None:
+        ids = self._ids("a", "b", "c")
+        every_game = {user_id: [OW, LOL] for user_id in ids}
+        # Both modes name every game the player played, in installed order.
+        self.assertEqual(
+            await UserOverviewQueries.of(None).get_overview_disciplines(self.session, ids, self.ws.id), every_game
+        )
+        self.assertEqual(
+            await UserOverviewQueries.of(LOL).get_overview_disciplines(self.session, ids, self.ws.id), every_game
+        )
+        # Roles, divisions and characters belong to one game: there are none without one.
+        unbound = UserOverviewQueries.of(None)
+        self.assertEqual(await unbound.get_overview_role_divisions(self.session, ids, self.ws.id), {})
+        self.assertEqual(await unbound.get_overview_top_heroes(self.session, ids, workspace_id=self.ws.id), {})
+
+    async def test_overview_without_a_game_needs_no_grid_even_when_the_first_game_has_none(self) -> None:
+        from src.core.workspace import resolve_workspace_context
+        from src.services.user.service import _overview_role_divisions
+
+        # League first and without a division grid in this workspace: a no-game read never asks for one (R13).
+        self.ws.disciplines_enabled = [LOL, OW]
+        await self.session.flush()
+        ctx = await resolve_workspace_context(self.session, self.ws.id, discipline=None)
+        self.assertIsNone(ctx.grid)
+
+        unbound = UserOverviewQueries.of(None)
+        params = schemas.UserOverviewParams(per_page=50, sort="tournaments_count", order="desc")
+        users, _total = await unbound.get_overview_users(self.session, params, ctx.grid, workspace_id=ctx.id)
+        self.assertEqual([user.id for user in users], self._ids("c", "a", "b"))
+        # The rows' roles step: no roles without a game, so nothing is resolved on the absent grid.
+        raw_roles = await unbound.get_overview_role_divisions(self.session, self._ids("c", "a", "b"), ctx.id)
+        self.assertEqual(
+            await _overview_role_divisions(
+                self.session, raw_roles, grid=ctx.grid, normalizer=ctx.normalizer, workspace_id=ctx.id
+            ),
+            ({}, []),
+        )
+        _letters, total, _available = await unbound.get_catalog_users(
+            self.session,
+            role=None,
+            divisions=[],
+            has_logs=False,
+            query=None,
+            letter=None,
+            per_letter=12,
+            max_letters=27,
+            grid=ctx.grid,
+            workspace_id=ctx.id,
+        )
+        self.assertEqual(total, 3)
+        stats = await UserService.of(None).get_overview_stats(
+            self.session, schemas.UserOverviewStatsQueryParams(), grid=ctx.grid, workspace_id=ctx.id
+        )
+        self.assertEqual(stats.total_players, 3)
+
+    async def test_overview_stats_without_a_game_span_every_game_without_role_or_division_facets(self) -> None:
+        stats = await UserService.of(None).get_overview_stats(
+            self.session, schemas.UserOverviewStatsQueryParams(), grid=DEFAULT_GRID, workspace_id=self.ws.id
+        )
+
+        self.assertEqual(stats.total_players, 3)
+        # a 3, b 3, c 4 finished tournaments across both games.
+        self.assertEqual(stats.avg_tournaments_per_player, 3.3)
+        self.assertEqual(stats.median_tournaments_per_player, 3.0)
+        self.assertEqual(
+            (stats.role_counts, stats.division_counts, stats.flex_count, stats.flex_declared_count), ({}, [], 0, 0)
+        )

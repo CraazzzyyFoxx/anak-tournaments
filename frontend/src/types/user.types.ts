@@ -404,6 +404,9 @@ interface UserOverviewBase {
   id: number;
   name: string;
   avatar_url: string | null;
+  /** The games the player played, installed order; listed whether or not the read names a game. */
+  disciplines: string[];
+  /** Game-bound: empty in the all-games read. */
   roles: UserOverviewRoleDivision[];
   top_characters: UserOverviewCharacter[];
   tournaments_count: number;

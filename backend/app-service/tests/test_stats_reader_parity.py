@@ -78,6 +78,10 @@ def _json(value: Any) -> Any:
             # The game a user's encounter row gained for the cross-game tabs (spec §6.6); not reader output the frozen
             # capture had.
             del result["discipline"]
+        if {"disciplines", "roles", "top_characters"} <= result.keys():
+            # The games a users-index row/card gained for the cross-game index (spec §8.2); not reader output the frozen
+            # capture had.
+            del result["disciplines"]
         return result
     if isinstance(value, (list, tuple)):
         return [_json(item) for item in value]

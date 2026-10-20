@@ -543,6 +543,9 @@ class UserOverviewRow(BaseModel):
     id: int
     name: str
     avatar_url: str | None = None
+    #: The games the player played (installed order), in both modes; a row's mark narrows the scope to one.
+    disciplines: list[str] = Field(default_factory=list)
+    #: Game-bound: empty in the cross-game read (no ``discipline``).
     roles: list[UserOverviewRoleDivision]
     top_characters: list[UserOverviewCharacter]
     tournaments_count: int
@@ -621,7 +624,7 @@ class UserOverviewStats(BaseModel):
     median_tournaments_per_player: float
     active_last_30d: int
     active_last_30d_pct: float
-    #: Distinct players per top-level role code of the game's rated dimension (only codes somebody played).
+    #: Distinct players per top-level role code of the game's rated dimension (only codes somebody played); empty without a game.
     role_counts: dict[str, int] = Field(default_factory=dict)
     flex_count: int
     #: Players with no rated-role assignment, unlike ``flex_count`` which also counts multi-role players.
@@ -641,6 +644,9 @@ class UserCatalogEntry(BaseModel):
     id: int
     name: str
     avatar_url: str | None = None
+    #: The games the player played (installed order), in both modes; a row's mark narrows the scope to one.
+    disciplines: list[str] = Field(default_factory=list)
+    #: Game-bound: empty in the cross-game read (no ``discipline``).
     roles: list[UserOverviewRoleDivision]
     top_characters: list[UserOverviewCharacter]
     tournaments_count: int

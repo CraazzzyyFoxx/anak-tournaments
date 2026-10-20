@@ -3969,7 +3969,7 @@ export interface paths {
         };
         /**
          * Users overview
-         * @description Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400.
+         * @description Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional `discipline` narrows every aggregate to one game; without it the aggregates span every game, `roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires discipline`). Every row lists the games the player played in `disciplines`.
          *
          *     RPC subject: `rpc.app.users.overview`
          */
@@ -3991,7 +3991,7 @@ export interface paths {
         };
         /**
          * Users overview catalog
-         * @description Permission: public; no authentication required. Returns the filter-catalog (facets) for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`).
+         * @description Permission: public; no authentication required. Returns the A-Z player catalog for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` are then a 422.
          *
          *     RPC subject: `rpc.app.users.overview_catalog`
          */
@@ -4013,7 +4013,7 @@ export interface paths {
         };
         /**
          * Users overview stats
-         * @description Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`.
+         * @description Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and `division_counts` are empty; `role`/`divisions` are then a 422.
          *
          *     RPC subject: `rpc.app.users.overview_stats`
          */
@@ -13324,6 +13324,8 @@ export interface components {
             avg_placement: number | null;
             /** Best Placement */
             best_placement: number | null;
+            /** Disciplines */
+            disciplines?: string[];
             /** Encounters Played */
             encounters_played: number;
             /** Id */
@@ -13813,6 +13815,8 @@ export interface components {
             averages: components["schemas"]["app.UserOverviewAverages"];
             /** Best Placement */
             best_placement: number | null;
+            /** Disciplines */
+            disciplines?: string[];
             /** Encounters Played */
             encounters_played: number;
             /** Id */
@@ -43002,7 +43006,7 @@ export interface operations {
     };
     get__api_v1_users_overview: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
@@ -43015,7 +43019,7 @@ export interface operations {
                 divisions?: number[];
                 has_logs?: boolean;
                 min_encounters?: number;
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -43074,7 +43078,7 @@ export interface operations {
     };
     get__api_v1_users_overview_catalog: {
         parameters: {
-            query: {
+            query?: {
                 role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
@@ -43082,7 +43086,7 @@ export interface operations {
                 letter?: string | null;
                 per_letter?: number;
                 max_letters?: number;
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -43141,12 +43145,12 @@ export interface operations {
     };
     get__api_v1_users_overview_stats: {
         parameters: {
-            query: {
+            query?: {
                 role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;

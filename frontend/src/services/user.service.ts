@@ -348,7 +348,8 @@ export default class userService {
     workspaceId,
     signal
   }: {
-    discipline: string;
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     page?: number;
     perPage?: number;
     sort?:
@@ -385,7 +386,7 @@ export default class userService {
         divisions,
         has_logs: hasLogs || undefined,
         min_encounters: minEncounters,
-        discipline,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -400,7 +401,8 @@ export default class userService {
     workspaceId,
     signal
   }: {
-    discipline: string;
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     query?: string;
     role?: RoleRef | null;
     divisions?: number[];
@@ -415,7 +417,7 @@ export default class userService {
         role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
-        discipline,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -433,7 +435,8 @@ export default class userService {
     workspaceId,
     signal
   }: {
-    discipline: string;
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     query?: string;
     role?: RoleRef | null;
     divisions?: number[];
@@ -454,7 +457,7 @@ export default class userService {
         letter,
         per_letter: perLetter,
         max_letters: maxLetters,
-        discipline,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());

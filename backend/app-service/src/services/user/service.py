@@ -100,7 +100,7 @@ async def _overview_role_divisions(
     session: AsyncSession,
     raw_roles_map: dict[int, list[tuple[RoleRef, int, int | None]]],
     *,
-    grid: DivisionGrid,
+    grid: DivisionGrid | None,
     normalizer: DivisionGridNormalizer | None,
     workspace_id: int | None,
 ) -> tuple[dict[int, list[schemas.UserOverviewRoleDivision]], list[schemas.DivisionGridVersionRead]]:
@@ -111,6 +111,9 @@ async def _overview_role_divisions(
     each role keeps its own tournament's effective grid, and the response ships
     every referenced grid so the client can render the right tier names/icons.
     """
+    if not raw_roles_map:
+        # No roles (the cross-game read lists none): no division to resolve, no grid to read.
+        return {}, []
     all_workspaces = workspace_id is None
     source_version_ids = {
         version_id for rows in raw_roles_map.values() for _role, _rank, version_id in rows if version_id is not None
@@ -303,6 +306,7 @@ class UserService(DisciplineQueries):
         dict[int, list[tuple[models.CatalogEntity, float]]],
         dict[int, tuple[int, int, int]],
         dict[int, datetime.datetime | None],
+        dict[int, list[str]],
     ]:
         """Fan out the independent per-page aggregates.
 
@@ -326,6 +330,7 @@ class UserService(DisciplineQueries):
             ),
             _isolated(lambda s: self.overview.get_overview_map_records(s, user_ids, workspace_id=workspace_id)),
             _isolated(lambda s: self.overview.get_overview_last_active(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_disciplines(s, user_ids, workspace_id=workspace_id)),
         )
 
     async def get_overview(
@@ -334,7 +339,7 @@ class UserService(DisciplineQueries):
         params: schemas.UserOverviewParams,
         workspace_id: int | None = None,
         *,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         normalizer: DivisionGridNormalizer | None = None,
     ) -> schemas.UserOverviewResponse:
         users, total = await self.overview.get_overview_users(session, params, grid, workspace_id=workspace_id)
@@ -355,6 +360,7 @@ class UserService(DisciplineQueries):
             top_heroes_map,
             map_records_map,
             last_active_map,
+            disciplines_map,
         ) = await self._gather_overview_enrichment(user_ids, workspace_id=workspace_id)
 
         roles_by_user, division_grids = await _overview_role_divisions(
@@ -378,6 +384,7 @@ class UserService(DisciplineQueries):
                     id=user.id,
                     name=user.name,
                     avatar_url=user.avatar_url,
+                    disciplines=disciplines_map.get(user.id, []),
                     roles=roles_by_user.get(user.id, []),
                     top_characters=[
                         schemas.UserOverviewCharacter(
@@ -417,7 +424,7 @@ class UserService(DisciplineQueries):
         session: AsyncSession,
         params: schemas.UserOverviewStatsQueryParams,
         *,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         workspace_id: int | None = None,
     ) -> schemas.UserOverviewStats:
         payload = await self.overview.get_overview_stats(
@@ -437,7 +444,7 @@ class UserService(DisciplineQueries):
         session: AsyncSession,
         params: schemas.UserCatalogParams,
         *,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         normalizer: DivisionGridNormalizer | None = None,
         workspace_id: int | None = None,
     ) -> schemas.UserCatalogResponse:
@@ -472,6 +479,7 @@ class UserService(DisciplineQueries):
             top_heroes_map,
             map_records_map,
             last_active_map,
+            disciplines_map,
         ) = await self._gather_overview_enrichment(
             user_ids,
             workspace_id=workspace_id,
@@ -499,6 +507,7 @@ class UserService(DisciplineQueries):
                         id=user.id,
                         name=user.name,
                         avatar_url=user.avatar_url,
+                        disciplines=disciplines_map.get(user.id, []),
                         roles=roles_by_user.get(user.id, []),
                         top_characters=[
                             schemas.UserOverviewCharacter(

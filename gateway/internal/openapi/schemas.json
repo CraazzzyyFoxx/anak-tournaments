@@ -3213,7 +3213,7 @@
       "summary": "Preview user merge"
     },
     "rpc.app.users.overview": {
-      "description": "Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400.",
+      "description": "Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional `discipline` narrows every aggregate to one game; without it the aggregates span every game, `roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires discipline`). Every row lists the games the player played in `disciplines`.",
       "query_params": [
         {
           "name": "page",
@@ -3351,9 +3351,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -3365,7 +3365,7 @@
       "summary": "Users overview"
     },
     "rpc.app.users.overview_catalog": {
-      "description": "Permission: public; no authentication required. Returns the filter-catalog (facets) for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`).",
+      "description": "Permission: public; no authentication required. Returns the A-Z player catalog for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` are then a 422.",
       "query_params": [
         {
           "name": "role",
@@ -3462,9 +3462,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -3476,7 +3476,7 @@
       "summary": "Users overview catalog"
     },
     "rpc.app.users.overview_stats": {
-      "description": "Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`.",
+      "description": "Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and `division_counts` are empty; `role`/`divisions` are then a 422.",
       "query_params": [
         {
           "name": "role",
@@ -3533,9 +3533,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -19335,6 +19335,13 @@
           ],
           "title": "Best Placement"
         },
+        "disciplines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disciplines",
+          "type": "array"
+        },
         "encounters_played": {
           "title": "Encounters Played",
           "type": "integer"
@@ -21627,6 +21634,13 @@
             }
           ],
           "title": "Best Placement"
+        },
+        "disciplines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disciplines",
+          "type": "array"
         },
         "encounters_played": {
           "title": "Encounters Played",
