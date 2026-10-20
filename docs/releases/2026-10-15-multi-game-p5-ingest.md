@@ -232,7 +232,10 @@ The official decision is a separate transaction in the match layer.
 3. If the participants' rosters identify exactly one game, the new document **replaces that game's
    observations automatically and atomically** (one transaction; no partial replacement), the revision
    increments and the older job's `binding` disappears. An occupied game is not sent to an operator:
-   occupancy is evidence, not authority. A `hint` alone never makes a document replace anything.
+   occupancy is evidence, not authority. A `hint` alone never makes a document replace anything. Without a
+   hint (P8), that one game must also hold **every** participant on the line-up of the seat their team maps to;
+   a participant outside it (unknown, rostered after the line-up was taken, another team's member) leaves the
+   document `awaiting_link` for an administrator.
 4. Historical observations (imported from the old parser) are never replaced by a canonical document.
 
 ## 7. Administrator operations
@@ -247,8 +250,10 @@ All routes are workspace-checked admin routes (a session, not a key):
   `{"encounter_game_id": 4821, "teams": {"alpha": 9001, "beta": 9002}, "expected_revision": 0}` binds an
   `awaiting_link` (or failed-but-stored) document with the operator's **complete** team map
   (`document team key → encounter.team id`; a bijection onto the game's seats, zero participant overlap
-  allowed, a roster contradiction refused). The target must be unoccupied (`expected_revision` 0) or
-  carry exactly the revision the operator saw. Returns the job (`done`, with `binding`).
+  allowed, a roster contradiction refused). Since P8 a participant outside their mapped seat's line-up who is
+  rostered on another team of the encounter's tournament (a reversed map over seats without a line-up, a third
+  team's member) is also refused (`binding_mismatch`) before anything is written. The target must be unoccupied
+  (`expected_revision` 0) or carry exactly the revision the operator saw. Returns the job (`done`, with `binding`).
 * `POST /api/v1/admin/logs/{job_id}/retry` with `{"reparse": true, "expected_revision": 1}` re-runs a `done`
   job against its stored document (a `done` retry without `reparse` is `409 reparse_required`); it
   produces a new revision only if the revision still matches.
@@ -274,7 +279,11 @@ All routes are workspace-checked admin routes (a session, not a key):
 `hint.encounter_game_id|encounter_id|tournament_id` filters candidate games. A hint outside the key's workspace
 is `404 binding_target_not_found` (nothing persisted); a hint that the rosters contradict does not bind (the
 job fails or waits); a hint never authorises a takeover of an occupied game, and a reparse never overrides an
-administrator's result (section 5).
+administrator's result (section 5). A hinted document binds by the evidence rule alone; a **hint-less** one (P8)
+binds only when the unique fitting game holds every participant on the line-up of the seat their team maps to,
+otherwise it waits for an administrator (section 6). Stage-generated seats carry their team's roster line-up since
+P8 (`9de6ac20d`); stage encounters generated before it have none (no backfill) and their documents await an admin
+bind.
 
 ## 9. Diagnostics triage
 
@@ -476,3 +485,67 @@ frozen mid-job (the RPC process keeps answering) whose reclaimed attempt cannot 
 worker whose claim is reclaimed after a restart. **It is local evidence only: not a timed production migration, not a
 remote rehearsal and not permission to drop an old schema.** Windows note: the process tree of a venv launcher is
 paused and killed as a unit by the fixture.
+
+### 15.1 P8: both games end to end
+
+`backend/stats-service/tests/test_two_game_live_scenarios.py` (`RUN_P8_LIVE_SMOKE=1`) runs on the same containers,
+env and guards: `live_smoke_support.bring_up(stack, apps=True)` starts every process above plus app-service `serve` and
+balancer-service `serve` (one balancer process hosts its RPC, the balance-job consumer and the draft clock). The
+balancer needs its native extension in the venv, built once with
+`maturin develop --release --features extension-module` in `backend/balancer-service/native/balancer_native`. The
+services derive their cache databases from the Redis URL beyond the one the fixture claims and flushes, so run
+`docker exec owt-p5-redis redis-cli FLUSHALL` (this session's own container) before each run. From `backend/`, with
+the `POSTGRES_*` and `P5_SMOKE_*` values above:
+
+```bash
+RUN_P8_LIVE_SMOKE=1 P8_SMOKE_EVIDENCE_DIR=<evidence dir> P8_SMOKE_BUILD_ID=$(git rev-parse HEAD) \
+uv run pytest stats-service/tests/test_two_game_live_scenarios.py -v -s -p no:cacheprovider
+```
+
+Optional: `RUN_P8_SOURCE_SMOKE=1` adds the real Data Dragon sync into the local S3 (the only intentional egress; an
+unavailable source fails the run, it is never a pass), and `P8_SMOKE_BROWSER_HOLD=1` keeps every process serving after
+the scenarios until `<evidence dir>/release` exists (logins go to a private temp file outside the evidence directory,
+deleted at teardown). A skipped run is not evidence. What it asserts, the evidence and the hold procedure: the P8
+release note, [`2026-10-19-multi-game-p8-lol.md`](2026-10-19-multi-game-p8-lol.md).
+
+The LoL document it submits has this shape (codes declared by the LoL module and its catalog: stats `kills`/`dragons`,
+event `kill`, map `summoners_rift`, champion `ahri`, dimension `position`; Riot IDs keep internal spaces):
+
+```json
+{
+  "protocol": "owt.match/1",
+  "discipline": "lol",
+  "source": {"kind": "external", "external_id": "league-r1-m2-g1"},
+  "hint": {"encounter_game_id": 5120},
+  "played_at": "2026-10-15T12:00:00Z",
+  "duration_s": 1834,
+  "map": "summoners_rift",
+  "teams": [
+    {"key": "alpha", "placement": 1},
+    {"key": "beta", "placement": 2}
+  ],
+  "participants": [
+    {"key": "p1", "team": "alpha", "identity": {"provider": "riot", "id": "Alpha Top#EUW"}, "role": {"dimension": "position", "role": "top"}},
+    {"key": "p2", "team": "alpha", "identity": {"provider": "riot", "id": "Alpha Jungle#EUW"}, "role": {"dimension": "position", "role": "jungle"}},
+    {"key": "p3", "team": "alpha", "identity": {"provider": "riot", "id": "Alpha Mid#EUW"}, "role": {"dimension": "position", "role": "mid"}},
+    {"key": "p4", "team": "alpha", "identity": {"provider": "riot", "id": "Alpha Bot#EUW"}, "role": {"dimension": "position", "role": "bot"}},
+    {"key": "p5", "team": "alpha", "identity": {"provider": "riot", "id": "Alpha Support#EUW"}, "role": {"dimension": "position", "role": "support"}},
+    {"key": "p6", "team": "beta", "identity": {"provider": "riot", "id": "Beta Top#EUW"}, "role": {"dimension": "position", "role": "top"}},
+    {"key": "p7", "team": "beta", "identity": {"provider": "riot", "id": "Beta Jungle#EUW"}, "role": {"dimension": "position", "role": "jungle"}},
+    {"key": "p8", "team": "beta", "identity": {"provider": "riot", "id": "Beta Mid#EUW"}, "role": {"dimension": "position", "role": "mid"}},
+    {"key": "p9", "team": "beta", "identity": {"provider": "riot", "id": "Beta Bot#EUW"}, "role": {"dimension": "position", "role": "bot"}},
+    {"key": "p10", "team": "beta", "identity": {"provider": "riot", "id": "Beta Support#EUW"}, "role": {"dimension": "position", "role": "support"}}
+  ],
+  "segments": [],
+  "facts": [
+    {"participant": "p3", "stat": "kills", "value": 7, "entity": "ahri"},
+    {"team": "alpha", "stat": "dragons", "value": 3}
+  ],
+  "events": [
+    {"t": 312.4, "type": "kill", "actor": "p3", "target": "p8", "entity": "ahri"}
+  ]
+}
+```
+
+A LoL game whose room picks sides gets its map only after the side pick, so its log binds only after side selection
+(before it, a hinted document fails `binding_mismatch`). The Overwatch `ilios` example in section 1 is unchanged.

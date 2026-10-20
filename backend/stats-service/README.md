@@ -147,8 +147,12 @@ lists the selected disciplines' ingest queues.
    historical seats count). A unique fitting game is the binding whether or not it already has an
    observation; several fitting games, or none, persist `awaiting_link` with the document, a
    structured explanation and **zero** writes (no virtual identity, anchor, observation or success
-   event). A hint only narrows candidates: a hinted game the participants contradict (or that
-   plays another map) fails with `binding_mismatch`, never a binding.
+   event). Without a hint (and not pinned to a linked game by a reparse) the one fitting game must
+   also hold **every** participant on the line-up of the seat their team maps to; a participant
+   outside it (unknown, rostered after the line-up was taken, another team's member) leaves the
+   document `awaiting_link`. A hint only narrows candidates: a hinted game the participants contradict (or that
+   plays another map) fails with `binding_mismatch`, never a binding. Stage-generated seats carry their
+   team's roster line-up (tournament-service, P8); stage encounters generated before that have none.
 6. **Write atomically.** Final lock order is encounter, game, job, existing `stats.match`; the
    claim token, roster evidence, map and the tournament/stage/round map pool (`map_not_in_pool`)
    are checked again under them. Only then are virtual
@@ -179,7 +183,12 @@ lists the selected disciplines' ingest queues.
    job's stored document is validated, bound and published by the same writer in **one**
    transaction that also claims the job, so no broker delivery competes and a refusal
    (`stale_revision`, `binding_mismatch`, `identity_conflict`, `invalid_team_map`, `ingest_busy`)
-   leaves the parked job exactly as it was. Retry of a `done` log is refused
+   leaves the parked job exactly as it was. The operator's map is checked against the line-ups
+   (`check_forced_teams`) and, for the participants no line-up places, against the encounter's
+   tournament rosters (`check_roster_owners`): one rostered on another team of the tournament (a
+   reversed map over seats without a line-up, a third team's member) is `binding_mismatch` — the
+   match layer's `extra_member_other_team` rule applied before anything is written (mix encounters
+   skip it). Retry of a `done` log is refused
    (`reparse_required`); `retry` with `reparse=true` and the `expected_revision` the operator saw
    replays it directly with its original team mapping (document keys joined to the match's
    `source_position`): a canonical job reloads its document, a decoded one decodes its raw bytes
@@ -264,6 +273,15 @@ redelivering the same event twice creates and removes nothing; awaiting-link and
 nothing; a LoL ingest reaches `done` and its run only reports that LoL has no conditions — the sentinel survives and no
 Overwatch award, run or event touches the LoL tournament. Analytics is a separate process and is covered by
 `analytics-service/tests/test_discipline_runtime_smoke.py`.
+
+**Verified live for both games (opt-in, `RUN_P8_LIVE_SMOKE=1`, the same stack plus app-service and balancer-service).**
+`test_two_game_live_scenarios.py` runs the Overwatch and LoL ingest lifecycle (concurrent identical uploads → one job;
+changed content or another game's document under the same key → `409 idempotency_conflict`; a new-id correction →
+same match, revision 2, exact native reads), hinted binding by seeded stage line-ups, awaiting-link → admin bind
+(stale and reversed maps refused, the right map `done`), the `logs_official` matrix (disabled, accepted, duplicate,
+late `result_locked`, admin-locked), five single-field diagnostics (`unknown_code`, alias-miss row, no observation)
+and LoL's empty condition registry (`condition-types` 200 `[]`, no LoL award). 10 passed / 1 skipped (the source flag)
+at `8588e360e`; recipe in the P5 release note, section 15.1.
 
 ### Rank synchronisation
 
