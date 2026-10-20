@@ -3,11 +3,11 @@
 // The profile's blocks stream in after the site header, and by the time one hydrates the browser may hold some of the
 // games' data already: the scope pill reads the installed games, a game card (or any block) its game's metadata. A
 // block's first browser render must still be the server's. Under "all games" the game cards (named from the installed
-// games) and the overview's role split (named and painted from its game's metadata) hydrate the server's markup into
-// such a browser without a mismatch.
+// games the site layout seeds) and the overview's role split (named and painted from its game's metadata) hydrate the
+// server's markup of the page, inside its layout, into such a browser without a mismatch.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
@@ -19,6 +19,7 @@ import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import { resolveServer } from "@/test/resolve-server";
 import { navigation } from "@/test/url-navigation";
 
+import SiteLayout from "../../layout";
 import UserPage from "./page";
 
 declare global {
@@ -62,6 +63,7 @@ const { profile } = vi.hoisted(() => {
 
 // `vi.mock` factories run before this file's imports, so the modules they hand out are loaded inside them.
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
+vi.mock("next/headers", () => ({ headers: async () => new Headers(), cookies: async () => ({ get: () => undefined }) }));
 // A visitor with no saved game, across communities.
 vi.mock("@/lib/site/tenant-host", () => ({
   resolveStatsScope: async () => "all",
@@ -95,6 +97,12 @@ vi.mock("@/app/(site)/users/_views/UserOverviewPage", async (importOriginal) => 
   const actual = await importOriginal<typeof OverviewModule>();
   return { ...actual, default: async (props: Parameters<typeof actual.default>[0]) => actual.default(props) };
 });
+// The layout's chrome has its own suites.
+vi.mock("@/components/Header", () => ({ default: () => null }));
+vi.mock("@/components/Footer", () => ({ Footer: () => null }));
+vi.mock("@/components/notifications/FloatStack", () => ({ FloatStack: () => null }));
+vi.mock("@/services/notification.service", () => ({ default: { activeAnnouncements: async () => [] } }));
+vi.mock("@/i18n/ZoneIntlProvider", () => ({ default: ({ children }: { children: ReactNode }) => children }));
 
 let hydrated: Root | undefined;
 let host: HTMLElement | undefined;
@@ -116,13 +124,15 @@ async function settle(turns = 8) {
 }
 
 /**
- * The server's markup of the profile under all games, hydrated into a browser whose cache `prewarm` filled; the same
- * tree on both sides, only the query client differs, as one request's and the browser's do.
+ * The server's markup of the profile under all games, inside the site layout, hydrated into a browser whose cache
+ * `prewarm` filled; the same tree on both sides, only the query client differs, as one request's and the browser's do.
  */
 async function hydrateProfile(prewarm: (client: QueryClient) => void) {
   navigation.reset("/users/IngestH0");
   const page = await resolveServer(
-    await UserPage({ params: Promise.resolve({ slug: "IngestH0" }), searchParams: Promise.resolve({}) })
+    <SiteLayout>
+      <UserPage params={Promise.resolve({ slug: "IngestH0" })} searchParams={Promise.resolve({})} />
+    </SiteLayout>
   );
   const tree = (queryClient: QueryClient) => (
     <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">

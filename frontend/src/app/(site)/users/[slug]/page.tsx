@@ -142,17 +142,16 @@ const getUserAndProfile = cache(async (slug: string, scope: StatsScope, game: st
 type UserAndProfile = Awaited<ReturnType<typeof getUserAndProfile>>;
 
 /**
- * What the profile's blocks read of the games, read once for the page alongside the profile: the installed games
- * (axis `all`) and the metadata, on the viewed axis, of every game the page can show — its game, or under "all games"
- * each of the area's. A failed read is left out: the browser reads it itself.
+ * What the profile's blocks read of the games, read once for the page alongside the profile: the metadata, on the
+ * viewed axis, of every game the page can show — its game, or under "all games" each of the area's. A failed read is
+ * left out: the browser reads it itself.
  */
-const loadProfileGameData = async (view: ProfileView) => {
+const loadProfileGameMetadata = async (view: ProfileView) => {
   const codes = view.game === null ? (view.init.disciplines ?? []).map((entry) => entry.code) : [view.game];
-  const [games, metadata] = await Promise.all([
-    view.axis === "all" ? view.init.disciplines : disciplineService.list("all").catch(() => null),
-    Promise.all(codes.map((code) => disciplineService.metadata(view.axis, code).catch(() => null)))
-  ]);
-  return { games, metadata: metadata.filter((entry) => entry !== null) };
+  const metadata = await Promise.all(
+    codes.map((code) => disciplineService.metadata(view.axis, code).catch(() => null))
+  );
+  return metadata.filter((entry) => entry !== null);
 };
 
 const gameNameOf = (view: ProfileView, code: string) =>
@@ -472,12 +471,12 @@ const ProfileBody = async ({
  */
 const ProfileOrMissingGrid = async ({
   userAndProfile,
-  gameData,
+  gameMetadata,
   view,
   children
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  gameData: ReturnType<typeof loadProfileGameData>;
+  gameMetadata: ReturnType<typeof loadProfileGameMetadata>;
   view: ProfileView;
   children: React.ReactNode;
 }) => {
@@ -487,9 +486,8 @@ const ProfileOrMissingGrid = async ({
     if (!isDivisionGridRequired(error) || view.game === null) throw error;
     return <UsersMissingGrid discipline={view.game} gameName={gameNameOf(view, view.game)} axis={view.axis} />;
   }
-  const { games, metadata } = await gameData;
   return (
-    <ProfileGameData axis={view.axis} games={games} metadata={metadata}>
+    <ProfileGameData axis={view.axis} metadata={await gameMetadata}>
       {children}
     </ProfileGameData>
   );
@@ -521,7 +519,7 @@ export default async function UserPage({
     init: page.init
   };
   const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, view.game);
-  const gameData = loadProfileGameData(view);
+  const gameMetadata = loadProfileGameMetadata(view);
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";
   const activeTab: UserTab = isUserTab(requestedTab) ? requestedTab : "overview";
@@ -560,7 +558,7 @@ export default async function UserPage({
         </>
       }
     >
-      <ProfileOrMissingGrid userAndProfile={userAndProfile} gameData={gameData} view={view}>
+      <ProfileOrMissingGrid userAndProfile={userAndProfile} gameMetadata={gameMetadata} view={view}>
         <Suspense fallback={<UserHeaderSkeleton />}>
           <UserHeaderSection userAndProfile={userAndProfile} slug={resolvedParams.slug} view={view} />
         </Suspense>
