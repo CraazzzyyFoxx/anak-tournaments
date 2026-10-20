@@ -6,6 +6,7 @@ import { AdminLayoutClient } from "@/app/admin/AdminLayoutClient";
 import { AuthProfileSeed } from "@/components/auth/AuthProfileSeed";
 import ZoneIntlProvider from "@/i18n/ZoneIntlProvider";
 import { getAccessToken, getRefreshToken } from "@/lib/auth/cookies";
+import { devLoginCredentials } from "@/lib/auth/dev-login";
 import { fetchAuthProfileResponse, mapAuthProfile } from "@/lib/auth/profile";
 import {
   DISMISSED_ANNOUNCEMENTS_COOKIE,
@@ -59,9 +60,11 @@ export default async function AdminLayout({ children }: Readonly<AdminLayoutProp
   // the visitor is signed out — bounce them off the zone before they download
   // any of it. `?login=1&next=` is the site's own sign-in entry (see
   // `LoginModalTrigger`): it opens the auth modal on `/` and returns here after.
+  // A `next dev` with DEV_AUTH_* set signs in by password instead (OAuth cannot
+  // return to localhost).
   if (!accessToken && !getRefreshToken(cookieStore)) {
-    const returnTo = (await headers()).get("x-owt-pathname") ?? "/admin";
-    redirect(`/?login=1&next=${encodeURIComponent(returnTo)}`);
+    const returnTo = encodeURIComponent((await headers()).get("x-owt-pathname") ?? "/admin");
+    redirect(devLoginCredentials() ? `/auth/dev-login?next=${returnTo}` : `/?login=1&next=${returnTo}`);
   }
 
   const [announcements, profile] = await Promise.all([

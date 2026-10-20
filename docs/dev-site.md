@@ -176,3 +176,37 @@ curl -s 'https://<dev-host>/api/v1/tournaments?page=1&per_page=2'    # data from
 A homepage that renders `/not-configured` means `PLATFORM_ZONE` is wrong (or missing) on one
 of the two sides — the frontend one is baked into the image, so it needs a rebuild, not a
 restart.
+
+## Local frontend against the dev site
+
+Run only `next dev` locally; everything behind `/api` is the dev site. In `frontend/.env.local`:
+
+```bash
+NEXT_INTERNAL_API_URL=https://<dev-host>     # next.config.mjs rewrites /api/* there; SSR fetches it
+NEXT_PUBLIC_COOKIE_PREFIX=owtdev             # the dev gateway's SESSION_COOKIE_PREFIX
+DEV_AUTH_EMAIL=dev-admin@<dev-host>
+DEV_AUTH_PASSWORD=<password>
+```
+
+OAuth cannot finish on localhost: `OAUTH_REDIRECT` is fixed to the dev host, which keeps the
+session on itself. With `DEV_AUTH_*` set, `/admin` without a session redirects to
+`/auth/dev-login` (`frontend/src/app/(site)/auth/dev-login/route.ts`). That route signs in through
+`POST /api/v1/auth/login` and sets the usual host-only cookies on `localhost`. From there it is an
+ordinary session: `/auth/refresh` rotates it for 30 days, and once it dies the next `/admin` load
+signs in again. Other pages: open `/auth/dev-login?next=/path`. The route answers 404 in a
+production build or without both variables, and on bad credentials it shows a plain error page
+(no redirect loop).
+
+The account is `dev-admin` (`auth.user`, superuser, password-only) in the dev database. A data
+refresh from a production dump drops it; recreate it:
+
+```bash
+curl -sX POST https://<dev-host>/api/v1/auth/register -H 'Content-Type: application/json' \
+    -d '{"email":"dev-admin@<dev-host>","username":"dev-admin","password":"<password>"}'
+docker exec db_postgres psql -U system -d owt_dev -c \
+    "UPDATE auth.\"user\" SET is_superuser = true, is_verified = true WHERE username = 'dev-admin'"
+```
+
+Realtime does not reach the dev site from localhost: the WebSocket goes to
+`ws://localhost:3000/api/v1/realtime/ws`, and `GATEWAY_WS_ALLOWED_ORIGINS` does not list
+`http://localhost:3000`.
