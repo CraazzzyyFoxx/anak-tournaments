@@ -31,7 +31,7 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
-import { gameColumn } from "@/components/workspace/game-column";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -142,6 +142,32 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
         games={scope.games ?? []}
       />
     </div>
+  );
+}
+
+/** A row's person, linking to their person page. */
+function RowPlayer({ row }: Readonly<{ row: RankOverviewRow }>) {
+  return (
+    <Link
+      href={`/admin/people/${row.player_id}`}
+      className="font-medium text-primary underline-offset-2 hover:underline"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {row.display_name || row.identity?.handle || `#${row.player_id}`}
+    </Link>
+  );
+}
+
+/** A row's layer, the native one named by the row's own game. */
+function RowLayer({ row }: Readonly<{ row: RankOverviewRow }>) {
+  const t = useTranslations("admin.rankOverview");
+  const games = useGameDescriptors();
+  const Icon = LAYER_ICON[row.layer];
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs">
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      {t(`layers.${row.layer}`, { game: games.get(row.discipline)?.name ?? row.discipline })}
+    </span>
   );
 }
 
@@ -307,30 +333,14 @@ function RankOverviewRows({
       id: "display_name",
       header: t("columns.player"),
       meta: columnMeta<RankOverviewRow>({ sticky: true }),
-      cell: ({ row }) => (
-        <Link
-          href={`/admin/people/${row.original.player_id}`}
-          className="font-medium text-primary underline-offset-2 hover:underline"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {row.original.display_name || row.original.identity?.handle || `#${row.original.player_id}`}
-        </Link>
-      ),
+      cell: ({ row }) => <RowPlayer row={row.original} />,
     };
 
     const rest: ColumnDef<RankOverviewRow>[] = [
       {
         accessorKey: "layer",
         header: t("columns.layer"),
-        cell: ({ row }) => {
-          const Icon = LAYER_ICON[row.original.layer];
-          return (
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs">
-              <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              {t(`layers.${row.original.layer}`, { game: gameName(row.original.discipline) })}
-            </span>
-          );
-        },
+        cell: ({ row }) => <RowLayer row={row.original} />,
       },
       {
         id: "author",
@@ -456,7 +466,7 @@ function RankOverviewRows({
       },
     ];
 
-    // Beside the player, so a phone card (the first three columns) names the game too.
+    // Beside the player: which game a row is matters as much as whose it is.
     const game = allGames ? [gameColumn<RankOverviewRow>(tGame("column"), (row) => row.discipline)] : [];
     return playerId == null ? [player, ...game, ...rest] : [...game, ...rest];
   }, [t, tGame, format, playerId, allGames, axis, descriptors]);
@@ -527,6 +537,29 @@ function RankOverviewRows({
         />
       }
       emptyMessage={activeKey ? t("emptyFiltered") : t("empty")}
+      // Explicit, not the first three columns: a column order saved before the game column existed would push the game
+      // off a phone card. Whose value, which game, which layer (and author), then role, value and division.
+      renderMobileCard={({ original: row }) => (
+        <div className="min-w-0 flex-1 space-y-0.5">
+          {playerId == null ? (
+            <p className="truncate text-sm">
+              <RowPlayer row={row} />
+            </p>
+          ) : null}
+          {allGames ? <RowGameLabel code={row.discipline} className="flex text-xs text-muted-foreground" /> : null}
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <RowLayer row={row} />
+            <span className="truncate">
+              {row.author_name ?? (row.author_user_id == null ? null : `#${row.author_user_id}`)}
+            </span>
+          </p>
+          <div className="flex items-center gap-2 text-sm tabular-nums">
+            <RowRole role={row.role} discipline={row.discipline} axis={axis} />
+            {row.rank_value}
+            <RowDivision row={row} />
+          </div>
+        </div>
+      )}
     />
   );
 }

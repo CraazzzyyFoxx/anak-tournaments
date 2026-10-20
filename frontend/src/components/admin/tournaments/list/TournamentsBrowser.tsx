@@ -22,7 +22,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
-import { useTournamentColumns } from "./useTournamentColumns";
+import { TournamentMobileCard, useTournamentColumns } from "./useTournamentColumns";
 
 /** The lifecycle chip: which rows each option keeps. */
 const LIFECYCLE = {
@@ -137,6 +137,7 @@ export function TournamentsBrowser() {
         toolbar={<FilterBar defs={defs} filters={filters} />}
         emptyMessage={t("empty")}
         onRowClick={(row) => router.push(`/admin/tournaments/${row.original.id}`)}
+        renderMobileCard={(row) => <TournamentMobileCard tournament={row.original} games={games} />}
       />
 
       {canDelete ? (

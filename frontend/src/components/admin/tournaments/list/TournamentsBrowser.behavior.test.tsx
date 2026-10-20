@@ -25,13 +25,14 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-const { getAll } = vi.hoisted(() => ({ getAll: vi.fn() }));
+const { getAll, viewport } = vi.hoisted(() => ({ getAll: vi.fn(), viewport: { mobile: false } }));
 
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 vi.mock("@/services/tournament.service", () => ({ default: { getAll } }));
 vi.mock("@/services/admin.service", () => ({ default: { deleteTournament: vi.fn() } }));
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: () => true }) }));
+vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => viewport.mobile }));
 
 function tournament(id: number, discipline: string, name: string): Tournament {
   return {
@@ -82,6 +83,7 @@ const rowText = (name: string) =>
   [...container.querySelectorAll("tbody tr")].map((row) => row.textContent ?? "").find((text) => text.includes(name));
 
 beforeEach(() => {
+  viewport.mobile = false;
   getAll.mockReset().mockImplementation(async (_isLeague: unknown, _workspace: unknown, discipline?: string | null) => {
     const results = POOL.filter((entry) => !discipline || entry.discipline === discipline);
     return { results, total: results.length, page: 1, per_page: -1 };
@@ -138,5 +140,27 @@ describe("admin tournaments list across games", () => {
     expect(navigation.current()).toBe("/admin/tournaments");
     expect(getAll).toHaveBeenCalledWith(null, undefined, null);
     expect(rowText("Rift Cup")).toContain("League of Legends");
+  });
+
+  it("names each phone card's game under all games, whatever column order the user saved before the Game column", async () => {
+    // A desktop column order saved before the Game column existed: the table appends it after these.
+    const stored = new Map([["admin-table:/admin/tournaments:order", JSON.stringify(["name", "status", "start_date", "stages"])]]);
+    // Node's own `localStorage` throws without `--localstorage-file` and happy-dom does not shadow it.
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => void stored.set(key, value),
+        removeItem: (key: string) => void stored.delete(key)
+      }
+    });
+    viewport.mobile = true;
+    await mount("/admin/tournaments");
+
+    const cards = [...container.querySelectorAll("ul[aria-label='Rows'] > li")].map((card) => card.textContent ?? "");
+    const rift = cards.find((text) => text.includes("Rift Cup"));
+    expect(rift).toContain("League of Legends");
+    expect(rift).toContain(en.common.statusBadge.registration);
+    expect(cards.find((text) => text.includes("Spring Cup"))).toContain("Overwatch");
   });
 });

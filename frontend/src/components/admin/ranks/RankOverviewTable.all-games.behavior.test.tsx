@@ -230,7 +230,23 @@ it("recovers from an invalid game to all games without the game-bound filters", 
   expect(selectScope).toHaveBeenCalledWith("all", { dropParams: ["role", "div_min", "div_max"] });
 });
 
-it("names each phone card's game under all games", async () => {
+it("names each phone card's game under all games, whatever column order the user saved before the game column", async () => {
+  // A desktop column order saved before the game column existed: the table appends `game` after these.
+  const stored = new Map([
+    [
+      "admin-table:/admin/ranks:order",
+      JSON.stringify(["display_name", "layer", "author", "role", "rank_value", "division", "source", "canon_diff", "delta", "sigma", "context", "at"])
+    ]
+  ]);
+  // Node's own `localStorage` throws without `--localstorage-file` and happy-dom does not shadow it.
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => void stored.set(key, value),
+      removeItem: (key: string) => void stored.delete(key)
+    }
+  });
   mobile = true;
   await render();
 
