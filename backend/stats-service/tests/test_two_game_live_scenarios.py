@@ -37,6 +37,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -244,9 +245,39 @@ def labels_by_member(live: Live, ids: dict[str, Any]) -> dict[int, str]:
     return out
 
 
-def _public(ids: dict[str, Any]) -> dict[str, Any]:
-    """``ids`` without logins and raw handles: what may be printed or written to evidence."""
-    return {key: value for key, value in ids.items() if key not in ("logins", "handles")}
+def _ids_only(ids: dict[str, Any]) -> dict[str, Any]:
+    """A detached, ID-only projection of ``ids``: what may be printed or written to evidence (no login, handle, name)."""
+    projection = {
+        "tag": ids["tag"],
+        "workspaces": ids["workspaces"],
+        "users": {
+            label: {key: user[key] for key in ("auth_user_id", "player_id", "members") if key in user}
+            for label, user in ids["users"].items()
+        },
+        "dup_players": ids["dup_players"],
+        "catalog": ids["catalog"],
+        "events": {
+            key: {"tournament_id": event["tournament_id"], "registrations": event["registrations"]}
+            for key, event in ids["events"].items()
+        },
+        "balanced": {
+            game: {key: out[key] for key in ("tournament_id", "job_id", "balance_id", "teams")}
+            for game, out in ids["balanced"].items()
+        },
+        "drafts": ids["drafts"],
+        "encounters": {
+            key: {k: v for k, v in enc.items() if k != "captains"} for key, enc in ids["encounters"].items()
+        },
+        **{key: ids[key] for key in ("mixes", "matches", "jobs", "grids")},
+    }
+    return json.loads(json.dumps(projection, default=str))  # a copy: later ``ids`` growth never reaches the evidence
+
+
+def _private(live: Live, *values: str) -> None:
+    """Register private identities for redaction: the value, its game-name part (before ``#``), both lowercased too."""
+    for value in values:
+        for part in {value, value.split("#")[0]}:
+            live.stack.identities.update((part, part.lower()))
 
 
 # == fixture (G3) ======================================================================================================
@@ -269,7 +300,9 @@ def _p8():
         # Teardown, in order: the optional browser hold (every process still serving), then each process stopped in
         # reverse start order, then close() (exact-resource cleanup, redaction, evidence.json).
         if HOLD:
-            credentials = _hold(live, ids)
+            handle, name = tempfile.mkstemp(prefix="p8-browser-logins-", suffix=".json")
+            credentials = Path(name)  # owned before the wait: an interrupted hold still deletes it
+            _hold(live, ids, handle, credentials)
         for name in reversed(list(stack.procs)):
             if stack.procs[name].reaped:
                 continue
@@ -278,10 +311,12 @@ def _p8():
                 exits.append(f"{name} exited with {code}")
         stack.evidence.record("run", "finished_at", datetime.now(UTC).isoformat())
     finally:
-        path = stack.close()
-        if credentials is not None:
-            credentials.unlink(missing_ok=True)
-        print(f"\nP8 two-game scenarios evidence: {path}")
+        try:
+            path = stack.close()
+            print(f"\nP8 two-game scenarios evidence: {path}")
+        finally:
+            if credentials is not None:
+                credentials.unlink(missing_ok=True)
     if exits:
         pytest.fail("; ".join(exits))
 
@@ -296,19 +331,17 @@ def p8_ids(_p8) -> dict[str, Any]:
     return _p8[1]
 
 
-def _hold(live: Live, ids: dict[str, Any]) -> Path:
+def _hold(live: Live, ids: dict[str, Any], handle: int, credentials: Path) -> None:
     """Keep the stack serving for the controller's browser pass; logins go to a private file outside the evidence."""
-    handle, name = tempfile.mkstemp(prefix="p8-browser-logins-", suffix=".json")
     with os.fdopen(handle, "w", encoding="utf-8") as out:
         json.dump({"gateway": live.stack.gateway, "logins": ids["logins"]}, out)
-    os.chmod(name, 0o600)
+    os.chmod(credentials, 0o600)
     release = live.stack.directory / "release"
     print(f"\nP8 BROWSER HOLD: gateway {live.stack.gateway}")
-    print(json.dumps(_public(ids), default=str)[:20000])
-    print(f"logins (private): {name}\ncreate {release} to release the stack", flush=True)
+    print(json.dumps(_ids_only(ids))[:20000])
+    print(f"logins (private): {credentials}\ncreate {release} to release the stack", flush=True)
     while not release.exists():  # an operator's hold, not a success condition
         time.sleep(2)
-    return Path(name)
 
 
 # == seeding (prerequisites only) =====================================================================================
@@ -328,6 +361,13 @@ def seed_p8(live: Live) -> dict[str, Any]:
     logins = {label: {"email": user["email"], "password": password} for label, user in world["users"].items()}
     logins["org"] = {"email": live.world["owner"]["email"], "password": live.world["owner"]["password"]}
     logins["root"] = {"email": live.world["root"]["email"], "password": live.world["root"]["password"]}
+    # Every handle, email, account name and password of the seeded people is redacted from logs and errors.
+    _private(
+        live,
+        *(handle for person in world["handles"].values() for handle in person.values()),
+        *(f"p8_{label}_{world['tag'].lower()}" for label in world["users"]),
+        *(login[key] for login in logins.values() for key in ("email", "password")),
+    )
     ids: dict[str, Any] = {
         "tag": world["tag"],
         "workspaces": {"A": world["workspaces"]["OFF"], "B": world["workspaces"]["ON"], "C": world["workspaces"]["C"]},
@@ -392,7 +432,7 @@ def seed_p8(live: Live) -> dict[str, Any]:
         OW_HERO: _catalog_id(live, ids, OW, "character", "Ingest Ana", OW_HERO),
         OW_MAP: _catalog_id(live, ids, OW, "map", "Ingest Ilios", OW_MAP),
     }
-    live.stack.evidence.record("scenario_ids", "seed", _public(ids))
+    live.stack.evidence.record("scenario_ids", "seed", _ids_only(ids))
     return ids
 
 
@@ -622,21 +662,43 @@ def _balanced(live: Live, ids: dict[str, Any], game: str) -> dict[str, Any]:
     return out
 
 
-def _snapshot_format(live: Live, *, custom_game_id: int | None = None, tournament_id: int | None = None) -> list:
-    column, value = (
-        ("custom_game_id", custom_game_id) if custom_game_id is not None else ("tournament_id", tournament_id)
+def _frozen_format(live: Live, custom_game_id: int) -> dict[str, Any]:
+    """A mix's frozen team format, exactly: its one format row, every dimension row, every role rule with its bounds."""
+    ((format_id, *head),) = live.q(
+        "SELECT id, preset_code, name, starter_min, starter_max, substitute_min, substitute_max "
+        "FROM roster.team_format WHERE custom_game_id=%s",
+        custom_game_id,
     )
-    return [
-        list(row)
-        for row in live.q(
-            "SELECT f.preset_code, f.name, f.starter_min, f.starter_max, f.substitute_min, f.substitute_max, "
-            "(SELECT string_agg(d.mode, ',' ORDER BY d.dimension_id) FROM roster.team_format_dimension d "
-            "WHERE d.team_format_id=f.id), "
-            "(SELECT count(*) FROM roster.format_role_rule r WHERE r.team_format_id=f.id) "
-            f"FROM roster.team_format f WHERE f.{column}=%s",
-            value,
-        )
-    ]
+    dimensions = live.q(
+        "SELECT d.code, f.mode, f.player_min_assignments, f.player_max_assignments FROM roster.team_format_dimension f "
+        "JOIN catalog.role_dimension d ON d.id=f.dimension_id WHERE f.team_format_id=%s ORDER BY d.code",
+        format_id,
+    )
+    rules = live.q(
+        "SELECT c.code, r.hard_min, r.hard_max, r.recommended_min, r.recommended_max, r.include_descendants "
+        "FROM roster.format_role_rule r JOIN catalog.role c ON c.id=r.role_id WHERE r.team_format_id=%s ORDER BY c.code",
+        format_id,
+    )
+    return {"format": head, "dimensions": [list(row) for row in dimensions], "rules": [list(row) for row in rules]}
+
+
+def _mix_detail(live: Live, ids: dict[str, Any], gid: int) -> dict[str, Any]:
+    return call(
+        live,
+        ids,
+        None,
+        "GET",
+        "/api/v1/balancer/custom-games/{gid}",
+        query={"workspace_id": ids["workspaces"]["A"]},
+        expect=200,
+        gid=gid,
+    ).json()
+
+
+def _slot_role(bucket: str) -> str | None:
+    """The role a mix round freezes for a roster bucket (``role_slot_code``); an open (flex) seat freezes none."""
+    code = bucket.strip().lower()
+    return None if code == "flex" else code
 
 
 def _b_lol_grid(live: Live, ids: dict[str, Any]) -> int:
@@ -827,6 +889,7 @@ def _encounter(
     }
     g1 = wait_until(lambda: _game(live, eid, 1), f"the {label} encounter's game 1 (freeplay healer)", timeout=90)
     out = {"tournament_id": tid, "stage_id": stage["id"], "encounter_id": eid, "seats": seats, "captains": captains}
+    out["inputs"] = dict(enumerate(balanced["teams"], 1))  # the stage item inputs, slot -> tournament team
     out["g1"] = g1
     ids["encounters"][key] = out
     scenario_ids(live, **{key: {k: v for k, v in out.items() if k != "captains"}})
@@ -873,6 +936,38 @@ def _acting(live: Live, ids: dict[str, Any], enc: dict[str, Any]) -> int:
     state = _state(live, ids, enc["encounter_id"])
     (seat,) = state["acting_team_ids"]
     return seat
+
+
+def _seeded(live: Live, enc: dict[str, Any]) -> int:
+    """The G1 opener the stage inputs decide: the seat of the slot-1 input's team (``resolve_seeds``, bracket slot)."""
+    expected = live.s(
+        "SELECT id FROM encounter.team WHERE encounter_id=%s AND team_id=%s AND active",
+        enc["encounter_id"],
+        enc["inputs"][1],
+    )
+    session = live.q(
+        "SELECT first_team_id, seed_source FROM encounter.pick_ban_session WHERE encounter_id=%s AND kind='hero'",
+        enc["encounter_id"],
+    )
+    assert [(first, str(source)) for first, source in session] == [(expected, "bracket_slot")], (session, expected)
+    invariant(live, f"opener_{enc['encounter_id']}", {"first_team_id": expected, "seed_source": "bracket_slot"})
+    return expected
+
+
+def _drafts(state: dict[str, Any]) -> list[tuple]:
+    """The room's visible submissions: (seat, state, items)."""
+    return [(row["encounter_team_id"], row["state"], row["items"]) for row in state["submissions"]]
+
+
+def _draft_rows(live: Live, eid: int, step_index: int) -> list[tuple]:
+    """The hero room's live (non-voided) submission rows of one step: (seat, state, items_json)."""
+    return live.q(
+        "SELECT s.encounter_team_id, s.state, s.items_json FROM encounter.pick_ban_submission s "
+        "JOIN encounter.pick_ban_session p ON p.id=s.session_id "
+        "WHERE p.encounter_id=%s AND p.kind='hero' AND s.step_index=%s AND s.state <> 'voided'",
+        eid,
+        step_index,
+    )
 
 
 def _other(enc: dict[str, Any], seat: int) -> int:
@@ -940,6 +1035,53 @@ def _undo(live: Live, ids: dict[str, Any], enc: dict[str, Any], seat: int, **kw:
         kind="hero",
         **kw,
     )
+
+
+def _played(live: Live, ids: dict[str, Any], enc: dict[str, Any], game_id: int, winner: int) -> None:
+    """The game is played on its map and both captains report the same result: confirmed by their agreement."""
+    _on_map(live, ids, enc, LOL, game_id)
+    for seat in enc["seats"]:
+        claim = _claim(live, ids, enc, seat, game_id, winner)
+        assert claim.status == 200, claim.raw[:400]
+    wait_until(lambda: live.game(game_id)["state"] == "confirmed", f"game {game_id} confirmed by matching claims")
+    assert live.game(game_id)["result_source"] == "captain_agreement", live.game(game_id)
+
+
+def _history(live: Live, game_ids: list[int]) -> dict[int, dict[str, list]]:
+    """What recovery (b) keeps on each retired game: its result, every seat's line and side, every claim line."""
+    return {
+        game_id: {
+            "game": live.q(
+                "SELECT position, map_id, result_source, result_version, confirmed_at FROM encounter.game WHERE id=%s",
+                game_id,
+            ),
+            "lines": live.q(
+                "SELECT encounter_team_id, score, placement, column_values, starting_side FROM encounter.game_team "
+                "WHERE game_id=%s ORDER BY encounter_team_id",
+                game_id,
+            ),
+            "claims": live.q(
+                "SELECT c.claimant_team_id, c.basis_version, r.encounter_team_id, r.score, r.placement "
+                "FROM encounter.game_claim c JOIN encounter.game_claim_result r ON r.claim_id=c.id "
+                "WHERE c.game_id=%s ORDER BY c.claimant_team_id, r.encounter_team_id",
+                game_id,
+            ),
+        }
+        for game_id in game_ids
+    }
+
+
+def _result(live: Live, game_id: int) -> dict[str, Any]:
+    """A game's durable official result: state, version, source and each seat's (score, placement, side)."""
+    state, version, source = live.q(
+        "SELECT state, result_version, result_source FROM encounter.game WHERE id=%s", game_id
+    )[0]
+    lines = live.q(
+        "SELECT encounter_team_id, score, placement, starting_side FROM encounter.game_team WHERE game_id=%s "
+        "ORDER BY encounter_team_id",
+        game_id,
+    )
+    return {"state": state, "result_version": version, "result_source": source, "lines": [tuple(r) for r in lines]}
 
 
 def _frozen(live: Live, eid: int) -> dict[str, Any]:
@@ -1013,7 +1155,7 @@ def _roster(live: Live, ids: dict[str, Any], enc: dict[str, Any]) -> dict[int, l
 
 
 def _lol_doc(
-    live: Live, ids: dict[str, Any], enc: dict[str, Any], external_id: str, *, kills: int = 7, hint: int | None = None
+    live: Live, ids: dict[str, Any], enc: dict[str, Any], external_id: str, *, value: int = 7, hint: int | None = None
 ) -> dict[str, Any]:
     """The contracts §6.4 document over the encounter's real registered Riot handles (alpha = slot 1)."""
     roster = _roster(live, ids, enc)
@@ -1040,7 +1182,7 @@ def _lol_doc(
         "participants": participants,
         "segments": [],
         "facts": [
-            {"participant": "p3", "entity": "ahri", "stat": "kills", "value": kills},
+            {"participant": "p3", "entity": "ahri", "stat": "kills", "value": value},
             {"team": "alpha", "stat": "dragons", "value": 3},
         ],
         "events": [{"t": 312.4, "type": "kill", "actor": "p3", "target": "p8", "entity": "ahri"}],
@@ -1051,7 +1193,7 @@ def _lol_doc(
 
 
 def _ow_doc(
-    live: Live, ids: dict[str, Any], enc: dict[str, Any], external_id: str, *, hint: int | None = None
+    live: Live, ids: dict[str, Any], enc: dict[str, Any], external_id: str, *, value: int = 3, hint: int | None = None
 ) -> dict[str, Any]:
     roster = _roster(live, ids, enc)
     roles = ids["roles"][OW]
@@ -1078,7 +1220,7 @@ def _ow_doc(
         "segments": [{"index": 1, "kind": "round", "attrs": {}}],
         "facts": [{"team": "t1", "stat": "score", "value": 2}, {"team": "t2", "stat": "score", "value": 1}]
         + [
-            {"participant": p["key"], "stat": "eliminations", "value": 3 + i, "entity": OW_HERO}
+            {"participant": p["key"], "stat": "eliminations", "value": value + i, "entity": OW_HERO}
             for i, p in enumerate(participants)
         ],
         "events": [{"t": 10, "type": "kill", "actor": "p1", "target": "p6", "entity": OW_HERO, "segment": 1}],
@@ -1086,6 +1228,134 @@ def _ow_doc(
     if hint is not None:
         doc["hint"] = {"encounter_game_id": hint}
     return doc
+
+
+DOCS = {LOL: _lol_doc, OW: _ow_doc}
+#: The varied value of each game's document (LoL: Ahri's kills; OW: p1's eliminations): first submission, correction.
+CORRECTION = {LOL: (7, 8), OW: (3, 9)}
+
+
+def _expected_read(live: Live, ids: dict[str, Any], enc: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
+    """The native read a bound ``doc`` must produce: every fact/event at its grain and owners, segments, positions."""
+    game = doc["discipline"]
+    seat = {team["key"]: enc["seats"][index] for index, team in enumerate(doc["teams"])}
+    owner = {ids["handles"][label][PROVIDER[game]]: label for label in ids["roles"][game]}
+    label = {p["key"]: owner[p["identity"]["id"]] for p in doc["participants"]}
+    member = {key: member_of(live, ids, who) for key, who in label.items()}
+    team = {p["key"]: seat[p["team"]] for p in doc["participants"]}
+    entity = {None: None, **ids["catalog"][game]}
+    return {
+        "participants": [
+            {
+                "encounter_team_id": seat[t["key"]],
+                "source_position": position,
+                "team_facts": {
+                    f["stat"]: f["value"]
+                    for f in doc["facts"]
+                    if f.get("team") == t["key"] and not f.get("segment") and f.get("entity") is None
+                },
+            }
+            for position, t in enumerate(doc["teams"], 1)
+        ],
+        "members": Counter(
+            (
+                team[p["key"]],
+                member[p["key"]],
+                ids["users"][label[p["key"]]]["player_id"],
+                p["identity"]["id"],
+                (p["role"]["dimension"], p["role"]["role"], None),
+            )
+            for p in doc["participants"]
+        ),
+        "segments": [{"segment": s["index"], "kind": s["kind"], "attrs": s["attrs"]} for s in doc["segments"]],
+        "facts": Counter(
+            (
+                team[f["participant"]] if "participant" in f else seat[f["team"]],
+                member.get(f.get("participant")),
+                entity[f.get("entity")],
+                f.get("segment", 0),
+                f["stat"],
+                f["value"],
+            )
+            for f in doc["facts"]
+        ),
+        "events": Counter(
+            (
+                e.get("segment", 0),
+                e["t"],
+                e["type"],
+                member[e["actor"]],
+                team[e["actor"]],
+                member[e["target"]],
+                team[e["target"]],
+                entity[e.get("entity")],
+            )
+            for e in doc["events"]
+        ),
+    }
+
+
+def _read_projection(read: dict[str, Any], feed: dict[str, Any]) -> dict[str, Any]:
+    stats = read["statistics"]
+    return {
+        "participants": sorted(
+            (
+                {key: p[key] for key in ("encounter_team_id", "source_position", "team_facts")}
+                for p in read["participants"]
+            ),
+            key=lambda p: p["encounter_team_id"],
+        ),
+        "members": Counter(
+            (
+                m["encounter_team_id"],
+                m["workspace_member_id"],
+                m["player_id"],
+                m["handle_snapshot"],
+                tuple((m["observed_role"] or {}).get(key) for key in ("dimension", "role", "parent")),
+            )
+            for m in stats["members"]
+        ),
+        "segments": sorted(stats["segments"], key=lambda s: s["segment"]),
+        "facts": Counter(
+            (f["encounter_team_id"], f["workspace_member_id"], f["entity_id"], f["segment"], f["stat_code"], f["value"])
+            for f in stats["facts"]
+        ),
+        "events": Counter(
+            (
+                e["segment"],
+                e["t"],
+                e["type"],
+                e["actor_member_id"],
+                e["actor_team_id"],
+                e["target_member_id"],
+                e["target_team_id"],
+                e["entity_id"],
+            )
+            for e in feed["events"]
+        ),
+    }
+
+
+def _assert_read(live: Live, ids: dict[str, Any], enc: dict[str, Any], match_id: int, doc: dict[str, Any]) -> dict:
+    """``GET /matches/{id}`` + ``/kill-feed`` equal ``doc`` exactly (bounded: reads ride a 30 s TTL, no invalidation)."""
+    expected = _expected_read(live, ids, enc, doc)
+    expected["participants"].sort(key=lambda p: p["encounter_team_id"])
+    deadline = time.monotonic() + 45
+    while True:
+        read = call(live, ids, None, "GET", "/api/v1/matches/{id}", expect=200, id=match_id).json()
+        feed = call(live, ids, None, "GET", "/api/v1/matches/{id}/kill-feed", expect=200, id=match_id).json()
+        actual = _read_projection(read, feed)
+        if actual == expected or time.monotonic() > deadline:
+            break
+        time.sleep(3)  # a bounded re-read past the cache TTL, never a success condition
+    assert (read["discipline"], read["encounter_game_id"]) == (doc["discipline"], enc["g1"]), read
+    assert actual == expected, (expected, actual)
+    live.stack.evidence.record(
+        "source_positions",
+        f"match_{match_id}:{doc['source']['external_id']}",
+        [(p["encounter_team_id"], p["source_position"]) for p in actual["participants"]],
+    )
+    return read
 
 
 def _observed(live: Live, game_id: int) -> dict[str, Any]:
@@ -1256,23 +1526,53 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
 
     lol_event = ids["events"][f"{LOL}:bal"]
     count = live.s("SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"])
-    # Another game's role is refused before any write.
-    refused(
-        call(
+    # A child role of B's (a real B sub-role of ``top``) is not A's to use.
+    child = call(
+        live,
+        ids,
+        "org",
+        "POST",
+        "/api/v1/admin/player-sub-roles",
+        {
+            "workspace_id": b,
+            "discipline": LOL,
+            "role": "top",
+            "label": "P8 B child",
+            "slug": f"p8_b_{ids['tag'].lower()}",
+        },
+        expect=201,
+    ).json()
+    child_code = live.s("SELECT code FROM catalog.role WHERE id=%s AND workspace_id=%s", child["id"], b)
+    # One role row of an otherwise valid manual registration changes: another game's role, B's child role. Both are
+    # refused before any write, with the stable ``<family>:`` prefix of the role resolver.
+    base = {
+        "auth_user_id": ids["users"]["target_u"]["auth_user_id"],
+        "answers": {ANSWER_KEY[LOL]: [ids["handles"]["target_u"][PROVIDER[LOL]]]},
+    }
+    foreign_child = {
+        **_role_row(LOL, "top", 2000),
+        "role": {"dimension": DIMENSION[LOL], "role": child_code, "parent": None},
+    }
+    for request, role, family in (
+        ("another game's role", _role_row(OW, "tank", 2000), "role_dimension_mismatch"),
+        ("another workspace's child role", foreign_child, "unknown_role"),
+    ):
+        response = call(
             live,
             ids,
             "org",
             "POST",
             "/api/v1/admin/balancer/tournaments/{tid}/registrations",
-            {
-                "auth_user_id": ids["users"]["target_u"]["auth_user_id"],
-                "answers": {ANSWER_KEY[LOL]: [ids["handles"]["target_u"][PROVIDER[LOL]]]},
-                "roles": [_role_row(OW, "tank", 2000)],
-            },
+            {**base, "roles": [role]},
             tid=lol_event["tournament_id"],
-        ),
-        422,
-        contains="role_dimension_mismatch",
+        )
+        refused(response, 422, contains=f"{family}:")
+        live.stack.evidence.append(
+            "unsupported_requests",
+            {"scenario": _SCENARIO[0], "request": request, "status": 422, "code": code_of(response), "family": family},
+        )
+    assert (
+        live.s("SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"]) == count
     )
     # A malformed Riot ID is refused at its field; nothing is written.
     malformed = call(
@@ -1284,7 +1584,7 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
         {"form_version_id": lol_event["form_version_id"], "answers": {ANSWER_KEY[LOL]: ["P8 no tag line"]}},
         tid=lol_event["tournament_id"],
     )
-    assert malformed.status == 422, malformed.raw[:400]
+    refused(malformed, 422, code="invalid_format")
     assert (
         live.s("SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"]) == count
     )
@@ -1348,6 +1648,67 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
         "host", {"discipline": LOL, "identity": {"provider": PROVIDER[LOL], "handle": typed}, "display_name": "Renamed"}
     )
     refused(renamed, 403, code="forbidden")
+    _private(live, typed, f"Off Game {ids['tag']}#EUW")
+
+    # Registration never moves an owned handle: the joiner typing an account holder's Riot ID (target U's) or an
+    # unlinked roster player's (the host's typed one) is refused at that answer; nobody's ownership, auth link,
+    # verification, visibility, roles or membership moves.
+    lol_event = ids["events"][f"{LOL}:bal"]
+    people = [ids["users"]["joiner"]["player_id"], ids["users"]["target_u"]["player_id"], added.json()["player_id"]]
+    accounts = [ids["users"]["joiner"]["auth_user_id"], ids["users"]["target_u"]["auth_user_id"]]
+
+    def ownership() -> dict[str, Any]:
+        return {
+            "social": live.q(
+                "SELECT id, user_id, provider, username, username_normalized, is_verified, provider_user_id, is_primary "
+                "FROM players.social_account WHERE user_id = ANY(%s) ORDER BY id",
+                people,
+            ),
+            "visibility": live.q(
+                "SELECT v.account_id, v.workspace_id FROM players.social_account_visibility v "
+                "JOIN players.social_account s ON s.id=v.account_id WHERE s.user_id = ANY(%s) ORDER BY 1, 2",
+                people,
+            ),
+            "users": live.q("SELECT id, auth_user_id, name FROM players.user WHERE id = ANY(%s) ORDER BY id", people),
+            "members": live.q(
+                "SELECT id, workspace_id, player_id, removed_at, observed_only FROM public.workspace_member "
+                "WHERE player_id = ANY(%s) ORDER BY id",
+                people,
+            ),
+            "roles": live.q(
+                "SELECT user_id, role_id FROM auth.user_roles WHERE user_id = ANY(%s) ORDER BY 1, 2", accounts
+            ),
+            "registrations": live.s(
+                "SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"]
+            ),
+        }
+
+    owned = ownership()
+    for request, handle in (
+        ("account holder's handle", ids["handles"]["target_u"][PROVIDER[LOL]]),
+        ("roster player's handle", typed),
+    ):
+        conflict = call(
+            live,
+            ids,
+            "joiner",
+            "POST",
+            "/api/v1/tournaments/{tid}/registration",
+            {"form_version_id": lol_event["form_version_id"], "answers": {ANSWER_KEY[LOL]: [handle]}},
+            tid=lol_event["tournament_id"],
+        )
+        refused(conflict, 409, code="game_identity_conflict")
+        assert conflict.json()["fields"][0]["field"] == ANSWER_KEY[LOL], conflict.raw[:400]
+        assert (now := ownership()) == owned, (request, owned, now)
+        live.stack.evidence.append(
+            "unsupported_requests",
+            {
+                "scenario": _SCENARIO[0],
+                "request": f"registration typing another {request}",
+                "status": 409,
+                "code": "game_identity_conflict",
+            },
+        )
 
     # The same text under two providers stays two people.
     twin_bn = upsert(
@@ -1492,25 +1853,50 @@ def balance_and_draft(live: Live, ids: dict[str, Any]) -> None:
             ]
             names += [player["name"] for players in team["roster"].values() for player in players]
         assert len(names) == len(set(names)) == 10, names
-        exported = live.q(
-            "SELECT workspace_member_id, team_id, rank, name FROM tournament.player WHERE tournament_id=%s",
-            balanced["tournament_id"],
-        )
-        by_member = labels_by_member(live, ids)
-        labels = [by_member[row[0]] for row in exported]
-        assert sorted(labels) == sorted(event["registrations"]), labels
-        assert Counter(row[1] for row in exported) == Counter(dict.fromkeys(balanced["teams"], 5))
-        for member, _team, rank, name in exported:
-            label = by_member[member]
-            assert rank == event["ranks"][label], (label, rank, event["ranks"][label])
-            if label == "dual":
-                assert name == ids["handles"]["dual"][PROVIDER[game]], name
-        invariant(live, f"{game}_balance_export", {"teams": len(balanced["teams"]), "players": len(exported)})
+        # The export agrees with the solver's selection: the same teams, each member's assigned role (its
+        # ``tournament.player_role`` row), registration rank and the owner game's handle.
+        label_of_registration = {rid: label for label, rid in event["registrations"].items()}
+        solver = {
+            frozenset(
+                (
+                    label_of_registration[int(player["uuid"])],
+                    _exported_row(event, ids, game, label_of_registration[int(player["uuid"])], role),
+                )
+                for role, players in team["roster"].items()
+                for player in players
+            )
+            for team in variant["teams"]
+        }
+        exported = _exported(live, ids, balanced["tournament_id"])
+        assert set(exported) == set(balanced["teams"]), (exported.keys(), balanced["teams"])
+        assert {frozenset(team.items()) for team in exported.values()} == solver, (exported, solver)
+        invariant(live, f"{game}_balance_export", {"teams": len(exported), "players": sum(map(len, exported.values()))})
         invariant(live, f"{game}_captain_set_by_export", balanced["captain_set_by_export"])
         live.stack.evidence.record("job_ids", f"balance_{game}", balanced["job_id"])
 
         drafted = _drafted(live, ids, game)
         scenario_ids(live, **{f"{game}_balance": balanced["balance_id"], f"{game}_draft": drafted["session_id"]})
+
+
+def _exported_row(event: dict[str, Any], ids: dict[str, Any], game: str, label: str, role: str) -> tuple:
+    """What the export must write for one selected member: rank, owner-game handle, rated dimension, assigned role."""
+    return (event["ranks"][label], ids["handles"][label][PROVIDER[game]], DIMENSION[game], role)
+
+
+def _exported(live: Live, ids: dict[str, Any], tid: int) -> dict[int, dict[str, tuple]]:
+    """Each exported ``tournament.team`` of ``tid`` as label -> (rank, name, assignment dimension, assignment role)."""
+    by_member = labels_by_member(live, ids)
+    teams: dict[int, dict[str, tuple]] = {}
+    for team_id, member, rank, name, dimension, role in live.q(
+        "SELECT p.team_id, p.workspace_member_id, p.rank, p.name, d.code, r.code FROM tournament.player p "
+        "LEFT JOIN tournament.player_role pr ON pr.player_id=p.id LEFT JOIN catalog.role r ON r.id=pr.role_id "
+        "LEFT JOIN catalog.role_dimension d ON d.id=pr.dimension_id WHERE p.tournament_id=%s",
+        tid,
+    ):
+        label = by_member[member]
+        assert label not in teams.setdefault(team_id, {}), (label, team_id)  # one player row, one assignment
+        teams[team_id][label] = (rank, name, dimension, role)
+    return teams
 
 
 def _drafted(live: Live, ids: dict[str, Any], game: str) -> dict[str, Any]:
@@ -1602,8 +1988,10 @@ def _drafted(live: Live, ids: dict[str, Any], game: str) -> dict[str, Any]:
         )
     board = call(live, ids, None, "GET", board_route, expect=200, sid=sid).json()
     assert board["session"]["status"] == "completed", board["session"]
-    dual = next(p for p in board["players"] if p["registration_id"] == event["registrations"]["dual"])
-    assert dual["identity"] == {"provider": PROVIDER[game], "handle": ids["handles"]["dual"][PROVIDER[game]]}, dual
+    label_of_registration = {rid: label for label, rid in event["registrations"].items()}
+    for player in board["players"]:
+        handle = ids["handles"][label_of_registration[player["registration_id"]]][PROVIDER[game]]
+        assert player["identity"] == {"provider": PROVIDER[game], "handle": handle}, player
     for team in board["teams"]:
         drafted = [p["primary_role"]["role"] for p in board["players"] if p["drafted_by_team_id"] == team["id"]]
         assert Counter(drafted) == Counter(FORMAT[game]), (team, drafted)
@@ -1617,10 +2005,17 @@ def _drafted(live: Live, ids: dict[str, Any], game: str) -> dict[str, Any]:
         tid=tid,
         sid=sid,
     )
-    by_member = labels_by_member(live, ids)
-    exported = live.q("SELECT workspace_member_id, team_id FROM tournament.player WHERE tournament_id=%s", tid)
-    assert sorted(by_member[row[0]] for row in exported) == sorted(event["registrations"]), exported
-    assert len({row[1] for row in exported}) == 2
+    # The export agrees with the draft: each draft team became its ``exported_team_id`` with exactly the members it
+    # drafted, each at the role it was drafted for (a captain at its seat role), the frozen rank and the owner's handle.
+    board = call(live, ids, None, "GET", board_route, expect=200, sid=sid).json()
+    drafted_role = {pick["picked_player_id"]: pick["target_role"]["role"] for pick in board["picks"]}
+    expected: dict[int, dict[str, tuple]] = {}
+    for player in board["players"]:
+        label = label_of_registration[player["registration_id"]]
+        role = player["captain_role"]["role"] if player["is_captain"] else drafted_role[player["id"]]
+        team = next(t for t in board["teams"] if t["id"] == player["drafted_by_team_id"])
+        expected.setdefault(team["exported_team_id"], {})[label] = _exported_row(event, ids, game, label, role)
+    assert (exported := _exported(live, ids, tid)) == expected, (exported, expected)
     out = {"tournament_id": tid, "session_id": sid}
     ids["drafts"][game] = out
     return out
@@ -1633,6 +2028,7 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
         game: call(live, ids, "org", "GET", "/api/v1/workspaces/{ws}/team-formats/{d}", expect=200, ws=a, d=game).json()
         for game in GAMES
     }
+    frozen: dict[str, dict[str, Any]] = {}
     try:
         for game in GAMES:
             _registered(live, ids, game, "bal")
@@ -1670,11 +2066,12 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
             ).json()
             gid = created["id"]
             ids["mixes"][game] = gid
-            frozen = _snapshot_format(live, custom_game_id=gid)
+            frozen[game] = _frozen_format(live, gid)
             if game == LOL:
-                preset, *_rest, modes, rules = frozen[0]
                 # Open 5v5: five unconstrained slots, no Flex role and no position rule.
-                assert preset == "open_5v5" and set((modes or "").split(",")) <= {"off"} and rules == 0, frozen
+                assert frozen[game]["format"][0] == "open_5v5", frozen[game]
+                assert {mode for _, mode, *_ in frozen[game]["dimensions"]} <= {"off"}, frozen[game]
+                assert frozen[game]["rules"] == [], frozen[game]
             call(
                 live,
                 ids,
@@ -1721,6 +2118,40 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
                 ws=a,
                 gid=gid,
             )
+            # The mix as the host left it: every member under the owner game's own handle and rank, the joiner
+            # benched, variant 0 and the next map selected.
+            detail = _mix_detail(live, ids, gid)
+            rows = {row["workspace_member_id"]: row for row in detail["players"]}
+            for index, (label, member) in enumerate(zip(labels, members, strict=True)):
+                role = ids["roles"][game][label]
+                assert rows[member]["identity"] == {
+                    "provider": PROVIDER[game],
+                    "handle": ids["handles"][label][PROVIDER[game]],
+                }
+                assert rows[member]["ranks"].get(role) == _rank(game, role, index), rows[member]
+            (joined,) = (
+                row
+                for row in detail["players"]
+                if row["identity"] == {"provider": PROVIDER[game], "handle": ids["handles"]["joiner"][PROVIDER[game]]}
+            )
+            assert joined["participation"] == "benched", joined
+            lobby = next(row for row in detail["lobbies"] if row["lobby_index"] == 0)
+            assert (lobby["selected_variant_index"], lobby["next_map_id"]) == (0, map_id), lobby
+            # The selected variant's seats, as the round must freeze them: member, name, balance rating, role slot.
+            players = lobby["balance_result"]["players"]
+            seats = Counter(
+                (
+                    slot,
+                    int(uuid),
+                    players[str(uuid)].get("name") or f"#{uuid}",
+                    int(players[str(uuid)]["ratings"].get(bucket, 0)),
+                    _slot_role(bucket),
+                )
+                for slot, team in enumerate(lobby["balance_result"]["variants"][0]["teams"], 1)
+                for bucket, uuids in team["roster"].items()
+                for uuid in uuids
+            )
+            assert sum(seats.values()) == 10 and {seat[1] for seat in seats} <= set(members), seats
             # Retrospective: the host records the outcome with no sides at all.
             call(
                 live,
@@ -1734,53 +2165,76 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
                 gid=gid,
             )
             history = call(live, ids, None, "GET", base + "/{gid}/matches", expect=200, ws=a, gid=gid).json()
-            assert history and "side" not in json.dumps(history), history
+            assert "side" not in json.dumps(history), history
+            assert [
+                (
+                    m["lobby_index"],
+                    m["winner_slot"],
+                    m["map_id"],
+                    [(t["slot"], t["score"]) for t in m["teams"]],
+                    m["recorded_by"],
+                )
+                for m in history
+            ] == [(0, 1, map_id, [(1, 1), (2, 0)], ids["users"]["host"]["player_id"])], history
+            # The round froze exactly the selected seats, the next map and the host's result.
+            frozen_seats = Counter(
+                tuple(row)
+                for row in live.q(
+                    "SELECT et.slot, tm.workspace_member_id, tm.display_name_snapshot, tm.rank, r.code "
+                    "FROM encounter.encounter e JOIN encounter.team et ON et.encounter_id=e.id "
+                    "JOIN encounter.team_member tm ON tm.encounter_team_id=et.id "
+                    "LEFT JOIN encounter.team_member_role tr ON tr.team_member_id=tm.id "
+                    "LEFT JOIN catalog.role r ON r.id=tr.role_id WHERE e.custom_game_id=%s",
+                    gid,
+                )
+            )
+            assert frozen_seats == seats, (frozen_seats, seats)
+            assert live.q(
+                "SELECT g.map_id, g.state, g.result_source, g.result_version FROM encounter.game g "
+                "JOIN encounter.encounter e ON e.id=g.encounter_id WHERE e.custom_game_id=%s",
+                gid,
+            ) == [(map_id, "confirmed", "host", 1)]
             sides = live.q(
-                "SELECT gt.starting_side, e.discipline FROM encounter.encounter e JOIN encounter.game_team gt "
-                "ON gt.encounter_id=e.id WHERE e.custom_game_id=%s",
+                "SELECT et.slot, gt.score, gt.starting_side, e.discipline FROM encounter.encounter e "
+                "JOIN encounter.game_team gt ON gt.encounter_id=e.id "
+                "JOIN encounter.team et ON et.id=gt.encounter_team_id WHERE e.custom_game_id=%s ORDER BY et.slot",
                 gid,
             )
-            assert sides and all(row[0] is None and row[1] == game for row in sides), sides
-            call(
-                live,
-                ids,
-                None,
-                "GET",
-                "/api/v1/balancer/custom-games/{gid}",
-                query={"workspace_id": a},
-                expect=200,
-                gid=gid,
-            )
+            assert sides == [(1, 1, None, game), (2, 0, None, game)], sides
             # A later edit of the workspace default leaves the mix's frozen format exactly as it was.
             edit = {k: v for k, v in defaults[game].items() if k not in ("roster_shape", "source", "discipline")}
             edit["name"] = f"P8 edited default {game}"
             edit["substitute_max"] = (edit.get("substitute_max") or 0) + 1
             call(live, ids, "org", "PUT", "/api/v1/workspaces/{ws}/team-formats/{d}", edit, expect=200, ws=a, d=game)
-            assert _snapshot_format(live, custom_game_id=gid) == frozen
-            invariant(live, f"{game}_mix_format", frozen)
+            assert _frozen_format(live, gid) == frozen[game]
+        # Both defaults are edited now: each mix still holds exactly the format it froze.
+        for game in GAMES:
+            assert (after := _frozen_format(live, ids["mixes"][game])) == frozen[game], (frozen[game], after)
+            invariant(live, f"{game}_mix_format", frozen[game])
         # Cross-workspace: an A host cannot open a mix in B, nor seat a B member in an A mix.
         refused(
             call(live, ids, "host", "POST", base, {"name": "P8 foreign", "discipline": OW, "member_ids": []}, ws=b), 403
         )
+        # The OW roster again with one B member added: the same non-disclosing 404 as an unknown member, the roster
+        # untouched.
+        roster = "SELECT * FROM balancer.custom_game_player WHERE custom_game_id=%s ORDER BY id"
+        kept = live.q(roster, ids["mixes"][OW])
+        current = [row["workspace_member_id"] for row in _mix_detail(live, ids, ids["mixes"][OW])["players"]]
         foreign = call(
             live,
             ids,
             "host",
             "POST",
             base + "/{gid}/roster",
-            {"member_ids": [ids["users"]["b_member"]["members"]["ON"]]},
+            {"member_ids": [*current, ids["users"]["b_member"]["members"]["ON"]]},
             ws=a,
             gid=ids["mixes"][OW],
         )
-        assert foreign.status in (403, 404, 422), foreign.raw[:300]
+        refused(foreign, 404, code="not_found", contains="Workspace member not found")
+        assert live.q(roster, ids["mixes"][OW]) == kept
         live.stack.evidence.append(
             "unsupported_requests",
-            {
-                "scenario": _SCENARIO[0],
-                "request": "foreign roster member",
-                "status": foreign.status,
-                "code": code_of(foreign),
-            },
+            {"scenario": _SCENARIO[0], "request": "foreign roster member", "status": 404, "code": "not_found"},
         )
         # A clone whose game is no longer enabled in the workspace is refused.
         _b_lol_enabled(live, ids)
@@ -1835,28 +2289,26 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     rift = ids["catalog"][LOL][RIFT]
     tid = _balanced(live, ids, LOL)["tournament_id"]
 
-    # A champion of another game is refused before the config is written.
-    configs = live.s("SELECT count(*) FROM tournament.pick_ban_config")
-    foreign = call(
-        live,
-        ids,
-        "org",
-        "PUT",
-        "/api/v1/admin/tournaments/{tid}/pick-ban-configs",
-        {**side_config, "item_ids": [ids["catalog"][OW][OW_HERO]], "stage_id": None, "round": None},
-        tid=tid,
-    )
-    assert foreign.status in (400, 404, 422), foreign.raw[:400]
-    assert live.s("SELECT count(*) FROM tournament.pick_ban_config") == configs
-    live.stack.evidence.append(
-        "unsupported_requests",
-        {
-            "scenario": _SCENARIO[0],
-            "request": "ow champion in lol pool",
-            "status": foreign.status,
-            "code": code_of(foreign),
-        },
-    )
+    # One foreign item added to an otherwise valid pool -- another game's champion, or a LoL map in the champion pool --
+    # is refused before the config is written.
+    configs = "SELECT * FROM tournament.pick_ban_config WHERE tournament_id=%s ORDER BY id"
+    for request, item in (("ow champion in lol pool", ids["catalog"][OW][OW_HERO]), ("lol map in champion pool", rift)):
+        before = live.q(configs, tid)
+        foreign = call(
+            live,
+            ids,
+            "org",
+            "PUT",
+            "/api/v1/admin/tournaments/{tid}/pick-ban-configs",
+            {**side_config, "item_ids": [*side_config["item_ids"], item], "stage_id": None, "round": None},
+            tid=tid,
+        )
+        refused(foreign, 422, code="pool_item_not_in_catalog", contains=f"Not a {LOL} hero catalog item")
+        assert live.q(configs, tid) == before
+        live.stack.evidence.append(
+            "unsupported_requests",
+            {"scenario": _SCENARIO[0], "request": request, "status": 422, "code": "pool_item_not_in_catalog"},
+        )
 
     # -- OW is unchanged: no side step, results as before.
     ow = _encounter(live, ids, OW, "pregame-ow")
@@ -1905,11 +2357,7 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     )
     refused(_claim(live, ids, e1, s1, g1, s1), 409, code="side_pick_pending")
     opener = _acting(live, ids, e1)
-    first, source = live.q(
-        "SELECT first_team_id, seed_source FROM encounter.pick_ban_session WHERE encounter_id=%s AND kind='hero'", eid
-    )[0]
-    assert first == opener, (first, opener)
-    invariant(live, "g1_opener_seed_source", str(source))
+    assert opener == _seeded(live, e1), opener
     other = _other(e1, opener)
     _side_pick(live, ids, e1, opener, 0, expect=200)
     assert _sides(live, g1) == {opener: "blue", other: "red"}
@@ -1918,7 +2366,7 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     # An unplayed undo takes both rows back.
     _undo(live, ids, e1, opener, expect=200)
     _undo(live, ids, e1, other, expect=200)
-    assert set(_sides(live, g1).values()) == {None}
+    assert set(_sides(live, g1).values()) == {None} and _state(live, ids, eid)["submissions"] == []
     _side_pick(live, ids, e1, opener, 0, expect=200)
     # Admin reopen of the unplayed side step: an empty draft; the opposite index swaps the rows.
     call(
@@ -1931,7 +2379,11 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
         expect=200,
         eid=eid,
     )
+    reopened = _state(live, ids, eid)
+    assert _drafts(reopened) == [(opener, "draft", [])] and reopened["acting_team_ids"] == [opener], reopened
+    assert _draft_rows(live, eid, 0) == [(opener, "draft", [])]
     assert set(_sides(live, g1).values()) == {None}
+    assert all(entry["game_id"] != g1 for entry in reopened["starting_sides"]), reopened["starting_sides"]
     _side_pick(live, ids, e1, opener, 1, expect=200)
     assert _sides(live, g1) == {opener: "red", other: "blue"}
     call(
@@ -1955,11 +2407,22 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
         code="side_locked",
     )
     assert _sides(live, g1) == locked
+    # G2 waits while G1 is pending: no round-2 step to act on, no game at position 2.
+    pending = _state(live, ids, eid)
+    assert (pending["current_round"], pending["acting_team_ids"], _game(live, eid, 2)) == (1, [], None), pending
     _claim(live, ids, e1, other, g1, opener)
     wait_until(lambda: live.game(g1)["state"] == "confirmed", "game 1 confirmed by matching claims", timeout=30)
     # G2 opens with G1's loser.
     state = _wait_round(live, ids, e1, 2)
     assert state["acting_team_ids"] == [other], state
+    # Confirmed now: undo and reopen still refuse G1's side; the rows stay.
+    refused(_undo(live, ids, e1, other), 409, code="side_locked")
+    refused(
+        call(live, ids, "org", "POST", "/api/v1/admin/encounters/{eid}/pick-ban-reopen", {"kind": "hero"}, eid=eid),
+        409,
+        code="side_locked",
+    )
+    assert _sides(live, g1) == locked
     g2 = wait_until(lambda: _game(live, eid, 2), "game 2", timeout=60)
     # An untouched G2 is rebuilt by a correction that changes the opener.
     opened = _round_opened(live, eid)
@@ -1980,24 +2443,29 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
     assert state["acting_team_ids"] == [other], state
     invariant(live, "e1_journal", _frozen(live, eid)["journal"])
 
-    # -- E2: index 1, a confirmed series, then recovery (b).
+    # -- E2: index 1, a series both captains confirm by matching claims, then recovery (b).
     e2 = _encounter(live, ids, LOL, "pregame-index1", config=side_config)
     _ready(live, ids, e2)
     o2 = _acting(live, ids, e2)
+    assert o2 == _seeded(live, e2), o2
     p2 = _other(e2, o2)
     _side_pick(live, ids, e2, o2, 1, expect=200)
     assert _sides(live, e2["g1"]) == {o2: "red", p2: "blue"}
-    _admin_result(live, ids, e2, e2["g1"], o2, expect=200)
+    _played(live, ids, e2, e2["g1"], o2)
     state = _wait_round(live, ids, e2, 2)
     assert state["acting_team_ids"] == [p2], state
     _side_pick(live, ids, e2, p2, 0, expect=200)
     g2b = wait_until(lambda: _game(live, e2["encounter_id"], 2), "E2 game 2", timeout=60)
-    _admin_result(live, ids, e2, g2b, o2, expect=200)
+    _played(live, ids, e2, g2b, o2)
     snapshot = _frozen(live, e2["encounter_id"])
     refused(_admin_result(live, ids, e2, e2["g1"], p2), 409, code="dependent_round_started")
     assert (after := _frozen(live, e2["encounter_id"])) == snapshot, (snapshot, after)
     old_games = [e2["g1"], g2b]
-    kept = {game_id: _sides(live, game_id) for game_id in old_games}
+    kept = _history(live, old_games)
+    for game_id, side in ((e2["g1"], {o2: "red", p2: "blue"}), (g2b, {p2: "blue", o2: "red"})):
+        lines = {seat: (score, starting) for seat, score, _placement, _values, starting in kept[game_id]["lines"]}
+        assert lines == {o2: (1, side[o2]), p2: (0, side[p2])}, kept[game_id]
+        assert len(kept[game_id]["claims"]) == 4, kept[game_id]  # two claims, two result lines each
     status = live.s("SELECT result_status FROM encounter.encounter WHERE id=%s", e2["encounter_id"])
     invariant(live, "e2_result_status_before_recovery", str(status))
     if str(status) == "confirmed":
@@ -2031,9 +2499,11 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
         expect=200,
         eid=e2["encounter_id"],
     )
-    for game_id in old_games:
-        assert live.game(game_id)["state"] == "cancelled" and _sides(live, game_id) == kept[game_id]
+    # The retired games are history: cancelled, with their results, lines, sides and claims exactly as they were.
+    assert [live.game(game_id)["state"] for game_id in old_games] == ["cancelled", "cancelled"]
+    assert (retired := _history(live, old_games)) == kept, (kept, retired)
     replay = _acting(live, ids, e2)
+    assert replay == o2 == _seeded(live, e2), (replay, o2)
     _side_pick(live, ids, e2, replay, 1, expect=200)
     g1_new = wait_until(lambda: _game(live, e2["encounter_id"], 1), "replacement game 1", timeout=60)
     assert g1_new not in old_games
@@ -2063,6 +2533,9 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
         expect=200,
         eid=e3["encounter_id"],
     )
+    reopened = _state(live, ids, e3["encounter_id"])
+    assert _drafts(reopened) == [(o3, "draft", [])] and reopened["acting_team_ids"] == [o3], reopened
+    assert _draft_rows(live, e3["encounter_id"], 0) == [(o3, "draft", [])]
     assert set(_sides(live, e3["g1"]).values()) == {None}
     _side_pick(live, ids, e3, o3, 1, expect=200)
     assert _sides(live, e3["g1"]) == {o3: "red", q3: "blue"}
@@ -2122,76 +2595,21 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
 
 
 def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
-    tag = ids["tag"]
     preset = _preset(live, ids)
-    enc = _encounter(live, ids, LOL, "ingest", config=_config(ids, preset["ruleset"], preset["first_ban_rotation"]))
-    if None in _sides(live, enc["g1"]).values():
-        _ready(live, ids, enc)
-        _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
-    _on_map(live, ids, enc, LOL, enc["g1"])
-    doc = _lol_doc(live, ids, enc, f"p8-lol-g1-{tag}", hint=enc["g1"])
-    body = canonical(doc)
-    results: list[Response] = []
-    barrier = threading.Barrier(6)
-
-    def fire(index: int) -> None:
-        barrier.wait()
-        results.append(live.post("off_ok" if index % 2 else "off_ok2", body))
-
-    threads = [threading.Thread(target=fire, args=(i,)) for i in range(6)]
-    [t.start() for t in threads]
-    [t.join() for t in threads]
-    assert {r.status for r in results} <= {200, 202}, [(r.status, r.raw[:200]) for r in results]
-    job_ids = {r.json()["id"] for r in results}
-    assert len(job_ids) == 1, job_ids
-    job_id = job_ids.pop()
-    job = _bound(live, job_id, enc["g1"])
-    assert job["status"] == "done" and job["binding"]["encounter_game_id"] == enc["g1"], job
-    match = live.match(enc["g1"])
-    assert (
-        match["revision"] == 1
-        and live.s("SELECT count(*) FROM stats.ingest_job WHERE external_id=%s", f"p8-lol-g1-{tag}") == 1
-    )
-    ids["matches"]["lol"], ids["jobs"]["lol"] = match["id"], job_id
-    # Changed content under the same key, or another game under it: 409; no partial success.
-    jobs = live.s("SELECT count(*) FROM stats.ingest_job")
-    refused(ingest(live, "off_ok", {**doc, "duration_s": 1835}), 409, code="idempotency_conflict")
-    ow_enc = _encounter(live, ids, OW, "ingest-ow")
-    _on_map(live, ids, ow_enc, OW, ow_enc["g1"])
-    ow_doc = _ow_doc(live, ids, ow_enc, f"p8-lol-g1-{tag}", hint=ow_enc["g1"])
-    refused(ingest(live, "off_ok", ow_doc), 409, code="idempotency_conflict")
-    assert live.s("SELECT count(*) FROM stats.ingest_job") == jobs
-    # Keyless / missing scope / foreign key.
-    assert ingest(live, None, doc).status == 401
-    refused(ingest(live, "off_no_scope", doc), 403, code="scope_required")
-    foreign = ingest(live, "on_ok", doc)
-    assert foreign.status in (403, 404), foreign.raw[:300]
-    assert live.s("SELECT count(*) FROM stats.ingest_job") == jobs
-    # Native reads: Ahri kills 7, team dragons 3, the target on beta, no invented score.
-    read = call(live, ids, None, "GET", "/api/v1/matches/{id}", expect=200, id=match["id"]).json()
-    _assert_lol_read(live, ids, enc, read, kills=7)
-    # Correction under a new external id: same match, revision + 1, no residual 7.
-    fix = _lol_doc(live, ids, enc, f"p8-lol-g1-fix-{tag}", kills=8, hint=enc["g1"])
-    fix_job = ingest(live, "off_ok", fix).json()["id"]
-    assert _bound(live, fix_job, enc["g1"])["status"] == "done"
-    corrected = live.match(enc["g1"])
-    assert corrected["id"] == match["id"] and corrected["revision"] == 2 and corrected["ingest_job_id"] == fix_job
-
-    def corrected_read() -> dict | None:
-        read = call(live, ids, None, "GET", "/api/v1/matches/{id}", expect=200, id=match["id"]).json()
-        return read if [f["value"] for f in read["statistics"]["facts"] if f["stat_code"] == "kills"] == [8] else None
-
-    # The match reads ride a 30 s backend TTL with no targeted invalidation (gateway ``tournament/cacheable.go``).
-    read = wait_until(corrected_read, "the corrected match read past its 30 s TTL", timeout=45, interval=3)
-    _assert_lol_read(live, ids, enc, read, kills=8)
-    live.stack.evidence.record("revisions", "p8_lol", [1, 2])
-    live.stack.evidence.record("job_ids", "p8_lol", [job_id, fix_job])
-    live.stack.evidence.record("match_ids", "p8_lol", match["id"])
-    # OW leg: a valid external document for an exported OW encounter, and the Workshop golden as parity control.
-    ow_doc = _ow_doc(live, ids, ow_enc, f"p8-ow-g1-{tag}", hint=ow_enc["g1"])
-    ow_job = ingest(live, "off_ok", ow_doc).json()["id"]
-    assert _bound(live, ow_job, ow_enc["g1"])["status"] == "done"
-    ids["matches"]["ow"] = live.match(ow_enc["g1"])["id"]
+    lol = _encounter(live, ids, LOL, "ingest", config=_config(ids, preset["ruleset"], preset["first_ban_rotation"]))
+    if None in _sides(live, lol["g1"]).values():
+        _ready(live, ids, lol)
+        _side_pick(live, ids, lol, _acting(live, ids, lol), 0, expect=200)
+    ow = _encounter(live, ids, OW, "ingest-ow")
+    encounters = {LOL: lol, OW: ow}
+    for game, enc in encounters.items():
+        _on_map(live, ids, enc, game, enc["g1"])
+    # The same lifecycle for each game; the other game's document is the cross-game idempotency probe.
+    for game, enc in encounters.items():
+        other = next(g for g in GAMES if g != game)
+        probe = DOCS[other](live, ids, encounters[other], "probe", hint=encounters[other]["g1"])
+        ids["matches"][game], ids["jobs"][game] = _ingest_lifecycle(live, ids, game, enc, probe)
+    # Parity control: the Workshop golden upload decodes to the reference capture, untouched by the LoL traffic.
     shop = live.workshop
     raw = (DIRECTORY / "workshop.csv").read_bytes()
     payload, content_type = _multipart(
@@ -2212,25 +2630,59 @@ def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
     for section in ("segments", "team_scores", "players", "events", "facts"):
         assert actual[section] == expected[section], section
     live.drain()
-    scenario_ids(live, lol_match=match["id"], ow_match=ids["matches"]["ow"], workshop_job=workshop_job)
+    scenario_ids(live, lol_match=ids["matches"][LOL], ow_match=ids["matches"][OW], workshop_job=workshop_job)
 
 
-def _assert_lol_read(live: Live, ids: dict[str, Any], enc: dict[str, Any], read: dict[str, Any], *, kills: int) -> None:
-    assert read["discipline"] == LOL and read["encounter_game_id"] == enc["g1"], read
-    stats = read["statistics"]
-    ahri = ids["catalog"][LOL]["ahri"]
-    kill_facts = [f for f in stats["facts"] if f["stat_code"] == "kills"]
-    assert [(f["entity_id"], f["value"]) for f in kill_facts] == [(ahri, kills)], kill_facts
-    alpha = next(p for p in read["participants"] if p["encounter_team_id"] == enc["seats"][0])
-    assert alpha["team_facts"].get("dragons") == 3 and "score" not in alpha["team_facts"], alpha
-    feed = call(live, ids, None, "GET", "/api/v1/matches/{id}/kill-feed", expect=200, id=read["id"]).json()
-    (event,) = feed["events"]
-    assert event["type"] == "kill" and event["target_team_id"] == enc["seats"][1] and event["entity_id"] == ahri, event
-    live.stack.evidence.record(
-        "source_positions",
-        f"lol_match_{read['id']}_rev_kills_{kills}",
-        sorted((p["encounter_team_id"], p["source_position"]) for p in read["participants"]),
-    )
+def _ingest_lifecycle(
+    live: Live, ids: dict[str, Any], game: str, enc: dict[str, Any], probe: dict[str, Any]
+) -> tuple[int, int]:
+    """One game's canonical ingest (§6.3): concurrent identical bytes -> one job and revision; a changed document or
+    another game's under the same key -> 409; keyless / scope-less / foreign key denied; exact native reads; a
+    new-external-id correction -> the same match, revision + 1, observations replaced, the binding moved to it."""
+    tag = ids["tag"]
+    first, fixed = CORRECTION[game]
+    external = f"p8-{game}-g1-{tag}"
+    doc = DOCS[game](live, ids, enc, external, value=first, hint=enc["g1"])
+    body = canonical(doc)
+    barrier = threading.Barrier(6)
+
+    def upload(index: int) -> Response:
+        barrier.wait(timeout=60)
+        return live.post("off_ok" if index % 2 else "off_ok2", body)
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        responses = list(pool.map(upload, range(6)))  # any uploader's exception is re-raised here
+    assert len(responses) == 6, responses
+    assert all(r.status in (200, 202) for r in responses), [(r.status, r.raw[:200]) for r in responses]
+    (job_id,) = {r.json()["id"] for r in responses}
+    job = _bound(live, job_id, enc["g1"])
+    match = live.match(enc["g1"])
+    assert match == {"id": job["binding"]["match_id"], "revision": 1, "ingest_job_id": job_id}, (match, job)
+    assert live.s("SELECT count(*) FROM stats.ingest_job WHERE external_id=%s", external) == 1
+    jobs = live.s("SELECT count(*) FROM stats.ingest_job")
+    refused(ingest(live, "off_ok", {**doc, "duration_s": doc["duration_s"] + 1}), 409, code="idempotency_conflict")
+    refused(ingest(live, "off_ok", {**probe, "source": doc["source"]}), 409, code="idempotency_conflict")
+    assert ingest(live, None, doc).status == 401
+    refused(ingest(live, "off_no_scope", doc), 403, code="scope_required")
+    foreign = ingest(live, "on_ok", doc)
+    assert foreign.status in (403, 404), foreign.raw[:300]
+    assert live.s("SELECT count(*) FROM stats.ingest_job") == jobs
+    observed = live.children(match["id"])
+    _assert_read(live, ids, enc, match["id"], doc)
+    fix = DOCS[game](live, ids, enc, f"p8-{game}-g1-fix-{tag}", value=fixed, hint=enc["g1"])
+    fix_job = ingest(live, "off_ok", fix).json()["id"]
+    _bound(live, fix_job, enc["g1"])
+    corrected = live.match(enc["g1"])
+    assert corrected == {"id": match["id"], "revision": 2, "ingest_job_id": fix_job}, corrected
+    # Provenance: the first job stays done but no longer binds the match; the correction does.
+    old = live.get_job("off_ok", job_id).json()
+    assert old["status"] == "done" and old.get("binding") is None, old
+    assert live.children(match["id"]) == observed  # replaced row for row, nothing residual
+    _assert_read(live, ids, enc, match["id"], fix)
+    live.stack.evidence.record("revisions", f"p8_{game}", [1, 2])
+    live.stack.evidence.record("job_ids", f"p8_{game}", [job_id, fix_job])
+    live.stack.evidence.record("match_ids", f"p8_{game}", match["id"])
+    return match["id"], fix_job
 
 
 def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
@@ -2275,6 +2727,7 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
         refused(wrong, 409, code="binding_mismatch")
         assert live.match(enc["g1"]) is None, wrong.raw[:300]
         teams = dict(zip(keys, enc["seats"], strict=True))
+        disabled = _result(live, enc["g1"])
         bound = _bind(live, ids, job_id, enc["g1"], teams, observation["revision"], expect=200).json()
         assert bound["status"] == "done" and bound["binding"]["revision"] == 1, bound
         match = live.match(enc["g1"])
@@ -2286,51 +2739,97 @@ def awaiting_link_and_official(live: Live, ids: dict[str, Any]) -> None:
         receipts = live.wait_receipts(enc["encounter_id"], 1)
         assert [r["outcome"] for r in receipts] == ["logs_disabled"], receipts
         live.stack.evidence.record("receipt_outcomes", f"p8_{game}_awaiting", [r["outcome"] for r in receipts])
+        assert _result(live, enc["g1"]) == disabled  # logs_official off: the evidence leaves the result alone
 
-    # logs_official on: LoL evidence becomes the official result only after the real side selection.
-    tid = _balanced(live, ids, LOL)["tournament_id"]
-    call(live, ids, "org", "PATCH", "/api/v1/admin/tournaments/{tid}", {"logs_official": True}, expect=200, tid=tid)
-    try:
-        enc = _encounter(live, ids, LOL, "official", config=side_config)
+    # logs_official on, per game: the policy matrix of ``_official``.
+    for game in GAMES:
+        tid = _balanced(live, ids, game)["tournament_id"]
+        call(live, ids, "org", "PATCH", "/api/v1/admin/tournaments/{tid}", {"logs_official": True}, expect=200, tid=tid)
+        try:
+            _official(live, ids, game, side_config if game == LOL else None)
+        finally:
+            call(
+                live,
+                ids,
+                "org",
+                "PATCH",
+                "/api/v1/admin/tournaments/{tid}",
+                {"logs_official": False},
+                expect=200,
+                tid=tid,
+            )
+    live.drain()
+
+
+def _official(live: Live, ids: dict[str, Any], game: str, config: dict[str, Any] | None) -> None:
+    """With ``logs_official`` on: eligible evidence is accepted once (placements only, sides kept); the same bytes are
+    the same job and no second decision; a later contradicting revision and evidence for an admin-confirmed game are
+    journaled ``result_locked`` and change nothing. LoL evidence binds only after the real side selection."""
+    tag, build = ids["tag"], DOCS[game]
+    enc = _encounter(live, ids, game, "official", config=config)
+    eid, g1 = enc["encounter_id"], enc["g1"]
+    if game == LOL:
         # Before the side selection the game cannot take a map (``side_pick_required``), so a hinted log cannot bind
         # to it at all (P5 ``find_binding``: a hinted game must be on the log's map): nothing becomes official.
-        early = ingest(live, "off_ok", _lol_doc(live, ids, enc, f"p8-official-early-{tag}", hint=enc["g1"])).json()[
-            "id"
-        ]
+        early = ingest(live, "off_ok", build(live, ids, enc, f"p8-{game}-official-early-{tag}", hint=g1)).json()["id"]
         early_job = _settled(live, "off_ok", early)
         assert early_job["status"] == "failed" and early_job["error"]["code"] == "binding_mismatch", early_job
-        assert live.receipts(enc["encounter_id"]) == [] and live.game(enc["g1"])["state"] != "confirmed"
+        assert live.receipts(eid) == [] and live.game(g1)["state"] != "confirmed"
         live.stack.evidence.append(
             "unsupported_requests",
             {"scenario": _SCENARIO[0], "request": "lol official log before side selection", "code": "binding_mismatch"},
         )
         _ready(live, ids, enc)
         _side_pick(live, ids, enc, _acting(live, ids, enc), 0, expect=200)
-        _on_map(live, ids, enc, LOL, enc["g1"])
-        accepted = ingest(live, "off_ok", _lol_doc(live, ids, enc, f"p8-official-{tag}", hint=enc["g1"])).json()["id"]
-        assert _bound(live, accepted, enc["g1"])["status"] == "done"
-        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 1)]
-        assert outcomes == ["accepted"], outcomes
-        official = live.game(enc["g1"])
-        assert official["state"] == "confirmed" and official["result_source"] == "admin_log", official
-        contradicting = _lol_doc(live, ids, enc, f"p8-official-late-{tag}", hint=enc["g1"])
-        contradicting["teams"] = [{"key": "alpha", "placement": 2}, {"key": "beta", "placement": 1}]
-        late = ingest(live, "off_ok", contradicting).json()["id"]
-        assert _bound(live, late, enc["g1"])["status"] == "done"
-        outcomes = [r["outcome"] for r in live.wait_receipts(enc["encounter_id"], 2)]
-        assert outcomes[-1] == "result_locked" and live.game(enc["g1"]) == official, outcomes
-        live.stack.evidence.record("receipt_outcomes", "p8_lol_official", outcomes)
-    finally:
-        call(
-            live, ids, "org", "PATCH", "/api/v1/admin/tournaments/{tid}", {"logs_official": False}, expect=200, tid=tid
-        )
+    _on_map(live, ids, enc, game, g1)
+    before = _result(live, g1)
+    doc = build(live, ids, enc, f"p8-{game}-official-{tag}", hint=g1)
+    accepted = ingest(live, "off_ok", doc).json()["id"]
+    _bound(live, accepted, g1)
+    assert [r["outcome"] for r in live.wait_receipts(eid, 1)] == ["accepted"]
+    official = _result(live, g1)
+    assert (official["state"], official["result_version"], official["result_source"]) == (
+        "confirmed",
+        before["result_version"] + 1,
+        "admin_log",
+    ), official
+    placement = {enc["seats"][index]: team["placement"] for index, team in enumerate(doc["teams"])}
+    side = {seat: starting for seat, _score, _placement, starting in before["lines"]}
+    assert {seat: (p, s) for seat, _score, p, s in official["lines"]} == {
+        seat: (placement[seat], side[seat]) for seat in enc["seats"]
+    }, official
+    # The same bytes again: the same job, no new revision, no second decision.
+    again = ingest(live, "off_ok", doc)
+    assert again.status in (200, 202) and again.json()["id"] == accepted, again.raw[:300]
     live.drain()
+    assert len(live.receipts(eid)) == 1 and _result(live, g1) == official
+    # A later contradicting revision: journaled, never applied (the first accepted evidence stands).
+    late = build(live, ids, enc, f"p8-{game}-official-late-{tag}", hint=g1)
+    late["teams"] = [{**team, "placement": 3 - team["placement"]} for team in late["teams"]]
+    _bound(live, ingest(live, "off_ok", late).json()["id"], g1)
+    outcomes = [r["outcome"] for r in live.wait_receipts(eid, 2)]
+    assert outcomes == ["accepted", "result_locked"] and _result(live, g1) == official, outcomes
+    # An organizer's own result stands: evidence that disagrees is journaled, never applied.
+    locked = _encounter(live, ids, game, "official-admin", config=config)
+    if game == LOL:
+        _ready(live, ids, locked)
+        _side_pick(live, ids, locked, _acting(live, ids, locked), 0, expect=200)
+    _on_map(live, ids, locked, game, locked["g1"])
+    _admin_result(live, ids, locked, locked["g1"], locked["seats"][1], expect=200)
+    admin = _result(live, locked["g1"])
+    assert (admin["state"], admin["result_source"]) == ("confirmed", "admin"), admin
+    evidence = build(live, ids, locked, f"p8-{game}-official-admin-{tag}", hint=locked["g1"])  # alpha (slot 1) first
+    _bound(live, ingest(live, "off_ok", evidence).json()["id"], locked["g1"])
+    locked_outcomes = [r["outcome"] for r in live.wait_receipts(locked["encounter_id"], 1)]
+    assert locked_outcomes == ["result_locked"] and _result(live, locked["g1"]) == admin, locked_outcomes
+    live.stack.evidence.record("receipt_outcomes", f"p8_{game}_official", outcomes)
+    live.stack.evidence.record("receipt_outcomes", f"p8_{game}_official_admin", locked_outcomes)
 
 
 def readback_isolation(live: Live, ids: dict[str, Any]) -> None:
-    if "lol" not in ids["matches"]:
+    if LOL not in ids["matches"]:
         canonical_ingest(live, ids)
-    lol_match, ow_match = ids["matches"]["lol"], ids["matches"]["ow"]
+    lol_match, ow_match = ids["matches"][LOL], ids["matches"][OW]
     a, b = ids["workspaces"]["A"], ids["workspaces"]["B"]
     lol = call(
         live, ids, None, "GET", "/api/v1/matches/{id}", query={"workspace_id": a}, expect=200, id=lol_match
@@ -2338,13 +2837,20 @@ def readback_isolation(live: Live, ids: dict[str, Any]) -> None:
     refused(call(live, ids, None, "GET", "/api/v1/matches/{id}", query={"workspace_id": b}, id=lol_match), 404)
     # Public ordering by encounter slot; handles of each game stay in that game.
     assert [p["slot"] for p in lol["participants"]] == sorted(p["slot"] for p in lol["participants"])
-    owners = {m["handle_snapshot"]: m["player_id"] for m in lol["statistics"]["members"]}
-    assert ids["handles"]["twin_riot"][PROVIDER[LOL]] in owners or len(owners) == 10, owners
     ow = call(live, ids, None, "GET", "/api/v1/matches/{id}", expect=200, id=ow_match).json()
-    ow_owners = {m["handle_snapshot"]: m["player_id"] for m in ow["statistics"]["members"]}
-    # One text can be two handles (the twin: a Riot ID and a BattleTag spelled alike); each game resolves its own owner.
-    alike = {handle: (owners[handle], ow_owners[handle]) for handle in owners.keys() & ow_owners.keys()}
-    assert all(lol_owner != ow_owner for lol_owner, ow_owner in alike.values()), alike
+    # Each game resolves every handle to exactly its own registrant -- including the twin, one text that is a Riot ID
+    # of one person and a BattleTag of another.
+    for game, read in ((LOL, lol), (OW, ow)):
+        owners = {m["handle_snapshot"]: m["player_id"] for m in read["statistics"]["members"]}
+        expected = {
+            ids["handles"][label][PROVIDER[game]]: ids["users"][label]["player_id"] for label in ids["roles"][game]
+        }
+        assert owners == expected, (game, owners, expected)
+    twin = ids["handles"]["twin_riot"][PROVIDER[LOL]]
+    assert twin == ids["handles"]["twin_bn"][PROVIDER[OW]]
+    lol_twin = next(m["player_id"] for m in lol["statistics"]["members"] if m["handle_snapshot"] == twin)
+    ow_twin = next(m["player_id"] for m in ow["statistics"]["members"] if m["handle_snapshot"] == twin)
+    assert (lol_twin, ow_twin) == (ids["users"]["twin_riot"]["player_id"], ids["users"]["twin_bn"]["player_id"])
     for match_id, game in ((lol_match, LOL), (ow_match, OW)):
         disciplines = {
             row[0]
@@ -2436,34 +2942,73 @@ def unsupported_and_diagnostics(live: Live, ids: dict[str, Any]) -> None:
     )
     assert invariant(live, "lol_match_awards", awards) == 0
     enc = _encounter(live, ids, LOL, "ingest", config=_config(ids, _preset(live, ids)["ruleset"]))
-    doc = _lol_doc(live, ids, enc, f"p8-lol-unknown-{ids['tag']}")
-    doc["facts"].append({"team": "alpha", "stat": "p8_unknown_stat", "value": 1})
-    doc["participants"][0]["role"] = {"dimension": DIMENSION[LOL], "role": "p8_unknown_role"}
-    stat_defs = live.s("SELECT count(*) FROM stats.stat_def WHERE discipline='lol'")
-    response = ingest(live, "off_ok", doc)
-    refused(response, 422, code="unknown_code")
-    job_id = response.json()["ingest_job_id"]
-    job = _settled(live, "off_ok", job_id)
-    assert job["status"] == "failed" and job["error"]["code"] == "unknown_code", job
-    misses = {
-        tuple(r)
-        for r in live.q(
+    # One field of an otherwise valid document per request: exactly one diagnostic, a failed job, an alias-miss row,
+    # no observation, no success event and no dictionary row created.
+    cases = (
+        (
+            "lol unknown stat",
+            lambda doc: doc["facts"].append({"team": "alpha", "stat": "p8_unknown_stat", "value": 1}),
+            (["facts", 2, "stat"], "unknown_stat", "stat", "p8_unknown_stat"),
+        ),
+        (
+            "lol unknown event",
+            lambda doc: doc["events"][0].update(type="p8_unknown_event"),
+            (["events", 0, "type"], "unknown_event", "event", "p8_unknown_event"),
+        ),
+        (
+            "lol unknown role",
+            lambda doc: doc["participants"][0]["role"].update(role="p8_unknown_role"),
+            (["participants", 0, "role"], "unknown_role", "role", f"{DIMENSION[LOL]}:p8_unknown_role"),
+        ),
+        (
+            "ow character on a lol fact",
+            lambda doc: doc["facts"][0].update(entity=OW_HERO),
+            (["facts", 0, "entity"], "unknown_character", "character", OW_HERO),
+        ),
+        (
+            "lol map on a character field",
+            lambda doc: doc["facts"][0].update(entity=RIFT),
+            (["facts", 0, "entity"], "unknown_character", "character", RIFT),
+        ),
+    )
+
+    def durable() -> dict[str, int]:
+        return {
+            "stat_def": live.s("SELECT count(*) FROM stats.stat_def WHERE discipline='lol'"),
+            "event_type": live.s("SELECT count(*) FROM stats.event_type WHERE discipline='lol'"),
+            "role": live.s(
+                "SELECT count(*) FROM catalog.role c JOIN catalog.role_dimension d ON d.id=c.dimension_id "
+                "WHERE d.discipline='lol'"
+            ),
+            "entity": live.s("SELECT count(*) FROM catalog.entity WHERE discipline='lol'"),
+            "matches": live.s("SELECT count(*) FROM stats.match"),
+            "ingested": live.s("SELECT count(*) FROM public.event_outbox WHERE event_id LIKE %s", "match.ingested:%"),
+        }
+
+    def issues(rows: list[dict[str, Any]]) -> list[tuple]:
+        return [(row["path"], row["code"], row.get("kind"), row.get("raw_name")) for row in rows]
+
+    for index, (request, mutate, expected) in enumerate(cases):
+        doc = _lol_doc(live, ids, enc, f"p8-lol-diagnostic-{index}-{ids['tag']}")
+        mutate(doc)
+        before = durable()
+        response = ingest(live, "off_ok", doc)
+        refused(response, 422, code="unknown_code")
+        assert issues(response.json()["issues"]) == [expected], response.raw[:800]
+        job_id = response.json()["ingest_job_id"]
+        job = _settled(live, "off_ok", job_id)
+        assert job["status"] == "failed" and job["error"]["code"] == "unknown_code", job
+        assert issues(job["error"]["issues"]) == [expected], job["error"]
+        misses = live.q(
             "SELECT kind, raw_name FROM catalog.alias_miss WHERE discipline='lol' AND last_ingest_job_id=%s", job_id
         )
-    }
-    assert ("stat", "p8_unknown_stat") in misses and ("role", "position:p8_unknown_role") in misses, misses
-    assert live.s("SELECT count(*) FROM stats.match WHERE ingest_job_id=%s", job_id) == 0
-    assert live.s("SELECT count(*) FROM stats.stat_def WHERE discipline='lol'") == stat_defs
-    live.stack.evidence.append(
-        "unsupported_requests",
-        {
-            "scenario": _SCENARIO[0],
-            "request": "lol unknown stat/role",
-            "status": 422,
-            "code": "unknown_code",
-            "issues": [i.get("path") for i in job["error"]["issues"]],
-        },
-    )
+        assert misses == [expected[2:]], misses
+        assert live.s("SELECT count(*) FROM stats.match WHERE ingest_job_id=%s", job_id) == 0
+        assert (after := durable()) == before, (request, before, after)
+        live.stack.evidence.append(
+            "unsupported_requests",
+            {"scenario": _SCENARIO[0], "request": request, "status": 422, "code": "unknown_code", "issue": expected},
+        )
 
 
 def source_catalog(live: Live, ids: dict[str, Any]) -> None:

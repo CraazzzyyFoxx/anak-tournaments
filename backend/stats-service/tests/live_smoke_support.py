@@ -376,6 +376,8 @@ class LiveStack:
         self.ports: dict[str, int] = {}
         self._created: dict[str, bool] = {"db": False, "vhost": False, "bucket": False, "redis": False}
         self.gateway_binary: Path | None = None
+        # Private identities a scenario seeds (handles, emails, logins): redacted from logs and errors like secrets.
+        self.identities: set[str] = set()
 
     # -- resources --------------------------------------------------------------------------------------------
 
@@ -562,7 +564,14 @@ class LiveStack:
 
     @property
     def secrets(self) -> list[str]:
-        return [self.amqp_password, self.s3_secret, JWT_SECRET, self.pg["password"]]
+        # Longest first: a handle is replaced whole before its game-name part.
+        return [
+            self.amqp_password,
+            self.s3_secret,
+            JWT_SECRET,
+            self.pg["password"],
+            *sorted(self.identities, key=len, reverse=True),
+        ]
 
     def start(self, name: str, argv: list[str], *, cwd: Path, env: dict[str, str]) -> Proc:
         assert name not in self.procs or not self.procs[name].alive(), f"{name} is already running"
