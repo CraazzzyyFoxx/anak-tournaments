@@ -45,7 +45,9 @@ describe("pageClassOf", () => {
         "/workspace/community/",
         "/admin/tournaments",
         "/admin/teams",
-        "/admin/settings/divisions"
+        "/admin/settings/divisions",
+        "/admin/achievements",
+        "/admin/achievements/"
       ],
       "multi"
     );
@@ -63,8 +65,6 @@ describe("pageClassOf", () => {
     expectClass(
       [
         "/admin/matches",
-        "/admin/achievements",
-        "/admin/achievements/",
         "/admin/settings/sub-roles",
         "/admin/settings/registration-forms",
         "/admin/ranks"

@@ -6,7 +6,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import type {
+  AchievementRule,
   AchievementRuleExportEnvelope,
   AchievementRuleImportResult,
   EvaluationRunRead,
@@ -52,7 +54,7 @@ export function useAchievementRuleActions({
   onEvaluated,
 }: {
   workspaceId: number | null;
-  /** The selected game; `null` when the workspace has none enabled. */
+  /** The game the per-game actions run in; `null` under all games (they wait for one) or with none enabled. */
   discipline: string | null;
   onDeleted: () => void;
   onEvaluated: () => void;
@@ -68,10 +70,12 @@ export function useAchievementRuleActions({
   /** The scope of what the user is looking at right now; call it when the action starts, never later. */
   const currentScope = (): RuleScope => ({ workspaceId: workspaceId!, discipline: discipline! });
 
+  /** The game's list and the all-games list both show the rule. */
   const invalidateRules = (scope: RuleScope) => {
     queryClient.invalidateQueries({
       queryKey: achievementQueryKeys.adminList(scope.workspaceId, scope.discipline),
     });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(scope.workspaceId, ALL_DISCIPLINES) });
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
   };
   const invalidateOverrides = (scope: RuleScope) =>
@@ -219,8 +223,11 @@ export function useAchievementRuleActions({
     /** Each starts for the game selected now and finishes against that game, whatever is selected then. */
     seed: () => seedMutation.mutate(currentScope()),
     hardReset: () => hardResetMutation.mutate(currentScope()),
-    toggle: (id: number, enabled: boolean) => toggleMutation.mutate({ scope: currentScope(), id, enabled }),
-    remove: (id: number) => deleteMutation.mutate({ scope: currentScope(), id }),
+    /** A rule acts in its own game, whatever the page shows (every game, or another one). */
+    toggle: (rule: AchievementRule, enabled: boolean) =>
+      toggleMutation.mutate({ scope: { workspaceId: workspaceId!, discipline: rule.discipline }, id: rule.id, enabled }),
+    remove: (rule: AchievementRule) =>
+      deleteMutation.mutate({ scope: { workspaceId: workspaceId!, discipline: rule.discipline }, id: rule.id }),
     removeOverride: (id: number) => deleteOverrideMutation.mutate({ scope: currentScope(), id }),
     exportRules,
     importRulesFromFile,

@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -89,6 +90,8 @@ export default function AchievementDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* An owner page (spec §5): the rule's game locks the scope pill while it is open. */}
+      <EntityWorkspace workspaceId={rule.workspace_id} discipline={rule.discipline} />
       <AchievementDetailHeader
         rule={rule}
         canUpdate={canUpdate}

@@ -8,6 +8,8 @@ import { DataTable, columnMeta, createKebabColumn } from "@/components/data-tabl
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
+import { gameColumn } from "@/components/workspace/game-column";
 import type { AchievementRule } from "@/types/admin.types";
 
 import { countLeafConditions } from "../achievement-form.model";
@@ -23,16 +25,26 @@ export interface AchievementsTableActions {
   onDelete: (rule: AchievementRule) => void;
 }
 
-/** The paged rule catalog. Every row action is decided by the page, not here. */
+/**
+ * The paged rule catalog: one game's, or every game's (`discipline: null`) with a "Game" column when `showGame`
+ * (spec §6.1, §6.10). Every row action is decided by the page, not here.
+ */
 export function AchievementsTable({
   workspaceId,
   discipline,
+  showGame,
   actions,
-}: Readonly<{ workspaceId: number; discipline: string; actions: AchievementsTableActions }>) {
+}: Readonly<{
+  workspaceId: number;
+  discipline: string | null;
+  showGame: boolean;
+  actions: AchievementsTableActions;
+}>) {
   const t = useTranslations("adminAchievements");
-  const listKey = achievementQueryKeys.adminList(workspaceId, discipline);
+  const tGame = useTranslations("common.discipline");
+  const listKey = achievementQueryKeys.adminList(workspaceId, discipline ?? ALL_DISCIPLINES);
 
-  const columns: ColumnDef<AchievementRule>[] = [
+  const base: ColumnDef<AchievementRule>[] = [
     {
       accessorKey: "enabled",
       header: t("common.enabled"),
@@ -101,6 +113,11 @@ export function AchievementsTable({
       { rowLabel: (rule) => rule.slug }
     ),
   ];
+
+  // After enabled, slug and name: the game names the rule before its category.
+  const columns = showGame
+    ? [...base.slice(0, 3), gameColumn<AchievementRule>(tGame("column"), (rule) => rule.discipline), ...base.slice(3)]
+    : base;
 
   return (
     <DataTable

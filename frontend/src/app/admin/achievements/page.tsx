@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { MoreHorizontal, Plus } from "lucide-react";
@@ -17,11 +17,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { Spinner } from "@/components/ui/spinner";
-import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { GameScopeGate } from "@/components/workspace/GameScopeGate";
 import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
+import { ALL_DISCIPLINES, defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AchievementRule } from "@/types/admin.types";
 
@@ -38,21 +39,64 @@ import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
 /** The one confirmation the page can ask for, with its subject. */
 type Confirmation = { kind: "delete"; rule: AchievementRule } | { kind: "reset" };
 
+/**
+ * A per-game bulk action (spec §7.1). Under "all games" it is disabled and says why: on hover, and in its accessible
+ * name, since a disabled menu item takes no focus.
+ */
+function PerGameItem({
+  game,
+  onSelect,
+  disabled = false,
+  className,
+  children,
+}: Readonly<{ game: string | null; onSelect: () => void; disabled?: boolean; className?: string; children: ReactNode }>) {
+  const t = useTranslations("common.discipline");
+  if (game !== null) {
+    return (
+      <DropdownMenuItem onSelect={onSelect} disabled={disabled} className={className}>
+        {children}
+      </DropdownMenuItem>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div>
+          <DropdownMenuItem disabled className={className}>
+            {children}
+            <span className="sr-only"> — {t("pickGameAction")}</span>
+          </DropdownMenuItem>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="left">{t("pickGameAction")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * The workspace's achievement rules: a multi page (spec §6.10). Under "all games" every game's rules with a "Game"
+ * column; the bulk actions that act on one game's rules wait for a game; a row acts in its own game.
+ */
 export default function AchievementsPage() {
   const t = useTranslations("adminAchievements");
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  // One game at a time, of the page's own workspace — the same `currentWorkspaceId` its requests use — with local
-  // game tabs under "all games" until the rules list reads every game (Task 33).
-  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
-  const discipline = scope.game;
+  const lastGame = useWorkspaceStore((s) => s.lastGame);
+  const scope = useGameScope({ axis: workspaceId ?? "all" });
+  // `null`: every game of the workspace; a code: that game's rules only.
+  const game = scope.game;
+  const games = (scope.games ?? []).filter((entry) => entry.enabled);
+  const showGame = scope.resolution !== null && showsGameMarks(scope.resolution, scope.games ?? []);
 
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   // One domain dialog at a time; it is mounted only while open.
   const [dialog, setDialog] = useState<"evaluate" | "import" | null>(null);
   const [evalTournamentId, setEvalTournamentId] = useState<number | undefined>(undefined);
   const [evalSelectedRuleIds, setEvalSelectedRuleIds] = useState<Set<number>>(new Set());
+  // The game an evaluation runs in: the page's, or under "all games" the evaluated rule's own.
+  const [evalGame, setEvalGame] = useState<string | null>(null);
+  const actionGame = game ?? evalGame;
 
   const canCreate = canAccessPermission("achievement.create", workspaceId);
   const canUpdate = canAccessPermission("achievement.update", workspaceId);
@@ -60,15 +104,15 @@ export default function AchievementsPage() {
 
   const { tournaments, overrides, allRules } = useAchievementCatalog({
     workspaceId,
-    discipline,
+    discipline: actionGame,
     pickersOpen: dialog === "evaluate",
   });
-  // Evaluating names a tournament: only the selected game's can be one.
-  const tournamentOptions = (tournaments?.results ?? []).filter((tournament) => tournament.discipline === discipline);
+  // Evaluating names a tournament: only the evaluated game's can be one.
+  const tournamentOptions = (tournaments?.results ?? []).filter((tournament) => tournament.discipline === actionGame);
 
   // Everything the page holds for one game — picked rules, the tournament, an open dialog — is that game's: when
   // the game (or the workspace) changes, it is dropped rather than carried into the next one.
-  const scopeKey = `${workspaceId}:${discipline}`;
+  const scopeKey = `${workspaceId}:${game}`;
   const [heldScopeKey, setHeldScopeKey] = useState(scopeKey);
   if (heldScopeKey !== scopeKey) {
     setHeldScopeKey(scopeKey);
@@ -76,21 +120,33 @@ export default function AchievementsPage() {
     setDialog(null);
     setEvalTournamentId(undefined);
     setEvalSelectedRuleIds(new Set());
+    setEvalGame(null);
   }
 
-  const form = useAchievementRuleForm(workspaceId, discipline);
+  // A new rule starts in the page's game, else the creation default (spec §7.2); its game field can change it.
+  const createGame = game ?? defaultCreationGame({ scope: scope.resolution?.scope ?? ALL_DISCIPLINES, lastGame, games });
+  const form = useAchievementRuleForm(workspaceId, createGame);
 
   const actions = useAchievementRuleActions({
     workspaceId,
-    discipline,
+    discipline: actionGame,
     onDeleted: () => setConfirmation(null),
-    onEvaluated: () => setDialog(null),
+    onEvaluated: () => {
+      setDialog(null);
+      setEvalGame(null);
+    },
   });
 
-  const openEvaluate = (ruleIds: Set<number>) => {
+  const openEvaluate = (ruleIds: Set<number>, ruleGame: string) => {
+    setEvalGame(ruleGame);
     setEvalSelectedRuleIds(ruleIds);
     setEvalTournamentId(undefined);
     setDialog("evaluate");
+  };
+
+  const closeEvaluate = () => {
+    setDialog(null);
+    setEvalGame(null);
   };
 
   const closeImport = () => {
@@ -99,22 +155,16 @@ export default function AchievementsPage() {
     actions.dismissImportError();
   };
 
-  if (!workspaceId || !discipline) {
-    const kind = scope.resolution?.game.kind;
+  if (!workspaceId) {
     return (
       <div className="space-y-6">
         <AdminPageHeader title={t("common.achievements")} />
-        {!workspaceId ? (
-          <EmptyNote>{t("list.selectWorkspace")}</EmptyNote>
-        ) : kind === "invalid" || kind === "empty" ? (
-          <GameScopeControl scope={scope} variant="single" />
-        ) : scope.isError ? (
-          <PageStateCard state="error" onAction={scope.refetch} />
-        ) : null}
+        <EmptyNote>{t("list.selectWorkspace")}</EmptyNote>
       </div>
     );
   }
 
+  const resolved = scope.resolution?.game.kind === "all" || scope.resolution?.game.kind === "game";
   const busy = actions.seedMutation.isPending || actions.hardResetMutation.isPending;
 
   return (
@@ -122,129 +172,143 @@ export default function AchievementsPage() {
       <AdminPageHeader
         title={t("common.achievements")}
         actions={
-          <>
-            <GameScopeControl scope={scope} variant="single" />
-            {canCreate && (
-              <Button onClick={form.openCreate}>
-                <Plus className="mr-2 h-4 w-4" aria-hidden />
-                {t("list.create")}
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label={t("common.moreActions")}
-                  title={t("common.moreActions")}
-                >
-                  {busy ? <Spinner /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
+          resolved ? (
+            <>
+              {canCreate && (
+                <Button onClick={form.openCreate}>
+                  <Plus className="mr-2 h-4 w-4" aria-hidden />
+                  {t("list.create")}
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => openEvaluate(new Set())}>{t("list.evaluate")}</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => void actions.exportRules()}>{t("list.exportJson")}</DropdownMenuItem>
-                {(canCreate || canUpdate) && (
-                  <DropdownMenuItem onSelect={() => setDialog("import")}>{t("list.import")}</DropdownMenuItem>
-                )}
-                {canCreate && (
-                  <>
-                    <DropdownMenuItem onSelect={() => actions.seed()} disabled={busy}>
-                      {t("list.seedDefaults")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onSelect={() => setConfirmation({ kind: "reset" })}
-                      disabled={busy}
-                      className="text-danger focus:text-danger"
-                    >
-                      {t("list.hardReset")}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label={t("common.moreActions")}
+                    title={t("common.moreActions")}
+                  >
+                    {busy ? <Spinner /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <PerGameItem game={game} onSelect={() => game && openEvaluate(new Set(), game)}>
+                    {t("list.evaluate")}
+                  </PerGameItem>
+                  <DropdownMenuSeparator />
+                  <PerGameItem game={game} onSelect={() => void actions.exportRules()}>
+                    {t("list.exportJson")}
+                  </PerGameItem>
+                  {(canCreate || canUpdate) && (
+                    <DropdownMenuItem onSelect={() => setDialog("import")}>{t("list.import")}</DropdownMenuItem>
+                  )}
+                  {canCreate && (
+                    <>
+                      <PerGameItem game={game} onSelect={() => actions.seed()} disabled={busy}>
+                        {t("list.seedDefaults")}
+                      </PerGameItem>
+                      <DropdownMenuSeparator />
+                      <PerGameItem
+                        game={game}
+                        onSelect={() => setConfirmation({ kind: "reset" })}
+                        disabled={busy}
+                        className="text-danger focus:text-danger"
+                      >
+                        {t("list.hardReset")}
+                      </PerGameItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : undefined
         }
       />
 
-      {actions.evaluationResult && (
-        <EvaluationRunSummary
-          run={actions.evaluationResult}
-          onDismiss={actions.dismissEvaluationResult}
-          tournamentName={
-            tournaments?.results.find(
-              (tournament) => tournament.id === actions.evaluationResult?.tournament_id,
-            )?.name
-          }
-        />
-      )}
+      <GameScopeGate scope={scope}>
+        {() => (
+          <>
+            {actions.evaluationResult && (
+              <EvaluationRunSummary
+                run={actions.evaluationResult}
+                onDismiss={actions.dismissEvaluationResult}
+                tournamentName={
+                  tournaments?.results.find(
+                    (tournament) => tournament.id === actions.evaluationResult?.tournament_id,
+                  )?.name
+                }
+              />
+            )}
 
-      <AchievementsTable
-        workspaceId={workspaceId}
-        discipline={discipline}
-        actions={{
-          canUpdate,
-          canDelete,
-          onOpen: (rule) => router.push(`/admin/achievements/${rule.id}`),
-          onEdit: form.openEdit,
-          onTest: (rule) => actions.testMutation.mutate(rule.id),
-          onEvaluate: (rule) => openEvaluate(new Set([rule.id])),
-          onToggle: (rule) => actions.toggle(rule.id, !rule.enabled),
-          onDelete: (rule) => setConfirmation({ kind: "delete", rule }),
-        }}
-      />
+            <AchievementsTable
+              workspaceId={workspaceId}
+              discipline={game}
+              showGame={showGame}
+              actions={{
+                canUpdate,
+                canDelete,
+                onOpen: (rule) => router.push(`/admin/achievements/${rule.id}`),
+                onEdit: form.openEdit,
+                onTest: (rule) => actions.testMutation.mutate(rule.id),
+                onEvaluate: (rule) => openEvaluate(new Set([rule.id]), rule.discipline),
+                onToggle: (rule) => actions.toggle(rule, !rule.enabled),
+                onDelete: (rule) => setConfirmation({ kind: "delete", rule }),
+              }}
+            />
 
-      {actions.testResult && (
-        <DryRunResultPanel result={actions.testResult} onDismiss={actions.dismissTestResult} />
-      )}
+            {actions.testResult && (
+              <DryRunResultPanel result={actions.testResult} onDismiss={actions.dismissTestResult} />
+            )}
 
-      {overrides && overrides.length > 0 && (
-        <AchievementOverridesCard
-          overrides={overrides}
-          rules={allRules ?? []}
-          tournaments={tournamentOptions}
-          onDelete={(id) => actions.removeOverride(id)}
-          isDeleting={actions.deleteOverrideMutation.isPending}
-        />
-      )}
+            {/* Manual overrides are read one game at a time: the card waits for a game in scope. */}
+            {game !== null && overrides && overrides.length > 0 && (
+              <AchievementOverridesCard
+                overrides={overrides}
+                rules={allRules ?? []}
+                tournaments={tournamentOptions}
+                onDelete={(id) => actions.removeOverride(id)}
+                isDeleting={actions.deleteOverrideMutation.isPending}
+              />
+            )}
 
-      {dialog === "evaluate" && (
-        <EvaluateAchievementsDialog
-          onClose={() => setDialog(null)}
-          tournaments={tournamentOptions}
-          rules={allRules ?? []}
-          tournamentId={evalTournamentId}
-          onTournamentChange={setEvalTournamentId}
-          selectedRuleIds={evalSelectedRuleIds}
-          onSelectedRuleIdsChange={setEvalSelectedRuleIds}
-          onRun={() => actions.evaluate(evalTournamentId, evalSelectedRuleIds)}
-          isRunning={actions.evaluateMutation.isPending}
-        />
-      )}
+            {dialog === "evaluate" && (
+              <EvaluateAchievementsDialog
+                onClose={closeEvaluate}
+                tournaments={tournamentOptions}
+                rules={allRules ?? []}
+                tournamentId={evalTournamentId}
+                onTournamentChange={setEvalTournamentId}
+                selectedRuleIds={evalSelectedRuleIds}
+                onSelectedRuleIdsChange={setEvalSelectedRuleIds}
+                onRun={() => actions.evaluate(evalTournamentId, evalSelectedRuleIds)}
+                isRunning={actions.evaluateMutation.isPending}
+              />
+            )}
 
-      {dialog === "import" && (
-        <AchievementImportDialog
-          onClose={closeImport}
-          workspaceId={workspaceId}
-          discipline={discipline}
-          onImportFile={(file) => void actions.importRulesFromFile(file)}
-          isImportingFile={actions.importMutation.isPending}
-          result={actions.importResult}
-          error={actions.importError}
-          onImported={actions.setImportResult}
-        />
-      )}
+            {dialog === "import" && (
+              <AchievementImportDialog
+                onClose={closeImport}
+                workspaceId={workspaceId}
+                discipline={game}
+                onImportFile={(file) => void actions.importRulesFromFile(file)}
+                isImportingFile={actions.importMutation.isPending}
+                result={actions.importResult}
+                error={actions.importError}
+                onImported={actions.setImportResult}
+              />
+            )}
+          </>
+        )}
+      </GameScopeGate>
 
-      <AchievementFormDialog form={form} />
+      <AchievementFormDialog form={form} games={games} />
 
       <ConfirmDialog
         open={confirmation !== null}
         onOpenChange={(open) => !open && setConfirmation(null)}
         onConfirm={() => {
           if (confirmation?.kind === "delete") {
-            actions.remove(confirmation.rule.id);
+            actions.remove(confirmation.rule);
           } else {
             setConfirmation(null);
             actions.hardReset();

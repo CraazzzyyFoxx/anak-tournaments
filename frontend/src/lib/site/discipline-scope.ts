@@ -73,7 +73,6 @@ const SINGLE_PATHS: readonly string[] = [
   "/users/heroes-compare",
   "/users",
   "/admin/matches",
-  "/admin/achievements",
   "/admin/settings/sub-roles",
   "/admin/settings/registration-forms",
   "/admin/ranks"
@@ -90,7 +89,8 @@ const MULTI_PATHS: readonly string[] = [
   "/statistics",
   "/admin/tournaments",
   "/admin/teams",
-  "/admin/settings/divisions"
+  "/admin/settings/divisions",
+  "/admin/achievements"
 ];
 const MULTI_PREFIXES: readonly string[] = ["/workspace/"];
 const OWNER_PATHS: readonly string[] = ["/balancer"];

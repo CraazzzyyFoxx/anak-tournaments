@@ -50,22 +50,12 @@ vi.mock("./_components/DryRunResultPanel", () => ({ DryRunResultPanel: () => nul
 // The table is replaced by a probe whose row action opens the evaluate picker for rule 11.
 vi.mock("./_components/AchievementsTable", () => ({
   AchievementsTable: ({ actions }: { actions: { onEvaluate: (rule: never) => void } }) => (
-    <button data-table data-evaluate onClick={() => actions.onEvaluate({ id: 11 } as never)} />
+    <button data-table data-evaluate onClick={() => actions.onEvaluate({ id: 11, discipline: "overwatch" } as never)} />
   ),
 }));
 vi.mock("./_components/EvaluateAchievementsDialog", () => ({
   EvaluateAchievementsDialog: ({ selectedRuleIds }: { selectedRuleIds: Set<number> }) => (
     <div data-evaluate-open data-selected={[...selectedRuleIds].join(",")} />
-  ),
-}));
-// The game tabs are a Radix list; a button per game is the same `onSelect` contract.
-vi.mock("@/components/workspace/GameTabs", () => ({
-  GameTabs: ({ games, onSelect }: { games: { code: string }[]; onSelect: (code: string) => void }) => (
-    <div>
-      {games.map((game) => (
-        <button key={game.code} data-pick={game.code} onClick={() => onSelect(game.code)} />
-      ))}
-    </div>
   ),
 }));
 vi.mock("@/components/workspace/DisciplineUnavailable", () => ({
@@ -134,12 +124,14 @@ beforeEach(() => {
 });
 
 describe("the achievements page keeps each game's drafts to that game", () => {
-  it("drops an evaluate selection made for Overwatch when the game is switched to League", async () => {
+  it("drops an evaluate selection made for Overwatch when the scope moves to League", async () => {
+    useWorkspaceStore.setState({ gameScope: "overwatch" });
     await mount();
     await click("[data-evaluate]");
     expect(evaluateDialog()?.getAttribute("data-selected")).toBe("11");
 
-    await click("[data-pick=lol]");
+    // What the scope pill's game pick writes (C2/C3); the page has no game control of its own any more.
+    await act(async () => useWorkspaceStore.getState().setGameScope("lol"));
 
     expect(evaluateDialog()).toBeNull();
   });
