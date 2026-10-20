@@ -1741,7 +1741,8 @@ class AdminStageService:
                     row.workspace_member_id,
                     MemberSnapshot(
                         workspace_member_id=row.workspace_member_id,
-                        display_name=row.name,
+                        # ``display_name_snapshot`` is VARCHAR(255); the roster name is unbounded (enclayer01's left()).
+                        display_name=row.name[:255],
                         rank=row.rank,
                         is_substitute=row.is_substitution,
                         roles=tuple(roles[row.id]),

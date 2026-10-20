@@ -395,6 +395,19 @@ class GenerationTests(StageLayerCase):
         _stage, encounters = await self._generate(enums.StageType.ROUND_ROBIN, self.team_ids[:2])
         self.assertEqual(expected, await self._line_ups(encounters[0].id))
 
+    async def test_a_roster_name_longer_than_the_snapshot_column_is_cut_to_255_characters(self) -> None:
+        """``tournament.player.name`` is unbounded, ``team_member.display_name_snapshot`` is VARCHAR(255)."""
+        expected = await self._rostered(self.team_ids[:2])
+        team_id = self.team_ids[0]
+        main = next(row for row in expected[team_id] if not row[3])
+        long_name = "Ж" * 300
+        async with self.Session() as s:
+            await s.execute(sa.update(Player).where(Player.workspace_member_id == main[0]).values(name=long_name))
+            await s.commit()
+        expected[team_id] = (expected[team_id] - {main}) | {(main[0], long_name[:255], *main[2:])}
+        _stage, encounters = await self._generate(enums.StageType.ROUND_ROBIN, self.team_ids[:2])
+        self.assertEqual(expected, await self._line_ups(encounters[0].id))
+
     async def test_a_requalified_team_takes_the_seat_with_its_own_roster_line_up(self) -> None:
         expected = await self._rostered(self.team_ids[:3])
         _stage, encounters = await self._generate(enums.StageType.ROUND_ROBIN, self.team_ids[:2])
