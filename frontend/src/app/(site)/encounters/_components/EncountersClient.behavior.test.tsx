@@ -65,14 +65,25 @@ vi.mock("@/components/EncountersTable", () => ({
   )
 }));
 // The picker's options are the subject (the Radix select only renders them while open); `data-game-bound` is whether
-// the game-bound filters are offered at all.
+// the game-bound filters are offered at all. `[data-type-search]` types "new" into the search box.
 vi.mock("./EncountersFilterBar", () => ({
-  EncountersFilterBar: ({ tournaments, gameBound }: { tournaments: LookupItem[]; gameBound: boolean }) => (
-    <ol data-game-bound={String(gameBound)}>
-      {tournaments.map((item) => (
-        <li key={item.id} data-tournament={item.name} />
-      ))}
-    </ol>
+  EncountersFilterBar: ({
+    tournaments,
+    gameBound,
+    onSearchChange
+  }: {
+    tournaments: LookupItem[];
+    gameBound: boolean;
+    onSearchChange: (value: string) => void;
+  }) => (
+    <>
+      <ol data-game-bound={String(gameBound)}>
+        {tournaments.map((item) => (
+          <li key={item.id} data-tournament={item.name} />
+        ))}
+      </ol>
+      <button type="button" data-type-search onClick={() => onSearchChange("new")} />
+    </>
   )
 }));
 
@@ -125,6 +136,14 @@ const tick = async () => {
     setTimeout(resolve, 10);
     await act(() => promise);
   }
+};
+
+// Longer than the search box's typing debounce (300 ms).
+const settle = async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 350);
+  await act(() => promise);
+  await tick();
 };
 
 async function mount(
@@ -509,5 +528,59 @@ describe("the encounters index across games", () => {
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
     // The mirror writes its own parameter order; the URL keeps the one it came back with.
     expect(window.location.search).toBe("?discipline=overwatch&tournament_id=11&stage_id=5&page=3");
+  });
+
+  it("a search read back from the URL on leaving an unknown game is read at once, not after the typing debounce", async () => {
+    const url = "/encounters?search=old";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(null, 1, { ...DEFAULT_FILTERS, query: "old" });
+
+    const invalid = "/encounters?discipline=xx&search=new";
+    window.history.pushState(null, "", invalid);
+    await act(async () => navigation.push(invalid));
+    await tick();
+    const showAll = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === en.common.discipline.showAll
+    );
+    await act(async () => showAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await tick();
+
+    expect(navigation.pushes.at(-1)).toBe("/encounters?search=new");
+    // The first read after the recovery is the URL's term, and the URL the recovery pushed stands.
+    expect(mocks.getAll.mock.calls.map((call) => call[1])).toEqual(["old", "new"]);
+    expect(window.location.search).toBe("?search=new");
+
+    await settle();
+    expect(mocks.getAll.mock.calls.map((call) => call[1])).toEqual(["old", "new"]);
+    expect(window.location.search).toBe("?search=new");
+  });
+
+  it.each([
+    ["settles on the unknown game's screen", true],
+    ["is still settling at Back", false]
+  ])("Back from an unknown game reads the URL's search, not a term typed before it that %s", async (_, settlesFirst) => {
+    const url = "/encounters?discipline=overwatch&search=old";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(null, 1, { ...DEFAULT_FILTERS, query: "old" });
+
+    await act(async () => {
+      container.querySelector("[data-type-search]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const invalid = "/encounters?discipline=xx";
+    window.history.pushState(null, "", invalid);
+    await act(async () => navigation.push(invalid));
+    await tick();
+    if (settlesFirst) await settle();
+
+    window.history.replaceState(null, "", url);
+    await act(async () => navigation.back());
+    await tick();
+    await settle();
+
+    // Nothing reads the typed term, and the URL keeps the order it came back with: the mirror never rewrote it.
+    expect(mocks.getAll.mock.calls.map((call) => call[1])).toEqual(["old"]);
+    expect(window.location.search).toBe("?discipline=overwatch&search=old");
   });
 });
