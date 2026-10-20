@@ -1,8 +1,8 @@
 """Typed-RPC handlers for the remaining stats-unique admin surface:
 
 - Catalog sync of one discipline from its module's source (superuser): ``POST /admin/catalog-sync/{discipline}``.
-- Global settings CRUD (superuser) — ``src/routes/admin/settings.py``.
-- Per-tournament Discord channel config — ``src/routes/admin/discord_channel.py``.
+- Global settings CRUD (superuser).
+- Per-tournament Discord channel config.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ _catalog_images = CatalogImageMirror(s3_client)
 
 
 def register(broker: Any, logger: Any) -> None:
-    # ── catalog sync (superuser: global game content; the module owns its source, D85) ──────────
+    # ── catalog sync (superuser: global game content; the module owns its source) ──────────
     @broker.subscriber("rpc.stats.catalog.sync")
     async def _catalog_sync(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -128,8 +128,7 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, workspace_id, "discord_channel", "update")
             body = schemas.DiscordChannelUpsert.model_validate(c.payload(data))
 
-            # `_get_tournament_workspace_id` above already raises 404 if the
-            # tournament doesn't exist, so no separate existence check here.
+            # `_get_tournament_workspace_id` above is the tournament existence check (404).
             channel = await discord_channel_service.upsert(
                 session,
                 tournament_id,

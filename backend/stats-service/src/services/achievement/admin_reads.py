@@ -1,48 +1,61 @@
-"""Workspace-resolution helpers for the achievement-rule admin surface.
+"""Workspace resolution and the discipline boundary of the achievement-rule admin surface.
 
-Extracted verbatim from the former ``src/routes/admin/achievement_rule.py`` HTTP
-route so the typed-RPC handlers (``src/rpc/achievements.py``) can reuse them after
-the FastAPI face was removed.
-
-``HTTPException`` here is ``fastapi.HTTPException`` on purpose: the stats RPC
-envelope (``src/rpc/_common.py``) maps ``fastapi.HTTPException`` status codes onto
-the ``{ok,data,error}`` envelope, and a Starlette base-class instance would not be
-caught by that ``except`` clause (it is a strict subclass), silently degrading
-404/403/400 into a generic 500.
-
-It also owns the discipline boundary every achievement mutation and manual evaluation passes first: the explicit
-discipline must be enabled for the workspace, and every character/tournament/match/rule reference a request names must
-belong to that workspace *and* discipline. Nothing here defaults or guesses a game.
+Every achievement mutation and manual evaluation passes this boundary first: the explicit discipline must be enabled
+for the workspace, and every character/tournament/match/rule reference a request names must belong to that workspace
+*and* discipline. Nothing here defaults or guesses a game.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.achievements.achievement import AchievementRule
-from shared.repository import WorkspaceRepository
+from shared.repository import TournamentRepository, WorkspaceRepository
+from shared.repository.stats import StatsMatchRepository
 from shared.services.ontology import assert_discipline_enabled
 from src import models
 
 _workspace_repo = WorkspaceRepository()
+_tournament_repo = TournamentRepository()
+_match_repo = StatsMatchRepository()
 
 
-async def _get_workspace_or_404(session: AsyncSession, workspace_id: int) -> models.Workspace:
+def validation_failure(errors: Any) -> HTTPException:
+    """The 400 for a rule definition or a portable batch that failed validation.
+
+    The message names every problem (a missing entity, a foreign game) that the organizer must fix; the structured list
+    rides ``details`` for machine readers.
+    """
+
+    def line(item: Any) -> str:
+        if isinstance(item, dict):
+            return f"{item.get('slug')}: " + "; ".join(map(str, item.get("errors") or ()))
+        return str(item)
+
+    items = errors if isinstance(errors, list) else [errors]
+    exc = HTTPException(status_code=400, detail={"msg": " | ".join(line(i) for i in items), "code": "invalid_rule"})
+    exc.details = {"validation_errors": errors}  # type: ignore[attr-defined]
+    return exc
+
+
+async def get_workspace_or_404(session: AsyncSession, workspace_id: int) -> models.Workspace:
     workspace = await _workspace_repo.get(session, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
     return workspace
 
 
-def _get_visible_workspace_ids(user: models.AuthUser, target_workspace_id: int) -> list[int] | None:
+def visible_workspace_ids(user: models.AuthUser, target_workspace_id: int) -> list[int] | None:
     if user.is_superuser:
         return None
     return [workspace_id for workspace_id in user.get_workspace_ids() if workspace_id != target_workspace_id]
 
 
-async def _get_source_workspace_or_404(
+async def get_source_workspace_or_404(
     session: AsyncSession,
     *,
     target_workspace_id: int,
@@ -60,21 +73,9 @@ async def _get_source_workspace_or_404(
     return workspace
 
 
-def require_discipline(data: dict) -> str:
-    """The request's explicit discipline: JSON body first, then ``?discipline=``; absent is a 422, never a default."""
-    body = data.get("payload")
-    value = body.get("discipline") if isinstance(body, dict) else None
-    if value is None:
-        raw = (data.get("query") or {}).get("discipline")
-        value = (raw[0] if isinstance(raw, list) and raw else raw) or None
-    if not isinstance(value, str) or not value:
-        raise HTTPException(status_code=422, detail="discipline is required")
-    return value
-
-
 async def get_workspace_for_discipline(session: AsyncSession, workspace_id: int, discipline: str) -> models.Workspace:
-    """The workspace, 404 when absent, 422 when ``discipline`` is not enabled for it (D89)."""
-    workspace = await _get_workspace_or_404(session, workspace_id)
+    """The workspace, 404 when absent, 422 when ``discipline`` is not enabled for it."""
+    workspace = await get_workspace_or_404(session, workspace_id)
     assert_discipline_enabled(workspace, discipline)
     return workspace
 
@@ -105,7 +106,7 @@ async def require_tournament(
     """A referenced tournament lives in the workspace (404 otherwise) and in ``discipline`` (422 otherwise)."""
     if tournament_id is None:
         return None
-    tournament = await session.get(models.Tournament, tournament_id)
+    tournament = await _tournament_repo.get(session, tournament_id)
     if tournament is None or tournament.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Tournament not found")
     if tournament.discipline != discipline:
@@ -128,7 +129,7 @@ async def require_scope_refs(
     await require_tournament(session, workspace_id=workspace_id, discipline=discipline, tournament_id=tournament_id)
     if match_id is None:
         return
-    match = await session.get(models.StatsMatch, match_id)
+    match = await _match_repo.get(session, match_id)
     if match is None or match.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Match not found")
     if match.discipline != discipline:

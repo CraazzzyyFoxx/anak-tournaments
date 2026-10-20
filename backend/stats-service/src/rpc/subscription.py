@@ -51,7 +51,7 @@ def _authorize(data: dict, action: str) -> int | None:
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.stats.subscription.stats")
     async def _stats(data: dict, msg: RabbitMessage) -> dict:
-        # GET /admin/subscriptions/stats — subscription.read, scoped by workspace_id.
+        # GET /admin/subscriptions/stats
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "read")
             result = await subscription_admin.get_collection_stats(session, workspace_id=workspace_id)
@@ -61,7 +61,7 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.stats.subscription.check_log")
     async def _check_log(data: dict, msg: RabbitMessage) -> dict:
-        # GET /admin/subscriptions/check-log — subscription.read, scoped by workspace_id.
+        # GET /admin/subscriptions/check-log
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "read")
             rows = await subscription_admin.list_check_log(
@@ -80,7 +80,7 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.stats.subscription.user_collection")
     async def _user_collection(data: dict, msg: RabbitMessage) -> dict:
-        # GET /admin/subscriptions/users/{user_id}/collection — subscription.read.
+        # GET /admin/subscriptions/users/{user_id}/collection
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "read")
             rows = await subscription_admin.get_user_collection_status(
@@ -92,7 +92,7 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.stats.subscription.collect")
     async def _collect(data: dict, msg: RabbitMessage) -> dict:
-        # POST /admin/subscriptions/collect — subscription.update, scoped by workspace_id.
+        # POST /admin/subscriptions/collect
         async def op(session: Any) -> Any:
             workspace_id = _authorize(data, "update")
             body = schemas.SubscriptionCollectTriggerRequest.model_validate(c.payload(data))

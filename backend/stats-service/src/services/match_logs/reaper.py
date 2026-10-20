@@ -4,8 +4,7 @@
 that isn't consumed within five minutes is dead-lettered — and nothing looks at
 the native ingest job again. A batch upload larger than the worker chews in
 five minutes, a worker restart, or a publish that failed after the row committed
-all leave records sitting on ``pending`` forever; that is the admin monitor
-showing files stuck on "Queued" weeks after upload. A worker killed mid-parse
+all leave records sitting on ``pending`` forever. A worker killed mid-parse
 leaves the twin defect: ``processing`` with no live consumer.
 
 Neither state self-heals, because the queue message — not the row — was the only

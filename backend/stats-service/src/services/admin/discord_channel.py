@@ -1,10 +1,4 @@
-"""Admin service for per-tournament Discord channel config CRUD.
-
-Replaces the inline ``select``/``session.add``/``delete(...)`` that used to
-live directly in ``rpc/misc.py`` — the clearest ``ARCHITECTURE.md`` violation
-in this service (see
-``docs/plans/2026-08-21-stats-service-oop-repositories.md`` §2.4).
-"""
+"""Admin service for per-tournament Discord channel config CRUD."""
 
 from __future__ import annotations
 

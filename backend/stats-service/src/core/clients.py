@@ -1,9 +1,8 @@
 """Process-global clients for the headless stats processes.
 
-The HTTP service kept its S3 client on ``app.state.s3``; the typed-RPC handlers
-have no request state, so the worker owns a module-level singleton instead.
-``serve_rpc.py`` and ``serve_worker.py`` start/stop it in the FastStream lifespan (``core/lifecycle.py``); rpc handlers and
-services import the instances directly. Lives in ``core`` rather than ``rpc``
+Typed-RPC handlers have no request state, so the clients are module-level singletons.
+``serve_rpc.py`` and ``serve_worker.py`` start/stop them in the FastStream lifespan (``core/lifecycle.py``); rpc handlers
+and services import the instances directly. Lives in ``core`` rather than ``rpc``
 because ``services/subscription_collection/scheduler.py`` needs ``realtime_redis``,
 and a service reaching up into the transport package would invert the layering.
 """
@@ -17,7 +16,6 @@ from src.core import config
 
 s3_client = S3Client.from_settings(config.settings)
 
-# Realtime fan-in bus client (Redis pub/sub) shared by the match-log signal and
-# any other worker-originated realtime publishes. Lazy-connects on first command;
-# closed in the shutdown hook of each process.
+# Redis client for worker-side coordination (the subscription scheduler's leader lock). Lazy-connects on first
+# command; closed in the shutdown hook of each process.
 realtime_redis = Redis.from_url(str(config.settings.redis_url), decode_responses=True)

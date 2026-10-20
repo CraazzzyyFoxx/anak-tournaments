@@ -1,9 +1,4 @@
-"""Pydantic schemas for the match-log admin surface.
-
-Extracted verbatim from the former ``src/routes/admin/logs.py`` HTTP route so the
-typed-RPC handlers (``src/rpc/logs.py``) keep emitting byte-identical payloads after
-the FastAPI face was removed. No FastAPI imports.
-"""
+"""Pydantic schemas for the match-log admin surface (``src/rpc/logs.py``)."""
 
 from __future__ import annotations
 
@@ -84,11 +79,7 @@ class LogHistoryResponse(BaseModel):
 
 
 class LogStatsRead(BaseModel):
-    """Scope-wide processing aggregate, computed in one SQL round trip.
-
-    The admin console used to derive these from the page it happened to be
-    showing, so "Failed: 0" only ever meant "none on this page".
-    """
+    """Scope-wide (not per-page) processing aggregate, computed in one SQL round trip."""
 
     total: int
     pending: int

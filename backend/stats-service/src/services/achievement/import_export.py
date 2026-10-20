@@ -14,13 +14,21 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES
 from shared.domain.achievements.validation import derive_depends_on, validate_rule_definition
 from shared.models.achievements.achievement import AchievementRule
-from shared.repository import AchievementRuleRepository
-from src import models
+from shared.repository import AchievementRuleRepository, WorkspaceRepository
+from src import models, schemas
+from src.services.achievement.admin_reads import (
+    get_source_workspace_or_404,
+    get_workspace_for_discipline,
+    get_workspace_or_404,
+    validation_failure,
+    visible_workspace_ids,
+)
 
 #: Portable format v2: ``discipline`` + ``entity_id`` per rule. v1 (``hero_id``) is refused, never converted.
 EXPORT_SCHEMA_VERSION = 2
 
 _rule_repo = AchievementRuleRepository()
+_workspace_repo = WorkspaceRepository()
 
 
 @dataclass(slots=True)
@@ -441,3 +449,134 @@ async def import_portable_rules(
         "updated": updated,
         "warnings": warnings,
     }
+
+
+async def _import_or_400(
+    session,
+    s3: S3Client | None,
+    *,
+    target_workspace: models.Workspace,
+    rules: list[Any],
+    source_workspace: models.Workspace | None,
+) -> dict[str, Any]:
+    try:
+        return await import_portable_rules(
+            session, s3, target_workspace=target_workspace, rules=rules, source_workspace=source_workspace
+        )
+    except ValueError as exc:
+        raise validation_failure(exc.args[0]) from exc
+
+
+async def export_rules(session, *, workspace_id: int, discipline: str) -> dict[str, Any]:
+    workspace = await get_workspace_or_404(session, workspace_id)
+    return build_export_payload(workspace, await load_rules_for_workspace(session, workspace_id, discipline=discipline))
+
+
+async def import_envelope(
+    session,
+    s3: S3Client | None,
+    *,
+    user: models.AuthUser,
+    workspace_id: int,
+    body: schemas.AchievementRuleExportEnvelope,
+) -> dict[str, Any]:
+    """Import an exported batch; its source workspace (by id, then slug) supplies images only if the user can see it."""
+    target_workspace = await get_workspace_or_404(session, workspace_id)
+    source_workspace = None
+    if body.source_workspace is not None:
+        source_workspace = await _workspace_repo.get(session, body.source_workspace.id)
+        if source_workspace is None and body.source_workspace.slug:
+            source_workspace = await _workspace_repo.get_by(session, slug=body.source_workspace.slug)
+        if (
+            source_workspace is not None
+            and not user.is_superuser
+            and source_workspace.id not in user.get_workspace_ids()
+        ):
+            raise HTTPException(status_code=403, detail="Source workspace is not accessible")
+    result = await _import_or_400(
+        session, s3, target_workspace=target_workspace, rules=body.rules, source_workspace=source_workspace
+    )
+    await session.commit()
+    return result
+
+
+async def library_workspaces(
+    session, *, user: models.AuthUser, workspace_id: int, discipline: str
+) -> list[schemas.AchievementLibraryWorkspaceRead]:
+    """The other workspaces the user can see that have rules of ``discipline``, with their rule counts."""
+    visible = visible_workspace_ids(user, workspace_id)
+    if visible is not None and not visible:
+        return []
+    query = (
+        sa.select(
+            models.Workspace.id,
+            models.Workspace.slug,
+            models.Workspace.name,
+            sa.func.count(AchievementRule.id).label("rules_count"),
+        )
+        .join(
+            AchievementRule,
+            sa.and_(AchievementRule.workspace_id == models.Workspace.id, AchievementRule.discipline == discipline),
+        )
+        .where(models.Workspace.id != workspace_id)
+        .group_by(models.Workspace.id, models.Workspace.slug, models.Workspace.name)
+        .having(sa.func.count(AchievementRule.id) > 0)
+        .order_by(models.Workspace.name.asc())
+    )
+    if visible is not None:
+        query = query.where(models.Workspace.id.in_(visible))
+    result = await session.execute(query)
+    return [
+        schemas.AchievementLibraryWorkspaceRead(id=row.id, slug=row.slug, name=row.name, rules_count=row.rules_count)
+        for row in result
+    ]
+
+
+async def library_rules(
+    session, *, user: models.AuthUser, workspace_id: int, source_workspace_id: int, discipline: str
+) -> list[schemas.AchievementLibraryRuleRead]:
+    source_workspace = await get_source_workspace_or_404(
+        session, target_workspace_id=workspace_id, source_workspace_id=source_workspace_id, user=user
+    )
+    rules = await load_rules_for_workspace(session, source_workspace.id, discipline=discipline)
+    return [
+        schemas.AchievementLibraryRuleRead(
+            slug=rule.slug,
+            name=rule.name,
+            category=str(rule.category),
+            enabled=bool(rule.enabled),
+            image_url=rule.image_url,
+        )
+        for rule in rules
+    ]
+
+
+async def import_from_library(
+    session,
+    s3: S3Client | None,
+    *,
+    user: models.AuthUser,
+    workspace_id: int,
+    body: schemas.AchievementLibraryImportRequest,
+) -> dict[str, Any]:
+    """Copy the named rules of another workspace's library; a slug it does not have is a warning, not an error."""
+    target_workspace = await get_workspace_for_discipline(session, workspace_id, body.discipline)
+    source_workspace = await get_source_workspace_or_404(
+        session, target_workspace_id=workspace_id, source_workspace_id=body.source_workspace_id, user=user
+    )
+    source_rules = await load_rules_for_workspace(
+        session, source_workspace.id, discipline=body.discipline, slugs=body.slugs
+    )
+    missing_slugs = sorted(set(body.slugs) - {rule.slug for rule in source_rules})
+    portable_rules = [
+        schemas.AchievementRulePortable.model_validate(rule, from_attributes=True) for rule in source_rules
+    ]
+    result = await _import_or_400(
+        session, s3, target_workspace=target_workspace, rules=portable_rules, source_workspace=source_workspace
+    )
+    result["warnings"].extend(
+        {"slug": slug, "message": f"Rule '{slug}' was not found in workspace '{source_workspace.slug}'"}
+        for slug in missing_slugs
+    )
+    await session.commit()
+    return result

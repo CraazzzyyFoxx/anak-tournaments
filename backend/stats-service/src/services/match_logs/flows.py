@@ -1,7 +1,6 @@
 """Invalidation and completion triggers a changed observation raises for the tournament side.
 
-Binding, identity resolution and the observation write live in ``src/services/ingest`` (binding/identity/writer/process).
-What remains here is the seam they call after a successful replacement: tournament cache invalidation and the
+``src/services/ingest`` calls this seam after a successful replacement: tournament cache invalidation and the
 completed-encounter achievement trigger. An awaiting-link job never reaches it.
 """
 
@@ -26,7 +25,7 @@ def _encounter_is_completed(encounter: models.Encounter) -> bool:
 async def enqueue_match_scores_changed(session: AsyncSession, tournament_id: int, encounter_id: int) -> None:
     # A parsed log adds or replaces one map's observation under the encounter
     # (``has_logs``, the per-map reads). It does not move the encounter's score:
-    # EncounterGame and finalize own that since encgame01. Both halves of the
+    # EncounterGame and finalize own that. Both halves of the
     # invalidation: emit() for the clients and this service's own caches, the
     # outbox row for tournament-service and app-service, which cache the same
     # reads and cannot rely on Redis pub/sub's at-most-once delivery.

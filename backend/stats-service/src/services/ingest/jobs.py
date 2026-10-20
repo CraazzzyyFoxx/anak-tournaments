@@ -26,6 +26,7 @@ from shared.clients.s3 import S3Client
 from shared.core.errors import BaseAPIException
 from shared.models import AuthUser
 from shared.repository.catalog import CatalogAliasMissRepository
+from shared.repository.identity import UserRepository
 from shared.repository.stats import IngestJobRepository
 from shared.rpc.identity import credential_type
 from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES, IngestIssue, MatchDoc, MatchDocError, parse_match_doc
@@ -64,6 +65,7 @@ _ENVELOPE_KEYS = frozenset({"document", "producer"})
 _RESPONSE_ISSUES = 50
 _jobs = IngestJobRepository()
 _misses = CatalogAliasMissRepository()
+_users = UserRepository()
 
 
 class IngestRejected(BaseAPIException):
@@ -300,10 +302,6 @@ def _parse_rejection(exc: MatchDocError) -> IngestRejected:
 SEMANTIC_CODES = {"unresolved_references": "unknown_code", "unknown_identity_provider": "document_invalid"}
 
 
-async def _uploader_id(session: AsyncSession, user: AuthUser) -> int | None:
-    return await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == user.id))
-
-
 async def lock_object(session: AsyncSession, ref: str) -> None:
     # The retention sweep takes the same per-object lock, so it cannot delete bytes between this PUT and the job
     # insert that makes them reachable.
@@ -343,7 +341,7 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
             raise IngestRejected(404, "binding_target_not_found", "Binding target not found") from None
         failure = rejected
 
-    uploader_id = await _uploader_id(session, user)
+    uploader_id = await _users.get_id_by_auth_user_id(session, user.id)
     raw_ref = raw_ref_for(workspace_id, sha256)
     # Hints survive a vocabulary rejection when each was validated; any unresolved/disagreeing hint voids them all.
     hint = doc.hint if failure is None or not any(i.code == "hint_unresolved" for i in failure.issues) else None

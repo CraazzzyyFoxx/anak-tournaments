@@ -1,29 +1,26 @@
-"""Read/validation helpers for the match-log admin surface.
-
-Extracted verbatim from the former ``src/routes/admin/logs.py`` HTTP route so the
-typed-RPC handlers (``src/rpc/logs.py``) can reuse them after the FastAPI face was
-removed.
-
-``HTTPException`` here is ``fastapi.HTTPException`` on purpose: the stats RPC
-envelope (``src/rpc/_common.py``) maps ``fastapi.HTTPException`` onto the
-``{ok,data,error}`` envelope, and a Starlette base-class instance would not be
-caught by that ``except`` clause (it is a strict subclass). The rest of the
-``src/services/match_logs`` layer (``uploads.py``) raises the same type.
-"""
+"""Reads and validation for the match-log admin surface: queue depths, the history page, its aggregate, one record."""
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from typing import Any
 
 import httpx
 from loguru import logger
-from sqlalchemy import ColumnElement, and_, case, exists, func, or_, select
+from sqlalchemy import ColumnElement, and_, case, desc, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.messaging.config import ingest_queue, ingest_replay_queue
+from shared.messaging.config import (
+    BALANCER_JOBS_QUEUE,
+    DISCORD_COMMANDS_QUEUE,
+    PROCESS_TOURNAMENT_LOGS_QUEUE,
+    ingest_queue,
+    ingest_replay_queue,
+)
+from shared.models import IngestJobStatus
 from shared.repository import EncounterRepository
 from src import models, schemas
 from src.core import config
@@ -32,9 +29,9 @@ from src.core import config
 MONITORED_QUEUES = [
     *(ingest_queue(spec.code).name for spec in config.settings.selected_disciplines),
     *(ingest_replay_queue(spec.code).name for spec in config.settings.selected_disciplines),
-    "process_tournament_logs",
-    "discord_commands",
-    "balancer_jobs",
+    PROCESS_TOURNAMENT_LOGS_QUEUE.name,
+    DISCORD_COMMANDS_QUEUE.name,
+    BALANCER_JOBS_QUEUE.name,
 ]
 
 
@@ -231,12 +228,10 @@ def history_scope_conditions(
 
 
 def history_search_condition(search: str | None) -> ColumnElement[bool] | None:
-    """Case-insensitive match across the fields the console renders per row.
+    """Case-insensitive match across the fields the console renders per row, over the whole scope (not one page).
 
-    Searching used to happen in the browser over the current page only, so a term
-    matching a record two pages down found nothing. Uploader/encounter names live
-    on related rows and are matched with EXISTS for the same composability reason
-    as the workspace scope.
+    Uploader/encounter names live on related rows and are matched with EXISTS for the same composability reason as
+    the workspace scope.
     """
     term = (search or "").strip()
     if not term:
@@ -269,6 +264,91 @@ def history_search_condition(search: str | None) -> ColumnElement[bool] | None:
             .correlate(models.IngestJob),
         ),
     )
+
+
+async def history_page(
+    session: AsyncSession,
+    s3: Any,
+    *,
+    tournament_id: int | None,
+    encounter_id: int | None,
+    workspace_id: int | None,
+    status_filter: str | None,
+    search: str | None,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    """One page of the scoped history, newest first, with the scope-wide total."""
+    conditions = history_scope_conditions(
+        tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
+    )
+    if status_filter is not None:
+        conditions.append(models.IngestJob.status == IngestJobStatus(status_filter))
+    search_condition = history_search_condition(search)
+    if search_condition is not None:
+        conditions.append(search_condition)
+
+    total = await session.scalar(select(func.count()).select_from(models.IngestJob).where(*conditions))
+    result = await session.execute(
+        history_query()
+        .where(*conditions)
+        .order_by(desc(models.IngestJob.created_at), desc(models.IngestJob.id))
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = result.all()
+    teams = await document_teams(s3, [row[0] for row in rows])
+    items = [{**_record_to_dict(*row), "teams": teams.get(row[0].id, [])} for row in rows]
+    return {"items": items, "total": int(total or 0)}
+
+
+async def log_stats(
+    session: AsyncSession, *, tournament_id: int | None, encounter_id: int | None, workspace_id: int | None
+) -> schemas.LogStatsRead:
+    """The history scope's status counts, mean processing time and newest upload, in one aggregate row."""
+    record = models.IngestJob
+    conditions = history_scope_conditions(
+        tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
+    )
+    duration = func.extract("epoch", record.finished_at - record.started_at)
+    row = (
+        await session.execute(
+            select(
+                func.count(),
+                *(
+                    func.count().filter(record.status == member)
+                    for member in (
+                        IngestJobStatus.PENDING,
+                        IngestJobStatus.PROCESSING,
+                        IngestJobStatus.DONE,
+                        IngestJobStatus.FAILED,
+                        IngestJobStatus.AWAITING_LINK,
+                    )
+                ),
+                # AVG skips NULL rows, so unfinished records drop out on their own.
+                func.avg(duration),
+                func.max(record.created_at),
+            )
+            .select_from(record)
+            .where(*conditions)
+        )
+    ).one()
+    total, pending, processing, done, failed, awaiting_link, avg_duration, last_created_at = row
+    return schemas.LogStatsRead(
+        total=int(total or 0),
+        pending=int(pending or 0),
+        processing=int(processing or 0),
+        done=int(done or 0),
+        failed=int(failed or 0),
+        awaiting_link=int(awaiting_link or 0),
+        avg_duration_seconds=float(avg_duration) if avg_duration is not None else None,
+        last_created_at=last_created_at,
+    )
+
+
+async def record_read(session: AsyncSession, record_id: int) -> schemas.LogRecordRead:
+    row = (await session.execute(history_query().where(models.IngestJob.id == record_id))).one()
+    return schemas.LogRecordRead.model_validate(_record_to_dict(*row))
 
 
 async def _validate_attached_encounter(

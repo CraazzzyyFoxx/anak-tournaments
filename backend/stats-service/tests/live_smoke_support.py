@@ -541,6 +541,8 @@ class LiveStack:
             S3_ACCESS_KEY=self.s3_access,
             S3_SECRET_KEY=self.s3_secret,
             S3_BUCKET_NAME=self.bucket,
+            # Path-style, on loopback: the catalog sync's image mirror answers with public URLs.
+            S3_PUBLIC_URL=f"{self.s3_endpoint.rstrip('/')}/{self.bucket}",
             JWT_SECRET_KEY=JWT_SECRET,
             LOGS_ROOT_PATH=str(self.directory / "logs"),
             JSON_LOGGING="false",

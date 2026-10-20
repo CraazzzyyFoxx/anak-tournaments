@@ -1,10 +1,8 @@
 """Admin operations for subscription collection: health read, history, trigger.
 
-Mirrors ``shared/disciplines/overwatch/collector/admin.py``. The one structural difference is
-where "current state" comes from: rank keeps a dedicated ``battle_tag_state``
-bookkeeping table, whereas subscriptions already have ``subscriptions.entitlement``
-— one row per (workspace, user, provider) with ``state``/``checked_at`` — so this
-module reads that instead of duplicating it.
+"Current state" is ``subscriptions.entitlement`` itself — one row per (workspace, user, provider) with
+``state``/``checked_at`` — read directly rather than duplicated into a bookkeeping table like the rank collector's
+``battle_tag_state`` (``shared/disciplines/overwatch/collector/admin.py``).
 
 Reads never commit; the trigger does.
 """

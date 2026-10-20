@@ -277,11 +277,7 @@ class RuleWritesTests(_DbCase):
         )
         with self.assertRaises(BaseAPIException) as ctx:
             await achievement_rule_service.update_rule(
-                self.session,
-                mover,
-                workspace_id=self.ws.id,
-                update_data={"slug": "taken"},
-                condition_tree_changed=False,
+                self.session, workspace_id=self.ws.id, rule_id=mover.id, update_data={"slug": "taken"}
             )
         self.assertEqual(409, ctx.exception.status_code)
         await self.session.refresh(lol_rule)
@@ -295,20 +291,20 @@ class RuleWritesTests(_DbCase):
         before_version = rule.rule_version
 
         await achievement_rule_service.update_rule(
-            self.session, rule, workspace_id=self.ws.id, update_data={"name": "Renamed"}, condition_tree_changed=False
+            self.session, workspace_id=self.ws.id, rule_id=rule.id, update_data={"name": "Renamed"}
         )
         self.assertEqual(
             (ow_char.id, PLAYED_ONCE, before_version), (rule.entity_id, rule.condition_tree, rule.rule_version)
         )
 
         await achievement_rule_service.update_rule(
-            self.session, rule, workspace_id=self.ws.id, update_data={"condition_tree": {}}, condition_tree_changed=True
+            self.session, workspace_id=self.ws.id, rule_id=rule.id, update_data={"condition_tree": {}}
         )
         self.assertEqual(({}, [], before_version + 1), (rule.condition_tree, rule.depends_on, rule.rule_version))
         self.assertEqual(ow_char.id, rule.entity_id)  # a tree edit does not clear the link
 
         await achievement_rule_service.update_rule(
-            self.session, rule, workspace_id=self.ws.id, update_data={"entity_id": None}, condition_tree_changed=False
+            self.session, workspace_id=self.ws.id, rule_id=rule.id, update_data={"entity_id": None}
         )
         self.assertIsNone(rule.entity_id)
         self.assertEqual("overwatch", rule.discipline)
@@ -320,7 +316,7 @@ class RuleWritesTests(_DbCase):
         for update in ({"entity_id": lol_char.id}, {"min_tournament_id": lol_tournament.id}):
             with self.subTest(update=update), self.assertRaises(BaseAPIException) as ctx:
                 await achievement_rule_service.update_rule(
-                    self.session, rule, workspace_id=self.ws.id, update_data=dict(update), condition_tree_changed=False
+                    self.session, workspace_id=self.ws.id, rule_id=rule.id, update_data=dict(update)
                 )
             self.assertEqual(422, ctx.exception.status_code)
         self.assertEqual((None, None), (rule.entity_id, rule.min_tournament_id))
@@ -378,11 +374,7 @@ class RuleWritesTests(_DbCase):
         await self.session.commit()
         with self.assertRaises(BaseAPIException) as ctx:
             await achievement_rule_service.update_rule(
-                self.session,
-                lol_rule,
-                workspace_id=ow_only.id,
-                update_data={"enabled": False, "name": "x"},
-                condition_tree_changed=False,
+                self.session, workspace_id=ow_only.id, rule_id=lol_rule.id, update_data={"enabled": False, "name": "x"}
             )
         self.assertEqual(422, ctx.exception.status_code)
         self.assertEqual("lol-frozen", lol_rule.name)
@@ -390,7 +382,7 @@ class RuleWritesTests(_DbCase):
         def override_args(rule):  # noqa: ANN001, ANN202
             return {
                 "workspace_id": ow_only.id,
-                "rule": rule,
+                "rule_id": rule.id,
                 "user_id": member_user.id,
                 "granted_by": admin.id,
                 "tournament_id": None,

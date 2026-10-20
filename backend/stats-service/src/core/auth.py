@@ -1,10 +1,6 @@
 """Authentication dependencies for stats-service (DB-backed + service scopes).
 
-Re-exports ``shared.rbac.workspace_lookup`` — only the getters stats-service's
-RPC handlers actually call (``rpc/logs.py``, ``rpc/misc.py``).
-``resolve_user_from_db`` and the team/player/stage/match/standing getters were
-re-exported here too (a leftover from copying tournament-service's superset)
-but never called anywhere in this service.
+Re-exports the ``shared.rbac.workspace_lookup`` getters stats-service's RPC handlers call.
 """
 
 from shared.rbac.workspace_lookup import (

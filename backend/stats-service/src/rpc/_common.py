@@ -20,6 +20,7 @@ from shared.rpc.common import (
     qbool,
     require_active,
     require_id,
+    require_path_int,
     require_query_int,
     require_superuser,
 )
@@ -38,6 +39,7 @@ __all__ = (
     "require_active",
     "require_superuser",
     "require_id",
+    "require_path_int",
     "require_query_int",
     "dump",
     "envelope",

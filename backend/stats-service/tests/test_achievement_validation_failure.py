@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from shared.rpc.common import http_error
-from src.rpc.achievements import validation_failure
+from src.services.achievement.admin_reads import validation_failure
 
 
 def test_a_refused_import_names_the_slug_and_the_problem() -> None:

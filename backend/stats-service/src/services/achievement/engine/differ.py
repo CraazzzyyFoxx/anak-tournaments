@@ -80,14 +80,11 @@ async def load_existing_results(
     """Stored rows for every rule of a run: one query per distinct persist slice.
 
     Returns ``rule_id -> {key: evaluation_result.id}``; a rule with no stored
-    rows is simply absent. The per-rule read this replaces ran inside each
-    rule's savepoint and was most of the evaluation N+1 (Sentry
-    OWT-TOURNAMENTS-2BW): stored rows are partitioned by
+    rows is simply absent. Stored rows are partitioned by
     ``achievement_rule_id``, so one ``IN`` per slice returns exactly the union
-    of what those reads returned. Reading earlier in the transaction only
-    widens the window in which a *concurrent* run inserts a row this one will
-    also try to insert — already true per rule, and the reconcile insert is
-    ``ON CONFLICT DO NOTHING``.
+    of the per-rule reads. Reading earlier in the transaction only widens the
+    window in which a *concurrent* run inserts a row this one will also try to
+    insert — the reconcile insert is ``ON CONFLICT DO NOTHING``.
     """
     by_slice: dict[EvaluationSlice | None, list[int]] = {}
     for rule_id, evaluation_slice in slices.items():
@@ -124,12 +121,10 @@ async def _resolve_member_ids(
 ) -> dict[int, int]:
     """``player_id -> workspace_member.id``, one SELECT for the whole batch.
 
-    The per-player ``INSERT ... ON CONFLICT DO NOTHING RETURNING id`` this
-    replaces ran once per newly qualifying player (Sentry
-    OWT-TOURNAMENTS-2BW). Every player an evaluation sees is normally already
-    anchored in the workspace, so one query answers the batch; only a genuinely
-    new anchor falls back to ``get_or_create_workspace_member``, which also
-    seeds the member's baseline RBAC role.
+    Every player an evaluation sees is normally already anchored in the
+    workspace, so one query answers the batch; only a genuinely new anchor falls
+    back to ``get_or_create_workspace_member``, which also seeds the member's
+    baseline RBAC role.
     """
     if not player_ids:
         return {}
@@ -184,7 +179,6 @@ class AchievementResultDifferService:
 
         existing_keys = set(existing)
 
-        # Normalize new results to consistent key format
         grain = AchievementGrain(rule.grain)
         new_keys: dict[tuple[int, ...], tuple[int, ...]] = {}
         for result_tuple in new_results:
@@ -195,25 +189,21 @@ class AchievementResultDifferService:
 
         new_key_set = set(new_keys.keys())
 
-        # Compute diff
         to_add = new_key_set - existing_keys
         to_remove = existing_keys - new_key_set
 
-        # Apply deletions
         ids_to_delete = [existing[key] for key in to_remove]
         if ids_to_delete:
             await self.results_repo.bulk_delete_by_ids(session, ids_to_delete)
 
-        # Apply insertions.
-        #
         # The read-diff-write above is not atomic: two runs for the same workspace
         # (e.g. two EncounterCompletedEvents for one tournament) read the same
-        # ``existing_map`` and then insert the same rows, tripping the
-        # ``uq_eval_result_dedup_coalesced`` unique index and failing the whole run.
-        # A single INSERT ... ON CONFLICT DO NOTHING makes the reconcile idempotent
-        # and replaces N ORM inserts with one statement. The conflict target must
-        # repeat the index's COALESCE expressions verbatim (see migration perfidx05)
-        # — the plain UniqueConstraint is NULL-blind and never matches for
+        # ``existing`` rows and then insert the same keys, tripping the
+        # ``uq_eval_result_dedup_coalesced`` unique index. INSERT ... ON CONFLICT
+        # DO NOTHING (``bulk_upsert_ignore_conflicts``) makes the reconcile
+        # idempotent. Its conflict target must repeat the index's COALESCE
+        # expressions verbatim (see migration perfidx05) — the plain
+        # UniqueConstraint is NULL-blind and never matches for
         # tournament/global-grain rows.
         now = datetime.now(UTC)
         inserts = []

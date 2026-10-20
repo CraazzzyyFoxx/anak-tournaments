@@ -19,7 +19,7 @@ from . import _common as c
 
 _SF = db.async_session_maker
 
-# The discipline whose module serves these subjects; Task 6 renames them and selects by discipline.
+# The discipline whose module serves these subjects.
 _DISCIPLINE = "overwatch"
 
 # Subject -> collection handler key. Literal on purpose: the gateway route parity guard reads subjects from source.

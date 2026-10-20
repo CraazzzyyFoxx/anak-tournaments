@@ -1,150 +1,56 @@
-"""Typed-RPC handlers for the achievement engine + rules admin.
+"""Typed-RPC handlers for the achievement engine + rules admin, gated by the workspace ``achievement.<action>`` permission.
 
-Mirrors ``src/routes/achievement.py`` (calculate) and the workspace-scoped
-rule/library/override admin in ``src/routes/admin/achievement_rule.py``; both are
-gated by ``require_workspace_permission("achievement", <action>)``.
-
-Achievement *reads* (a user's earned achievements) are owned by app-service; only
-the rules engine + admin live here.
-
-Parity notes:
-- ``export`` returns the JSON payload as data (the HTTP route added a
-  Content-Disposition filename; the frontend builds its own download).
-- HTTP validation errors used ``detail={"validation_errors": [...]}``; the envelope flattens a dict detail to a bare
-  word, so ``validation_failure`` puts the named problems in the message and keeps the list in ``details``.
-- ``/{rule_id}/debug-mvp`` is a dev-only endpoint not called by the frontend and
-  is intentionally not migrated.
+Achievement *reads* (a user's earned achievements) are owned by app-service; only the rules engine + admin live here.
+``export`` returns the JSON payload as data; the frontend builds its own download.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.pagination import PaginationParams, paginated_dict, paginated_dump
-from shared.domain.achievements.context import EvalContext
-from shared.domain.achievements.evaluator import evaluate
-from shared.domain.achievements.registry import get_specs
-from shared.domain.achievements.validation import infer_grain, validate_condition_tree, validate_rule_definition
-from shared.models.achievements.achievement import (
-    AchievementOverride,
-    AchievementOverrideAction,
-    AchievementRule,
-    EvaluationRun,
-    EvaluationRunTrigger,
-)
-from shared.repository import (
-    AchievementOverrideRepository,
-    AchievementRuleRepository,
-    TournamentRepository,
-    WorkspaceRepository,
-)
+from shared.core.pagination import paginated_dump
+from shared.models.achievements.achievement import AchievementOverrideAction
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
-from shared.services.achievement_effective import build_effective_achievement_rows_subquery
-from src import models, schemas
+from src import schemas
 from src.core import clients as _clients
 from src.core import db
-from src.services.achievement.admin_reads import (
-    _get_source_workspace_or_404,
-    _get_visible_workspace_ids,
-    _get_workspace_or_404,
-    get_workspace_for_discipline,
-    require_discipline,
-    require_scope_refs,
-    require_tournament,
-    resolve_rule_ids,
-)
-from src.services.achievement.engine.runner import run_evaluation
-from src.services.achievement.engine.seeder import hard_reset_workspace, seed_workspace
-from src.services.achievement.import_export import (
-    build_export_payload,
-    import_portable_rules,
-    load_rules_for_workspace,
-)
+from src.services.achievement import import_export
 from src.services.achievement.rule_service import achievement_rule_service
 
 from . import _common as c
 
 _SF = db.async_session_maker
 
-_rule_repo = AchievementRuleRepository()
-_override_repo = AchievementOverrideRepository()
-_tournament_repo = TournamentRepository()
-_workspace_repo = WorkspaceRepository()
-
-
-def validation_failure(errors: Any) -> HTTPException:
-    """The 400 for a rule definition or a portable batch that failed validation.
-
-    The message names every problem (a missing entity, a foreign game) that the organizer must fix; the structured list
-    rides ``details`` for machine readers.
-    """
-
-    def line(item: Any) -> str:
-        if isinstance(item, dict):
-            return f"{item.get('slug')}: " + "; ".join(map(str, item.get("errors") or ()))
-        return str(item)
-
-    items = errors if isinstance(errors, list) else [errors]
-    exc = HTTPException(status_code=400, detail={"msg": " | ".join(line(i) for i in items), "code": "invalid_rule"})
-    exc.details = {"validation_errors": errors}  # type: ignore[attr-defined]
-    return exc
-
-
-def _path_int(data: dict, key: str) -> int:
-    try:
-        return int(data[key])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"{key} is required") from exc
-
 
 def _require_ws(data: dict, action: str) -> tuple[Any, int]:
     """Rehydrate identity + enforce the workspace-scoped achievement permission."""
     user = c.actor(data)
     c.require_active(user)
-    workspace_id = _path_int(data, "workspace_id")
+    workspace_id = c.require_path_int(data, "workspace_id")
     ensure_workspace_permission(user, workspace_id, "achievement", action)
     return user, workspace_id
 
 
-async def _run_calculate(session: Any, *, workspace_id: int, tournament_id: int | None, payload: Any) -> list[str]:
-    discipline = payload.discipline
-    await get_workspace_for_discipline(session, workspace_id, discipline)
-    await require_scope_refs(session, workspace_id=workspace_id, discipline=discipline, tournament_id=tournament_id)
-    if payload.ensure_created:
-        await seed_workspace(session, workspace_id, discipline=discipline)
-    query = sa.select(AchievementRule).where(
-        AchievementRule.workspace_id == workspace_id, AchievementRule.discipline == discipline
-    )
-    if payload.slugs:
-        query = query.where(AchievementRule.slug.in_(payload.slugs))
-    else:
-        query = query.where(AchievementRule.enabled.is_(True))
-    rules = list((await session.execute(query)).scalars())
-    found_slugs = {rule.slug for rule in rules}
-    if payload.slugs:
-        missing_slugs = sorted(set(payload.slugs) - found_slugs)
-        if missing_slugs:
-            raise HTTPException(status_code=400, detail=f"Unknown achievement slugs: {', '.join(missing_slugs)}")
-    await run_evaluation(
-        session=session,
-        workspace_id=workspace_id,
-        trigger=EvaluationRunTrigger.manual,
-        tournament_id=tournament_id,
-        rule_ids=[rule.id for rule in rules],
-    )
-    return sorted(found_slugs) if payload.slugs else sorted(rule.slug for rule in rules)
+def require_discipline(data: dict) -> str:
+    """The request's explicit discipline: JSON body first, then ``?discipline=``; absent is a 422, never a default."""
+    body = data.get("payload")
+    value = body.get("discipline") if isinstance(body, dict) else None
+    if value is None:
+        raw = (data.get("query") or {}).get("discipline")
+        value = (raw[0] if isinstance(raw, list) and raw else raw) or None
+    if not isinstance(value, str) or not value:
+        raise HTTPException(status_code=422, detail="discipline is required")
+    return value
 
 
 def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber per route, mechanical
-    # ── achievement/calculate (workspace-scoped achievement.update) ───────────
-    # ``_require_ws`` resolves the scope from ``data`` (the path/query slot); these
-    # two carry it in the payload / on the tournament, so they gate inline instead.
+    # ``_require_ws`` resolves the scope from ``data`` (the path/query slot); the two calculate routes carry it in the
+    # payload / on the tournament, so they gate inline instead.
     @broker.subscriber("rpc.stats.ach.calculate")
     async def _calculate(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -159,11 +65,8 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             # A full-workspace engine run: every enabled rule's condition tree
             # evaluated over the whole history, all of it CPU on this worker.
             await quota.charge(user, "parser.ach.calculate", workspace_id=payload.workspace_id)
-            executed = await _run_calculate(
+            return await achievement_rule_service.calculate(
                 session, workspace_id=payload.workspace_id, tournament_id=None, payload=payload
-            )
-            return schemas.AchievementCalculateResponse(
-                tournament_id=None, executed=executed, message="Achievement calculation finished"
             )
 
         return await c.envelope(logger, "ach.calculate", op, session_factory=_SF)
@@ -173,23 +76,17 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            tournament_id = _path_int(data, "tournament_id")
+            tournament_id = c.require_path_int(data, "tournament_id")
             payload = schemas.AchievementCalculateRequest.model_validate(c.payload(data) or {})
-            tournament = await _tournament_repo.get(session, tournament_id)
-            if tournament is None:
-                raise HTTPException(status_code=404, detail="Tournament not found")
-            workspace_id = payload.workspace_id or tournament.workspace_id
-            if payload.workspace_id is not None and payload.workspace_id != tournament.workspace_id:
-                raise HTTPException(status_code=400, detail="workspace_id does not match tournament workspace")
+            workspace_id = await achievement_rule_service.calculation_workspace(
+                session, tournament_id=tournament_id, workspace_id=payload.workspace_id
+            )
             ensure_workspace_permission(user, workspace_id, "achievement", "update")
             # Same engine, one tournament's slice of history — still a CPU-bound
             # sweep over every rule.
             await quota.charge(user, "parser.ach.calculate_tournament", workspace_id=workspace_id)
-            executed = await _run_calculate(
+            return await achievement_rule_service.calculate(
                 session, workspace_id=workspace_id, tournament_id=tournament_id, payload=payload
-            )
-            return schemas.AchievementCalculateResponse(
-                tournament_id=tournament_id, executed=executed, message="Achievement calculation finished"
             )
 
         return await c.envelope(logger, "ach.calculate_tournament", op, session_factory=_SF)
@@ -199,21 +96,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _condition_types(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "read")
-            discipline = require_discipline(data)
-            await get_workspace_for_discipline(session, workspace_id, discipline)
-            return [
-                schemas.ConditionTypeInfo(
-                    name=spec.name,
-                    grain=spec.grain.value,
-                    description=spec.description,
-                    required_params=list(spec.required),
-                    optional_params=list(spec.optional),
-                    depends_on=list(spec.depends_on),
-                    subcondition_only=spec.subcondition_only,
-                    subcondition_ok=spec.subcondition_ok,
-                )
-                for _name, spec in sorted(get_specs(discipline=discipline).items())
-            ]
+            return await achievement_rule_service.condition_types(
+                session, workspace_id=workspace_id, discipline=require_discipline(data)
+            )
 
         return await c.envelope(logger, "ach.condition_types", op, session_factory=_SF)
 
@@ -222,12 +107,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "read")
             body = schemas.ConditionTreeValidateRequest.model_validate(c.payload(data))
-            await get_workspace_for_discipline(session, workspace_id, body.discipline)
-            errors = validate_condition_tree(body.condition_tree, discipline=body.discipline)
-            grain = infer_grain(body.condition_tree, discipline=body.discipline) if not errors else None
-            return schemas.ConditionTreeValidateResponse(
-                valid=len(errors) == 0, errors=errors, inferred_grain=grain.value if grain else None
-            )
+            return await achievement_rule_service.validate_tree(session, workspace_id=workspace_id, body=body)
 
         return await c.envelope(logger, "ach.validate", op, session_factory=_SF)
 
@@ -236,10 +116,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _seed(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "create")
-            discipline = require_discipline(data)
-            await get_workspace_for_discipline(session, workspace_id, discipline)
-            seeded, removed = await seed_workspace(session, workspace_id, discipline=discipline)
-            return {"seeded": seeded, "removed": removed}
+            return await achievement_rule_service.seed(
+                session, workspace_id=workspace_id, discipline=require_discipline(data)
+            )
 
         return await c.envelope(logger, "ach.seed", op, session_factory=_SF)
 
@@ -247,17 +126,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _reset(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "update")
-            discipline = require_discipline(data)
-            await get_workspace_for_discipline(session, workspace_id, discipline)
-            seeded, removed, cleared_results, run = await hard_reset_workspace(
-                session, workspace_id, discipline=discipline
+            return await achievement_rule_service.reset(
+                session, workspace_id=workspace_id, discipline=require_discipline(data)
             )
-            return {
-                "seeded": seeded,
-                "removed": removed,
-                "cleared_results": cleared_results,
-                "run": schemas.EvaluationRunRead.model_validate(run, from_attributes=True),
-            }
 
         return await c.envelope(logger, "ach.reset", op, session_factory=_SF)
 
@@ -285,9 +156,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             # Dumps every rule of the workspace's discipline, condition trees and all — an
             # unbounded read whose size grows with the rule set.
             await quota.charge(user, "parser.ach.export", workspace_id=workspace_id)
-            workspace = await _get_workspace_or_404(session, workspace_id)
-            rules = await load_rules_for_workspace(session, workspace_id, discipline=discipline)
-            return build_export_payload(workspace, rules)
+            return await import_export.export_rules(session, workspace_id=workspace_id, discipline=discipline)
 
         return await c.envelope(logger, "ach.export", op, session_factory=_SF)
 
@@ -300,32 +169,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             # Each imported rule copies its image through S3 and writes a rule row,
             # so the batch is priced by how many rules it carries.
             await quota.charge(user, "parser.ach.import", workspace_id=workspace_id, item_count=len(body.rules))
-            target_workspace = await _get_workspace_or_404(session, workspace_id)
-            source_workspace = None
-            if body.source_workspace is not None:
-                source_workspace = await _workspace_repo.get(session, body.source_workspace.id)
-                if source_workspace is None and body.source_workspace.slug:
-                    source_workspace = await session.scalar(
-                        sa.select(models.Workspace).where(models.Workspace.slug == body.source_workspace.slug)
-                    )
-                if (
-                    source_workspace is not None
-                    and not user.is_superuser
-                    and source_workspace.id not in user.get_workspace_ids()
-                ):
-                    raise HTTPException(status_code=403, detail="Source workspace is not accessible")
-            try:
-                result = await import_portable_rules(
-                    session,
-                    _clients.s3_client,
-                    target_workspace=target_workspace,
-                    rules=body.rules,
-                    source_workspace=source_workspace,
-                )
-            except ValueError as exc:
-                raise validation_failure(exc.args[0]) from exc
-            await session.commit()
-            return result
+            return await import_export.import_envelope(
+                session, _clients.s3_client, user=user, workspace_id=workspace_id, body=body
+            )
 
         return await c.envelope(logger, "ach.import", op, session_factory=_SF)
 
@@ -333,9 +179,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "read")
-            rule = await _rule_repo.get(session, _path_int(data, "rule_id"))
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Rule not found")
+            rule = await achievement_rule_service.get_rule(
+                session, workspace_id=workspace_id, rule_id=c.require_path_int(data, "rule_id")
+            )
             return schemas.AchievementRuleRead.model_validate(rule, from_attributes=True)
 
         return await c.envelope(logger, "ach.get", op, session_factory=_SF)
@@ -345,10 +191,6 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "create")
             body = schemas.AchievementRuleCreate.model_validate(c.payload(data))
-            await get_workspace_for_discipline(session, workspace_id, body.discipline)
-            errors, _grain = validate_rule_definition(body.condition_tree, body.grain, discipline=body.discipline)
-            if errors:
-                raise validation_failure(errors)
             rule = await achievement_rule_service.create_rule(
                 session, workspace_id=workspace_id, rule_data=body.model_dump()
             )
@@ -360,26 +202,10 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _update(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "update")
-            rule = await _rule_repo.get(session, _path_int(data, "rule_id"))
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Rule not found")
+            rule_id = c.require_path_int(data, "rule_id")
             body = schemas.AchievementRuleUpdate.model_validate(c.payload(data))
-            update_data = body.model_dump(exclude_unset=True)
-            condition_tree_changed = (
-                "condition_tree" in update_data and update_data["condition_tree"] != rule.condition_tree
-            )
-            if "condition_tree" in update_data or "grain" in update_data:
-                next_condition_tree = update_data.get("condition_tree", rule.condition_tree)
-                next_grain = update_data.get("grain", rule.grain)
-                errors, _grain = validate_rule_definition(next_condition_tree, next_grain, discipline=rule.discipline)
-                if errors:
-                    raise validation_failure(errors)
             rule = await achievement_rule_service.update_rule(
-                session,
-                rule,
-                workspace_id=workspace_id,
-                update_data=update_data,
-                condition_tree_changed=condition_tree_changed,
+                session, workspace_id=workspace_id, rule_id=rule_id, update_data=body.model_dump(exclude_unset=True)
             )
             return schemas.AchievementRuleRead.model_validate(rule, from_attributes=True)
 
@@ -389,10 +215,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "delete")
-            rule = await _rule_repo.get(session, _path_int(data, "rule_id"))
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Rule not found")
-            await achievement_rule_service.delete_rule(session, rule)
+            await achievement_rule_service.delete_rule(
+                session, workspace_id=workspace_id, rule_id=c.require_path_int(data, "rule_id")
+            )
             return None
 
         return await c.envelope(logger, "ach.delete", op, session_factory=_SF)
@@ -403,20 +228,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "update")
             body = schemas.EvaluateRequest.model_validate(c.payload(data))
-            await get_workspace_for_discipline(session, workspace_id, body.discipline)
-            await require_scope_refs(
-                session, workspace_id=workspace_id, discipline=body.discipline, tournament_id=body.tournament_id
-            )
-            run = await run_evaluation(
-                session=session,
-                workspace_id=workspace_id,
-                trigger=EvaluationRunTrigger.manual,
-                tournament_id=body.tournament_id,
-                rule_ids=await resolve_rule_ids(
-                    session, workspace_id=workspace_id, discipline=body.discipline, rule_ids=body.rule_ids
-                ),
-            )
-            return schemas.EvaluationRunRead.model_validate(run, from_attributes=True)
+            return await achievement_rule_service.evaluate(session, workspace_id=workspace_id, body=body)
 
         return await c.envelope(logger, "ach.evaluate", op, session_factory=_SF)
 
@@ -424,14 +236,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _runs(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "read")
-            query = (
-                sa.select(EvaluationRun)
-                .where(EvaluationRun.workspace_id == workspace_id)
-                .order_by(EvaluationRun.created_at.desc())
-                .limit(50)
-            )
-            result = await session.execute(query)
-            return [schemas.EvaluationRunRead.model_validate(r, from_attributes=True) for r in result.scalars()]
+            return await achievement_rule_service.list_runs(session, workspace_id=workspace_id)
 
         return await c.envelope(logger, "ach.runs", op, session_factory=_SF)
 
@@ -439,74 +244,15 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _rule_users(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "read")
-            rule_id = _path_int(data, "rule_id")
-            rule = await _rule_repo.get(session, rule_id)
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Rule not found")
-            page = c.q1(data, "page", int, 1)
-            per_page = c.q1(data, "per_page", int, 30)
-            tournament_id = c.q1(data, "tournament_id", int)
-            sort = c.q1(data, "sort", str, "count")
-            order = c.q1(data, "order", str, "desc")
-
-            effective_rows = build_effective_achievement_rows_subquery(
+            return await achievement_rule_service.rule_users(
+                session,
                 workspace_id=workspace_id,
-                achievement_rule_ids=[rule_id],
-                name="admin_rule_users_effective_rows",
-            )
-            where_clauses = [effective_rows.c.achievement_rule_id == rule_id]
-            if tournament_id is not None:
-                where_clauses.append(effective_rows.c.tournament_id == tournament_id)
-            total = (
-                await session.scalar(
-                    sa.select(sa.func.count(sa.distinct(effective_rows.c.user_id))).where(*where_clauses)
-                )
-                or 0
-            )
-
-            count_col = sa.func.count().label("count")
-            first_qualified_col = sa.func.min(effective_rows.c.qualified_at).label("first_qualified")
-            last_tournament_col = sa.func.max(effective_rows.c.tournament_id).label("last_tournament_id")
-            sort_map = {
-                "count": count_col,
-                "user_name": models.User.name,
-                "first_qualified": first_qualified_col,
-                "last_tournament_id": last_tournament_col,
-            }
-            sort_col = sort_map.get(sort, count_col)
-            order_expr = sa.asc(sort_col) if order == "asc" else sa.desc(sort_col)
-            query = (
-                sa.select(
-                    effective_rows.c.user_id,
-                    models.User.name.label("user_name"),
-                    count_col,
-                    last_tournament_col,
-                    sa.func.max(effective_rows.c.match_id).label("last_match_id"),
-                    first_qualified_col,
-                )
-                .select_from(effective_rows)
-                .join(models.User, models.User.id == effective_rows.c.user_id)
-                .where(*where_clauses)
-                .group_by(effective_rows.c.user_id, models.User.name)
-                .order_by(order_expr)
-                .offset((page - 1) * per_page)
-                .limit(per_page)
-            )
-            rows = (await session.execute(query)).all()
-            return paginated_dict(
-                [
-                    {
-                        "user_id": row[0],
-                        "user_name": row[1],
-                        "count": row[2],
-                        "last_tournament_id": row[3],
-                        "last_match_id": row[4],
-                        "first_qualified": row[5].isoformat() if row[5] else None,
-                    }
-                    for row in rows
-                ],
-                total,
-                PaginationParams(page=page, per_page=per_page),
+                rule_id=c.require_path_int(data, "rule_id"),
+                page=c.q1(data, "page", int, 1),
+                per_page=c.q1(data, "per_page", int, 30),
+                tournament_id=c.q1(data, "tournament_id", int),
+                sort=c.q1(data, "sort", str, "count"),
+                order=c.q1(data, "order", str, "desc"),
             )
 
         return await c.envelope(logger, "ach.rule_users", op, session_factory=_SF)
@@ -515,28 +261,12 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _test(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "update")
-            from src.core.workspace import get_division_grid
-
-            rule_id = _path_int(data, "rule_id")
-            rule = await _rule_repo.get(session, rule_id)
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Rule not found")
-            tournament_id = c.q1(data, "tournament_id", int)
-            tournament = await require_tournament(
-                session, workspace_id=workspace_id, discipline=rule.discipline, tournament_id=tournament_id
+            return await achievement_rule_service.test_rule(
+                session,
+                workspace_id=workspace_id,
+                rule_id=c.require_path_int(data, "rule_id"),
+                tournament_id=c.q1(data, "tournament_id", int),
             )
-            grid = await get_division_grid(
-                session, workspace_id, tournament_id=tournament_id, discipline=rule.discipline
-            )
-            context = EvalContext(
-                workspace_id=workspace_id, discipline=rule.discipline, tournament=tournament, grid=grid
-            )
-            results = await evaluate(session, rule.condition_tree, context)
-            return {
-                "rule_slug": rule.slug,
-                "qualifying_count": len(results),
-                "sample": [list(t) for t in sorted(results)[:20]],
-            }
 
         return await c.envelope(logger, "ach.test", op, session_factory=_SF)
 
@@ -545,37 +275,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _lib_workspaces(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user, workspace_id = _require_ws(data, "read")
-            discipline = require_discipline(data)
-            visible_workspace_ids = _get_visible_workspace_ids(user, workspace_id)
-            query = (
-                sa.select(
-                    models.Workspace.id,
-                    models.Workspace.slug,
-                    models.Workspace.name,
-                    sa.func.count(AchievementRule.id).label("rules_count"),
-                )
-                .join(
-                    AchievementRule,
-                    sa.and_(
-                        AchievementRule.workspace_id == models.Workspace.id, AchievementRule.discipline == discipline
-                    ),
-                )
-                .where(models.Workspace.id != workspace_id)
-                .group_by(models.Workspace.id, models.Workspace.slug, models.Workspace.name)
-                .having(sa.func.count(AchievementRule.id) > 0)
-                .order_by(models.Workspace.name.asc())
+            return await import_export.library_workspaces(
+                session, user=user, workspace_id=workspace_id, discipline=require_discipline(data)
             )
-            if visible_workspace_ids is not None:
-                if not visible_workspace_ids:
-                    return []
-                query = query.where(models.Workspace.id.in_(visible_workspace_ids))
-            result = await session.execute(query)
-            return [
-                schemas.AchievementLibraryWorkspaceRead(
-                    id=row.id, slug=row.slug, name=row.name, rules_count=row.rules_count
-                )
-                for row in result
-            ]
 
         return await c.envelope(logger, "ach.lib_workspaces", op, session_factory=_SF)
 
@@ -584,23 +286,13 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             user, workspace_id = _require_ws(data, "read")
             discipline = require_discipline(data)
-            source_workspace = await _get_source_workspace_or_404(
+            return await import_export.library_rules(
                 session,
-                target_workspace_id=workspace_id,
-                source_workspace_id=c.require_query_int(data, "source_workspace_id"),
                 user=user,
+                workspace_id=workspace_id,
+                source_workspace_id=c.require_query_int(data, "source_workspace_id"),
+                discipline=discipline,
             )
-            rules = await load_rules_for_workspace(session, source_workspace.id, discipline=discipline)
-            return [
-                schemas.AchievementLibraryRuleRead(
-                    slug=rule.slug,
-                    name=rule.name,
-                    category=str(rule.category),
-                    enabled=bool(rule.enabled),
-                    image_url=rule.image_url,
-                )
-                for rule in rules
-            ]
 
         return await c.envelope(logger, "ach.lib_list", op, session_factory=_SF)
 
@@ -612,37 +304,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             # Copies rules across workspaces: an S3 image copy and a rule write per
             # slug pulled out of the source library.
             await quota.charge(user, "parser.ach.lib_import", workspace_id=workspace_id)
-            target_workspace = await get_workspace_for_discipline(session, workspace_id, body.discipline)
-            source_workspace = await _get_source_workspace_or_404(
-                session,
-                target_workspace_id=workspace_id,
-                source_workspace_id=body.source_workspace_id,
-                user=user,
+            return await import_export.import_from_library(
+                session, _clients.s3_client, user=user, workspace_id=workspace_id, body=body
             )
-            source_rules = await load_rules_for_workspace(
-                session, source_workspace.id, discipline=body.discipline, slugs=body.slugs
-            )
-            found_slugs = {rule.slug for rule in source_rules}
-            missing_slugs = sorted(set(body.slugs) - found_slugs)
-            portable_rules = [
-                schemas.AchievementRulePortable.model_validate(rule, from_attributes=True) for rule in source_rules
-            ]
-            try:
-                result = await import_portable_rules(
-                    session,
-                    _clients.s3_client,
-                    target_workspace=target_workspace,
-                    rules=portable_rules,
-                    source_workspace=source_workspace,
-                )
-            except ValueError as exc:
-                raise validation_failure(exc.args[0]) from exc
-            result["warnings"].extend(
-                {"slug": slug, "message": f"Rule '{slug}' was not found in workspace '{source_workspace.slug}'"}
-                for slug in missing_slugs
-            )
-            await session.commit()
-            return result
 
         return await c.envelope(logger, "ach.lib_import", op, session_factory=_SF)
 
@@ -651,37 +315,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _overrides_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "read")
-            discipline = require_discipline(data)
-            # ``AchievementOverride`` is anchored on workspace_member_id; the
-            # RPC/frontend contract (``schemas.OverrideRead.user_id``) still expects
-            # the player identity, so resolve it via WorkspaceMember here
-            # rather than exposing the raw FK.
-            query = (
-                sa.select(AchievementOverride, models.WorkspaceMember.player_id)
-                .select_from(AchievementOverride)
-                .join(
-                    models.WorkspaceMember,
-                    models.WorkspaceMember.id == AchievementOverride.workspace_member_id,
-                )
-                .join(AchievementRule, AchievementRule.id == AchievementOverride.achievement_rule_id)
-                .where(AchievementRule.workspace_id == workspace_id, AchievementRule.discipline == discipline)
-                .order_by(AchievementOverride.created_at.desc())
+            return await achievement_rule_service.list_overrides(
+                session, workspace_id=workspace_id, discipline=require_discipline(data)
             )
-            result = await session.execute(query)
-            return [
-                schemas.OverrideRead(
-                    id=override.id,
-                    achievement_rule_id=override.achievement_rule_id,
-                    user_id=player_id,
-                    tournament_id=override.tournament_id,
-                    match_id=override.match_id,
-                    action=override.action,
-                    reason=override.reason,
-                    granted_by=override.granted_by,
-                    created_at=override.created_at,
-                )
-                for override, player_id in result.all()
-            ]
 
         return await c.envelope(logger, "ach.overrides_list", op, session_factory=_SF)
 
@@ -690,30 +326,16 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
         async def op(session: Any) -> Any:
             user, workspace_id = _require_ws(data, "update")
             body = schemas.OverrideCreate.model_validate(c.payload(data))
-            rule = await _rule_repo.get(session, body.achievement_rule_id)
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Rule not found in workspace")
-            override = await achievement_rule_service.create_rule_override(
+            return await achievement_rule_service.create_rule_override(
                 session,
                 workspace_id=workspace_id,
-                rule=rule,
+                rule_id=body.achievement_rule_id,
                 user_id=body.user_id,
                 granted_by=user.id,
                 tournament_id=body.tournament_id,
                 match_id=body.match_id,
                 action=AchievementOverrideAction(body.action),
                 reason=body.reason,
-            )
-            return schemas.OverrideRead(
-                id=override.id,
-                achievement_rule_id=override.achievement_rule_id,
-                user_id=body.user_id,
-                tournament_id=override.tournament_id,
-                match_id=override.match_id,
-                action=override.action,
-                reason=override.reason,
-                granted_by=override.granted_by,
-                created_at=override.created_at,
             )
 
         return await c.envelope(logger, "ach.override_create", op, session_factory=_SF)
@@ -722,13 +344,9 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
     async def _override_delete(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             _user, workspace_id = _require_ws(data, "update")
-            override = await _override_repo.get(session, _path_int(data, "override_id"))
-            if not override:
-                raise HTTPException(status_code=404, detail="Override not found")
-            rule = await _rule_repo.get(session, override.achievement_rule_id)
-            if not rule or rule.workspace_id != workspace_id:
-                raise HTTPException(status_code=404, detail="Override not found in workspace")
-            await achievement_rule_service.delete_override(session, override)
+            await achievement_rule_service.delete_workspace_override(
+                session, workspace_id=workspace_id, override_id=c.require_path_int(data, "override_id")
+            )
             return None
 
         return await c.envelope(logger, "ach.override_delete", op, session_factory=_SF)

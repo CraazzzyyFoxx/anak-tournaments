@@ -24,7 +24,11 @@ def test_rule_users_reply_carries_page_and_per_page(monkeypatch: pytest.MonkeyPa
         execute=AsyncMock(return_value=SimpleNamespace(all=lambda: [])),
     )
     monkeypatch.setattr(achievements_rpc, "_SF", session_factory(session))
-    monkeypatch.setattr(achievements_rpc._rule_repo, "get", AsyncMock(return_value=SimpleNamespace(workspace_id=5)))
+    monkeypatch.setattr(
+        achievements_rpc.achievement_rule_service.rule_repo,
+        "get",
+        AsyncMock(return_value=SimpleNamespace(workspace_id=5)),
+    )
 
     broker = FakeBroker()
     achievements_rpc.register(broker, logging.getLogger("achievement-rpc-tests"))

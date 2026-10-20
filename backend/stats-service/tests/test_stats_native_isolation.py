@@ -185,7 +185,7 @@ def test_native_ingest_and_reparse_commit_observations_outbox_and_evidence_atomi
         async with ingest.environment(stats_parity_database, monkeypatch) as env:
             async with native_sessions(url) as sf:
                 env.sf = sf
-                monkeypatch.setattr(ingest.catalog_aliases.db, "async_session_maker", sf)
+                monkeypatch.setattr(ingest.db, "async_session_maker", sf)
                 async with sf() as session:
                     initial_ids = await _audit_ids(session)
                 first_bytes = ingest.workshop(eliminations=2)

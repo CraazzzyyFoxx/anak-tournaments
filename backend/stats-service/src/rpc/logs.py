@@ -1,56 +1,26 @@
-"""Typed-RPC handlers for the match-log admin surface.
+"""Typed-RPC handlers for the match-log admin surface: queue status, history, stats, retry, upload, tournament reprocess.
 
-Mirrors the HTTP routes in ``src/routes/admin/logs.py`` (history, queue-status,
-retry) and the ``POST /logs/{tournament_id}`` enqueue from
-``src/routes/match_logs.py``. Permission gating mirrors the route dependencies
-exactly, rehydrating the gateway-injected identity via ``_common.actor`` and
-reusing stats-service's workspace-resolution helpers in ``src.core.auth``.
-
-The reusable read helpers/schemas are imported from the route modules (the route
-modules stay until the HTTP face is decommissioned), so the RPC output is
-byte-identical to the HTTP responses.
-
-Binary upload (multipart) and the live SSE stream are handled separately: upload
-via the base64 binary handler, the stream via the realtime WS hub.
+Permission gating rehydrates the gateway-injected identity via ``_common.actor`` and resolves the scope's workspace
+through ``src.core.auth``. The binary upload arrives base64-encoded from the gateway; the live stream is the realtime
+WS hub's.
 """
 
 from __future__ import annotations
 
-import base64
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from sqlalchemy import desc, func, select
 
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.messaging.config import PROCESS_TOURNAMENT_LOGS_QUEUE
-from shared.messaging.outbox import enqueue_outbox_event
 from shared.models import IngestJobStatus
-from shared.schemas.events import ProcessTournamentLogsEvent
-from shared.services.audit import record_admin_audit
-from src import models, schemas
+from src import schemas
 from src.core import auth, db
 from src.core import clients as _clients
-from src.core.config import settings
-from src.services.ingest.process import reparse_ingest_job
-from src.services.match_logs import uploads as upload_service
-from src.services.match_logs.admin_reads import (
-    _fetch_queue_depths,
-    _record_to_dict,
-    _validate_attached_encounter,
-    document_teams,
-    history_query,
-    history_scope_conditions,
-    history_search_condition,
-)
-from src.services.match_logs.limits import (
-    MATCH_NOT_FINISHED_MESSAGE,
-    match_log_finished,
-    match_log_oversize_message,
-)
+from src.services.ingest.process import retry_log
+from src.services.match_logs import admin_reads
 from src.services.match_logs.log_records import log_records_service
-from src.services.tournament import flows as tournament_flows
+from src.services.match_logs.uploads import upload_service
 
 from . import _common as c
 
@@ -60,13 +30,12 @@ _SF = db.async_session_maker
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.stats.logs.queue_status")
     async def _queue_status(data: dict, msg: RabbitMessage) -> dict:
-        # GET /admin/logs/queue-status — dependency: require_permission("log","read").
         async def op(_session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
             if not user.has_permission("log", "read"):
                 raise HTTPException(status_code=403, detail="Permission denied: log.read required")
-            return await _fetch_queue_depths()
+            return await admin_reads._fetch_queue_depths()
 
         return await c.envelope(logger, "logs.queue_status", op, session_factory=_SF)
 
@@ -100,14 +69,12 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.stats.logs.history")
     async def _history(data: dict, msg: RabbitMessage) -> dict:
-        # GET /admin/logs/history — per-arg permission gating mirrors the route.
         async def op(session: Any) -> Any:
             tournament_id = c.q1(data, "tournament_id", int)
             encounter_id = c.q1(data, "encounter_id", int)
             limit = c.q1(data, "limit", int, 50)
             offset = c.q1(data, "offset", int, 0)
             status_filter = (c.q1(data, "status", str) or "").strip() or None
-            search = c.q1(data, "search", str)
             if limit < 1 or limit > 200:
                 raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
             if offset < 0:
@@ -117,7 +84,6 @@ def register(broker: Any, logger: Any) -> None:
                     status_code=422,
                     detail=f"status must be one of: {', '.join(member.value for member in IngestJobStatus)}",
                 )
-
             workspace_id = await _authorize_scope(
                 session,
                 data,
@@ -125,37 +91,22 @@ def register(broker: Any, logger: Any) -> None:
                 encounter_id=encounter_id,
                 workspace_id=c.q1(data, "workspace_id", int),
             )
-
-            conditions = history_scope_conditions(
-                tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
+            return await admin_reads.history_page(
+                session,
+                _clients.s3_client,
+                tournament_id=tournament_id,
+                encounter_id=encounter_id,
+                workspace_id=workspace_id,
+                status_filter=status_filter,
+                search=c.q1(data, "search", str),
+                limit=limit,
+                offset=offset,
             )
-            if status_filter is not None:
-                conditions.append(models.IngestJob.status == IngestJobStatus(status_filter))
-            search_condition = history_search_condition(search)
-            if search_condition is not None:
-                conditions.append(search_condition)
-
-            # Aggregate count, not a full row fetch: the previous len(all()) pulled
-            # every matching record over the wire just to size the page footer.
-            total = await session.scalar(select(func.count()).select_from(models.IngestJob).where(*conditions))
-
-            result = await session.execute(
-                history_query()
-                .where(*conditions)
-                .order_by(desc(models.IngestJob.created_at), desc(models.IngestJob.id))
-                .limit(limit)
-                .offset(offset)
-            )
-            rows = result.all()
-            teams = await document_teams(_clients.s3_client, [row[0] for row in rows])
-            items = [{**_record_to_dict(*row), "teams": teams.get(row[0].id, [])} for row in rows]
-            return {"items": items, "total": int(total or 0)}
 
         return await c.envelope(logger, "logs.history", op, session_factory=_SF)
 
     @broker.subscriber("rpc.stats.logs.stats")
     async def _stats(data: dict, msg: RabbitMessage) -> dict:
-        # GET /admin/logs/stats — same scoping/gating as history, one aggregate row.
         async def op(session: Any) -> Any:
             tournament_id = c.q1(data, "tournament_id", int)
             encounter_id = c.q1(data, "encounter_id", int)
@@ -166,245 +117,68 @@ def register(broker: Any, logger: Any) -> None:
                 encounter_id=encounter_id,
                 workspace_id=c.q1(data, "workspace_id", int),
             )
-
-            record = models.IngestJob
-            conditions = history_scope_conditions(
-                tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
-            )
-            duration = func.extract("epoch", record.finished_at - record.started_at)
-            row = (
-                await session.execute(
-                    select(
-                        func.count(),
-                        *(
-                            func.count().filter(record.status == member)
-                            for member in (
-                                IngestJobStatus.PENDING,
-                                IngestJobStatus.PROCESSING,
-                                IngestJobStatus.DONE,
-                                IngestJobStatus.FAILED,
-                                IngestJobStatus.AWAITING_LINK,
-                            )
-                        ),
-                        # AVG skips NULL rows, so unfinished records drop out on their own.
-                        func.avg(duration),
-                        func.max(record.created_at),
-                    )
-                    .select_from(record)
-                    .where(*conditions)
-                )
-            ).one()
-
-            total, pending, processing, done, failed, awaiting_link, avg_duration, last_created_at = row
-            return schemas.LogStatsRead(
-                total=int(total or 0),
-                pending=int(pending or 0),
-                processing=int(processing or 0),
-                done=int(done or 0),
-                failed=int(failed or 0),
-                awaiting_link=int(awaiting_link or 0),
-                avg_duration_seconds=float(avg_duration) if avg_duration is not None else None,
-                last_created_at=last_created_at,
+            return await admin_reads.log_stats(
+                session, tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
             )
 
         return await c.envelope(logger, "logs.stats", op, session_factory=_SF)
 
     @broker.subscriber("rpc.stats.logs.retry")
     async def _retry(data: dict, msg: RabbitMessage) -> dict:
-        # POST /admin/logs/{record_id}/retry — dependency: require_log_record_permission("log","update").
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
             record_id = c.require_id(data)
             workspace_id = await auth._get_ingest_job_workspace_id(session, record_id)
             await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
-            body = schemas.LogRetryRequest.model_validate(c.payload(data))
-
-            if body.reparse:
-                # A done log is replayed only by this explicit branch, under the revision the operator saw.
-                if body.expected_revision is None or body.expected_revision < 1:
-                    raise HTTPException(
-                        status_code=422, detail="reparse requires expected_revision (the revision seen)"
-                    )
-                if body.encounter_id is not None or body.encounter_game_id is not None:
-                    raise HTTPException(status_code=422, detail="reparse cannot re-attach a log")
-                await record_admin_audit(
-                    session,
-                    action="match_log.reparse",
-                    actor=user,
-                    data=data,
-                    workspace_id=workspace_id,
-                    entity_type="match_log",
-                    entity_id=record_id,
-                    after={"expected_revision": body.expected_revision},
-                )
-                await reparse_ingest_job(
-                    session,
-                    job_id=record_id,
-                    expected_revision=body.expected_revision,
-                    user=user,
-                    s3=_clients.s3_client,
-                )
-                row = (await session.execute(history_query().where(models.IngestJob.id == record_id))).one()
-                return schemas.LogRecordRead.model_validate(_record_to_dict(*row))
-            if body.expected_revision is not None:
-                raise HTTPException(status_code=422, detail="expected_revision is only valid with reparse")
-
-            await record_admin_audit(
+            return await retry_log(
                 session,
-                action="match_log.retry",
-                actor=user,
+                job_id=record_id,
+                workspace_id=workspace_id,
+                request=schemas.LogRetryRequest.model_validate(c.payload(data)),
+                user=user,
                 data=data,
-                workspace_id=workspace_id,
-                entity_type="match_log",
-                entity_id=record_id,
-                after={"attached_encounter_id": body.encounter_id} if body.encounter_id is not None else None,
+                s3=_clients.s3_client,
             )
-            record = await log_records_service.retry(
-                session,
-                record_id,
-                workspace_id=workspace_id,
-                encounter_id=body.encounter_id,
-                encounter_game_id=body.encounter_game_id,
-            )
-            row = (await session.execute(history_query().where(models.IngestJob.id == record.id))).one()
-            return schemas.LogRecordRead.model_validate(_record_to_dict(*row))
 
         return await c.envelope(logger, "logs.retry", op, session_factory=_SF)
 
     @broker.subscriber("rpc.stats.logs.upload")
     async def _upload(data: dict, msg: RabbitMessage) -> dict:
-        # POST /admin/logs/upload (multipart -> base64 via the gateway binary handler).
-        # Mirrors upload_admin_logs: per-file errors are collected (HTTP 200 with an
-        # errors list); pre-loop validation/permission failures propagate as errors.
+        # Per-file errors are collected into the reply; validation/permission failures before the loop fail the call.
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
-            try:
-                tournament_id = int(data["tournament_id"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise HTTPException(status_code=422, detail="tournament_id is required") from exc
+            tournament_id = c.require_path_int(data, "tournament_id")
             await auth.require_tournament_id_permission(
                 session, user, tournament_id=tournament_id, resource="log", action="create"
             )
-
-            files = data.get("files") or []
-            if not files:
-                raise HTTPException(status_code=400, detail="At least one log file is required")
-            filenames = [upload_service.validate_log_filename(f.get("filename")) for f in files]
-
-            tournament = await tournament_flows.get(session, tournament_id, [])
             raw_encounter = data.get("encounter_id")
-            encounter_id = int(raw_encounter) if raw_encounter not in (None, "") else None
-            attached_encounter = await _validate_attached_encounter(
-                session, tournament_id=tournament.id, encounter_id=encounter_id
-            )
-            # Each file costs an S3 write plus its own parse job on the match-log
-            # queue, so the call is priced by both byte volume and file count.
-            await quota.charge(
-                user,
-                "stats.logs.upload",
-                workspace_id=tournament.workspace_id,
-                size_bytes=sum(len(f.get("content_b64") or "") for f in files),
-                item_count=len(files),
-            )
-            uploader_id = await upload_service.resolve_auth_uploader_id(session, user)
-
-            uploaded: list[schemas.LogUploadItem] = []
-            errors: list[schemas.LogUploadError] = []
-            attached_encounter_id = attached_encounter.id if attached_encounter else None
-            # One row for the call, staged before the first per-file commit inside
-            # the loop. Names only — never the decoded bytes.
-            await record_admin_audit(
+            return await upload_service.upload_batch(
                 session,
-                action="match_log.upload",
-                actor=user,
+                _clients.s3_client,
+                user=user,
                 data=data,
-                workspace_id=tournament.workspace_id,
-                entity_type="tournament",
-                entity_id=tournament.id,
-                entity_label=tournament.name,
-                after={"filenames": filenames},
+                tournament_id=tournament_id,
+                encounter_id=int(raw_encounter) if raw_encounter not in (None, "") else None,
+                files=data.get("files") or [],
             )
-
-            max_log_bytes = settings.max_match_log_bytes
-            for file_obj, filename in zip(files, filenames, strict=True):
-                try:
-                    raw_b64 = file_obj.get("content_b64") or ""
-                    # Reject before decoding: base64 inflates ~4/3, so cap the
-                    # encoded length first to avoid materializing a huge buffer.
-                    if len(raw_b64) > (max_log_bytes // 3 + 1) * 4:
-                        raise HTTPException(
-                            status_code=413,
-                            detail=match_log_oversize_message(max_log_bytes + 1, max_log_bytes),
-                        )
-                    content = base64.b64decode(raw_b64, validate=True)
-                    oversize = match_log_oversize_message(len(content), max_log_bytes)
-                    if oversize:
-                        raise HTTPException(status_code=413, detail=oversize)
-                    if not match_log_finished(content):
-                        raise HTTPException(status_code=400, detail=MATCH_NOT_FINISHED_MESSAGE)
-                    record = await upload_service.store_uploaded_log_bytes(
-                        session,
-                        s3=_clients.s3_client,
-                        tournament_id=tournament_id,
-                        filename=filename,
-                        content=content,
-                        source="upload",
-                        uploader_id=uploader_id,
-                        attached_encounter_id=attached_encounter_id,
-                    )
-                    uploaded.append(
-                        schemas.LogUploadItem(
-                            record_id=record.id,
-                            filename=record.filename,
-                            attached_encounter_id=record.hint_encounter_id,
-                        )
-                    )
-                except HTTPException as exc:
-                    await session.rollback()
-                    errors.append(schemas.LogUploadError(filename=filename, error=str(exc.detail)))
-                except Exception as exc:  # noqa: BLE001 - collected per-file, mirrors the route
-                    await session.rollback()
-                    logger.exception("Failed to upload and queue admin log {}", filename)
-                    errors.append(schemas.LogUploadError(filename=filename, error=str(exc)))
-
-            return schemas.LogUploadResponse(uploaded=uploaded, errors=errors)
 
         return await c.envelope(logger, "logs.upload", op, session_factory=_SF)
 
     @broker.subscriber("rpc.stats.logs.process_tournament")
     async def _process_tournament(data: dict, msg: RabbitMessage) -> dict:
-        # POST /logs/{tournament_id} — tournament-scoped log.update (the HTTP route
-        # gated on the admin role); the bot path moves to RabbitMQ.
         async def op(session: Any) -> Any:
             user = c.actor(data)
             c.require_active(user)
             tournament_id = c.require_id(data)
-            await auth.require_tournament_id_permission(
-                session, user, tournament_id=tournament_id, resource="log", action="update"
-            )
-            tournament = await tournament_flows.get(session, tournament_id, [])
+            workspace_id = await auth._get_tournament_workspace_id(session, tournament_id)
+            await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
             # Fans out one parse job per stored log of the tournament — the cost is
             # the whole fan-out, not this ack.
-            await quota.charge(user, "stats.logs.process_tournament", workspace_id=tournament.workspace_id)
-            await record_admin_audit(
-                session,
-                action="match_log.process_tournament",
-                actor=user,
-                data=data,
-                workspace_id=tournament.workspace_id,
-                entity_type="tournament",
-                entity_id=tournament.id,
-                entity_label=tournament.name,
+            await quota.charge(user, "stats.logs.process_tournament", workspace_id=workspace_id)
+            return await log_records_service.request_tournament_reprocess(
+                session, tournament_id=tournament_id, user=user, data=data
             )
-            await enqueue_outbox_event(
-                session,
-                ProcessTournamentLogsEvent(tournament_id=tournament.id, source_service="stats-service"),
-                exchange="",
-                routing_key=PROCESS_TOURNAMENT_LOGS_QUEUE.name,
-            )
-            await session.commit()
-            return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
         return await c.envelope(logger, "logs.process_tournament", op, session_factory=_SF)

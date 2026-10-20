@@ -3,18 +3,20 @@
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.errors import BaseAPIException
-from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE, ingest_queue
+from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE, PROCESS_TOURNAMENT_LOGS_QUEUE, ingest_queue
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.repository.encounter import EncounterGameRepository
 from shared.repository.stats import IngestJobRepository
 from shared.repository.tournament import EncounterRepository, TournamentRepository
-from shared.schemas.events import AchievementEvaluateEvent, ProcessIngestJobEvent
+from shared.schemas.events import AchievementEvaluateEvent, ProcessIngestJobEvent, ProcessTournamentLogsEvent
+from shared.services.audit import record_admin_audit
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src.services.match_logs.realtime import emit_logs_updated
 
@@ -318,6 +320,32 @@ class LogRecordsService:
                 queue.append(job.id)
             await session.commit()
         return TournamentRequeue(discipline=discipline_code, queue=queue, replay=replay)
+
+    async def request_tournament_reprocess(
+        self, session: AsyncSession, *, tournament_id: int, user: models.AuthUser, data: dict[str, Any]
+    ) -> dict[str, str]:
+        """Audit and commit the request for :meth:`requeue_tournament`, which the worker runs off the outbox."""
+        tournament = await TournamentRepository().get(session, tournament_id)
+        if tournament is None:
+            raise BaseAPIException(status_code=404, detail="Tournament not found")
+        await record_admin_audit(
+            session,
+            action="match_log.process_tournament",
+            actor=user,
+            data=data,
+            workspace_id=tournament.workspace_id,
+            entity_type="tournament",
+            entity_id=tournament.id,
+            entity_label=tournament.name,
+        )
+        await enqueue_outbox_event(
+            session,
+            ProcessTournamentLogsEvent(tournament_id=tournament.id, source_service="stats-service"),
+            exchange="",
+            routing_key=PROCESS_TOURNAMENT_LOGS_QUEUE.name,
+        )
+        await session.commit()
+        return {"message": f"Processing all logs for tournament '{tournament.name}'"}
 
 
 log_records_service = LogRecordsService()

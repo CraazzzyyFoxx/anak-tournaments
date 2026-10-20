@@ -154,7 +154,7 @@ class AchievementRulePortable(_RuleWire):
     @field_validator("image_url")
     @classmethod
     def _validate_image_url(cls, value: str | None) -> str | None:
-        """First-line defense for the S3-IDOR import path (review C3).
+        """First-line defense for the S3-IDOR import path.
 
         The authoritative key check lives server-side in
         ``import_export.find_workspace_achievement_asset_key``; this rejects the

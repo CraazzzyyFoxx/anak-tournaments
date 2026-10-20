@@ -32,7 +32,7 @@ from shared.testing.stats_parity import (
     seed_native_sentinel,
 )
 from src import schemas
-from src.services import catalog_aliases
+from src.core import db
 from src.services.ingest import process as ingest_process
 from src.services.match_logs import admin_reads, reaper, retention, uploads
 from src.services.match_logs.log_records import compute_content_hash, log_records_service
@@ -288,7 +288,7 @@ async def environment(database, monkeypatch, *, with_game=True, restricted=False
             worker = create_async_engine(async_url, connect_args={"server_settings": {"role": role}})
             sf = async_sessionmaker(worker, expire_on_commit=False)
         env.sf, env.admin, env.raw, env.fixture_ids = sf, admin, RawStore(), fixture_ids
-        monkeypatch.setattr(catalog_aliases.db, "async_session_maker", sf)
+        monkeypatch.setattr(db, "async_session_maker", sf)
         yield env
     finally:
         if worker:
@@ -302,7 +302,7 @@ async def environment(database, monkeypatch, *, with_game=True, restricted=False
 
 async def upload(env, content=None, *, filename="same.log", **kwargs):
     async with env.sf() as session:
-        return await uploads.store_uploaded_log_bytes(
+        return await uploads.upload_service.store_uploaded_log_bytes(
             session,
             s3=env.raw,
             tournament_id=env.tournament,
@@ -482,7 +482,7 @@ def test_actual_byte_dedup_races_scope_and_storage_failure(stats_parity_database
                 another_id, foreign_id = another.id, foreign.id
             async with env.sf() as session:
                 with pytest.raises(BaseAPIException, match="stats_upload_scope_conflict"):
-                    await uploads.store_uploaded_log_bytes(
+                    await uploads.upload_service.store_uploaded_log_bytes(
                         session,
                         s3=env.raw,
                         tournament_id=another_id,
@@ -491,7 +491,7 @@ def test_actual_byte_dedup_races_scope_and_storage_failure(stats_parity_database
                         source="upload",
                     )
             async with env.sf() as session:
-                other = await uploads.store_uploaded_log_bytes(
+                other = await uploads.upload_service.store_uploaded_log_bytes(
                     session,
                     s3=env.raw,
                     tournament_id=foreign_id,
@@ -504,7 +504,7 @@ def test_actual_byte_dedup_races_scope_and_storage_failure(stats_parity_database
             async with env.sf() as session:
                 before = await session.scalar(sa.select(sa.func.count()).select_from(models.IngestJob))
                 with pytest.raises(BaseAPIException):
-                    await uploads.store_uploaded_log_bytes(
+                    await uploads.upload_service.store_uploaded_log_bytes(
                         session,
                         s3=env.raw,
                         tournament_id=env.tournament,

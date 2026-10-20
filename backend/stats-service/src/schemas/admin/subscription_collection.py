@@ -1,9 +1,4 @@
-"""Admin read/write schemas for subscription collection.
-
-Mirrors ``rank_collection.py``: an ``extra="ignore"`` tally sub-model with all-zero
-defaults so an unexpected state string can never 500 the dashboard, ORM-backed
-reads via ``from_attributes``, and one ``*Request``/``*Response`` pair per mutation.
-"""
+"""Admin read/write schemas for subscription collection."""
 
 from datetime import datetime
 
