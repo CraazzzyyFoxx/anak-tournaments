@@ -369,7 +369,9 @@ def test_logged_foreign_auth_player_gains_neither_visibility_nor_grants_and_remo
         doc["participants"].append(
             {"key": "guest", "team": "t2", "identity": {"provider": "battlenet", "id": "Foreigner#7777"}}
         )
-        assert await process_job(env, await submit(env, case, doc)) == Status.DONE
+        # The guest is on no line-up: only a hint lets the rostered participants bind it.
+        hinted = {"encounter_game_id": case.game_id}
+        assert await process_job(env, await submit(env, case, doc, hint=hinted)) == Status.DONE
 
         async with db(env) as session:
             after = (await _visible(session, auth_id, case.workspace_id), await _grants(session, auth_id))
@@ -436,6 +438,34 @@ def test_repeated_games_on_one_map_leave_the_document_awaiting_even_when_one_is_
         again = await submit(env, case, external_id="amb-again")
         assert await process_job(env, again) == Status.AWAITING_LINK
         assert (await snapshot(env, case))["revision"] == 1
+
+    run(ingest_database, scenario)
+
+
+def test_without_a_hint_a_participant_outside_the_line_up_leaves_the_document_awaiting(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "whole")
+
+        def with_outsider(external_id):
+            doc = build_document(case, external_id=external_id)
+            doc["participants"].append(
+                {"key": "out", "team": "t1", "identity": {"provider": case.provider, "id": "Outsider#9200"}}
+            )
+            return doc
+
+        # Every rostered participant agrees with one game, but one participant is on no line-up: nothing narrows
+        # the search, so the game is not proven and nothing is written.
+        loose = await submit(env, case, with_outsider("whole-loose"))
+        assert await process_job(env, loose) == Status.AWAITING_LINK
+        assert await snapshot(env, case) == {}
+        # A hint narrows the search to the game; its line-up then binds the same people.
+        hinted = await submit(env, case, with_outsider("whole-hinted"), hint={"encounter_game_id": case.game_id})
+        assert await process_job(env, hinted) == Status.DONE
+        assert (await snapshot(env, case))["revision"] == 1
+        # A document whose every participant is on the line-up still corrects the game without a hint.
+        whole = await submit(env, case, external_id="whole-fix")
+        assert await process_job(env, whole) == Status.DONE
+        assert (await snapshot(env, case))["revision"] == 2
 
     run(ingest_database, scenario)
 
@@ -675,6 +705,91 @@ def test_admin_bind_keeps_the_provenance_refusals_of_the_queue_and_reparse_paths
         assert (owned.value.status_code, owned.value.code) == (409, "already_bound")
         assert await snapshot(env, case) == before, "a refused bind replaces nothing"
         assert (await job_row(env, unverified)).status == Status.FAILED
+
+    run(ingest_database, scenario)
+
+
+def test_admin_bind_refuses_a_map_the_tournament_rosters_contradict_on_seats_without_a_line_up(ingest_database):
+    async def scenario(env):
+        case = await new_case(env, "owners")
+        async with db(env) as session:
+            # The seats are tournament teams whose rosters own the participants, but carry no line-up snapshot (a
+            # stage encounter seated before generation snapshotted rosters), so no line-up contradicts any map.
+            teams = [
+                models.Team(tournament_id=case.tournament_id, name=f"Owners {i}", balancer_name=f"owners-{i}")
+                for i in range(3)
+            ]
+            session.add_all(teams)
+            await session.flush()
+            for seat, team in zip(case.team_ids, teams, strict=False):
+                await session.execute(
+                    sa.update(models.EncounterTeam).where(models.EncounterTeam.id == seat).values(team_id=team.id)
+                )
+            roster = [
+                models.Player(
+                    tournament_id=case.tournament_id,
+                    team_id=team.id,
+                    workspace_member_id=member,
+                    name=f"m{member}",
+                    rank=800,
+                )
+                for team, members in zip(teams, case.member_ids, strict=False)
+                for member in members
+            ]
+            session.add_all(roster)
+            await session.execute(
+                sa.delete(models.EncounterTeamMember).where(
+                    models.EncounterTeamMember.encounter_id == case.encounter_id
+                )
+            )
+            await session.commit()
+        job_id = await submit(env, case)
+        assert await process_job(env, job_id) == Status.AWAITING_LINK
+        parked = await job_row(env, job_id)
+        async with db(env) as session:
+            before = await side_effects(session, case.workspace_id)
+
+        async def bind(teams):
+            async with db(env) as session:
+                return await process.bind_ingest_job(
+                    session,
+                    job_id=job_id,
+                    request=BindIngestRequest(encounter_game_id=case.game_id, teams=teams, expected_revision=0),
+                    user=admin(case),
+                    s3=env.s3,
+                )
+
+        async def refused(teams):
+            with pytest.raises(IngestRejected) as refusal:
+                await bind(teams)
+            assert (refusal.value.status_code, refusal.value.code) == (409, "binding_mismatch")
+            row = await job_row(env, job_id)
+            assert (row.status, row.document_ref, row.attempts) == (
+                Status.AWAITING_LINK,
+                parked.document_ref,
+                parked.attempts,
+            )
+            assert await snapshot(env, case) == {}
+            async with db(env) as session:
+                assert await side_effects(session, case.workspace_id) == before
+
+        # Reversed: every participant is rostered on the other seat's team.
+        await refused({"t1": case.team_ids[1], "t2": case.team_ids[0]})
+        # A member of a third team of the tournament, in a map that is otherwise right.
+        foreign = roster[0]
+        async with db(env) as session:
+            await session.execute(
+                sa.update(models.Player).where(models.Player.id == foreign.id).values(team_id=teams[2].id)
+            )
+            await session.commit()
+        await refused(team_map(case))
+        async with db(env) as session:
+            await session.execute(
+                sa.update(models.Player).where(models.Player.id == foreign.id).values(team_id=teams[0].id)
+            )
+            await session.commit()
+        read = await bind(team_map(case))
+        assert read.status == Status.DONE and read.binding.revision == 1
 
     run(ingest_database, scenario)
 

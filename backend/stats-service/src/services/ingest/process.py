@@ -49,6 +49,7 @@ from src.services.ingest.binding import (
     bound_participants,
     check_forced_teams,
     check_map_pool,
+    check_roster_owners,
     find_binding,
     load_game_seats,
     match_teams,
@@ -539,6 +540,9 @@ async def _run_admin(
         if game.map_id != validated.map_id:
             raise BindingMismatch("the target game is played on another map than the document's")
         check_forced_teams(validated.doc, known, game, admin.teams)
+        await check_roster_owners(
+            session, workspace_id=job.workspace_id, doc=validated.doc, known=known, game=game, teams=admin.teams
+        )
         binding = bound_match(job.workspace_id, job.discipline, game, admin.teams)
         producers = await load_producers(session, s3, game.encounter_id)
         await _publish(
