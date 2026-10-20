@@ -8,8 +8,7 @@ registration without the superuser ``force`` bypass.
 
 ANNOUNCEMENT is where every tournament starts: public and readable, but with
 nothing to do yet. It carries no schedule row of its own — it ends when the
-REGISTRATION row comes due, which is the same clock that used to leave a fresh
-tournament sitting in REGISTRATION with registration closed.
+REGISTRATION row comes due.
 
 Time-driven automation (the tournament-worker tick) advances the status
 forward only, using ``tournament_phase_schedule`` rows: a row's ``starts_at``
@@ -109,7 +108,8 @@ class PhaseScheduleEntry(Protocol):
     ends_at: datetime | None
 
 
-def _as_utc(value: datetime) -> datetime:
+def as_utc(value: datetime) -> datetime:
+    """Naive datetimes are UTC; aware ones are converted to UTC."""
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
@@ -152,14 +152,14 @@ def next_due_status(
     is due. Never returns a backward or same-phase target, so the automation
     is forward-only by construction.
     """
-    now = _as_utc(now)
+    now = as_utc(now)
     current_order = PHASE_ORDER[current]
     due = [
         entry.status
         for entry in schedule
         if entry.status in SCHEDULABLE_STATUSES
         and PHASE_ORDER[entry.status] > current_order
-        and _as_utc(entry.starts_at) <= now
+        and as_utc(entry.starts_at) <= now
     ]
     if not due:
         return None
@@ -178,10 +178,10 @@ def is_within_phase_window(
     does NOT check that the tournament currently *is* in ``status`` — callers
     combine it with a status equality check.
     """
-    now = _as_utc(now)
+    now = as_utc(now)
     entry = next((e for e in schedule if e.status == status), None)
     if entry is None:
         return True
-    if _as_utc(entry.starts_at) > now:
+    if as_utc(entry.starts_at) > now:
         return False
-    return entry.ends_at is None or now <= _as_utc(entry.ends_at)
+    return entry.ends_at is None or now <= as_utc(entry.ends_at)

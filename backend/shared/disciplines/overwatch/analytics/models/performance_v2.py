@@ -1,7 +1,5 @@
 """Performance Rating v2 — per-role LGBMRegressor with quantile confidence.
 
-Replaces the v1 primitive average of whole-match ``performance_points`` facts.
-
 **Target construction**
 
 1. A tiny baseline :class:`sklearn.linear_model.LogisticRegression` is fit on
@@ -149,7 +147,7 @@ class PerformanceModelV2(MLModel):
     """Per-role Performance v2 estimator.
 
     Held by :class:`MLModelArtifact` rows with ``model_kind = 'performance'``.
-    ``role`` is the role string used to look up features; coarse fallback is
+    ``role`` is the role string features are looked up by; coarse fallback is
     used when ``hero_time_played`` is zero (no logs).
     """
 

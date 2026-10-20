@@ -1,4 +1,4 @@
-"""The League of Legends module (D83, D98). Core reaches it only through ``shared.disciplines``."""
+"""The League of Legends module. Core reaches it only through ``shared.disciplines``."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ POSITION = DimensionSpec(
     ),
 )
 
-#: D98: "по позициям" (each position 1..1) and "без ролей".
+#: "по позициям" (each position 1..1) and "без ролей".
 POSITIONS_5V5 = TeamFormatPreset(
     "positions_5v5",
     "5v5 by positions",

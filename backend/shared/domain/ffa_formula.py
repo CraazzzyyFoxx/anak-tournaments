@@ -2,7 +2,7 @@
 
 A formula is an expression over the stage's column keys plus a fixed set of
 variables -- :data:`GAME_VARIABLES` for what a game pays, :data:`END_VARIABLES`
-for when an encounter is over (docs/plans/2026-10-12-multi-game-architecture.md §5).
+for when an encounter is over.
 It is parsed with the standard :mod:`ast` against a whitelist of nodes and run
 by a recursive interpreter: ``eval`` and ``compile`` are never called, so a
 saved formula cannot reach anything except arithmetic on the numbers it is
@@ -42,7 +42,7 @@ FORMULA_MAX_NODES = 100
 
 #: Readable in every game formula, whatever the stage's columns are. ``win`` is
 #: 1 only for a sole first place, so a duel's "one point per map won" is a
-#: formula like every other (plan §5).
+#: formula like every other.
 GAME_VARIABLES: frozenset[str] = frozenset({"place", "place_pts", "teams", "win"})
 #: Readable in an end formula -- the question "is this encounter over?", asked
 #: after every confirmed game. A column key is NOT readable there: the end of a
@@ -116,9 +116,9 @@ def compile_formula(source: str, columns: Iterable[str], *, variables: frozenset
     an encounter is over.
 
     A column key in :data:`RESERVED_NAMES` is refused HERE, not only by the
-    stage editor: the reserved set grows (``win`` arrived with the universal
-    engine), and a stage saved before a word was taken would otherwise keep
-    compiling while the builtin silently paid in place of the recorded value.
+    stage editor: the reserved set can grow, and a stage saved before a word was
+    taken would otherwise keep compiling while the builtin silently paid in place
+    of the recorded value.
     """
     keys = {str(key) for key in columns}
     taken = sorted(keys & RESERVED_NAMES)

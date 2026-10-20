@@ -70,14 +70,13 @@ def build_effective_achievement_rows_subquery(
       UNION grant overrides
       MINUS revoke overrides scoped by global/tournament/match precedence
 
-    ``user_ids`` may be a SELECTABLE, not just a list. Narrowing matters more here
-    than anywhere else: unrestricted, this scans every evaluation result and grant
-    in the database and evaluates the correlated revoke ``NOT EXISTS`` against each
-    one before grouping. A caller that then inner-joins its own cohort gets the
-    same rows either way -- the join to a unique key IS a membership test -- but
-    pays for the whole table first, which is what timed the compare page out. Pass
-    the cohort as a subquery so the restriction happens before the scan, and NEVER
-    resolve it to a list first: a 560-element ``IN`` list is its own pathology.
+    ``user_ids`` may be a SELECTABLE, not just a list. Unrestricted, this scans
+    every evaluation result and grant in the database and evaluates the
+    correlated revoke ``NOT EXISTS`` against each one before grouping; a caller
+    that inner-joins its own cohort afterwards gets the same rows but pays for
+    the whole table first. Pass the cohort as a subquery so the restriction
+    happens before the scan, and NEVER resolve it to a list first: a
+    several-hundred-element ``IN`` list is its own pathology.
     """
     achievement_rule_ids = list(achievement_rule_ids or [])
     user_scope: typing.Any
@@ -89,13 +88,10 @@ def build_effective_achievement_rows_subquery(
         user_scope = list(user_ids) or None
 
     # ``AchievementEvaluationResult``/``AchievementOverride`` are anchored on
-    # ``workspace_member_id`` now, not the player identity directly. Every
-    # consumer of this subquery still expects a player id under ``user_id``
-    # (revoke matching, rarity counts, per-user pagination), so both branches
-    # join their own ``WorkspaceMember`` row and expose
-    # ``WorkspaceMember.player_id AS user_id`` — the union's shape and the
-    # ``.in_(user_ids)``/revoke semantics are byte-identical from the
-    # consumer's point of view.
+    # ``workspace_member_id``, but every consumer of this subquery expects a
+    # player id under ``user_id`` (revoke matching, rarity counts, per-user
+    # pagination), so both branches join their own ``WorkspaceMember`` row and
+    # expose ``WorkspaceMember.player_id AS user_id``.
     eval_member = sa.orm.aliased(WorkspaceMember, name="eval_member")
     grant_member = sa.orm.aliased(WorkspaceMember, name="grant_member")
 

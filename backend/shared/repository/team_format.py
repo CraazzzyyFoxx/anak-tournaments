@@ -1,4 +1,4 @@
-"""``roster.team_format`` and its children (D35, D88)."""
+"""``roster.team_format`` and its children."""
 
 from __future__ import annotations
 

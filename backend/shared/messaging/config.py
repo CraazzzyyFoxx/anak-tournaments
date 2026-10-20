@@ -187,8 +187,7 @@ UPLOAD_MATCH_LOG_DLQ = RabbitQueue(
 # ============================================================================
 # One durable work queue: the result names the Discord message it answers
 # (``channel_id``/``message_id``), so any replica can react on it -- there is no
-# in-process waiter to find. Replaced the fanout + per-replica exclusive queue
-# that mirrored pg LISTEN/NOTIFY and tied the result to one replica's memory.
+# in-process waiter to find.
 
 MATCH_LOG_RESULT_QUEUE = RabbitQueue(
     "match_log_result",
@@ -300,9 +299,8 @@ DIVISION_GRID_IMPORT_JOBS_DLQ = RabbitQueue(
 
 # Cache invalidation, cross-service. One topic exchange, one queue per service
 # that owns a cache, routing key `cache.invalidated.<scope_kind>.<scope_id>`.
-# Replaces the tournament.changed contour: the payload names the stale
-# RESOURCES, so a consumer maps them onto its own keys instead of re-deriving
-# intent from a shared "reason" enum.
+# The payload names the stale RESOURCES, so a consumer maps them onto its own
+# keys instead of re-deriving intent from a shared "reason" enum.
 CACHE_INVALIDATION_EXCHANGE = RabbitExchange(
     "cache.invalidation",
     type=ExchangeType.TOPIC,
@@ -458,8 +456,7 @@ TOURNAMENT_CHALLONGE_PUSH_DLQ = RabbitQueue(
 # Workspace membership changes (app-service -> identity-service)
 # ============================================================================
 # ``WorkspaceMemberChangedEvent`` through the outbox, straight onto the queue:
-# identity drops the cached RBAC payload of the listed users. Replaced
-# app-service deleting identity's Redis key by hand.
+# identity drops the cached RBAC payload of the listed users.
 
 WORKSPACE_MEMBER_CHANGED_QUEUE = RabbitQueue(
     "workspace_member_changed",
@@ -502,7 +499,7 @@ DISCORD_MEMBER_CHANGED_DLQ = RabbitQueue(
 # Match ingested (stats-service -> tournament match layer)
 # ============================================================================
 # One opaque evidence id/revision/placements payload per accepted observation
-# revision. The tournament consumer decides whether it is official (D95); the
+# revision. The tournament consumer decides whether it is official; the
 # stats side never writes ``encounter.*``.
 
 MATCH_INGESTED_EXCHANGE = RabbitExchange(
@@ -530,9 +527,12 @@ MATCH_INGESTED_TOURNAMENT_DLQ = RabbitQueue(
 # ============================================================================
 # Notification delivery (notify()/broadcast() outbox -> app-service)
 # ============================================================================
-# Routing keys: ``notification.created`` (one personal row, DM) and
-# ``notification.broadcast`` (one workspace channel post). One queue, one owner:
-# app-service's delivery consumer.
+# One queue, one owner: app-service's delivery consumer.
+
+#: One personal row (DM).
+NOTIFICATION_CREATED_ROUTING_KEY = "notification.created"
+#: One workspace channel post.
+NOTIFICATION_BROADCAST_ROUTING_KEY = "notification.broadcast"
 
 NOTIFICATIONS_EXCHANGE = RabbitExchange(
     "notifications",
@@ -707,9 +707,9 @@ RANK_FETCH_PRIORITY_DLQ = RabbitQueue(
 # ============================================================================
 # The drain declares an exchange before its first publish to it. A publish to an
 # exchange the broker does not know (``NOT_FOUND``) closes the channel and
-# fails the rest of the batch, and now that every producing service drains,
-# app-svc can be the first process to publish onto ``tournament.events`` on a
-# fresh broker, before the consumer that used to declare it has started.
+# fails the rest of the batch, and any producing service (app-svc onto
+# ``tournament.events``, say) can be the first process to publish on a fresh
+# broker, before the consumer that declares the exchange has started.
 
 EXCHANGES_BY_NAME: dict[str, RabbitExchange] = {
     exchange.name: exchange

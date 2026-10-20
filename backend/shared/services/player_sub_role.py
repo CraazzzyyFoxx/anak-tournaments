@@ -1,4 +1,4 @@
-"""Workspace sub-roles: catalog.role rows with a workspace_id (D31, D86).
+"""Workspace sub-roles: catalog.role rows with a workspace_id.
 
 Write path is the admin CRUD; the registration catalog is the same rows grouped by their parent's code.
 """
@@ -68,11 +68,11 @@ def _presentation(values: Mapping[str, Any], *, discipline: str) -> dict[str, An
 
 
 class PlayerSubRoleService:
-    """Workspace sub-roles: ``catalog.role`` rows with ``workspace_id`` under a module role (D31, D86).
+    """Workspace sub-roles: ``catalog.role`` rows with ``workspace_id`` under a module role.
 
     A sub-role keeps its parent for life -- an assignment is the leaf, so moving it would rewrite every holder's
     top-level role. Its code prefixes the normalized slug with that parent, so ``main``/``flex`` can exist under
-    several parents while codes remain unique per dimension and workspace (§14.3, Deviation 11).
+    several parents while codes remain unique per dimension and workspace.
     """
 
     def __init__(self, *, roles: CatalogRoleRepository = CatalogRoleRepository()) -> None:

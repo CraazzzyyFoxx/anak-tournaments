@@ -18,7 +18,7 @@ tallies the resulting final standings. Aggregates ``mean_position``,
 ``p10_position``, ``p90_position`` and ``prob_top{1,3,8}`` per team plus a
 16-bin position histogram for the UI.
 
-Outputs land in ``analytics.standings_distribution`` (Phase 3 runner); the read
+Outputs land in ``analytics.standings_distribution``; the read
 API derives the scalar ``predicted_place`` from ``round(mean_position)`` on
 demand.
 """
@@ -61,10 +61,9 @@ logger = logging.getLogger(__name__)
 # features are strictly pre-tournament (player ranks at registration time +
 # OpenSkill mu snapshotted before the tournament).
 #
-# ``h2h_winrate`` / ``days_since_last_meet`` were removed: team ids are minted
-# per tournament, so head-to-head history only ever existed for same-tournament
-# rematches — information the pre-tournament forecast can never have. Training
-# on it while inference pinned it to a constant was pure train/serve skew.
+# No head-to-head features: team ids are minted per tournament, so
+# head-to-head history only exists for same-tournament rematches —
+# information the pre-tournament forecast can never have.
 #
 # The mu spread features (max/std) carry what the roster average hides: a
 # star-carried roster and a flat one with the same ``avg_mu`` do not win the
@@ -72,12 +71,10 @@ logger = logging.getLogger(__name__)
 #
 # The frames ALSO emit role mu gaps (``role_mu_gap_{tank,damage,support}``) and
 # roster synergy (``{home,away}_synergy_{pairs,winrate}``, ``synergy_winrate_gap``)
-# — deliberately NOT modelled yet. The 2026-08 walk-forward ablation over the
-# last 6 tournaments (chronological cuts, standings Spearman vs realised
-# places) measured: base13 0.310, +synergy 0.263, +role gaps 0.065, all 0.170 —
-# on ~4k encounters both additions are noise the booster overfits. They stay in
-# the frames so the ablation can be re-run as data grows; extend this tuple only
-# with a walk-forward win in hand.
+# — deliberately NOT modelled: in a walk-forward ablation (standings Spearman
+# vs realised places) both additions were noise the booster overfits. They
+# stay in the frames so the ablation can be re-run as data grows; extend this
+# tuple only with a walk-forward win in hand.
 STANDINGS_FEATURE_ORDER: tuple[str, ...] = (
     "home_avg_rank",
     "away_avg_rank",
@@ -106,9 +103,7 @@ def _calibration_folds(n_rows: int) -> int:
     """CV folds for isotonic calibration, sized by the labelled row count.
 
     Isotonic regression needs a few hundred out-of-fold rows per calibrator to
-    be stable; below ~500 rows two folds is all the data supports. (The previous
-    ``len(set(y))`` expression counted the number of DISTINCT LABELS — always 2
-    for a binary target — silently pinning calibration to 2 folds forever.)
+    be stable; below ~500 rows two folds is all the data supports.
     """
     return int(min(5, max(2, n_rows // 250)))
 
@@ -173,12 +168,10 @@ def _train_standings_v2_with_device(
     y = labelled["home_won"].astype(int).to_numpy()
 
     # Hyperparameters picked by walk-forward Spearman of the SIMULATED STANDINGS
-    # against realised places over the last 6 prod tournaments (2026-08 A/B):
-    # depth-5/400/mcw-1 averaged 0.251 vs 0.015 for a heavily regularised
-    # depth-3/mcw-10 fit — in this low-signal, balancer-equalized domain the
-    # per-encounter logloss barely moves between variants, but the deeper trees
-    # separate team strength far better. Calibration flatness is isotonic's
-    # job (5-fold on ~4k rows), not the booster's.
+    # against realised places, not per-encounter logloss: in this low-signal,
+    # balancer-equalized domain logloss barely moves between variants, but the
+    # deeper trees separate team strength far better than a heavily regularised
+    # depth-3/mcw-10 fit. Calibration flatness is isotonic's job, not the booster's.
     base_xgb = xgb.XGBClassifier(
         objective="binary:logistic",
         eval_metric="logloss",

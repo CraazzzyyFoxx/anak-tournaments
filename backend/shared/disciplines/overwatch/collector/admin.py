@@ -78,7 +78,7 @@ class RankAdminService:
         ``workspace_id`` is the caller's authorization scope, not a user-supplied
         filter: a workspace-scoped admin must never page into another tenant's
         fetch history. Rows whose account was deleted (``social_account_id IS NULL``)
-        fall out of a scoped read — they can no longer be attributed to a workspace.
+        fall out of a scoped read — they cannot be attributed to a workspace.
         """
         log = models.RankFetchLog
         acc = models.SocialAccount

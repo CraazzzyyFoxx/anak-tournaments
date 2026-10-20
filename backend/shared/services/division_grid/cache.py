@@ -251,15 +251,10 @@ async def set_grid_version_snapshots(snapshots: Mapping[int, DivisionGridVersion
 async def get_grid_version_read_payloads(version_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
     """Batch get of the full read-model payload for grid versions.
 
-    Separate cache namespace from ``get_grid_version_snapshot(s)``: that one
-    only carries what rank resolution needs (id, tiers' rank bounds); this
-    carries the full shape every service's own ``DivisionGridVersionRead``
-    pydantic schema expects (each service defines an identical copy -- this
-    module has no pydantic dependency on any of them), so a caller does
-    ``Read.model_validate(payload)`` with no per-field mapping. Kept as its
-    own key rather than folded into the resolution snapshot so extending this
-    shape can never make an old, already-cached resolution snapshot fail to
-    parse.
+    Separate cache namespace from ``get_grid_version_snapshot(s)``, which only
+    carries what rank resolution needs (id, tiers' rank bounds); this carries the
+    full ``DivisionGridVersionRead`` shape. Its own key means extending this shape
+    can never make an already-cached resolution snapshot fail to parse.
     """
     ids = list(dict.fromkeys(version_ids))
     if not cache.is_setup() or not ids:

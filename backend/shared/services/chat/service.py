@@ -3,8 +3,6 @@
 Everything here is room-kind agnostic. The one thing that is not — who the
 caller is in this room — arrives as a ``ChatAccess`` resolver supplied by the
 service that owns the domain.
-
-Design: docs/plans/2026-09-21-shared-room-chat.md.
 """
 
 from __future__ import annotations
@@ -47,8 +45,8 @@ EVENT_DELETED = "chat.message_deleted"
 EVENT_MUTED = "chat.muted"
 EVENT_UNMUTED = "chat.unmuted"
 #: The gateway watches for THIS event type and re-authorizes everyone currently
-#: subscribed to the topic (gateway/internal/ws/revoke.go). Renaming it here
-#: without renaming it there turns the toggle back into an advisory one.
+#: subscribed to the topic (gateway/internal/ws/revoke.go). Rename both together,
+#: or the visibility toggle stops revoking anyone who is already subscribed.
 EVENT_VISIBILITY = "chat.visibility_changed"
 
 THROTTLE_WINDOW = timedelta(seconds=10)
@@ -152,8 +150,8 @@ class ChatService:
     ) -> None:
         """Non-durable, always.
 
-        The table is the history now. A durable row would store every message
-        twice and put the realtime replay cursor and the chat's own ``after_id``
+        The table is the history. A durable row would store every message twice
+        and put the realtime replay cursor and the chat's own ``after_id``
         pagination in charge of the same thing; a reconnecting client catches up
         with ``GET ?after_id=`` instead, which also repairs a gap left by a
         dropped publish that no reconnect would have revealed.

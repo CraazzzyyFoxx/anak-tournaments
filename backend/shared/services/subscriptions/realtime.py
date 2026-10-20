@@ -16,10 +16,9 @@ changed" -- for two reasons:
   ``logs.updated``: a client that reconnects refetches anyway, so persisting a row
   per changed patron would buy nothing.
 
-Both writers of entitlements reach it through the resolver -- tournament-service
+Both writers of entitlements reach it through the resolver: tournament-service
 (registration / check-in gates, code redemption) and stats-service (the
-scheduled collector and the admin re-check) -- which is why this lives in
-``shared`` rather than beside either one.
+scheduled collector and the admin re-check).
 """
 
 from __future__ import annotations
@@ -51,8 +50,7 @@ async def emit_subscriptions_updated(
     branches on it.
 
     Must run before the caller's ``commit()``: ``emit`` publishes from the
-    session's ``after_commit``, which is also what retired the old "published
-    microseconds before the commit, consumers debounce around it" caveat.
+    session's ``after_commit``.
     """
     if not workspace_id:
         return
@@ -72,8 +70,7 @@ async def emit_subscriptions_updated(
 class SessionSubscriptionEventSink:
     """``SubscriptionEventSink`` bound to the resolver's own session.
 
-    A class rather than a bare callable so ``build_resolver`` can hand the
-    resolver something that satisfies the protocol without the decision table
+    Lets ``build_resolver`` satisfy the protocol without the decision table
     knowing anything about how the signal travels.
     """
 

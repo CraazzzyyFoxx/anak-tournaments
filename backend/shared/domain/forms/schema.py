@@ -1,9 +1,8 @@
 """Registration form schema: sections of ordered fields. Pure model, no I/O.
 
-One schema replaces ``built_in_fields_json`` (a dict of hard-coded keys) and
-``custom_fields_json`` (a list of loosely typed definitions). Builtins keep
-their own storage (columns, ``registration_role``, ``registration_identity``);
-the schema only decides presence, order, rules and visibility.
+Builtins keep their own storage (columns, ``registration_role``,
+``registration_identity``); the schema only decides presence, order, rules and
+visibility.
 """
 
 from __future__ import annotations
@@ -68,8 +67,7 @@ class FormField(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     #: May the REGISTRANT change this answer after submitting? The organizer's own
     #: edit is never gated by it. Default FALSE: a question is frozen at submit
-    #: unless the organizer deliberately opens it, so a form nobody re-opened in
-    #: the builder keeps the behaviour that predates self-service editing.
+    #: unless the organizer deliberately opens it.
     editable: bool = False
     visible_when: Condition | None = None
 
@@ -168,8 +166,8 @@ class FormSchema(BaseModel):
         """The keys a registrant may rewrite after submitting.
 
         An ALLOWLIST, which is what the closed default means mechanically: a
-        question this server does not recognise, or a document written before the
-        flag existed, is locked rather than open.
+        question this server does not recognise, or a document that does not
+        carry the flag, is locked rather than open.
         """
         return frozenset(f.key for f in self.fields() if f.editable)
 
@@ -178,7 +176,7 @@ class FormSchema(BaseModel):
 
 
 def default_schema(identity_provider: str) -> FormSchema:
-    """Start with the event discipline's required game handle, Discord and Twitch (D90)."""
+    """Start with the event discipline's required game handle, Discord and Twitch."""
 
     def b(key: str, **kw: Any) -> FormField:
         return FormField(key=key, kind="builtin", **kw)

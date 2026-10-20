@@ -243,7 +243,7 @@ async def workspace_names_blocking_player_unlink(
     ``owner`` / ``referee`` / ``host`` or a custom workspace role). Empty list
     means unlinking the user's player is allowed.
 
-    Used to guard player-unlink. ``workspace_member`` is anchored on
+    Guards player-unlink. ``workspace_member`` is anchored on
     ``players.user.id`` while RBAC (``user_roles``) is keyed on
     ``auth_user_id``; clearing ``players.user.auth_user_id`` (unlink) would
     leave any such member row auth-less — hidden from the members list

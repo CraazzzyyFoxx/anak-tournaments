@@ -17,8 +17,7 @@ import pytest
 from shared.disciplines import DISCIPLINES
 from shared.domain.achievements import registry
 from shared.domain.achievements.context import EvalContext
-from shared.domain.achievements.evaluator import GrainMismatchError, evaluate
-from shared.domain.achievements.registry import LeafSpec, execute_leaf, get_spec, get_specs, register, register_spec
+from shared.domain.achievements.registry import LeafSpec, get_spec, get_specs, register, register_spec
 from shared.domain.achievements.validation import (
     derive_depends_on,
     infer_grain,
@@ -27,6 +26,7 @@ from shared.domain.achievements.validation import (
     validate_rule_definition,
 )
 from shared.models.achievements.achievement import AchievementGrain
+from shared.services.achievements.evaluator import GrainMismatchError, evaluate, execute_leaf
 
 A, B = "registry-test-a", "registry-test-b"
 

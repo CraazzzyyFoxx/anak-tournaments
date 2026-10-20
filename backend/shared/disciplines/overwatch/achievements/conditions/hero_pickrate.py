@@ -2,10 +2,10 @@
 
 Grain: user_tournament.
 
-Ports the legacy ``freak`` achievement: a hero counts as rare when its total
+Backs ``freak``: a hero counts as rare when its total
 playtime in the tournament is below ``value`` (fraction) of the tournament's
-total hero playtime. Pickrate is computed per tournament (cleaner than the
-legacy code, which mixed global hero sums with a per-tournament total).
+total hero playtime. Pickrate is computed per tournament, never against global
+hero sums.
 """
 
 from __future__ import annotations

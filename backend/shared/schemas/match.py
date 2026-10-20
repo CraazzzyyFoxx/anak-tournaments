@@ -1,4 +1,4 @@
-"""Native match wire (P7 contracts §6): arbitrary participants, native facts, no home/away.
+"""Native match wire: arbitrary participants, native facts, no home/away.
 
 Served by tournament-service (``/api/v1/matches/{id}``, its kill-feed, the encounter's matches, the admin rows) and
 embedded by app-service (user match rows, achievement links); ``shared.services.match_reads`` builds every one of them.

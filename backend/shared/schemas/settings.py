@@ -57,7 +57,7 @@ class RankCollectionConfig(BaseModel):
     scope: RankCollectionScope = "registrations_only"
     # Self-pace each scheduler tick to cover the in-scope population once per
     # ``interval_seconds`` instead of claiming a fixed ``batch_size`` per tick.
-    # ``False`` restores the legacy fixed-batch behaviour (rollback switch).
+    # ``False`` is the rollback switch.
     auto_pace: bool = True
     # Fraction of the interval used as a random spread when (re)scheduling a tag,
     # so tags processed together don't recur together. 0 = exact recurrence.
@@ -154,7 +154,7 @@ class ScrimConfig(BaseModel):
 
 
 class WorkspaceCreationConfig(BaseModel):
-    """Self-service workspace-creation quota (workspace self-service design §4.4).
+    """Self-service workspace-creation quota.
 
     Same reasoning as ``ScrimConfig`` above: 1 is the conservative launch
     position for "how many workspaces may one account be accountable for", not

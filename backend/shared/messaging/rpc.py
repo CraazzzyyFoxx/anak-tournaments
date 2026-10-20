@@ -1,13 +1,10 @@
 """Request/reply over RabbitMQ, decoded.
 
 ``broker.request()`` returns the whole *message* (so middlewares run and the
-caller can read headers/correlation id), NOT the handler's return value -- see
-the FastStream 0.5 release notes that removed the old ``publish(rpc=True)``
-which did return a bare body. A caller that treats the result as the payload
-gets a ``RabbitMessage`` and silently takes its "RPC unavailable" branch, which
-is exactly how the Discord entity endpoints came to answer with empty lists in
-production while their unit tests -- mocking ``request`` with a plain dict --
-stayed green.
+caller can read headers/correlation id), NOT the handler's return value
+(FastStream >= 0.5). A caller that treats the result as the payload gets a
+``RabbitMessage`` and silently takes its "RPC unavailable" branch -- while a
+unit test mocking ``request`` with a plain dict stays green.
 
 ``request_dict`` decodes the JSON object. ``request_rpc`` additionally requires
 the shared ``{ok, data, error, warnings?}`` envelope every worker is supposed

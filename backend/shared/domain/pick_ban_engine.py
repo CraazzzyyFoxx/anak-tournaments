@@ -1,17 +1,10 @@
-"""What survived the ruleset-v2 cutover of the pick-ban engine: the pure,
-DB-free rules that are NOT about resolving a step.
+"""Encounter-level pick-ban arithmetic that is NOT about resolving a step.
 
-The step vocabulary, cursor, eligibility, undo target and projection all moved
-to ``shared.domain.pick_ban_rules`` (design
-``docs/plans/2026-09-28-pick-ban-constructor.md``). What stays here is the
-encounter-level arithmetic both kinds still share: which round a board is on,
-the play order of its settled picks, and which PARTICIPATION opens the next
-round under a result-dependent rotation. What a series ADDS UP to is not here:
-that is one engine for every encounter, ``shared.domain.encounter_scoring``.
+Which round a board is on, the play order of its settled picks, and which PARTICIPATION opens the next round under a
+result-dependent rotation. The step vocabulary, cursor, eligibility, undo target and projection live in
+``shared.domain.pick_ban_rules``; what a series ADDS UP to is ``shared.domain.encounter_scoring``.
 
-Deliberately free of any AsyncSession/DB call — every function takes plain
-data and returns plain data or raises ``ValueError`` (the RPC layer translates
-to HTTP), so the whole module is unit-testable without a database.
+Every function takes plain data and returns plain data or raises ``ValueError`` (the RPC layer translates to HTTP).
 """
 
 from __future__ import annotations
@@ -33,8 +26,7 @@ Action = Literal["ban", "pick", "protect", "decider", "side_pick"]
 
 def current_round(pool: list) -> int | None:
     """The round (map-of-the-series) the engine is resolving, or None in flat
-    mode / once complete. Generalizes ``map_veto.current_slot`` — same
-    arithmetic, `slot` renamed `round` for a pool-agnostic reading."""
+    mode / once complete."""
     rounds = [e.round for e in pool if e.status == enums.MapPoolEntryStatus.AVAILABLE.value and e.round is not None]
     return min(rounds) if rounds else None
 
@@ -44,10 +36,10 @@ def settled_in_order(pool: list) -> list:
     series' map order, and index + 1 is the map's position in the series
     (``encounter_game.position``).
 
-    Play order is ``action_index``, falling back to the legacy ``order``.
+    Play order is ``action_index``, falling back to ``order``.
     ``order`` on its own is NOT the position: it is a per-round display/tiebreak
-    field spaced by ``round * 1000`` (see ``captain._picked_map_ids``). Mirrors
-    the frontend's ``pickedItemsInOrder``.
+    field spaced by ``round * 1000`` (see ``captain._picked_map_ids``). The
+    frontend's ``pickedItemsInOrder`` must agree.
     """
     settled = (entry for entry in pool if entry.status == enums.MapPoolEntryStatus.PICKED.value)
     return sorted(settled, key=lambda entry: entry.action_index if entry.action_index is not None else entry.order)
@@ -82,8 +74,8 @@ def resolve_round_opener(
     - `alternate`: moves one seat along the card each round, so a duel flips.
     - `result_winner_first` / `result_loser_first`: read
       `previous_round_winner`. A drawn map has no winner and no loser, so the
-      rotation falls back to the snapshot opener (`session_opener`); that is
-      also what a winner nobody seats any more means.
+      rotation falls back to the snapshot opener (`session_opener`), as it
+      does for a winner absent from the card.
     - `result_loser_choice`: a draw leaves nobody to elect, so it too falls
       back to `session_opener`; otherwise it requires
       `previous_round_loser_choice` — if that is `None`, raises

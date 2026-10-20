@@ -5,8 +5,6 @@ Same shape as the achievements condition registry
 together with its contract, and the contract is what the constructor UI renders
 forms from. Unlike achievements the params are TYPED (:class:`ParamSpec`), so
 the frontend generates the right widget without a hardcoded table.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §2, §10.
 """
 
 from __future__ import annotations
@@ -338,7 +336,7 @@ def evaluate(tree: Mapping[str, Any] | None, ctx: RoundCtx | ItemCtx) -> bool:
 
 
 def catalog(*, discipline: str, groups: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
-    """The constructor's catalog payload (§10): every leaf and constraint
+    """The constructor's catalog payload: every leaf and constraint
     contract, the selectable groups per kind, and the presets of ``discipline``
     (its module's own plus the generic ones).
 

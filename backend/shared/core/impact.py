@@ -1,4 +1,4 @@
-"""Shared constants of the MVP impact formula (spec 2026-07-10).
+"""Shared constants of the MVP impact formula.
 
 Weights apply to winsorized z-scores of per-10-minute rates. Keys are
 ``LogStatsName`` member NAMES (the same strings SQLAlchemy persists).

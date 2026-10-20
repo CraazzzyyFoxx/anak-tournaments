@@ -60,7 +60,7 @@ async def team_performance_mean(
 ) -> pd.DataFrame:
     """Return ``(tournament_id, team_id, avg_perf)`` from ``analytics.performance``.
 
-    Used to enrich the win-prob features. Returns empty DataFrame if v2
+    Enriches the win-prob features. Returns empty DataFrame if v2
     Performance has not been materialised yet.
     """
     if not tournament_ids:
@@ -204,9 +204,8 @@ def standings_training_frame(
 
     ``team_frames`` are the per-tournament :func:`team_strength_frame` results (the same pre-tournament features
     inference uses, keyed by ``(tournament_id, team_id)``) and ``performance`` the :func:`team_performance_mean` frame.
-    The old per-encounter snapshot trained the model on mid-tournament ratings inference could never observe
-    (train/serve skew) and once fanned the frame out ~88x through duplicate snapshot rows; both are strictly
-    pre-tournament BY DATE (ids are not chronological here).
+    Both are strictly pre-tournament BY DATE (ids are not chronological here): a per-encounter snapshot would train on
+    mid-tournament ratings inference can never observe (train/serve skew).
     """
     team_df = (
         pd.concat(team_frames, ignore_index=True)

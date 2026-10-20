@@ -1,4 +1,4 @@
-"""Series preview: what each map of a Bo1/2/3/5 would actually look like (§10).
+"""Series preview: what each map of a Bo1/2/3/5 would actually look like.
 
 Answers the question the constructor exists for — "how many heroes are left on
 map 5?" — before a tournament runs on the rules.

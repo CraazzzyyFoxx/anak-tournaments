@@ -1,4 +1,4 @@
-"""``owt.match/1``: the canonical match document a producer submits to the ingest trust boundary (P5, D95, D96).
+"""``owt.match/1``: the canonical match document a producer submits to the ingest trust boundary.
 
 Structure only. Everything here is decidable from the document alone: shapes, bounds, local uniqueness and references
 between its own parts. Whether a map/stat/event/role/provider/hint exists *for this workspace and discipline* is the

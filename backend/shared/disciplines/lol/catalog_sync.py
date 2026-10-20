@@ -1,8 +1,8 @@
-"""League of Legends' catalog source: Riot's Data Dragon (D85, D98).
+"""League of Legends' catalog source: Riot's Data Dragon.
 
 Champions (class = first tag; Riot's id as an alias when it differs from the display name, e.g. ``MonkeyKing`` for
 Wukong — the id is what Riot's match data names) and maps. LoL has no modes. Map 11 (Summoner's Rift) gets the fixed
-canonical code ``summoners_rift`` (architecture §7.3); every other map's code is its slugified name.
+canonical code ``summoners_rift``; every other map's code is its slugified name.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ __all__ = ("DATA_DRAGON", "sync_catalog")
 
 DISCIPLINE = "lol"
 DATA_DRAGON = "https://ddragon.leagueoflegends.com"
-SUMMONERS_RIFT = "summoners_rift"  # Data Dragon MapId 11's canonical code (architecture §7.3)
+SUMMONERS_RIFT = "summoners_rift"  # Data Dragon MapId 11's canonical code
 
 
 def _map_slug(game_map: dict, name: str) -> str:

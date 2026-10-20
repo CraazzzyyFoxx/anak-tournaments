@@ -1,4 +1,4 @@
-"""Reads of the mix rounds recorded on the encounter layer (D74-D76).
+"""Reads of the mix rounds recorded on the encounter layer.
 
 A round is one ``encounter.encounter`` owned by a ``balancer.custom_game`` plus its ``balancer.custom_game_round`` row.
 Who sat where is ``encounter.team_member`` (rated-dimension leaf in ``team_member_role``); what only
@@ -172,5 +172,5 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         return (await session.execute(stmt)).all()
 
     async def delete_round(self, session: AsyncSession, encounter_id: int) -> None:
-        """Undo (D76): the encounter goes, and seats, game, journal and ``custom_game_round*`` cascade with it."""
+        """Undo: the encounter goes, and seats, game, journal and ``custom_game_round*`` cascade with it."""
         await session.execute(sa.delete(models.Encounter).where(models.Encounter.id == encounter_id))

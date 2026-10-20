@@ -66,6 +66,35 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         result = await session.execute(sa.select(entity.id, entity.name).where(*self._scope()).order_by(entity.name))
         return result.all()
 
+    async def get_map_with_mode(
+        self, session: AsyncSession, map_id: int, *, discipline: str
+    ) -> models.CatalogEntity | None:
+        """One map of ``discipline`` with its gamemode (``parent``) eager-loaded; ``None`` for no such map.
+
+        Eager on purpose: an async session raises on an unawaited lazy load.
+        """
+        return await session.scalar(
+            sa.select(models.CatalogEntity)
+            .options(selectinload(models.CatalogEntity.parent))
+            .where(
+                models.CatalogEntity.id == map_id,
+                models.CatalogEntity.discipline == discipline,
+                models.CatalogEntity.kind == "map",
+            )
+        )
+
+    async def names_and_images(
+        self, session: AsyncSession, ids: typing.Iterable[int]
+    ) -> Sequence[sa.Row[tuple[int, str, str | None]]]:
+        """``(id, name, image_path)`` of every entity in ``ids``, unordered."""
+        return (
+            await session.execute(
+                sa.select(models.CatalogEntity.id, models.CatalogEntity.name, models.CatalogEntity.image_path).where(
+                    models.CatalogEntity.id.in_(ids)
+                )
+            )
+        ).all()
+
     async def get_by_legacy_id(
         self, session: AsyncSession, legacy_kind: str, legacy_id: int
     ) -> models.CatalogEntity | None:

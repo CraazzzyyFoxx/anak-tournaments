@@ -86,6 +86,17 @@ class RegistrationFormVersionRepository(BaseRepository[models.BalancerRegistrati
         )
         return result.scalar_one_or_none() or 0
 
+    async def current_schema_json(self, session: AsyncSession, tournament_id: int) -> dict | None:
+        """``schema_json`` of the tournament form's current version; ``None`` when there is no form."""
+        return await session.scalar(
+            sa.select(models.BalancerRegistrationFormVersion.schema_json)
+            .join(
+                models.BalancerRegistrationForm,
+                models.BalancerRegistrationForm.current_version_id == models.BalancerRegistrationFormVersion.id,
+            )
+            .where(models.BalancerRegistrationForm.tournament_id == tournament_id)
+        )
+
 
 class RegistrationFormTemplateRepository(BaseRepository[models.BalancerRegistrationFormTemplate]):
     """``registration_form_template`` — workspace-level named schemas, copied on apply."""
@@ -210,6 +221,27 @@ class BalancerRegistrationRoleRepository(BaseRepository[models.BalancerRegistrat
 
     def __init__(self) -> None:
         super().__init__(models.BalancerRegistrationRole)
+
+    async def get_by_registration_and_role(
+        self, session: AsyncSession, registration_id: int, role: str
+    ) -> models.BalancerRegistrationRole | None:
+        """The registration's row for ``role``, active or not."""
+        return await session.scalar(
+            sa.select(models.BalancerRegistrationRole).where(
+                models.BalancerRegistrationRole.registration_id == registration_id,
+                models.BalancerRegistrationRole.role == role,
+            )
+        )
+
+    async def next_priority(self, session: AsyncSession, registration_id: int) -> int:
+        """``max(priority) + 1`` over the registration's roles; ``0`` when it has none."""
+        return (
+            await session.scalar(
+                sa.select(sa.func.coalesce(sa.func.max(models.BalancerRegistrationRole.priority), -1)).where(
+                    models.BalancerRegistrationRole.registration_id == registration_id
+                )
+            )
+        ) + 1
 
 
 class BalancerRegistrationTeamInviteRepository(BaseRepository[models.BalancerRegistrationTeamInvite]):

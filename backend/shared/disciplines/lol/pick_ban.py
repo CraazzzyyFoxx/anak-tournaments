@@ -1,9 +1,8 @@
 """League of Legends' built-in pick/ban ruleset (``DisciplineSpec.pick_ban_presets``): side selection only.
 
 The first actor chooses blue or red (``side_pick``; the item index is the side index of ``SPEC.sides``); later games
-rotate the choice to the previous game's loser. No champion draft and no Fearless — D98 is narrowed to side
-selection by the parent plan. Validates clean for ``kind="hero"`` ``mode="pool"``; ``test_pick_ban_rules_presets``
-is the guard.
+rotate the choice to the previous game's loser. No champion draft and no Fearless. Validates clean for
+``kind="hero"`` ``mode="pool"``; ``test_pick_ban_rules_presets`` is the guard.
 """
 
 from __future__ import annotations

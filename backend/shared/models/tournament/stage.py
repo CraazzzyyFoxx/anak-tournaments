@@ -103,7 +103,7 @@ class Stage(db.TimeStampIntegerMixin):
     # generate_encounters`` can populate a stage's encounters while it is
     # still Draft (a preview of the bracket shape before the stage goes
     # live) -- captains cannot report or veto against those encounters
-    # until this flips True (``shared.services.bracket.usability``).
+    # until this flips True (tournament-service ``src.services.bracket.usability``).
     is_published: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
     is_completed: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
 
@@ -130,7 +130,7 @@ class Stage(db.TimeStampIntegerMixin):
     best_of_final: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     #: The Challonge group this stage mirrors (Challonge sync's only link to it).
     challonge_group_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    # A custom bracket drawn in the admin editor (``shared.services.bracket.template``);
+    # A custom bracket drawn in the admin editor (tournament-service ``src.domain.bracket.template``);
     # NULL = the format's generator draws it.
     bracket_template: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 

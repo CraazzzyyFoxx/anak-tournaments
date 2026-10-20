@@ -67,7 +67,7 @@ def _merge_events(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Merge kill-feed-derived event stats into both MVP pivots + fillna(0).
 
-    Mirrors ``flows.create_stats``'s merge (Task 5) exactly, except keyed by
+    Mirrors ``flows.create_stats``'s merge exactly, except keyed by
     ``user_id`` — backfill's pivots carry no roster ``player.id``.
     """
     round_df = round_df.copy()
@@ -100,7 +100,7 @@ def _merge_events(
 
 
 def _rank_by_impact(df: pd.DataFrame) -> pd.DataFrame:
-    """Same ranking recipe as Task 5: sort by (round, ImpactPoints desc), rank within round."""
+    """Same ranking recipe as ``flows.create_stats``: sort by (round, ImpactPoints desc), rank within round."""
     ranked = df.sort_values(by=["round", enums.LogStatsName.ImpactPoints], ascending=[True, False])
     ranked[enums.LogStatsName.ImpactRank] = ranked.groupby("round").cumcount() + 1
     return ranked

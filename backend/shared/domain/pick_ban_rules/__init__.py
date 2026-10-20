@@ -1,15 +1,13 @@
 """Pick-ban ruleset v2 — the pure engine behind the constructor.
 
-No DB, no service imports: every service may import this. The design document
-is ``docs/plans/2026-09-28-pick-ban-constructor.md``; each module carries the
-section it implements.
+No DB, no service imports: every service may import this.
 
-- :mod:`.schema` — the ruleset document and the resolved step (§1, §3)
-- :mod:`.registry` — condition leaves, constraint specs, the evaluator (§2)
-- :mod:`.validate` — what may be saved (§1, §2)
-- :mod:`.compile` — phase selection, round resolution, v1 conversion (§3, §11)
-- :mod:`.runtime` — submissions, cursor, eligibility, projection (§5)
-- :mod:`.presets` / :mod:`.preview` — starting points and the series preview (§6, §10, §12)
+- :mod:`.schema` — the ruleset document and the resolved step
+- :mod:`.registry` — condition leaves, constraint specs, the evaluator
+- :mod:`.validate` — what may be saved
+- :mod:`.compile` — phase selection, round resolution, v1 conversion
+- :mod:`.runtime` — submissions, cursor, eligibility, projection
+- :mod:`.presets` / :mod:`.preview` — starting points and the series preview
 """
 
 from .compile import (

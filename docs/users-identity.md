@@ -208,7 +208,7 @@ There is no separate `workspace_player` table. The balancer roster is `workspace
 
 `POST /api/v1/balancer/workspaces/{workspace_id}/players` accepts exactly
 `{discipline, identity: {provider, handle}, display_name?}`. Unknown keys (including `battle_tag`) are 422.
-`ensure_member_for_identity` (`backend/shared/services/workspace_roster.py`) validates the enabled discipline,
+`ensure_member_for_identity` (`backend/balancer-service/src/services/workspace_roster.py`) validates the enabled discipline,
 its declared provider (422 `identity.provider_mismatch`) and provider grammar before any mutation. Matching
 uses the provider-normalized **exact handle**, never the display name or a BattleTag prefix:
 
@@ -841,7 +841,7 @@ In code comments and logs a virtual player is often called a `shadow` player. Sa
 | OAuth connection | `backend/shared/models/identity/oauth.py` |
 | `workspace_member` | `backend/shared/models/tenancy/workspace.py` |
 | `get_or_create_workspace_member` | `backend/shared/repository/workspace.py` |
-| Workspace roster | `backend/shared/services/workspace_roster.py` |
+| Workspace roster | `backend/balancer-service/src/services/workspace_roster.py` |
 | Ranks (model) | `backend/shared/models/member_rank/member_rank.py` |
 | Ranks (resolver) | `backend/shared/domain/member_rank.py`, `backend/shared/services/member_rank.py` |
 | Tournament ranks | `backend/shared/services/roster.py` (`RosterEngine`) |

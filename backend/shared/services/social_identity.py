@@ -8,8 +8,7 @@ uniqueness handling.
 This layer owns decisions only — which row to look up, what counts as a clash,
 who inherits ``is_primary``, what proves a verification. Every statement it
 needs comes from ``shared.repository`` (see ``backend/docs/repository-boundaries.md``);
-there is no SQL here, and no thin pass-through either: a method exists because it
-makes a decision the repository must not make.
+there is no SQL here.
 
 Transaction-neutral: mutates the session and flushes; the caller commits.
 """
@@ -122,13 +121,12 @@ class SocialIdentityService:
 
         When ``provider_user_id`` is given, the existing account is looked up by
         ``(provider, provider_user_id)`` first -- that pair is what
-        ``uq_social_account_provider_subject`` actually enforces, and it is stable
-        even when the display handle changes (Discord/Twitch usernames aren't).
-        A handle-only lookup misses that rename and re-inserts, colliding on the
-        constraint (Sentry OWT-TOURNAMENTS-20D: UniqueViolationError). Raises
-        ``SocialHandleConflict`` if that ``provider_user_id`` is already linked to
-        a *different* user -- silently retargeting someone else's account would be
-        worse than the crash this replaces.
+        ``uq_social_account_provider_subject`` enforces, and it is stable even when
+        the display handle changes (Discord/Twitch usernames aren't); a handle-only
+        lookup would miss the rename, re-insert and collide on the constraint.
+        Raises ``SocialHandleConflict`` if that ``provider_user_id`` is already
+        linked to a *different* user rather than silently retargeting someone
+        else's account.
         """
         normalized = normalize_social_handle(provider, username)
 
@@ -253,8 +251,8 @@ class SocialIdentityService:
         identity-service) missed: it runs best-effort at login time and no-ops when
         the player isn't linked yet or the stored handle doesn't match the OAuth
         response verbatim, leaving a legitimately-owned account stuck unverified.
-        This re-derives the same proof instead of trusting an admin's say-so
-        blindly, so it can never fabricate a verification that OAuth never granted.
+        It re-derives the same proof rather than trusting an admin's say-so, so it
+        can never fabricate a verification that OAuth never granted.
 
         Returns None if the account doesn't exist / isn't owned by ``user_id``.
         Already-verified accounts are returned unchanged (idempotent). Raises

@@ -19,13 +19,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.disciplines import discipline as _discipline
 from shared.domain.achievements.context import EvalContext
-from shared.domain.achievements.registry import ResultSet, execute_leaf
+from shared.domain.achievements.registry import ResultSet, get_executor
 from shared.domain.achievements.validation import GRAIN_ARITY, infer_grain, leaf_grain
 from shared.models.achievements.achievement import AchievementGrain
 
 
 class GrainMismatchError(ValueError):
     """AND/OR/NOT or a leaf produced keys of mixed or unexpected grain."""
+
+
+async def execute_leaf(
+    session: AsyncSession,
+    condition_type: str,
+    params: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Run the executor ``context.discipline`` registered for ``condition_type``."""
+    return await get_executor(condition_type, discipline=context.discipline)(session, params, context)
 
 
 async def evaluate(

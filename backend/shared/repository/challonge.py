@@ -1,8 +1,7 @@
 """Challonge link CRUD: the normalized ``challonge_source`` and its id mappings.
 
 ``challonge_source`` is the single source of truth for "this tournament/stage/stage-item
-is mirrored on Challonge" — it replaced the deprecated ``tournament.challonge_id``/
-``stage.challonge_id`` columns. ``ChallongeParticipantMapping``/``ChallongeMatchMapping``
+is mirrored on Challonge". ``ChallongeParticipantMapping``/``ChallongeMatchMapping``
 translate Challonge's ids to local team/encounter ids under one source.
 """
 

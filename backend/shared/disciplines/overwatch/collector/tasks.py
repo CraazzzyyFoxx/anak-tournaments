@@ -188,11 +188,9 @@ async def process_fetch_rank(
                 return
 
             # Over the per-minute ceiling: push the tag past the window and let
-            # the scheduler re-enqueue it. Previously this only slept for a
-            # fraction of a second and then issued the request anyway, so the
-            # ceiling bounded nothing — which mattered most on the priority
-            # queue (registration approvals bypass the scheduler's per-tick
-            # pacing, so this is their only rate control). Not written to
+            # the scheduler re-enqueue it rather than issuing the request anyway.
+            # This is the only rate control on the priority queue (registration
+            # approvals bypass the scheduler's per-tick pacing). Not written to
             # fetch_log: self-throttling is not an upstream failure and the
             # admin error rate counts `rate_limited` rows as errors.
             retry_after = await _reserve_slot(redis_client, cfg.rate_limit_per_minute)
@@ -212,15 +210,12 @@ async def process_fetch_rank(
 
             lookup, version = await mapping.get_rank_mapping(session)
 
-        # The OverFast call runs with no DB transaction open. Holding the session
-        # above open across this await previously left its Postgres connection
-        # idle-in-transaction for the call's full duration; a slow/timed-out
-        # upstream response (504s observed from overfast.craazzzyyfoxx.me) could
-        # outlast the server's idle_in_transaction_session_timeout=30s, which
-        # kills the connection server-side. The session's close()/rollback then
-        # hit an already-closed connection (Sentry OWT-TOURNAMENTS-M:
-        # InterfaceError: cannot call Transaction.rollback(): the underlying
-        # connection is closed).
+        # The OverFast call runs with no DB transaction open. A session held
+        # across this await sits idle-in-transaction for the call's full
+        # duration; a slow/timed-out upstream response can outlast the server's
+        # idle_in_transaction_session_timeout=30s, which kills the connection
+        # server-side, and the session's close()/rollback then hits an
+        # already-closed connection.
         try:
             result = await client.fetch_summary(event.battle_tag)
         except OverFastRateLimited as exc:
@@ -273,9 +268,8 @@ async def process_fetch_rank(
         # recorded with exponential backoff (transient=True never disables the
         # tag) and logged. Retries are scheduler-driven via ``next_eligible_at`` — the
         # message needs no RabbitMQ redelivery, so we swallow it instead of re-raising.
-        # Re-raising only escalated an expected outage to a FastStream/Sentry error —
-        # and, for CircuitBreakerOpen, buried 20k+ dead messages in rank_fetch.dlq
-        # during the September OverFast DNS outage.
+        # Re-raising would escalate an expected outage to a FastStream/Sentry error
+        # and, for CircuitBreakerOpen, bury every message of the outage in rank_fetch.dlq.
         logger.warning("OverFast fetch failed for {} via {}: {}", event.battle_tag, rank_client.base_url, exc)
         async with session_factory() as session:
             cfg = await settings_provider.get_rank_collection_config(session)

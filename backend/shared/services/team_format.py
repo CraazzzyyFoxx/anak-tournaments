@@ -1,7 +1,7 @@
-"""Team formats at runtime (D33, D35, D88): load an owner's format, copy one at creation, save an organizer's edit,
+"""Team formats at runtime: load an owner's format, copy one at creation, save an organizer's edit,
 and project the slots the balancer and the draft fill.
 
-Every tournament and mix gets its own copy when it is created (and ``discipline01b`` gave every existing one a copy).
+Every tournament and mix gets its own copy when it is created.
 A row-less owner -- a tournament a test or a script inserted directly -- reads what its copy would hold: the workspace
 default for its discipline, else the module's default preset.
 """
@@ -186,7 +186,7 @@ async def _save(
 
 
 async def copy_for_tournament(session: AsyncSession, tournament: Any) -> None:
-    """D35: a new tournament gets a copy of its workspace's default (else the preset); template edits never reach it."""
+    """A new tournament gets a copy of its workspace's default (else the preset); template edits never reach it."""
     team_format, _ = await workspace_format(
         session, workspace_id=tournament.workspace_id, discipline=tournament.discipline
     )
@@ -196,7 +196,7 @@ async def copy_for_tournament(session: AsyncSession, tournament: Any) -> None:
 async def copy_for_custom_game(
     session: AsyncSession, game: Any, *, preset_code: str | None = None, source_game_id: int | None = None
 ) -> None:
-    """D88: a mix freezes its format at creation -- the host's preset, a clone's format, else the workspace default."""
+    """A mix freezes its format at creation -- the host's preset, a clone's format, else the workspace default."""
     if preset_code is not None:
         try:
             preset = DISCIPLINES[game.discipline].preset(preset_code)

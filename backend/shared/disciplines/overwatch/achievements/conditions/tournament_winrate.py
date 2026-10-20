@@ -2,8 +2,7 @@
 
 Grain: user_tournament.
 
-Ports the legacy ``count_by="win", group_by="tournament"`` branch of
-``calculate_wins_achievement``: the player's team winrate within a single
+The player's team winrate within a single
 tournament must meet a threshold. Typically combined (AND) with
 ``standing_position`` to express "won the tournament with a high winrate".
 """

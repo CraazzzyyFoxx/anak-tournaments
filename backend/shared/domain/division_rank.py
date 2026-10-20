@@ -35,9 +35,9 @@ def resolve_rank_for_division(grid: DivisionGridLike, division_number: int) -> i
     """The ``rank_value`` that represents ``division_number`` — its tier floor.
 
     A division is a band, so any point inside it identifies the same tier; the floor
-    (``rank_min``) is the one every other division->rank path already uses (the grid
-    normalizer, the OW mapping, the UI rank slider). Returning a band midpoint instead
-    produced off-grid values like 4449 for Grandmaster 1 (4400..4499).
+    (``rank_min``) is the one every other division->rank path uses (the grid
+    normalizer, the OW mapping, the UI rank slider). A band midpoint would give
+    off-grid values like 4449 for Grandmaster 1 (4400..4499).
     """
     for tier in grid.tiers:
         if tier.number == division_number:

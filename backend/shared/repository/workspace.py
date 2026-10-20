@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from shared import models
 from shared.core.errors import BaseAPIException
 from shared.core.pagination import PaginationSortParams
+from shared.core.social import SocialProvider
 from shared.models.identity.rbac import role_permissions, user_lacks_roles, user_roles
 from shared.rbac.catalog import WORKSPACE_SYSTEM_ROLE_NAMES
 from shared.repository.base import BaseRepository
@@ -265,6 +266,26 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             )
         )
         return result.scalars().first()
+
+    async def discord_ids(self, session: AsyncSession, member_ids: Sequence[int]) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(member_id, discord_id)`` for each of ``member_ids`` whose account linked a Discord.
+
+        One batched read down the identity chain: workspace member -> player ->
+        auth user -> ``auth.oauth_connections``.
+        """
+        return (
+            await session.execute(
+                sa.select(models.WorkspaceMember.id, models.OAuthConnection.provider_user_id)
+                .select_from(models.WorkspaceMember)
+                .join(models.User, models.User.id == models.WorkspaceMember.player_id)
+                .join(models.OAuthConnection, models.OAuthConnection.auth_user_id == models.User.auth_user_id)
+                .where(
+                    models.WorkspaceMember.id.in_(member_ids),
+                    models.OAuthConnection.provider == SocialProvider.DISCORD,
+                    models.OAuthConnection.provider_user_id.is_not(None),
+                )
+            )
+        ).all()
 
     async def list_memberships_for_auth_user(
         self,
@@ -573,6 +594,18 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             )
         )
         return dict(result.all())
+
+    async def member_ids_by_player(
+        self, session: AsyncSession, *, workspace_id: int, player_ids: set[int]
+    ) -> dict[int, int]:
+        """``player_id -> member.id`` for the rows that already exist, removed or not; creates nothing."""
+        rows = await session.execute(
+            sa.select(models.WorkspaceMember.player_id, models.WorkspaceMember.id).where(
+                models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.player_id.in_(player_ids),
+            )
+        )
+        return dict(rows.tuples().all())
 
 
 async def insert_missing_workspace_members(

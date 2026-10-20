@@ -1,4 +1,4 @@
-"""The discipline registry (D83, D99): the only door from core to a discipline module.
+"""The discipline registry: the only door from core to a discipline module.
 
 ``catalog.discipline`` is the row every owner's ``discipline`` column references; a module under this package is the
 behaviour behind that code. Core imports names from here and never from ``shared.disciplines.<slug>``
@@ -79,7 +79,7 @@ def discipline(code: str) -> DisciplineSpec:
 
 
 def identity_provider(code: str) -> str:
-    """The provider whose handle identifies a player of ``code`` (D90)."""
+    """The provider whose handle identifies a player of ``code``."""
     provider = discipline(code).identity_provider
     if provider is None:
         raise LookupError(f"discipline {code!r} declares no identity provider (D90)")
@@ -87,7 +87,7 @@ def identity_provider(code: str) -> str:
 
 
 def rated_role_codes(code: str) -> tuple[str, ...]:
-    """The module roles of ``code``'s rated dimension in declaration order: what ranks are kept on (D32, D87)."""
+    """The module roles of ``code``'s rated dimension in declaration order: what ranks are kept on."""
     return tuple(role.code for role in discipline(code).rated_dimension.roles)
 
 

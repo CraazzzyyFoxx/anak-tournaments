@@ -1,4 +1,4 @@
-"""Retiring a position of a series (D64).
+"""Retiring a position of a series.
 
 A cancelled game keeps its position as history and is never revived; a replayed
 position is a new row. The journal entry that goes with it is not written here:

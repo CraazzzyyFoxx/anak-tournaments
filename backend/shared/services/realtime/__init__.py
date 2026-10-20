@@ -1,7 +1,4 @@
-"""The realtime rail: one publication primitive, one invalidation vocabulary.
-
-Design: docs/plans/2026-09-09-unified-event-delivery.md
-"""
+"""The realtime rail: one publication primitive, one invalidation vocabulary."""
 
 from shared.services.realtime.emit import (
     INVALIDATION_EVENT_TYPE,

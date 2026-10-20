@@ -2,8 +2,8 @@
 
 The slug is generated once from ``Tournament.name`` at creation and frozen
 afterward (see ``shared.models.tournament.tournament.Tournament.slug``); an
-explicit admin rename goes through ``TournamentRepository`` and writes the old
-value to ``TournamentSlugRedirect`` so links already shared keep resolving.
+explicit admin rename goes through ``TournamentRepository`` and writes the
+outgoing slug to ``TournamentSlugRedirect`` so links already shared keep resolving.
 
 Uniqueness is GLOBAL (not per-workspace): the public tournament route carries
 no workspace segment, so two organizers' "season-1" would otherwise collide.

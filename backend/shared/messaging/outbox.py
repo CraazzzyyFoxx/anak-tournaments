@@ -130,9 +130,9 @@ async def publish_pending_outbox_events(
     # for as long as this drain is publishing it: every replica of every
     # producing service runs this each second, and a row released early is free
     # for another drain to take and publish a second time (duplicate Discord
-    # DMs). That is what rules out a commit per row — which also cost a
+    # DMs). That is what rules out a commit per row, which would also cost a
     # transaction, a ``SET LOCAL statement_timeout`` and a separate locking
-    # SELECT per event (Sentry OWT-TOURNAMENTS-2BT). Delivery stays
+    # SELECT per event. Delivery stays
     # at-least-once: a crash between a publish and the commit replays the whole
     # batch. No consumer dedupes on ``x-event-id``; every consumer is
     # idempotent through its own state instead (a job row's status, a

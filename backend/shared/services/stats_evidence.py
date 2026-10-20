@@ -463,7 +463,7 @@ def projection(scope: Scope, identity_map: Sequence[dict] = ()) -> tuple[Project
         ),
     }
     table, cols = refs[kind]
-    # JSON columns in older tables are JSON, not necessarily JSONB.
+    # Some of these columns are JSON, not JSONB.
     cols = tuple((f"{expr}::jsonb" if typ == "json" and "->" not in expr else expr, typ) for expr, typ in cols)
     return Projection(f"{table} r", "r.id=:k0", cols, True), params
 

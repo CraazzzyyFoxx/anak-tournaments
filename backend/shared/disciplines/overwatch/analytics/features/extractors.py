@@ -6,7 +6,7 @@ single SQL query with ``CASE`` expressions per stat. This keeps the database
 round-trip cost to one query per granularity regardless of how many stats are
 materialised.
 
-Granularities provided in Phase 1:
+Granularities:
 
 - :func:`extract_match_features` — one row per ``(player_id, match_id)``,
   aggregated over ``segment = 0`` and ``entity_id IS NULL`` rows (these are
@@ -14,7 +14,7 @@ Granularities provided in Phase 1:
 - :func:`extract_tournament_features` — roll-up of match features to
   ``(player_id, tournament_id)`` weighted by ``hero_time_played``.
 - :func:`extract_encounter_features` — pairwise team matchup vector per
-  ``Encounter`` (input to the Stage-A win-probability classifier in Phase 3).
+  ``Encounter`` (input to the Stage-A win-probability classifier).
 
 Round-level and per-hero granularities are intentionally separate from the
 match/tournament feature frames. The round-level extractor below exists for
@@ -365,7 +365,7 @@ async def extract_encounter_features(
 
     Note: opponent **OpenSkill mu** features are populated by
     :mod:`analytics-service.src.services.ml.features.opponent_strength` (it needs the
-    historical replay machinery from the v1 flows). This extractor only
+    historical replay machinery). This extractor only
     materialises the rank-based features that come straight from the DB.
     """
     tournament_ids = list(tournament_ids)

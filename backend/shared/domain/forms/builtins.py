@@ -74,8 +74,7 @@ class TopHeroesParams(_Strict):
 class RolesParams(_Strict):
     primary_required: bool = True
     additional_required: bool = False
-    #: Legacy ``flex_role.enabled``; False ⇒ an all-primary (full-flex)
-    #: submission is refused.
+    #: False ⇒ an all-primary (full-flex) submission is refused.
     flex_allowed: bool = True
     flex_mode: Literal["optional", "all_roles", "forced"] = "optional"
     #: Role code -> allowed sub-role slugs; ``{}`` means every catalog slug.
@@ -138,9 +137,8 @@ def identity_max_count(provider: str, params: dict | None) -> int:
 
 
 #: Server-side defaults, applied when a field carries no explicit
-#: ``validation.regex``. Before the schema these patterns existed only in the
-#: browser, so a non-browser writer (sheet sync, admin API) could store a
-#: malformed handle; the server is now the one place that decides.
+#: ``validation.regex``. The server is the one place that decides, so a
+#: non-browser writer (sheet sync, admin API) cannot store a malformed handle.
 DEFAULT_PATTERNS: dict[str, str] = {
     identity_key(SocialProvider.BATTLENET): r"([^#]{2,12}#[0-9]{4,})",
     identity_key(SocialProvider.DISCORD): r"^[a-z0-9_.]{2,32}$",

@@ -24,9 +24,8 @@ def normalize_aliases(values: Iterable[str], *, canonical: str | None = None) ->
 
     ``canonical`` is the entity's own ``name``, and it is dropped when supplied:
     the lookup already matches on `name`, so storing it as an alias only
-    duplicates the predicate. catalias0001 skips such pairs when seeding, and the
-    write paths have to agree — production picked up `Assault -> ["Осада",
-    "Assault"]` from an admin edit before this guard existed.
+    duplicates the predicate. The ``catalias0001`` seed skips such pairs, and
+    the write paths have to agree.
     """
     seen: dict[str, None] = {}
     for value in values:

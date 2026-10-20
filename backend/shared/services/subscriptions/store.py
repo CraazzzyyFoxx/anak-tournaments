@@ -13,12 +13,11 @@ Two implementations, matching the resolver's two write boundaries:
 
 ``load_configs`` is the single place a ``ProviderConfigRow`` is born, and therefore
 the single injection point for workspace-scoped values: it joins ``workspace`` to
-source ``guild_id``, so the resolver keeps reading it out of ``config`` unchanged.
+source ``guild_id``, so the resolver reads it out of ``config`` like any other key.
 
-``load_requirement`` is the second such value, and the reason this file -- not the
-call sites -- owns it: the admission rule is configured per workspace, so a gate
-that only knows a tournament form should not also have to know which table the rule
-lives in.
+``load_requirement`` is the other workspace-scoped value: the admission rule is
+configured per workspace, so a gate that only knows a tournament form need not
+know which table the rule lives in.
 """
 
 from __future__ import annotations

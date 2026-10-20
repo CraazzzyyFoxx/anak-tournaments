@@ -1,4 +1,4 @@
-"""What every discipline's catalog sync shares (D85): the image mirror and the upsert of one kind.
+"""What every discipline's catalog sync shares: the image mirror and the upsert of one kind.
 
 A module's sync (``shared/disciplines/<slug>/catalog_sync.py``) fetches its source and hands rows here. A row is matched
 by slug first, then by exact name, inside its discipline and kind. A new row is created whole; an existing row keeps

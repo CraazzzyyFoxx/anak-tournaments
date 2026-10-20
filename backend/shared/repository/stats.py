@@ -424,6 +424,12 @@ async def _fact_context(session: AsyncSession, match_id: int) -> tuple[set[int],
 
 
 class StatsMatchRepository:
+    async def get(self, session: AsyncSession, match_id: int) -> models.StatsMatch | None:
+        return await session.get(models.StatsMatch, match_id)
+
+    async def get_encounter_id(self, session: AsyncSession, match_id: int) -> int | None:
+        return await session.scalar(sa.select(models.StatsMatch.encounter_id).where(models.StatsMatch.id == match_id))
+
     async def get_for_game(
         self,
         session: AsyncSession,
@@ -695,6 +701,12 @@ class IngestJobRepository:
         self, session: AsyncSession, job_id: int, *, populate_existing: bool = False
     ) -> models.IngestJob | None:
         return await session.get(models.IngestJob, job_id, populate_existing=populate_existing)
+
+    async def get_discipline(self, session: AsyncSession, job_id: int) -> str | None:
+        return await session.scalar(sa.select(models.IngestJob.discipline).where(models.IngestJob.id == job_id))
+
+    async def get_workspace_id(self, session: AsyncSession, job_id: int) -> int | None:
+        return await session.scalar(sa.select(models.IngestJob.workspace_id).where(models.IngestJob.id == job_id))
 
     async def verify_raw_source(
         self,

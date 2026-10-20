@@ -1,7 +1,6 @@
 """Typed Pydantic models for RabbitMQ event messages.
 
-These schemas provide type safety and validation for all inter-service messaging,
-replacing untyped dict objects with validated Pydantic models.
+These schemas provide type safety and validation for all inter-service messaging.
 """
 
 import time
@@ -275,8 +274,7 @@ class ProcessIngestJobEvent(BaseEvent):
 class UploadMatchLogEvent(BaseEvent):
     """Event carrying a raw match-log file to be stored + queued for processing.
 
-    Published by: discord-service (bot upload, replacing the former direct
-    ``POST http://parser:8002/logs/{id}/upload`` HTTP call).
+    Published by: discord-service (bot upload).
     Consumed by: stats-service worker, which stores the log to S3, creates or
     reuses its native ingest job, then enqueues a ``ProcessIngestJobEvent``.
 
@@ -386,7 +384,7 @@ class MatchIngestExtraParticipant(BaseModel):
 
 
 class MatchIngestedEvent(BaseEvent):
-    """One observation revision a stats document bound to an encounter game (D95).
+    """One observation revision a stats document bound to an encounter game.
 
     Published by: stats-service (transactional outbox), event id ``match.ingested:{evidence_id}:{revision}``.
     Consumed by: the tournament match layer, which alone decides whether it is official. Carries no raw document,
@@ -554,8 +552,7 @@ class DiscordMemberChangedEvent(BaseEvent):
 class AnalyticsJobRequested(BaseEvent):
     """Unified analytics job dispatch — picked up by the analytics-worker.
 
-    Replaces the v1 ``Recalculate`` + v2 ``Train ML`` + v2 ``Run inference``
-    triggers. ``kind = 'compute'`` runs every selected v1 algorithm plus v2
+    ``kind = 'compute'`` runs every selected v1 algorithm plus v2
     inference; ``kind = 'train_ml'`` (re)trains the v2 boosters and is
     superuser-only at the HTTP layer.
     """

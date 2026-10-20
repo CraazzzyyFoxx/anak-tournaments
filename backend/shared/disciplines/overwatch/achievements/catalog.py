@@ -1,9 +1,7 @@
 """Default achievement catalog — one declaration per rule.
 
-A rule's flavour text and its engine definition used to live 900 lines apart:
-a hand-written metadata table (auto-generated from the pre-engine achievement
-consts) plus a separate builder that looked the slug back up. Every rule is now
-one ``RuleDef``, so adding or reading one is a single place.
+Every rule is one ``RuleDef`` carrying both its flavour text and its engine
+definition, so adding or reading one is a single place.
 
 Hero K/D awards stay generated: one per Overwatch character in ``catalog.entity``, so a hero
 synced from OW gets its achievement without an edit here. ``HERO_KD_FLAVOUR``
@@ -791,10 +789,9 @@ RULES: tuple[RuleDef, ...] = (
         condition_tree={"type": "consecutive", "params": {"metric": "win", "min_streak": 2}},
     ),
     RuleDef(
-        # Replaces the retired ``were-not-suckers``, which hard-coded a 2-3/3-2
-        # scoreline and therefore awarded nothing in a series that was not best
-        # of five. The series grain states the actual fact: lost the final by one
-        # map, whatever the format.
+        # The series grain states the fact: lost the final by one map, whatever
+        # the format -- a fixed 2-3/3-2 scoreline would award nothing in a
+        # series that is not best of five.
         slug="heartbreaker",
         name="Да не лохи мы…",
         description_ru="Проиграть финал турнира с разницей в одну карту.",

@@ -1,5 +1,6 @@
-"""The modules' ontologies are the source of truth; ``catalog.role_dimension``/``catalog.role`` are their projection
-(D31). app-service runs ``project_disciplines`` at startup."""
+"""The modules' ontologies are the source of truth; ``catalog.role_dimension``/``catalog.role`` are their projection.
+
+app-service runs ``project_disciplines`` at startup."""
 
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ async def project_disciplines(session: AsyncSession) -> None:
 
 
 def assert_discipline_enabled(workspace: Any, discipline: str) -> None:
-    """D89: creation is limited to the disciplines enabled for the workspace."""
+    """Creation is limited to the disciplines enabled for the workspace."""
     if discipline not in DISCIPLINES or discipline not in workspace.disciplines_enabled:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -51,7 +52,7 @@ def assert_discipline_enabled(workspace: Any, discipline: str) -> None:
 
 
 async def workspace_discipline(session: AsyncSession, *, workspace_id: int, requested: str | None) -> str:
-    """Requested enabled discipline, or the workspace's first enabled discipline (D89)."""
+    """Requested enabled discipline, or the workspace's first enabled discipline."""
     workspace = await WorkspaceRepository().get(session, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
@@ -62,7 +63,7 @@ async def workspace_discipline(session: AsyncSession, *, workspace_id: int, requ
 
 
 def normalize_disciplines_enabled(codes: Sequence[str]) -> list[str]:
-    """Known codes, each once, in the given order; at least one (D89)."""
+    """Known codes, each once, in the given order; at least one."""
     if not codes or any(code not in DISCIPLINES for code in codes):
         raise ValueError(f"disciplines_enabled must list known disciplines, got {list(codes)!r}")
     return list(dict.fromkeys(codes))
@@ -93,7 +94,7 @@ def resolve_form_role(
 async def rated_leaf(
     session: AsyncSession, *, discipline: str, workspace_id: int, role: str | None, sub_role: str | None
 ) -> models.CatalogRole | None:
-    """Resolve a legacy/form ``(role, sub_role)`` pair on the owner's rated dimension.
+    """Resolve a form ``(role, sub_role)`` pair on the owner's rated dimension.
 
     The form keeps the unprefixed slug; the ontology stores its parent-qualified code.
     No role or ``flex`` means no assignment. Unknown pairs never fall back to a parent.

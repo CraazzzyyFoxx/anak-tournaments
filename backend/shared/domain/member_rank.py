@@ -1,10 +1,8 @@
 """Rank layering: which of a member's several rank sources wins.
 
-Replaces the four-argument ``pick_rank`` that hard-coded one precedence
-(``override > host > canon > native``) for one caller. Callers now pass the layers
-in their own order, because the two contexts genuinely disagree: a mix trusts
-the host's private book above the workspace canon, a tournament trusts the
-number the organiser put on the registration.
+Callers pass the layers in their own order, because the two contexts disagree:
+a mix trusts the host's private book above the workspace canon, a tournament
+trusts the number the organiser put on the registration.
 
 An *absent* layer is what makes inheritance work — a layer holding ``None``
 falls through, so "follow the workspace rank" is the absence of a row rather

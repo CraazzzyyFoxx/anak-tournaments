@@ -280,9 +280,8 @@ class StreamTargetRepository:
         on a public, cacheable read.
 
         The join walks the anchor the roster actually uses. A caller's user id is
-        a ``players.user.id``, and ``tournament.player`` no longer carries one
-        (``user_id`` was dropped in iwrefac07), so the only path to a roster row
-        is through ``workspace_member``.
+        a ``players.user.id``, and ``tournament.player`` carries none, so the
+        only path to a roster row is through ``workspace_member``.
         """
         if not user_ids:
             return []

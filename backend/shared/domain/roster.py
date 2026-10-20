@@ -1,20 +1,20 @@
 """The one shape of "what roles does a player have, and at what rank".
 
-Every surface that used to derive this for itself -- the admin registration
-list, the ``ready``/``incomplete`` verdict, the balancer algorithm's input, the
-draft pool, the draft board, feasibility, autopick and the draft's team export
--- now reads these value objects, produced once by
-:mod:`shared.services.roster`. Nothing recomputes them, and nothing stores a
-second copy: the single exception is the frozen ``(role, rank)`` a completed
-draft pick records, which is a historical fact rather than a derivation.
+Every surface -- the admin registration list, the ``ready``/``incomplete``
+verdict, the balancer algorithm's input, the draft pool, the draft board,
+feasibility, autopick and the draft's team export -- reads these value objects,
+produced once by :mod:`shared.services.roster`. Nothing recomputes them, and
+nothing stores a second copy: the single exception is the frozen
+``(role, rank)`` a completed draft pick records, which is a historical fact
+rather than a derivation.
 
-The invariant that replaces five near-identical predicates:
+The invariant:
 
     a role is playable  <=>  the registration marks it active
                              AND the rank resolver found a number for it
 
-``is_active`` alone was never enough (a sheet row whose rank did not parse is
-active with no number) and a raw ``rank_value`` alone was never enough (an
+``is_active`` alone is not enough (a sheet row whose rank did not parse is
+active with no number) and a raw ``rank_value`` alone is not enough (an
 empty one *inherits* from the workspace canon or the latest Overwatch
 snapshot). Both halves live here, together, once.
 """
@@ -66,9 +66,8 @@ def flex_role_mode_from_schema(schema: Any | None) -> str:
 def flex_role_mode(form: Any | None) -> str:
     """The tournament's flex mode, normalized. A form without a schema is ``optional``.
 
-    THE reader of the ``roles`` builtin's ``flex_mode``: tournament-service used to
-    own one copy for the write path and balancer-service another for the draft,
-    synchronized only by parity tests (see the deleted ``rules.all_roles_required``).
+    THE reader of the ``roles`` builtin's ``flex_mode``: the tournament write path
+    and the balancer draft must agree on it, so neither keeps its own copy.
     """
     return flex_role_mode_from_schema(schema_from_form(form))
 
@@ -181,8 +180,8 @@ class PlayerRoster:
     def primary(self) -> RosterRole | None:
         """The role this player leads with: their flagged primary, else the first.
 
-        Resolved over playable roles only -- leading with a role nobody can draft
-        them on is how a rankless player used to end up labelled ``damage``.
+        Resolved over playable roles only, so a rankless player is never labelled
+        with a role nobody can draft them on.
         """
         playable = self.playable
         return next((entry for entry in playable if entry.is_primary), playable[0] if playable else None)

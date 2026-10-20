@@ -24,10 +24,7 @@ Two invariants worth keeping:
 Persistence and live provider calls are injected (``EntitlementStore``,
 ``strategies``) so the whole decision table is testable without a database or a
 network. An optional ``CheckLogSink`` appends the attempt to the collection
-history; it is a *third* boundary rather than a method on ``EntitlementStore``
-because the two have different contracts — the store holds one mutable
-current-state row per (workspace, user, provider), the sink is append-only and
-never read back by admission.
+history.
 """
 
 from __future__ import annotations
@@ -134,7 +131,7 @@ class EntitlementStore(Protocol):
         cache (TTL expiring for a whole workspace at once, or the first read
         after a tournament turns a subscription requirement on) can leave
         dozens of users stale for the same provider in one pass. ``upsert``
-        (singular) stays for genuinely single-row writes -- challenge-code
+        (singular) is for genuinely single-row writes -- challenge-code
         redemption is exactly one user, one provider, one verdict.
         """
         ...
@@ -157,8 +154,8 @@ class CheckLogSink(Protocol):
 
     Separate from ``EntitlementStore`` on purpose: the store answers "what is
     their state now?" from a single row it overwrites, this answers "what
-    happened, and when?" and is never read back by an admission decision. A
-    resolver without a sink behaves exactly as before.
+    happened, and when?" and is never read back by an admission decision.
+    Optional: a resolver without a sink logs nothing.
     """
 
     async def log_check(
@@ -181,9 +178,7 @@ class SubscriptionEventSink(Protocol):
     re-check included) because it is the audit trail, while this fires only when a
     verdict actually moved, because it exists to invalidate a client cache. Wiring
     it to attempts instead would make the collector's every-tick ``force_refresh``
-    sweep refetch every open admin page forever.
-
-    A resolver without a sink behaves exactly as before.
+    sweep refetch every open admin page forever. Optional, like the log sink.
     """
 
     async def subscriptions_updated(self, *, workspace_id: int, trigger: str) -> None: ...
@@ -224,10 +219,10 @@ class SubscriptionResolver:
         ``allow_stale`` is the display read: a stored verdict is used however old it
         is, a user with no row answers ``unknown``, and no provider is ever called.
         The participants page and the admin table render 100+ registrants at once
-        and the TTL is shorter than the collector's sweep, so without this every
-        other page load paid one Twitch call per registrant (measured: 2.7 s for
-        119 rows). Freshness is the collector's job; a gate that must not trust a
-        stale ``active`` passes ``force_refresh`` instead, which wins over this.
+        and the TTL is shorter than the collector's sweep, so a fresh read would
+        cost one Twitch call per registrant on most page loads. Freshness is the
+        collector's job; a gate that must not trust a stale ``active`` passes
+        ``force_refresh`` instead, which wins over this.
         """
         user_ids = list(dict.fromkeys(auth_user_ids))
         wanted = list(dict.fromkeys(providers))
@@ -257,8 +252,8 @@ class SubscriptionResolver:
             stale: list[int] = []
             for uid in user_ids:
                 row = stored.get((uid, provider))
-                # A stored verdict whose source the chosen method no longer accepts
-                # is treated as ABSENT, not merely ignored: otherwise narrowing the
+                # A stored verdict whose source the chosen method rejects is
+                # treated as ABSENT, not merely ignored: otherwise narrowing the
                 # method could never revoke a redeemed code, which is deliberately
                 # never re-polled.
                 if (
@@ -276,9 +271,9 @@ class SubscriptionResolver:
             if not accepts_live(method):
                 # Code-only: the only admissible proof is a redeemed code, and every
                 # stale user demonstrably has none. This is a real refusal, not an
-                # outage — answering `unknown` here is exactly what used to make the
-                # gate fail open and admit everybody. Nothing is persisted: it is
-                # derived from the absence of a row, and a redemption overwrites it.
+                # outage — answering `unknown` here would make the gate fail open and
+                # admit everybody. Nothing is persisted: it is derived from the
+                # absence of a row, and a redemption overwrites it.
                 for uid in stale:
                     out[uid][provider] = self._no_code_redeemed()
                 continue
@@ -337,12 +332,10 @@ class SubscriptionResolver:
                     verdict=verdict,
                 )
 
-            # One write for the whole stale batch instead of one per user: a
-            # cold cache (everyone's TTL expiring together, or the very first
-            # list read after a tournament turns subscriptions on) used to cost
-            # N sequential round trips here -- see EntitlementStore's docstring
-            # ("one call per concern, never one per provider" -- this closes
-            # the one place that promise didn't hold).
+            # One write for the whole stale batch, not one per user: a cold cache
+            # (everyone's TTL expiring together, or the first list read after a
+            # tournament turns subscriptions on) would otherwise cost N sequential
+            # round trips.
             if to_persist:
                 await self._store.upsert_many(workspace_id, provider, to_persist)
 
@@ -383,9 +376,7 @@ class SubscriptionResolver:
         """Providers where pasting a challenge code can currently help.
 
         Its own query rather than a by-product of ``resolve``: only the patron's own
-        status read needs it (admins never redeem), and the alternative — widening
-        ``evaluate``'s return type — would ripple through every bulk read that has no
-        use for it.
+        status read needs it (admins never redeem).
 
         "Can help" is literal: the method must accept codes AND at least one code must
         still be live. A provider whose codes all expired takes no paste, and the
@@ -408,30 +399,22 @@ class SubscriptionResolver:
     async def load_requirement(self, *, workspace_id: int) -> SubscriptionRequirement | None:
         """The workspace's enforceable rule, or ``None`` when there is nothing to enforce.
 
-        Here rather than on the caller for the same reason as ``accepted_code_providers``:
-        it is a workspace-scoped question that is not ``evaluate``, and routing it through
-        the store keeps every gate free of both the query and the parse.
-
-        Fails OPEN on a malformed blob, matching what every call site did inline before
-        this moved: refusing every patron mid-tournament because one config row is bad is
-        the worse failure. An empty rule collapses to ``None`` too, so "toggle on, nothing
-        configured" stays the documented no-op that never calls a provider.
+        Fails OPEN on a malformed blob: refusing every patron mid-tournament because
+        one config row is bad is the worse failure. An empty rule collapses to ``None``
+        too, so "toggle on, nothing configured" stays the documented no-op that never
+        calls a provider.
 
         The caught set is wider than ``parse_requirement``'s documented ``ValueError``
-        (unknown ``mode``) on purpose, because the blob is arbitrary stored JSON and only
-        its *shape* is validated on write: ``{"requirements": "boosty"}`` iterates the
-        string and raises ``AttributeError`` on ``row.get``, ``{"requirements": 5}``
-        raises ``TypeError`` on the ``for``. This function is the single chokepoint the
-        whole admission stack trusts -- check-in, the participants list and the
-        registration form all route through it -- so letting either escape would turn one
-        bad row into three 500s, which is exactly the promise above.
+        (unknown ``mode``) because the blob is arbitrary stored JSON and only its
+        *shape* is validated on write: ``{"requirements": "boosty"}`` raises
+        ``AttributeError`` on ``row.get``, ``{"requirements": 5}`` raises ``TypeError``
+        on the ``for``. Check-in, the participants list and the registration form all
+        route through here, so letting either escape turns one bad row into three 500s.
 
-        Failing open is silent and PERMANENT -- the gate keeps admitting everybody for as
-        long as the row stays bad -- so the swallow logs, mirroring the collector's own
-        skip warning (``subscription_collection.service``). It is also the only signal
-        distinguishing bad data from a coding error inside ``parse_requirement``, since
-        the caught set is wide enough to hide an ``AttributeError`` raised by a genuine
-        bug rather than by a string blob.
+        Failing open is silent and PERMANENT while the row stays bad, so the swallow
+        logs (like the collector's skip warning in ``subscription_collection.service``).
+        The log is also the only thing that tells bad data from an ``AttributeError``
+        raised by a genuine bug inside ``parse_requirement``.
         """
         blob = await self._store.load_requirement(workspace_id)
         if not blob:

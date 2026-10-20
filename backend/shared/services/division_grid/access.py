@@ -164,7 +164,7 @@ def require_marketplace_source_access(
 
 
 def runtime_fallback_grid(discipline: str | None) -> DivisionGrid:
-    """An unscoped read keeps the legacy default; scoped reads never borrow another game's ladder."""
+    """An unscoped read gets ``DEFAULT_GRID``; scoped reads never borrow another game's ladder."""
     grid = DEFAULT_GRID if discipline is None else ladder_grid(discipline)
     if grid is None:
         raise HTTPException(
@@ -354,24 +354,16 @@ async def get_effective_division_grid_version_ids(
 ) -> dict[int, int | None]:
     """Batch equivalent of calling ``get_effective_division_grid_version_id`` once per id.
 
-    Built for read models that need many tournaments' effective grid version at
-    once (e.g. a player's cross-tournament history): a naive per-id loop pays
-    one Redis round trip and up to two DB round trips PER tournament -- fine
-    for a handful of ids, but dozens of sequential awaits for a player with a
-    long history, all serialized behind the one ``AsyncSession`` they share (a
-    single asyncpg connection cannot run concurrent queries, so this cannot be
-    fixed with ``asyncio.gather`` over the per-id calls instead). This
-    resolves the whole set in a constant number of round trips: one Redis MGET
-    for the effective-version cache, at most one DB query for the tournaments
-    that missed, and one more round trip per distinct owning workspace whose
-    default is still needed. Every resolved value is written back to cache
-    exactly like the single-item path, so a later single lookup (or the next
-    batch) still gets full cache benefit.
+    Resolves the whole set in a constant number of round trips: one Redis MGET,
+    at most one DB query for the misses, and one round trip per distinct owning
+    workspace whose default is still needed. Gathering the per-id calls is not an
+    option: they share one ``AsyncSession`` and a single asyncpg connection cannot
+    run concurrent queries. Every resolved value is written back to cache like the
+    single-item path.
 
-    The fallback default is each tournament's *own* workspace default, so a
-    set spanning workspaces (the public all-workspaces reads) resolves exactly
-    like the per-id function would -- the effective version is a property of
-    the tournament alone, never of the reader's scope.
+    The fallback default is each tournament's *own* workspace default -- the
+    effective version is a property of the tournament alone, never of the
+    reader's scope.
     """
     ids = list(dict.fromkeys(tournament_ids))
     if not ids:
@@ -508,15 +500,9 @@ async def load_division_grid_version_read_payloads(
 ) -> dict[int, dict[str, Any]]:
     """Batch, cached full read-model payloads for grid versions.
 
-    Built for read models that render grid-version metadata for many ids at
-    once (e.g. every distinct version referenced in a player's tournament
-    history): one Redis MGET for the cache, at most one DB query
-    (``WHERE id IN (...)``) for the versions that missed -- replacing what
-    was previously an unconditional query on every call regardless of cache
-    state. Each caller builds its own ``DivisionGridVersionRead`` via
-    ``Read.model_validate(payload)`` -- no per-field mapping, and no risk of
-    drifting from the schema as it evolves, since the payload shape mirrors
-    it 1:1.
+    One Redis MGET for the cache, at most one DB query for the misses. The
+    payload shape mirrors ``DivisionGridVersionRead`` 1:1, so each caller builds
+    its own via ``Read.model_validate(payload)``.
     """
     ids = {int(version_id) for version_id in version_ids}
     if not ids:

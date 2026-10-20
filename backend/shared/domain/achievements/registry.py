@@ -24,14 +24,13 @@ from shared.disciplines import discipline as _discipline
 from shared.models.achievements.achievement import AchievementGrain
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from shared.domain.achievements.context import EvalContext
 
 ResultSet = set[tuple[int, ...]]
 
+#: ``await executor(session, params, context)``; run by ``shared.services.achievements.evaluator``.
 LeafExecutor = Callable[
-    ["AsyncSession", dict[str, Any], "EvalContext"],
+    [Any, dict[str, Any], "EvalContext"],
     Coroutine[Any, Any, ResultSet],
 ]
 
@@ -144,15 +143,10 @@ def get_registered_types(*, discipline: str) -> list[str]:
     return sorted(name for code, name in _REGISTRY if code == discipline)
 
 
-async def execute_leaf(
-    session: AsyncSession,
-    condition_type: str,
-    params: dict[str, Any],
-    context: EvalContext,
-) -> ResultSet:
-    """Dispatch to the executor ``context.discipline`` registered for ``condition_type``."""
-    _load(context.discipline)
-    executor = _REGISTRY.get((context.discipline, condition_type))
+def get_executor(condition_type: str, *, discipline: str) -> LeafExecutor:
+    """The executor ``discipline`` registered for ``condition_type``; ``ValueError`` when there is none."""
+    _load(discipline)
+    executor = _REGISTRY.get((discipline, condition_type))
     if executor is None:
-        raise ValueError(f"Unknown condition type {condition_type!r} for discipline {context.discipline!r}")
-    return await executor(session, params, context)
+        raise ValueError(f"Unknown condition type {condition_type!r} for discipline {discipline!r}")
+    return executor

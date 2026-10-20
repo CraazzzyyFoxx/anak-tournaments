@@ -1,4 +1,4 @@
-"""The Overwatch analytics module (D83, D99): features, models and the canonical division scale.
+"""The Overwatch analytics module: features, models and the canonical division scale.
 
 ``DisciplineSpec.analytics`` returns *this module*; the names below are its ``AnalyticsExports`` contract
 (``shared.domain.analytics``). Importing it loads pandas and the estimators, so the registry imports it only when a

@@ -2,7 +2,7 @@
 
 Grain: user (global).
 
-Ports the legacy ``lfs-4500`` achievement: any pair of users who were on the
+Backs ``lfs-4500``: any pair of users who were on the
 same team in ``value`` or more distinct teams both qualify.
 """
 

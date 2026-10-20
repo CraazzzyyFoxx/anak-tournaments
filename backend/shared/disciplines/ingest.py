@@ -1,4 +1,4 @@
-"""What a discipline module offers canonical ingest (P5, D95/D96): raw-byte decoders and post-binding derivations.
+"""What a discipline module offers canonical ingest: raw-byte decoders and post-binding derivations.
 
 A decoder is pure CPU: ``decode(raw, ctx) -> MatchDoc``. It never sees a session, S3 client or roster callback, and it
 never creates an alias, a player or a row; a name it cannot resolve is handed on verbatim so the one semantic validator
@@ -63,7 +63,7 @@ class BoundParticipant:
     member_id: int
     user_id: int
     encounter_team_id: int
-    #: The registration rank the discipline's baselines bucket on (D96 keeps the current-registration boundary).
+    #: The current-registration rank the discipline's baselines bucket on.
     rank: int
     #: The roster role code the seat was filled as; the fallback when a log shows no playtime to observe one.
     role: str | None

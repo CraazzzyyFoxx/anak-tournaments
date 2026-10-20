@@ -1,7 +1,6 @@
 """One scoring engine for every encounter: a duel series and an FFA lobby alike.
 
-Three questions, all answered by the organizer's own formulas over N teams
-(docs/plans/2026-10-12-multi-game-architecture.md §5):
+Three questions, all answered by the organizer's own formulas over N teams:
 
 * what one game pays a team -- ``game_formula`` over the rule's columns plus
   ``place``, ``place_pts``, ``teams`` and ``win``;
@@ -64,8 +63,8 @@ FFA_MAX_LOBBY_SIZE = 100
 FFA_MAX_COLUMNS = 10
 #: The biggest value a game may record: past it the number is a typo.
 FFA_STAT_MAX = 1_000_000_000.0
-#: A stage that configured nothing scores exactly what it scored before the
-#: custom-scoring feature: one column of raw score, paid one for one.
+#: What a stage that configured nothing scores: one column of raw score, paid
+#: one for one.
 DEFAULT_COLUMN_KEY = "score"
 DEFAULT_COLUMN_LABEL = "Счёт"
 DEFAULT_FORMULA = DEFAULT_COLUMN_KEY
@@ -74,7 +73,7 @@ GAME_POINTS_DIGITS = 4
 #: The variables that read a team's place: a game formula naming one needs every
 #: place entered by hand.
 PLACEMENT_VARIABLES: frozenset[str] = frozenset({"place", "place_pts"})
-#: D61: a series is decided by wins, and it is over once every position is
+#: A series is decided by wins, and it is over once every position is
 #: played or one side is past half (a drawn map pays no win but burns a game).
 #: The same two strings the ``enclayer01`` revision writes into every rule row.
 WINS_END_FORMULA = "games >= best_of or max_wins * 2 > best_of"
@@ -232,7 +231,7 @@ def _evaluate(rules: ScoringRules, lines: Sequence[GameLine], placements: Mappin
     """The formula over every line of one game. A missing place reads as 0."""
     teams = float(len(lines))
     # A shared first place is nobody's win: two teams level on a map have not
-    # won it, which is exactly what a drawn duel map is (spec §6.3).
+    # won it, which is exactly what a drawn duel map is.
     sole_first = sum(1 for place in placements.values() if place == 1) == 1
     points: dict[int, float] = {}
     for line in lines:
@@ -307,7 +306,7 @@ def evaluate_encounter(
 
 
 def encounter_ended(rules: ScoringRules, *, best_of: int, games: int, max_wins: int) -> bool:
-    """Level 2 of §5: is the encounter over after ``games`` confirmed games?
+    """Is the encounter over after ``games`` confirmed games?
 
     Public because a caller holding only the tally -- the live room asking
     whether another map is due -- must ask the SAME rule the final standing is

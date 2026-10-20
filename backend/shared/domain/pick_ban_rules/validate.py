@@ -3,8 +3,6 @@
 Errors block the upsert; warnings are shown in the constructor but do not.
 Every issue carries a stable snake_case ``code`` and a JSON path into the
 document, so the editor can highlight the offending field.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §1, §2.
 """
 
 from __future__ import annotations
@@ -60,8 +58,8 @@ def validate_ruleset(
     names", while a hero's groups are always checked -- against ``groups`` or,
     absent that, the classes ``discipline``'s module declares.
 
-    ``discipline`` and ``slot_count`` decide what the actor vocabulary can say
-    (D25): ``slot:<n>`` must name a seat the card has, ``side:<code>`` a side
+    ``discipline`` and ``slot_count`` decide what the actor vocabulary can say:
+    ``slot:<n>`` must name a seat the card has, ``side:<code>`` a side
     the discipline declares AND a side some earlier ``side_pick`` assigned, and
     ``side_pick`` itself is legal only for a discipline that declares exactly
     as many sides as the encounter seats participants.
@@ -279,7 +277,7 @@ def _validate_actors(
     slot_count: int,
     assigned_sides: set[str],
 ) -> None:
-    """What the step's actor token may say about THIS discipline and card (D25)."""
+    """What the step's actor token may say about THIS discipline and card."""
     actors = step.actors
     if step.action == "side_pick" and len(spec.sides) != slot_count:
         issues.append(

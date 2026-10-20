@@ -39,7 +39,7 @@ class BaseServiceSettings(BaseSettings):
     version: str = "0.0.1"
     # Build identity, injected by CI/the image build (GIT_SHA). ``version`` is a
     # hand-maintained constant that has not moved from 0.0.1, so on its own it
-    # cannot distinguish two deploys — which made stale-image bugs (a service
+    # cannot distinguish two deploys — which makes stale-image bugs (a service
     # running ahead of / behind its migrations) indistinguishable from real
     # defects in Sentry. See sentry_release below.
     git_sha: str | None = None
