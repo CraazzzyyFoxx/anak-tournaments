@@ -55,8 +55,8 @@ export function AchievementImportDialog({
   onClose: () => void;
   workspaceId: number;
   /**
-   * The game being copied: the source list, the selection and the import all stay inside it. `null` (every game in
-   * scope): only the file import, which names each rule's game itself.
+   * The game being copied: the source list, the selection and the import all stay inside it. `null` (no game
+   * filtered): only the file import, which names each rule's game itself.
    */
   discipline: string | null;
   onImportFile: (file: File) => void;

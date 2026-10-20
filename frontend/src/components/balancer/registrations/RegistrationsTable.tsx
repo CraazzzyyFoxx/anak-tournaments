@@ -384,7 +384,8 @@ export default function RegistrationsTable({
                 onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
               >
                 <SelectTrigger
-                  className="h-8 w-[160px]"
+                  size="sm"
+                  className="w-[160px]"
                   aria-label={t("registrationsAdmin.table.groupAria")}
                 >
                   <SelectValue placeholder={t("registrationsAdmin.table.groupBy")} />

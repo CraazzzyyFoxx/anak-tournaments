@@ -285,7 +285,7 @@ export function PlayerPool({
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      "min-h-11 rounded-[7px] px-2.5 text-caption font-medium sm:min-h-7",
+                      "min-h-11 rounded-[7px] px-2.5 sm:min-h-7",
                       heroFilter.size > 0
                         ? "bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg)]"
                         : "text-[color:var(--aqt-fg-muted)]"

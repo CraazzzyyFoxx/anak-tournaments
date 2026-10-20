@@ -90,8 +90,8 @@ export default function AchievementDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* An owner page (spec §5): the rule's game locks the scope pill while it is open. */}
-      <EntityWorkspace workspaceId={rule.workspace_id} discipline={rule.discipline} />
+      {/* The rule's community while it is open, which need not be the one the shell had. */}
+      <EntityWorkspace workspaceId={rule.workspace_id} />
       <AchievementDetailHeader
         rule={rule}
         canUpdate={canUpdate}

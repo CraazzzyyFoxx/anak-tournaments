@@ -43,7 +43,7 @@ interface DataPaginationProps {
 }
 
 const buttonClass =
-  "aqt-tnum inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border px-2 text-caption tabular-nums transition-colors outline-none " +
+  "aqt-tnum inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border px-2 text-caption font-medium tabular-nums transition-colors outline-none " +
   "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] " +
   "disabled:cursor-not-allowed disabled:opacity-40";
 

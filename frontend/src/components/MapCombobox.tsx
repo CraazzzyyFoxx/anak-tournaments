@@ -7,8 +7,8 @@ import { CommandGroup, CommandItem } from "@/components/ui/command";
 import type { LookupItem } from "@/types/pagination.types";
 
 const TRIGGER_SIZE_CLASS = {
-  sm: "h-8 w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15 text-caption",
-  lg: "h-[38px] w-[170px] rounded-lg border-[color:var(--aqt-border)] bg-white/[0.015] text-caption",
+  sm: "w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15",
+  lg: "h-[38px] w-[170px] rounded-lg border-[color:var(--aqt-border)] bg-white/[0.015]",
 } as const;
 
 type MapComboboxProps = {
@@ -50,6 +50,7 @@ export function MapCombobox({ maps, mapId, onMapIdChange, size = "sm" }: Readonl
       open={open}
       onOpenChange={setOpen}
       label={selectedLabel}
+      size={size === "sm" ? "sm" : "default"}
       triggerClassName={TRIGGER_SIZE_CLASS[size]}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}

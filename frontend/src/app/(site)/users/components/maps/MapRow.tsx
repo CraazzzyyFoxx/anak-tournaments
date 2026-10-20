@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { UserMapRead } from "@/types/user.types";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import CharacterCard from "@/components/profile/CharacterCard";

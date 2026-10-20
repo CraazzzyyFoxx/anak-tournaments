@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,13 +73,19 @@ const ACTIONS = {
 let root: Root;
 let container: HTMLElement;
 
-async function mount(discipline: string | null, showGame: boolean) {
+async function mount(discipline: string | null, showGame: boolean, toolbar?: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <TooltipProvider>
-          <AchievementsTable workspaceId={7} discipline={discipline} showGame={showGame} actions={ACTIONS} />
+          <AchievementsTable
+            workspaceId={7}
+            discipline={discipline}
+            showGame={showGame}
+            toolbar={toolbar}
+            actions={ACTIONS}
+          />
         </TooltipProvider>
       </QueryClientProvider>
     );
@@ -93,6 +99,7 @@ const headers = () => Array.from(container.querySelectorAll("th")).map((cell) =>
 
 beforeEach(() => {
   navigation.reset("/admin/achievements");
+  window.history.replaceState(null, "", "/admin/achievements");
   getAchievementRules.mockReset().mockResolvedValue({
     results: [rule(1, "overwatch", "Clutch"), rule(2, "lol", "Pentakill")],
     total: 2,
@@ -145,5 +152,23 @@ describe("the rule catalog under the game scope", () => {
     const card = container.querySelector("ul[aria-label='Rows'] > li")?.textContent ?? "";
     expect(card).toContain("Pentakill");
     expect(card).not.toContain("League of Legends");
+  });
+
+  it("shows the page's filter bar beside the search", async () => {
+    await mount(null, true, <div data-filter-bar />);
+
+    expect(container.querySelector("[data-filter-bar]")).not.toBeNull();
+    expect(container.querySelector("input[placeholder='Search achievements…']")).not.toBeNull();
+  });
+
+  it("lands on page 1 when the game changes", async () => {
+    getAchievementRules.mockResolvedValue({ results: [rule(1, "overwatch", "Clutch")], total: 40, page: 2, per_page: 15 });
+    window.history.replaceState(null, "", "/admin/achievements?page=2");
+    await mount(null, true);
+    expect(getAchievementRules).toHaveBeenLastCalledWith(7, null, expect.objectContaining({ page: 2 }));
+
+    await mount("lol", false);
+
+    expect(getAchievementRules).toHaveBeenLastCalledWith(7, "lol", expect.objectContaining({ page: 1 }));
   });
 });

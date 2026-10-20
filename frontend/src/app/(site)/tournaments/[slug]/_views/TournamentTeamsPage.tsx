@@ -129,7 +129,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   label={t("tournamentDetail.teams.searchLabel")}
                   placeholder={t("tournamentDetail.teams.searchPlaceholder")}
                   containerClassName="w-[11rem]"
-                  className="h-8 py-1"
+                  className="py-1"
                 />
                 <Select
                   value={sortBy}
@@ -140,7 +140,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                 >
                   <SelectTrigger
                     aria-label={t("tournamentDetail.sortTeams")}
-                    className="filter-sort h-8 w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
+                    size="sm"
+                    className="filter-sort w-[10.5rem] shadow-none focus:ring-0 focus:ring-offset-0"
                   >
                     <SelectValue />
                   </SelectTrigger>

@@ -165,7 +165,8 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 min={2}
                 max={512}
                 aria-label={t("upper")}
-                className="h-8 w-20"
+                size="sm"
+                className="w-20"
                 value={draft.upper_seeds}
                 onValueChange={(next) => {
                   if (next != null) dispatch({ type: "setSeeds", upper: next, lower: draft.lower_seeds });
@@ -179,7 +180,8 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 min={0}
                 max={512}
                 aria-label={t("lower")}
-                className="h-8 w-20"
+                size="sm"
+                className="w-20"
                 value={draft.lower_seeds}
                 onValueChange={(next) => {
                   if (next != null) dispatch({ type: "setSeeds", upper: draft.upper_seeds, lower: next });

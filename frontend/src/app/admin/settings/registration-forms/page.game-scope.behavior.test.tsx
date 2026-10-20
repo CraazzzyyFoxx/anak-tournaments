@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 //
-// Workspace templates as a multi page (spec §6.13, §8.4): every game's templates (marked) under "all games", one
-// game's under a game; a selected template is an owner whose game names its roles; a new template is filed under
-// the creation game with that game's identity question.
+// Workspace templates as a multi page (spec §6.13, §8.4): every game's templates (marked) unless the game filter
+// names one; a selected template is an owner whose game names its roles; a new template is filed under the creation
+// game (the filtered one, else the first enabled) with that game's identity question.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -30,10 +30,6 @@ globalThis.ResizeObserver ??= ResizeObserverStub as never;
 const OW = { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true, identity_provider: "battlenet" } as DisciplineDescriptor;
 const LOL = { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true, identity_provider: "riot" } as DisciplineDescriptor;
 
-/** The saved scope's game (`null`: all games). */
-let game: string | null = null;
-/** An explicit `?discipline=` narrowing the page past the saved scope. */
-let urlGame: string | null = null;
 const listTemplates = vi.fn();
 const createTemplate = vi.fn<(workspaceId: number, name: string, discipline: string, schema: FormSchema) => unknown>();
 const getPlayerSubRoles = vi.fn();
@@ -51,26 +47,26 @@ vi.mock("@/services/admin.service", () => ({
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({ currentWorkspaceId: 1, lastGame: null, setEntityWorkspace: vi.fn(), setEntityDiscipline: vi.fn() })
+    selector({ currentWorkspaceId: 1 })
 }));
-vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: vi.fn() }));
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: () => true }) }));
+// The admin's game is the game filter's `?discipline=`; none is every game.
 vi.mock("@/hooks/useGameScope", () => ({
   useGameScope: () => {
-    const shown = urlGame ?? game;
+    const game = new URLSearchParams(window.location.search).get("discipline");
     return {
       axis: 1,
       games: [OW, LOL],
       resolution:
-        shown === null
+        game === null
           ? { game: { kind: "all" }, pill: { kind: "all" }, tabs: false, scope: "all" }
           : {
-              game: { kind: "game", code: shown, source: urlGame === null ? "scope" : "url" },
-              pill: { kind: "game", code: shown, locked: false },
+              game: { kind: "game", code: game, source: "url" },
+              pill: { kind: "game", code: game, locked: false },
               tabs: false,
-              scope: game ?? "all"
+              scope: "all"
             },
-      game: shown,
+      game,
       isError: false,
       refetch: vi.fn(),
       selectScope: vi.fn(),
@@ -162,12 +158,20 @@ async function createNamed(text: string) {
   return { name, discipline, keys: schema.sections.flatMap((section) => section.fields.map((field) => field.key)) };
 }
 
+/** Picks a game in the page's game filter: "+ Filter" › Game › the game (an option reads as its mark, then its name). */
+async function pickGame(name: string) {
+  const item = (text: string) =>
+    [...document.querySelectorAll<HTMLElement>('[cmdk-item=""]')].find((node) => node.textContent?.endsWith(text))!;
+  await act(async () => container.querySelector<HTMLElement>(`button[aria-label="${en.kit.actions.addFilter}"]`)!.click());
+  await act(async () => item(en.common.discipline.column).click());
+  await act(async () => item(name).click());
+  await settle();
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
   window.history.replaceState(null, "", "/admin/settings/registration-forms");
-  game = null;
-  urlGame = null;
   listTemplates.mockResolvedValue([template(11, "Open cup", "overwatch"), template(12, "Rift cup", "lol")]);
   getPlayerSubRoles.mockResolvedValue([]);
   createTemplate.mockImplementation(async (_ws: number, name: string, discipline: string) => template(13, name, discipline));
@@ -191,13 +195,12 @@ it("reads a selected template's roles in its own game", async () => {
 });
 
 it("opens a selected template of another game than the list's", async () => {
-  game = "lol";
   listTemplates.mockImplementation(async (_ws: number, discipline: string | null) =>
     discipline === "lol"
       ? [template(12, "Rift cup", "lol")]
       : [template(11, "Open cup", "overwatch"), template(12, "Rift cup", "lol")]
   );
-  window.history.replaceState(null, "", "/admin/settings/registration-forms?template=11");
+  window.history.replaceState(null, "", "/admin/settings/registration-forms?discipline=lol&template=11");
   await mount();
 
   // Resolved over every game's templates, then edited as its own game's owner.
@@ -205,8 +208,21 @@ it("opens a selected template of another game than the list's", async () => {
   expect(getPlayerSubRoles).toHaveBeenLastCalledWith({ workspace_id: 1, discipline: "overwatch" }, expect.anything());
 });
 
-it("files a new template under the scope's game with that game's identity question", async () => {
-  game = "lol";
+it("narrows the list to the picked game and keeps the open template, which owns its own game", async () => {
+  window.history.replaceState(null, "", "/admin/settings/registration-forms?template=11");
+  await mount();
+
+  await pickGame("League of Legends");
+
+  const search = new URLSearchParams(window.location.search);
+  expect(search.get("discipline")).toBe("lol");
+  expect(search.get("template")).toBe("11");
+  expect(listTemplates).toHaveBeenCalledWith(1, "lol");
+  expect(getPlayerSubRoles).toHaveBeenLastCalledWith({ workspace_id: 1, discipline: "overwatch" }, expect.anything());
+});
+
+it("files a new template under the filtered game with that game's identity question", async () => {
+  window.history.replaceState(null, "", "/admin/settings/registration-forms?discipline=lol");
   await mount();
 
   expect(listTemplates).toHaveBeenCalledWith(1, "lol");
@@ -215,26 +231,22 @@ it("files a new template under the scope's game with that game's identity questi
   expect(created.keys).toContain("identity_riot");
 });
 
-it("files a new template under the saved scope's game, not under a URL game that only narrows the list", async () => {
-  game = "overwatch";
-  urlGame = "lol";
+it("files a new template under the first enabled game when no game is filtered", async () => {
   await mount();
 
-  expect(listTemplates).toHaveBeenCalledWith(1, "lol");
   const created = await createNamed("Open two");
   expect(created.discipline).toBe("overwatch");
   expect(created.keys).toContain("identity_battlenet");
 });
 
 it("answers a failed lookup of a selected template of another game with an error and a retry", async () => {
-  game = "lol";
   let lookupFails = true;
   listTemplates.mockImplementation(async (_ws: number, discipline: string | null) => {
     if (discipline === "lol") return [template(12, "Rift cup", "lol")];
     if (lookupFails) throw new Error("lookup failed");
     return [template(11, "Open cup", "overwatch"), template(12, "Rift cup", "lol")];
   });
-  window.history.replaceState(null, "", "/admin/settings/registration-forms?template=11");
+  window.history.replaceState(null, "", "/admin/settings/registration-forms?discipline=lol&template=11");
   await mount();
 
   expect(container.textContent).toContain(en.adminSettings.registrationForms.errors.load);

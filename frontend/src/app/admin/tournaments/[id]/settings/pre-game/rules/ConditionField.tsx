@@ -171,7 +171,7 @@ export function ConditionField({
         type="button"
         variant="outline"
         size="sm"
-        className="h-7 max-w-full gap-1.5 border-dashed text-xs font-normal"
+        className="h-7 max-w-full gap-1.5 border-dashed"
         onClick={() => setOpen(true)}
       >
         <Filter aria-hidden className="size-3.5 shrink-0" />

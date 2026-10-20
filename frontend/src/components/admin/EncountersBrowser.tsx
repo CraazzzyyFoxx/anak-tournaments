@@ -9,15 +9,20 @@ import { FileX2, Plus } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
-import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { EncounterForm } from "@/components/admin/EncounterForm";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { useFilters } from "@/components/kit/useFilters";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { hasChallongeSource } from "@/components/admin/tournament-checklist";
-import { TOURNAMENT_QUERY_PARAM, parseTournamentQueryParam } from "@/components/admin/tournament-filter";
+import {
+  TOURNAMENT_QUERY_PARAM,
+  parseTournamentQueryParam,
+  strandedTournamentParams,
+  tournamentOptions
+} from "@/components/admin/tournament-filter";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Spinner } from "@/components/ui/spinner";
@@ -30,6 +35,7 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Encounter } from "@/types/encounter.types";
 import { seatsBySlot } from "@/lib/encounter/seats";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -46,9 +52,6 @@ import { useEncounterScope } from "./encounters/useEncounterScope";
 
 const PAGE_SIZE = 15;
 
-/** The pickers that name one game's tournament structure (spec §6.2): hidden under "all games". */
-const GAME_BOUND_FILTERS: ReadonlySet<string> = new Set([TOURNAMENT_QUERY_PARAM, "stage", "group"]);
-
 /**
  * Encounters, for one tournament or for the whole workspace.
  *
@@ -64,16 +67,19 @@ const GAME_BOUND_FILTERS: ReadonlySet<string> = new Set([TOURNAMENT_QUERY_PARAM,
 export function EncountersBrowser({
   tournamentId,
   workspaceId,
-  discipline
+  discipline,
+  games
 }: Readonly<{
   /** `null` = every tournament in the workspace, with the chip unpinned. */
   tournamentId: number | null;
   workspaceId: number | null;
   /**
-   * The workspace view's game scope (spec §6.9): `null` = every game, with a "Game" column; a code = that game's
-   * encounters, filtered on the server. Absent in a tournament hub, where the tournament is the game.
+   * The workspace view's Game chip (`?discipline=`, spec §6.9): `null` = every game, with a "Game" column; a code =
+   * that game's encounters, filtered on the server. Absent in a tournament hub, where the tournament is the game.
    */
   discipline?: string | null;
+  /** The community's games, for the Game chip; absent in a hub. */
+  games?: readonly DisciplineDescriptor[];
 }>) {
   const t = useTranslations("adminMatches.encounters");
   const tGame = useTranslations("common.discipline");
@@ -100,34 +106,33 @@ export function EncountersBrowser({
   const [pageRows, setPageRows] = useState<Encounter[]>([]);
   const [pendingDelete, setPendingDelete] = useState<Encounter | null>(null);
 
-  // Under "all games" (spec §6.2) the tournament, stage and group pickers are one game's: hidden, and their URL values
-  // ignored. A tournament pinned by the hub is the game's owner and keeps working (`discipline` is absent there).
-  const allGames = discipline === null;
-  const chipTournamentId = allGames
-    ? null
-    : parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
+  // The tournament chip works under every game: without one it offers every tournament of the workspace. A tournament
+  // pinned by the hub is the game's owner (`discipline` is absent there).
+  const chipTournamentId = parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
   const scopeTournamentId = tournamentId ?? chipTournamentId;
 
   const scope = useEncounterScope({ tournamentId, scopeTournamentId, workspaceId });
   const { stages, teams } = scope;
+  const chipTournamentGame = scope.tournaments.find((tournament) => tournament.id === chipTournamentId)?.discipline;
 
-  const defs = useMemo(() => {
-    const list = encounterFilterDefs({
-      tournamentId,
-      // Under a game the tournament chip offers that game's tournaments only.
-      tournaments: discipline
-        ? scope.tournaments.filter((tournament) => tournament.discipline === discipline)
-        : scope.tournaments,
-      stages,
-      stageItems: scope.stageItems,
-      t: t as unknown as (key: string) => string
-    });
-    return allGames ? list.filter((def) => !GAME_BOUND_FILTERS.has(def.key)) : list;
-  }, [tournamentId, discipline, allGames, scope.tournaments, stages, scope.stageItems, t]);
+  const defs = useMemo(
+    () => [
+      // A game pick drops a tournament of another game, with its stage and group.
+      ...gameFilterDefs(games, tGame("column"), (next) => strandedTournamentParams(chipTournamentGame, next)),
+      ...encounterFilterDefs({
+        tournamentId,
+        tournaments: tournamentOptions(scope.tournaments, discipline ?? null),
+        stages,
+        stageItems: scope.stageItems,
+        t: t as unknown as (key: string) => string
+      })
+    ],
+    [games, chipTournamentGame, tournamentId, discipline, scope.tournaments, stages, scope.stageItems, t, tGame]
+  );
 
   const filters = useFilters(defs);
-  const stageFilter = allGames ? "" : String(filters.values.stage ?? "");
-  const groupFilter = allGames ? "" : String(filters.values.group ?? "");
+  const stageFilter = String(filters.values.stage ?? "");
+  const groupFilter = String(filters.values.group ?? "");
   const statusFilter = String(filters.values.status ?? "");
   const logsFilter = String(filters.values.has_logs ?? "");
 
@@ -197,7 +202,6 @@ export function EncountersBrowser({
 
   const trailing = (
     <>
-      {allGames ? <GameFilterHint /> : null}
       {canSync && scopeTournamentId != null && challongeReady ? (
         <Button variant="outline" size="sm" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
           {syncMutation.isPending ? <Spinner /> : null}

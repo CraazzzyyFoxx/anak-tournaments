@@ -177,7 +177,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
             if (e.key === "Escape") setEditing(false);
           }}
           disabled={updateMutation.isPending}
-          className="h-9 flex-1"
+          className="flex-1"
           autoFocus
         />
         <Button
@@ -320,7 +320,7 @@ function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider:
             if (e.key === "Enter") handleAdd();
           }}
           disabled={addMutation.isPending}
-          className="h-9 flex-1"
+          className="flex-1"
         />
         <Button
           size="icon"

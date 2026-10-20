@@ -239,13 +239,10 @@
         "draft": "Game set by this draft: {game}",
         "scrim": "Game set by this scrim: {game}",
         "mix": "Game set by this mix: {game}",
-        "grid": "Game set by this division grid: {game}",
-        "template": "Game set by this template: {game}",
-        "subRole": "Game set by this sub-role: {game}",
         "rule": "Game set by this rule: {game}"
       },
       "noneNote": "This page doesn't depend on the game",
-      "pickGameAction": "Pick a game in the scope filter",
+      "pickGameAction": "Pick a game in the filter",
       "showAll": "Show all games",
       "notPlayed": "{player} hasn't played {game}",
       "field": "Game",
@@ -12110,6 +12107,7 @@
     },
     "sidebar": {
       "returnToSite": "Return to site",
+      "workspace": "Workspace",
       "roles": {
         "superuser": "Superuser",
         "admin": "Admin",

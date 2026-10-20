@@ -26,14 +26,14 @@ const SIZE_CLASSES: Record<
 > = {
   default: {
     input: "w-full min-w-0 font-mono",
-    dropdownButton: "shrink-0 px-2 text-xs",
+    dropdownButton: "shrink-0 px-2",
     trigger: "h-9 min-w-0 border-input bg-transparent hover:bg-transparent",
     iconButton: "size-9 shrink-0 text-muted-foreground hover:text-foreground"
   },
   sm: {
-    input: "h-8 w-full min-w-0 font-mono",
-    dropdownButton: "h-8 shrink-0 px-2 text-xs",
-    trigger: "h-8 min-w-0 border-input bg-transparent text-sm hover:bg-transparent",
+    input: "w-full min-w-0 font-mono",
+    dropdownButton: "shrink-0 px-2",
+    trigger: "min-w-0 border-input bg-transparent hover:bg-transparent",
     iconButton: "size-8 shrink-0 text-muted-foreground hover:text-foreground"
   }
 };
@@ -127,6 +127,7 @@ export function DiscordEntitySelect<T extends { id: string; name: string }>({
       <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
         <Input
           id={id}
+          size={size}
           value={value}
           onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
           disabled={disabled}
@@ -159,6 +160,7 @@ export function DiscordEntitySelect<T extends { id: string; name: string }>({
         open={open}
         onOpenChange={onOpenChange}
         disabled={disabled || isLoading}
+        size={size}
         triggerClassName={sizeClasses.trigger}
         // The trigger names itself from its content: the chosen entity once
         // there is one, the purpose while there is not.

@@ -21,6 +21,7 @@ import {
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { DataTable, columnMeta } from "@/components/data-table";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { FilterBar } from "@/components/kit/FilterBar";
@@ -29,10 +30,8 @@ import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
-import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -89,11 +88,12 @@ const RANK_GAME_PARAMS = ["role", "div_min", "div_max"];
 const GAME_BOUND_SORTS: readonly string[] = ["rank_value", "division"];
 
 /**
- * The workspace's rank values (spec §6.8, a multi surface). Under a game: that game's rows, its role and rank-range
- * filters and every sort. Under "all games": every enabled game's rows with a game column; role and division stay in
- * each row (facts of the record, drawn on the row's own game), the role and rank-range filters and the rank sorts step
- * aside. Embedded on the game-neutral person page it keeps its own tabs under any scope (R23). An invalid or empty
- * resolution reads nothing. Switching scope remounts the table, so no row of the previous one lingers.
+ * The workspace's rank values (spec §6.8, a multi surface). On `/admin/ranks` the game is the bar's first chip
+ * (`?discipline=`). Under a game: that game's rows, its role and rank-range filters and every sort. Under "all games":
+ * every enabled game's rows with a game column; role and division stay in each row (facts of the record, drawn on the
+ * row's own game), the role and rank-range filters and the rank sorts step aside. Embedded on the game-neutral person
+ * page it keeps its own tabs and no game chip (R23). An invalid or empty resolution reads nothing. Switching game
+ * remounts the rows, so no row of the previous one lingers.
  */
 export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
   const t = useTranslations("admin.rankOverview");
@@ -103,7 +103,6 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
   const pageClass = routeClass === "none" ? "platform" : routeClass;
   const variant = pageClass === "multi" ? "multi" : "single";
   const scope = useGameScope({ pageClass, axis: workspaceId ?? "all" });
-  useGameBoundParams(RANK_GAME_PARAMS);
   const kind = scope.resolution?.game.kind;
   const discipline = scope.game;
   const metadata = useDisciplineMetadata(scope.axis, discipline);
@@ -131,7 +130,8 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
   }
   return (
     <div className="space-y-4">
-      <GameScopeControl scope={scope} variant={variant} dropParams={RANK_GAME_PARAMS} />
+      {/* The person page's own tabs; `/admin/ranks` picks its game in the bar. */}
+      {variant === "single" ? <GameScopeControl scope={scope} variant={variant} dropParams={RANK_GAME_PARAMS} /> : null}
       <RankOverviewRows
         key={`${workspaceId}:${discipline ?? ALL_DISCIPLINES}`}
         playerId={playerId}
@@ -140,6 +140,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
         discipline={discipline}
         ontology={metadata.data ?? null}
         games={scope.games ?? []}
+        filterByGame={variant === "multi"}
       />
     </div>
   );
@@ -233,6 +234,7 @@ function RankOverviewRows({
   discipline,
   ontology,
   games,
+  filterByGame,
 }: Readonly<{
   playerId?: number;
   workspaceId: number;
@@ -242,6 +244,8 @@ function RankOverviewRows({
   /** The game's metadata; `null` under "all games". */
   ontology: DisciplineMetadata | null;
   games: readonly DisciplineDescriptor[];
+  /** The page filters by game: the game chip leads the bar. */
+  filterByGame: boolean;
 }>) {
   const t = useTranslations("admin.rankOverview");
   const tGame = useTranslations("common.discipline");
@@ -258,6 +262,7 @@ function RankOverviewRows({
   const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page"] });
   const dateFrom = searchParams?.get(DATE_PARAMS.from) ?? "";
   const dateTo = searchParams?.get(DATE_PARAMS.to) ?? "";
+  const sortParam = searchParams?.get("sort") ?? "";
 
   const authorsQuery = useQuery({
     queryKey: workspacePlayerKeys.authors(workspaceId),
@@ -275,6 +280,12 @@ function RankOverviewRows({
   );
 
   const defs = useMemo<FilterDef[]>(() => {
+    // A game change strands the old game's role, rank range and rank order (DataTable's `sort`/`dir`).
+    const game = filterByGame
+      ? gameFilterDefs(games, tGame("column"), () =>
+          GAME_BOUND_SORTS.includes(sortParam) ? [...RANK_GAME_PARAMS, "sort", "dir"] : RANK_GAME_PARAMS,
+        )
+      : [];
     const layer: FilterDef = {
       key: "layer",
       label: t("filters.layer"),
@@ -295,9 +306,10 @@ function RankOverviewRows({
       })),
     };
     const differs: FilterDef = { key: "differs", label: t("filters.differsFromCanon"), kind: "toggle" };
-    // Role and rank range are one game's: under "all games" the scope hint stands in for them and the URL's are unread.
-    if (ontology === null) return [layer, author, differs];
+    // Role and rank range are one game's: offered once a game is picked, and the URL's are unread under "all games".
+    if (ontology === null) return [...game, layer, author, differs];
     return [
+      ...game,
       layer,
       author,
       {
@@ -313,7 +325,7 @@ function RankOverviewRows({
       { key: "div_max", label: t("filters.divisionMax"), kind: "single", options: divisionOptions },
       differs,
     ];
-  }, [t, slotLabel, ontology, nativeRankName, authorsQuery.data, divisionOptions]);
+  }, [t, tGame, slotLabel, ontology, nativeRankName, authorsQuery.data, divisionOptions, filterByGame, games, sortParam]);
 
   const filters = useFilters(defs);
   const layerFilter = filters.values.layer as string[];
@@ -520,18 +532,15 @@ function RankOverviewRows({
           defs={defs}
           filters={filters}
           trailing={
-            <div className="flex flex-wrap items-center gap-2">
-              {allGames ? <GameFilterHint /> : null}
-              <div className="w-64">
-                <DateRangePicker
-                  startDate={dateFrom || undefined}
-                  endDate={dateTo || undefined}
-                  placeholder={t("filters.dateRange")}
-                  onChange={(from, to) =>
-                    setParams({ [DATE_PARAMS.from]: from || null, [DATE_PARAMS.to]: to || null })
-                  }
-                />
-              </div>
+            <div className="w-64">
+              <DateRangePicker
+                startDate={dateFrom || undefined}
+                endDate={dateTo || undefined}
+                placeholder={t("filters.dateRange")}
+                onChange={(from, to) =>
+                  setParams({ [DATE_PARAMS.from]: from || null, [DATE_PARAMS.to]: to || null })
+                }
+              />
             </div>
           }
         />

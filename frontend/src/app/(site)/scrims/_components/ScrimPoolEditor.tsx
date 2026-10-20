@@ -18,7 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
 import type { PickBanRuleset, PickBanRulesetStep } from "@/types/tournament.types";
 
 import {
@@ -202,7 +201,6 @@ function ItemPicker({
                 variant={selected ? "default" : "outline"}
                 aria-pressed={selected}
                 onClick={() => onToggle(option.id)}
-                className={cn("h-8", selected && "font-semibold")}
               >
                 {selected ? <Check aria-hidden className="size-3.5" /> : null}
                 {option.name}

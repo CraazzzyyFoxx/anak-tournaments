@@ -97,4 +97,24 @@ describe("slot-family loaders", () => {
 
     expect(imports).toBe(2);
   });
+
+  it("answer synchronously only for a settled load: never a pending or failed one, null for a game without a module", async () => {
+    let imports = 0;
+    const load = createDisciplineLoader({
+      chess: async () => {
+        imports += 1;
+        if (imports === 1) throw new Error("ChunkLoadError");
+        return { default: { code: "chess", slots: {} } };
+      }
+    });
+
+    expect(load.peek("go")).toBeNull();
+    const failed = load("chess");
+    expect(load.peek("chess")).toBeUndefined();
+    await expect(failed).rejects.toThrow("ChunkLoadError");
+    expect(load.peek("chess")).toBeUndefined();
+
+    const ui = await load("chess");
+    expect(load.peek("chess")).toBe(ui);
+  });
 });

@@ -86,7 +86,7 @@ function BulkStatusMenu({
           variant="outline"
           size="sm"
           disabled={disabled}
-          className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+          className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
         >
           <Tag className="mr-1 h-3 w-3" aria-hidden="true" />
           Status
@@ -387,12 +387,12 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               label="Search the Balancing Pool"
               placeholder="Search handle or role"
               autoComplete="off"
-              className="h-9"
             />
             <Select value={poolSort} onValueChange={(value) => setPoolSort(value as PoolSortValue)}>
               <SelectTrigger
+                size="sm"
                 aria-label="Sort players"
-                className="h-9 w-[10.5rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm text-[color:var(--aqt-fg)]"
+                className="w-[10.5rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -440,7 +440,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   onClick={selectAllVisible}
                 >
                   Select all {filteredPoolPlayerStates.length}
@@ -451,7 +451,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 variant="outline"
                 size="sm"
                 disabled={actionsDisabled || !onBulkPoolMembership}
-                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                 onClick={() => runBulkPoolMembership(true)}
               >
                 <PlusCircle className="mr-1 h-3 w-3" aria-hidden="true" />
@@ -462,7 +462,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 variant="outline"
                 size="sm"
                 disabled={actionsDisabled || !onBulkPoolMembership}
-                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                 onClick={() => runBulkPoolMembership(false)}
               >
                 <ShieldX className="mr-1 h-3 w-3" aria-hidden="true" />

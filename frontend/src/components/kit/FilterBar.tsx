@@ -20,7 +20,8 @@ import {
   isFilterActive,
   type FilterState,
   type FilterDef,
-  type FilterOption
+  type FilterOption,
+  type FilterValue
 } from "@/components/kit/useFilters";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +105,12 @@ export function FilterBar({
     setEntityResults([]);
   };
 
+  const write = (def: FilterDef, value: FilterValue | null) => {
+    const dropped = def.resets?.(value) ?? [];
+    if (dropped.length === 0) filters.set(def.key, value);
+    else filters.setMany({ ...Object.fromEntries(dropped.map((key) => [key, null])), [def.key]: value });
+  };
+
   // Every def, not only the offered ones: a value already in the URL must
   // stay removable even when its filter has no second option to offer.
   const chips: ActiveChip[] = [];
@@ -117,8 +124,8 @@ export function FilterBar({
           id: `${def.key}:${item}`,
           label: `${def.label}: ${optionLabel(def, item)}`,
           onRemove: () =>
-            filters.set(
-              def.key,
+            write(
+              def,
               value.filter((other) => other !== item)
             )
         });
@@ -134,14 +141,14 @@ export function FilterBar({
               ? (entityLabels[`${def.key}:${value}`] ?? String(value))
               : optionLabel(def, String(value))
           }`;
-    chips.push({ id: def.key, label: shown, onRemove: () => filters.set(def.key, null) });
+    chips.push({ id: def.key, label: shown, onRemove: () => write(def, null) });
   }
 
   const selectOption = (def: FilterDef, option: FilterOption) => {
     if (def.kind === "multi") {
       const current = filters.values[def.key];
       const list = Array.isArray(current) ? current : [];
-      filters.set(def.key, list.includes(option.value) ? list : [...list, option.value]);
+      write(def, list.includes(option.value) ? list : [...list, option.value]);
     } else {
       if (def.kind === "entity") {
         setEntityLabels((previous) => ({
@@ -149,7 +156,7 @@ export function FilterBar({
           [`${def.key}:${option.value}`]: option.label
         }));
       }
-      filters.set(def.key, option.value);
+      write(def, option.value);
     }
     closePicker();
   };
@@ -212,7 +219,7 @@ export function FilterBar({
                         value={def.label}
                         onSelect={() => {
                           if (def.kind === "toggle") {
-                            filters.set(def.key, true);
+                            write(def, true);
                             closePicker();
                             return;
                           }
@@ -252,6 +259,7 @@ export function FilterBar({
                         value={option.label}
                         onSelect={() => selectOption(picker, option)}
                       >
+                        {option.icon}
                         <span className="truncate">{option.label}</span>
                         {option.count !== undefined ? (
                           <span className="ml-auto text-xs tabular-nums text-muted-foreground">

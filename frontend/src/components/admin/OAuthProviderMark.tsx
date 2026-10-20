@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { Globe } from "lucide-react";
 import { useTranslations } from "next-intl";
 

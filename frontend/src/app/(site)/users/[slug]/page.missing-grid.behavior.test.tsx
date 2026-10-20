@@ -43,7 +43,6 @@ vi.mock("@/services/user.service", () => ({
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 // The profile around a per-game tab has its own suites: only the tab's own game read is exercised here.
 vi.mock("@/app/(site)/users/components/header/UserHeader", () => ({ default: () => null }));
-vi.mock("@/app/(site)/users/components/header/UserGameCards", () => ({ default: () => null }));
 vi.mock("@/app/(site)/users/components/shared/profile-jsonld", () => ({ ProfileJsonLd: () => null }));
 vi.mock("@/app/(site)/users/components/shared/ProfileGameTabs", () => ({ default: () => "[game tabs]" }));
 vi.mock("@/app/(site)/users/components/shared/ProfileGameData", () => ({

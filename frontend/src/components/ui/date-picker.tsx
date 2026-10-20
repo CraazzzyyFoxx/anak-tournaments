@@ -159,7 +159,7 @@ export function DatePicker({ value, onChange, placeholder, id }: Readonly<DatePi
           variant="outline"
           data-empty={!selected}
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-full justify-start text-left",
             "data-[empty=true]:text-muted-foreground"
           )}
         >
@@ -224,7 +224,7 @@ export function DateTimePicker({
                 data-empty={!selected}
                 disabled={disabled}
                 className={cn(
-                  "w-full justify-between font-normal",
+                  "w-full justify-between",
                   "data-[empty=true]:text-muted-foreground"
                 )}
               >

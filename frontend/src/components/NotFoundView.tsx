@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Home, Swords, Trophy, Users } from "lucide-react";

@@ -5,9 +5,8 @@ import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { PlayerAvatar, type PlayerIdentity } from "@/components/PlayerAvatar";
 import { OverlayBar } from "@/components/ui/overlay-bar";
-
-import { PlayerAvatar, type PlayerIdentity } from "./users-index.atoms";
 
 /** The compare tool takes exactly two players. */
 const MAX_COMPARE = 2;

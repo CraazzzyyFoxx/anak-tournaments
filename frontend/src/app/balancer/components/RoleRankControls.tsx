@@ -220,8 +220,9 @@ export function RoleRankControls({
           min={bounds.min}
           max={bounds.max}
           disabled={disabled}
+          size="sm"
           className={cn(
-            "h-7 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-xs text-[color:var(--aqt-fg)] shadow-none focus-visible:ring-1 focus-visible:ring-primary/40",
+            "h-7 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg)] shadow-none focus-visible:ring-1 focus-visible:ring-primary/40",
             !active && "text-[color:var(--aqt-fg-dim)]"
           )}
           value={rankValue}

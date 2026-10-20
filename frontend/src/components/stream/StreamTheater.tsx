@@ -83,11 +83,10 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
         ) : (
           <>
             {entry.thumbnail_url ? (
-              // Plain <img>, not next/image: `next.config.mjs` sets
-              // `images.unoptimized`, so the optimizer never runs and a
-              // `remotePatterns` entry for static-cdn.jtvnw.net would buy
-              // nothing but a config diff. Decorative — the heading below and
-              // the button label are the accessible names.
+              // Plain <img>, not next/image: the poster comes from the
+              // streaming host (static-cdn.jtvnw.net, …), which is not in
+              // NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS. Decorative — the heading
+              // below and the button label are the accessible names.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={entry.thumbnail_url}

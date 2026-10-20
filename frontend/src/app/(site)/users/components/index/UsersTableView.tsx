@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
 
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
@@ -21,7 +22,6 @@ import {
   CompareCheckbox,
   GameMarks,
   LastActive,
-  PlayerAvatar,
   PlayerName,
   RolesCrests,
   WinrateCell

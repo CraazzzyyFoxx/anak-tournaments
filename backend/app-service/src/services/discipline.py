@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core.errors import ApiExc, ApiHTTPException, BaseAPIException
 from shared.disciplines import DISCIPLINES, DisciplineSpec
-from shared.domain.roles import public_role_attrs
+from shared.domain.roles import public_asset_url, public_role_attrs
 from shared.domain.team_format import TeamFormat
 from shared.models.identity.auth_user import AuthUser
 from shared.repository import CatalogRoleRepository, WorkspaceRepository
@@ -86,7 +86,7 @@ def _descriptor(spec: DisciplineSpec, *, enabled: bool) -> DisciplineDescriptor:
         character_classes=list(spec.character_classes),
         identity_provider=spec.identity_provider,
         short_name=spec.short_name or spec.name,
-        icon=spec.icon,
+        icon=public_asset_url(spec.icon, public_origin=config.settings.s3_public_url),
         capabilities=DisciplineCapabilities(
             catalog_sync=spec.catalog_sync is not None,
             native_rank_collection="rank.collect" in spec.collection_handlers,

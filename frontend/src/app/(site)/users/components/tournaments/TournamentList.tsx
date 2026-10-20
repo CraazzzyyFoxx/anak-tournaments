@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { roleOf } from "@/lib/roster/role-ref";
 import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { UserTournament } from "@/types/user.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { GameMarkTag } from "@/components/workspace/GameMarkTag";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { GameIcon } from "@/components/workspace/GameIcon";
 import { PlaceBadge, LeagueBadge, WdlText, WdlBar } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
 import {
   type TournamentGroup,
@@ -84,6 +84,8 @@ const TournamentRow = ({
   const agg = groupAggregate(group);
   const wr = mapsWinratePct(agg.mapsWon, agg.mapsLost);
   const lead: UserTournament = entries[0];
+  // Each row draws its role in the event's own game and workspace dictionary.
+  const ontology = useDisciplineMetadata(lead.workspace_id, lead.discipline).data ?? null;
 
   return (
     <button
@@ -99,7 +101,7 @@ const TournamentRow = ({
       <PlaceBadge placement={best} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          {showGames ? <GameMarkTag code={lead.discipline} /> : null}
+          {showGames ? <GameIcon slug={lead.discipline} /> : null}
           <span className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">{groupDisplayName(group)}</span>
           {league ? <LeagueBadge>{t("users.tournaments.leagueBadge")}</LeagueBadge> : null}
         </div>
@@ -108,9 +110,7 @@ const TournamentRow = ({
             <span className="truncate">{t("users.tournaments.divisionsCount", { count: String(entries.length) })}</span>
           ) : (
             <>
-              <span className="inline-flex shrink-0" title={roleOf(lead.role) ?? undefined}>
-                <PlayerRoleIcon role={roleOf(lead.role)} size={13} />
-              </span>
+              <PlayerRoleIcon role={lead.role} ontology={ontology} size={13} />
               <span className="truncate">{t("users.tournaments.teamName", { name: String(lead.team) })}</span>
             </>
           )}

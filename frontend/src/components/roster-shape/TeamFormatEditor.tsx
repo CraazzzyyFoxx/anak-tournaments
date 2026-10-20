@@ -25,7 +25,7 @@ export function TeamFormatEditor({ value, ontology, presets, onChange, disabled 
   const patch = (next: Partial<TeamFormatWrite>) => onChange({ ...value, ...next });
   const numberField = (label: string, current: number | null | undefined, update: (next: number | null) => void, min = 0) => (
     <label className="grid gap-1 text-xs"><span>{label}</span><Input type="number" step={1} min={min} aria-label={label}
-      value={current ?? ""} onChange={event => update(event.target.value === "" ? null : Number(event.target.value))} className="h-8 w-28" /></label>
+      value={current ?? ""} onChange={event => update(event.target.value === "" ? null : Number(event.target.value))} size="sm" className="w-28" /></label>
   );
   const updateDimension = (dimension: string, next: Partial<TeamFormatDimension>) => {
     const exists = value.dimensions.some(entry => entry.dimension === dimension);

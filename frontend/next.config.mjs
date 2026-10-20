@@ -17,10 +17,11 @@ const allowedDevOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-// Image hosts `next/image` is allowed to load from. Comma-separated URL
+// Image hosts the `next/image` optimizer resizes. Comma-separated URL
 // patterns (`https://cdn.example.com/aqt/**`), so no deployment's CDN is
 // hardcoded here; Next accepts URL objects in `remotePatterns`. Build-time
-// value — it is read when `next build` runs.
+// value — it is read when `next build` runs. `@/components/ui/image` reads the
+// same list and serves any other URL as is.
 const imageRemotePatterns = (process.env.NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS ?? "")
   .split(",")
   .map((pattern) => pattern.trim())
@@ -96,7 +97,6 @@ const nextConfig = {
     ];
   },
   images: {
-    unoptimized: true,
     qualities: [25, 50, 75, 100],
     remotePatterns: imageRemotePatterns
   }

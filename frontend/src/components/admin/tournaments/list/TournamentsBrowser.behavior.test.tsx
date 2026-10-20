@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// The admin tournaments list is a multi page (spec §6.9): every game's tournaments under "all games", with an "Игра"
-// column; under a game the server filters and the column is gone.
+// The admin tournaments list spans every game until its "Game" chip (`?discipline=`) narrows it: an "Игра" column
+// with no game filtered; under a game the server filters and the column is gone.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -84,6 +84,11 @@ const headers = () => [...container.querySelectorAll("th")].map((cell) => cell.t
 const rowText = (name: string) =>
   [...container.querySelectorAll("tbody tr")].map((row) => row.textContent ?? "").find((text) => text.includes(name));
 
+async function click(element: Element | null | undefined) {
+  await act(async () => element?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+const commandItems = () => [...document.querySelectorAll('[cmdk-item=""]')];
+
 beforeEach(() => {
   viewport.mobile = false;
   getAll.mockReset().mockImplementation(async (_isLeague: unknown, workspace?: number | null, discipline?: string | null) => {
@@ -111,7 +116,8 @@ afterEach(async () => {
 });
 
 describe("admin tournaments list across games", () => {
-  it("lists every game's tournaments under all games, with a Game column naming each row's game", async () => {
+  it("lists every game's tournaments with no game filtered, whatever the site's saved scope, with a Game column", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol", lastGame: "lol" });
     await mount("/admin/tournaments");
 
     expect(getAll).toHaveBeenCalledWith(null, 1, null);
@@ -127,6 +133,32 @@ describe("admin tournaments list across games", () => {
     expect(headers().some((text) => text.includes(en.common.discipline.column))).toBe(false);
     expect(rowText("Rift Cup")).toBeDefined();
     expect(rowText("Spring Cup")).toBeUndefined();
+  });
+
+  it("offers the Game chip first, and a picked game asks the server for that game's tournaments", async () => {
+    await mount("/admin/tournaments?status=registration");
+
+    await click(container.querySelector(`button[aria-label="${en.kit.actions.addFilter}"]`));
+    expect(commandItems()[0]?.textContent?.trim()).toBe(en.common.discipline.column);
+    await click(commandItems()[0]);
+    // An option reads as the game's mark then its name.
+    await click(commandItems().find((item) => item.textContent?.endsWith("League of Legends")));
+    await settle();
+
+    expect(navigation.current()).toBe("/admin/tournaments?status=registration&discipline=lol");
+    expect(getAll).toHaveBeenLastCalledWith(null, 1, "lol");
+    expect(rowText("Spring Cup")).toBeUndefined();
+  });
+
+  it("removing the Game chip lists every game again", async () => {
+    await mount("/admin/tournaments?discipline=lol");
+
+    await click(container.querySelector('button[aria-label="Remove filter Game: League of Legends"]'));
+    await settle();
+
+    expect(navigation.current()).toBe("/admin/tournaments");
+    expect(getAll).toHaveBeenLastCalledWith(null, 1, null);
+    expect(rowText("Spring Cup")).toBeDefined();
   });
 
   it("reads nothing for an unknown game and leaves its URL as typed, then lists every game on request", async () => {

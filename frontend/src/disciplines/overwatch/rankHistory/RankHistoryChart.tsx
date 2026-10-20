@@ -57,7 +57,7 @@ const PALETTE = [
 ];
 
 const TRIGGER_CLASS =
-  "h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] text-xs";
+  "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)]";
 
 const CARD_CLASS =
   "relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4 shadow-inner";
@@ -232,7 +232,7 @@ export default function RankHistoryChart({
     <div className={className}>
       <div className="flex flex-wrap items-center gap-3 mb-3">
         <Select value={groupBy} onValueChange={(val) => setGroupBy(val as GroupBy)}>
-          <SelectTrigger aria-label={t("rankHistory.groupByLabel")} className={cn(TRIGGER_CLASS, "w-[130px]")}>
+          <SelectTrigger aria-label={t("rankHistory.groupByLabel")} size="sm" className={cn(TRIGGER_CLASS, "w-[130px]")}>
             <SelectValue placeholder={t("rankHistory.groupByPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
@@ -246,7 +246,7 @@ export default function RankHistoryChart({
             value={effectiveBattleTagId != null ? String(effectiveBattleTagId) : undefined}
             onValueChange={(val) => setFixedBattleTagId(Number(val))}
           >
-            <SelectTrigger aria-label={t("rankHistory.accountLabel")} className={cn(TRIGGER_CLASS, "w-[170px]")}>
+            <SelectTrigger aria-label={t("rankHistory.accountLabel")} size="sm" className={cn(TRIGGER_CLASS, "w-[170px]")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -262,7 +262,7 @@ export default function RankHistoryChart({
             value={effectiveRole}
             onValueChange={(val) => setFixedRole(val)}
           >
-            <SelectTrigger aria-label={t("rankHistory.roleLabel")} className={cn(TRIGGER_CLASS, "w-[110px] capitalize")}>
+            <SelectTrigger aria-label={t("rankHistory.roleLabel")} size="sm" className={cn(TRIGGER_CLASS, "w-[110px] capitalize")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -278,6 +278,7 @@ export default function RankHistoryChart({
         <Select value={granularity} onValueChange={(val) => onGranularityChange(val as Granularity)}>
           <SelectTrigger
             aria-label={t("rankHistory.granularityPlaceholder")}
+            size="sm"
             className={cn(TRIGGER_CLASS, "w-[120px]")}
           >
             <SelectValue placeholder={t("rankHistory.granularityPlaceholder")} />
@@ -294,7 +295,7 @@ export default function RankHistoryChart({
             value={platform}
             onValueChange={(val) => setPlatform(val)}
           >
-            <SelectTrigger aria-label={t("rankHistory.platformLabel")} className={cn(TRIGGER_CLASS, "w-[80px] uppercase")}>
+            <SelectTrigger aria-label={t("rankHistory.platformLabel")} size="sm" className={cn(TRIGGER_CLASS, "w-[80px] uppercase")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -11,8 +11,8 @@
 //     validation runs on submit, so the button always stays reachable;
 //  5. "Import from Challonge instead" is a link to `?source=challonge` that
 //     keeps `step`: it is an alternative entry to this same wizard, not a step;
-//  6. the "Game" field defaults to the scope's game, else the last game, else
-//     the area's first (spec §7.2), and the game never rides in the URL.
+//  6. the "Game" field defaults to the list's filtered game (`?discipline=`) when
+//     the area runs it, else the area's first (spec §7.2); the wizard never writes the game.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -27,9 +27,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let currentSearch = "";
 let rerender: (() => void) | null = null;
-/** The saved game scope and the last picked game the creation field defaults from (spec §7.2). */
-let stored = "all";
-let lastGame: string | null = null;
 
 const navigate = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
@@ -61,11 +58,10 @@ vi.mock("@/hooks/usePermissions", () => ({
   })
 }));
 vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (
-    selector: (state: { currentWorkspaceId: number; workspaces: unknown[]; lastGame: string | null }) => unknown
-  ) => selector({ currentWorkspaceId: 1, workspaces: [], lastGame })
+  useWorkspaceStore: (selector: (state: { currentWorkspaceId: number; workspaces: unknown[] }) => unknown) =>
+    selector({ currentWorkspaceId: 1, workspaces: [] })
 }));
-// The real resolver over the saved scope and the two installed games; the field's default is the subject.
+// The real resolver over the two installed games, as the admin hook runs it: no saved scope, no last game.
 vi.mock("@/hooks/useGameScope", async () => {
   const { resolvePageGame } = await vi.importActual<typeof import("@/lib/site/discipline-scope")>(
     "@/lib/site/discipline-scope"
@@ -74,7 +70,14 @@ vi.mock("@/hooks/useGameScope", async () => {
   const games = [OW_METADATA.discipline, LOL_METADATA.discipline];
   return {
     useGameScope: () => {
-      const resolution = resolvePageGame({ pageClass: "none", ownerGame: null, explicit: null, stored, lastGame, games });
+      const resolution = resolvePageGame({
+        pageClass: "none",
+        ownerGame: null,
+        explicit: null,
+        stored: "all",
+        lastGame: null,
+        games
+      });
       return {
         axis: 1,
         games,
@@ -186,8 +189,6 @@ function pickedGame() {
 beforeEach(() => {
   navigate.mockClear();
   warning.mockClear();
-  stored = "all";
-  lastGame = null;
   for (const key of Object.keys(permissions)) delete permissions[key];
 });
 
@@ -268,21 +269,19 @@ describe("NewTournamentPage", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("defaults the game field to the scope's game", async () => {
-    stored = "lol";
-    await render();
+  it("defaults the game field to the list's filtered game", async () => {
+    await render("?discipline=lol");
 
     expect(pickedGame()).toContain("League of Legends");
   });
 
-  it("under all games defaults the field to the last game the area runs", async () => {
-    lastGame = "lol";
-    await render();
+  it("defaults the field to the area's first enabled game for a game it does not run", async () => {
+    await render("?discipline=starcraft");
 
-    expect(pickedGame()).toContain("League of Legends");
+    expect(pickedGame()).toContain("Overwatch");
   });
 
-  it("under all games with no last game defaults the field to the area's first enabled game", async () => {
+  it("without a filtered game defaults the field to the area's first enabled game", async () => {
     await render();
 
     expect(pickedGame()).toContain("Overwatch");

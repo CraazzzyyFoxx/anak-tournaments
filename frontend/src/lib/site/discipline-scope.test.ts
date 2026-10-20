@@ -316,12 +316,11 @@ describe("showsGameMarks", () => {
 });
 
 describe("defaultCreationGame", () => {
-  it("is the scope's game, else the last game the area runs, else the first enabled, else none", () => {
-    expect(defaultCreationGame({ scope: "lol", lastGame: "overwatch", games: [OW, LOL] })).toBe("lol");
-    expect(defaultCreationGame({ scope: "all", lastGame: "lol", games: [OW, LOL] })).toBe("lol");
-    expect(defaultCreationGame({ scope: "all", lastGame: "lol", games: [OW, OFF] })).toBe("overwatch");
-    expect(defaultCreationGame({ scope: "lol", lastGame: null, games: [OW, OFF] })).toBe("overwatch");
-    expect(defaultCreationGame({ scope: "all", lastGame: null, games: [OFF] })).toBeNull();
+  it("is the page's game when the area runs it, else the first enabled, else none", () => {
+    expect(defaultCreationGame("lol", [OW, LOL])).toBe("lol");
+    expect(defaultCreationGame(null, [OW, LOL])).toBe("overwatch");
+    expect(defaultCreationGame("lol", [OW, OFF])).toBe("overwatch");
+    expect(defaultCreationGame(null, [OFF])).toBeNull();
   });
 });
 

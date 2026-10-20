@@ -60,10 +60,12 @@ def test_the_scope_query_param_is_documented_as_an_id_or_the_literal_all() -> No
 def test_a_descriptor_carries_the_module_marks_and_falls_back_to_the_name() -> None:
     bare = discipline_service._descriptor(DisciplineSpec("x", "Xgame"), enabled=True)
     assert (bare.short_name, bare.icon) == ("Xgame", None)
-    marked = discipline_service._descriptor(
-        DisciplineSpec("x", "Xgame", short_name="XG", icon="/disciplines/x/icon.svg"), enabled=False
-    )
-    assert (marked.short_name, marked.icon) == ("XG", "/disciplines/x/icon.svg")
+    spec = DisciplineSpec("x", "Xgame", short_name="XG", icon="assets/x/icon.svg")
+    with patch.object(discipline_service.config.settings, "s3_public_url", ORIGIN):
+        marked = discipline_service._descriptor(spec, enabled=False)
+    assert (marked.short_name, marked.icon) == ("XG", f"{ORIGIN}/assets/x/icon.svg")
+    with patch.object(discipline_service.config.settings, "s3_public_url", None):
+        assert discipline_service._descriptor(spec, enabled=False).icon is None  # the monogram, not a 500
 
 
 def test_every_installed_game_declares_its_own_short_name() -> None:
@@ -187,8 +189,11 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
             lol["capabilities"],
         )
         self.assertEqual(
-            [(spec.short_name, spec.icon) for spec in DISCIPLINES.values()],
-            [(row["short_name"], row["icon"]) for row in listed],
+            {
+                "overwatch": ("OW", f"{ORIGIN}/assets/overwatch/icon.svg"),
+                "lol": ("LoL", f"{ORIGIN}/assets/lol/icon.svg"),
+            },
+            {row["code"]: (row["short_name"], row["icon"]) for row in listed},
         )
 
     async def test_an_omitted_scope_is_the_global_view(self) -> None:

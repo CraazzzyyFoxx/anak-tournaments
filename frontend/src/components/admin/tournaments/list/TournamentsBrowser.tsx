@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { DataTable } from "@/components/data-table";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
@@ -48,6 +49,7 @@ function isLifecycle(value: string): value is Lifecycle {
  */
 export function TournamentsBrowser() {
   const t = useTranslations("adminTournaments.list");
+  const tGame = useTranslations("common.discipline");
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
@@ -57,8 +59,8 @@ export function TournamentsBrowser() {
 
   const [pendingDelete, setPendingDelete] = useState<Tournament | null>(null);
 
-  // Every game of the workspace under "all games", one game's under a game (spec §6.9); the server filters. The list is
-  // the workspace's: a first visit learns its community after mounting, and nothing is read until then.
+  // Every game's tournaments with no game filtered, one game's under the game chip (`?discipline=`); the server
+  // filters. The list is the workspace's: a first visit learns its community after mounting, and nothing is read until then.
   const gameScope = useGameScope({ axis: currentWorkspaceId ?? "all" });
   const discipline = gameScope.game;
   const gameKind = gameScope.resolution?.game.kind;
@@ -78,6 +80,7 @@ export function TournamentsBrowser() {
 
   const defs = useMemo<FilterDef[]>(
     () => [
+      ...gameFilterDefs(gameScope.games, tGame("column")),
       {
         key: "status",
         label: t("columns.status"),
@@ -89,7 +92,7 @@ export function TournamentsBrowser() {
         }))
       }
     ],
-    [t, tournaments]
+    [t, tGame, gameScope.games, tournaments]
   );
   const filters = useFilters(defs);
   const lifecycle = String(filters.values.status ?? "");

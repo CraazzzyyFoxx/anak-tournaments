@@ -115,7 +115,7 @@ export function VersionHistorySection({
             value={selectedGrid ? String(selectedGrid.id) : undefined}
             onValueChange={onSelectGrid}
           >
-            <SelectTrigger id="division-grid-select" className="h-9 w-72">
+            <SelectTrigger id="division-grid-select" className="w-72">
               <SelectValue placeholder={t("chooseGrid")} />
             </SelectTrigger>
             <SelectContent>

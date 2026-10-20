@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,7 +16,6 @@ import {
   CompareCheckbox,
   GameMarks,
   LastActive,
-  PlayerAvatar,
   PlayerName,
   RolesCrests,
   WinrateCell

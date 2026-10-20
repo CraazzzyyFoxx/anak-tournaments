@@ -264,8 +264,6 @@
   background: var(--aqt-overlay-2);
   border: 1px solid var(--tn-border);
   color: var(--fg-muted);
-  font-size: var(--text-label);
-  font-weight: 500;
   padding: 7px 12px;
   border-radius: 8px;
   cursor: pointer;

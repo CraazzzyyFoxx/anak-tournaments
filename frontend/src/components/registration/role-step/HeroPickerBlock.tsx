@@ -58,7 +58,7 @@ export function HeroPickerBlock({ heroes, selected, max, accent, onChange }: Rea
           onChange={(event) => setQuery(event.target.value)}
           aria-label={t("search")}
           placeholder={t("search")}
-          className="h-8"
+          size="sm"
         />
       )}
       <div className="flex flex-wrap gap-1.5">

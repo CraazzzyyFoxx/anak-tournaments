@@ -15,6 +15,7 @@ from click.testing import CliRunner
 
 from scripts import publish_discipline_assets as pub
 from shared.clients.s3 import S3Client
+from shared.disciplines import DISCIPLINES
 
 SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M0 0h40v40z"/></svg>'
@@ -65,12 +66,26 @@ class FakeS3:
         ("overwatch/roles/tank.svg", "avatars/tank.svg", "overwatch"),
         ("overwatch/roles/tank.svg", "assets/overwatch/roles/tank.png", "overwatch"),  # extension mismatch
         ("overwatch/roles/tank.svg", KEY, "lol"),  # source is another module's
-        ("overwatch/roles/tank.svg", KEY, "dota"),  # not installed
+        ("dota/icon.svg", "assets/dota/icon.svg", "dota"),  # no asset directory
+        ("overwatch/roles/tank.svg", "assets/../overwatch/roles/tank.svg", ".."),  # not a discipline code
     ],
 )
 def test_source_and_key_containment(root, file, key, discipline):
     with pytest.raises(pub.AssetError):
         _load(root, file, key, discipline)
+
+
+def test_the_next_game_publishes_before_its_module_lands(root):
+    (root / "deadlock").mkdir()
+    (root / "deadlock" / "icon.svg").write_bytes(SVG)
+    asset = _load(root, "deadlock/icon.svg", "assets/deadlock/icon.svg", "deadlock")
+    assert (asset.discipline, asset.key) == ("deadlock", "assets/deadlock/icon.svg")
+
+
+def test_every_installed_game_icon_is_a_shipped_publishable_asset():
+    for code, spec in DISCIPLINES.items():
+        assert spec.icon is not None and spec.icon.startswith(f"assets/{code}/"), code
+        pub.load_asset(code, pub.ASSET_ROOT / code / spec.icon.removeprefix(f"assets/{code}/"), spec.icon)
 
 
 def test_rejects_unsupported_type_and_unsafe_or_mislabelled_content(root):

@@ -114,7 +114,7 @@ export function UsersIndexFilters({
               counts={divisionCounts}
               placeholder={t("users.list.filters.divisions")}
               ariaLabel={t("users.list.filters.divisions")}
-              triggerClassName="h-8 w-auto gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
+              triggerClassName="w-auto gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
             />
           )}
 
@@ -123,7 +123,8 @@ export function UsersIndexFilters({
               <Button
                 type="button"
                 variant="outline"
-                className="h-8 justify-start gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] font-normal text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
+                size="sm"
+                className="justify-start gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
               >
                 <SlidersHorizontal aria-hidden className="size-3.5 shrink-0 opacity-70" />
                 {t("users.list.filters.minEncountersValue", { value: String(minEncounters) })}

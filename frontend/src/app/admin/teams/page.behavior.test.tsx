@@ -3,19 +3,20 @@
 // The teams browser after P3-3. What is pinned here:
 //  1. the `team.read` gate — the screen refuses instead of fetching rosters;
 //  2. the tournament scope is a filter-bar chip on the same `?tournament=`
-//     param the sibling browsers use, so a pinned link still opens pinned;
+//     param the sibling browsers use, so a pinned link still opens pinned —
+//     under every game too, where it offers every game's tournaments;
 //  3. `?id=` opens the inspector with the roster summary, and a row click is
 //     what writes it — the row no longer navigates away;
 //  4. "Create team" still reads the same value the list is filtered by;
 //  5. one row action end to end: kebab → confirm → delete request;
-//  6. six columns do not fit a phone, so rows render as cards below `md`.
+//  6. six columns do not fit a phone, so rows render as cards below `md`;
+//  7. the Game chip comes first, and a game pick drops a tournament of another game only.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Player, Team } from "@/types/team.types";
-import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import TeamsPage from "./page";
 
@@ -80,7 +81,8 @@ vi.mock("next/navigation", () => ({
 
 const TOURNAMENTS = [
   { id: 7, name: "MoonRise Mix Vol.4", discipline: "overwatch" },
-  { id: 8, name: "MoonRise Draft Vol.2", discipline: "overwatch" }
+  { id: 8, name: "MoonRise Draft Vol.2", discipline: "overwatch" },
+  { id: 9, name: "Rift Cup", discipline: "lol" }
 ];
 
 function player(overrides: Partial<Player> = {}): Player {
@@ -194,9 +196,20 @@ function menuItem(text: string) {
 }
 
 function commandItem(label: string) {
-  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find(
-    (item) => item.textContent?.trim().startsWith(label)
+  // An option's label sits beside its game mark; a filter row is its label alone.
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim().startsWith(label)
   );
+}
+
+function commandItems() {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).map((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim()
+  );
+}
+
+function search() {
+  return new URLSearchParams(window.location.search);
 }
 
 function lastTournamentId(): unknown {
@@ -228,7 +241,7 @@ beforeEach(() => {
   getTeams.mockReset().mockResolvedValue({ results: [team()], total: 1, page: 1, per_page: 15 });
   getTournaments
     .mockReset()
-    .mockResolvedValue({ results: TOURNAMENTS, total: 2, page: 1, per_page: -1 });
+    .mockResolvedValue({ results: TOURNAMENTS, total: 3, page: 1, per_page: -1 });
   deleteTeam.mockReset().mockResolvedValue(undefined);
   document.body.innerHTML = "";
 });
@@ -367,18 +380,69 @@ describe("/admin/teams", () => {
     expect(card.textContent).toContain("Overwatch");
   });
 
-  it("lists every game's teams with a Game column and ignores a one-game tournament filter when no game is chosen", async () => {
+  it("lists every game's teams with a Game column and still applies the tournament chip when no game is chosen", async () => {
     scopeGame.value = null;
     const container = await mount("?tournament=7");
     await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
 
-    expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: null, tournamentId: null }));
+    expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: null, tournamentId: 7 }));
     expect(Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim())).toContain("Game");
     expect(container.querySelector("tbody")?.textContent).toContain("Overwatch");
-    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
-    expect(container.textContent).toContain("Some filters need a game");
-    // A scope pick drops the tournament chip from the URL (R5).
-    expect(useScopePillOpen.getState().gameBoundParams).toEqual(["tournament"]);
+    await waitFor(
+      () => document.querySelector('button[aria-label="Remove filter Tournament: MoonRise Mix Vol.4"]'),
+      "the tournament chip"
+    );
+    // The tournament is chosen, so a team can be created in it whatever the game filter.
+    expect(button("Create team")?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("leads with the Game chip and offers every game's tournaments without a game", async () => {
+    scopeGame.value = null;
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    // The Game chip leads the filter list.
+    expect(commandItems()[0]).toBe("Game");
+    await click(await waitFor(() => commandItem("Tournament"), "the Tournament filter"));
+    expect(commandItems()).toEqual(["MoonRise Mix Vol.4", "MoonRise Draft Vol.2", "Rift Cup"]);
+  });
+
+  it("hides another game's tournaments from the chip under a game", async () => {
+    const container = await mount();
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Tournament"), "the Tournament filter"));
+    expect(commandItems()).toEqual(["MoonRise Mix Vol.4", "MoonRise Draft Vol.2"]);
+  });
+
+  it("drops the tournament when a game pick names another game, and keeps it for its own", async () => {
+    scopeGame.value = null;
+    const container = await mount("?tournament=7");
+    await waitFor(() => lastTournamentId() === 7, "the scoped roster request");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Game"), "the Game filter"));
+    await click(await waitFor(() => commandItem("Overwatch"), "the Overwatch option"));
+    expect(search().get("discipline")).toBe("overwatch");
+    expect(search().get("tournament")).toBe("7");
+
+    await click(container.querySelector('button[aria-label="Add filter"]'));
+    await click(await waitFor(() => commandItem("Game"), "the Game filter"));
+    await click(await waitFor(() => commandItem("League of Legends"), "the League option"));
+    expect(search().get("discipline")).toBe("lol");
+    expect(search().get("tournament")).toBeNull();
+  });
+
+  it("keeps the tournament when the game chip is removed", async () => {
+    scopeGame.value = "lol";
+    await mount("?discipline=lol&tournament=9");
+    await waitFor(() => lastTournamentId() === 9, "the scoped roster request");
+
+    await click(document.querySelector('button[aria-label="Remove filter Game: League of Legends"]'));
+    expect(search().get("discipline")).toBeNull();
+    expect(search().get("tournament")).toBe("9");
   });
 
   it("asks the server for one game's teams under a game, without the column", async () => {

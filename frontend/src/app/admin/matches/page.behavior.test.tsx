@@ -4,12 +4,15 @@
 //  1. the `match.read` gate — five sidebar entries became one screen, so the
 //     grant is checked once, on the screen;
 //  2. `?view=` is the only state the switch owns, and it survives a reload;
-//  3. switching view keeps the shared tournament scope and drops the row id,
-//     because an encounter id means nothing in the parsed-maps view;
+//  3. switching view keeps the shared tournament scope and the Game chip and
+//     drops the row id, because an encounter id means nothing in the
+//     parsed-maps view;
 //  4. the tournament chip is removable here — inside a hub the tournament is
-//     not a filter at all;
+//     not a filter at all — and applies under every game;
 //  5. below `md` the rows become cards: these tables carry more than four
-//     columns, so a phone gets the card layout instead of a sideways scroll.
+//     columns, so a phone gets the card layout instead of a sideways scroll;
+//  6. a Game chip pick drops the map always and the tournament scope only when
+//     it is another game's, keeping the view.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -18,7 +21,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import en from "@/i18n/messages/en.json";
 import type { Encounter } from "@/types/encounter.types";
-import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import AdminMatchesPage from "./page";
 
 declare global {
@@ -116,6 +118,9 @@ vi.mock("@/services/admin.service", () => ({
     }),
     listAdminMatches: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: 25 })
   }
+}));
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 }) }
 }));
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
@@ -249,6 +254,19 @@ function tab(scope: ParentNode, label: string) {
   );
 }
 
+/** The chip popover portals out of the page; an option's label sits beside its game mark. */
+function commandItem(label: string) {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim().startsWith(label)
+  );
+}
+
+async function pickChip(filter: string, option: string) {
+  await click(document.querySelector('button[aria-label="Add filter"]'));
+  await click(await waitFor(() => commandItem(filter), `the ${filter} filter`));
+  await click(await waitFor(() => commandItem(option), `the ${option} option`));
+}
+
 function setViewportWidth(width: number) {
   Object.defineProperty(window, "innerWidth", { value: width, configurable: true });
   window.matchMedia = ((query: string) => ({
@@ -333,8 +351,8 @@ describe("/admin/matches", () => {
     expect(getEncounters).not.toHaveBeenCalled();
   });
 
-  it("keeps the tournament scope across a view switch and drops the row id", async () => {
-    window.history.replaceState(null, "", "/admin/matches?view=encounters&tournament=78&id=8812");
+  it("keeps the tournament scope and the Game chip across a view switch and drops the row id", async () => {
+    window.history.replaceState(null, "", "/admin/matches?view=encounters&tournament=78&discipline=overwatch&id=8812");
     const container = await mount();
     await waitFor(() => container.querySelector("table"), "the encounters table");
 
@@ -342,6 +360,8 @@ describe("/admin/matches", () => {
     const params = new URLSearchParams(href.split("?")[1] ?? "");
     expect(params.get("view")).toBe("parsed");
     expect(params.get("tournament")).toBe("78");
+    // The encounters and parsed views share one Game chip.
+    expect(params.get("discipline")).toBe("overwatch");
     // A row id from the encounters view would select a different entity here.
     expect(params.get("id")).toBeNull();
   });
@@ -398,17 +418,37 @@ describe("/admin/matches", () => {
     expect(getEncounters.mock.calls.at(-1)?.[7]).toMatchObject({ discipline: "lol" });
   });
 
-  it("hides and ignores the one-game filters under all games and registers them for the scope pill", async () => {
+  it("applies the tournament and stage chips under all games", async () => {
     scopeGame.value = null;
     window.history.replaceState(null, "", "/admin/matches?tournament=78&stage=5");
     const container = await mount();
     await waitFor(() => container.querySelector("table"), "the encounters table");
 
     const call = getEncounters.mock.calls.at(-1)!;
-    expect(call[2]).toBeNull();
-    expect(call[7]).toMatchObject({ stage_id: null, discipline: null });
-    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
-    expect(container.textContent).toContain(en.common.discipline.filterHint);
-    expect(useScopePillOpen.getState().gameBoundParams).toEqual(["map_id", "tournament", "stage", "group"]);
+    expect(call[2]).toBe(78);
+    expect(call[7]).toMatchObject({ stage_id: 5, discipline: null });
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).not.toBeNull();
+  });
+
+  it("a Game chip pick in the parsed view drops the map always and another game's tournament scope, and keeps the view", async () => {
+    scopeGame.value = null;
+    window.history.replaceState(null, "", "/admin/matches?view=parsed&tournament=78&stage=2&map_id=9&unlinked_only=1");
+    await mount();
+    await waitFor(() => document.querySelector('button[aria-label="Add filter"]'), "the parsed view's filter bar");
+
+    // OWT 78 is an Overwatch tournament: picking its own game keeps it.
+    await pickChip("Game", "Overwatch");
+    let url = new URLSearchParams(window.location.search);
+    expect(url.get("discipline")).toBe("overwatch");
+    expect(url.get("tournament")).toBe("78");
+    expect(url.get("stage")).toBe("2");
+    expect(url.has("map_id")).toBe(false);
+
+    await pickChip("Game", "League of Legends");
+    url = new URLSearchParams(window.location.search);
+    expect(url.get("view")).toBe("parsed");
+    expect(url.get("discipline")).toBe("lol");
+    for (const param of ["map_id", "tournament", "stage"]) expect(url.has(param), param).toBe(false);
+    expect(url.get("unlinked_only")).toBe("1");
   });
 });

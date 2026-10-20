@@ -191,7 +191,7 @@ export function PlayerEditModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-label text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   onClick={form.addRole}
                   disabled={form.addableRole === null}
                 >
@@ -202,7 +202,7 @@ export function PlayerEditModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-label text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   onClick={() => void history.load()}
                   disabled={history.loading}
                 >
@@ -240,7 +240,7 @@ export function PlayerEditModal({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-6 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-label text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)]"
+                    className="h-6 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)]"
                     disabled={saving}
                     onClick={form.handleClearPin}
                   >
@@ -301,7 +301,7 @@ export function PlayerEditModal({
             <Textarea
               value={form.notes}
               onChange={(event) => form.setNotes(event.target.value)}
-              className="min-h-14 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 py-1.5 text-xs text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)]"
+              className="min-h-14 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 py-1.5 text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)]"
               placeholder="Notes about availability, role comfort, or balancing caveats."
             />
           </div>
@@ -312,7 +312,7 @@ export function PlayerEditModal({
                   Registration status
                 </Label>
                 <Select value={form.registrationStatus} onValueChange={form.setRegistrationStatus}>
-                  <SelectTrigger className="h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-xs text-[color:var(--aqt-fg)]">
+                  <SelectTrigger size="sm" className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]">
                     <SelectValue placeholder="Select registration status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -337,7 +337,7 @@ export function PlayerEditModal({
                   value={form.registrationBalancerStatus}
                   onValueChange={form.setRegistrationBalancerStatus}
                 >
-                  <SelectTrigger className="h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-xs text-[color:var(--aqt-fg)]">
+                  <SelectTrigger size="sm" className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]">
                     <SelectValue placeholder="Select balancer status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -372,7 +372,7 @@ export function PlayerEditModal({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-label text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
+                      className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
                       disabled={saving}
                       onClick={form.handleMoveToReady}
                       title="Saves your pending edits, then recomputes this player's balancer status from their current role ranks"
@@ -394,7 +394,8 @@ export function PlayerEditModal({
           <div className="flex gap-2">
             <Button
               variant="outline"
-              className="h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-xs text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+              size="sm"
+              className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
               onClick={() => onOpenChange(false)}
             >
               Cancel
@@ -402,7 +403,8 @@ export function PlayerEditModal({
             <Button
               onClick={form.handleSave}
               disabled={saving}
-              className="h-8 bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90"
+              size="sm"
+              className="bg-primary px-3 text-primary-foreground hover:bg-primary/90"
             >
               <Save className="mr-1 h-3.5 w-3.5" />
               Save

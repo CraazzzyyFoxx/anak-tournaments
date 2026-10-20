@@ -34,7 +34,7 @@ export default function LabelledSelect({
         {label}
       </span>
       <Select value={value} onValueChange={onValueChange}>
-        <SelectTrigger aria-labelledby={labelId} className={`h-8 text-caption ${className}`}>
+        <SelectTrigger aria-labelledby={labelId} size="sm" className={className}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

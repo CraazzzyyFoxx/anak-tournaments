@@ -5,14 +5,15 @@
 //     answer "which person", which the person page already settled;
 //  2. the division chips are the rank-range filter, mapped through the
 //     workspace grid, and the top tier is open-ended (`rank_max: null`), which
-//     means "no ceiling" rather than "max 0".
+//     means "no ceiling" rather than "max 0";
+//  3. the game chip leads the bar, and a game change drops the old game's role,
+//     rank range and rank order.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
-import { PillPick } from "@/test/pill-pick";
 import type { RankOverviewListParams, RankOverviewRow } from "@/services/workspace-player.service";
 
 declare global {
@@ -20,9 +21,10 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// `router.replace` is the chips' URL write: it lands in `window.location`, which `useSearchParams` reads back.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/ranks",
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ replace: (url: string) => window.history.replaceState(null, "", url), push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(window.location.search)
 }));
 
@@ -55,19 +57,11 @@ vi.mock("@/stores/workspace.store", () => ({
 
 // The page's game is a test input; the owner's metadata is the real OW / League fixture.
 let browsing = "overwatch";
-// The hook is stubbed, so its pill pick is the hook's own URL write (C3): set `?discipline=`, drop `page` and the
-// `dropParams` the pill passes — which are what the page registered with the pill.
-const selectScope = vi.fn((value: string, options?: { dropParams?: string[] }) => {
-  const next = new URLSearchParams(window.location.search);
-  next.set("discipline", value);
-  next.delete("page");
-  for (const param of options?.dropParams ?? []) next.delete(param);
-  window.history.replaceState(null, "", `/admin/ranks?${next.toString()}`);
-});
 vi.mock("@/hooks/useGameScope", async () => {
-  const { gameScopeStub } = await import("@/test/game-scope");
+  const { LOL_GAME, OW_GAME, gameScopeStub } = await import("@/test/game-scope");
   return {
-    useGameScope: () => gameScopeStub({ kind: "game", code: browsing, source: "url" }, { axis: 7, selectScope })
+    useGameScope: () =>
+      gameScopeStub({ kind: "game", code: browsing, source: "url" }, { axis: 7, games: [OW_GAME, LOL_GAME] })
   };
 });
 vi.mock("@/hooks/useDisciplineMetadata", async () => {
@@ -139,7 +133,6 @@ async function render(search: string, playerId?: number) {
     root.render(
       <QueryClientProvider client={client}>
         <RankOverviewTable playerId={playerId} />
-        <PillPick code="lol" />
       </QueryClientProvider>
     );
   });
@@ -165,7 +158,15 @@ afterEach(async () => {
     root.unmount();
   });
   container.remove();
+  // The chip picker's popover is portalled to `body`.
+  document.body.innerHTML = "";
 });
+
+async function click(element: Element | null | undefined) {
+  await act(async () => {
+    element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
 
 describe("rank overview table", () => {
   it("drops the player column and the search box when pinned to one person", async () => {
@@ -238,16 +239,19 @@ describe("rank overview table", () => {
     expect(container.textContent).toContain("tank");
   });
 
-  it("a game picked in the scope pill drops the role and division filters and keeps the others", async () => {
-    await render("?role=tank&div_min=1&div_max=2&layer=author");
+  it("leads the bar with the game chip; a game picked there drops the role, division range and rank order", async () => {
+    await render("?discipline=overwatch&role=tank&div_min=1&div_max=2&layer=author&sort=rank_value&dir=desc");
 
-    await act(async () => {
-      container.querySelector("[data-pill-pick=lol]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
+    // The i18n mock echoes keys: the picker trigger is `addFilter`, the game chip `column`.
+    await click(container.querySelector('button[aria-label="addFilter"]'));
+    const gameItem = document.querySelector('[cmdk-item=""]');
+    expect(gameItem?.textContent).toBe("column");
+    await click(gameItem);
+    await click([...document.querySelectorAll('[cmdk-item=""]')].find((item) => item.textContent?.includes("League of Legends")));
 
     const search = new URLSearchParams(window.location.search);
     expect(search.get("discipline")).toBe("lol");
-    for (const param of ["role", "div_min", "div_max"]) expect(search.has(param), param).toBe(false);
+    for (const param of ["role", "div_min", "div_max", "sort", "dir"]) expect(search.has(param), param).toBe(false);
     expect(search.get("layer")).toBe("author");
   });
 });

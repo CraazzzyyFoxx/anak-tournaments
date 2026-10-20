@@ -15,8 +15,8 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-/** The page's game (`value`, `null`: all games) and the saved scope's (`saved`; `undefined`: the page's own). */
-const scopeGame = vi.hoisted(() => ({ value: null as string | null, saved: undefined as string | undefined }));
+/** The page's filtered game (`?discipline=`); `null`: no game chip, every game. */
+const scopeGame = vi.hoisted(() => ({ value: null as string | null }));
 
 vi.mock("next-intl", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next-intl")>();
@@ -29,15 +29,8 @@ vi.mock("next-intl", async (importOriginal) => {
 });
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
 vi.mock("@/hooks/useGameScope", async () => {
-  const { gameScopeState, multiResolution } = await import("@/test/game-scope");
-  return {
-    useGameScope: () => {
-      const { value, saved } = scopeGame;
-      if (saved === undefined) return gameScopeState(value);
-      // An explicit `?discipline=` narrows the list past the saved scope.
-      return gameScopeState(value, { resolution: { ...multiResolution(value), scope: saved } });
-    }
-  };
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(scopeGame.value) };
 });
 vi.mock("@/hooks/useGameDescriptors", async () => {
   const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
@@ -94,28 +87,37 @@ const PER_GAME = ["Evaluate achievements", "Export JSON", "Seed defaults", "Hard
 
 beforeEach(() => {
   scopeGame.value = null;
-  scopeGame.saved = undefined;
   navigation.reset("/admin/achievements");
   document.body.innerHTML = "";
   container = document.body.appendChild(document.createElement("div"));
   root = createRoot(container);
-  useWorkspaceStore.setState({ currentWorkspaceId: 7, lastGame: null });
+  // A saved scope and a last game from the site: the admin reads neither.
+  useWorkspaceStore.setState({ currentWorkspaceId: 7, gameScope: "lol", lastGame: "lol" });
 });
 
 afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-describe("/admin/achievements under the game scope", () => {
-  it("disables the per-game bulk actions under all games and keeps import", async () => {
+async function openCreate() {
+  const create = [...container.querySelectorAll("button")].find((node) => node.textContent === "Create achievement");
+  await act(async () => create?.click());
+  return container.querySelector("[data-form-game]")?.getAttribute("data-form-game");
+}
+
+describe("/admin/achievements per filtered game", () => {
+  it("disables the per-game bulk actions without a filtered game, says why, and keeps import", async () => {
     await mount();
     await openMenu();
 
-    for (const label of PER_GAME) expect(item(label)?.hasAttribute("data-disabled"), label).toBe(true);
+    for (const label of PER_GAME) {
+      expect(item(label)?.hasAttribute("data-disabled"), label).toBe(true);
+      expect(item(label)?.textContent, label).toContain("Pick a game in the filter");
+    }
     expect(item("Import…")?.hasAttribute("data-disabled")).toBe(false);
   });
 
-  it("acts on the game in scope", async () => {
+  it("acts on the filtered game", async () => {
     scopeGame.value = "lol";
     await mount();
     await openMenu();
@@ -123,14 +125,16 @@ describe("/admin/achievements under the game scope", () => {
     for (const label of PER_GAME) expect(item(label)?.hasAttribute("data-disabled"), label).toBe(false);
   });
 
-  it("starts a new rule in the saved scope's game, not in a URL game that only narrows the list", async () => {
+  it("starts a new rule in the filtered game", async () => {
     scopeGame.value = "lol";
-    scopeGame.saved = "overwatch";
     await mount();
 
-    const create = [...container.querySelectorAll("button")].find((node) => node.textContent === "Create achievement");
-    await act(async () => create?.click());
+    expect(await openCreate()).toBe("lol");
+  });
 
-    expect(container.querySelector("[data-form-game]")?.getAttribute("data-form-game")).toBe("overwatch");
+  it("starts a new rule in the first enabled game without a filtered game", async () => {
+    await mount();
+
+    expect(await openCreate()).toBe("overwatch");
   });
 });

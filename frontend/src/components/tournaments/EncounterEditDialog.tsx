@@ -357,7 +357,7 @@ function EncounterEditDialogBody({
                             })
                           }
                           className={cn(
-                            "h-9 rounded-lg border px-3 font-semibold transition-all duration-150",
+                            "rounded-lg border px-3 transition-all duration-150",
                             selected
                               ? "border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
                               : "border-border/60 bg-muted/10 text-foreground hover:border-border hover:bg-accent hover:text-accent-foreground"
@@ -458,7 +458,7 @@ function EncounterEditDialogBody({
                 variant="secondary"
                 onClick={() => reopenMutation.mutate()}
                 disabled={reason.trim().length === 0 || reopenMutation.isPending}
-                className="h-10 px-5 font-semibold"
+                className="h-10 px-5"
               >
                 {reopenMutation.isPending ? t("matchEdit.reopening") : t("matchEdit.reopenResult")}
               </Button>
@@ -474,7 +474,7 @@ function EncounterEditDialogBody({
                   reportsQuery.isPending ||
                   confirmMutation.isPending
                 }
-                className="h-10 px-5 font-bold"
+                className="h-10 px-5"
               >
                 {confirmMutation.isPending
                   ? t("matchEdit.confirming")
@@ -492,7 +492,7 @@ function EncounterEditDialogBody({
               <div className="space-y-1.5">
                 <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.bestOf")}</Label>
                 <Select value={String(bestOf)} onValueChange={(value) => setBestOf(Number(value))}>
-                  <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
+                  <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -530,7 +530,7 @@ function EncounterEditDialogBody({
           <div className="space-y-1.5">
             <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
             <Select value={status} onValueChange={(value) => setStatus(normalizeStatus(value))} disabled={isCompleted}>
-              <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] font-semibold text-[color:var(--aqt-fg)]">
+              <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -560,7 +560,7 @@ function EncounterEditDialogBody({
                 variant="outline"
                 onClick={() => saveMutation.mutate()}
                 disabled={!!settingsError || saveMutation.isPending}
-                className="h-10 px-5 font-semibold"
+                className="h-10 px-5"
               >
                 {saveMutation.isPending ? t("matchEdit.saving") : t("matchEdit.save")}
               </Button>
@@ -573,7 +573,7 @@ function EncounterEditDialogBody({
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
-          className="h-10 px-5 font-semibold"
+          className="h-10 px-5"
         >
           {t("matchEdit.cancel")}
         </Button>

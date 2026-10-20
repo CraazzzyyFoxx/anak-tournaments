@@ -46,6 +46,8 @@ export interface ComboboxProps {
   triggerAriaLabel?: string;
   /** Merged after the trigger's own classes, so height and width can be overridden. */
   triggerClassName?: string;
+  /** `sm` is the 32px toolbar row (13px text); `default` the 40px form trigger (14px). */
+  size?: "sm" | "default";
   disabled?: boolean;
   searchValue: string;
   onSearchValueChange: (value: string) => void;
@@ -78,6 +80,7 @@ export function Combobox({
   labelTitle,
   triggerAriaLabel,
   triggerClassName,
+  size = "default",
   disabled = false,
   searchValue,
   onSearchValueChange,
@@ -98,13 +101,15 @@ export function Combobox({
           id={id}
           type="button"
           variant="outline"
+          size={size}
           role="combobox"
           aria-label={triggerAriaLabel}
           aria-haspopup="listbox"
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "h-10 w-full justify-between border-border/60 bg-background/80 font-normal hover:bg-background/90",
+            "w-full justify-between border-border/60 bg-background/80 hover:bg-background/90",
+            size === "default" && "h-10",
             triggerClassName
           )}
         >

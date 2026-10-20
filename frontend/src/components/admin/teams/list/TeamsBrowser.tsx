@@ -11,12 +11,14 @@ import { Inspector } from "@/components/kit/Inspector";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { useFilters } from "@/components/kit/useFilters";
 import { TeamCreateDialog } from "@/components/admin/teams/TeamCreateDialog";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import {
   TOURNAMENT_QUERY_PARAM,
-  parseTournamentQueryParam
+  parseTournamentQueryParam,
+  strandedTournamentParams,
+  tournamentOptions
 } from "@/components/admin/tournament-filter";
 import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
-import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -26,6 +28,7 @@ import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Team } from "@/types/team.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -44,13 +47,19 @@ const PAGE_SIZE = 15;
  * the inspector at `?id=` — the roster summary — and "Open page" goes on to
  * the team editor, which is where a roster is actually changed.
  *
- * A multi list (spec §6.9): `discipline: null` is every game's teams with a "Game" column; a code is that game's
- * teams, filtered on the server through the team's tournament.
+ * A multi list (spec §6.9): the "Game" chip on `?discipline=` comes first; `discipline: null` is every game's teams
+ * with a "Game" column, a code is that game's teams, filtered on the server through the team's tournament.
  */
 export function TeamsBrowser({
   workspaceId,
-  discipline
-}: Readonly<{ workspaceId: number; discipline: string | null }>) {
+  discipline,
+  games
+}: Readonly<{
+  workspaceId: number;
+  discipline: string | null;
+  /** The community's games, for the Game chip. */
+  games: readonly DisciplineDescriptor[] | undefined;
+}>) {
   const t = useTranslations("adminPeople.teams");
   const tGame = useTranslations("common.discipline");
   const { canAccessPermission } = usePermissions();
@@ -72,24 +81,22 @@ export function TeamsBrowser({
     queryFn: () => tournamentService.getAll(null, workspaceId)
   });
 
-  // The tournament chip is one game's (spec §6.2): under "all games" it is hidden and `?tournament=` is ignored;
-  // under a game it offers that game's tournaments.
+  const selectedTournamentId = parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
+  const selectedTournamentGame = tournamentsQuery.data?.results.find(
+    (tournament) => tournament.id === selectedTournamentId
+  )?.discipline;
+
+  // The tournament chip offers the filtered game's tournaments, or every game's under "all games"; a game pick drops
+  // a tournament of another game.
   const defs = useMemo(
-    () =>
-      discipline === null
-        ? []
-        : teamFilterDefs(
-            (tournamentsQuery.data?.results ?? []).filter((tournament) => tournament.discipline === discipline),
-            t("labels.tournament")
-          ),
-    [discipline, t, tournamentsQuery.data]
+    () => [
+      ...gameFilterDefs(games, tGame("column"), (next) => strandedTournamentParams(selectedTournamentGame, next)),
+      ...teamFilterDefs(tournamentOptions(tournamentsQuery.data?.results ?? [], discipline), t("labels.tournament"))
+    ],
+    [games, selectedTournamentGame, discipline, t, tGame, tournamentsQuery.data]
   );
 
   const filters = useFilters(defs);
-  const selectedTournamentId =
-    discipline === null
-      ? null
-      : parseTournamentQueryParam(String(filters.values[TOURNAMENT_QUERY_PARAM] ?? "") || null);
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => adminService.deleteTeam(id),
@@ -139,9 +146,7 @@ export function TeamsBrowser({
                 trailing={
                   // A team belongs to one tournament, so the action exists only
                   // once the list is scoped to one.
-                  discipline === null ? (
-                    <GameFilterHint />
-                  ) : canCreateTeam && selectedTournamentId != null ? (
+                  canCreateTeam && selectedTournamentId != null ? (
                     <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
                       <Plus className="size-4" aria-hidden />
                       {t("create")}

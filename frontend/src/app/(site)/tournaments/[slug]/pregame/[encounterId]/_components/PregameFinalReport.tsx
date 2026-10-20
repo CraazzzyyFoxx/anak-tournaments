@@ -72,7 +72,7 @@ export function PregameFinalReport({
   const settled = viewerTeamId == null || !reportable;
 
   const back = (
-    <Button variant="outline" asChild className="h-10 px-5 font-semibold">
+    <Button variant="outline" asChild className="h-10 px-5">
       <Link href={returnTo}>
         <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
         {t("back")}

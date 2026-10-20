@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import encounterService from "@/services/encounter.service";
 import { cn } from "@/lib/utils";
 import { Metadata } from "next";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import MatchStatistics from "@/components/match/MatchStatistics";
 import { observedScore } from "@/lib/encounter/detail";
 import { Card, CardHeader } from "@/components/ui/card";

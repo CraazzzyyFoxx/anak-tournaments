@@ -1,4 +1,4 @@
-import type { FilterDef } from "@/components/kit/useFilters";
+import type { FilterDef, FilterOption } from "@/components/kit/useFilters";
 import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
 import type { Stage, StageItem } from "@/types/tournament.types";
 
@@ -9,7 +9,8 @@ import type { Stage, StageItem } from "@/types/tournament.types";
  * Standings or Reports view beside it — which is why this is a list of
  * definitions rather than a row of local selects.
  *
- * The tournament chip only exists where the tournament is not already pinned.
+ * The tournament chip only exists where the tournament is not already pinned;
+ * its options are `tournamentOptions` (the filtered game's, or every game's).
  * A stage or group filter with fewer than two options is not offered:
  * `FilterBar` drops it, while a value already in the URL stays removable.
  */
@@ -21,7 +22,7 @@ export function encounterFilterDefs({
   t
 }: Readonly<{
   tournamentId: number | null;
-  tournaments: Array<{ id: number; name: string }>;
+  tournaments: FilterOption[];
   stages: Stage[];
   stageItems: StageItem[];
   t: (key: string) => string;
@@ -32,7 +33,7 @@ export function encounterFilterDefs({
       key: TOURNAMENT_QUERY_PARAM,
       label: t("tournament"),
       kind: "single",
-      options: tournaments.map((entry) => ({ value: String(entry.id), label: entry.name }))
+      options: tournaments
     });
   }
   list.push(

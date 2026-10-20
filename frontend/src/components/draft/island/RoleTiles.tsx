@@ -7,6 +7,7 @@ import { aggregateRoleStats } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import Image from "@/components/ui/image";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { canSeat, type RoomSelection, type TeamView } from "@/lib/draft/room-model";
 import { playerRoles, roleTopHeroes } from "@/lib/draft/workspace-model";
@@ -175,8 +176,7 @@ export function RoleTiles({
                               }`;
                       return (
                         <span key={hero.slug} className="flex w-8 flex-col items-center gap-0.5" title={heroTitle}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
+                          <Image
                             src={getHeroIconUrl(hero.slug, hero.imagePath)}
                             alt={name}
                             width={32}

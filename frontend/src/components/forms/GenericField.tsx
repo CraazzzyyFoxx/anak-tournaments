@@ -88,7 +88,7 @@ export default function GenericField({
               id={id}
               aria-invalid={Boolean(error)}
               aria-describedby={error ? errorId : undefined}
-              className={cn(fieldControlClass, "h-9", error && fieldInvalidClass)}
+              className={cn(fieldControlClass, error && fieldInvalidClass)}
             >
               <SelectValue placeholder={field.placeholder || t("common.selectPlaceholder")} />
             </SelectTrigger>
@@ -159,7 +159,7 @@ export default function GenericField({
             disabled={disabled}
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errorId : undefined}
-            className={cn(fieldControlClass, "h-9", error && fieldInvalidClass)}
+            className={cn(fieldControlClass, "h-9 text-base sm:text-sm", error && fieldInvalidClass)}
           />
           {helpNode}
           {errorNode}

@@ -148,7 +148,7 @@ function RoleSubroleSubForm({
         return (
           <div key={index} className="flex items-center gap-1.5">
             <Select value={item.role || undefined} onValueChange={(v) => updateItem(index, "role", v)}>
-              <SelectTrigger className="h-8 flex-1">
+              <SelectTrigger size="sm" className="flex-1">
                 <SelectValue placeholder={t("role")} />
               </SelectTrigger>
               <SelectContent>
@@ -164,7 +164,7 @@ function RoleSubroleSubForm({
               onValueChange={(v) => updateItem(index, "subrole", v === NONE ? null : v)}
               disabled={subroleDisabled}
             >
-              <SelectTrigger className="h-8 flex-1">
+              <SelectTrigger size="sm" className="flex-1">
                 <SelectValue placeholder={subroleDisabled ? "—" : t("subrole")} />
               </SelectTrigger>
               <SelectContent>
@@ -189,7 +189,7 @@ function RoleSubroleSubForm({
           </div>
         );
       })}
-      <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-muted-foreground" onClick={addItem}>
+      <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-muted-foreground" onClick={addItem}>
         <Plus className="size-3" />
         {t("addRole")}
       </Button>
@@ -219,7 +219,6 @@ function ValueInput({
         value={row.value}
         onChange={(event) => onUpdate(row.id, { value: event.target.value })}
         placeholder={t("rankValue")}
-        className="h-9"
       />
     );
   }
@@ -230,7 +229,6 @@ function ValueInput({
         value={row.value}
         onChange={(event) => onUpdate(row.id, { value: event.target.value })}
         placeholder={t("mappedValue")}
-        className="h-9"
       />
     );
   }
@@ -247,7 +245,7 @@ function ValueInput({
         onValueChange={(value) => onUpdate(row.id, { value })}
         disabled={options.length === 0}
       >
-        <SelectTrigger className="h-9">
+        <SelectTrigger>
           <SelectValue placeholder={options.length === 0 ? t("noSubroles") : t("subrole")} />
         </SelectTrigger>
         <SelectContent>
@@ -267,7 +265,7 @@ function ValueInput({
       : registrationRoles(ontology).map((role) => ({ value: role.code, label: slotLabel(role.code) }));
   return (
     <Select value={row.value || undefined} onValueChange={(value) => onUpdate(row.id, { value })}>
-      <SelectTrigger className="h-9">
+      <SelectTrigger>
         <SelectValue placeholder={kind === "boolean" ? t("booleanPlaceholder") : t("role")} />
       </SelectTrigger>
       <SelectContent>
@@ -305,12 +303,12 @@ export function ValueMapEditor({
         </div>
         <div className="flex items-center gap-2">
           {canSeed ? (
-            <Button variant="outline" size="sm" className="h-8" onClick={onSeedDefaults}>
+            <Button variant="outline" size="sm" onClick={onSeedDefaults}>
               <Sprout className="mr-1.5 size-3.5" />
               {t("seedDefaults")}
             </Button>
           ) : null}
-          <Button variant="outline" size="sm" className="h-8" onClick={onAdd}>
+          <Button variant="outline" size="sm" onClick={onAdd}>
             <Plus className="mr-1.5 size-3.5" />
             {t("addRow")}
           </Button>
@@ -336,7 +334,6 @@ export function ValueMapEditor({
                 value={row.key}
                 onChange={(event) => onUpdate(row.id, { key: event.target.value })}
                 placeholder={t("textFromSheet")}
-                className="h-9"
               />
               <ValueInput kind={kind} row={row} onUpdate={onUpdate} catalog={subroleCatalog} ontology={ontology} />
               <Button

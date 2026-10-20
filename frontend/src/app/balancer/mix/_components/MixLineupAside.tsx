@@ -151,7 +151,7 @@ export function MixLineupAside({
                 ? "A full lobby. Balance is ready to run."
                 : `${-overflow} more for a full lobby.`}
         </p>
-        <Button type="button" className="h-9 shrink-0" onClick={onDone}>
+        <Button type="button" className="shrink-0" onClick={onDone}>
           Done
         </Button>
       </div>

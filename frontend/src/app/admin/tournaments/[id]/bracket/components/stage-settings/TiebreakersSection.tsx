@@ -156,7 +156,8 @@ export function TiebreakersSection({
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0 text-xs text-primary"
+            size="sm"
+            className="h-auto p-0 text-primary"
             onClick={() =>
               onChange({
                 tiebreakOrder: tiebreakOrderForPreset(

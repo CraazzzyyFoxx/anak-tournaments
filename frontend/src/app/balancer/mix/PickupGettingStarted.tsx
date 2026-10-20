@@ -46,7 +46,7 @@ export function PickupGettingStarted({
           title={t("players")}
           hint={playerCount > 0 ? t("playersDone", { count: playerCount }) : t("playersHint")}
           action={
-            <Button type="button" variant="outline" className="h-8" onClick={onOpenPool}>
+            <Button type="button" variant="outline" size="sm" onClick={onOpenPool}>
               <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
               {t("addPlayers")}
             </Button>
@@ -63,7 +63,7 @@ export function PickupGettingStarted({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-8"
+                  size="sm"
                   disabled={posting}
                   onClick={() => onPostSignup(postModeOf(game.self_signup))}
                 >

@@ -320,10 +320,11 @@ export default function RankAutofillPage({
             <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--aqt-fg-dim)]" />
               <Input
+                size="sm"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("rankAutofill.searchPlaceholder")}
-                className="h-8 pl-8 text-xs"
+                className="pl-8"
               />
             </div>
             <label className="flex cursor-pointer items-center gap-2">

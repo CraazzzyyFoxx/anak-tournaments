@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionIconSrc, getDivisionLabel } from "@/lib/divisions/grid";

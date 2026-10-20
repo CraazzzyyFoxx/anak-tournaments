@@ -3,6 +3,7 @@
 import React from "react";
 
 import { AvatarStack } from "@/components/ui/avatar";
+import Image from "@/components/ui/image";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useHoverIntent } from "@/hooks/useHoverIntent";
 import { catalogInitials } from "@/lib/catalog/initials";
@@ -34,8 +35,8 @@ interface CatalogEntityImageProps {
  * Portrait of a character, map or mode of any discipline, with an initials fallback on a neutral tile. It paints
  * the entity only: it never derives a player's assigned role (or its colour) from a character's `class`.
  *
- * Deliberately a plain `<img loading="lazy">`, not Radix `AvatarImage` (which preloads regardless of `loading`; one
- * screen can carry dozens of portraits) and not `next/image` (the optimizer shares the site's single Node process).
+ * Through the image optimizer (`Image`): the portraits are 256px originals shown at 26–40px, and one screen can carry
+ * dozens of them. Not Radix `AvatarImage`, which preloads regardless of `loading`.
  */
 export default function CatalogEntityImage({
   entity,
@@ -66,8 +67,7 @@ export default function CatalogEntityImage({
       aria-hidden={decorative || entity === null ? true : undefined}
     >
       {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={src}
           alt={decorative ? "" : name}
           width={px}
@@ -132,6 +132,9 @@ function HoverPopover({
         className="w-80"
         animate={false}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        // Focus never enters the card, so there is none to return. Radix would focus the trigger on close, and the
+        // trigger opens on focus: every hover-out reopened the card (and two cards ping-ponged through `exclusive`).
+        onCloseAutoFocus={(e) => e.preventDefault()}
         onPointerEnter={(e) => {
           if (e.pointerType === "mouse") cancel();
         }}

@@ -5,10 +5,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Palette, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import { FilterBar } from "@/components/kit/FilterBar";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
+import { useFilters } from "@/components/kit/useFilters";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +20,6 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { GameField } from "@/components/workspace/GameField";
 import { GameLabel } from "@/components/workspace/GameLabel";
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
@@ -32,7 +34,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { notify } from "@/lib/notify";
 import { ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
-import { ALL_DISCIPLINES, defaultCreationGame, type GameScope } from "@/lib/site/discipline-scope";
+import { ALL_DISCIPLINES, defaultCreationGame } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -65,16 +67,22 @@ function presentationOf(entry: PlayerSubRole): Presentation {
 }
 
 /**
- * The workspace's sub-role catalog (T4), a multi page (spec §6.11). Under a game: that game's rated roles on the
- * left, the selected role's sub-roles on the right. Under "all games": every game's sub-roles, grouped by game.
- * Creation is one dialog in both modes (spec §7.2): its game field starts on the creation default — the saved scope's
- * game, else the last game, else the first; an explicit `?discipline=` narrows the list only.
+ * The workspace's sub-role catalog (T4), a multi page (spec §6.11). Filtered to a game: that game's rated roles on the
+ * left, the selected role's sub-roles on the right. Unfiltered: every game's sub-roles, grouped by game.
+ * Creation is one dialog in both modes (spec §7.2): its game field starts on the filtered game, else the first enabled.
  */
 export default function WorkspaceSubRolesSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const t = useTranslations("adminSettings.subRoles");
+  const gameT = useTranslations("common.discipline");
   const { canAccessPermission } = usePermissions();
   const scope = useGameScope({ axis: workspaceId ?? "all" });
+  const { searchParams } = useQueryParams();
+  // `?role=` is a role of the filtered game; while a sub-role is open it is that sub-role's (its own game), so it stays.
+  const gameDefs = gameFilterDefs(scope.games, gameT("column"), () =>
+    searchParams?.has("sub_role") ? [] : ["role"]
+  );
+  const filters = useFilters(gameDefs);
   const [creating, setCreating] = useState(false);
 
   if (workspaceId === null) {
@@ -91,20 +99,24 @@ export default function WorkspaceSubRolesSettingsPage() {
     <GameScopeGate scope={scope}>
       {(game) => (
         <div className="space-y-4">
-          {canAccessPermission("player.create", workspaceId) ? (
-            <div className="flex justify-end">
-              <Button type="button" onClick={() => setCreating(true)}>
-                <Plus className="mr-1 size-4" aria-hidden />
-                {t("create")}
-              </Button>
-            </div>
-          ) : null}
+          <FilterBar
+            defs={gameDefs}
+            filters={filters}
+            trailing={
+              canAccessPermission("player.create", workspaceId) ? (
+                <Button type="button" onClick={() => setCreating(true)}>
+                  <Plus className="mr-1 size-4" aria-hidden />
+                  {t("create")}
+                </Button>
+              ) : undefined
+            }
+          />
           <SubRoleListing workspaceId={workspaceId} game={game} games={games} />
           {creating ? (
             <CreateSubRoleDialog
               workspaceId={workspaceId}
               games={games}
-              scope={scope.resolution?.scope ?? ALL_DISCIPLINES}
+              game={game}
               onClose={() => setCreating(false)}
             />
           ) : null}
@@ -146,9 +158,8 @@ function GameSubRoleCatalog({ workspaceId, discipline }: Readonly<{ workspaceId:
 }
 
 /**
- * The page body. An opened sub-role (`?sub_role=`) is an owner (spec §5) under any list scope: its game's editor, its
- * game locking the scope pill while it is open. Otherwise the scoped list: one game's editor, or every game's
- * sub-roles grouped by game with its mark (spec §6.11).
+ * The page body. An opened sub-role (`?sub_role=`) is an owner (spec §5) under any game filter: its game's editor.
+ * Otherwise the filtered list: one game's editor, or every game's sub-roles grouped by game with its mark (spec §6.11).
  */
 function SubRoleListing({
   workspaceId,
@@ -176,7 +187,6 @@ function SubRoleListing({
   if (opened) {
     return (
       <div className="space-y-4">
-        <EntityWorkspace workspaceId={workspaceId} discipline={opened.discipline} />
         <Button type="button" variant="ghost" size="sm" onClick={() => setParams({ sub_role: null, role: null })}>
           <ArrowLeft className="mr-1 size-4" aria-hidden />
           {game === null ? t("backToAll") : commonT("back")}
@@ -257,27 +267,26 @@ function GameSubRoleGroup({
 }
 
 /**
- * Sub-role creation in both list modes (spec §7.2): the game field (the creation default from the saved scope), then a
+ * Sub-role creation in both list modes (spec §7.2): the game field (the creation default: the filtered game), then a
  * parent among that game's rated roles.
  */
 function CreateSubRoleDialog({
   workspaceId,
   games,
-  scope,
+  game,
   onClose
 }: Readonly<{
   workspaceId: number;
   games: DisciplineDescriptor[];
-  /** The effective saved scope (`resolution.scope`), whatever game the list shows. */
-  scope: GameScope;
+  /** The list's filtered game, `null` = every game. */
+  game: string | null;
   onClose: () => void;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
   const roleT = useTranslations("common.roleOntology");
   const nameOf = useRoleName();
   const queryClient = useQueryClient();
-  const lastGame = useWorkspaceStore((state) => state.lastGame);
-  const [discipline, setDiscipline] = useState(() => defaultCreationGame({ scope, lastGame, games }));
+  const [discipline, setDiscipline] = useState(() => defaultCreationGame(game, games));
   const [role, setRole] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const metadata = useDisciplineMetadata(workspaceId, discipline);

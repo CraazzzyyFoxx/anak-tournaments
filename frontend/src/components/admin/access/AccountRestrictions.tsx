@@ -180,7 +180,7 @@ export function AccountRestrictions({
               value={String(scope)}
               onValueChange={(value) => setScope(value === "global" ? "global" : Number(value))}
             >
-              <SelectTrigger id={scopeId} className="h-8 w-44 text-xs">
+              <SelectTrigger id={scopeId} size="sm" className="w-44">
                 <SelectValue placeholder={t("selectScope")} />
               </SelectTrigger>
               <SelectContent>

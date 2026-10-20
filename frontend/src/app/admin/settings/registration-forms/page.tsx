@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import {
   SchemaEditor,
   useSubroleCatalog
@@ -15,9 +16,11 @@ import {
 } from "@/components/balancer/form/_components/schemaEdits";
 import { registrationFormTemplatesKey } from "@/components/balancer/form/_components/TemplateMenu";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
+import { FilterBar } from "@/components/kit/FilterBar";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { MasterDetail, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -30,10 +33,9 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { GameField } from "@/components/workspace/GameField";
-import { GameMarkTag } from "@/components/workspace/GameMarkTag";
+import { GameIcon } from "@/components/workspace/GameIcon";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -41,7 +43,7 @@ import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
-import { ALL_DISCIPLINES, defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
+import { defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -50,9 +52,9 @@ import type { FormSchema } from "@/types/forms.types";
 /**
  * Saved questionnaires of the workspace (T4), each owned by one game (spec §6.13, §8.4).
  *
- * The list is a multi surface: every game's templates (marked) under "all games", one game's under a game. A
- * selected template is an owner: its game names the editor's roles and metadata and locks the scope pill. "New
- * template" files under the creation game (scope's, else last, else first enabled), asking that game's identity.
+ * The list is a multi surface: every game's templates (marked) unless the game filter names one. A selected template
+ * is an owner: its game names the editor's roles and metadata, whatever the list's game. "New template" files under
+ * the creation game (the filtered game, else the first enabled), asking that game's identity.
  *
  * The same editor the tournament builder runs, without the tournament: there is
  * no form row to version, no stale-registration count and no policy toggles to
@@ -64,7 +66,6 @@ import type { FormSchema } from "@/types/forms.types";
  */
 export default function WorkspaceRegistrationFormsSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const lastGame = useWorkspaceStore((state) => state.lastGame) ?? null;
   const scope = useGameScope({ pageClass: "multi", axis: workspaceId ?? "all" });
   const kind = scope.resolution?.game.kind;
   const listGame = scope.game;
@@ -75,7 +76,11 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const tErrors = useTranslations("forms.errors");
   const t = useTranslations("adminSettings.registrationForms");
   const tTable = useTranslations("kitTable.dataTableExtra");
+  const gameT = useTranslations("common.discipline");
   const { searchParams, setParams } = useQueryParams({ mode: "push" });
+  // An open `?template=` owns its game, so a game pick keeps it.
+  const gameDefs = gameFilterDefs(games, gameT("column"));
+  const filters = useFilters(gameDefs);
 
   const selectedId = Number(searchParams?.get("template")) || null;
   const setSelectedId = (id: number | null) => setParams({ template: id });
@@ -125,20 +130,15 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const schema = draft ?? selected?.form_schema ?? null;
   const blocked = schema ? blockedFieldKeys(schema) : null;
 
-  // The selected template is an owner (spec §5): its game drives the editor and locks the pill.
+  // The selected template is an owner (spec §5): its game drives the editor.
   const ownerGame = selected?.discipline ?? null;
-  useEntityWorkspace(selected ? workspaceId : null, ownerGame);
   const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId, ownerGame);
   const metadata = useDisciplineMetadata(workspaceId ?? "all", workspaceId !== null ? ownerGame : null);
 
   const enabledGames = games.filter((entry) => entry.enabled);
   // A pick counts only while it is an enabled game of the area; otherwise the default applies again.
   const pickedGame = newGame !== null && enabledGames.some((entry) => entry.code === newGame) ? newGame : null;
-  // Spec §7.2: the saved scope's game, else the last game, else the first — an explicit `?discipline=` narrows the
-  // list only.
-  const creationGame =
-    pickedGame ??
-    defaultCreationGame({ scope: scope.resolution?.scope ?? ALL_DISCIPLINES, lastGame, games: enabledGames });
+  const creationGame = pickedGame ?? defaultCreationGame(listGame, enabledGames);
   // A template starts from the questionnaire the server would build for a fresh tournament OF ITS GAME.
   const identityProvider = games.find((entry) => entry.code === creationGame)?.identity_provider ?? null;
 
@@ -257,7 +257,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-
+      {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
       <MasterDetail
         list={
           <div className="flex flex-col gap-2">
@@ -270,7 +270,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                     const isSelected = template.id === selectedId;
                     return (
                       <li key={template.id} className="flex items-center gap-1.5">
-                        {marks ? <GameMarkTag code={template.discipline} /> : null}
+                        {marks ? <GameIcon slug={template.discipline} /> : null}
                         <button
                           type="button"
                           aria-current={isSelected ? "true" : undefined}

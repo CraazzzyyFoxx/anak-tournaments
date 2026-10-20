@@ -29,9 +29,9 @@ vi.mock("next/link", () => ({
     </a>
   )
 }));
-// `next/image` outside a Next build rewrites src through the optimizer loader;
-// the shipped config sets `images.unoptimized`, so the real render keeps it
-// verbatim. `fill`/`sizes` are Next-only props, not DOM attributes.
+// `next/image` rewrites src through the optimizer loader; the stand-in keeps
+// the stored URL so the test can read it. `fill`/`sizes` are Next-only props,
+// not DOM attributes.
 vi.mock("next/image", () => ({
   default: ({ fill: _fill, sizes: _sizes, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & {
     fill?: boolean;

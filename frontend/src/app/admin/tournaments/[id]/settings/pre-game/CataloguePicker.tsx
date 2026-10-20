@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
 import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
 
@@ -329,7 +329,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
             aria-expanded={filter.open}
             aria-label={props.triggerLabel}
             disabled={disabled}
-            className="w-56 justify-between gap-2 font-normal"
+            className="w-56 justify-between gap-2"
           >
             <span className="truncate">
               <span className="text-muted-foreground">{props.triggerPrefix} </span>
@@ -418,7 +418,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
           variant="outline"
           size="sm"
           disabled={disabled}
-          className="h-8 gap-1.5 border-dashed"
+          className="gap-1.5 border-dashed"
         >
           <Plus aria-hidden className="size-4" />
           {addLabel}
@@ -450,7 +450,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
               value={filter.query}
               onChange={(event) => filter.setQuery(event.target.value)}
               placeholder={searchPlaceholder}
-              className="h-8 text-base sm:text-xs"
+              size="sm"
             />
           </div>
 

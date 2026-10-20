@@ -157,6 +157,7 @@ export function DraftCaptainsStep({
                           onValueChange={(role) => setRole(id, role as DraftRole)}
                         >
                           <SelectTrigger
+                            size="sm"
                             className="h-7 w-auto shrink-0 gap-1 px-1.5"
                             aria-label={t("captainRoleFor", { name: row.label })}
                             title={seat.role ? slotLabel(seat.role) : undefined}
@@ -202,7 +203,8 @@ export function DraftCaptainsStep({
                     </div>
                     <Input
                       id={`team-name-${id}`}
-                      className="mt-2 h-8"
+                      size="sm"
+                      className="mt-2"
                       placeholder={t("teamName")}
                       aria-label={tAdmin("teamNameFor", { label: row.label, teamName: t("teamName") })}
                       value={value.teamNames[id] ?? ""}

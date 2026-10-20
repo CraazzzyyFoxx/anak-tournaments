@@ -99,7 +99,8 @@ export function useMemberColumns({
                 onValueChange={(value) => changePrimaryRole(member, value as WorkspaceSystemRole)}
               >
                 <SelectTrigger
-                  className="h-8 w-32 text-sm"
+                  size="sm"
+                  className="w-32"
                   aria-label={tm("userRole", { member: memberLabel(member) })}
                 >
                   <SelectValue placeholder={t("noRole")} />
@@ -119,7 +120,7 @@ export function useMemberColumns({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-1 text-xs"
+                      className="gap-1"
                       aria-label={tm("customRoles", { member: memberLabel(member) })}
                     >
                       {tm("custom")}

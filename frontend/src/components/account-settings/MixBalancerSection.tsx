@@ -219,7 +219,8 @@ export default function MixBalancerSection() {
                         weights: withRoleWeight(current.weights, code, next),
                       }))
                     }
-                    className="h-8 w-16 bg-background/50 px-2 text-center tabular-nums"
+                    size="sm"
+                    className="w-16 bg-background/50 px-2 text-center tabular-nums"
                   />
                 </div>
               ))}
@@ -240,7 +241,8 @@ export default function MixBalancerSection() {
               onValueChange={(next) =>
                 setDraft((current) => ({ ...current, variants: next ?? DEFAULT_RESULT_VARIANTS }))
               }
-              className="h-8 w-24 bg-background/50 px-2 tabular-nums"
+              size="sm"
+              className="w-24 bg-background/50 px-2 tabular-nums"
             />
             <p className="text-xs text-[color:var(--aqt-fg-dim)]">
               {t("mixBalancer.variants.hint", { max: MAX_RESULT_VARIANTS })}
@@ -260,7 +262,8 @@ export default function MixBalancerSection() {
               <SelectTrigger
                 id="mix-rating-mode"
                 aria-label={t("mixBalancer.mode.label")}
-                className="h-8 w-56 bg-background/50"
+                size="sm"
+                className="w-56 bg-background/50"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -286,7 +289,8 @@ export default function MixBalancerSection() {
               placeholder={t("mixBalancer.points.placeholder")}
               value={draft.pointsPerWin}
               onValueChange={(next) => setDraft((current) => ({ ...current, pointsPerWin: next }))}
-              className="h-8 w-24 bg-background/50 px-2 tabular-nums"
+              size="sm"
+              className="w-24 bg-background/50 px-2 tabular-nums"
             />
             <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.points.hint")}</p>
           </div>

@@ -152,12 +152,13 @@ export function SourceSyncTab({
           <Label htmlFor="sheet-interval" className="flex items-center gap-2 text-sm font-normal text-muted-foreground">
             {t("every")}
             <Input
+              size="sm"
               id="sheet-interval"
               inputMode="numeric"
               value={autoSyncIntervalSeconds}
               onChange={(event) => onChangeAutoSyncIntervalSeconds(event.target.value)}
               disabled={!autoSyncEnabled}
-              className="h-8 w-20 text-right tabular-nums"
+              className="w-20 text-right tabular-nums"
             />
             {t("seconds")}
           </Label>

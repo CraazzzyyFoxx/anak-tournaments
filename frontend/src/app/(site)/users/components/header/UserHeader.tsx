@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { getTranslations } from "next-intl/server";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -125,12 +125,13 @@ const SearchableImageSelect = (props: SearchableImageSelectProps) => {
         <Button
           type="button"
           variant="outline"
+          size="sm"
           role="combobox"
           aria-expanded={open}
           aria-label={ariaLabel ?? placeholder}
           disabled={disabled}
           className={cn(
-            "h-8 w-full justify-between font-normal",
+            "w-full justify-between",
             triggerClassName ??
               "border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
           )}

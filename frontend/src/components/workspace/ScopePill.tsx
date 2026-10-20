@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, Check, ChevronsUpDown, Gamepad2, Globe, Lock, Plus, type LucideIcon } from "lucide-react";
@@ -10,23 +10,18 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { GameMark } from "@/components/workspace/GameMark";
 import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
-import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useGameScope } from "@/hooks/useGameScope";
 import { ALL_DISCIPLINES, DISCIPLINE_PARAM, pageClassOf, type PillGame } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
-import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Workspace } from "@/types/workspace.types";
 
-type OwnerKind = "tournament" | "match" | "encounter" | "draft" | "scrim" | "mix" | "grid" | "template" | "subRole" | "rule";
+type OwnerKind = "tournament" | "match" | "encounter" | "draft" | "scrim" | "mix" | "rule";
 
 /** Which object fixes the game on an owner page, by route (copy `common.discipline.ownerLock.*`). */
 const OWNER_KINDS: readonly (readonly [string, OwnerKind])[] = [
-  ["/admin/settings/divisions", "grid"],
-  ["/admin/settings/registration-forms", "template"],
-  ["/admin/settings/sub-roles", "subRole"],
-  ["/admin/achievements", "rule"],
   ["/achievements/", "rule"],
   ["/encounters/", "encounter"],
   ["/matches/", "match"],
@@ -62,11 +57,11 @@ function SymbolMark({ icon: Icon }: Readonly<{ icon: LucideIcon }>) {
 }
 
 /**
- * The "Community · Game" scope control (spec §3): one pill for the site header and the admin top bar.
- * A community pick keeps it open (the games follow the new area); a game pick closes it. The saved
- * game is never rewritten here except by a game pick.
+ * The site header's "Community · Game" scope control (spec §3). A community pick keeps it open (the games
+ * follow the new area); a game pick closes it. The saved game is never rewritten here except by a game pick.
+ * The admin has none: its community switcher is the account menu, its game a per-page filter.
  */
-export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) {
+export function ScopePill() {
   const t = useTranslations();
   const pathname = usePathname();
   const router = useRouter();
@@ -76,10 +71,9 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
   const open = useScopePillOpen((state) => state.open);
   const setOpen = useScopePillOpen((state) => state.setOpen);
   const gameBoundParams = useScopePillOpen((state) => state.gameBoundParams);
-  const { status, user } = useAuthProfile();
   const descriptors = useGameDescriptors();
   const fetchWorkspaces = useWorkspaceStore((s) => s.fetchWorkspaces);
-  const allWorkspaces = useWorkspaceStore((s) => s.workspaces);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const hostLockedWorkspaceId = useWorkspaceStore((s) => s.hostLockedWorkspaceId);
   const entityWorkspaceId = useWorkspaceStore((s) => s.entityWorkspaceId);
@@ -88,23 +82,19 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
   const storedScope = useWorkspaceStore((s) => s.gameScope);
   const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
   const setStatsScope = useWorkspaceStore((s) => s.setStatsScope);
+  // The community just picked, shown before the store takes it (see `commit`).
+  const [picked, setPicked] = useState<number | "all" | null>(null);
 
-  const admin = variant === "admin";
   const routeClass = pageClassOf(pathname);
   // An opened owner (a page, or an editor on a list page) fixes the game wherever the pill shows.
   const pageClass = routeClass !== "platform" && entityDiscipline !== null ? "owner" : routeClass;
-  const scope = useGameScope({
-    pageClass,
-    ownerGame: entityDiscipline,
-    axis: admin ? (currentWorkspaceId ?? "all") : undefined
-  });
+  const scope = useGameScope({ pageClass, ownerGame: entityDiscipline });
 
   useEffect(() => {
     void fetchWorkspaces();
   }, [fetchWorkspaces]);
 
   const tenant = hostLockedWorkspaceId !== null;
-  const workspaces = admin ? filterAccessibleWorkspaces(allWorkspaces, status, user ?? undefined) : allWorkspaces;
   const pill: PillGame = scope.resolution?.pill ?? { kind: "hidden" };
   const enabledGames = (scope.games ?? []).filter((game) => game.enabled);
   // A tenant's community is the brand: with one game (or none) there is nothing to pick, owner pages included.
@@ -124,11 +114,10 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
   const outOfArea = !gamesDisabled && storedScope !== ALL_DISCIPLINES && scope.resolution?.scope === ALL_DISCIPLINES;
 
   const pageSlug = /^\/workspace\/([^/]+)/.exec(pathname)?.[1];
-  const workspace = admin
-    ? workspaces.find((w) => w.id === currentWorkspaceId)
-    : (workspaces.find((w) => w.id === hostLockedWorkspaceId) ??
-      (statsScope === "all" ? undefined : workspaces.find((w) => w.id === currentWorkspaceId)));
-  const allScope = !admin && !tenant && statsScope === "all";
+  const workspace =
+    workspaces.find((w) => w.id === hostLockedWorkspaceId) ??
+    (statsScope === "all" ? undefined : workspaces.find((w) => w.id === currentWorkspaceId));
+  const allScope = !tenant && statsScope === "all";
   const entityWorkspace =
     workspaces.find((w) => w.id === entityWorkspaceId) ?? workspaces.find((w) => w.slug === pageSlug);
   const communityLabel = workspace?.name ?? t("nav.allWorkspaces");
@@ -143,15 +132,27 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
     const query = next.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
-  const pickWorkspace = (next: Workspace) => {
-    setCurrentWorkspace(next.id);
-    if (!admin) setStatsScope("workspace");
-    dropUnplayedGame(next.disciplines_enabled);
+  // A scope write re-renders every scope reader — the whole page — in one blocking pass, and the pill stays open
+  // over it. So the pill paints the pick first and the store takes it on the next task.
+  // ponytail: the page's own re-render still blocks right after the paint; memoize the heavy pages if that shows.
+  const commit = (next: number | "all", apply: () => void) => {
+    setPicked(next);
+    setTimeout(() => {
+      apply();
+      setPicked(null);
+    });
   };
+  const pickWorkspace = (next: Workspace) =>
+    commit(next.id, () => {
+      setCurrentWorkspace(next.id);
+      setStatsScope("workspace");
+      dropUnplayedGame(next.disciplines_enabled);
+    });
   const pickGame = (value: string) => {
-    scope.selectScope(value, { dropParams: [...gameBoundParams] });
     setOpen(false);
+    setTimeout(() => scope.selectScope(value, { dropParams: [...gameBoundParams] }));
   };
+  const allChecked = picked === null ? allScope : picked === "all";
 
   return (
     <div className="relative min-w-0">
@@ -209,15 +210,18 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
                 <p id={communitiesId} className={HEADING_CLASS}>
                   {t("nav.workspaces")}
                 </p>
-                {admin ? null : (
-                  <button type="button" onClick={() => setStatsScope("all")} aria-pressed={allScope} className={MENU_ITEM_CLASS}>
-                    <SymbolMark icon={Globe} />
-                    <span className="min-w-0 flex-1 truncate">{t("nav.allWorkspaces")}</span>
-                    {allScope ? <Check className="size-4 shrink-0" aria-hidden /> : null}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => commit("all", () => setStatsScope("all"))}
+                  aria-pressed={allChecked}
+                  className={MENU_ITEM_CLASS}
+                >
+                  <SymbolMark icon={Globe} />
+                  <span className="min-w-0 flex-1 truncate">{t("nav.allWorkspaces")}</span>
+                  {allChecked ? <Check className="size-4 shrink-0" aria-hidden /> : null}
+                </button>
                 {workspaces.map((item) => {
-                  const isCurrent = item.id === workspace?.id;
+                  const isCurrent = picked === null ? item.id === workspace?.id : item.id === picked;
                   // The address shown to people: a verified custom domain only.
                   const host = item.custom_domain && item.custom_domain_verified_at ? item.custom_domain : null;
                   return (
@@ -286,7 +290,7 @@ export function ScopePill({ variant }: Readonly<{ variant: "site" | "admin" }>) 
               </div>
             ) : null}
           </div>
-          {admin || tenant ? null : (
+          {tenant ? null : (
             <>
               <div className="my-1.5 h-px bg-[color:var(--aqt-border)]" />
               {workspace ? (

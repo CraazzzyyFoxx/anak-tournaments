@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 //
-// The person hub is game-neutral (R3: its pill offers no game), so the Ranks tab's two one-game blocks — the rank
-// table and the rank history — keep their own game tabs even under a saved concrete game (R23), and a pick is the
-// page's `?discipline=`, which both blocks read.
+// The person hub is game-neutral, so the Ranks tab's two one-game blocks — the rank table and the rank history —
+// keep their own game tabs (R23): they open on the page's `?discipline=`, else the first game — the site's saved scope
+// and last game never reach the admin — and a pick is the page's `?discipline=`, which both blocks read.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -93,8 +93,8 @@ beforeEach(() => {
     hostLockedWorkspaceId: null,
     entityWorkspaceId: null,
     entityDiscipline: null,
-    gameScope: "overwatch",
-    lastGame: null
+    gameScope: "lol",
+    lastGame: "lol"
   });
   navigation.reset("/admin/people/42?tab=ranks");
   container = document.body.appendChild(document.createElement("div"));
@@ -106,8 +106,8 @@ afterEach(async () => {
   container.remove();
 });
 
-describe("the person hub's Ranks tab under a saved game", () => {
-  it("offers game tabs in both rank blocks, and a League pick switches both", async () => {
+describe("the person hub's Ranks tab", () => {
+  it("opens both rank blocks on the first game whatever the site's saved game, and a League pick switches both", async () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

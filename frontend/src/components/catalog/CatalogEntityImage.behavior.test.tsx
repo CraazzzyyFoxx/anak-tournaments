@@ -67,4 +67,22 @@ describe("CatalogEntityImage", () => {
     render(<CatalogEntityImage entity={catalogEntity({ id: 5, name: "Mercy", attrs: { class: "support" } })} />);
     expect(container.innerHTML).not.toContain("aqt-support");
   });
+
+  it("stays closed once its card closes: focus is never handed back to the trigger, which would reopen it", async () => {
+    render(<CatalogEntityImage entity={catalogEntity({ id: 6, name: "Mei" })} popover={<p>card</p>} />);
+    const trigger = container.querySelector("button")!;
+    act(() => trigger.focus());
+    expect(document.body.textContent).toContain("card");
+
+    act(() => trigger.blur());
+    // Radix hands focus back on a timer after the content unmounts.
+    await act(async () => {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 20);
+      await promise;
+    });
+
+    expect(document.body.textContent).not.toContain("card");
+    expect(document.activeElement).not.toBe(trigger);
+  });
 });

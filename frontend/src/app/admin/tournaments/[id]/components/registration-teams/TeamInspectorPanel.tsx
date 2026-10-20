@@ -98,7 +98,7 @@ export function TeamInspectorPanel({
               })
             }
           >
-            <SelectTrigger id={`admission-${team.id}`} className="h-8 w-44">
+            <SelectTrigger id={`admission-${team.id}`} size="sm" className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

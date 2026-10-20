@@ -12,14 +12,16 @@ import {
   standardTiers,
   type Band
 } from "@/app/admin/settings/divisions/editor/draftReducer";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { DataTable } from "@/components/data-table";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
+import { FilterBar } from "@/components/kit/FilterBar";
+import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
-import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -56,6 +58,7 @@ import { GridTransferMenu, VersionHistorySection } from "./VersionHistorySection
  */
 export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = useTranslations("adminSettings.divisions");
+  const gameT = useTranslations("common.discipline");
   const router = useRouter();
   const queryClient = useQueryClient();
   const { searchParams, setParams } = useQueryParams();
@@ -77,8 +80,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
   // An explicitly opened `?grid=` is an OWNER (spec §5, §6.12): its own game is the page's, whatever `?discipline=`
-  // or the scope says, and the pill shows it locked. Without a pin the index is a multi page: every game's grids under
-  // "all games", one game's under a game.
+  // says. Without a pin the index is a multi page: every game's grids unfiltered, one game's under the game filter.
   const gridParam = Number(searchParams?.get("grid"));
   const hasGridPin = searchParams?.has("grid") === true;
   const ownerGrid = hasGridPin ? (grids.find((grid) => grid.id === gridParam) ?? null) : null;
@@ -87,7 +89,11 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     axis: workspaceId,
     ownerGame: ownerGrid?.discipline ?? null
   });
-  useEntityWorkspace(ownerGrid ? workspaceId : null, ownerGrid?.discipline ?? null);
+  // Picking another game than the pinned grid's unpins it, or the pick would show nothing; clearing the filter keeps it.
+  const gameDefs = gameFilterDefs(gameScope.games, gameT("column"), (next) =>
+    ownerGrid !== null && next !== null && next !== ownerGrid.discipline ? ["grid"] : []
+  );
+  const filters = useFilters(gameDefs);
   const browsedDiscipline = gameScope.game;
   // Only "all games" lists every game's grids: an invalid or empty game opens none.
   const scopedGrids =
@@ -389,7 +395,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
 
   return (
     <div className="flex flex-col gap-6">
-
+      {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
       <GridInForceSection
         ladder={ladder}
         activeVersion={activeVersion}

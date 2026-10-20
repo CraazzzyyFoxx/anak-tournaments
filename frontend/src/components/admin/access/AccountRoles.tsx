@@ -100,7 +100,8 @@ export function AccountRoles({
             }
             labelTitle={tc("addRole")}
             triggerAriaLabel={t("addLabel")}
-            triggerClassName="h-7 w-auto gap-1.5 px-2 text-xs"
+            size="sm"
+            triggerClassName="h-7 w-auto gap-1.5 px-2"
             disabled={assign.isPending}
             searchValue={search}
             onSearchValueChange={setSearch}

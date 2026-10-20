@@ -3,8 +3,8 @@
 // Rank crests are stored as whatever public S3 URL the deployment wrote, and
 // the hosts `next/image` accepts come from NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS.
 // `next/image` is stubbed here for the same reason as in TeamName's test: the
-// optimizer loader rewrites src outside a Next build, while the shipped config
-// sets `images.unoptimized` and keeps it verbatim.
+// optimizer loader rewrites src to /_next/image?url=…, and the test reads the
+// stored URL.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";

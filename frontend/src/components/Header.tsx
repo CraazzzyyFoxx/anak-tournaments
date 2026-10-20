@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Globe, LogIn, Menu, Plus, Search, X } from "lucide-react";
@@ -249,7 +249,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               >
                 <Globe className="size-4" aria-hidden />
               </a>
-              <ScopePill variant="site" />
+              <ScopePill />
             </>
           ) : (
             <>
@@ -269,7 +269,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 aria-hidden
                 className="hidden h-[22px] w-px shrink-0 bg-[color:var(--aqt-border-2)] sm:block"
               />
-              <ScopePill variant="site" />
+              <ScopePill />
             </>
           )}
 

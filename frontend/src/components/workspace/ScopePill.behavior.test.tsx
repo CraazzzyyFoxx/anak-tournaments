@@ -7,9 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
-import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameBoundParams, useScopePillOpen } from "@/components/workspace/scope-pill-store";
-import { useGameScope } from "@/hooks/useGameScope";
 import { navigation } from "@/test/url-navigation";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
@@ -48,7 +46,7 @@ let root: Root;
 
 const settle = () => act(() => new Promise<void>((done) => setTimeout(done, 0)));
 
-async function mount(node: ReactNode = <ScopePill variant="site" />) {
+async function mount(node: ReactNode = <ScopePill />) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () =>
@@ -240,7 +238,7 @@ describe("the site scope pill", () => {
   it("opens from a filter hint", async () => {
     await mount(
       <>
-        <ScopePill variant="site" />
+        <ScopePill />
         <GameFilterHint />
       </>
     );
@@ -256,7 +254,7 @@ describe("the site scope pill", () => {
     navigation.reset("/tournaments?role=tank&q=x");
     await mount(
       <>
-        <ScopePill variant="site" />
+        <ScopePill />
         <Filters />
       </>
     );
@@ -300,7 +298,7 @@ describe("the site scope pill", () => {
     const INITIAL = { stored: "all", lastGame: null, axis: "all", hostLockedWorkspaceId: null, disciplines: null } as const;
     const page = (
       <>
-        <ScopePill variant="site" />
+        <ScopePill />
         <ServerGameTabs initial={INITIAL} />
       </>
     );
@@ -343,48 +341,5 @@ describe("the site scope pill", () => {
       await click([...document.querySelectorAll("button")].find((node) => node.textContent === en.common.discipline.showAll));
       expect(navigation.pushes).toEqual(["/"]);
     });
-  });
-});
-
-describe("the admin scope pill", () => {
-  it("offers the admin's communities without all communities and switches only the community", async () => {
-    navigation.reset("/admin/achievements");
-    await mount(<ScopePill variant="admin" />);
-    expect(trigger()?.getAttribute("aria-label")).toBe("Both Games · All games — change scope");
-
-    await click(trigger());
-    expect(option(group("Communities"), "All communities")).toBeUndefined();
-    expect(document.querySelector('a[href="/get-workspace"]')).toBeNull();
-
-    await click(option(group("Communities"), "No League"));
-    expect(useWorkspaceStore.getState()).toMatchObject({ currentWorkspaceId: 3, statsScope: "all" });
-    expect(option(group("Game"), "Chess")).toBeDefined();
-  });
-
-  it("keeps all games on a single page after a tab pick, which narrows only the page", async () => {
-    // The game control a single page renders for the admin's workspace.
-    function AdminGameTabs() {
-      const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-      const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
-      return <GameScopeControl scope={scope} variant="single" />;
-    }
-    navigation.reset("/users/compare");
-    await mount(
-      <>
-        <ScopePill variant="admin" />
-        <AdminGameTabs />
-      </>
-    );
-    await pick("League of Legends");
-
-    expect(navigation.pushes).toEqual(["/users/compare?discipline=lol"]);
-    expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
-    expect(trigger()?.getAttribute("aria-label")).toBe("Both Games · All games — change scope");
-  });
-
-  it("is absent on platform pages", async () => {
-    navigation.reset("/admin/content/heroes");
-    await mount(<ScopePill variant="admin" />);
-    expect(trigger()).toBeNull();
   });
 });

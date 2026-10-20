@@ -363,7 +363,7 @@ const TeamDetail = ({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 px-2 tabular-nums"
+                        className="px-2 tabular-nums"
                         onClick={() => setEditingPlayer(player)}
                         title={t("analytics.standings.editManualShift")}
                       >

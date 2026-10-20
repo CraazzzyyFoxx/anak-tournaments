@@ -107,7 +107,7 @@ function VoiceSelect({
       disabled={disabled}
       onValueChange={(next) => onChange(next === NONE ? null : next)}
     >
-      <SelectTrigger aria-label={ariaLabel} className="h-9 min-w-0">
+      <SelectTrigger aria-label={ariaLabel} className="min-w-0">
         <span className="flex min-w-0 flex-1 items-center gap-2">
           {prefix}
           <span className="min-w-0 truncate">
@@ -359,7 +359,7 @@ export function PickupVoicePanel({
                       size="sm"
                       // With several lobbies the footer's "every lobby" is the main action.
                       variant={multi ? "ghost" : "default"}
-                      className={cn("h-8 shrink-0 gap-1.5 px-2.5", multi && ROW_ACTION_CLASS)}
+                      className={cn("shrink-0 gap-1.5 px-2.5", multi && ROW_ACTION_CLASS)}
                       disabled={running || !canMove}
                       onClick={() => confirm({ kind: "move", lobbyIndex: lobby.lobby_index })}
                     >
@@ -370,7 +370,7 @@ export function PickupVoicePanel({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      className={cn("h-8 shrink-0 gap-1.5 px-2.5", ROW_ACTION_CLASS)}
+                      className={cn("shrink-0 gap-1.5 px-2.5", ROW_ACTION_CLASS)}
                       disabled={running || !canReturn}
                       onClick={() => confirm({ kind: "return", lobbyIndex: lobby.lobby_index })}
                     >
@@ -392,7 +392,6 @@ export function PickupVoicePanel({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-9"
                   disabled={running || !rows.every((row) => row.canReturn)}
                   onClick={() => confirm({ kind: "return", lobbyIndex: null })}
                 >
@@ -400,7 +399,6 @@ export function PickupVoicePanel({
                 </Button>
                 <Button
                   type="button"
-                  className="h-9"
                   disabled={running || !rows.every((row) => row.canMove)}
                   onClick={() => confirm({ kind: "move", lobbyIndex: null })}
                 >

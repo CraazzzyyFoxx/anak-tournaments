@@ -153,7 +153,7 @@ function ConfigRolesTable({
               onValueChange={(next) => setCell(role, column.key, next)}
               min={column.limits?.min}
               max={column.limits?.max}
-              className="h-9 rounded-lg px-2 text-center tabular-nums"
+              className="rounded-lg px-2 text-center tabular-nums"
             />
           ))}
         </Fragment>
@@ -239,7 +239,7 @@ function ConfigFieldControl({
       min={field.limits?.min}
       max={field.limits?.max}
       integer={field.type === "integer"}
-      className="h-9 rounded-lg"
+      className="rounded-lg"
     />
   );
 }

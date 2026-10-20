@@ -119,7 +119,8 @@ export default function SubscriptionRequirementEditor({
               onValueChange={(value) => updateRow(index, { provider: value })}
             >
               <SelectTrigger
-                className="h-8 w-fit min-w-[140px] max-w-full text-sm"
+                size="sm"
+                className="w-fit min-w-[140px] max-w-full"
                 aria-label={t("providerAria")}
               >
                 <SelectValue />
@@ -145,7 +146,8 @@ export default function SubscriptionRequirementEditor({
               onValueChange={(value) => updateRow(index, { min_tier_rank: Number(value) })}
             >
               <SelectTrigger
-                className="h-8 w-fit min-w-[170px] max-w-full text-sm"
+                size="sm"
+                className="w-fit min-w-[170px] max-w-full"
                 aria-label={t("minTierAria")}
               >
                 <SelectValue />

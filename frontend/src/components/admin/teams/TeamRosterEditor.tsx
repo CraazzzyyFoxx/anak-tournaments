@@ -181,7 +181,7 @@ export function TeamRosterEditor({
             aria-label={t("newPlayer")}
             value={draft.name}
             placeholder={t("rosterName")}
-            className="h-8"
+            size="sm"
             onChange={(event) =>
               setDraft((current) => (current ? { ...current, name: event.target.value } : current))
             }
@@ -204,7 +204,8 @@ export function TeamRosterEditor({
           aria-label={t("rankOf")}
           value={String(draft.rank)}
           inputMode="numeric"
-          className="h-8 w-20 tabular-nums"
+          size="sm"
+          className="w-20 tabular-nums"
           onChange={(event) => {
             const next = Number.parseInt(event.target.value, 10);
             setDraft((current) =>
@@ -312,7 +313,6 @@ export function TeamRosterEditor({
                         value={player.name}
                         label={t("rosterNameOf", { name: player.name })}
                         disabled={!canUpdatePlayer}
-                        className="font-medium"
                         onCommit={(name) => {
                           if (name) {
                             patch(player, { name });

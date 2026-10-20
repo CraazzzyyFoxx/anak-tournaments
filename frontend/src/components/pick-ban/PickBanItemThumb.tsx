@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { cn } from "@/lib/utils";

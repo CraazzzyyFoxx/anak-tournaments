@@ -101,6 +101,7 @@ export function InlineEditText({
         aria-invalid={error ? true : undefined}
         value={draft}
         disabled={isSaving}
+        size="sm"
         className={cn("h-7 aria-invalid:border-destructive", inputClassName)}
         onChange={(event) => {
           setDraft(event.target.value);

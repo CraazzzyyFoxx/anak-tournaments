@@ -346,7 +346,7 @@ function ConstraintList({
           disabled={disabled || specs.length === 0}
           onValueChange={(type) => onChange([...constraints, { type, params: {} }])}
         >
-          <SelectTrigger className="h-7 w-48 text-xs" aria-label={t("step.addConstraint")}>
+          <SelectTrigger size="sm" className="h-7 w-48" aria-label={t("step.addConstraint")}>
             <span className="flex items-center gap-1.5">
               <Plus aria-hidden className="size-3.5" />
               {t("step.addConstraint")}

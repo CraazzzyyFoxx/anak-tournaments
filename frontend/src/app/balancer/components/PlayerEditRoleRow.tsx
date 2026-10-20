@@ -169,8 +169,9 @@ export function SortableRoleEntry({
               }
             >
               <SelectTrigger
+                size="sm"
                 className={cn(
-                  "h-7 w-full border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-xs text-[color:var(--aqt-fg)]",
+                  "h-7 w-full border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg)]",
                   !declaredActive && "text-[color:var(--aqt-fg-dim)]"
                 )}
               >

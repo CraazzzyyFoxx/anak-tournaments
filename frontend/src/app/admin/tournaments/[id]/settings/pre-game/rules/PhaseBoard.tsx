@@ -210,7 +210,8 @@ function PhaseSection({
         ) : null}
         <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
         <Input
-          className="h-8 max-w-52 text-sm"
+          size="sm"
+          className="max-w-52"
           value={phase.name ?? ""}
           disabled={!canManage}
           aria-label={t("phase.name", { n: index + 1 })}
@@ -272,7 +273,7 @@ function PhaseSection({
               )
             }
           >
-            <SelectTrigger className="h-7 w-48 text-xs">
+            <SelectTrigger size="sm" className="h-7 w-48">
               {t(`phase.generatorValue.${phase.generator ?? "none"}`)}
             </SelectTrigger>
             <SelectContent>
@@ -419,7 +420,7 @@ function StepPalette({ onAdd }: Readonly<{ onAdd: (template: PickBanStepTemplate
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 border-dashed text-xs font-normal"
+          className="h-7 border-dashed"
           title={t(`template.${template}.hint`)}
           onClick={() => onAdd(template)}
         >

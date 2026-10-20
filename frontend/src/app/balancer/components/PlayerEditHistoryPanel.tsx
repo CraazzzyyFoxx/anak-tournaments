@@ -176,7 +176,7 @@ export function PlayerEditHistoryPanel({
             <Button
               type="button"
               size="sm"
-              className="h-7 bg-primary px-2.5 text-label text-primary-foreground hover:bg-primary/90"
+              className="h-7 bg-primary px-2.5 text-primary-foreground hover:bg-primary/90"
               onClick={history.apply}
             >
               Apply history values
@@ -226,7 +226,7 @@ export function PlayerEditHistoryPanel({
           Load history from:
         </Label>
         <Select value={history.workspaceValue} onValueChange={history.changeWorkspace}>
-          <SelectTrigger className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-label text-[color:var(--aqt-fg)] px-2">
+          <SelectTrigger size="sm" className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)] px-2">
             <SelectValue placeholder="Select workspace" />
           </SelectTrigger>
           <SelectContent className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] text-[color:var(--aqt-fg)] text-label">

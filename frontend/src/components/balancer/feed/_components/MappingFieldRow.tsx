@@ -139,7 +139,7 @@ export function MappingFieldRow({
                 onValueChange={(value) => onValueChange(value === NONE ? "" : value)}
                 disabled={disabled || subroleOptions.length === 0}
               >
-                <SelectTrigger className="h-9">
+                <SelectTrigger>
                   <SelectValue
                     placeholder={subroleOptions.length === 0 ? t("noSubroles") : t("subrole")}
                   />
@@ -159,7 +159,6 @@ export function MappingFieldRow({
                 onChange={(event) => onValueChange(event.target.value)}
                 placeholder={t("constantPlaceholder")}
                 disabled={disabled}
-                className="h-9"
               />
             )
           ) : null}
@@ -189,7 +188,7 @@ export function MappingFieldRow({
                 {t("parser")}
               </span>
               <Select value={activeParser} onValueChange={onParserChange} disabled={disabled}>
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger size="sm">
                   <SelectValue>{parserLabel(parsers, activeParser)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>

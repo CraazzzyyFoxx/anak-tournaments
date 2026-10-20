@@ -124,7 +124,7 @@ export function PresetRunPanel({
       ) : null}
       <div className="min-w-[140px] sm:w-[170px]">
         <Select value={selectedPreset} onValueChange={onSelectPreset}>
-          <SelectTrigger className="h-8 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm text-[color:var(--aqt-fg)]">
+          <SelectTrigger size="sm" className="rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]">
             <SelectValue placeholder="Preset" />
           </SelectTrigger>
           <SelectContent>
@@ -139,6 +139,7 @@ export function PresetRunPanel({
       <Button
         type="button"
         variant="outline"
+        size="sm"
         onClick={onOpenSettings}
         className={TOOLBAR_BUTTON_CLASS}
       >
@@ -148,7 +149,8 @@ export function PresetRunPanel({
       <Button
         onClick={onRunBalance}
         disabled={!canRunBalance}
-        className="h-8 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        size="sm"
+        className="rounded-lg bg-primary px-3 text-primary-foreground hover:bg-primary/90"
       >
         {isRunPending ? (
           <Spinner className="mr-1.5 size-3.5" />
@@ -171,6 +173,7 @@ export function PresetRunPanel({
       <Button
         type="button"
         variant="outline"
+        size="sm"
         onClick={() => importFileRef.current?.click()}
         disabled={isImportPending}
         title="Load a balance JSON downloaded from this tool as a preview variant — nothing is written to the tournament"
@@ -188,6 +191,7 @@ export function PresetRunPanel({
           <Button
             type="button"
             variant="outline"
+            size="sm"
             disabled={isExportPlayersPending}
             className={cn(TOOLBAR_BUTTON_CLASS, "shrink-0 px-2 sm:px-3")}
             aria-label="Export players"

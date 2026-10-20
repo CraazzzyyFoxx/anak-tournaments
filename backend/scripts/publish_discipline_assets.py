@@ -1,7 +1,8 @@
 """Publish one discipline-owned image to object storage (operator CLI).
 
-The source must live under ``frontend/public/disciplines/<discipline>/`` of an installed discipline and the key under
-``assets/<discipline>/``: the two forms ``shared.domain.roles.validate_presentation`` accepts for a role icon besides
+The source must live under ``frontend/public/disciplines/<discipline>/`` -- an installed game's, or the next one's
+before its module lands -- and the key under ``assets/<discipline>/``: the two forms
+``shared.domain.roles.validate_presentation`` accepts for a role icon besides
 ``https://`` URLs. Without ``--publish`` the file is only inspected and nothing is uploaded. A published receipt is
 printed only after the upload succeeded **and** the public URL served back the exact bytes.
 
@@ -29,7 +30,6 @@ from pydantic_settings import SettingsConfigDict
 
 from shared.clients.s3 import MAX_ASSET_SIZE, S3Client
 from shared.core.config import BaseServiceSettings
-from shared.disciplines import DISCIPLINES
 
 _BACKEND = Path(__file__).resolve().parent.parent
 ASSET_ROOT = _BACKEND.parent / "frontend" / "public" / "disciplines"
@@ -63,9 +63,11 @@ def _sniff(suffix: str, data: bytes) -> bool:
 
 
 def load_asset(discipline: str, file: Path, key: str, *, root: Path | None = None) -> Asset:
-    if discipline not in DISCIPLINES:
-        raise AssetError(f"discipline {discipline!r} is not installed")
+    if not re.fullmatch(r"[a-z0-9_-]+", discipline):
+        raise AssetError(f"discipline {discipline!r} is not a discipline code")
     module_dir = ((root or ASSET_ROOT) / discipline).resolve()
+    if not module_dir.is_dir():
+        raise AssetError(f"{module_dir} is not a discipline asset directory")
     source = Path(file).resolve()
     if not source.is_relative_to(module_dir):
         raise AssetError(f"{file} is outside the {discipline} asset directory {module_dir}")
@@ -141,7 +143,7 @@ async def _run(asset: Asset, do_publish: bool) -> None:
 
 
 @click.command()
-@click.option("--discipline", required=True, help="Installed discipline code owning the asset.")
+@click.option("--discipline", required=True, help="Discipline code owning the asset (its asset dir must exist).")
 @click.option(
     "--file", "file", required=True, type=click.Path(path_type=Path), help="Source under the module's asset dir."
 )

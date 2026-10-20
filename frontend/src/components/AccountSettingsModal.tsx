@@ -99,9 +99,9 @@ const AccountSettingsModal = () => {
                     key={id}
                     value={id}
                     className={cn(
-                      "flex shrink-0 items-center justify-start gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm",
+                      "flex shrink-0 items-center justify-start gap-2 whitespace-nowrap rounded-md px-3 py-2 text-left",
                       "text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]",
-                      "data-[state=active]:bg-[color:var(--aqt-overlay-3)] data-[state=active]:font-medium data-[state=active]:text-[color:var(--aqt-fg)] data-[state=active]:shadow-none",
+                      "data-[state=active]:bg-[color:var(--aqt-overlay-3)] data-[state=active]:text-[color:var(--aqt-fg)] data-[state=active]:shadow-none",
                       "md:w-full md:gap-3"
                     )}
                   >

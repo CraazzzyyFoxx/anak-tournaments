@@ -99,7 +99,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
           variant="outline"
           size="sm"
           aria-label={t("targetLabel", { name, summary: targetSummary(target) })}
-          className="h-8 w-full min-w-56 justify-between gap-2 px-2 font-normal"
+          className="w-full min-w-56 justify-between gap-2 px-2"
         >
           {target ? (
             <span className="flex min-w-0 items-baseline gap-1.5">
@@ -212,7 +212,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 shrink-0 px-2 text-xs"
+              className="h-7 shrink-0 px-2"
               onClick={() => {
                 onChange(null);
                 setAnchor(null);

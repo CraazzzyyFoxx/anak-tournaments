@@ -40,7 +40,8 @@ export function RulePalette({
       <div className="relative">
         <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" aria-hidden />
         <Input
-          className="h-7 pl-7 text-xs"
+          size="sm"
+          className="h-7 pl-7"
           placeholder={labels.paletteSearchPlaceholder}
           aria-label={labels.paletteSearchLabel}
           value={search}

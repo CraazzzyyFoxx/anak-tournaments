@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
@@ -123,7 +123,8 @@ export default function RankMappingPanel() {
                           onValueChange={(value) => setRank(cell, Number(value))}
                         >
                           <SelectTrigger
-                            className="h-8 w-full max-w-xs text-sm"
+                            size="sm"
+                            className="w-full max-w-xs"
                             aria-label={t("selectAria", { rank: label })}
                           >
                             <SelectValue placeholder={t("selectPlaceholder")}>

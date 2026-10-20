@@ -59,7 +59,7 @@ function MatchReportDialogBody({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-10 px-5 font-semibold"
+            className="h-10 px-5"
           >
             {t("matchEdit.cancel")}
           </Button>

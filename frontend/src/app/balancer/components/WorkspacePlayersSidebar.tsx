@@ -414,13 +414,12 @@ export function WorkspacePlayersSidebar({
                       aria-describedby={handleHintId}
                       // `min-w-0`: an `<input>` carries an intrinsic ~170px width that
                       // `min-width: auto` in a flex row turns into a floor.
-                      className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm"
+                      className="min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)]"
                     />
                     {/* Enabled while empty on purpose: submit validates and points at the field. */}
                     <Button
                       type="submit"
-                      size="sm"
-                      className="h-9 shrink-0 px-3"
+                      className="shrink-0 px-3"
                       disabled={addPlayer.isPending || !provider || !metadata.data?.discipline.enabled}
                     >
                       {addPlayer.isPending ? (
@@ -475,7 +474,7 @@ export function WorkspacePlayersSidebar({
           aria-label="Search workspace players"
           autoComplete="off"
           className={cn(
-            "h-9 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-9 text-sm",
+            "rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-9",
             search && "pr-9",
           )}
         />
@@ -514,7 +513,7 @@ export function WorkspacePlayersSidebar({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-label text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
+            className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
             onClick={() => void membersQuery.refetch()}
           >
             Retry

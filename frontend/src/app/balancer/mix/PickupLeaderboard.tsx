@@ -73,7 +73,8 @@ export function PickupLeaderboard({
         <Select value={period} onValueChange={(value) => onPeriodChange(value as StatsPeriodKey)}>
           <SelectTrigger
             aria-label={t("period")}
-            className="h-8 w-auto shrink-0 gap-1.5 border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-caption text-[color:var(--aqt-fg-muted)] shadow-none"
+            size="sm"
+            className="w-auto shrink-0 gap-1.5 border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] shadow-none"
           >
             <SelectValue />
           </SelectTrigger>

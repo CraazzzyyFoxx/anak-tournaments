@@ -151,7 +151,8 @@ const TournamentsFilters = ({
         <Select value={sortBy} onValueChange={(value) => onSortChange(value as SortBy)}>
           <SelectTrigger
             aria-label={t("common.sortBy")}
-            className="filter-sort h-8 w-[155px] shadow-none focus:ring-0 focus:ring-offset-0 max-md:h-10 max-md:w-full"
+            size="sm"
+            className="filter-sort w-[155px] shadow-none focus:ring-0 focus:ring-offset-0 max-md:h-10 max-md:w-full"
           >
             <SelectValue placeholder={t("common.sortBy")} />
           </SelectTrigger>

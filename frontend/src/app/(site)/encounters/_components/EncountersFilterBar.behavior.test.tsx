@@ -72,7 +72,7 @@ async function mount(gameBound: boolean) {
     root.render(
       <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
         <QueryClientProvider client={client}>
-          <ScopePill variant="site" />
+          <ScopePill />
           <EncountersFilterBar
             filters={DEFAULT_FILTERS}
             searchValue=""

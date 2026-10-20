@@ -99,8 +99,8 @@ export const PANEL_CLASS = "rounded-xl border border-border bg-card";
 export const MUTED_BUTTON_CLASS =
   "rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
-/** `MUTED_BUTTON_CLASS` at the tool's dense toolbar height. */
-export const TOOLBAR_BUTTON_CLASS = `h-8 px-3 text-sm ${MUTED_BUTTON_CLASS}`;
+/** `MUTED_BUTTON_CLASS` for the tool's dense toolbar; pair with `Button size="sm"`. */
+export const TOOLBAR_BUTTON_CLASS = `px-3 ${MUTED_BUTTON_CLASS}`;
 
 /** Square icon-button chrome shared by both balancer sidebars. */
 export const ICON_BUTTON_CLASS =

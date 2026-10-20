@@ -26,8 +26,8 @@ export interface SearchFieldProps
  * replacement ring, no accessible name, a hand-inlined magnifier SVG, and a
  * 13px font size that makes iOS Safari zoom the page on focus.
  *
- * - `text-base sm:text-sm` keeps mobile at 16px (no iOS zoom) while desktop
- *   stays at the project's compact density.
+ * - `text-base sm:text-caption` keeps mobile at 16px (no iOS zoom); from `sm`
+ *   up it is the 13px every 32px control in the row uses.
  * - `focus-visible:` gives keyboard users a real indicator.
  * - `h-8` pins the toolbar row height shared with `SelectTrigger` and the
  *   segmented `ToggleGroup`; padding-derived height drifted to 34/38px.
@@ -67,7 +67,7 @@ export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
             onChange={(event) => onValueChange(event.target.value)}
             className={cn(
               "h-8 w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] pl-8 pr-3",
-              "text-base text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] sm:text-sm",
+              "text-base text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] sm:text-caption",
               "outline-none transition-colors",
               "focus-visible:border-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--aqt-teal)_25%,transparent)]",
               className

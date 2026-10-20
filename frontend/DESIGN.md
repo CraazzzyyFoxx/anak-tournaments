@@ -143,6 +143,26 @@ carries its line-height, weight stays explicit):
 - `cn()` (`lib/utils.ts`) knows these role names; keep using it, or
   tailwind-merge files `text-label` under colour and drops it.
 
+### Control text
+
+A control's text is set by its primitive, never at the call site. The `size`
+prop picks the row; the text follows the row height:
+
+| Row                  | `size`           | Text                 |
+| -------------------- | ---------------- | -------------------- |
+| 32px (toolbar row)   | `sm`             | 13px `text-caption`  |
+| 36 / 40px (form row) | `default` / `lg` | 14px `text-sm`       |
+
+- Weight follows the role: what you press (`Button`, `SelectTrigger`,
+  `FilterChip`, `ToggleGroupItem`, `TabsTrigger`, date and combobox
+  triggers) is 500; what you type into (`Input`, `NumberInput`, `TimeInput`,
+  `Textarea`, `SearchField`) is 400.
+- Text-entry fields stay 16px below `sm`: iOS Safari zooms into any smaller
+  focused field. The primitives carry this; do not undo it.
+- No `text-*` or `font-*` on a control, no `h-8`/`h-9` where `size` says it.
+  `Button`, `SelectTrigger`, `Input`, `NumberInput` and `TimeInput` take
+  `size="sm"`; a smaller box (`h-7`) still takes `size="sm"` for its text.
+
 ## 4. Chips — the policy
 
 A chip is a small bordered or tinted label. The codebase has about 30
@@ -230,11 +250,19 @@ plain fact. That ends here.
 
 ### Controls
 
+**Library controls only.** Native `<button>`, `<input>`, `<select>` and
+`<textarea>` appear only inside `components/ui/*`. Feature code uses the
+primitives below; when none fits, add a variant or a primitive to
+`components/ui/` rather than hand-rolling one. Raw controls still in feature
+code are migration debt, not precedent.
+
 | Need                        | Use                                                                                                                     |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Filter chip                 | `FilterChip` in `FilterChipGroup` (`ui/filter-chip.tsx`)                                                                |
 | Filter + controls row       | `SectionToolbar` (tournament sections): chips at the start, search/sort/view at the end                                 |
 | Search                      | `SearchField` (`ui/search-field.tsx`), `label` required                                                                 |
+| Text / number / time field  | `ui/input.tsx`, `ui/number-input.tsx`, `ui/time-input.tsx`, `ui/textarea.tsx`                                           |
+| Checkbox / switch / radio   | `ui/checkbox.tsx`, `ui/switch.tsx`, `ui/radio-group.tsx`                                                                |
 | Select                      | `ui/select.tsx` — never a native `<select>`                                                                             |
 | Panels of different content | `ui/tabs.tsx` (Radix), `TabsTrigger badge` for a count                                                                  |
 | Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs)                                                    |
@@ -493,11 +521,13 @@ Rules on every admin screen:
 - A control with no choice (one filter, one tab, one view).
 - Raw hex, Tailwind neutrals, `text-[Npx]`, a font size below 12px, a
   tracking other than `tracking-label` on uppercase text.
+- A `text-*`, `font-*` or height override on a control (§3, Control text).
 - Uppercase user content; `font-mono` on UI labels.
 - A "finished/completed" status pill on a list of mostly finished items.
 - Colour as decoration: gradient text, decorative glows, the role spectrum as
   a background.
-- Emoji or glyphs as icons; `<div onClick>`; a native `<select>`.
+- Emoji or glyphs as icons; `<div onClick>`; a native `<button>`, `<input>`,
+  `<select>` or `<textarea>` outside `components/ui/`.
 - Hover that scales or shifts layout; entrance animations; perpetual loops
   on anything that is not live.
 - A spinner where a skeleton fits; `empty` shown for a failed load.
@@ -514,3 +544,5 @@ Rules on every admin screen:
 - [ ] Checked at 390 / 768 / 1024 / 1440; no horizontal page scroll.
 - [ ] Everything interactive has hover, visible focus and an accessible name.
 - [ ] Reused the §6 primitives; nothing hand-rolled that already exists.
+- [ ] No native control outside `components/ui/`; no font or height override
+      on a control.

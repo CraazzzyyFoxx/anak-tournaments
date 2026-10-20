@@ -127,7 +127,7 @@ export default function SubscriptionRow({
               disabled={pending}
               aria-invalid={Boolean(error)}
               aria-describedby={error ? errorId : undefined}
-              className={cn(fieldControlClass, "h-9", error && fieldInvalidClass)}
+              className={cn(fieldControlClass, error && fieldInvalidClass)}
             />
             <button
               type="button"

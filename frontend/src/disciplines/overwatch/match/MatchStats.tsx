@@ -77,7 +77,7 @@ const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
     <div className="flex items-center gap-2">
       <ControlLabel>{t("matches.roundLabel")}</ControlLabel>
       <Select value={String(activeRound)} onValueChange={(value) => setRound(Number(value))}>
-        <SelectTrigger className="h-8 w-[150px] text-caption">
+        <SelectTrigger size="sm" className="w-[150px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -149,7 +149,7 @@ const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
             <div className="flex items-center gap-2">
               <ControlLabel>{t("matches.tableView")}</ControlLabel>
               <Select value={preset} onValueChange={(value) => setPreset(value as PresetKey)}>
-                <SelectTrigger className="h-8 w-[160px] text-caption">
+                <SelectTrigger size="sm" className="w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

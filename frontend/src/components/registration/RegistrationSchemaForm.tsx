@@ -25,7 +25,6 @@ import { notify } from "@/lib/notify";
 import { roleOf, subRoleSlugOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 import { ratedDimension, registrationRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { cn } from "@/lib/utils";
 import { BUILTIN_STATUS_MESSAGE_KEYS } from "@/lib/registration/balancer-statuses";
 import registrationService from "@/services/registration.service";
 import { rbacService } from "@/services/rbac.service";
@@ -881,7 +880,7 @@ function AdminStatusSelect({
     <div className="space-y-2">
       <FieldLabel label={label} icon={<BadgeInfo className="size-3.5 opacity-50" />} />
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className={cn(fieldControlClass, "h-9")}>
+        <SelectTrigger className={fieldControlClass}>
           <SelectValue placeholder={t("form.select", { label: label.toLowerCase() })} />
         </SelectTrigger>
         <SelectContent>

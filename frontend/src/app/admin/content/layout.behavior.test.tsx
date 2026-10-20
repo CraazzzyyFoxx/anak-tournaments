@@ -5,8 +5,9 @@
 //     the triage queue that works on them — labelled in that game's own words;
 //  2. the path segment picks the active tab, so a deep link lands marked;
 //  3. the queue badge carries its length, and an empty queue shows no badge;
-//  4. a platform page (spec §3.7): URL over the first game, the URL never rewritten on landing; the game tabs push a
-//     history entry and leave the scope alone; an invalid value is named and loads nothing; a kind the game does not
+//  4. a platform page (spec §3.7): URL over the first game — the site's saved scope and last game never reach the
+//     admin — the URL never rewritten on landing; the game tabs push a history entry and write no scope or last game;
+//     an invalid value is named and loads nothing; a kind the game does not
 //     declare has no tab.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
@@ -99,7 +100,7 @@ function tab(container: HTMLElement, key: string) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ gameScope: "all", hostLockedWorkspaceId: null, currentWorkspaceId: null });
+  useWorkspaceStore.setState({ gameScope: "all", lastGame: null, hostLockedWorkspaceId: null, currentWorkspaceId: null });
   getCatalogAliasMisses.mockReset().mockResolvedValue({ results: [], total: 12, page: 1, per_page: 1 });
 });
 
@@ -136,7 +137,8 @@ describe("admin Game content layout", () => {
     expect(container.textContent).toContain("section body");
   });
 
-  it("lands on the platform's first game without rewriting the URL", async () => {
+  it("lands on the platform's first game whatever the site's saved scope, without rewriting the URL", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol", lastGame: "lol" });
     const container = await mount("/admin/content/maps");
 
     expect(navigation.replaces).toEqual([]);
@@ -177,7 +179,7 @@ describe("admin Game content layout", () => {
     expect(tab(container, "unresolved")?.textContent?.trim()).toBe("Unresolved names");
   });
 
-  it("switches the game with its tabs, writing ?discipline= as a history entry and leaving the scope alone", async () => {
+  it("switches the game with its tabs, writing ?discipline= as a history entry and no scope or last game", async () => {
     await mount("/admin/content/heroes?discipline=overwatch");
 
     const tab = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
@@ -193,5 +195,6 @@ describe("admin Game content layout", () => {
     expect(url.pathname).toBe("/admin/content/heroes");
     expect(url.searchParams.get("discipline")).toBe("lol");
     expect(useWorkspaceStore.getState().gameScope).toBe("all");
+    expect(useWorkspaceStore.getState().lastGame).toBeNull();
   });
 });

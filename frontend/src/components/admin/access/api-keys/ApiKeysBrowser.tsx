@@ -100,7 +100,7 @@ export function ApiKeysBrowser({
                 id={secretId}
                 readOnly
                 value={oneTimeKey}
-                className="mt-2 font-mono text-xs"
+                className="mt-2 font-mono"
                 onFocus={(event) => event.currentTarget.select()}
               />
             </div>

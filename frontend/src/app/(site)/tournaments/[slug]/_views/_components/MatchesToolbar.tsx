@@ -121,7 +121,8 @@ export function MatchesToolbar({
           }}
           label={t("tournamentDetail.matches.addTeam")}
           triggerAriaLabel={t("tournamentDetail.matches.pickTeam")}
-          triggerClassName="filter-sort h-8 w-auto gap-1.5 shadow-none"
+          size="sm"
+          triggerClassName="filter-sort w-auto gap-1.5 shadow-none"
           searchValue={teamSearch}
           onSearchValueChange={setTeamSearch}
           searchPlaceholder={t("tournamentDetail.matches.searchTeam")}

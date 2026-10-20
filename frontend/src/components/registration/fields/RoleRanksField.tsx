@@ -121,7 +121,6 @@ export default function RoleRanksField({
                   aria-invalid={atFault}
                   className={cn(
                     fieldControlClass,
-                    "h-9",
                     division != null && "pr-11",
                     atFault && fieldInvalidClass,
                   )}

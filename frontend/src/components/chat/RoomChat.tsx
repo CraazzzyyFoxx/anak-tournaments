@@ -380,7 +380,7 @@ export function RoomChat({
                 aria-describedby={remaining <= COUNTER_AT ? `${hintId} ${counterId}` : hintId}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={onKeyDown}
-                className="min-h-[2.75rem] resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm"
+                className="min-h-[2.75rem] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
               />
               <div className="flex items-end justify-between gap-2 px-2 pb-2">
                 <p id={hintId} className="sr-only">

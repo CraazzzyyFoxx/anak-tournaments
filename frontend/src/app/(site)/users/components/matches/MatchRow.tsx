@@ -9,7 +9,7 @@ import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import MatchRowBadge from "@/components/match/MatchRowBadge";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
-import { GameMarkTag } from "@/components/workspace/GameMarkTag";
+import { GameIcon } from "@/components/workspace/GameIcon";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { tournamentHref } from "@/lib/tournament/url";
@@ -49,7 +49,7 @@ const MatchRow = ({ enc, selfUserId, showGame = false }: MatchRowProps) => {
     >
       <td className="px-3.5 py-3">
         <span className="inline-flex max-w-[220px] items-center gap-1.5">
-          {showGame ? <GameMarkTag code={enc.discipline} /> : null}
+          {showGame ? <GameIcon slug={enc.discipline} /> : null}
           <HoverPrefetchLink
             href={tournamentHref(enc.tournament_id)}
             onClick={(e) => e.stopPropagation()}

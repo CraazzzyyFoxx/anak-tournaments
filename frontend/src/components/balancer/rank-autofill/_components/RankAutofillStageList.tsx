@@ -116,7 +116,7 @@ function SortableStageRow({
             disabled={disabled}
             onValueChange={(next) => onOwValueChange(next as RankAutofillOwValue)}
           >
-            <SelectTrigger aria-label={t("rankAutofill.owValueAria")} className="h-8 w-32 text-xs">
+            <SelectTrigger size="sm" aria-label={t("rankAutofill.owValueAria")} className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -131,6 +131,7 @@ function SortableStageRow({
 
         <label className="flex shrink-0 items-center gap-1.5">
           <NumberInput
+            size="sm"
             integer
             min={1}
             value={windowValue}
@@ -138,7 +139,7 @@ function SortableStageRow({
             // The latest rank is the latest rank: no window narrows it.
             disabled={disabled || owValue === "current"}
             onValueChange={(next) => onLookbackChange(stage.source, next)}
-            className="h-8 w-16 text-right text-xs"
+            className="w-16 text-right"
             aria-label={t("rankAutofill.windowAria", { label })}
           />
           <span className="w-9 text-xs text-[color:var(--aqt-fg-dim)]">

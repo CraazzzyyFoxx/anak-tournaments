@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import type { PlayerIdentity } from "@/components/PlayerAvatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusDot } from "@/components/ui/status-dot";
 import { formatRelative } from "@/components/kit/format-time";
@@ -13,34 +13,12 @@ import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useFormatter } from "@/lib/datetime/client";
 import { winrateColor } from "@/lib/colors";
 import { getPlayerSlug } from "@/lib/player";
-import { cn, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { UserOverviewRoleDivision } from "@/types/user.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import { DivisionHex } from "./DivisionHex";
 import { gridForRole, isRecentlyActive, mapsWinratePct, splitTag } from "./users-index.model";
-
-/** The minimum a surface needs to draw a player's identity. */
-export interface PlayerIdentity {
-  id: number;
-  name: string;
-  avatar_url: string | null;
-}
-
-export function PlayerAvatar({
-  user,
-  size = 32,
-  className
-}: Readonly<{ user: PlayerIdentity; size?: number; className?: string }>) {
-  return (
-    <Avatar className={cn("shrink-0 border border-[color:var(--aqt-border)]", className)} style={{ width: size, height: size }}>
-      {user.avatar_url ? <AvatarImage src={user.avatar_url} alt="" /> : null}
-      <AvatarFallback className="bg-[color:var(--aqt-overlay-3)] text-label font-bold text-[color:var(--aqt-fg-muted)]">
-        {initials(user.name)}
-      </AvatarFallback>
-    </Avatar>
-  );
-}
 
 /** `handle` as a profile link with a faint `#tag`. */
 export function PlayerName({ name, className }: Readonly<{ name: string; className?: string }>) {

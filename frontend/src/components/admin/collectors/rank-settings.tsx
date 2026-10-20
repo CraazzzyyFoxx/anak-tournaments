@@ -81,7 +81,8 @@ export function RankSettingsPanel() {
                 value={form.extra_accounts_per_registration}
                 disabled={form.scope !== "registrations_only"}
                 onValueChange={(next) => patch({ extra_accounts_per_registration: next ?? 0 })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>
@@ -103,7 +104,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ interval_seconds: next ?? DEFAULTS.interval_seconds })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -131,7 +133,8 @@ export function RankSettingsPanel() {
                 value={form.max_per_tick}
                 disabled={!form.auto_pace}
                 onValueChange={(max_per_tick) => patch({ max_per_tick })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -145,7 +148,8 @@ export function RankSettingsPanel() {
                 max={1}
                 value={form.jitter_fraction}
                 onValueChange={(next) => patch({ jitter_fraction: next ?? 0 })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>
@@ -165,7 +169,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ rate_limit_per_minute: next ?? DEFAULTS.rate_limit_per_minute })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -180,7 +185,8 @@ export function RankSettingsPanel() {
                 max={1000}
                 value={form.batch_size}
                 onValueChange={(next) => patch({ batch_size: next ?? DEFAULTS.batch_size })}
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>
@@ -200,7 +206,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ max_consecutive_failures: next ?? DEFAULTS.max_consecutive_failures })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
             <SettingRow
@@ -219,7 +226,8 @@ export function RankSettingsPanel() {
                 onValueChange={(next) =>
                   patch({ backoff_base_seconds: next ?? DEFAULTS.backoff_base_seconds })
                 }
-                className="h-8 w-28"
+                size="sm"
+                className="w-28"
               />
             </SettingRow>
           </SettingGroup>

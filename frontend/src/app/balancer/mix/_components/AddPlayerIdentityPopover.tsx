@@ -113,10 +113,10 @@ export function AddPlayerIdentityPopover({
               aria-invalid={addError ? true : undefined}
               // `min-w-0`: an `<input>` carries an intrinsic ~170px
               // width that `min-width: auto` turns into a floor.
-              className="h-9 min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-sm"
+              className="min-w-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)]"
             />
             {/* Enabled while empty on purpose: submit validates and says why. */}
-            <Button type="submit" size="sm" className="h-9 shrink-0 px-3" disabled={addIdentity.isPending || !provider}>
+            <Button type="submit" className="shrink-0 px-3" disabled={addIdentity.isPending || !provider}>
               {addIdentity.isPending ? <Spinner className="size-3.5" /> : null}
               Add
             </Button>

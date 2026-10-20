@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import Image from "@/components/ui/image";
 import { getImpactColor } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import {
@@ -455,8 +456,7 @@ function RoleCell({
           {heroes.map((hero, heroIndex) => {
             const heroName = hero.slug.replace(/-/g, " ");
             return (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 key={hero.slug}
                 src={getHeroIconUrl(hero.slug, hero.imagePath)}
                 alt={heroName}

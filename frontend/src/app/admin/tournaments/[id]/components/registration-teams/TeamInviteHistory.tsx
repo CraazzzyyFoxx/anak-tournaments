@@ -66,7 +66,7 @@ export function TeamInviteHistory({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-6 gap-1 px-1.5 text-caption font-normal text-muted-foreground"
+          className="h-6 gap-1 px-1.5 text-muted-foreground"
         >
           {t("history.toggle")}
           <ChevronDown aria-hidden className={cn("size-3.5", open && "rotate-180")} />

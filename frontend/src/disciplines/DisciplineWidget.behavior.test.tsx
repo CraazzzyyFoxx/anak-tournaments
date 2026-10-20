@@ -19,10 +19,12 @@ import { DisciplineWidget as Host } from "./DisciplineWidget";
 import type { DisciplineLoader } from "./registry/create";
 import type { DisciplineCapabilities, DisciplineSlot, DisciplineUI, SlotProps } from "./types";
 
-// The host takes its family's loader as a prop; the test supplies a controllable one.
-const loadDisciplineUI = vi.fn<DisciplineLoader<DisciplineSlot>>();
+// The host takes its family's loader as a prop; the test supplies a controllable one, unsettled unless a case says so.
+const loadDisciplineUI = vi.fn<(code: string) => Promise<DisciplineUI | null>>();
+const peekDisciplineUI = vi.fn<DisciplineLoader<DisciplineSlot>["peek"]>();
+const load: DisciplineLoader<DisciplineSlot> = Object.assign(loadDisciplineUI, { peek: peekDisciplineUI });
 function DisciplineWidget(props: Omit<ComponentProps<typeof Host>, "load">) {
-  return <Host {...props} load={loadDisciplineUI} />;
+  return <Host {...props} load={load} />;
 }
 
 declare global {
@@ -88,6 +90,7 @@ afterEach(() => {
     container.remove();
   }
   loadDisciplineUI.mockReset();
+  peekDisciplineUI.mockReset();
 });
 
 describe("DisciplineWidget", () => {
@@ -305,5 +308,37 @@ describe("DisciplineWidget", () => {
     expect(loadDisciplineUI).toHaveBeenCalledTimes(2);
     expect(view.querySelector("[data-slot]")?.textContent).toBe("overwatch editor");
     expect(view.querySelector("[role=alert]")).toBeNull();
+  });
+
+  it("paints an already-settled module on its first commit — a re-mounted hover card never flashes empty", async () => {
+    const ui = moduleOf("overwatch");
+    loadDisciplineUI.mockResolvedValue(ui);
+    const widget = (
+      <DisciplineWidget
+        discipline="overwatch"
+        slot="nativeRankEditor"
+        capabilities={NONE}
+        props={EDITOR_PROPS}
+        fallback={<p>generic</p>}
+      />
+    );
+    // The first open: the module and its lazy slot resolve.
+    await mount(widget);
+    peekDisciplineUI.mockReturnValue(ui);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    mounted.push({ root, container });
+    act(() =>
+      root.render(
+        <NextIntlClientProvider locale="en" messages={en}>
+          {widget}
+        </NextIntlClientProvider>
+      )
+    );
+
+    expect(container.querySelector("[data-slot]")?.textContent).toBe("overwatch editor");
+    expect(loadDisciplineUI).toHaveBeenCalledTimes(1);
   });
 });

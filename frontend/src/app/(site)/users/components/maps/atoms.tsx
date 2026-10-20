@@ -26,8 +26,9 @@ export const AqtSelect = ({
   <Select value={value} onValueChange={onChange}>
     <SelectTrigger
       title={title}
+      size="sm"
       className={cn(
-        "aqt-tnum h-8 shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0",
+        "aqt-tnum shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0",
         width
       )}
     >

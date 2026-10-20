@@ -222,4 +222,21 @@ describe("picks", () => {
     await mount({ pageClass: "owner", ownerGame: "lol", ownerPending: true });
     expect(latest.resolution?.game).toEqual({ kind: "empty" });
   });
+
+  it("in the admin, the site's saved scope and last game reach nothing, and a pick writes only the URL", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol", lastGame: "lol" });
+    navigation.reset("/admin/teams?page=2");
+    await mount({ pageClass: "multi" });
+    expect(latest.resolution?.game).toEqual({ kind: "all" });
+
+    await mount({ pageClass: "platform" });
+    expect(latest.resolution?.game).toEqual({ kind: "game", code: "overwatch", source: "default" });
+
+    await act(async () => latest.selectTab("lol"));
+    await act(async () => latest.selectScope("overwatch"));
+    expect(navigation.pushes).toEqual(["/admin/teams?discipline=lol", "/admin/teams?discipline=overwatch"]);
+    expect(document.cookie).not.toContain("owt-discipline=");
+    expect(document.cookie).not.toContain("owt-last-game=");
+    expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "lol", lastGame: "lol" });
+  });
 });

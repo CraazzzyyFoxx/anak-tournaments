@@ -86,7 +86,7 @@ export default function AdminTeamWorkspacePage() {
 
   const team = teamQuery.data;
   const workspaceId = team?.tournament?.workspace_id ?? null;
-  useEntityWorkspace(workspaceId, team?.tournament?.discipline);
+  useEntityWorkspace(workspaceId);
   const canUpdateTeam = canAccessPermission("team.update", workspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", workspaceId);
   const canCreatePlayer = canAccessPermission("player.create", workspaceId);

@@ -112,7 +112,8 @@ function RegistrationForm({
               value={value.max_participants ?? null}
               disabled={disabled}
               onValueChange={(next) => patch({ max_participants: next })}
-              className="h-8 w-24"
+              size="sm"
+              className="w-24"
             />
           </SettingRow>
           <SettingRow

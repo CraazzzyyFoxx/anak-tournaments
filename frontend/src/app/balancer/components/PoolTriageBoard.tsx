@@ -237,7 +237,7 @@ function TriagePlayerCard({
                   variant="ghost"
                   size="sm"
                   disabled={actionsDisabled || !onSetPoolMembership}
-                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-label text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   onClick={() => onSetPoolMembership?.(state.player.id, false)}
                 >
                   <ShieldX className="mr-1 h-3 w-3" />

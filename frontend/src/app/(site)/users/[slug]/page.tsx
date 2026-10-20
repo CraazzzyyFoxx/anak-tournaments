@@ -2,7 +2,6 @@ import React, { Suspense, cache } from "react";
 import userService from "@/services/user.service";
 import disciplineService from "@/services/discipline.service";
 import UserHeader from "@/app/(site)/users/components/header/UserHeader";
-import UserGameCards from "@/app/(site)/users/components/header/UserGameCards";
 import { TabsContent } from "@/components/ui/tabs";
 import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/(site)/users/_views/UserOverviewPage";
 import UserMapsPage from "@/app/(site)/users/_views/UserMapsPage";
@@ -31,7 +30,7 @@ import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEm
 import ProfileGameTabs from "@/app/(site)/users/components/shared/ProfileGameTabs";
 import ProfileGameData from "@/app/(site)/users/components/shared/ProfileGameData";
 import ProfileNotPlayed from "@/app/(site)/users/components/shared/ProfileNotPlayed";
-import { blockGameOf, boundGameSummary, orderPlayerGames } from "@/app/(site)/users/components/shared/profile-games";
+import { blockGameOf, orderPlayerGames } from "@/app/(site)/users/components/shared/profile-games";
 import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 import ProfileScopeUnavailable from "@/app/(site)/users/components/shared/ProfileScopeUnavailable";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
@@ -172,12 +171,6 @@ const UserHeaderSection = async ({
     <>
       <ProfileJsonLd user={user} profile={profile} url={canonical} />
       <UserHeader user={user} profile={profile} scope={view.scope} discipline={view.game} axis={view.axis} />
-      {view.game === null ? (
-        <UserGameCards games={orderPlayerGames(profile.games, view.init)} axis={view.axis} />
-      ) : profile.tournaments.length > 0 ? (
-        // A concrete scope: that game's card, built from the bound profile (R15).
-        <UserGameCards games={[boundGameSummary(profile, view.game)]} axis={view.axis} />
-      ) : null}
     </>
   );
 };

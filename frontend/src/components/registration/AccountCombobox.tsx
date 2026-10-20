@@ -132,7 +132,7 @@ export default function AccountCombobox({
               aria-describedby={shownError ? errorId : undefined}
               className={cn(
                 fieldControlClass,
-                "flex h-9 items-center justify-between",
+                "flex h-9 items-center justify-between text-base sm:text-sm",
                 value ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]",
                 shownError && fieldInvalidClass,
               )}
@@ -187,7 +187,7 @@ export default function AccountCombobox({
           onChange={(e) => handleInputChange(e.target.value)}
           aria-invalid={Boolean(shownError)}
           aria-describedby={shownError ? errorId : undefined}
-          className={cn(fieldControlClass, "h-9", shownError && fieldInvalidClass)}
+          className={cn(fieldControlClass, shownError && fieldInvalidClass)}
         />
       )}
       {shownError && (

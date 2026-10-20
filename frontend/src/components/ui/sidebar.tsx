@@ -360,9 +360,10 @@ const SidebarInput = React.forwardRef<
   return (
     <Input
       ref={ref}
+      size="sm"
       data-sidebar="input"
       className={cn(
-        "h-8 w-full bg-background shadow-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        "w-full bg-background shadow-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         className
       )}
       {...props}

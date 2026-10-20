@@ -133,7 +133,7 @@ export function PickupAddPlayersDialog({
                   placeholder={"Type a name or game handle \u2014 \u2191\u2193 to move, Enter to add"}
                   aria-label="Search the workspace roster"
                   autoComplete="off"
-                  className="h-11 rounded-xl border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-10 pr-24 text-sm"
+                  className="h-11 rounded-xl border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-10 pr-24"
                 />
                 <span
                   className={cn(

@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useGameScope } from "@/hooks/useGameScope";
-import { defaultCreationGame } from "@/lib/site/discipline-scope";
+import { DISCIPLINE_PARAM, defaultCreationGame } from "@/lib/site/discipline-scope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { normalizeChallongeSlug } from "@/lib/tournament/challonge";
@@ -132,15 +132,14 @@ export default function NewTournamentPage() {
   // the promise ref collapses concurrent triggers into one POST.
   const [draft, setDraft] = useState<Tournament | null>(null);
   const draftRef = useRef<Tournament | null>(null);
-  // The game the tournament is played in (spec §7.2): the creation field, defaulted from the scope's game, else the
-  // last game the area runs, else its first enabled game. A resumed draft owns its game: the field locks once the
-  // draft exists, and nothing here reads or writes `?discipline=`.
+  // The game the tournament is played in (spec §7.2): the creation field, defaulted from the list's game filter
+  // (`?discipline=`, which this route's class does not resolve) when the area runs it, else its first enabled game. A
+  // resumed draft owns its game: the field locks once the draft exists, and nothing here writes `?discipline=`.
   const gameScope = useGameScope({ pageClass: "none", axis: currentWorkspaceId ?? "all" });
-  const lastGame = useWorkspaceStore((s) => s.lastGame);
   const [pickedGame, setPickedGame] = useState<string | null>(null);
   const creationGames = (gameScope.games ?? []).filter((game) => game.enabled);
   const defaultGame = gameScope.resolution
-    ? defaultCreationGame({ scope: gameScope.resolution.scope, lastGame, games: gameScope.games ?? [] })
+    ? defaultCreationGame(searchParams?.get(DISCIPLINE_PARAM) ?? null, gameScope.games ?? [])
     : null;
   const discipline =
     draft?.discipline ??

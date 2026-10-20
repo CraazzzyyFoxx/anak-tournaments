@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The profile's game surfaces (spec §6.6): a card's mark narrows the scope, the per-game tabs pick a game without
+// The profile's game surfaces (spec §6.6): the per-game tabs pick a game without
 // touching the URL, the "never played" state widens the scope back to every game, and the cross-game lists mark
 // each row with its game.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,7 +13,6 @@ import en from "@/i18n/messages/en.json";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 
-import UserGameCards from "../header/UserGameCards";
 import MatchesTable from "../matches/MatchesTable";
 import TournamentList from "../tournaments/TournamentList";
 import ProfileGameTabs from "./ProfileGameTabs";
@@ -100,23 +99,6 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
-});
-
-it("narrows the scope from a game card's mark, cards in the order given", async () => {
-  await render(
-    <UserGameCards
-      axis={1}
-      games={[
-        { discipline: "lol", roles: [], tournaments_count: 3, tournaments_won: 1 },
-        { discipline: "overwatch", roles: [], tournaments_count: 2, tournaments_won: 0 }
-      ]}
-    />
-  );
-
-  const names = [...container.querySelectorAll("li h3")].map((heading) => heading.textContent);
-  expect(names).toEqual(["League of Legends", "Overwatch"]);
-  await press(container.querySelector('button[aria-label="Overwatch"]'));
-  expect(selectScope).toHaveBeenCalledWith("overwatch");
 });
 
 it("picks a per-game tab without writing the URL, then re-reads the page", async () => {

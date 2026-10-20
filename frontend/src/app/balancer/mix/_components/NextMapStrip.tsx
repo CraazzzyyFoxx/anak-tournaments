@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 
 import { Dices } from "lucide-react";
 
@@ -119,7 +119,7 @@ export function NextMapStrip({
           <Button
             type="button"
             variant="outline"
-            className="h-8"
+            size="sm"
             disabled={saving || maps.length === 0}
             onClick={roll}
           >

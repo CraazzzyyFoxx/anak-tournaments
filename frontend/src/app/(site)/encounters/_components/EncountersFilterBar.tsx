@@ -166,7 +166,7 @@ function FilterSelect({
 }>) {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className={cn(styles.filterSelectTrigger, className)} aria-label={label}>
+      <SelectTrigger size="sm" className={cn(styles.filterSelectTrigger, className)} aria-label={label}>
         {triggerLabel ? <span>{triggerLabel}</span> : <SelectValue />}
       </SelectTrigger>
       <SelectContent>

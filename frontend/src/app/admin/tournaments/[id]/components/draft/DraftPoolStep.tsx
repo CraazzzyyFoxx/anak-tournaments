@@ -86,14 +86,12 @@ export function DraftPoolStep({
                 disabled={locked}
                 value={teamCount}
                 onValueChange={(next) => onTeamCountChange(next ?? MIN_DRAFT_TEAM_COUNT)}
-                className="h-9 w-20 tabular-nums"
+                className="w-20 tabular-nums"
               />
               {!locked && pinned && (
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  className="h-9"
                   onClick={() => onTeamCountChange(null)}
                 >
                   {t("teamCountMax")}

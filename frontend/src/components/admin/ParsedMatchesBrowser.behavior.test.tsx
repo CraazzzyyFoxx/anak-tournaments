@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { act, useEffect, useState, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ParsedMatchesBrowser } from "@/components/admin/ParsedMatchesBrowser";
 import type { AdminMatchRow, AdminMatchesQuery, LogRecordRef } from "@/types/admin.types";
 import messages from "@/i18n/messages/en.json";
+import { LOL_GAME, OW_GAME } from "@/test/game-scope";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -29,8 +30,19 @@ vi.mock("@/services/catalog.service", () => ({
   default: { list: (...args: unknown[]) => mapsLookup(...args) }
 }));
 
+// One tournament per game: the chip offers both under every game, and its game is the map catalogue's.
 vi.mock("@/services/tournament.service", () => ({
-  default: { getAll: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 }) }
+  default: {
+    getAll: vi.fn().mockResolvedValue({
+      results: [
+        { id: 3, name: "Spring Cup", discipline: "overwatch" },
+        { id: 4, name: "Rift Cup", discipline: "lol" }
+      ],
+      total: 2,
+      page: 1,
+      per_page: -1
+    })
+  }
 }));
 
 vi.mock("@/hooks/useGameDescriptors", async () => {
@@ -108,11 +120,18 @@ function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   return <>{render()}</>;
 }
 
+// A popover left open closes on the next test's outside pointerdown, after its portal is gone: unmount every root.
+const roots: Root[] = [];
+afterEach(async () => {
+  await act(async () => roots.splice(0).forEach((root) => root.unmount()));
+});
+
 async function mount(render: () => ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(container);
+  roots.push(root);
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -137,10 +156,10 @@ function chipTrigger(scope: ParentNode) {
   return scope.querySelector<HTMLButtonElement>('button[aria-label="Add filter"]');
 }
 
-/** The chip popover portals out of the table, so options are document-wide. */
+/** The chip popover portals out of the table, so options are document-wide; an option's label sits beside its game mark. */
 function commandItem(label: string) {
-  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find(
-    (item) => item.textContent?.trim().startsWith(label)
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    (item.querySelector(".truncate") ?? item).textContent?.trim().startsWith(label)
   );
 }
 
@@ -361,21 +380,68 @@ describe("ParsedMatchesBrowser", () => {
     expect(container.textContent).toContain("scoped to a workspace");
   });
 
-  it("lists every game's maps with a Game column and hides and ignores the one-game filters when no game is chosen", async () => {
+  it("lists every game's maps with a Game column and applies the tournament chip when no game is chosen", async () => {
     window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5");
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
     await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
 
+    // Spring Cup is Overwatch's: its catalogue backs the map chip, so the URL's map is read too.
+    await waitFor(() => lastQuery().map_id === 5, "the map-scoped request");
     expect(lastQuery().discipline).toBeUndefined();
-    expect(lastQuery().tournament_id).toBeUndefined();
-    expect(lastQuery().map_id).toBeUndefined();
+    expect(lastQuery().tournament_id).toBe(3);
+    expect(mapsLookup).toHaveBeenLastCalledWith("overwatch", "map", expect.anything(), expect.anything());
     expect(bodyText(container)).toContain("Overwatch");
-    expect(container.textContent).toContain(messages.common.discipline.filterHint);
-    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
+    expect(activeChip("Tournament: Spring Cup")).not.toBeNull();
+  });
+
+  it("offers every game's tournaments and no map without a game or a tournament", async () => {
+    window.history.replaceState(null, "", "/admin/matches?map_id=5");
+    const container = await mount(() => (
+      <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} games={[OW_GAME, LOL_GAME]} />
+    ));
+    await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
+
+    // No game to take a catalogue from: the URL's map is not applied.
+    expect(lastQuery().map_id).toBeUndefined();
     await click(chipTrigger(container));
-    await waitFor(() => commandItem("Ingestion status"), "the filter list");
+    await waitFor(() => commandItem("Tournament"), "the filter list");
+    expect(commandItem("Game")).toBe(document.querySelector('[cmdk-item=""]'));
     expect(commandItem("Map")).toBeUndefined();
-    expect(commandItem("Tournament")).toBeUndefined();
+    await click(commandItem("Tournament"));
+    await waitFor(() => commandItem("Rift Cup"), "the tournament options");
+    expect(commandItem("Spring Cup")).toBeDefined();
+  });
+
+  it("drops the map when another tournament is picked without a game", async () => {
+    window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5");
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    await waitFor(() => lastQuery().map_id === 5, "the map-scoped request");
+
+    await pickChip(container, "Tournament", "Rift Cup");
+
+    const url = new URLSearchParams(window.location.search);
+    expect(url.get("tournament")).toBe("4");
+    expect(url.has("map_id")).toBe(false);
+  });
+
+  it("a game pick drops the map always and the tournament only when it is another game's", async () => {
+    window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5&unlinked_only=1");
+    const container = await mount(() => (
+      <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} games={[OW_GAME, LOL_GAME]} />
+    ));
+    await waitFor(() => lastQuery().map_id === 5, "the map-scoped request");
+
+    await pickChip(container, "Game", "Overwatch");
+    let url = new URLSearchParams(window.location.search);
+    expect(url.get("discipline")).toBe("overwatch");
+    expect(url.get("tournament")).toBe("3");
+    expect(url.has("map_id")).toBe(false);
+
+    await pickChip(container, "Game", "League of Legends");
+    url = new URLSearchParams(window.location.search);
+    expect(url.get("discipline")).toBe("lol");
+    expect(url.has("tournament")).toBe(false);
+    expect(url.get("unlinked_only")).toBe("1");
   });
 
   it("narrows the list to the chosen game on the server", async () => {

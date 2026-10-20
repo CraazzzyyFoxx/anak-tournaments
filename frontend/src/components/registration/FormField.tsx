@@ -16,7 +16,7 @@ import FieldLabel from "./FieldLabel";
  * flow. The replacement is a real `focus-visible:` ring.
  */
 export const fieldControlClass =
-  "w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 text-base sm:text-sm " +
+  "w-full rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 " +
   "text-[color:var(--aqt-fg)] shadow-none placeholder:text-[color:var(--aqt-fg-dim)] transition-colors " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
   "focus-visible:ring-offset-background";
@@ -97,7 +97,7 @@ export default function FormField({
       disabled={disabled}
       aria-invalid={invalid}
       aria-describedby={invalid ? errorId : undefined}
-      className={cn(controlClass, "py-2")}
+      className={cn("text-base sm:text-sm", controlClass, "py-2")}
     />
   ) : type === "number" ? (
     // The library's text-based numeric input: the native spinner's arrows are
@@ -112,7 +112,7 @@ export default function FormField({
       disabled={disabled}
       aria-invalid={invalid}
       aria-describedby={invalid ? errorId : undefined}
-      className={cn(controlClass, "h-9")}
+      className={controlClass}
     />
   ) : (
     <Input
@@ -125,7 +125,7 @@ export default function FormField({
       disabled={disabled}
       aria-invalid={invalid}
       aria-describedby={invalid ? errorId : undefined}
-      className={cn(controlClass, "h-9")}
+      className={controlClass}
     />
   );
 

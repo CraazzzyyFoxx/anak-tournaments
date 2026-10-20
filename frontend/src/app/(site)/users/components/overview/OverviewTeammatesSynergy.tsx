@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useTranslations } from "next-intl";
 import { ArrowRight } from "lucide-react";
 import { UserBestTeammate } from "@/types/user.types";
 import { CardSurface } from "@/components/profile/atoms";
 import { winrateColor } from "@/lib/colors";
-import { catalogInitials } from "@/lib/catalog/initials";
 import { getPlayerSlug } from "@/lib/player";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { SearchField } from "@/components/ui/search-field";
@@ -94,12 +94,7 @@ const TeammateRows = ({
             href={`/users/${getPlayerSlug(tm.user.name)}`}
             className="group grid grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-[18px] py-2.5 transition-colors last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]"
           >
-            <span
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[color:var(--aqt-card-2)] font-onest text-label font-bold text-[color:var(--aqt-fg-muted)]"
-              aria-hidden
-            >
-              {catalogInitials(nm)}
-            </span>
+            <PlayerAvatar user={tm.user} size={26} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]">

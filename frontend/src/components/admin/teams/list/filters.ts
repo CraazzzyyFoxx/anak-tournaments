@@ -1,11 +1,8 @@
 import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
-import type { FilterDef } from "@/components/kit/useFilters";
+import type { FilterDef, FilterOption } from "@/components/kit/useFilters";
 
-/** The one chip that narrows the roster list: the tournament a team plays in. */
-export function teamFilterDefs(
-  tournaments: Array<{ id: number; name: string }>,
-  tournamentLabel: string
-): FilterDef[] {
+/** The chip that narrows the roster list by the tournament a team plays in (`tournamentOptions`). */
+export function teamFilterDefs(tournaments: FilterOption[], tournamentLabel: string): FilterDef[] {
   return [
     {
       // The URL keeps the `tournament` spelling the sibling admin browsers
@@ -13,10 +10,7 @@ export function teamFilterDefs(
       key: TOURNAMENT_QUERY_PARAM,
       label: tournamentLabel,
       kind: "single",
-      options: tournaments.map((tournament) => ({
-        value: String(tournament.id),
-        label: tournament.name
-      }))
+      options: tournaments
     }
   ];
 }

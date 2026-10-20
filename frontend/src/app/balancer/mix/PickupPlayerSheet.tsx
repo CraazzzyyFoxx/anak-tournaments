@@ -398,7 +398,8 @@ export function PickupPlayerSheet({
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-xs text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                size="sm"
+                className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                 onClick={() => handleOpenChange(false)}
               >
                 Cancel
@@ -406,7 +407,8 @@ export function PickupPlayerSheet({
               <Button
                 onClick={handleSave}
                 disabled={saving || owner.dimension == null}
-                className="h-8 bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90"
+                size="sm"
+                className="bg-primary px-3 text-primary-foreground hover:bg-primary/90"
               >
                 <Save className="mr-1 h-3.5 w-3.5" />
                 Save

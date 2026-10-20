@@ -25,8 +25,8 @@ const TABS = [...(Object.keys(KIND_TABS) as (keyof typeof KIND_TABS)[]), "unreso
  * could not resolve (every game).
  *
  * A platform page (spec §3.7): the catalogue is platform-wide, so its game tabs list every installed discipline (axis
- * `all`), not the current community's; there is no scope pill. The game is `?discipline=`, else the scope's game,
- * else the last game, else the first one; an invalid `?discipline=` is named, never corrected, and loads nothing. The
+ * `all`), not the current community's; there is no scope pill. The game is `?discipline=`, else the first one (the
+ * admin never reads the site's saved scope); an invalid `?discipline=` is named, never corrected, and loads nothing. The
  * queue is not a catalogue and ignores the choice, but it is the work the catalogues exist to absorb, so it sits
  * beside them with a badge saying how much of it is waiting.
  *

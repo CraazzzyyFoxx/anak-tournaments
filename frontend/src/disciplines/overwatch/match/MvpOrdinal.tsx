@@ -4,7 +4,8 @@ import { useTranslations } from "next-intl";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SlotProps } from "@/disciplines/types";
 import { observedScore } from "@/lib/encounter/detail";
-import { formatOverperformance, ordinal, overperformanceBadge, resolveMvpPlacement } from "./mvp";
+import { cn } from "@/lib/utils";
+import { formatOverperformance, mvpRank, ordinal, overperformanceBadge, resolveMvpPlacement } from "./mvp";
 
 /** Gold only for 1st, every other placement neutral (design-book MVP rule). */
 const RankLine = ({ label, rank }: { label: string; rank: number | null | undefined }) => (
@@ -20,7 +21,7 @@ const RankLine = ({ label, rank }: { label: string; rank: number | null | undefi
 );
 
 /**
- * Profile-local MVP placement: a plain ordinal (no chip) that opens the same
+ * Profile-local MVP placement: a square medal chip (`.aqt-mvp-pill`) that opens the same
  * breakdown card as elsewhere — new impact rank, legacy rank, overperformance.
  * Reads the viewer's whole-match facts. Must be rendered inside a `TooltipProvider`.
  */
@@ -34,14 +35,12 @@ export default function MvpOrdinal({ match }: Readonly<SlotProps["matchRowBadge"
   // Top of the match by overperformance and past the threshold: the "above expectations" row is the badge.
   const badge = overperformanceBadge(match);
   const scores = match.participants.map((participant) => observedScore(participant) ?? "—");
+  const medal = mvpRank(placement);
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span
-          className="aqt-tnum cursor-default text-ui font-bold"
-          style={{ color: placement === 1 ? "var(--aqt-gold)" : "var(--aqt-fg-faint)" }}
-        >
+        <span className={cn("aqt-mvp-pill cursor-default", medal !== "default" && medal)}>
           {ordinal(placement)}
         </span>
       </TooltipTrigger>

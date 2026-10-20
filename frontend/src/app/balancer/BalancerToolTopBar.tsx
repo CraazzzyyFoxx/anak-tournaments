@@ -54,6 +54,7 @@ export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps
       <Button
         asChild
         variant="outline"
+        size="sm"
         className={cn(TOOLBAR_BUTTON_CLASS, "shrink-0")}
       >
         <Link href={`/admin/tournaments/${summary.id}/registration/rank-autofill`}>

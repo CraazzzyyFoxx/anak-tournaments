@@ -282,7 +282,8 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
           <Select value={sort} onValueChange={(v) => setParams({ sort: v === "rarity" ? null : v })}>
             <SelectTrigger
               aria-label={t("common.sortBy")}
-              className="h-8 w-auto min-w-[170px] gap-2 border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-caption text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] focus:ring-0 focus:ring-offset-0 max-md:h-10 max-md:flex-1"
+              size="sm"
+              className="w-auto min-w-[170px] gap-2 border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] focus:ring-0 focus:ring-offset-0 max-md:h-10 max-md:flex-1"
             >
               <SelectValue />
             </SelectTrigger>

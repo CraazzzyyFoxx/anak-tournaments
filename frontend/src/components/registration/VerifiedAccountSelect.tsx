@@ -100,7 +100,7 @@ export default function VerifiedAccountSelect({
           id={controlId}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : hintId}
-          className={cn(fieldControlClass, "h-9", error && fieldInvalidClass)}
+          className={cn(fieldControlClass, error && fieldInvalidClass)}
         >
           <SelectValue placeholder={config.placeholder} />
         </SelectTrigger>

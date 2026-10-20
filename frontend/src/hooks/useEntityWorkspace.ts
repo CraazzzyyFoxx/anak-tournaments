@@ -5,7 +5,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /**
  * An opened object's owner is runtime context, not a saved viewing filter: its community and its
- * game (which locks the scope pill, spec §3.5) are held while it is open and cleared after.
+ * game (which locks the site's scope pill, spec §3.5) are held while it is open and cleared after.
  */
 export function useEntityWorkspace(workspaceId: number | null | undefined, discipline?: string | null): void {
   useLayoutEffect(() => {

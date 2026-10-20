@@ -278,7 +278,6 @@ export function PickupTeamsPanel({
             <>
               <Button
                 type="button"
-                className="h-9"
                 disabled={balancing || activeCount === 0}
                 onClick={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
                 title={
@@ -314,7 +313,6 @@ export function PickupTeamsPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-9"
                     disabled={balancing || shufflingAll}
                     onClick={() => (anyLineupUnrecorded ? setShuffleOpen(true) : onShuffleAll())}
                   >

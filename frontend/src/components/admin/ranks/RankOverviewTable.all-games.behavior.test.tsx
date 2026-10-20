@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 //
-// `/admin/ranks` under "all games" (spec §6.8): every enabled game's rows with a game column, role and rank-range
-// filters replaced by the scope hint, and no rank-value sort (the values live on different grids).
+// `/admin/ranks` under "all games" (spec §6.8): every enabled game's rows with a game column, the game chip leading
+// the bar, role and rank-range filters only once a game is picked, and no rank-value sort (the values live on
+// different grids).
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
-import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import type { RankOverviewListParams, RankOverviewRow } from "@/services/workspace-player.service";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
@@ -52,7 +52,12 @@ vi.mock("@/lib/datetime/client", () => ({
 }));
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => mobile }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
-  useDivisionGrid: () => ({ tiers: [{ number: 1, name: "Bronze", rank_min: 0, rank_max: null, icon_url: "" }] })
+  useDivisionGrid: () => ({
+    tiers: [
+      { number: 1, name: "Bronze", rank_min: 0, rank_max: 999, icon_url: "" },
+      { number: 2, name: "Silver", rank_min: 1000, rank_max: null, icon_url: "" }
+    ]
+  })
 }));
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
@@ -148,6 +153,14 @@ async function render(search = "") {
 const lastParams = () => listRanks.mock.calls.at(-1)?.[1] as RankOverviewListParams;
 const header = (text: string) => [...container.querySelectorAll("th")].find((th) => th.textContent?.trim() === text);
 
+/** The filters the bar's picker offers, in order (the i18n mock echoes keys: the trigger is `addFilter`). */
+async function offeredFilters() {
+  await act(async () => {
+    container.querySelector('button[aria-label="addFilter"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  return [...document.querySelectorAll('[cmdk-item=""]')].map((item) => item.textContent);
+}
+
 beforeEach(() => {
   game = null;
   invalid = false;
@@ -165,6 +178,8 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  // The picker's popover is portalled to `body`.
+  document.body.innerHTML = "";
 });
 
 it("reads every game: no game, role or rank range on the wire, even from leftover URL filters", async () => {
@@ -175,25 +190,30 @@ it("reads every game: no game, role or rank range on the wire, even from leftove
   expect(lastParams().rankMin).toBeUndefined();
 });
 
-it("adds a game column and replaces the game-bound filters with the scope hint", async () => {
+it("adds a game column and leads the bar with the game chip, without the game-bound filters", async () => {
   await render();
 
   expect(header("column")).toBeDefined();
   const body = container.querySelector("tbody")?.textContent ?? "";
   expect(body).toContain("League of Legends");
   expect(body).toContain("Overwatch");
-  expect(container.textContent).toContain("filterHint");
-  expect(container.textContent).not.toContain("filters.role");
-  expect(container.textContent).not.toContain("filters.divisionMin");
+  // `column` is the game chip (`common.discipline.column`).
+  expect(await offeredFilters()).toEqual(["column", "filters.layer", "filters.differsFromCanon"]);
 });
 
-it("registers role and division range as game-bound params (R5)", async () => {
+it("offers role and division range once a game is picked", async () => {
   game = "overwatch";
-  await render("?role=tank&div_min=1&div_max=1");
+  await render("?discipline=overwatch&role=tank");
 
-  // The pill's game pick passes exactly these as `dropParams` (R5; the drop itself is pinned on /users, Task 41).
-  expect([...useScopePillOpen.getState().gameBoundParams].sort()).toEqual(["div_max", "div_min", "role"]);
-  expect(lastParams().role).toEqual(["tank"]);
+  expect(await offeredFilters()).toEqual([
+    "column",
+    "filters.layer",
+    "filters.role",
+    "filters.divisionMin",
+    "filters.divisionMax",
+    "filters.differsFromCanon"
+  ]);
+  expect(lastParams()).toMatchObject({ discipline: "overwatch", role: ["tank"] });
 });
 
 it("offers the rank-value sort only under a game", async () => {

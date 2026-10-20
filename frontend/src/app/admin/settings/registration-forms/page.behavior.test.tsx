@@ -60,7 +60,6 @@ vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })
 }));
-vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: vi.fn() }));
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ canAccessPermission: () => true })
 }));

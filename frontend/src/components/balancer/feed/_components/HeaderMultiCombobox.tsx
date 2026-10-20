@@ -54,7 +54,7 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
             role="combobox"
             aria-expanded={open}
             disabled={disabled || options.length === 0}
-            className="h-9 w-full justify-between font-normal"
+            className="w-full justify-between"
           >
             <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
               {value.length > 0 ? t("columnsSelected", { count: value.length }) : t("selectColumns")}

@@ -11,3 +11,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # Design system
 
 Before any UI work, read [`DESIGN.md`](DESIGN.md): tokens, type roles, the components to reuse, layout and canonical patterns. Its chip policy (§4) is strict — a chip only for a filter, a lifecycle status, a colour key or a count; every other fact is plain text.
+
+Controls come from `src/components/ui/` only: no native `<button>`, `<input>`, `<select>` or `<textarea>` in feature code, and no `text-*` / `font-*` / height overrides on a control — its `size` prop sets both (DESIGN.md §3, Control text). Missing a control? Add it to `components/ui/`.

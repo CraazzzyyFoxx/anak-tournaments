@@ -214,7 +214,7 @@ export function PickupMixHeader({
         {canWrite ? (
           <Button
             type="button"
-            className="h-9 shrink-0"
+            className="shrink-0"
             disabled={game == null}
             onClick={onOpenPool}
           >
@@ -372,7 +372,7 @@ function SignupSettings({
           type="button"
           variant="outline"
           aria-label={t("signupTrigger", { mode: stateLabel })}
-          className="h-9 shrink-0 gap-2"
+          className="shrink-0 gap-2"
         >
           <span className={EYEBROW_CLASS}>{t("signupLabel")}</span>
           <span
@@ -539,7 +539,7 @@ function DiscordMenu({
             variant="outline"
             aria-label={t("discord.trigger", { status: statusLabel })}
             className={cn(
-              "h-9 shrink-0 gap-2",
+              "shrink-0 gap-2",
               failed && "border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)]"
             )}
           >
@@ -571,7 +571,7 @@ function DiscordMenu({
                     type="button"
                     // Re-posting a card that is up is a repair, not the next step.
                     variant={!closed && isLive(signupPost) ? "outline" : "default"}
-                    className="h-9 w-full"
+                    className="w-full"
                     disabled={posting}
                     onClick={() => onPostSignup(postModeOf(game.self_signup))}
                   >

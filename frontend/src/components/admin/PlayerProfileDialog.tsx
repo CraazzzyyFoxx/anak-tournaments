@@ -165,7 +165,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
               if (e.key === "Escape") handleCancel();
             }}
             disabled={updateMutation.isPending}
-            className="h-9 flex-1 aria-invalid:border-destructive"
+            className="flex-1 aria-invalid:border-destructive"
             autoFocus
           />
           <Button

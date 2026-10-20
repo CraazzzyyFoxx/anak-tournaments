@@ -453,7 +453,7 @@ export function MatchReportForm({
                   onValueChange={(next) =>
                     setDraft((prev) => ({ ...prev, scores: { ...scores, [seat.id]: next ?? 0 } }))
                   }
-                  className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+                  className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
                 />
               </div>
             ))}
@@ -475,7 +475,7 @@ export function MatchReportForm({
             value={gamesPlayed}
             onValueChange={(next) => setDraft((prev) => ({ ...prev, gamesPlayed: next ?? 0 }))}
             aria-invalid={validation.score != null}
-            className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+            className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
           />
         </div>
 
@@ -619,7 +619,7 @@ export function MatchReportForm({
                           codes: { ...codes, [slot.mapIndex]: e.target.value }
                         }))
                       }
-                      className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+                      className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
                     />
                   </div>
                 );
@@ -651,7 +651,7 @@ export function MatchReportForm({
                 validation.comment ? `${commentCounterId} ${commentErrorId}` : commentCounterId
               }
               onChange={(e) => setDraft((prev) => ({ ...prev, comment: e.target.value }))}
-              className="min-h-20 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+              className="min-h-20 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
             />
             <p
               id={commentCounterId}
@@ -698,7 +698,7 @@ export function MatchReportForm({
                         customFields: { ...customValues, [definition.key]: e.target.value }
                       }))
                     }
-                    className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+                    className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
                   />
                   {error ? (
                     <p id={errorId} className="text-xs font-semibold text-danger">
@@ -731,7 +731,7 @@ export function MatchReportForm({
         <Button
           onClick={() => submitMutation.mutate()}
           disabled={!!validationError || submitMutation.isPending}
-          className="h-10 px-5 font-bold"
+          className="h-10 px-5"
         >
           {submitMutation.isPending ? t("matchReport.submitting") : t("matchReport.submit")}
         </Button>

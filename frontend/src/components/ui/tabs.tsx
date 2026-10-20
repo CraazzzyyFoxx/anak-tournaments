@@ -48,10 +48,10 @@ const tabsTriggerVariants = cva(
         // Inset ring: the list scrolls horizontally, which clips anything
         // drawn outside a trigger's box.
         underline: cn(
-          "inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm text-muted-foreground transition-colors hover:text-foreground",
+          "inline-flex h-9 items-center gap-1.5 border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
           "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          "data-[state=active]:border-primary data-[state=active]:font-medium data-[state=active]:text-foreground",
-          "aria-[current=page]:border-primary aria-[current=page]:font-medium aria-[current=page]:text-foreground"
+          "data-[state=active]:border-primary data-[state=active]:text-foreground",
+          "aria-[current=page]:border-primary aria-[current=page]:text-foreground"
         ),
         pill: toggleVariants({ variant: "pill", size: "sm" })
       }

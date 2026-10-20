@@ -12,12 +12,14 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import {
   TOURNAMENT_QUERY_PARAM,
-  parseTournamentQueryParam
+  parseTournamentQueryParam,
+  strandedTournamentParams,
+  tournamentOptions
 } from "@/components/admin/tournament-filter";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
@@ -26,6 +28,7 @@ import adminService from "@/services/admin.service";
 import { scoreLine } from "@/lib/encounter/detail";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
@@ -60,16 +63,19 @@ const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: LogProce
 export function ParsedMatchesBrowser({
   tournamentId,
   discipline,
-  workspaceId
+  workspaceId,
+  games
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
   /**
-   * The pinned tournament's game, else the workspace view's scope (spec §6.9): a code filters the list on the server
-   * and offers that game's maps; `null` = every game, with a "Game" column and no map filter.
+   * The pinned tournament's game, else the workspace view's Game chip (`?discipline=`, spec §6.9): a code filters the
+   * list on the server; `null` = every game, with a "Game" column.
    */
   discipline: string | null;
   workspaceId: number | null;
+  /** The community's games, for the Game chip; absent in a hub. */
+  games?: readonly DisciplineDescriptor[];
 }>) {
   const t = useTranslations("adminMatches.parsed");
   const tGame = useTranslations("common.discipline");
@@ -80,39 +86,43 @@ export function ParsedMatchesBrowser({
   const [pageRows, setPageRows] = useState<AdminMatchRow[]>([]);
   const showTournament = tournamentId == null;
 
-  // The tournament chip is one game's (spec §6.2): ignored under "all games"; a pinned tournament keeps working.
-  const chipTournamentId =
-    discipline === null ? null : parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
+  // The tournament chip works under every game; a pinned tournament keeps working.
+  const chipTournamentId = parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
   const scopeTournamentId = tournamentId ?? chipTournamentId;
-
-  // Map options come from the game's catalogue, not from the page of rows: the
-  // filter has to offer maps that this page happens not to show.
-  const mapsQuery = useCatalogEntities(discipline, "map", { enabled: workspaceId != null });
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
     queryFn: () => tournamentService.getAll(null, workspaceId),
     enabled: workspaceId != null && tournamentId == null
   });
+  const chipTournamentGame = tournamentsQuery.data?.results.find(
+    (entry) => entry.id === chipTournamentId
+  )?.discipline;
+  // Maps are one game's catalogue: the filtered game's, else the chosen tournament's (spec §6.2).
+  const mapGame = discipline ?? chipTournamentGame ?? null;
+
+  // Map options come from the game's catalogue, not from the page of rows: the
+  // filter has to offer maps that this page happens not to show.
+  const mapsQuery = useCatalogEntities(mapGame, "map", { enabled: workspaceId != null });
 
   const defs = useMemo<FilterDef[]>(() => {
-    const list: FilterDef[] = [];
-    // Hidden under "all games"; under a game it offers that game's tournaments.
-    if (tournamentId == null && discipline !== null) {
+    // A game pick always drops the map (another game's catalogue), and a tournament of another game.
+    const list = gameFilterDefs(games, tGame("column"), (next) => [
+      "map_id",
+      ...strandedTournamentParams(chipTournamentGame, next)
+    ]);
+    if (tournamentId == null) {
       list.push({
         key: TOURNAMENT_QUERY_PARAM,
         label: t("tournament"),
         kind: "single",
-        options: (tournamentsQuery.data?.results ?? [])
-          .filter((entry) => entry.discipline === discipline)
-          .map((entry) => ({
-            value: String(entry.id),
-            label: entry.name
-          }))
+        options: tournamentOptions(tournamentsQuery.data?.results ?? [], discipline),
+        // With no game filtered the map catalogue is the tournament's, so another tournament strands the map.
+        resets: discipline === null ? () => ["map_id"] : undefined
       });
     }
-    // Maps are one game's catalogue: without a game the filter is hidden (spec §6.2).
-    if (discipline !== null) {
+    // Without a game (filtered or the tournament's) there is no catalogue to pick a map from.
+    if (mapGame !== null) {
       list.push({
         key: "map_id",
         label: t("map"),
@@ -137,10 +147,11 @@ export function ParsedMatchesBrowser({
       { key: "unlinked_only", label: t("noRawLog"), kind: "toggle" }
     );
     return list;
-  }, [tournamentId, discipline, tournamentsQuery.data, mapsQuery.data, t]);
+  }, [games, chipTournamentGame, tournamentId, discipline, mapGame, tournamentsQuery.data, mapsQuery.data, t, tGame]);
 
   const filters = useFilters(defs);
-  const mapFilter = discipline === null ? "" : String(filters.values.map_id ?? "");
+  // Read only while the map chip is declared, i.e. while a game is known.
+  const mapFilter = String(filters.values.map_id ?? "");
   const statusFilter = Array.isArray(filters.values.log_status)
     ? (filters.values.log_status as LogProcessingStatus[])
     : [];
@@ -237,11 +248,7 @@ export function ParsedMatchesBrowser({
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
             toolbar={
-              <FilterBar
-                defs={defs}
-                filters={filters}
-                trailing={discipline === null ? <GameFilterHint /> : undefined}
-              />
+              <FilterBar defs={defs} filters={filters} />
             }
             emptyMessage={
               unlinkedOnly

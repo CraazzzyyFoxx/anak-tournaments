@@ -8,6 +8,10 @@ the scope. Spec: `docs/superpowers/specs/2026-10-20-game-scope-design.md`; plan:
 `docs/superpowers/plans/2026-10-20-game-scope.md`. **One database migration** ships: `regtpl01` (after
 `achievement06`), giving every registration form template its game.
 
+*Admin parts superseded on 2026-10-20 by `docs/releases/2026-10-20-admin-game-filter.md`: no pill in the admin, the
+community switcher is back in the account menu, the game is a per-list filter chip and the admin ignores the saved
+scope.*
+
 Deploy **all images from one SHA** (app, tournament, balancer, stats, analytics, stream, identity, gateway, frontend):
 the frontend omits `discipline` under "all games", which the previous backends reject as a missing game.
 

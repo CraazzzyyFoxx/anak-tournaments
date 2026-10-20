@@ -199,15 +199,10 @@ export function showsGameMarks(resolution: PageGameResolution, games: readonly D
   return resolution.game.kind === "all" && games.filter((game) => game.enabled).length > 1;
 }
 
-/** A creation form's default game (spec §7.2): the scope's, else the last game the area runs, else the first. */
-export function defaultCreationGame(input: {
-  scope: GameScope;
-  lastGame: string | null;
-  games: readonly DisciplineChoice[];
-}): string | null {
-  const enabled = input.games.filter((game) => game.enabled).map((game) => game.code);
-  if (input.scope !== ALL_DISCIPLINES && enabled.includes(input.scope)) return input.scope;
-  if (input.lastGame !== null && enabled.includes(input.lastGame)) return input.lastGame;
+/** A creation form's default game (spec §7.2): the page's filtered game when the area runs it, else the first enabled. */
+export function defaultCreationGame(game: string | null, games: readonly DisciplineChoice[]): string | null {
+  const enabled = games.filter((entry) => entry.enabled).map((entry) => entry.code);
+  if (game !== null && enabled.includes(game)) return game;
   return enabled[0] ?? null;
 }
 

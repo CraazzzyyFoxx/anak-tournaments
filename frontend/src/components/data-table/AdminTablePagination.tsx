@@ -86,7 +86,7 @@ export function AdminTablePagination({
         <div className="flex items-center gap-1.5">
           <span>{t("rows")}</span>
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger aria-label={t("rowsPerPage")} className="h-8 w-auto gap-1 border-border bg-muted/30 px-2.5 text-sm tabular-nums text-muted-foreground">
+            <SelectTrigger aria-label={t("rowsPerPage")} size="sm" className="w-auto gap-1 border-border bg-muted/30 px-2.5 tabular-nums text-muted-foreground">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

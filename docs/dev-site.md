@@ -95,6 +95,20 @@ curl -sX POST -H 'Cookie: owtdev_refresh_token=x' https://<dev-host>/auth/refres
 - `proxy/xray.json` — the `proxy` sidecar's config, if outbound API calls need it. A dead
   outbound shows up as every Discord check answering `unknown`.
 
+## Home PostgreSQL resource limits
+
+On `home`, `db_postgres` is managed outside this repo by
+`/home/craazzzyyfoxx/postgres/docker-compose.yml`. The `postgres` service has
+`mem_limit: 8g` and `cpus: 4`, so container recreation retains both limits.
+Apply these limits to a running container without restarting PostgreSQL:
+
+```bash
+docker update --memory 8g --memory-swap 16g --cpus 4 db_postgres
+```
+
+The swap setting is RAM plus swap: 8 GiB RAM and up to 8 GiB additional swap,
+matching Compose's default when `memswap_limit` is unset.
+
 ## Deploy / update
 
 ```bash
@@ -103,8 +117,17 @@ docker compose -f docker-compose.production.yml build
 docker compose -f docker-compose.production.yml run --rm --no-deps -T app-svc \
     alembic upgrade head </dev/null
 make prod-discord-emoji    # the dev bot's own application emoji; skips what is already there
-make prod-up PROD_SCALE='app-svc=1 identity-svc=1 tournament-svc=1 frontend=1'
+NGINX_CONF_SHA=$(sha256sum nginx/nginx.conf | cut -c1-12) \
+docker compose -f docker-compose.production.yml up -d --wait --no-build \
+    --scale app-svc=1 --scale identity-svc=1 --scale tournament-svc=2 --scale frontend=2 \
+    proxy rabbitmq redis app-svc identity-svc tournament-svc stats-svc stats-worker balancer-svc \
+    analytics-svc analytics-worker stream-svc gateway frontend nginx
 ```
+
+Same replicas and limits as production `PROD_SIZE=small` (`PROD_SCALE_small` in the
+`Makefile`), minus `discord-worker` until its outbox is reviewed (see below) — which is why
+this is not `make prod-up`. `analytics-worker` takes `ANALYTICS_WORKER_CPUS`/`_MEMORY` from
+the box's `.env`.
 
 `discord-worker` runs with its own bot token, not production's. Reusing production's token
 would double-handle every Discord event. That also means its own application emoji: the dev
@@ -113,6 +136,23 @@ within 10 minutes without a restart. `stream-svc` gets no Twitch credentials —
 would share production's Helix rate-limit bucket.
 
 Tear down with `make prod-down`; the database survives it.
+
+## Building and heavy jobs
+
+Build images off-host, one at a time, importing the existing registry cache without publishing to
+it. Do not run the frontend compiler on an unstable dev server: the observed Turbopack build
+exceeded a 3 GiB builder limit; the successful off-host build used 2 CPUs / 6 GiB, not server resources.
+Transfer completed immutable images with a checksum and load them sequentially or throttle the
+input stream. Do not overlap image imports, database exports and receipt capture. Build-time
+memory requirements do not change the runtime ceilings above.
+
+For full-data evidence, use one read-only job/connection at a time: low client CPU/memory limits,
+`work_mem=16MB`, `hash_mem_multiplier=1`, JIT off and no parallel PostgreSQL workers. Lower only
+that job's verified database backend to nice 19 / idle I/O priority; never change other database
+processes or shared server settings. A receipt job may additionally cap its own backend's address
+space growth and must fail rather than waive a proof when that budget is exceeded. Decode the
+entire backup payload and verify its checksum before activation. Preserve any interrupted attempt;
+publish new evidence in a new directory instead of overwriting an immutable receipt.
 
 ## Refreshing the data
 
@@ -154,7 +194,7 @@ Equal table counts alone are not a losslessness proof.
 Only after proof and isolation: stop the old project, atomically install the paired database,
 S3, project and signing configuration, verify effective overrides, and start the explicitly
 selected new services. Do not use an unqualified `up` that also starts the Discord worker.
-Preserve the existing dev scale of one app/identity/tournament/frontend replica.
+Run at `PROD_SIZE=small` scale (see Deploy / update).
 
 Record the actual source commit, built/running image IDs, effective database/head, Compose
 project, bucket, backup SHA and receipt identity. Set backend `GIT_SHA` to the verified build

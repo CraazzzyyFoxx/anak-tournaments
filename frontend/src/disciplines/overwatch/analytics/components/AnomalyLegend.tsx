@@ -31,7 +31,7 @@ export default function AnomalyLegend({ className }: Readonly<{ className?: stri
         <Button
           variant="ghost"
           size="sm"
-          className={cn("h-6 gap-1 px-1.5 text-xs font-normal text-muted-foreground", className)}
+          className={cn("h-6 gap-1 px-1.5 text-muted-foreground", className)}
         >
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
           {t("analytics.anomalyLegend.trigger")}

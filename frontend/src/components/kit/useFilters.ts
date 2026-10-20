@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, type ReactNode } from "react";
 
 import type { AdminTableFilters } from "@/components/data-table";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -10,9 +10,11 @@ export interface FilterOption {
   label: string;
   /** How many rows match, when the endpoint reports facet counts. */
   count?: number;
+  /** Leading mark in the picker (a game's mark). */
+  icon?: ReactNode;
 }
 
-export type FilterDef =
+export type FilterDef = (
   | { key: string; label: string; kind: "single"; options: FilterOption[] }
   | { key: string; label: string; kind: "multi"; options: FilterOption[] }
   /** Boolean chip: present in the URL as `1`, absent otherwise. */
@@ -23,7 +25,11 @@ export type FilterDef =
       label: string;
       kind: "entity";
       search: (query: string) => Promise<FilterOption[]>;
-    };
+    }
+) & {
+  /** Keys that stop meaning anything once this filter takes `next` (a game's maps, roles); dropped in the same write. */
+  resets?: (next: FilterValue | null) => readonly string[];
+};
 
 export type FilterValue = string | string[] | boolean;
 

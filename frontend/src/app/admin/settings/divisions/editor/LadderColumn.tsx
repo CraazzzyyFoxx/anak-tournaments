@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { ChevronDown, ChevronUp, Merge, Scissors } from "lucide-react";
 import { useTranslations } from "next-intl";
 

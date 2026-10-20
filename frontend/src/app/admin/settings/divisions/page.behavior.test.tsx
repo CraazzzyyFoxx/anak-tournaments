@@ -109,15 +109,13 @@ vi.mock("next/link", () => ({
   )
 }));
 
-// The page reads its game from the shared resolver (the real one, over the URL and a saved scope) and that game's
-// native metadata; both are driven by the URL here (`?discipline=`), exactly as the real hooks resolve it.
+// The page reads its game from the shared resolver (the real one) and that game's native metadata. In the admin no
+// saved scope reaches it: the game is the game filter's `?discipline=`, else every game.
 const INSTALLED = [
   { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
   { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true }
 ];
 
-/** The saved game scope; Overwatch unless a test says otherwise. */
-let stored = "overwatch";
 vi.mock("@/hooks/useGameScope", async () => {
   const { resolvePageGame } = await vi.importActual<typeof import("@/lib/site/discipline-scope")>(
     "@/lib/site/discipline-scope"
@@ -128,7 +126,7 @@ vi.mock("@/hooks/useGameScope", async () => {
         pageClass: options.pageClass,
         ownerGame: options.ownerGame ?? null,
         explicit: new URLSearchParams(window.location.search).get("discipline"),
-        stored,
+        stored: "all",
         lastGame: null,
         games: INSTALLED
       });
@@ -148,8 +146,6 @@ vi.mock("@/hooks/useGameScope", async () => {
 vi.mock("@/hooks/useGameDescriptors", () => ({
   useGameDescriptors: () => new Map(INSTALLED.map((game) => [game.code, game]))
 }));
-// The owner lock is the pill's (its own suite); here it must only not touch the mocked store.
-vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: () => {} }));
 
 function metadataFor(code: string): DisciplineMetadata {
   const native = code === "overwatch";
@@ -296,9 +292,21 @@ function button(text: string) {
   );
 }
 
+function commandItem(text: string) {
+  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
+    item.textContent?.endsWith(text)
+  );
+}
+
+/** Picks a game in the page's game filter: "+ Filter" › Game › the game (an option reads as its mark, then its name). */
+async function pickGame(name: string) {
+  await click(document.querySelector('button[aria-label="Add filter"]'));
+  await click(commandItem("Game"));
+  await click(commandItem(name));
+}
+
 beforeEach(() => {
   permitted = true;
-  stored = "overwatch";
   currentWorkspace = {
     id: 1,
     disciplines_enabled: ["overwatch", "lol"],
@@ -721,7 +729,7 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 7);
   });
 
-  it("opens a grid-only URL as the owner of its game, whatever the saved preference is", async () => {
+  it("opens a grid-only URL as the owner of its game, with no game filtered", async () => {
     getDivisionGrids.mockResolvedValue([
       grid(7, "OW"),
       { ...grid(8, "LoL"), discipline: "lol", versions: [] }
@@ -730,7 +738,7 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     window.history.replaceState(null, "", "/admin/settings/divisions?grid=8");
     const container = await mount();
 
-    // Preference is Overwatch, the grid is LoL: the page is LoL, with no OW-only action and no URL rewrite.
+    // The grid is LoL: the page is LoL, with no OW-only action and no URL rewrite.
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
       "Create a division grid for this game"
     );
@@ -739,8 +747,7 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     expect(window.location.search).toBe("?grid=8");
   });
 
-  it("lists every game's grids, marked, under all games and opens the one in force", async () => {
-    stored = "all";
+  it("lists every game's grids, marked, with no game filtered and opens the one in force", async () => {
     getDivisionGrids.mockResolvedValue([
       grid(7, "OW grid"),
       { ...grid(8, "LoL grid"), discipline: "lol", versions: [] }
@@ -802,5 +809,45 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     expect(keys).toContainEqual(["division-grid-readiness", 1, "overwatch"]);
     expect(keys).not.toContainEqual(["division-grid-versions", 1, "lol"]);
     invalidate.mockRestore();
+  });
+});
+
+describe("Settings › Divisions · game filter", () => {
+  beforeEach(() => {
+    getDivisionGrids.mockResolvedValue([
+      grid(7, "OW"),
+      { ...grid(8, "LoL"), discipline: "lol", versions: [] }
+    ]);
+    getDivisionGridVersions.mockImplementation(async (_ws: number, id: number) => (id === 8 ? [] : VERSIONS));
+  });
+
+  it("offers the Game chip, and a picked game opens that game's grid", async () => {
+    const container = await mount();
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+
+    await pickGame("League of Legends");
+
+    expect(window.location.search).toBe("?discipline=lol");
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
+      "Create a division grid for this game"
+    );
+    expect(getDivisionGridVersions).toHaveBeenLastCalledWith(1, 8);
+  });
+
+  it("unpins a grid only for another game's pick; removing the chip keeps the pin", async () => {
+    window.history.replaceState(null, "", "/admin/settings/divisions?grid=7");
+    const container = await mount();
+
+    await pickGame("Overwatch");
+    expect(window.location.search).toBe("?grid=7&discipline=overwatch");
+
+    await click(document.querySelector('button[aria-label="Remove filter Game: Overwatch"]'));
+    expect(window.location.search).toBe("?grid=7");
+
+    await pickGame("League of Legends");
+    expect(window.location.search).toBe("?discipline=lol");
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
+      "Create a division grid for this game"
+    );
   });
 });

@@ -5,12 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
-import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -19,15 +17,13 @@ const VIEWS = ["encounters", "standings", "reports", "parsed", "logs"] as const;
 type MatchesView = (typeof VIEWS)[number];
 
 /**
- * Params a view switch keeps. The tournament and stage scope are what the five
- * views have in common; `id`, `page`, `search` and the per-view chips are
- * dropped, because a row id or a `status` means a different thing in each view
- * and carrying it over would filter the next view by nonsense.
+ * Params a view switch keeps. The tournament and stage scope, and the Game chip
+ * the encounters and parsed-maps views share, are what the five views have in
+ * common; `id`, `page`, `search` and the per-view chips are dropped, because a
+ * row id or a `status` means a different thing in each view and carrying it
+ * over would filter the next view by nonsense.
  */
 const SHARED_SCOPE_PARAMS = ["tournament", "stage", "group", "discipline"] as const;
-
-/** The views' one-game filters (R5): a scope pick drops them from the URL. */
-const GAME_BOUND_PARAMS = ["map_id", TOURNAMENT_QUERY_PARAM, "stage", "group"] as const;
 
 const fallback = (
   <div className="space-y-4">
@@ -84,8 +80,9 @@ const TournamentLogsTab = dynamic(
  * state the switch owns.
  *
  * The encounters and parsed-maps views are multi (spec §6.9): every game of the
- * workspace with a "Game" column, or the game in scope, filtered on the server.
- * Standings, reports and logs are game-agnostic.
+ * workspace with a "Game" column, or the game their shared Game chip
+ * (`?discipline=`) filters, on the server. Standings, reports and logs are
+ * game-agnostic.
  */
 export default function AdminMatchesPage() {
   const t = useTranslations("adminMatches.matches");
@@ -93,7 +90,6 @@ export default function AdminMatchesPage() {
   const { canAccessPermission, isLoaded } = usePermissions();
   const searchParams = useSearchParams();
   const gameScope = useGameScope({ axis: workspaceId ?? "all" });
-  useGameBoundParams(GAME_BOUND_PARAMS);
 
   const requested = searchParams.get("view") ?? "";
   const view: MatchesView = (VIEWS as readonly string[]).includes(requested)
@@ -126,7 +122,14 @@ export default function AdminMatchesPage() {
 
       {view === "encounters" ? (
         <GameScopeGate scope={gameScope}>
-          {(game) => <EncountersBrowser tournamentId={null} workspaceId={workspaceId} discipline={game} />}
+          {(game) => (
+            <EncountersBrowser
+              tournamentId={null}
+              workspaceId={workspaceId}
+              discipline={game}
+              games={gameScope.games}
+            />
+          )}
         </GameScopeGate>
       ) : null}
       {view === "standings" ? (
@@ -141,7 +144,14 @@ export default function AdminMatchesPage() {
       ) : null}
       {view === "parsed" ? (
         <GameScopeGate scope={gameScope}>
-          {(game) => <ParsedMatchesBrowser tournamentId={null} discipline={game} workspaceId={workspaceId} />}
+          {(game) => (
+            <ParsedMatchesBrowser
+              tournamentId={null}
+              discipline={game}
+              workspaceId={workspaceId}
+              games={gameScope.games}
+            />
+          )}
         </GameScopeGate>
       ) : null}
       {view === "logs" ? (

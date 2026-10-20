@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { AlertTriangle, Check, Equal, Hourglass, Lock, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 
 import type { Workspace } from "@/types/workspace.types";
 

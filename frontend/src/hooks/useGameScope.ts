@@ -61,6 +61,8 @@ export function useGameScope(
   const searchParams = useSearchParams();
   const mounted = useSyncExternalStore(noSubscription, () => true, () => false);
   const pageClass = options.pageClass ?? pageClassOf(pathname);
+  // The admin filters by game per page (`?discipline=` chip): the site's saved scope and last game never reach it.
+  const admin = pathname.startsWith("/admin");
 
   const storeHostLock = useWorkspaceStore((s) => s.hostLockedWorkspaceId);
   const statsScope = useWorkspaceStore((s) => s.statsScope);
@@ -71,8 +73,8 @@ export function useGameScope(
   const setLastGame = useWorkspaceStore((s) => s.setLastGame);
 
   const server = mounted ? undefined : initial;
-  const stored = server ? server.stored : storeScope;
-  const lastGame = server ? server.lastGame : storeLastGame;
+  const stored = admin ? ALL_DISCIPLINES : server ? server.stored : storeScope;
+  const lastGame = admin ? null : server ? server.lastGame : storeLastGame;
   const tenantLock = storeHostLock ?? initial?.hostLockedWorkspaceId ?? null;
   const viewed = server
     ? server.axis
@@ -96,6 +98,7 @@ export function useGameScope(
       for (const param of dropParams) next.delete(param);
       const query = next.toString();
       router.push(query ? `${pathname}?${query}` : pathname);
+      if (admin) return;
       // Every push follows a cookie write. The client cache keys renders by URL, not cookie (`staleTimes.dynamic`), so the
       // push alone can re-show a render made under the previous cookies (a param-less URL, the page itself). The refresh
       // is queued behind the push and re-reads the server tree on the new URL, without a history entry of its own.
@@ -103,28 +106,30 @@ export function useGameScope(
       // Next does not offer.
       router.refresh();
     },
-    [pathname, router, searchParams]
+    [admin, pathname, router, searchParams]
   );
 
   const selectScope = useCallback(
     (value: GameScope, choice?: { dropParams?: string[] }) => {
-      setGameScope(value);
-      if (value !== ALL_DISCIPLINES) setLastGame(value);
+      if (!admin) {
+        setGameScope(value);
+        if (value !== ALL_DISCIPLINES) setLastGame(value);
+      }
       push((next) => {
         if (value === ALL_DISCIPLINES) next.delete(DISCIPLINE_PARAM);
         else next.set(DISCIPLINE_PARAM, value);
       }, choice?.dropParams);
     },
-    [push, setGameScope, setLastGame]
+    [admin, push, setGameScope, setLastGame]
   );
 
   const selectTab = useCallback(
     (code: string, choice?: { url?: boolean; dropParams?: string[] }) => {
-      setLastGame(code);
+      if (!admin) setLastGame(code);
       if (choice?.url === false) return;
       push((next) => next.set(DISCIPLINE_PARAM, code), choice?.dropParams);
     },
-    [push, setLastGame]
+    [admin, push, setLastGame]
   );
 
   return {

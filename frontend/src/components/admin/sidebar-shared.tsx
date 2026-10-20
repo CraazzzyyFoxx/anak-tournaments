@@ -1,8 +1,9 @@
 "use client";
 
-import Image from "next/image";
+import { useId } from "react";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
-import { ArrowLeft, Bell, ChevronsUpDown } from "lucide-react";
+import { ArrowLeft, Bell, Check, ChevronsUpDown } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,12 +14,19 @@ import {
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { ACCOUNT_MENU_ITEM_CLASS, AccountMenuPanel } from "@/components/UserMenu";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import {
+  ACCOUNT_MENU_ITEM_CLASS,
+  AccountMenuPanel,
+  AccountMenuSeparator
+} from "@/components/UserMenu";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
+import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 import { initials } from "@/lib/utils";
+import type { Workspace } from "@/types/workspace.types";
 
 // Role names come from two RBAC scopes: global roles ("admin", "moderator" —
 // see AppRole in usePermissions) and
@@ -122,12 +130,24 @@ export function SidebarUserDropdown() {
   const t = useTranslations("adminShell.sidebar");
   const tCommon = useTranslations("common");
   const tDashboard = useTranslations("adminShell.dashboardExtra");
+  const workspaceLabelId = useId();
   const openSettings = useAccountSettingsModalStore((s) => s.open);
   const { user, status } = useAuthProfile();
-  const { workspaces: allWorkspaces, currentWorkspaceId } = useWorkspaceStore();
+  const {
+    workspaces: allWorkspaces,
+    currentWorkspaceId,
+    setCurrentWorkspace
+  } = useWorkspaceStore();
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
 
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
+  const pickWorkspace = (next: Workspace) => {
+    setCurrentWorkspace(next.id);
+    // A game filter the new community does not run would narrow its list to nothing.
+    const game = searchParams?.get(DISCIPLINE_PARAM);
+    if (game && !next.disciplines_enabled.includes(game)) setParams({ [DISCIPLINE_PARAM]: null });
+  };
   const roleLabel = t(`roles.${getRoleLabel({
     isSuperuser: user?.isSuperuser ?? false,
     globalRoles: user?.roles ?? [],
@@ -188,7 +208,37 @@ export function SidebarUserDropdown() {
                     </button>
                   </PopoverClose>
                 }
-              />
+              >
+                {workspaces.length > 0 && (
+                  <>
+                    <AccountMenuSeparator />
+                    <div role="group" aria-labelledby={workspaceLabelId}>
+                      <p
+                        id={workspaceLabelId}
+                        className="px-2.5 pb-1 pt-1.5 text-caption text-[color:var(--aqt-fg-dim)]"
+                      >
+                        {t("workspace")}
+                      </p>
+                      {workspaces.map((ws) => (
+                        <PopoverClose key={ws.id} asChild>
+                          <button
+                            type="button"
+                            onClick={() => pickWorkspace(ws)}
+                            aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
+                            className={ACCOUNT_MENU_ITEM_CLASS}
+                          >
+                            <WorkspaceAvatar workspace={ws} size={20} />
+                            <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                            {ws.id === currentWorkspaceId && (
+                              <Check aria-hidden className="size-4 shrink-0 text-[color:var(--aqt-teal)]" />
+                            )}
+                          </button>
+                        </PopoverClose>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </AccountMenuPanel>
             )}
           </Popover>
         </SidebarMenuItem>

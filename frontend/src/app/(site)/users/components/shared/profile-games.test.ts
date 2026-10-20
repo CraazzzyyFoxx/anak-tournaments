@@ -4,7 +4,7 @@ import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { UserGameSummary } from "@/types/user.types";
 
-import { blockGameOf, boundGameSummary, orderPlayerGames, playerGameChoices } from "./profile-games";
+import { blockGameOf, orderPlayerGames, playerGameChoices } from "./profile-games";
 
 const game = (code: string, enabled = true) => ({ code, name: code, enabled }) as DisciplineDescriptor;
 // Distinct counts, most first in the order given (ties are covered by their own case below).
@@ -34,22 +34,6 @@ describe("orderPlayerGames (R14: ties in the area's order)", () => {
     expect(orderPlayerGames(tied, reversed).map((entry) => entry.discipline)).toEqual(["lol", "overwatch"]);
     expect(blockGameOf(tied, reversed)).toBe("lol");
     expect(orderPlayerGames(tied, init(null)).map((entry) => entry.discipline)).toEqual(["overwatch", "lol"]);
-  });
-});
-
-describe("boundGameSummary (R15)", () => {
-  it("builds the scope game's card from the bound profile", () => {
-    const profile = {
-      roles: [{ role: null, tournaments: 4, maps_won: 6, maps: 9, division: 3, division_grid_version: null }],
-      tournaments_count: 4,
-      tournaments_won: 1
-    } as unknown as Parameters<typeof boundGameSummary>[0];
-    expect(boundGameSummary(profile, "lol")).toEqual({
-      discipline: "lol",
-      roles: profile.roles,
-      tournaments_count: 4,
-      tournaments_won: 1
-    });
   });
 });
 

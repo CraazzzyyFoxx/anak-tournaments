@@ -55,7 +55,6 @@ export function AddStageItemForm({
         </Label>
         <Input
           id="stage-item-name"
-          className="h-9"
           placeholder={nextItemName}
           value={draftName}
           onChange={(event) => setDraftName(event.target.value)}
@@ -67,7 +66,7 @@ export function AddStageItemForm({
           {t("typeLabel")}
         </Label>
         <Select value={draftType} onValueChange={(value) => setDraftType(value as StageItemType)}>
-          <SelectTrigger id="stage-item-type" className="h-9">
+          <SelectTrigger id="stage-item-type">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

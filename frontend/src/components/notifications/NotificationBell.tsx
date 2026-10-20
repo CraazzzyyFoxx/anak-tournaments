@@ -314,7 +314,7 @@ function Panel({
                   static={false}
                   variant="outline"
                   size="sm"
-                  className="h-8 border-[color:var(--aqt-border-2)] px-3 text-caption"
+                  className="border-[color:var(--aqt-border-2)] px-3"
                   onClick={retry}
                   disabled={isFetching}
                 >

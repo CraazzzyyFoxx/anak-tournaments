@@ -587,7 +587,7 @@
   background: var(--aqt-overlay-2);
   border: 1px solid var(--aqt-border);
   color: var(--aqt-fg-muted);
-  font-size: var(--text-label);
+  font-size: var(--text-caption);
   font-weight: 500;
   /* Fixed, not padding-derived: a count badge made chips 36px, a bare label
      34px, while every search/select/segment in the same row is 32px (`h-8`). */

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,10 +47,22 @@ vi.mock("./_components/AchievementFormDialog", () => ({ AchievementFormDialog: (
 vi.mock("./_components/AchievementImportDialog", () => ({ AchievementImportDialog: () => null }));
 vi.mock("./_components/AchievementOverridesCard", () => ({ AchievementOverridesCard: () => null }));
 vi.mock("./_components/DryRunResultPanel", () => ({ DryRunResultPanel: () => null }));
-// The table is replaced by a probe whose row action opens the evaluate picker for rule 11.
+// The table is replaced by a probe: the game it lists, the page's filter bar in its toolbar slot, and a row action
+// that opens the evaluate picker for rule 11.
 vi.mock("./_components/AchievementsTable", () => ({
-  AchievementsTable: ({ actions }: { actions: { onEvaluate: (rule: never) => void } }) => (
-    <button data-table data-evaluate onClick={() => actions.onEvaluate({ id: 11, discipline: "overwatch" } as never)} />
+  AchievementsTable: ({
+    discipline,
+    toolbar,
+    actions,
+  }: {
+    discipline: string | null;
+    toolbar?: ReactNode;
+    actions: { onEvaluate: (rule: never) => void };
+  }) => (
+    <div data-table data-discipline={discipline ?? ""}>
+      {toolbar}
+      <button data-evaluate onClick={() => actions.onEvaluate({ id: 11, discipline: "overwatch" } as never)} />
+    </div>
   ),
 }));
 vi.mock("./_components/EvaluateAchievementsDialog", () => ({
@@ -79,12 +91,21 @@ function workspace(id: number, disciplines: string[]): Workspace {
 let root: Root;
 let container: HTMLElement;
 
-const click = (selector: string) =>
+const click = (element: Element | null | undefined) =>
   act(async () => {
-    container.querySelector(selector)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 const table = () => container.querySelector("[data-table]");
 const evaluateDialog = () => container.querySelector("[data-evaluate-open]");
+/** The chip popover portals out of the page, so its items are document-wide. */
+const commandItem = (label: string) =>
+  [...document.querySelectorAll('[cmdk-item=""]')].find((node) => node.textContent?.trim().startsWith(label));
+
+async function pickGame(name: string) {
+  await click(container.querySelector('button[aria-label="Add filter"]'));
+  await click(commandItem("Game"));
+  await click(commandItem(name));
+}
 
 async function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -123,15 +144,27 @@ beforeEach(() => {
   });
 });
 
-describe("the achievements page keeps each game's drafts to that game", () => {
-  it("drops an evaluate selection made for Overwatch when the scope moves to League", async () => {
-    useWorkspaceStore.setState({ gameScope: "overwatch" });
+describe("the achievements page's game chip", () => {
+  it("lists every game's rules, whatever the saved scope, until the chip narrows them to one game", async () => {
+    useWorkspaceStore.setState({ gameScope: "overwatch", lastGame: "overwatch" });
     await mount();
-    await click("[data-evaluate]");
+    expect(table()?.getAttribute("data-discipline")).toBe("");
+
+    await pickGame("League of Legends");
+
+    expect(navigation.current()).toBe("/admin/achievements?discipline=lol");
+    expect(table()?.getAttribute("data-discipline")).toBe("lol");
+  });
+});
+
+describe("the achievements page keeps each game's drafts to that game", () => {
+  it("drops an evaluate selection made for Overwatch when the chip moves to League", async () => {
+    navigation.reset("/admin/achievements?discipline=overwatch");
+    await mount();
+    await click(container.querySelector("[data-evaluate]"));
     expect(evaluateDialog()?.getAttribute("data-selected")).toBe("11");
 
-    // What the scope pill's game pick writes (C2/C3); the page has no game control of its own any more.
-    await act(async () => useWorkspaceStore.getState().setGameScope("lol"));
+    await pickGame("League of Legends");
 
     expect(evaluateDialog()).toBeNull();
   });

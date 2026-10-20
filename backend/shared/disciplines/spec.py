@@ -254,7 +254,9 @@ class DisciplineSpec:
     #: The game's short mark ("OW"): the monogram a ``GameMark`` draws when there is no icon. Empty falls back to
     #: ``name`` on the wire.
     short_name: str = ""
-    #: A static ``/disciplines/<code>/icon.svg`` the frontend serves, or ``None`` (the monogram is drawn).
+    #: The game's official icon as an ``assets/<code>/icon.<svg|png|webp>`` object key, published from
+    #: ``frontend/public/disciplines/<code>/`` by ``scripts/publish_discipline_assets.py``; the descriptor serves its
+    #: public URL. ``None``: the monogram is drawn.
     icon: str | None = None
 
     @property

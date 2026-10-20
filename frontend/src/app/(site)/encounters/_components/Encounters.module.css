@@ -276,14 +276,11 @@
   width: auto;
   max-width: 220px;
   flex: 0 0 auto;
-  height: 32px;
   border: 1px solid var(--enc-border);
   border-radius: 8px;
   background: var(--aqt-overlay-2);
   color: var(--enc-muted);
   padding: 0 10px;
-  font-size: var(--text-label);
-  font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 6px;

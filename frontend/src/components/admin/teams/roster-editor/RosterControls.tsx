@@ -76,10 +76,11 @@ export function CommitField({
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={handleKeyDown}
+      size="sm"
       className={cn(
         // Quiet but present: a field the operator can see is a field, without
         // 40 hard-bordered boxes fighting each other down the table.
-        "h-8 border-border/50 bg-background/40 px-2 hover:border-input",
+        "border-border/50 bg-background/40 px-2 hover:border-input",
         className
       )}
     />
@@ -111,7 +112,7 @@ export function RoleSelect({
   const slotLabel = useSlotLabel(ontology);
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled || !ontology}>
-      <SelectTrigger aria-label={[label, slotLabel(value)].join(": ")} className="h-8 w-[4.5rem] gap-1 px-2">
+      <SelectTrigger aria-label={[label, slotLabel(value)].join(": ")} size="sm" className="w-[4.5rem] gap-1 px-2">
         <SelectValue>
           <RosterSlotGlyph code={value} ontology={ontology} size={18} decorative />
         </SelectValue>
@@ -161,7 +162,7 @@ export function SubRoleSelect({
       onValueChange={(next) => onChange(next === NO_SUB_ROLE ? "" : next)}
       disabled={disabled}
     >
-      <SelectTrigger aria-label={[label, selectedLabel].join(": ")} aria-describedby={describedBy} className="h-8 w-[9.5rem] px-2">
+      <SelectTrigger aria-label={[label, selectedLabel].join(": ")} aria-describedby={describedBy} size="sm" className="w-[9.5rem] px-2">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

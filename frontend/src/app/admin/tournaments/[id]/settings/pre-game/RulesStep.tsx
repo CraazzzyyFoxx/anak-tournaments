@@ -351,7 +351,7 @@ function JsonTransfer({
           <Textarea
             value={text}
             rows={18}
-            className="font-mono text-xs"
+            className="font-mono"
             aria-label={t("json.importTitle")}
             aria-invalid={invalid}
             onChange={(event) => {

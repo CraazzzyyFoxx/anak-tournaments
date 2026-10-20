@@ -163,7 +163,7 @@ export function DraftConfigStep({
               disabled={locked}
               value={value.pickTimeSeconds}
               onValueChange={(next) => patch({ pickTimeSeconds: next ?? 45 })}
-              className="h-9 w-20 tabular-nums"
+              className="w-20 tabular-nums"
             />
           </div>
         </div>
@@ -203,7 +203,7 @@ export function DraftConfigStep({
               disabled={locked}
               value={value.overtimeSeconds}
               onValueChange={(next) => patch({ overtimeSeconds: next ?? 0 })}
-              className="h-9 w-20 tabular-nums"
+              className="w-20 tabular-nums"
             />
           </div>
         </div>

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ChevronsDown, ChevronsUp, ImagePlus, Scissors, Unlink } from "lucide-react";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
 
 import { DataTable, createKebabColumn } from "@/components/data-table";
@@ -335,6 +335,7 @@ function FloorField({
               setDraft(null);
             }
           }}
+          size="sm"
           className="h-7 w-20 px-1.5 tabular-nums aria-invalid:border-destructive"
         />
         <span className="text-muted-foreground">&ndash; {band.rankMax ?? "\u221e"}</span>

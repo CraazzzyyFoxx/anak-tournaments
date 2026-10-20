@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useEffect, useRef, useState } from "react";
 import { Ban, Check, History, Shield, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";

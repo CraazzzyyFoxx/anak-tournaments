@@ -123,7 +123,8 @@ function RosterForm({
               disabled={benchDisabled}
               onValueChange={(next) => bench.patch({ max_substitutes: next ?? 0 })}
               aria-label={t("team.maxSubstitutesAria")}
-              className="h-8 w-24"
+              size="sm"
+              className="w-24"
             />
           </SettingRow>
         </SettingGroup>

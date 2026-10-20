@@ -310,7 +310,8 @@ export function StageItemsSection({
                     >
                       <SelectTrigger
                         aria-label={t("type", { name: item.name })}
-                        className="ms-auto h-8 w-40 shrink-0 text-xs"
+                        size="sm"
+                        className="ms-auto w-40 shrink-0"
                       >
                         <SelectValue />
                       </SelectTrigger>
@@ -374,7 +375,8 @@ export function StageItemsSection({
                                       !canSwapAssignedTeams
                                     }
                                     triggerAriaLabel={t("teamForSlot", { seed, name: item.name })}
-                                    triggerClassName="h-7 w-48 text-xs"
+                                    size="sm"
+                                    triggerClassName="h-7 w-48"
                                   />
                                   <Button
                                     size="icon"

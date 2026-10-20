@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import type { ReactNode } from "react";
 import {
   Dialog,
@@ -30,7 +30,7 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
     <Button
       asChild
       variant="outline"
-      className="h-10 w-full justify-start gap-3 rounded-lg border-border/70 bg-[color:var(--aqt-overlay-2)] font-normal text-[color:var(--aqt-fg-muted)] transition-all duration-150 hover:border-border hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+      className="h-10 w-full justify-start gap-3 rounded-lg border-border/70 bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] transition-all duration-150 hover:border-border hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
     >
       {/* Plain <a>, NEVER next/link: /auth/{provider}/login is a GET route
           handler with side effects — every execution mints a fresh OAuth state

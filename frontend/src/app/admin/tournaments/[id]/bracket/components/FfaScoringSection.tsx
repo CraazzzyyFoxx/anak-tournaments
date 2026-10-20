@@ -121,7 +121,8 @@ export function FfaScoringSection({
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0 text-xs text-primary"
+            size="sm"
+            className="h-auto p-0 text-primary"
             disabled={columns.length >= FFA_MAX_COLUMNS}
             onClick={() =>
               onChange({
@@ -218,7 +219,7 @@ export function FfaScoringSection({
           id={`${ids}-formula`}
           rows={2}
           maxLength={FFA_FORMULA_MAX}
-          className="font-mono text-sm"
+          className="font-mono"
           spellCheck={false}
           placeholder={t("formulaPlaceholder")}
           value={form.ffaFormula}
@@ -253,7 +254,8 @@ export function FfaScoringSection({
           <Button
             type="button"
             variant="link"
-            className="h-auto p-0 text-xs text-primary"
+            size="sm"
+            className="h-auto p-0 text-primary"
             disabled={places.length >= FFA_MAX_PLACES}
             onClick={() => onChange({ ffaPlacementPoints: [...places, 0] })}
           >

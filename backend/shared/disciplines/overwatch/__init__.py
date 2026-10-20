@@ -228,4 +228,6 @@ SPEC = DisciplineSpec(
     pick_ban_presets=_pick_ban_presets,
     balancer_role_settings=BALANCER_ROLE_SETTINGS,
     short_name="OW",
+    #: Blizzard's Forge design-system mark (forge.akamaized.net/icons/overwatch.svg), the dark-background variant.
+    icon="assets/overwatch/icon.svg",
 )

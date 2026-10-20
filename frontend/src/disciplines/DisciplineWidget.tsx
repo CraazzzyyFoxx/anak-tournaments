@@ -47,11 +47,15 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
 }: Readonly<DisciplineWidgetProps<F, K>>): ReactNode {
   const t = useTranslations("common");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
+  // An already-settled module renders on the first commit: a host mounted on demand (a hover card) would otherwise
+  // paint empty, then resize once the effect's promise answered — on every open.
+  const settled = load.peek(discipline);
+  const current: Loaded | null = settled === undefined ? loaded : { code: discipline, ui: settled, failed: false };
   const [attempt, setAttempt] = useState(0);
   const blocked = (requires !== undefined && !capabilities[requires]) || !applicable;
 
   useEffect(() => {
-    if (blocked) return;
+    if (blocked || load.peek(discipline) !== undefined) return;
     let live = true;
     void load(discipline).then(
       (ui) => {
@@ -73,8 +77,8 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
 
   // Still resolving the family's module: the caller's neutral `pending` view, never its fallback — the fallback says
   // "this game has no renderer", which is only known once the loader has answered.
-  if (loaded?.code !== discipline) return pending;
-  if (loaded.failed) {
+  if (current?.code !== discipline) return pending;
+  if (current.failed) {
     return (
       <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
         <span>{t("discipline.widgetLoadFailed")}</span>
@@ -92,7 +96,7 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
       </div>
     );
   }
-  const Slot = loaded.ui?.slots[slot] as ComponentType<SlotProps[K]> | undefined;
+  const Slot = current.ui?.slots[slot] as ComponentType<SlotProps[K]> | undefined;
   if (!Slot) {
     return requires === undefined ? (
       fallback

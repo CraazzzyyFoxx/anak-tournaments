@@ -97,7 +97,8 @@ function AdmissionForm({
                 id={`${ids}-scope`}
                 // Sized from content, not a pixel width: the Russian option
                 // labels are longer and a fixed 230px clipped them.
-                className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                size="sm"
+                className="w-fit min-w-[230px] max-w-full"
                 aria-label={t("admission.scopeAria")}
               >
                 <SelectValue />
@@ -152,7 +153,8 @@ function AdmissionForm({
             >
               <SelectTrigger
                 id={`${ids}-stage`}
-                className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                size="sm"
+                className="w-fit min-w-[230px] max-w-full"
                 aria-label={t("subscription.stageAria")}
               >
                 <SelectValue />
@@ -178,7 +180,8 @@ function AdmissionForm({
               >
                 <SelectTrigger
                   id={`${ids}-sub-scope`}
-                  className="h-8 w-fit min-w-[230px] max-w-full text-sm"
+                  size="sm"
+                  className="w-fit min-w-[230px] max-w-full"
                   aria-label={t("team.scopeAria")}
                 >
                   <SelectValue />
@@ -208,7 +211,8 @@ function AdmissionForm({
                 value={value.team_rank_min ?? null}
                 disabled={disabled}
                 onValueChange={(next) => patch({ team_rank_min: next })}
-                className="h-8 w-24"
+                size="sm"
+                className="w-24"
               />
             </SettingRow>
             <SettingRow htmlFor={`${ids}-rank-max`} label={t("team.rankMax")}>
@@ -219,7 +223,8 @@ function AdmissionForm({
                 value={value.team_rank_max ?? null}
                 disabled={disabled}
                 onValueChange={(next) => patch({ team_rank_max: next })}
-                className="h-8 w-24"
+                size="sm"
+                className="w-24"
               />
             </SettingRow>
             <SettingRow htmlFor={`${ids}-rank-spread`} label={t("team.rankSpread")}>
@@ -230,7 +235,8 @@ function AdmissionForm({
                 value={value.team_max_rank_spread ?? null}
                 disabled={disabled}
                 onValueChange={(next) => patch({ team_max_rank_spread: next })}
-                className="h-8 w-24"
+                size="sm"
+                className="w-24"
               />
             </SettingRow>
             <SettingRow

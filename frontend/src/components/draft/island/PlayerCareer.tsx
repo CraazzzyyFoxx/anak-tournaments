@@ -7,6 +7,7 @@ import DivisionIcon from "@/components/DivisionIcon";
 import { useFormatter } from "@/lib/datetime/client";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import Image from "@/components/ui/image";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { RoleOntology } from "@/lib/roster/ontology";
@@ -278,8 +279,7 @@ export function CareerTables({
               const color = winrateColor(share, entry.maps);
               return (
                 <li key={entry.character.id} className={`${HERO_GRID} py-1`}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
                     src={getHeroIconUrl(entry.character.slug, entry.character.image_path)}
                     alt=""
                     width={28}

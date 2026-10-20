@@ -22,6 +22,7 @@ interface TeamComboboxProps {
   /** Accessible name when no visible `<Label htmlFor>` points at the trigger. */
   triggerAriaLabel?: string;
   triggerClassName?: string;
+  size?: "sm" | "default";
 }
 
 export function TeamCombobox({
@@ -35,7 +36,8 @@ export function TeamCombobox({
   allowClear = true,
   isTeamDisabled,
   triggerAriaLabel,
-  triggerClassName
+  triggerClassName,
+  size
 }: Readonly<TeamComboboxProps>) {
   const t = useTranslations("adminPeople.teamCombobox");
   const resolvedPlaceholder = placeholder ?? t("select");
@@ -63,6 +65,7 @@ export function TeamCombobox({
       label={selectedLabel}
       triggerAriaLabel={triggerAriaLabel}
       triggerClassName={triggerClassName}
+      size={size}
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}

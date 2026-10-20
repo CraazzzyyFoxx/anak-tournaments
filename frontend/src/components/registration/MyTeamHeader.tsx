@@ -106,7 +106,8 @@ export default function MyTeamHeader({
                 value={draftName}
                 onChange={(event) => setDraftName(event.target.value)}
                 aria-label={t("rename.save")}
-                className="h-8 min-w-0"
+                size="sm"
+                className="min-w-0"
               />
               <Button
                 type="submit"

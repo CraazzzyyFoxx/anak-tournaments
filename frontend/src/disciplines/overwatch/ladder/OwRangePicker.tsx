@@ -90,7 +90,7 @@ export default function OwRangePicker({
           disabled={disabled}
           aria-label={t("table.owRanksOf", { name: label, range: rangeLabel })}
           className={cn(
-            "h-8 w-full min-w-40 justify-between px-2 font-mono text-xs font-normal",
+            "w-full min-w-40 justify-between px-2 tabular-nums",
             !value && "text-warning"
           )}
         >
@@ -153,7 +153,7 @@ export default function OwRangePicker({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 px-2 text-xs"
+            className="h-7 shrink-0 px-2"
             disabled={!value}
             onClick={() => {
               onChange(null);

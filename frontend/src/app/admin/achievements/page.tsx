@@ -7,8 +7,11 @@ import { MoreHorizontal, Plus } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EvaluationRunSummary } from "@/components/admin/achievements/EvaluationRunSummary";
+import { gameFilterDefs } from "@/components/admin/game-filter";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
+import { FilterBar } from "@/components/kit/FilterBar";
+import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -22,7 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
 import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
-import { ALL_DISCIPLINES, defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
+import { defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { AchievementRule } from "@/types/admin.types";
 
@@ -40,8 +43,8 @@ import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
 type Confirmation = { kind: "delete"; rule: AchievementRule } | { kind: "reset" };
 
 /**
- * A per-game bulk action (spec §7.1). Under "all games" it is disabled and says why: on hover, and in its accessible
- * name, since a disabled menu item takes no focus.
+ * A per-game bulk action (spec §7.1). Without a filtered game it is disabled and says why: on hover, and in its
+ * accessible name, since a disabled menu item takes no focus.
  */
 function PerGameItem({
   game,
@@ -74,18 +77,21 @@ function PerGameItem({
 }
 
 /**
- * The workspace's achievement rules: a multi page (spec §6.10). Under "all games" every game's rules with a "Game"
- * column; the bulk actions that act on one game's rules wait for a game; a row acts in its own game.
+ * The workspace's achievement rules: a multi page (spec §6.10). The "Game" chip narrows them to one game; without it
+ * every game's rules with a "Game" column, and the bulk actions that act on one game's rules wait for a game; a row
+ * acts in its own game.
  */
 export default function AchievementsPage() {
   const t = useTranslations("adminAchievements");
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const lastGame = useWorkspaceStore((s) => s.lastGame);
+  const tGame = useTranslations("common.discipline");
   const scope = useGameScope({ axis: workspaceId ?? "all" });
-  // `null`: every game of the workspace; a code: that game's rules only.
+  // The chip writes `?discipline=`, which the scope reads back. `null`: every game; a code: that game's rules only.
   const game = scope.game;
+  const gameDefs = gameFilterDefs(scope.games, tGame("column"));
+  const filters = useFilters(gameDefs);
   const games = (scope.games ?? []).filter((entry) => entry.enabled);
   const showGame = scope.resolution !== null && showsGameMarks(scope.resolution, scope.games ?? []);
 
@@ -123,9 +129,8 @@ export default function AchievementsPage() {
     setEvalGame(null);
   }
 
-  // A new rule starts in the creation default (spec §7.2): the saved scope's game, else the last game, else the first
-  // — an explicit `?discipline=` narrows the list only. Its game field can change it.
-  const createGame = defaultCreationGame({ scope: scope.resolution?.scope ?? ALL_DISCIPLINES, lastGame, games });
+  // A new rule starts in the filtered game, else the first enabled one (spec §7.2); its game field can change it.
+  const createGame = defaultCreationGame(game, games);
   const form = useAchievementRuleForm(workspaceId, createGame);
 
   const actions = useAchievementRuleActions({
@@ -245,6 +250,7 @@ export default function AchievementsPage() {
               workspaceId={workspaceId}
               discipline={game}
               showGame={showGame}
+              toolbar={gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : undefined}
               actions={{
                 canUpdate,
                 canDelete,
@@ -261,7 +267,7 @@ export default function AchievementsPage() {
               <DryRunResultPanel result={actions.testResult} onDismiss={actions.dismissTestResult} />
             )}
 
-            {/* Manual overrides are read one game at a time: the card waits for a game in scope. */}
+            {/* Manual overrides are read one game at a time: the card waits for a filtered game. */}
             {game !== null && overrides && overrides.length > 0 && (
               <AchievementOverridesCard
                 overrides={overrides}

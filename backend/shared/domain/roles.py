@@ -18,6 +18,7 @@ __all__ = (
     "Ontology",
     "RoleNode",
     "UnknownRole",
+    "public_asset_url",
     "public_role_attrs",
     "validate_presentation",
 )
@@ -59,19 +60,27 @@ def validate_presentation(attrs: Mapping[str, object], *, discipline: str) -> No
         raise ValueError("color must be #RRGGBB")
 
 
-def public_role_attrs(attrs: Mapping[str, object], *, public_origin: str | None) -> dict[str, Any]:
-    """``attrs`` as the wire shows it: raw keys kept, a stored ``assets/`` object key resolved to its public URL.
+def public_asset_url(ref: str | None, *, public_origin: str | None) -> str | None:
+    """An image reference as the wire shows it: a stored ``assets/`` object key resolved to its public URL, any other
+    reference unchanged.
 
-    Without a configured public origin the icon is ``None`` (one warning), never an error and never a storage probe.
+    Without a configured public origin a key is served as ``None`` (one warning), never an error and never a storage
+    probe.
     """
+    if ref is None or not ref.startswith("assets/"):
+        return ref
+    if public_origin:
+        return f"{public_origin.rstrip('/')}/{ref}"
+    logger.warning("S3 public URL is not configured; asset %r is served as null", ref)
+    return None
+
+
+def public_role_attrs(attrs: Mapping[str, object], *, public_origin: str | None) -> dict[str, Any]:
+    """``attrs`` as the wire shows it: raw keys kept, the icon through ``public_asset_url``."""
     out = dict(attrs)
     icon = out.get("icon")
-    if isinstance(icon, str) and icon.startswith("assets/"):
-        if public_origin:
-            out["icon"] = f"{public_origin.rstrip('/')}/{icon}"
-        else:
-            logger.warning("S3 public URL is not configured; role icon %r is served as null", icon)
-            out["icon"] = None
+    if isinstance(icon, str):
+        out["icon"] = public_asset_url(icon, public_origin=public_origin)
     return out
 
 

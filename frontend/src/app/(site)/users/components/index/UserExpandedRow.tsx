@@ -7,6 +7,7 @@ import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import type { PlayerIdentity } from "@/components/PlayerAvatar";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { PlaceBadge } from "@/components/ui/place-badge";
@@ -17,8 +18,6 @@ import { formatOptional } from "@/app/(site)/users/components/shared/list-utils"
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { UserDraftCard } from "@/types/user.types";
-
-import type { PlayerIdentity } from "./users-index.atoms";
 
 const Label = ({ children }: Readonly<{ children: ReactNode }>) => (
   <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">

@@ -1054,7 +1054,7 @@ services:
       resources:
         limits:
           cpus: '0.50'
-          memory: 512M
+          memory: 1G
         reservations:
           cpus: '0.05'
           memory: 128M

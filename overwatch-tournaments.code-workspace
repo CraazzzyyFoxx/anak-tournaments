@@ -1,47 +1,7 @@
 {
     "folders": [
         {
-            "name": "anak-tournaments",
             "path": "."
-        },
-        {
-            "path": "backend/shared"
-        },
-        {
-            "path": "gateway"
-        },
-        {
-            "path": "backend/app-service"
-        },
-        {
-            "path": "backend/identity-service"
-        },
-        {
-            "path": "backend/discord-service"
-        },
-        {
-            "path": "backend/stats-service"
-        },
-        {
-            "path": "backend/balancer-service"
-        },
-        {
-            "path": "backend/tournament-service"
-        },
-        {
-            "path": "backend/analytics-service"
-        },
-        {
-            "path": "backend/stream-service"
-        },
-        {
-            "path": "frontend"
-        },
-        {
-            "path": "backend/env"
-        },
-        {
-            "path": "loadtests"
         }
     ],
     "settings": {

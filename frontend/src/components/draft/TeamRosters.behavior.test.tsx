@@ -15,9 +15,8 @@ vi.mock("next-intl", () => ({
     )
 }));
 
-// `next/image` outside a Next build rewrites src through the optimizer loader;
-// the shipped config sets `images.unoptimized`, so the real render keeps it
-// verbatim.
+// `next/image` rewrites src through the optimizer loader; the stand-in keeps
+// the stored URL so the test can read it.
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />

@@ -156,7 +156,7 @@ export function PickupMySeatPanel({
 
         <div className="ml-auto flex items-center gap-2">
           {policy.can_join ? (
-            <Button type="button" className="h-9 shrink-0" disabled={saving} onClick={onJoin}>
+            <Button type="button" className="shrink-0" disabled={saving} onClick={onJoin}>
               <LogIn className="mr-1.5 size-3.5" aria-hidden="true" />
               {t("join")}
             </Button>
@@ -165,7 +165,7 @@ export function PickupMySeatPanel({
             <Button
               type="button"
               variant="outline"
-              className="h-9 shrink-0 text-[color:var(--aqt-fg-muted)] hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:text-rose-200"
+              className="shrink-0 text-[color:var(--aqt-fg-muted)] hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:text-rose-200"
               disabled={saving}
               onClick={onLeave}
             >
@@ -185,7 +185,8 @@ export function PickupMySeatPanel({
             <Button
               type="button"
               variant="outline"
-              className="h-8 shrink-0"
+              size="sm"
+              className="shrink-0"
               onClick={() => openAccountSettings("profile")}
             >
               {t("fixLinks")}

@@ -79,6 +79,8 @@ SPEC = DisciplineSpec(
     team_format_presets=(POSITIONS_5V5, OPEN_5V5),
     identity_provider=SocialProvider.RIOT,
     short_name="LoL",
+    #: Riot brand portal, LoL_Icon_Flat_Gold.
+    icon="assets/lol/icon.svg",
     stat_defs=(StatDefSpec("kills", "Kills"), StatDefSpec("dragons", "Dragons")),
     event_types=(EventTypeSpec("kill", "Kill"),),
     pick_ban_presets=_pick_ban_presets,

@@ -53,7 +53,8 @@ export function SubscriptionSettingsPanel() {
               max={86400}
               value={form.interval_seconds}
               onValueChange={(next) => patch({ interval_seconds: next ?? DEFAULTS.interval_seconds })}
-              className="h-8 w-28"
+              size="sm"
+              className="w-28"
             />
           </SettingRow>
           <SettingRow htmlFor={`${ids}-batch`} label={t("batch")} hint={t("batchHint")}>
@@ -64,7 +65,8 @@ export function SubscriptionSettingsPanel() {
               max={500}
               value={form.batch_size}
               onValueChange={(next) => patch({ batch_size: next ?? DEFAULTS.batch_size })}
-              className="h-8 w-28"
+              size="sm"
+              className="w-28"
             />
           </SettingRow>
         </SettingGroup>

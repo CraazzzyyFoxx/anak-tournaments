@@ -1,6 +1,6 @@
 import { resolvePageGame, type GameScopeInit } from "@/lib/site/discipline-scope";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
-import type { UserGameSummary, UserProfile } from "@/types/user.types";
+import type { UserGameSummary } from "@/types/user.types";
 
 /**
  * The profile's URL params that pin one game's data — the overview's tournament, the achievements' tournament filter,
@@ -24,19 +24,6 @@ export function orderPlayerGames(games: readonly UserGameSummary[], init: GameSc
 export function playerGameChoices(games: readonly UserGameSummary[], init: GameScopeInit): DisciplineDescriptor[] {
   const area = init.disciplines ?? [];
   return orderPlayerGames(games, init).flatMap((game) => area.filter((entry) => entry.code === game.discipline));
-}
-
-/** Under a concrete scope the profile is bound to one game: its card comes from that profile (R15). */
-export function boundGameSummary(
-  profile: Pick<UserProfile, "roles" | "tournaments_count" | "tournaments_won">,
-  discipline: string
-): UserGameSummary {
-  return {
-    discipline,
-    roles: profile.roles,
-    tournaments_count: profile.tournaments_count,
-    tournaments_won: profile.tournaments_won
-  };
 }
 
 /**

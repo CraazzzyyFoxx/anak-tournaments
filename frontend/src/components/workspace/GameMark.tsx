@@ -1,15 +1,15 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 /**
- * A game's mark (spec §3.8): its module icon, else the monogram of its short name — the
- * `WorkspaceAvatar` pattern for games. Named for assistive tech unless `decorative`, where the
- * game's name already sits next to it.
+ * A game's mark (spec §3.8): its official icon as is, else the monogram of its short name on a tile — the
+ * `WorkspaceAvatar` pattern for games. Named for assistive tech unless `decorative`, where the game's name already
+ * sits next to it.
  */
 export function GameMark({
   discipline,
@@ -33,11 +33,12 @@ export function GameMark({
       aria-hidden={decorative || undefined}
       title={decorative ? undefined : discipline.name}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-[color:var(--aqt-border-2)]",
-        "bg-[color:var(--aqt-card-2)] font-display font-extrabold leading-none text-[color:var(--aqt-fg-muted)]",
+        "inline-flex shrink-0 items-center justify-center",
+        !icon &&
+          "overflow-hidden rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] font-display font-extrabold leading-none text-[color:var(--aqt-fg-muted)]",
         className
       )}
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
+      style={{ width: size, height: size, fontSize: icon ? undefined : size * 0.4 }}
     >
       {icon ? (
         <Image

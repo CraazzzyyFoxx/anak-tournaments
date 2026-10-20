@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/ui/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Copy, Download, Images } from "lucide-react";
 

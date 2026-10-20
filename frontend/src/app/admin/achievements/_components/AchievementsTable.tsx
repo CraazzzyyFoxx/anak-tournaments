@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
 import { CircleOff } from "lucide-react";
@@ -27,17 +28,20 @@ export interface AchievementsTableActions {
 
 /**
  * The paged rule catalog: one game's, or every game's (`discipline: null`) with a "Game" column when `showGame`
- * (spec §6.1, §6.10). Every row action is decided by the page, not here.
+ * (spec §6.1, §6.10). `toolbar` is the page's filter bar, next to the search. Every row action is decided by the
+ * page, not here.
  */
 export function AchievementsTable({
   workspaceId,
   discipline,
   showGame,
+  toolbar,
   actions,
 }: Readonly<{
   workspaceId: number;
   discipline: string | null;
   showGame: boolean;
+  toolbar?: ReactNode;
   actions: AchievementsTableActions;
 }>) {
   const t = useTranslations("adminAchievements");
@@ -121,6 +125,8 @@ export function AchievementsTable({
 
   return (
     <DataTable
+      // A game change lands on page 1: the game's own list is a new result set.
+      filterKey={discipline ?? ALL_DISCIPLINES}
       queryKey={(page, search, pageSize, sf, sd) => [...listKey, page, search, pageSize, sf, sd]}
       queryFn={async (page, search, pageSize, sortField, sortDir) =>
         adminService.getAchievementRules(workspaceId, discipline, {
@@ -134,6 +140,7 @@ export function AchievementsTable({
       columns={columns}
       columnsStorageKey="admin-achievements"
       searchPlaceholder={t("list.search")}
+      toolbar={toolbar}
       emptyMessage={t("list.empty")}
       onRowClick={(row) => actions.onOpen(row.original)}
       // The first three columns (enabled, slug, name) leave no room for the game; the card names the rule, its game

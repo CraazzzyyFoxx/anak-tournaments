@@ -143,8 +143,8 @@ const MARKDOWN_COMPONENTS: Components = {
   ),
   img: ({ node: _node, ...props }) => (
     // Author-supplied URL of unknown size and host: `next/image` needs
-    // intrinsic dimensions or a sized parent, and `images.unoptimized` is on,
-    // so it would buy nothing here.
+    // intrinsic dimensions or a sized parent, and only optimizes the hosts in
+    // NEXT_PUBLIC_IMAGE_REMOTE_PATTERNS.
     // eslint-disable-next-line @next/next/no-img-element
     <img
       {...props}

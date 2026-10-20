@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 //
 // The profile's blocks stream in after the site header, and by the time one hydrates the browser may hold some of the
-// games' data already: the scope pill reads the installed games, a game card (or any block) its game's metadata. A
-// block's first browser render must still be the server's. Under "all games" the game cards (named from the installed
-// games the site layout seeds) and the overview's role split (named and painted from its game's metadata) hydrate the
+// games' data already: a block may have read its game's metadata. A block's first browser render must still be the
+// server's. Under "all games" the overview's role split (named and painted from its game's metadata) hydrates the
 // server's markup of the page, inside its layout, into such a browser without a mismatch.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
@@ -15,7 +14,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type * as OverviewModule from "@/app/(site)/users/_views/UserOverviewPage";
 import messages from "@/i18n/messages/en.json";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
-import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { OW_METADATA } from "@/test/discipline-metadata";
 import { resolveServer } from "@/test/resolve-server";
 import { navigation } from "@/test/url-navigation";
 
@@ -175,30 +174,7 @@ async function hydrateProfile(prewarm: (client: QueryClient) => void) {
   return { html, recoverable, mismatches };
 }
 
-const GAMES = [OW_METADATA.discipline, LOL_METADATA.discipline];
-
-it.each([
-  ["has read them", (client: QueryClient) => client.setQueryData(disciplineQueryKeys.list("all"), GAMES)],
-  [
-    "is still reading them",
-    (client: QueryClient) =>
-      void client.prefetchQuery({
-        queryKey: disciplineQueryKeys.list("all"),
-        queryFn: () => Promise.withResolvers<never>().promise
-      })
-  ]
-])("draws a card per game on the server, and hydrates it where the scope pill %s", async (_state, prewarm) => {
-  const { html, recoverable, mismatches } = await hydrateProfile(prewarm);
-
-  expect(recoverable.map(String)).toEqual([]);
-  expect(mismatches).toEqual([]);
-  expect(html).toContain(">Overwatch</h3>");
-  expect(html).toContain(">League of Legends</h3>");
-  const cards = host?.querySelectorAll('ul[aria-label="All games"] h3') ?? [];
-  expect([...cards].map((card) => card.textContent)).toEqual(["Overwatch", "League of Legends"]);
-});
-
-it("names and paints the role split's roles on the server, and hydrates it where a game card read the game's metadata", async () => {
+it("names and paints the role split's roles on the server, and hydrates it where a block read the game's metadata", async () => {
   const { html, recoverable, mismatches } = await hydrateProfile((client) =>
     client.setQueryData(disciplineQueryKeys.metadata("all", "overwatch"), OW_METADATA)
   );

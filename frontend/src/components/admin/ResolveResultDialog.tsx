@@ -419,7 +419,8 @@ function ResolveForm({
                 <Input
                   id={`${modeFieldId}-score-${seat.encounter_team_id}`}
                   inputMode={wholeScores ? "numeric" : "decimal"}
-                  className="h-8 w-20"
+                  size="sm"
+                  className="w-20"
                   value={scores[seat.encounter_team_id] ?? ""}
                   onChange={(event) =>
                     setScores((current) => ({ ...current, [seat.encounter_team_id]: event.target.value }))
@@ -435,7 +436,8 @@ function ResolveForm({
           <Input
             id="resolve-closeness"
             inputMode="numeric"
-            className="h-8 w-20"
+            size="sm"
+            className="w-20"
             value={closeness}
             onChange={(event) => setCloseness(event.target.value)}
             placeholder={t("auto")}

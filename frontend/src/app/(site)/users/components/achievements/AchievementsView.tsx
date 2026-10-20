@@ -22,7 +22,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { CardSurface } from "@/components/profile/atoms";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
-import { GameMarkTag } from "@/components/workspace/GameMarkTag";
+import { GameIcon } from "@/components/workspace/GameIcon";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
 
@@ -200,7 +200,8 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament, 
         <Select value={sort} onValueChange={(v) => setSort(v as "rarity" | "name" | "count")}>
           <SelectTrigger
             title={tr("users.achievements.sort.title")}
-            className="aqt-tnum h-8 w-auto min-w-[150px] gap-2 shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-caption text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
+            size="sm"
+            className="aqt-tnum w-auto min-w-[150px] gap-2 shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
           >
             <SelectValue />
           </SelectTrigger>
@@ -263,7 +264,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament, 
                           locked ? "text-[color:var(--aqt-fg-muted)]" : "text-[color:var(--aqt-fg)]"
                         )}
                       >
-                        {showGames ? <GameMarkTag code={ach.discipline} /> : null}
+                        {showGames ? <GameIcon slug={ach.discipline} /> : null}
                         <span className="truncate">{ach.name}</span>
                       </div>
                       <div
