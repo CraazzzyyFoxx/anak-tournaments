@@ -104,9 +104,8 @@ async def stop_worker() -> None:
 async def consume_analytics_job(data: dict, msg: RabbitMessage) -> None:
     """Single dispatcher for the unified analytics-job pipeline.
 
-    Replaces the v1 ``Recalculate`` + v2 ``Train ML`` + v2 ``Run inference``
-    consumers. Looks up the persisted :class:`AnalyticsJob` row by id,
-    dispatches by ``kind``, and publishes progress events to the
+    Looks up the persisted :class:`AnalyticsJob` row by id, dispatches by
+    ``kind``, and publishes progress events to the
     ``workspace:{id}:analytics_jobs`` realtime topic.
     """
     async with observe_message_processing(

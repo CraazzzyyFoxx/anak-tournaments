@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
 from src.services.players import players
@@ -20,7 +19,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _player_link(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             payload = schemas.PlayerLinkRequest.model_validate(data)
             result = await players.link_and_describe(session, user, payload)
             return result.model_dump(mode="json")
@@ -31,7 +30,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _player_unlink(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> None:
+        async def op(session: Any, user: Any) -> None:
             await players.unlink(session, user, c.require_int(data, "player_id"))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
@@ -40,7 +39,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _player_linked(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> list[dict]:
+        async def op(session: Any, user: Any) -> list[dict]:
             linked = await players.linked_payload(session, user)
             return [player.model_dump(mode="json") for player in linked]
 
@@ -50,7 +49,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _player_set_primary(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             return await players.confirm_primary(session, user, c.require_int(data, "player_id"))
 
         return await c.with_active_user(logger, data.get("access_token"), op)

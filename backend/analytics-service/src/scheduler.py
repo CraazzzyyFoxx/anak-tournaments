@@ -1,6 +1,6 @@
 """APScheduler jobs for the analytics worker.
 
-Currently registers one job:
+Registers one job:
 
 - ``nightly_drift_check`` — runs at 03:30 UTC, builds each analytics-enabled discipline's latest training
   frame, computes per-feature Wasserstein drift against the recent 3-tournament

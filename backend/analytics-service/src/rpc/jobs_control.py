@@ -3,12 +3,11 @@
 Creates ``AnalyticsJob`` rows and enqueues to the heavy worker's job queues.
 This svc only writes the row + its request event, through the outbox in one transaction -- the actual compute
 runs in ``analytics-worker`` (``serve.py``). recalculate/points are thin 202
-wrappers over a scoped ``kind=compute`` job (the legacy synchronous 200
-behaviour is intentionally replaced by the unified async job; recalculate's
-old ratings-only scope is preserved via ``algorithms``, but the compute job also
-runs ML inference like every other compute job). Wired from ``serve_rpc.py``.
+wrappers over a scoped ``kind=compute`` job (recalculate narrows it to the
+ratings via ``algorithms``, but the compute job also runs ML inference like
+every other compute job). Wired from ``serve_rpc.py``.
 
-Auth mirrors the routes: create_job / recalculate / points gate per
+Auth: create_job / recalculate / points gate per
 ``_require_actor`` (compute → workspace-scoped ``analytics.update``; train_ml →
 superuser); the deprecated train/infer use a global ``analytics.update``.
 On top of the permission gate, every workspace-scoped GPU job (``kind=compute``
@@ -58,8 +57,7 @@ async def _require_actor(
     workspace_id: int | None,
     user: Any,
 ) -> None:
-    """Permission gate per ``kind`` (extracted from the decommissioned
-    ``src/routes/v2.py``):
+    """Permission gate per ``kind``:
 
     - ``compute``  → ``analytics.update`` in the workspace; the global grant
       when the job carries no ``workspace_id`` (never left ungated -- see

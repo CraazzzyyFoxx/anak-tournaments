@@ -11,12 +11,6 @@ Everything the poll tick and the RPC reads need that is NOT a Postgres row:
   panel (``rpc.stream.health``).
 - ``stream:poll:history`` — the last ``POLL_HISTORY_LIMIT`` tick outcomes,
   newest first, for the admin task history (``rpc.stream.ticks``).
-
-Wrapped in a class rather than left as free functions taking ``redis`` on every
-call: every method here operates on the SAME Redis connection, so binding it
-once at construction removes an identical parameter from all nine call sites and
-makes the store injectable (a fake in ``StreamPollTick``'s tests, the real
-client everywhere else).
 """
 
 from __future__ import annotations

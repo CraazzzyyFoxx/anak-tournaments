@@ -4,8 +4,7 @@ Two RPCs, in order: ``rpc.identity.discord_identity`` turns the clicking
 Discord user into the linked account's identity payload (the same shape the
 gateway injects for a signed-in request), then the action's own subject runs
 with it. No link, no call: an unlinked clicker is told how to link and nothing
-else happens. There is no identity cache here on purpose, so an unlink or a
-deactivation bites on the very next click.
+else happens.
 
 ``perform`` knows nothing about Discord responses, so a slash command can call
 it as is; ``handle`` is the button's glue: acknowledge, perform, answer the
@@ -50,11 +49,10 @@ MIX_HOSTED_SUBJECT = "rpc.balancer.custom.hosted_active"
 _TRANSIENT = frozenset({"unavailable", "internal", "rate_limited"})
 
 #: How long a *successful* identity answer is reused for the same Discord user.
-#: A mix panel is a chain of clicks -- open, edit roles, submit, leave -- and
-#: each one asked identity-service again for the same unchanging answer. The
-#: price: an unlink or a deactivation now bites within 30 s instead of on the
-#: very next click. Nothing destructive happens in that window that the
-#: platform call itself would not refuse on its own authorisation.
+#: A mix panel is a chain of clicks -- open, edit roles, submit, leave -- that
+#: all need the same answer. An unlink or a deactivation bites within this
+#: window; nothing destructive happens in it that the platform call itself
+#: would not refuse on its own authorisation.
 #: ponytail: per-process memory, like every other window in this service.
 IDENTITY_CACHE_TTL = 30.0
 IDENTITY_CACHE_SIZE = 2048

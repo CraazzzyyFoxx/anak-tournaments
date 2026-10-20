@@ -8,9 +8,9 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.services.workspace_scope import workspace_filter
 from src import models
 from src.core.analytics_exports import supports_analytics
-from src.core.workspace import workspace_filter
 
 from .runner import run_for_tournament
 

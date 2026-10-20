@@ -6,13 +6,13 @@ Three properties of Helix shape every line below:
 
 - **``GET /streams`` returns ONLY live channels.** There is no ``is_live`` field
   to read — a channel that is absent from the response is offline. Do not look
-  for one; the absence *is* the signal, and it is why the caller replaces the
+  for one; the absence *is* the signal, and it is why the caller overwrites the
   whole live set instead of merging into it.
 - **Multi-value parameters repeat, they are not comma-joined.**
   ``?user_login=a&user_login=b`` returns two channels; ``?user_login=a,b``
   returns zero and no error (https://dev.twitch.tv/docs/api/guide/,
   "Specifying multiple query parameter values"). A comma-joined build is a
-  silent永 all-offline board, so ``test_helix_client`` asserts the encoded query.
+  silent all-offline board, so ``test_helix_client`` asserts the encoded query.
 - **The app-token bucket is 800 points/min and is SHARED with identity-service**
   (same Twitch application). Hence ``ratelimit_floor``: the batch loop stops
   issuing requests while there is still headroom for the OAuth logins that
@@ -26,16 +26,9 @@ but the shape of the error taxonomy — an app-token client that raised
 ``HelixMissingScope`` would put an operator's missing credential on a player's
 to-do list.
 
-HTTP is injected as a callable (``request=``), exactly as that module injects
-``check_subscription``, so batching, the repeated-parameter encoding, the
-401 -> refresh -> retry path and the rate-limit gate are all testable without a
-network or a live Twitch application.
-
-Wrapped in a class (``HelixClient``) rather than free functions threading
-``client_id``/``client_secret``/``helix_url``/``token_url``/``proxy`` through
-every call: those five values are fixed for the life of one poll tick, and
-binding them once at construction is what let the tick's fetcher shrink to
-``logins``/``user_ids``/``batch_size`` (see ``services/poller.py``).
+HTTP is injected as a callable (``request=``), so batching, the
+repeated-parameter encoding, the 401 -> refresh -> retry path and the rate-limit
+gate are all testable without a network or a live Twitch application.
 """
 
 from __future__ import annotations
@@ -343,7 +336,7 @@ class HelixClient:
 
         Prefer ``user_ids`` where available: a Twitch login changes when the
         streamer renames the channel, and a stale login silently reports offline
-        forever (Risks, "user_login for self-declared nicks").
+        forever.
 
         Raises rather than returning partial garbage on 401/429/5xx. The one
         partial outcome that IS returned is the rate-limit gate:

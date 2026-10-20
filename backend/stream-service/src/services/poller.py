@@ -13,26 +13,19 @@ Shape of the tick, and why:
   recorded as offline, and viewers would watch badges flicker off mid-tournament.
 - **One realtime signal per tournament, never per channel.** A tournament page has
   hundreds of concurrent spectators on one topic; a per-channel fan-out would turn
-  a five-caster event into five herd refetches (Risks, "herd refetch").
+  a five-caster event into five herd refetches.
 - **A hidden tournament is polled and stored, but not announced.** The public
   topic has no viewer to authorize against, so publishing there would tell an
   anonymous subscriber that a preview tournament exists.
 - **The target set is resolved in FOUR queries total, not four per tournament.**
   ``StreamTargetsService`` batches every active tournament's channels and
-  official links into one pair of queries each — see ``_build_plans`` — instead
-  of the tick paying one round-trip pair per tournament on every 30s heartbeat.
+  official links into one pair of queries each — see ``_build_plans``.
 
 State lives in ``state.py`` (Redis) — this module owns no persistence and writes
 to no Postgres schema.
 
-The tick is a class (``StreamPollTick``) rather than free functions threading a
-mutable report through nine of them by hand: the report has to survive every
-Helix failure branch (the tick swallows them on purpose — a Twitch outage must
-not kill the scheduler), and an instance attribute mutated in place reads more
-plainly than a parameter re-passed to every helper that might set it.
-``run_poll_tick`` stays a plain function — the stable entry point
-``scheduler.py`` and the test suite call — that builds one ``StreamPollTick`` and
-runs it.
+``run_poll_tick`` is the entry point ``scheduler.py`` and the tests call; it runs
+one ``StreamPollTick``.
 """
 
 from __future__ import annotations
@@ -73,9 +66,8 @@ POLL_STATUS_TRUNCATED = "truncated"
 POLL_STATUS_ERROR = "error"
 
 
-#: Injection seam for the tick's only network call. Kept loose (``...``) rather
-#: than a Protocol because ``HelixClient.fetch_live_streams`` carries defaulted
-#: knobs the tick never passes, and a Protocol would have to restate all of them.
+#: Injection seam for the tick's only network call. Loose (``...``) because
+#: ``HelixClient.fetch_live_streams`` carries defaulted knobs the tick never passes.
 LiveStreamFetcher = Callable[..., Awaitable[HelixBatchResult]]
 
 
@@ -254,8 +246,7 @@ class StreamPollTick:
         block, still attributed.
 
         Every tournament's channels and links come from ONE pair of batched
-        repository calls, not one pair per tournament — the tick's main
-        optimization over polling each tournament's targets individually.
+        repository calls, not one pair per tournament.
         """
         tournaments = await self._targets.active_tournaments(self._session)
         tournament_ids = [tournament.tournament_id for tournament in tournaments]
@@ -424,9 +415,8 @@ async def run_poll_tick(
     targets: StreamTargetsService | None = None,
     state: StreamStateStore | None = None,
 ) -> int:
-    """Poll every active tournament once. Returns the number of tournaments
-    updated. Thin functional entry point over ``StreamPollTick``, kept so
-    ``scheduler.py`` and the admin re-poll path have one stable call shape."""
+    """Poll every active tournament once via ``StreamPollTick``. Returns the
+    number of tournaments updated."""
     tick = StreamPollTick(
         session,
         redis,

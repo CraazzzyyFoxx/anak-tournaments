@@ -1,10 +1,7 @@
 """High-level read flows for the analytics HTTP surface.
 
-These functions used to live in ``app-service/src/services/analytics/flows.py``
-and depended on ``team_flows``/``user_flows`` for response serialisation.
-Moved here as part of the analytics-service extraction; serialisation is now
-done inline using lightweight Pydantic readers from
-:mod:`src.schemas.base` so we don't pull the heavyweight app-service stack.
+Responses are serialised inline with the lightweight Pydantic readers from
+:mod:`src.schemas.base`.
 """
 
 from __future__ import annotations
@@ -31,9 +28,9 @@ from shared.repository import (
 )
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
+from shared.services.workspace_scope import get_division_grid
 from src import models, schemas
 from src.core.analytics_exports import supports_analytics, tournament_discipline
-from src.core.workspace import get_division_grid
 from src.domain.forecast import predict_player_division
 
 from .read_queries import analytics_read_service
@@ -45,7 +42,7 @@ __all__ = (
 
 
 # ---------------------------------------------------------------------------
-# Inline serialisation helpers (replacement for ex-app-service team_flows/user_flows)
+# Inline serialisation helpers
 # ---------------------------------------------------------------------------
 
 
@@ -118,12 +115,9 @@ def _team_to_pydantic(team: models.Team, *, include_tournament: bool = True) -> 
 
 
 def _player_to_pydantic(player: models.Player, *, grid: DivisionGrid) -> schemas.PlayerRead:
-    # NOTE: ``user`` is intentionally left as ``None`` for the analytics
-    # response. The original ``app-service`` ``to_pydantic_player`` was called
-    # with an empty ``entities`` list, which also produced ``user=None``. The
-    # frontend analytics surface reads ``player.name`` directly, so the nested
-    # ``user`` object is unused here — and accessing ``player.user`` (or any
-    # of its ``battle_tag``/``discord``/``twitch`` relationships) would trip
+    # ``user`` is intentionally left as ``None``: the frontend analytics surface
+    # reads ``player.name`` directly, and accessing ``player.user`` (or any of its
+    # ``battle_tag``/``discord``/``twitch`` relationships) would trip
     # ``MissingGreenlet`` once the async session is detached.
     return schemas.PlayerRead(
         id=player.id,
@@ -134,8 +128,7 @@ def _player_to_pydantic(player: models.Player, *, grid: DivisionGrid) -> schemas
         division=resolve_tournament_division(player.rank, tournament_grid=grid),
         role=player.role_ref,
         tournament_id=player.tournament_id,
-        # Player.user_id was dropped in the contract step (iwrefac07); the
-        # identity anchor is workspace_member.player_id instead. Callers must
+        # The identity anchor is workspace_member.player_id. Callers must
         # eager-load Player.workspace_member on the query that produced ``player``.
         user_id=player.workspace_member.player_id,
         team_id=player.team_id,

@@ -66,16 +66,13 @@ class LogIngestionCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         """Handle new messages in monitored channels."""
-        # Ignore bot's own messages
         if message.author == self.bot.user:
             return
 
-        # Check if this channel is being monitored
         tournament_id = self._registry.tournament_id_for(message.channel.id)
         if not tournament_id:
             return
 
-        # Process message attachments
         if message.attachments:
             logger.info(
                 f"📨 New message in monitored channel from {message.author.name} "
@@ -86,12 +83,10 @@ class LogIngestionCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         """Handle message edits (in case attachments were added)."""
-        # Check if this channel is being monitored
         tournament_id = self._registry.tournament_id_for(after.channel.id)
         if not tournament_id:
             return
 
-        # Check if attachments were added
         if len(after.attachments) > len(before.attachments):
             logger.info("📝 Message edited with new attachments")
             await self._processor.process_message(after, tournament_id)

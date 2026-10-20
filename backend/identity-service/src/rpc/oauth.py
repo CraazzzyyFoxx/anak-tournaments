@@ -6,7 +6,6 @@ from typing import Any
 
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.schemas.rpc import rpc_error, rpc_ok
@@ -69,7 +68,7 @@ def register(broker: Any, logger: Any) -> None:
         if not (provider and code and state):
             return rpc_error("unprocessable", "provider, code and state are required")
 
-        async def run(session: AsyncSession) -> dict:
+        async def run(session: Any) -> dict:
             result = await oauth.callback(
                 session,
                 provider,
@@ -127,7 +126,7 @@ def register(broker: Any, logger: Any) -> None:
             return rpc_error("unprocessable", "provider, code and state are required")
         access_token = data.get("access_token")
 
-        async def run(session: AsyncSession) -> dict:
+        async def run(session: Any) -> dict:
             user = None
             if access_token:
                 try:
@@ -154,7 +153,7 @@ def register(broker: Any, logger: Any) -> None:
         ticket = data.get("ticket")
         guard = data.get("guard")
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             if not ticket or not isinstance(ticket, str):
                 raise HTTPException(status_code=422, detail="ticket is required")
             return await oauth.link_complete(session, user, ticket, guard)
@@ -165,7 +164,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _oauth_connections(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> list[dict]:
+        async def op(session: Any, user: Any) -> list[dict]:
             conns = await oauth.connections_for(session, user)
             return [conn.model_dump(mode="json") for conn in conns]
 
@@ -179,7 +178,7 @@ def register(broker: Any, logger: Any) -> None:
         # are linked; omitted = unlink all connections for the provider.
         provider_user_id = data.get("provider_user_id")
 
-        async def op(session: AsyncSession, user: Any) -> None:
+        async def op(session: Any, user: Any) -> None:
             if not provider:
                 raise HTTPException(status_code=400, detail="provider is required")
             await oauth.unlink(session, user, provider, provider_user_id=provider_user_id)
@@ -200,7 +199,7 @@ def register(broker: Any, logger: Any) -> None:
         data = data or {}
         auth_user_id = data.get("auth_user_id")
 
-        async def op(session: AsyncSession) -> dict:
+        async def op(session: Any) -> dict:
             if not auth_user_id:
                 raise HTTPException(status_code=422, detail="auth_user_id is required")
             guilds = await oauth.discord_guilds(session, auth_user_id=int(auth_user_id))

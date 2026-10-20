@@ -15,8 +15,8 @@ from dataclasses import dataclass
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.disciplines.analytics import AnalyticsExports
 from shared.domain.analytics import (
-    AnalyticsExports,
     PerformanceTrainingResult,
     ShiftTrainingResult,
     StandingsTrainingResult,
@@ -267,7 +267,7 @@ async def train_all_models(
     """Train every configured model kind for ``cutoff_tournament_id``.
 
     The cutoff's discipline chooses the module; one that declares none raises ``UnsupportedAnalytics`` before any
-    read or write. ``model_kinds`` defaults to all kinds available at the current phase.
+    read or write. ``model_kinds`` defaults to every kind.
     Returns a summary dict ``{kind: <outcomes>}`` for the CLI to render.
     """
     await _scope(session, cutoff_tournament_id)

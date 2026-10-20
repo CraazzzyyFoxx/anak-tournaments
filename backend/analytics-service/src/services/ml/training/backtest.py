@@ -21,9 +21,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.repository import MLModelArtifactRepository
+from shared.services.workspace_scope import workspace_filter, workspace_scope_filter
 from src import models
 from src.core.analytics_exports import analytics_exports, tournament_discipline
-from src.core.workspace import workspace_filter, workspace_scope_filter
 from src.services.analytics.canonical_division import load_source_grids
 
 from ..inference.runner import run_for_tournament
@@ -243,9 +243,9 @@ def _spearman_correlation(actual: dict[int, int], predicted: dict[int, float]) -
 
 async def _latest_tournament_id(session: AsyncSession, *, discipline: str, workspace_id: int | None) -> int:
     # Same exclusion as ``tournament_ids_up_to``: the per-workspace scrim
-    # container (docs/plans/2026-08-12-scrim-rooms.md) is hidden and carries no
-    # ranked roster data, so letting it win ``max()`` would shift the timeline
-    # maximum onto a tournament the backtest can score nothing against.
+    # container is hidden and carries no ranked roster data, so letting it win
+    # ``max()`` would shift the timeline maximum onto a tournament the backtest
+    # can score nothing against.
     tid = await session.scalar(
         sa.select(sa.func.max(models.Tournament.id)).where(
             models.Tournament.is_hidden.is_(False),
@@ -411,9 +411,9 @@ class BacktestService:
     ) -> int:
         """Attach the walk-forward ``report`` to the active artifacts' ``metrics``.
 
-        This surfaces the honest backtest aggregates (realised-shift MAE,
-        sign-accuracy, standings Spearman, ECE) through ``routes/v2.py::list_artifacts``
-        so the UI can show them next to the in-sample / val training metrics.
+        This surfaces the backtest aggregates (realised-shift MAE, sign-accuracy,
+        standings Spearman, ECE) through ``rpc.analytics.artifacts`` so the UI can
+        show them next to the in-sample / val training metrics.
         Returns the number of artifact rows updated.
         """
         exports = analytics_exports(discipline)

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.schemas.rpc import rpc_error
@@ -26,7 +25,7 @@ def register(broker: Any, logger: Any) -> None:
         if not token or not isinstance(token, str):
             return rpc_error("bad_request", "token is required")
 
-        async def run(session: AsyncSession) -> dict:
+        async def run(session: Any) -> dict:
             payload = await token_validation.validate(session, token)
             return payload.model_dump(mode="json")
 
@@ -41,7 +40,7 @@ def register(broker: Any, logger: Any) -> None:
         """
         raw = (data or {}).get("discord_user_id")
 
-        async def run(session: AsyncSession) -> dict:
+        async def run(session: Any) -> dict:
             # Snowflakes arrive as a JSON string or, from a careless client, a
             # number; either way the stored provider_user_id is the digits.
             discord_user_id = str(raw).strip() if raw is not None else ""

@@ -42,12 +42,10 @@ class MembershipEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        """Bot joined a new guild."""
         logger.info(f"🎉 Joined new guild: {guild.name} (ID: {guild.id})")
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild) -> None:
-        """Bot removed from guild."""
         logger.warning(f"👋 Removed from guild: {guild.name} (ID: {guild.id})")
 
     @commands.Cog.listener()
@@ -61,12 +59,10 @@ class MembershipEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
-        """Handle member joining guild."""
         logger.info(f"➕ Member joined guild {member.guild.id}: user {member.id}")
         await _member_changed(member, "member_join")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        """Handle member leaving guild."""
         logger.warning(f"➖ Member left guild {member.guild.id}: user {member.id}")
         await _member_changed(member, "member_remove")

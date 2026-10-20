@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import schemas
 from src.core.s3 import s3_client
@@ -21,7 +20,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _me_avatar_set(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             updated = await avatars.set(session, user, s3_client, data.get("content_b64"), data.get("content_type"))
             return schemas.AuthUser.model_validate(updated, from_attributes=True).model_dump(mode="json")
 
@@ -31,7 +30,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _me_avatar_delete(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             updated = await avatars.delete(session, user, s3_client)
             return schemas.AuthUser.model_validate(updated, from_attributes=True).model_dump(mode="json")
 

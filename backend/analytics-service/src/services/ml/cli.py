@@ -5,7 +5,7 @@ Subcommands:
 - ``train --cutoff <tid>``        — train every active model kind.
 - ``infer --tournament <tid>``    — run inference for one tournament.
 - ``backfill --from N --to M``    — inference sweep over a range.
-- ``backtest --window K``         — Phase-6 rolling backtest.
+- ``backtest --window K``         — rolling backtest.
 
 The tournament owns its discipline: ``--discipline`` is optional and rejected when it contradicts the tournament
 named by ``--cutoff`` (train, backtest) or ``--tournament`` (infer). ``backfill`` narrows the sweep to it; a
@@ -79,7 +79,6 @@ async def _cmd_backfill(args: argparse.Namespace) -> int:
 
 
 async def _cmd_backtest(args: argparse.Namespace) -> int:
-    # Phase 6 implementation wires this to training/backtest.py.
     from .training.backtest import backtest_service
 
     async with db.async_session_maker() as session:

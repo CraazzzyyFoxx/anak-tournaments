@@ -32,9 +32,8 @@ _LOG_FILE_SUFFIXES = (".txt", ".log", ".json")
 #: The three verdicts a log message can carry, as emoji names.
 _FEEDBACK_STATES = ("ok", "warn", "error")
 
-#: What the bot reacted with before any of this: ``❌`` is not the current
-#: Unicode fallback for ``error`` (``⛔`` is), but it still sits on every
-#: message processed by the older bot.
+#: Unicode reactions still sitting on messages processed before the application
+#: emoji existed: ``❌`` is not the current fallback for ``error`` (``⛔`` is).
 _LEGACY_REACTIONS = frozenset({"✅", "⚠️", "❌"})
 
 
@@ -66,7 +65,6 @@ class AttachmentProcessor:
         try:
             logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
             async with self._attachment_clients.create() as http_client:
-                # Download file from Discord
                 response = await http_client.get(attachment.url)
                 response.raise_for_status()
 
@@ -127,9 +125,8 @@ class AttachmentProcessor:
         wanted = [self._resolved_reaction(name) for name in reactions]
         keep = {str(item) for item in wanted}
         # Everything this message could be carrying from the bot: today's emoji
-        # for each state, plus every character it reacted with before -- a
-        # re-processed message still shows the Unicode ✅/⚠️/❌ of the old bot,
-        # and leaving those beside the uploaded ones reads as two verdicts.
+        # for each state plus ``_LEGACY_REACTIONS`` -- leaving those beside the
+        # uploaded ones reads as two verdicts.
         ours = {str(self._resolved_reaction(name)) for name in _FEEDBACK_STATES}
         ours |= {EMOJI[name] for name in _FEEDBACK_STATES} | _LEGACY_REACTIONS
         stale = [
@@ -202,7 +199,6 @@ class AttachmentProcessor:
         try:
             results: list[AttachmentFeedbackResult] = []
             for attachment in message.attachments:
-                # Only process log files
                 if attachment.filename.lower().endswith(_LOG_FILE_SUFFIXES):
                     results.append(await self.process_attachment(tournament_id, message, attachment))
                 else:

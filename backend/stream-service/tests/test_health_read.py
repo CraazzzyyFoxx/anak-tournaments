@@ -37,6 +37,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.rpc.identity import MissingIdentityError  # noqa: E402
 from shared.schemas.settings import StreamCollectionConfig  # noqa: E402
 from src.rpc import admin  # noqa: E402
+from src.services import admin as admin_service  # noqa: E402
 from src.services import state  # noqa: E402
 
 WORKSPACE = 7
@@ -114,12 +115,12 @@ class _HealthCase(IsolatedAsyncioTestCase):
         async def _cfg(_session: Any) -> StreamCollectionConfig:
             return self.cfg
 
-        cfg_patcher = patch.object(admin.settings_provider, "get_stream_collection_config", _cfg)
+        cfg_patcher = patch.object(admin_service.settings_provider, "get_stream_collection_config", _cfg)
         cfg_patcher.start()
         self.addCleanup(cfg_patcher.stop)
 
         creds_patcher = patch.multiple(
-            admin.settings,
+            admin_service.settings,
             twitch_client_id="cid" if configured else None,
             twitch_client_secret="secret" if configured else None,
         )

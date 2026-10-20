@@ -236,7 +236,7 @@ class DiscordRabbitGateway:
         """The row this send still has to produce, or ``None`` when it is settled here.
 
         The row, not the command, decides whether Discord is touched at all.
-        Nothing de-duplicates ``discord_commands`` any more, so a redelivery is
+        Nothing upstream de-duplicates ``discord_commands``, so a redelivery is
         caught here: a row past ``pending`` has already been sent (or refused)
         and the repeat is acked without a second message. A row a delete got to
         first is closed without ever being sent -- that delete acked on the
@@ -369,7 +369,7 @@ class DiscordRabbitGateway:
         if image is not None and card.attachment_name == image.filename:
             extra["attachments"] = [image]
         elif card.attachment_name is None:
-            # A card that became text drops the picture it used to show.
+            # A card that became text drops the picture it was showing.
             extra["attachments"] = []
         try:
             # No fetch: the ids are enough to edit, and the card comes from the
@@ -705,7 +705,7 @@ class DiscordRabbitGateway:
             """Stats's verdict for one uploaded file, put on the message it came from.
 
             One durable work queue: the event names its message, so any replica can
-            answer it. A message Discord no longer shows us is not worth a retry.
+            answer it. A message that is gone from Discord is not worth a retry.
             """
             await self._bot.wait_until_ready()
             async with observe_message_processing(

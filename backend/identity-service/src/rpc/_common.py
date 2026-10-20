@@ -14,7 +14,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
@@ -68,7 +67,7 @@ async def envelope(
 async def envelope_session(
     logger: Any,
     label: str,
-    op: Callable[[AsyncSession], Awaitable[Any]],
+    op: Callable[[Any], Awaitable[Any]],
     *,
     failure: str = "internal error",
 ) -> dict:
@@ -84,7 +83,7 @@ async def envelope_session(
 async def with_active_user(
     logger: Any,
     access_token: Any,
-    op: Callable[[AsyncSession, Any], Awaitable[Any]],
+    op: Callable[[Any, Any], Awaitable[Any]],
     *,
     label: str = "authenticated",
 ) -> dict:
@@ -97,7 +96,7 @@ async def with_active_user(
     if not access_token or not isinstance(access_token, str):
         return rpc_error("forbidden", "Not authenticated")
 
-    async def run(session: AsyncSession) -> Any:
+    async def run(session: Any) -> Any:
         user = await token_validation.resolve_active_user(session, access_token)
         return await op(session, user)
 
@@ -107,7 +106,7 @@ async def with_active_user(
 async def with_active_principal(
     logger: Any,
     access_token: Any,
-    op: Callable[[AsyncSession, Any, Any], Awaitable[Any]],
+    op: Callable[[Any, Any, Any], Awaitable[Any]],
     *,
     label: str = "authenticated",
 ) -> dict:
@@ -125,7 +124,7 @@ async def with_active_principal(
     if not access_token or not isinstance(access_token, str):
         return rpc_error("forbidden", "Not authenticated")
 
-    async def run(session: AsyncSession) -> Any:
+    async def run(session: Any) -> Any:
         user, api_key = await token_validation.resolve_active_principal(session, access_token)
         return await op(session, user, api_key)
 

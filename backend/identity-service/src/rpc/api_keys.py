@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
@@ -31,7 +30,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _list_api_keys(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             qp = build_query_model(schemas.ApiKeyListQueryParams, data.get("query"))
             params = schemas.ApiKeyListParams.from_query_params(qp)
             return paginated_dump(await api_keys.list(session, user=user, params=params))
@@ -42,7 +41,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _create_api_key(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             payload = schemas.ApiKeyCreate.model_validate(data)
             result = await api_keys.create(
                 session,
@@ -59,7 +58,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _update_api_key(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             payload = schemas.ApiKeyUpdate.model_validate(data)
             result = await api_keys.update(
                 session,
@@ -77,7 +76,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _revoke_api_key(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> None:
+        async def op(session: Any, user: Any) -> None:
             await api_keys.revoke(
                 session,
                 user=user,
@@ -96,7 +95,7 @@ def register(broker: Any, logger: Any) -> None:
         # "which key am I, and what may I do" from the credential already
         # validated on the way in. The four CRUD handlers above stay JWT-only, so
         # a key can neither mint a sibling nor extend its own life.
-        async def op(session: AsyncSession, _user: Any, api_key: Any) -> dict:
+        async def op(session: Any, _user: Any, api_key: Any) -> dict:
             result = await api_keys.describe_self(session, api_key_id=_key_id(api_key))
             return result.model_dump(mode="json")
 
@@ -106,7 +105,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _api_key_quota_set(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             payload = schemas.ApiKeyQuotaWrite.model_validate(data)
             result = await api_keys.set_quota(
                 session,
@@ -124,7 +123,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _api_key_quota_usage(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        async def op(session: AsyncSession, user: Any) -> dict:
+        async def op(session: Any, user: Any) -> dict:
             result = await api_keys.quota_usage(
                 session,
                 user=user,
@@ -141,7 +140,7 @@ def register(broker: Any, logger: Any) -> None:
         # Separate from ``api_key.self``: the descriptor is a cheap row read,
         # this one talks to Redis, and a client polling its budget must not
         # drag the whole descriptor along.
-        async def op(session: AsyncSession, _user: Any, api_key: Any) -> dict:
+        async def op(session: Any, _user: Any, api_key: Any) -> dict:
             result = await api_keys.self_quota_usage(session, api_key_id=_key_id(api_key))
             return result.model_dump(mode="json")
 

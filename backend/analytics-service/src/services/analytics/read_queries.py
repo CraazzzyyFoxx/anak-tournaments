@@ -9,8 +9,8 @@ from shared.repository import (
     AnalyticsShiftRepository,
 )
 from shared.repository.stats_queries import match_context
+from shared.services.workspace_scope import workspace_filter
 from src import models
-from src.core.workspace import workspace_filter
 
 VISIBLE_SHIFT_ALGORITHM_NAMES = ("Linear", "Points", "OpenSkill + ML")
 
@@ -81,8 +81,8 @@ class AnalyticsReadService:
                 sa.orm.joinedload(models.Team.standings),
                 sa.orm.joinedload(models.Team.standings).joinedload(models.Standing.stage_item),
                 # PlayerRead.user_id (built by _player_to_pydantic) is resolved from
-                # workspace_member.player_id (contract step iwrefac07); eager-load it here
-                # since models.Player is selected as its own entity, not via a relationship.
+                # workspace_member.player_id; eager-load it here since models.Player
+                # is selected as its own entity, not via a relationship.
                 sa.orm.joinedload(models.Player.workspace_member),
             )
             .join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
@@ -117,12 +117,10 @@ class AnalyticsReadService:
         Derived entirely from the v2 ``analytics.standings_distribution`` rows written
         by the ``Standings MC v2`` Monte-Carlo simulator: ``predicted_place`` is the
         team's ``round(mean_position)`` — the mean finishing position across
-        simulations, rounded to the nearest integer place (the same scalar the retired
-        v1 ``analytics.predictions`` table used to mirror). Independent of the v1
-        ``algorithm_id`` selected in the UI for shifts/points, so that selector no
-        longer changes the forecast column.
+        simulations, rounded to the nearest integer place. Independent of the
+        ``algorithm_id`` selected in the UI for shifts/points.
         """
-        del algorithm_id  # v1 ``analytics.predictions`` retired; served from v2.
+        del algorithm_id  # the forecast does not depend on the shift/points algorithm
 
         predictions: dict[int, int] = {}
         standings_v2_id = await self.algorithms.get_id_by_name(session, _STANDINGS_V2_NAME)

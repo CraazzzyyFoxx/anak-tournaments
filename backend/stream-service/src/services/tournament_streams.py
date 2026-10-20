@@ -1,7 +1,4 @@
-"""Public read subscribers (``rpc.stream.tournament_streams``).
-
-Serves ``GET /api/streams/tournament/{tournament_id}`` — the "who is on air"
-block of a tournament page, for anonymous viewers.
+"""Read model for a tournament's "who is on air" block.
 
 Two sources, joined here and nowhere else:
 
@@ -19,12 +16,10 @@ what the poller asks Helix about and what this read calls a Twitch channel,
 which is what keeps ``live=False`` ("polled, offline") from being confused with
 ``live=None`` ("never polled").
 
-This module is READ-ONLY with respect to Postgres. It touches ``tournament.*``
-and ``players.*``, both owned by other services
-(``backend/docs/tournament-service-write-path-inventory.md``), so there is no
-``session.add`` and no ``commit`` anywhere in this path. The batched player
-lookup lives in ``shared.repository.StreamTargetRepository.list_roster`` — this
-module only ranks and vetoes the rows it gets back.
+READ-ONLY with respect to Postgres: ``tournament.*`` and ``players.*`` are owned by
+other services, so there is no ``session.add`` and no ``commit`` in this path. The
+batched player lookup is ``StreamTargetRepository.list_roster``; this module only
+ranks and vetoes the rows it gets back.
 """
 
 from __future__ import annotations
@@ -32,14 +27,11 @@ from __future__ import annotations
 from typing import Any, cast
 from urllib.parse import urlsplit
 
-from faststream.rabbit.annotations import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.tournament.link import TournamentLink
 from shared.repository import StreamTargetRepository
-from shared.services.tournament.visibility import ensure_tournament_viewable
-from src.core import db
 from src.schemas.stream import (
     StreamEntryRead,
     StreamPlatform,
@@ -51,10 +43,7 @@ from src.services import targets
 from src.services.state import StreamStateStore
 from src.services.targets import StreamTargetsService
 
-from . import _common as c
-from ._clients import realtime_redis
-
-__all__ = ("TournamentStreamsReader", "build_tournament_streams", "register", "tournament_streams")
+__all__ = ("TournamentStreamsReader", "tournament_streams_reader")
 
 _PLATFORMS: frozenset[str] = frozenset({"twitch", "youtube", "other"})
 
@@ -100,14 +89,13 @@ def _entry_from_snapshot(
     """Build a live entry from a Redis snapshot.
 
     ``live=True`` unconditionally: the hash holds only channels Helix reported as
-    live and ``StreamStateStore.write_live`` replaces the whole set each tick, so
+    live and ``StreamStateStore.write_live`` rewrites the whole set each tick, so
     the field's existence IS the liveness signal. The snapshot carries no
     ``live`` key on purpose — an always-true field would invite a reader to
     trust a stale one.
 
-    ``player`` is required, not optional: the caller drops any entry it could not
-    resolve a publishable player for (see ``TournamentStreamsReader.build``), so
-    an unattributed participant entry is not a state this function can produce.
+    ``player`` is required: the caller drops any entry it could not resolve a
+    publishable player for (see ``TournamentStreamsReader.build``).
     """
     channel = str(snapshot.get("channel") or field.split(":", 1)[-1])
     return StreamEntryRead(
@@ -160,8 +148,7 @@ def _official_entry(link: TournamentLink, live: dict[str, dict[str, Any]]) -> St
 
 
 class TournamentStreamsReader:
-    """Assembles ``rpc.stream.tournament_streams`` — the public "who is on air"
-    block for one tournament."""
+    """Assembles the public "who is on air" block for one tournament."""
 
     def __init__(
         self,
@@ -178,48 +165,31 @@ class TournamentStreamsReader:
         player_ids: set[int],
         tournament_id: int,
     ) -> dict[int, StreamPlayerRead]:
-        """Name, avatar and tournament team for every *publishable* streaming
-        participant, in ONE query.
+        """Name, avatar and team for every *publishable* streaming participant, in ONE query.
 
-        Batched deliberately: a tournament page can carry dozens of live
-        channels and a per-entry lookup would put that many round-trips on a
-        public, cacheable read.
+        Batched because a public, cacheable page can carry dozens of live channels.
 
-        PRIVACY: also the display half of the stream veto. ``stream_visible``
-        rides along in the same SELECT (``StreamTargetRepository.list_roster``)
-        and a vetoed player is simply left out of the map. The poll-target query
-        already keeps them out of Redis, but that only takes effect on the next
-        tick — for a privacy switch, a 30-60s window during which the page still
-        shows you is not acceptable, and the entries already in the hash have to
-        be dropped at read time too.
+        PRIVACY: the display half of the stream veto. The poll-target query keeps a
+        vetoed player out of Redis only from the next tick on, so entries already in
+        the hash are dropped here too: a vetoed player never becomes a map entry.
 
-        Also the roster gate. Before the teams exist, every approved registrant
-        who is on air belongs on the page — that is the whole point of streaming
-        during ``check_in``. Once the tournament HAS rosters, a participant with
-        no team is someone the draft left out, and the block is about the
-        tournament being played, so they are dropped. ``rosters_formed`` is the
-        tournament-wide flag the same SELECT carries, so this costs no extra
-        query and cannot disagree with the team it renders.
+        Roster gate: before the tournament has rosters every approved registrant on
+        air is a participant (streaming during ``check_in``); once ``rosters_formed``
+        (carried by the same SELECT), a teamless participant is dropped.
         """
         if not player_ids:
             return {}
         rows = await self._rosters.list_roster(session, tournament_id, player_ids)
 
-        # One user can come back on several rows, so the pick has to be total
-        # rather than "whatever arrived first": a substitute covering a slot is
-        # a SECOND roster row in the same tournament, and a user who belongs to
-        # more than one workspace also contributes rows where the roster join
-        # matched nothing. Ranking makes the answer a function of the data
-        # alone — otherwise identical data would attribute the participant to a
-        # different team on every tick, which reads as switching teams
-        # mid-broadcast.
+        # One user can come back on several rows (a substitute's second roster row,
+        # or a multi-workspace user's unmatched join). The pick is ranked so it is a
+        # function of the data alone — otherwise the participant would switch teams
+        # mid-broadcast from tick to tick.
         best: dict[int, tuple[tuple[bool, bool, int], Any]] = {}
         for row in rows:
-            # PRIVACY: the veto, applied before ranking so a vetoed user cannot
-            # even become a map entry. ``is False`` and not ``not
-            # row.stream_visible``: only an explicit false is a veto, so a NULL
-            # from an older row (or a fake row in a test) fails open rather
-            # than silently un-publishing a whole tournament.
+            # PRIVACY: the veto, applied before ranking. ``is False`` on purpose: only
+            # an explicit false is a veto, so a NULL fails open rather than silently
+            # un-publishing a whole tournament.
             if row.stream_visible is False:
                 continue
             # A real roster row beats none, a starter beats a substitute, and
@@ -227,17 +197,14 @@ class TournamentStreamsReader:
             rank = (row.roster_id is None, row.is_substitution, row.roster_id or 0)
             if (previous := best.get(row.user_id)) is None or rank < previous[0]:
                 best[row.user_id] = (rank, row)
-        # The flag is a property of the tournament, so any row answers for all of
-        # them; ``any`` rather than indexing because ``rows`` may be empty.
+        # Tournament-wide flag, so any row answers for all; ``any`` because ``rows``
+        # may be empty.
         rosters_formed = any(row.rosters_formed for row in rows)
         return {
             user_id: StreamPlayerRead(
                 id=user_id,
                 name=row.name,
                 avatar_url=row.avatar_url,
-                # Before the draft this is the normal state and the entry still
-                # serves; after it, ``rosters_formed`` has already excluded such
-                # a player below.
                 team=StreamTeamRead(id=row.team_id, name=row.team_name) if row.team_id is not None else None,
             )
             for user_id, (_, row) in best.items()
@@ -265,18 +232,10 @@ class TournamentStreamsReader:
             tournament_id,
         )
         # Fail-closed: an entry survives only when ``_load_players`` returned a
-        # player for it. Three distinct cases converge here on purpose:
-        #   * vetoed player -- ``_load_players`` withheld them, so the stale
-        #     Redis entry goes with them;
-        #   * ``player_id`` that matches no ``players.user`` row at all -- we
-        #     cannot establish consent for a player we cannot read, so we do
-        #     not publish;
-        #   * no team once the tournament's rosters exist -- the roster gate in
-        #     ``_load_players``.
-        # This cannot swallow the organizer's broadcast: official links never
-        # come from this list (``source == "official"`` is filtered out above)
-        # and are rendered by ``_official_entry``, whose ``player`` is always
-        # None by design.
+        # player for it — which drops a vetoed player's stale Redis entry, a
+        # ``player_id`` with no readable ``players.user`` row (no readable consent),
+        # and a teamless player once rosters exist. Official links never come from
+        # this list, so the organizer's broadcast cannot be swallowed here.
         participants = [
             _entry_from_snapshot(field, snapshot, player=player)
             for field, snapshot in live_participants
@@ -288,41 +247,4 @@ class TournamentStreamsReader:
         return TournamentStreamsRead(official=official, participants=participants)
 
 
-_reader = TournamentStreamsReader()
-
-
-async def build_tournament_streams(
-    session: AsyncSession,
-    redis: Redis,
-    tournament_id: int,
-) -> TournamentStreamsRead:
-    return await _reader.build(session, redis, tournament_id)
-
-
-async def tournament_streams(session: AsyncSession, redis: Redis, data: dict[str, Any]) -> TournamentStreamsRead:
-    """Gate, then read. The order is the contract, not a style choice.
-
-    ``ensure_tournament_viewable`` runs FIRST, before a single stream row or Redis
-    key is touched: the gateway caches this response without the viewer in the key
-    (``respcache.TTLOnly``), so an ineligible viewer must be rejected before the
-    shared cache is consulted (see ``shared/services/tournament/visibility.py``).
-    A hidden tournament answers 404, not 403 — existence itself is not disclosed.
-    """
-    tournament_id = c.require_path_int(data, "tournament_id")
-    await ensure_tournament_viewable(session, c.optional_actor(data), tournament_id)
-    return await build_tournament_streams(session, redis, tournament_id)
-
-
-def register(broker: Any, logger: Any) -> None:
-    sf = db.async_session_maker
-
-    @broker.subscriber("rpc.stream.tournament_streams")
-    async def _tournament_streams(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await tournament_streams(session, realtime_redis, data)
-
-        # exclude_none stays OFF (the envelope default): `live: null` MUST appear
-        # on the wire. Dropping it would make "no live detection" indistinguishable
-        # from a missing field on the frontend, which is the one distinction this
-        # response exists to carry.
-        return await c.envelope(logger, "tournament_streams", op, session_factory=sf)
+tournament_streams_reader = TournamentStreamsReader()

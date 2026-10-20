@@ -1,0 +1,21 @@
+[importlinter]
+root_packages =
+    src
+include_external_packages = True
+
+[importlinter:contract:rpc-no-sql]
+name = RPC transport owns no SQLAlchemy
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    src.rpc
+forbidden_modules =
+    sqlalchemy
+
+[importlinter:contract:services-dont-import-rpc]
+name = services never import rpc
+type = forbidden
+source_modules =
+    src.services
+forbidden_modules =
+    src.rpc

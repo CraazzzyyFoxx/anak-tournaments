@@ -79,7 +79,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.analytics.recalculate": {
         "summary": "Recalculate analytics",
-        "description": "Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job for a tournament (optionally scoped to given algorithm_ids), replacing the legacy synchronous recompute. Metered as `analytics.recalculate`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
+        "description": "Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job for a tournament (optionally scoped to given algorithm_ids). Metered as `analytics.recalculate`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
     },
     "rpc.analytics.points": {
         "summary": "Recompute points",
