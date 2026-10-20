@@ -46,6 +46,7 @@ describe("pageClassOf", () => {
         "/admin/tournaments",
         "/admin/teams",
         "/admin/settings/divisions",
+        "/admin/settings/sub-roles",
         "/admin/achievements",
         "/admin/achievements/"
       ],
@@ -65,7 +66,6 @@ describe("pageClassOf", () => {
     expectClass(
       [
         "/admin/matches",
-        "/admin/settings/sub-roles",
         "/admin/settings/registration-forms",
         "/admin/ranks"
       ],

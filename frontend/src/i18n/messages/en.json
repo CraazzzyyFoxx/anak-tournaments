@@ -10293,13 +10293,15 @@
       "empty": "No sub-roles yet.",
       "deactivate": "Deactivate {name}",
       "restore": "Restore {name}",
-      "addPlaceholder": "Add a {role} sub-role",
       "nameLabel": "{role} sub-role name",
-      "add": "Add",
       "deactivationNote": "Deactivating a sub-role hides it from every picker but keeps it on the players already assigned to it. Which of these a specific tournament offers is chosen in that tournament's registration form.",
       "presentation": "Icon and color of {name}",
       "inactive": "Inactive",
-      "rolesLabel": "Roles"
+      "rolesLabel": "Roles",
+      "create": "New sub-role",
+      "parentRole": "Parent role",
+      "labelField": "Name",
+      "backToAll": "Every game's sub-roles"
     },
     "registrationForms": {
       "toast": {
