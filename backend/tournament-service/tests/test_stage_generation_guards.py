@@ -109,6 +109,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
             patch.object(stage_service, "_collect_item_team_ids", lambda item: [10, 20]),
             patch.object(stage_service.stage_service, "_generate_stage_skeleton", AsyncMock(return_value="skeleton")),
             patch.object(stage_service.stage_service, "_load_team_names", AsyncMock(return_value={})),
+            patch.object(stage_service.stage_service, "_team_lineups", AsyncMock(return_value={})),
             patch.object(
                 stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock(return_value=[new_encounter])
             ) as create,
@@ -308,6 +309,7 @@ class GenerateEncountersGuardTests(IsolatedAsyncioTestCase):
                 "_load_team_names",
                 AsyncMock(return_value={1: "A", 2: "B", 3: "C", 4: "D"}),
             ),
+            patch.object(stage_service.stage_service, "_team_lineups", AsyncMock(return_value={})),
             patch.object(stage_service.stage_service, "_create_encounters_from_skeleton", AsyncMock()) as create,
             patch.object(stage_service, "place_team", AsyncMock()) as seat,
             patch.object(stage_service, "enqueue_tournament_recalculation", AsyncMock()),

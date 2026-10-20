@@ -194,6 +194,7 @@ class DownstreamRequalificationTests(IsolatedAsyncioTestCase):
                 [encounter],  # the encounter holding the outgoing team
                 [_seat(1, 1), _seat(2, 2)],  # its live participations
                 [(3, "Charlie"), (2, "Bravo")],  # team names
+                [],  # the incoming team's roster line-up (none here)
             ]
         )
         sync = AsyncMock()
@@ -233,6 +234,7 @@ class DownstreamRequalificationTests(IsolatedAsyncioTestCase):
                 [encounter],  # one query for the whole item
                 [_seat(1, 1), _seat(2, 2)],
                 [(1, "Alpha"), (2, "Bravo")],
+                [],  # the incoming teams' roster line-ups (none here)
             ]
         )
         with (

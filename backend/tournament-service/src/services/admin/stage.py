@@ -27,6 +27,7 @@ from shared.domain.encounter_scoring import (
 )
 from shared.domain.ffa_formula import compile_formula
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
+from shared.models.tournament.player_role import PlayerRole
 from shared.repository import (
     EncounterGameTeamRepository,
     EncounterRepository,
@@ -38,7 +39,7 @@ from shared.repository import (
     TeamRepository,
     TournamentRepository,
 )
-from shared.services.encounter.participants import active_teams, place_team, vacate_slot
+from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 from src.domain.admin.best_of import best_of_config, resolve_best_of
@@ -1680,13 +1681,73 @@ class AdminStageService:
 
         ``seed`` is the team's place in the order the stage handed the
         generator, which is what ``encounter.team.seed`` means; a placeholder
-        (negative) id never reaches a seat, so it gets none.
+        (negative) id never reaches a seat, so it gets none. ``members`` is the
+        team's roster line-up (:meth:`_team_lineups`).
         """
         ordered = [team_id for team_id in dict.fromkeys(team_ids) if team_id is not None and team_id > 0]
         names = await self._load_team_names(session, ordered)
+        lineups = await self._team_lineups(session, ordered)
         return {
-            team_id: SeatTeam(name=names.get(team_id, "TBD"), seed=index) for index, team_id in enumerate(ordered, 1)
+            team_id: SeatTeam(name=names.get(team_id, "TBD"), seed=index, members=lineups.get(team_id, ()))
+            for index, team_id in enumerate(ordered, 1)
         }
+
+    async def _team_lineups(
+        self, session: AsyncSession, team_ids: Sequence[int]
+    ) -> dict[int, tuple[MemberSnapshot, ...]]:
+        """Each team's tournament roster (substitutes flagged) as the line-up its seat snapshots, as a mix seat does.
+
+        Taken when the seat is filled and never synced: a player rostered later
+        reaches a seat only the way any mid-encounter change does (the match
+        layer seats a logged extra as a substitute), and advancement carries
+        the snapshot on. A member rostered on two of these teams is left off
+        both: one member, one seat per encounter.
+        """
+        if not team_ids:
+            return {}
+        player = models.Player
+        rows = (
+            await session.execute(
+                select(
+                    player.id,
+                    player.team_id,
+                    player.workspace_member_id,
+                    player.name,
+                    player.rank,
+                    player.is_substitution,
+                )
+                .where(player.team_id.in_(team_ids))
+                .order_by(player.team_id, player.is_substitution, player.id)
+            )
+        ).all()
+        if not rows:
+            return {}
+        roles: dict[int, list[tuple[str, str]]] = defaultdict(list)
+        for player_id, dimension, code in await session.execute(
+            select(PlayerRole.player_id, models.RoleDimension.code, models.CatalogRole.code)
+            .join(models.CatalogRole, models.CatalogRole.id == PlayerRole.role_id)
+            .join(models.RoleDimension, models.RoleDimension.id == models.CatalogRole.dimension_id)
+            .where(PlayerRole.player_id.in_([row.id for row in rows]))
+            .order_by(PlayerRole.player_id, models.RoleDimension.code)
+        ):
+            roles[player_id].append((dimension, code))
+        teams_of: dict[int, set[int]] = defaultdict(set)
+        for row in rows:
+            teams_of[row.workspace_member_id].add(row.team_id)
+        lineups: dict[int, dict[int, MemberSnapshot]] = defaultdict(dict)
+        for row in rows:
+            if len(teams_of[row.workspace_member_id]) == 1:
+                lineups[row.team_id].setdefault(
+                    row.workspace_member_id,
+                    MemberSnapshot(
+                        workspace_member_id=row.workspace_member_id,
+                        display_name=row.name,
+                        rank=row.rank,
+                        is_substitute=row.is_substitution,
+                        roles=tuple(roles[row.id]),
+                    ),
+                )
+        return {team_id: tuple(members.values()) for team_id, members in lineups.items()}
 
     async def _create_encounters_from_skeleton(
         self,
@@ -2343,6 +2404,7 @@ class AdminStageService:
         for seats in seats_by_encounter.values():
             team_ids.update(row.team_id for row in seats if row.team_id is not None)
         names = await self._load_team_names(session, sorted(team_ids))
+        lineups = await self._team_lineups(session, sorted(set(mapping.values())))
         for encounter in encounters:
             seats = seats_by_encounter[encounter.id]
             for row in seats:
@@ -2357,7 +2419,7 @@ class AdminStageService:
                     team_id=replacement,
                     name=names.get(replacement, "TBD"),
                     seed=row.seed,
-                    members=(),
+                    members=lineups.get(replacement, ()),
                 )
             live = await active_teams(session, encounter.id)
             by_slot = {row.slot: row.team_id for row in live}

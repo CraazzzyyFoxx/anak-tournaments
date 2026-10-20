@@ -19,6 +19,7 @@ import asyncio
 import itertools
 import os
 import sys
+from collections import defaultdict
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import ANY, AsyncMock, patch
@@ -28,14 +29,17 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.core import enums
 from shared.core.errors import BaseAPIException
-from shared.models.encounter import Encounter, EncounterTeam, ScoringRule
+from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, EncounterTeamMemberRole, ScoringRule
 from shared.models.identity.auth_user import AuthUser
-from shared.models.tenancy.workspace import Workspace
+from shared.models.identity.user import User
+from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament.bracket_encounter import BracketEncounter
+from shared.models.tournament.player_role import PlayerRole
 from shared.models.tournament.scrim import ScrimRoom
 from shared.models.tournament.stage import Stage, StageItem, StageItemInput
-from shared.models.tournament.team import Team
+from shared.models.tournament.team import Player, Team
 from shared.models.tournament.tournament import Tournament
+from shared.repository.roles import CatalogRoleRepository
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
 from shared.services.encounter.result import apply_result, hold_result
 from shared.testing import create_test_async_engine
@@ -308,6 +312,100 @@ class GenerationTests(StageLayerCase):
                 seats = await active_teams(s, encounter.id)
                 self.assertEqual([1, 2], [seat.slot for seat in seats])
                 self.assertTrue(all(seat.team_id is not None for seat in seats))
+
+    async def _rostered(self, team_ids: list[int]) -> dict[int, set[tuple]]:
+        """Each team's tournament roster: a tank and a registered substitute without a role, as real members.
+
+        Returns what a seat of that team should snapshot: ``(member, name, rank, substitute, role ids)``.
+        """
+        expected: dict[int, set[tuple]] = defaultdict(set)
+        users: list[int] = []
+        async with self.Session() as s:
+            tank = await CatalogRoleRepository().resolve(
+                s, discipline="overwatch", workspace_id=self.workspace_id, dimension="player_role", code="tank"
+            )
+            for team_id in team_ids:
+                for kind, rank, substitute in (("main", 2500, False), ("sub", 2100, True)):
+                    name = f"{self.tag}-{team_id}-{kind}"
+                    user = User(name=name)
+                    s.add(user)
+                    await s.flush()
+                    users.append(user.id)
+                    member = WorkspaceMember(workspace_id=self.workspace_id, player_id=user.id)
+                    s.add(member)
+                    await s.flush()
+                    player = Player(
+                        name=name,
+                        rank=rank,
+                        is_substitution=substitute,
+                        tournament_id=self.tournament_id,
+                        team_id=team_id,
+                        workspace_member_id=member.id,
+                    )
+                    s.add(player)
+                    await s.flush()
+                    roles: tuple[int, ...] = ()
+                    if not substitute:
+                        s.add(PlayerRole(player_id=player.id, dimension_id=tank.dimension_id, role_id=tank.id))
+                        roles = (tank.id,)
+                    expected[team_id].add((member.id, name, rank, substitute, roles))
+            await s.commit()
+        self.addAsyncCleanup(self._drop_users, users)
+        return dict(expected)
+
+    async def _drop_users(self, users: list[int]) -> None:
+        async with self.Session() as s:
+            await s.execute(sa.delete(User).where(User.id.in_(users)))
+            await s.commit()
+
+    async def _line_ups(self, encounter_id: int) -> dict[int, set[tuple]]:
+        """The live seats' ``encounter.team_member`` snapshots, keyed by the seat's tournament team."""
+        member = EncounterTeamMember
+        async with self.Session() as s:
+            rows = (
+                await s.execute(
+                    sa.select(
+                        EncounterTeam.team_id,
+                        member.id,
+                        member.workspace_member_id,
+                        member.display_name_snapshot,
+                        member.rank,
+                        member.is_substitute,
+                    )
+                    .join(EncounterTeam, EncounterTeam.id == member.encounter_team_id)
+                    .where(member.encounter_id == encounter_id, member.active.is_(True))
+                )
+            ).all()
+            roles: dict[int, list[int]] = defaultdict(list)
+            for team_member_id, role_id in await s.execute(
+                sa.select(EncounterTeamMemberRole.team_member_id, EncounterTeamMemberRole.role_id).where(
+                    EncounterTeamMemberRole.team_member_id.in_([row.id for row in rows])
+                )
+            ):
+                roles[team_member_id].append(role_id)
+        line_ups: dict[int, set[tuple]] = defaultdict(set)
+        for team_id, row_id, member_id, name, rank, substitute in rows:
+            line_ups[team_id].add((member_id, name, rank, substitute, tuple(roles[row_id])))
+        return dict(line_ups)
+
+    async def test_generation_seats_each_team_with_its_roster_line_up(self) -> None:
+        """A seat snapshots its team's roster into ``encounter.team_member`` (substitutes flagged), as a mix seat
+        does: ingest binds a log to the game by these identities."""
+        expected = await self._rostered(self.team_ids[:2])
+        _stage, encounters = await self._generate(enums.StageType.ROUND_ROBIN, self.team_ids[:2])
+        self.assertEqual(expected, await self._line_ups(encounters[0].id))
+
+    async def test_a_requalified_team_takes_the_seat_with_its_own_roster_line_up(self) -> None:
+        expected = await self._rostered(self.team_ids[:3])
+        _stage, encounters = await self._generate(enums.StageType.ROUND_ROBIN, self.team_ids[:2])
+        async with self.Session() as s:
+            item_id = (await s.get_one(BracketEncounter, encounters[0].id)).stage_item_id
+            await stage_service._replace_teams_in_stage_item(
+                s, stage_item_id=item_id, mapping={self.team_ids[1]: self.team_ids[2]}
+            )
+            await s.commit()
+        kept, joined = self.team_ids[0], self.team_ids[2]
+        self.assertEqual({kept: expected[kept], joined: expected[joined]}, await self._line_ups(encounters[0].id))
 
 
 class StandingsTests(StageLayerCase):
