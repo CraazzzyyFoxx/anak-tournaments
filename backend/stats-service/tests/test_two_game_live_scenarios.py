@@ -1434,16 +1434,9 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
         422,
         contains="discipline_not_enabled",
     )
-    # B: only a superuser enables LoL.
+    # B: the organiser enables LoL themselves -- ``workspace.update`` is the whole gate.
     if LOL not in live.s("SELECT disciplines_enabled FROM public.workspace WHERE id=%s", b):
-        refused(
-            call(live, ids, "org", "PATCH", "/api/v1/workspaces/{id}", {"disciplines_enabled": [OW, LOL]}, id=b),
-            403,
-        )
-        assert LOL not in live.s("SELECT disciplines_enabled FROM public.workspace WHERE id=%s", b)
-        call(
-            live, ids, "root", "PATCH", "/api/v1/workspaces/{id}", {"disciplines_enabled": [OW, LOL]}, expect=200, id=b
-        )
+        call(live, ids, "org", "PATCH", "/api/v1/workspaces/{id}", {"disciplines_enabled": [OW, LOL]}, expect=200, id=b)
     assert LOL in invariant(
         live, "B_enabled", live.s("SELECT disciplines_enabled FROM public.workspace WHERE id=%s", b)
     )

@@ -11060,6 +11060,14 @@
         "iconHelp": "PNG, JPEG, WebP or GIF, max 2 MB.",
         "owner": "Owner",
         "ownerHelp": "The account accountable for this workspace, counted against that account's workspace limit.",
+        "disciplines": {
+          "label": "Enabled games",
+          "help": "Drag to set priority: the first game is the default for new tournaments, division grids and mixes. Turning a game off keeps its tournaments and mixes; only creating new ones is refused until it is turned back on. A newly enabled game needs its own division grid before tournaments can be created in it.",
+          "default": "Default",
+          "reorder": "Reorder {name}",
+          "toggle": "Enable {name}",
+          "lastEnabled": "At least one game stays enabled"
+        },
         "linkLabels": {
           "discord": "Discord",
           "twitch": "Twitch",
@@ -11078,6 +11086,10 @@
           "links": {
             "title": "Links",
             "description": "Each filled link becomes a button in the community page header."
+          },
+          "disciplines": {
+            "title": "Games",
+            "description": "Which games this workspace runs, and which one is the default."
           },
           "iconOwnership": {
             "title": "Icon and ownership",

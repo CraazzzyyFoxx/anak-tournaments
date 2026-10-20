@@ -33,6 +33,7 @@ import { notify } from "@/lib/notify";
 import { DEFAULT_WORKSPACE_TIMEZONE, getUtcOffsetLabel } from "@/lib/workspace/timezone";
 import workspaceService from "@/services/workspace.service";
 import { SettingsHeaderActions } from "./WorkspaceSettingsShell";
+import { DisciplinesField } from "./DisciplinesField";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 
@@ -203,6 +204,19 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                 />
               </SettingRow>
             ))}
+          </SettingGroup>
+
+          <SettingGroup
+            title={t("groups.disciplines.title")}
+            description={t("groups.disciplines.description")}
+          >
+            <SettingRow label={t("disciplines.label")} hint={t("disciplines.help")} stacked>
+              <DisciplinesField
+                workspaceId={workspace.id}
+                value={values.disciplines_enabled}
+                onChange={(next) => patch({ disciplines_enabled: next })}
+              />
+            </SettingRow>
           </SettingGroup>
 
           {/* The reassign, transfer and tier controls are rows of their own

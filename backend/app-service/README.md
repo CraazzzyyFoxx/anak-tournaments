@@ -129,7 +129,8 @@ At startup the app projects module-declared dimensions and roles into `catalog.r
 not deleted. `CatalogRoleRepository` resolves module roles and the owner's workspace sub-roles;
 their codes are `<parent>_<slug>` (for example `support_main`), with immutable parents.
 
-Workspace reads expose `disciplines_enabled`, writable by superusers only. Workspace default
+Workspace reads expose `disciplines_enabled` (priority order, `[0]` is the default game), writable by
+anyone with `workspace.update` on that workspace; disabling a game only refuses new tournaments and mixes in it. Workspace default
 formats are read/written through
 `GET|PUT /api/v1/workspaces/{workspace_id}/team-formats/{discipline}` using
 `TeamFormatRead` / `TeamFormatWrite`; `default_roster_slots_json` is no longer on the wire.

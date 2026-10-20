@@ -124,8 +124,9 @@ class Workspace(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    #: Which disciplines this workspace may create tournaments and mixes in. Codes are checked in code against
-    #: ``shared.disciplines``; a superuser enables LoL. The column goes when LoL becomes an ordinary discipline.
+    #: Which disciplines this workspace may create tournaments and mixes in, in priority order: ``[0]`` is the
+    #: default when nothing names a game. Codes are checked in code against ``shared.disciplines``; a workspace
+    #: admin (``workspace.update``) edits the list, and disabling a game only refuses NEW tournaments and mixes.
     disciplines_enabled: Mapped[list[str]] = mapped_column(
         ARRAY(String(32)), nullable=False, default=lambda: ["overwatch"], server_default=text("'{overwatch}'")
     )
