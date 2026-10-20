@@ -1,9 +1,8 @@
-"""Where an encounter sits in a bracket (D22).
+"""Where an encounter sits in a bracket.
 
-Formerly ``encounter.stage_id`` / ``stage_item_id`` / ``round``. The match layer
-is game-neutral and owns no tournament structure, so the bracket position lives
+The match layer is game-neutral and owns no tournament structure, so the bracket position lives
 with the tournament instead: a mix or a scrim is an encounter with no row here.
-``round`` is negative in a double elimination's lower bracket, as before.
+``round`` is negative in a double elimination's lower bracket.
 """
 
 from __future__ import annotations

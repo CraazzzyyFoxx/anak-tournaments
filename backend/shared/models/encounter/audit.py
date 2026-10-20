@@ -1,10 +1,8 @@
-"""Append-only trail of every change to an encounter's result (D47, D68).
+"""Append-only trail of every change to an encounter's result.
 
-Formerly ``tournament.encounter_result_audit``, which carried a home/away score
-pair plus an FFA snapshot blob. Both are now one shape: ``before``/``after`` are
-arrays of ``{encounter_team_id, score, placement}``, so a duel and a lobby are
-recorded identically, and ``result_version`` pins the row to the exact state the
-encounter was left in.
+``before``/``after`` are arrays of ``{encounter_team_id, score, placement}``, so a
+duel and a lobby are recorded identically, and ``result_version`` pins the row to
+the exact state the encounter was left in.
 
 Rows are written by every result path and never updated or deleted; the
 encounter's ``ON DELETE CASCADE`` is the only thing that removes them. A NULL

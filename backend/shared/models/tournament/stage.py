@@ -148,7 +148,7 @@ class Stage(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="StageRoundBestOf.round",
     )
-    #: Levels 1-2 of the scoring (D51): what one game pays and when the
+    #: Levels 1-2 of the scoring: what one game pays and when the
     #: encounter is over. Loaded with the stage because ``scoring`` -- which
     #: every stage read carries -- is built from it.
     scoring_rule: Mapped[ScoringRule] = relationship(lazy="selectin")

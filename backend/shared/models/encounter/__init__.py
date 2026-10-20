@@ -1,9 +1,9 @@
-"""The match layer: Postgres schema ``encounter`` (spec §13.3–§13.4).
+"""The match layer: Postgres schema ``encounter``.
 
 Game-neutral by construction. An encounter seats ``slot_count`` participations
 (``encounter.team``), never a home and an away side; a participation is
 immutable once written, so games, rosters, claims, reports and the journal all
-reference the participation row rather than the slot number it occupies (D55).
+reference the participation row rather than the slot number it occupies.
 """
 # ruff: noqa: F403
 

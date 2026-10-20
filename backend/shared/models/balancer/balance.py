@@ -76,10 +76,8 @@ class WorkspaceBalancerConfig(db.TimeStampIntegerMixin):
 class UserBalancerConfig(db.TimeStampIntegerMixin):
     """One account's own mix settings, applied to every mix it hosts.
 
-    These used to sit on the mix (``custom_game.*``), which made a host re-enter
-    the same preferences every pickup session -- they describe how this person
-    runs their mixes, not what happened in one lobby, so they belong to the
-    account. ``config_json`` is exactly the solver-override blob the mix engine
+    They describe how this person runs their mixes, not what happened in one
+    lobby, so they belong to the account. ``config_json`` is exactly the solver-override blob the mix engine
     reads (``mix_comfort_tilt``, ``role_settings.<role>.mix_weight``, ``max_result_variants``),
     so it reaches the solver untouched; a knob the user never set is an absent
     key, never an explicit null, and an untouched account stores ``{}``.

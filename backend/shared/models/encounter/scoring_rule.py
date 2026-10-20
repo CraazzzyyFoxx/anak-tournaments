@@ -1,9 +1,9 @@
-"""How a stage or an encounter turns raw game numbers into a standing (§5, D51).
+"""How a stage or an encounter turns raw game numbers into a standing.
 
 One row holds both levels the engine needs: ``game_formula`` pays a single game,
 ``end_formula`` says when the series or lobby is over. The ``wins`` preset is the
-old duel behaviour written down (``win`` per game, "best of" as the end rule);
-``points`` carries what used to live on ``tournament.stage`` (dropped by ``enclayer02``).
+duel behaviour (``win`` per game, "best of" as the end rule);
+``points`` is the stage-level points scoring.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ class ScoringRule(db.TimeStampIntegerMixin):
     __tablename__ = "scoring_rule"
     __table_args__ = (
         # The target of ``fk_encounter_scoring_rule``: an encounter may only
-        # point at a rule of its own workspace, and the DB checks it (D62).
+        # point at a rule of its own workspace, and the DB checks it.
         UniqueConstraint("id", "workspace_id", name="uq_scoring_rule_id_workspace"),
         CheckConstraint("preset IN ('wins', 'points')", name="ck_scoring_rule_preset"),
         CheckConstraint("jsonb_typeof(columns) = 'array'", name="ck_scoring_rule_columns"),

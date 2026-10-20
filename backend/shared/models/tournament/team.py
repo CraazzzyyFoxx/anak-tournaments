@@ -36,7 +36,7 @@ class Team(db.TimeStampIntegerMixin):
     __tablename__ = "team"
     __table_args__ = (
         # Target of ``fk_team_source``: a participation names a team of its own
-        # tournament, and the database checks it (D62).
+        # tournament, and the database checks it.
         UniqueConstraint("id", "tournament_id", name="uq_team_id_tournament"),
         {"schema": "tournament"},
     )

@@ -1,9 +1,8 @@
-"""Pick-ban rooms, boards and the submission log, in the match layer (D44).
+"""Pick-ban rooms, boards and the submission log, in the match layer.
 
-The configs stay with their owner (``tournament.pick_ban_config*``); what moved
-is everything that belongs to one encounter. A session now snapshots its pool
-(``pool_json``) as well as its ruleset, so an organizer editing the config
-mid-series cannot change a running room, and every "which side" column became a
+The configs stay with their owner (``tournament.pick_ban_config*``). A session
+snapshots its pool (``pool_json``) as well as its ruleset, so an organizer editing the config
+mid-series cannot change a running room; every "which side" column is a
 reference to a participation plus, where a non-participant may act, an actor
 kind (``team`` | ``decider`` | ``admin`` | ``system``).
 """

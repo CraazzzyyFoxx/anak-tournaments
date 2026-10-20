@@ -88,19 +88,9 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     #: shape -- and the lock guarding it -- stay untouched.
     max_substitutes: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     # Subscription admission gate. ``require_subscription`` is the per-tournament
-    # decision and stays here; the RULE it enforces does not. That moved to
-    # ``subscriptions.requirement`` (one row per workspace) so a new tournament no
-    # longer re-asks for it -- see the 2026-08-05 workspace-subscription-requirement
-    # design. Resolve it through ``SubscriptionResolver.load_requirement``, never by
-    # reading a column here.
-    #
-    # The former ``subscription_requirement_json`` attribute is gone from the mapper
-    # AND from the schema: ``initial_v6`` squashed the subscription tables, and
-    # ``registration_form`` there goes straight from ``require_subscription`` to
-    # ``subscription_stage``. This comment used to warn that a ``wsreq0002``
-    # migration would drop the column and break every form query while it was
-    # still mapped -- that migration does not exist and will not, so the warning is
-    # recorded here as history rather than left reading like an open task.
+    # decision and stays here; the RULE it enforces lives in
+    # ``subscriptions.requirement`` (one row per workspace). Resolve it through
+    # ``SubscriptionResolver.load_requirement``, never by reading a column here.
     require_subscription: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     #: WHEN the requirement bites, once ``require_subscription`` is on. Ordered, not
     #: a set -- ``registration`` implies check-in as well; see
@@ -322,7 +312,7 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)
     balancer_profile_overridden_at: Mapped[db.DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # ── Team registration (see docs/plans/2026-08-20-team-registration.md) ────
+    # ── Team registration ────
     # A registered team's roster IS a set of these rows; there is deliberately no
     # slot table, because a slot would carry its own state machine alongside
     # ``status`` and the two would have to be kept in sync forever. ``NULL`` means
@@ -488,7 +478,7 @@ class BalancerRegistrationRole(db.TimeStampIntegerMixin):
 
 
 class BalancerRegistrationRoleEntity(db.TimeStampIntegerMixin):
-    """Ordered preferred catalog entity ("top hero") of a registration role entry (spec §8.3, §14.2)."""
+    """Ordered preferred catalog entity ("top hero") of a registration role entry."""
 
     __tablename__ = "registration_role_entity"
     # DEFERRED (migration ``reghero01``): a pick list is replaced wholesale, and SQLAlchemy emits every INSERT for a

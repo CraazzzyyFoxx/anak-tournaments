@@ -1,10 +1,6 @@
-"""One meeting of N participants: the root of the match layer (spec §13.3).
+"""One meeting of N participants: the root of the match layer.
 
-Formerly ``tournament.encounter``; the row ids, the ``/encounters/{id}`` URLs,
-the realtime topics and every external foreign key (§13.7) survived the
-``ALTER TABLE … SET SCHEMA``. What changed is the shape: the two sides became
-``slot_count`` participations in ``encounter.team``, the bracket position moved
-to ``tournament.bracket_encounter``, and ``format`` is gone (D43) -- a duel is
+The bracket position lives in ``tournament.bracket_encounter``; a duel is
 just ``slot_count = 2``.
 """
 
@@ -82,7 +78,7 @@ class Encounter(db.TimeStampIntegerMixin):
         Index("ix_encounter_custom_game_id", "custom_game_id"),
         # Target of the participations' and the bracket row's composite FKs.
         UniqueConstraint("id", "tournament_id", name="uq_encounter_id_tournament"),
-        # Owner, workspace and discipline in one key (D62): a copied column can
+        # Owner, workspace and discipline in one key: a copied column can
         # never disagree with the tournament it was copied from.
         ForeignKeyConstraint(
             ["tournament_id", "workspace_id", "discipline"],
@@ -90,7 +86,7 @@ class Encounter(db.TimeStampIntegerMixin):
             ondelete="CASCADE",
             name="fk_encounter_owner",
         ),
-        # The pickup-mix owner (D71): same workspace and discipline as the mix.
+        # The pickup-mix owner: same workspace and discipline as the mix.
         ForeignKeyConstraint(
             ["custom_game_id", "workspace_id", "discipline"],
             ["balancer.custom_game.id", "balancer.custom_game.workspace_id", "balancer.custom_game.discipline"],
@@ -128,11 +124,11 @@ class Encounter(db.TimeStampIntegerMixin):
     #: Copy of the owner's discipline (``catalog.discipline.code``).
     discipline: Mapped[str] = mapped_column(String(32))
     tournament_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    #: The mix that recorded this round (D71); exactly one of the two owners is set.
+    #: The mix that recorded this round; exactly one of the two owners is set.
     custom_game_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
     name: Mapped[str] = mapped_column(String())
-    #: How many slots this encounter seats: a duel is 2, a lobby is N (D55).
+    #: How many slots this encounter seats: a duel is 2, a lobby is N.
     slot_count: Mapped[int] = mapped_column(Integer())
     #: How many games: the length of a Bo-N series, or a lobby's game count.
     best_of: Mapped[int] = mapped_column(Integer(), default=3, server_default="3")
@@ -147,10 +143,10 @@ class Encounter(db.TimeStampIntegerMixin):
         server_default=enums.EncounterResultStatus.NONE.value,
     )
     #: ``enums.EncounterResultSource``, or NULL while no official result exists --
-    #: readers then show the running total of the confirmed games (D57). Plain
+    #: readers then show the running total of the confirmed games. Plain
     #: text + CHECK, like ``Tournament.team_formation``.
     result_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    #: Bumped by every result write, under the row's own lock (D57, D68).
+    #: Bumped by every result write, under the row's own lock.
     result_version: Mapped[int] = mapped_column(BigInteger(), default=0, server_default="0")
     current_game_position: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     closeness: Mapped[float | None] = mapped_column(Float(), nullable=True)

@@ -1,11 +1,10 @@
-"""Directed edge describing advancement between encounters (D13, D65).
+"""Directed edge describing advancement between encounters.
 
-Replaces the implicit ``round``-sign based advancement ("round > 0 = upper,
-round < 0 = lower"): bracket structure is explicit, slots fill automatically on
+Bracket structure is explicit: slots fill automatically on
 a result change, and the wiring survives a bracket-engine regeneration.
 
 Both ends are POSITIONS, not sides: ``source_position`` is the place in the
-source encounter's standing (1 = the old ``winner``, 2 = the old ``loser``) and
+source encounter's standing (1 = winner, 2 = loser) and
 ``target_slot`` is the seat it feeds in the target. The bracket generator checks
 ``target_slot <= encounter.slot_count``.
 """
@@ -47,7 +46,7 @@ class EncounterLink(db.TimeStampIntegerMixin):
         {"schema": "tournament"},
     )
 
-    #: Copy of both ends' owner, so the composite FKs can check it (D62).
+    #: Copy of both ends' owner, so the composite FKs can check it.
     tournament_id: Mapped[int] = mapped_column(BigInteger())
     source_encounter_id: Mapped[int] = mapped_column(BigInteger())
     #: Place in the source encounter's final standing.

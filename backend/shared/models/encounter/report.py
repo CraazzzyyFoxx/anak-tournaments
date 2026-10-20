@@ -1,7 +1,6 @@
-"""A participation's report of the WHOLE encounter (D50, D54, D59).
+"""A participation's report of the WHOLE encounter.
 
-Formerly ``tournament.encounter_captain_report``. The series score moved into
-``team_report_result`` rows -- one per participation -- so a lobby reports the
+The series score lives in ``team_report_result`` rows -- one per participation -- so a lobby reports the
 same way a duel does, and ``games_played`` counts draws. ``basis_version`` is
 the ``encounter.result_version`` the report was made against.
 """
