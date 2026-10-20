@@ -98,6 +98,9 @@ vi.mock("@/services/admin.service", () => ({
   }
 }));
 
+// The owner game's metadata, offline (no local server behind `apiFetch`).
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
+
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })

@@ -30,7 +30,10 @@ globalThis.ResizeObserver ??= ResizeObserverStub as never;
 const OW = { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true, identity_provider: "battlenet" } as DisciplineDescriptor;
 const LOL = { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true, identity_provider: "riot" } as DisciplineDescriptor;
 
+/** The saved scope's game (`null`: all games). */
 let game: string | null = null;
+/** An explicit `?discipline=` narrowing the page past the saved scope. */
+let urlGame: string | null = null;
 const listTemplates = vi.fn();
 const createTemplate = vi.fn<(workspaceId: number, name: string, discipline: string, schema: FormSchema) => unknown>();
 const getPlayerSubRoles = vi.fn();
@@ -53,19 +56,27 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: vi.fn() }));
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: () => true }) }));
 vi.mock("@/hooks/useGameScope", () => ({
-  useGameScope: () => ({
-    axis: 1,
-    games: [OW, LOL],
-    resolution:
-      game === null
-        ? { game: { kind: "all" }, pill: { kind: "all" }, tabs: false, scope: "all" }
-        : { game: { kind: "game", code: game, source: "scope" }, pill: { kind: "game", code: game, locked: false }, tabs: false, scope: game },
-    game,
-    isError: false,
-    refetch: vi.fn(),
-    selectScope: vi.fn(),
-    selectTab: vi.fn()
-  })
+  useGameScope: () => {
+    const shown = urlGame ?? game;
+    return {
+      axis: 1,
+      games: [OW, LOL],
+      resolution:
+        shown === null
+          ? { game: { kind: "all" }, pill: { kind: "all" }, tabs: false, scope: "all" }
+          : {
+              game: { kind: "game", code: shown, source: urlGame === null ? "scope" : "url" },
+              pill: { kind: "game", code: shown, locked: false },
+              tabs: false,
+              scope: game ?? "all"
+            },
+      game: shown,
+      isError: false,
+      refetch: vi.fn(),
+      selectScope: vi.fn(),
+      selectTab: vi.fn()
+    };
+  }
 }));
 vi.mock("@/hooks/useGameDescriptors", () => ({
   useGameDescriptors: () => new Map([[OW.code, OW], [LOL.code, LOL]])
@@ -135,11 +146,28 @@ function buttonNamed(text: string): HTMLElement {
   return found;
 }
 
+/** Types a name into "New template" and adds it; resolves to what was created: name, game, question keys. */
+async function createNamed(text: string) {
+  const input = container.querySelector<HTMLInputElement>(`input[aria-label="${en.adminSettings.registrationForms.newTemplateName}"]`);
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    setter.call(input, text);
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => buttonNamed(en.adminSettings.registrationForms.add).click());
+  await settle();
+
+  expect(createTemplate).toHaveBeenCalledTimes(1);
+  const [, name, discipline, schema] = createTemplate.mock.calls[0];
+  return { name, discipline, keys: schema.sections.flatMap((section) => section.fields.map((field) => field.key)) };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
   window.history.replaceState(null, "", "/admin/settings/registration-forms");
   game = null;
+  urlGame = null;
   listTemplates.mockResolvedValue([template(11, "Open cup", "overwatch"), template(12, "Rift cup", "lol")]);
   getPlayerSubRoles.mockResolvedValue([]);
   createTemplate.mockImplementation(async (_ws: number, name: string, discipline: string) => template(13, name, discipline));
@@ -182,18 +210,40 @@ it("files a new template under the scope's game with that game's identity questi
   await mount();
 
   expect(listTemplates).toHaveBeenCalledWith(1, "lol");
-  const input = container.querySelector<HTMLInputElement>(`input[aria-label="${en.adminSettings.registrationForms.newTemplateName}"]`);
-  await act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    setter.call(input, "Rift open");
-    input!.dispatchEvent(new Event("input", { bubbles: true }));
+  const created = await createNamed("Rift open");
+  expect([created.name, created.discipline]).toEqual(["Rift open", "lol"]);
+  expect(created.keys).toContain("identity_riot");
+});
+
+it("files a new template under the saved scope's game, not under a URL game that only narrows the list", async () => {
+  game = "overwatch";
+  urlGame = "lol";
+  await mount();
+
+  expect(listTemplates).toHaveBeenCalledWith(1, "lol");
+  const created = await createNamed("Open two");
+  expect(created.discipline).toBe("overwatch");
+  expect(created.keys).toContain("identity_battlenet");
+});
+
+it("answers a failed lookup of a selected template of another game with an error and a retry", async () => {
+  game = "lol";
+  let lookupFails = true;
+  listTemplates.mockImplementation(async (_ws: number, discipline: string | null) => {
+    if (discipline === "lol") return [template(12, "Rift cup", "lol")];
+    if (lookupFails) throw new Error("lookup failed");
+    return [template(11, "Open cup", "overwatch"), template(12, "Rift cup", "lol")];
   });
-  await act(async () => buttonNamed(en.adminSettings.registrationForms.add).click());
+  window.history.replaceState(null, "", "/admin/settings/registration-forms?template=11");
+  await mount();
+
+  expect(container.textContent).toContain(en.adminSettings.registrationForms.errors.load);
+  expect(container.textContent).not.toContain(en.adminSettings.registrationForms.pickTitle);
+
+  lookupFails = false;
+  await act(async () => buttonNamed(en.common.retry).click());
   await settle();
 
-  expect(createTemplate).toHaveBeenCalledTimes(1);
-  const [, name, discipline, schema] = createTemplate.mock.calls[0];
-  expect([name, discipline]).toEqual(["Rift open", "lol"]);
-  const keys = schema.sections.flatMap((section) => section.fields.map((field) => field.key));
-  expect(keys).toContain("identity_riot");
+  expect(container.textContent).not.toContain(en.adminSettings.registrationForms.errors.load);
+  expect(getPlayerSubRoles).toHaveBeenLastCalledWith({ workspace_id: 1, discipline: "overwatch" }, expect.anything());
 });

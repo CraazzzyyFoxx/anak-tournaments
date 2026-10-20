@@ -52,7 +52,7 @@ import type { FormSchema } from "@/types/forms.types";
  *
  * The list is a multi surface: every game's templates (marked) under "all games", one game's under a game. A
  * selected template is an owner: its game names the editor's roles and metadata and locks the scope pill. "New
- * template" files under the creation game (the page's, else last, else first enabled), asking that game's identity.
+ * template" files under the creation game (scope's, else last, else first enabled), asking that game's identity.
  *
  * The same editor the tournament builder runs, without the tournament: there is
  * no form row to version, no stale-registration count and no policy toggles to
@@ -134,8 +134,11 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const enabledGames = games.filter((entry) => entry.enabled);
   // A pick counts only while it is an enabled game of the area; otherwise the default applies again.
   const pickedGame = newGame !== null && enabledGames.some((entry) => entry.code === newGame) ? newGame : null;
+  // Spec §7.2: the saved scope's game, else the last game, else the first — an explicit `?discipline=` narrows the
+  // list only.
   const creationGame =
-    pickedGame ?? defaultCreationGame({ scope: listGame ?? ALL_DISCIPLINES, lastGame, games: enabledGames });
+    pickedGame ??
+    defaultCreationGame({ scope: scope.resolution?.scope ?? ALL_DISCIPLINES, lastGame, games: enabledGames });
   // A template starts from the questionnaire the server would build for a fresh tournament OF ITS GAME.
   const identityProvider = games.find((entry) => entry.code === creationGame)?.identity_provider ?? null;
 
@@ -386,6 +389,13 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                 fieldErrors={{}}
               />
             </section>
+          ) : outsideList && allTemplatesQuery.isError ? (
+            // The selection is still in the URL: its failed lookup is an error with a retry, not "nothing selected".
+            <PageStateCard
+              state="error"
+              title={t("errors.load")}
+              onAction={() => void allTemplatesQuery.refetch()}
+            />
           ) : null
         }
         emptyDetail={
