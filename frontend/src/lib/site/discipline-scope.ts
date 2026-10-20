@@ -72,7 +72,6 @@ const SINGLE_PATHS: readonly string[] = [
   "/users/compare",
   "/users/heroes-compare",
   "/users",
-  "/admin/matches",
   "/admin/settings/registration-forms",
   "/admin/ranks"
 ];
@@ -88,6 +87,7 @@ const MULTI_PATHS: readonly string[] = [
   "/statistics",
   "/admin/tournaments",
   "/admin/teams",
+  "/admin/matches",
   "/admin/settings/divisions",
   "/admin/settings/sub-roles",
   "/admin/achievements"

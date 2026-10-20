@@ -15,6 +15,8 @@ import {
   TOURNAMENT_QUERY_PARAM,
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
+import { gameColumn } from "@/components/workspace/game-column";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
@@ -41,9 +43,13 @@ const PAGE_SIZE = 15;
  * the sibling browsers use, so a pinned link still opens pinned. A row opens
  * the inspector at `?id=` — the roster summary — and "Open page" goes on to
  * the team editor, which is where a roster is actually changed.
+ *
+ * A multi list (spec §6.9): `discipline: null` is every game's teams with a "Game" column; a code is that game's
+ * teams, filtered on the server through the team's tournament.
  */
-export function TeamsBrowser() {
+export function TeamsBrowser({ discipline }: Readonly<{ discipline: string | null }>) {
   const t = useTranslations("adminPeople.teams");
+  const tGame = useTranslations("common.discipline");
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const queryClient = useQueryClient();
@@ -64,15 +70,24 @@ export function TeamsBrowser() {
     queryFn: () => tournamentService.getAll(null)
   });
 
+  // The tournament chip is one game's (spec §6.2): under "all games" it is hidden and `?tournament=` is ignored;
+  // under a game it offers that game's tournaments.
   const defs = useMemo(
-    () => teamFilterDefs(tournamentsQuery.data?.results ?? [], t("labels.tournament")),
-    [t, tournamentsQuery.data]
+    () =>
+      discipline === null
+        ? []
+        : teamFilterDefs(
+            (tournamentsQuery.data?.results ?? []).filter((tournament) => tournament.discipline === discipline),
+            t("labels.tournament")
+          ),
+    [discipline, t, tournamentsQuery.data]
   );
 
   const filters = useFilters(defs);
-  const selectedTournamentId = parseTournamentQueryParam(
-    String(filters.values[TOURNAMENT_QUERY_PARAM] ?? "") || null
-  );
+  const selectedTournamentId =
+    discipline === null
+      ? null
+      : parseTournamentQueryParam(String(filters.values[TOURNAMENT_QUERY_PARAM] ?? "") || null);
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => adminService.deleteTeam(id),
@@ -93,7 +108,11 @@ export function TeamsBrowser() {
     }
   });
 
-  const columns = useTeamColumns({ canDelete: canDeleteTeam, onDelete: setPendingDelete });
+  const baseColumns = useTeamColumns({ canDelete: canDeleteTeam, onDelete: setPendingDelete });
+  const columns =
+    discipline === null
+      ? [baseColumns[0], gameColumn<Team>(tGame("column"), (team) => team.tournament?.discipline), ...baseColumns.slice(1)]
+      : baseColumns;
 
   const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
   const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
@@ -118,7 +137,9 @@ export function TeamsBrowser() {
                 trailing={
                   // A team belongs to one tournament, so the action exists only
                   // once the list is scoped to one.
-                  canCreateTeam && selectedTournamentId != null ? (
+                  discipline === null ? (
+                    <GameFilterHint />
+                  ) : canCreateTeam && selectedTournamentId != null ? (
                     <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
                       <Plus className="size-4" aria-hidden />
                       {t("create")}
@@ -155,7 +176,8 @@ export function TeamsBrowser() {
               search,
               pageSize,
               sortField,
-              sortDir
+              sortDir,
+              discipline
             ]}
             queryFn={(page, search, pageSize, sortField, sortDir) =>
               teamService.getAll({
@@ -164,7 +186,8 @@ export function TeamsBrowser() {
                 perPage: pageSize,
                 search: search || undefined,
                 sort: sortField ?? "avg_sr",
-                order: sortField ? sortDir : "asc"
+                order: sortField ? sortDir : "asc",
+                discipline
               })
             }
             onPageRowsChange={setPageRows}

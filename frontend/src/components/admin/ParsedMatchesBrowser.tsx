@@ -17,6 +17,8 @@ import {
   parseTournamentQueryParam
 } from "@/components/admin/tournament-filter";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
+import { gameColumn } from "@/components/workspace/game-column";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -61,11 +63,15 @@ export function ParsedMatchesBrowser({
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
-  /** The game whose maps the filter offers: the pinned tournament's, else the browsing choice; `null` = none yet. */
+  /**
+   * The pinned tournament's game, else the workspace view's scope (spec §6.9): a code filters the list on the server
+   * and offers that game's maps; `null` = every game, with a "Game" column and no map filter.
+   */
   discipline: string | null;
   workspaceId: number | null;
 }>) {
   const t = useTranslations("adminMatches.parsed");
+  const tGame = useTranslations("common.discipline");
   // `id` is the inspector, not a filter: opening a map must not drop the page
   // it sits on.
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
@@ -73,9 +79,9 @@ export function ParsedMatchesBrowser({
   const [pageRows, setPageRows] = useState<AdminMatchRow[]>([]);
   const showTournament = tournamentId == null;
 
-  const chipTournamentId = parseTournamentQueryParam(
-    searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null
-  );
+  // The tournament chip is one game's (spec §6.2): ignored under "all games"; a pinned tournament keeps working.
+  const chipTournamentId =
+    discipline === null ? null : parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
   const scopeTournamentId = tournamentId ?? chipTournamentId;
 
   // Map options come from the game's catalogue, not from the page of rows: the
@@ -90,19 +96,23 @@ export function ParsedMatchesBrowser({
 
   const defs = useMemo<FilterDef[]>(() => {
     const list: FilterDef[] = [];
-    if (tournamentId == null) {
+    // Hidden under "all games"; under a game it offers that game's tournaments.
+    if (tournamentId == null && discipline !== null) {
       list.push({
         key: TOURNAMENT_QUERY_PARAM,
         label: t("tournament"),
         kind: "single",
-        options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
-          value: String(entry.id),
-          label: entry.name
-        }))
+        options: (tournamentsQuery.data?.results ?? [])
+          .filter((entry) => entry.discipline === discipline)
+          .map((entry) => ({
+            value: String(entry.id),
+            label: entry.name
+          }))
       });
     }
-    list.push(
-      {
+    // Maps are one game's catalogue: without a game the filter is hidden (spec §6.2).
+    if (discipline !== null) {
+      list.push({
         key: "map_id",
         label: t("map"),
         kind: "single",
@@ -110,7 +120,9 @@ export function ParsedMatchesBrowser({
           value: String(entry.id),
           label: entry.name
         }))
-      },
+      });
+    }
+    list.push(
       {
         key: "log_status",
         label: t("ingestionStatus"),
@@ -124,10 +136,10 @@ export function ParsedMatchesBrowser({
       { key: "unlinked_only", label: t("noRawLog"), kind: "toggle" }
     );
     return list;
-  }, [tournamentId, tournamentsQuery.data, mapsQuery.data, t]);
+  }, [tournamentId, discipline, tournamentsQuery.data, mapsQuery.data, t]);
 
   const filters = useFilters(defs);
-  const mapFilter = String(filters.values.map_id ?? "");
+  const mapFilter = discipline === null ? "" : String(filters.values.map_id ?? "");
   const statusFilter = Array.isArray(filters.values.log_status)
     ? (filters.values.log_status as LogProcessingStatus[])
     : [];
@@ -166,6 +178,9 @@ export function ParsedMatchesBrowser({
           </div>
         )
       },
+      ...(discipline === null
+        ? [gameColumn<AdminMatchRow>(tGame("column"), (row) => row.discipline)]
+        : []),
       {
         id: "score",
         header: t("score"),
@@ -200,7 +215,7 @@ export function ParsedMatchesBrowser({
         }
       }
     ],
-    [showTournament, t]
+    [showTournament, discipline, t, tGame]
   );
 
   if (workspaceId == null) {
@@ -224,6 +239,7 @@ export function ParsedMatchesBrowser({
               <FilterBar
                 defs={defs}
                 filters={filters}
+                trailing={discipline === null ? <GameFilterHint /> : undefined}
               />
             }
             emptyMessage={
@@ -255,7 +271,7 @@ export function ParsedMatchesBrowser({
                 page,
                 search,
                 pageSize,
-                filters: { map_id: mapFilter, log_status: statusFilter }
+                filters: { map_id: mapFilter, log_status: statusFilter, discipline }
               }
             ]}
             queryFn={(page, search, pageSize) =>
@@ -263,6 +279,7 @@ export function ParsedMatchesBrowser({
                 workspace_id: workspaceId,
                 tournament_id: scopeTournamentId ?? undefined,
                 query: search || undefined,
+                discipline: discipline ?? undefined,
                 map_id: mapFilter ? Number(mapFilter) : undefined,
                 log_status: statusFilter.length ? statusFilter : undefined,
                 ...(unlinkedOnly && { unlinked_only: true }),

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// The admin matches screen's parsed view reads one game at a time (ruling R4): a game picked in the scope pill leaves
-// that game's map and tournament scope behind and keeps the view (ruling R5).
+// The admin matches screen registers its one-game filters (map, tournament, stage, group) with the scope pill: a game
+// picked there leaves them behind and keeps the view (ruling R5).
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
