@@ -173,6 +173,36 @@ describe("RankHistory host", () => {
     expect(container.querySelector('[role="tab"]')).not.toBeNull();
   });
 
+  it("offers the game tabs to an ownerless surface under all games, whether or not the game collects ranks", async () => {
+    // Two games, scope "all", last game LoL: the single rules pick LoL, which collects no ranks.
+    const selectTab = vi.fn();
+    const ownerless = (code: string) => {
+      const game = { kind: "game", code, source: "last" } as const;
+      return gameScopeStub(game, {
+        games: [OVERWATCH, LOL],
+        resolution: { game, pill: { kind: "all" }, tabs: true, scope: "all" },
+        selectTab
+      });
+    };
+    collector = { scope: ownerless("lol"), descriptor: LOL, supported: false };
+    const unsupported = await render(<RankHistory userId={7} title="Rank history" />);
+
+    expect(unsupported.textContent).toContain("Rank history is not available for this game");
+    const overwatch = [...unsupported.querySelectorAll('[role="tab"]')].find((node) =>
+      node.textContent?.includes("Overwatch")
+    );
+    await act(async () => {
+      overwatch?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    expect(selectTab.mock.calls[0]?.[0]).toBe("overwatch");
+
+    collector = { scope: ownerless("overwatch"), descriptor: OVERWATCH, supported: true };
+    const supported = await render(<RankHistory userId={7} title="Rank history" />);
+
+    expect(supported.querySelector('[data-testid="widget"]')?.getAttribute("data-discipline")).toBe("overwatch");
+    expect(supported.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Overwatch");
+  });
+
   it("keeps the no-linked-profile state ahead of any game", async () => {
     const container = await render(<RankHistory userId={null} />);
 

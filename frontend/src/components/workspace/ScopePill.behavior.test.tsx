@@ -14,6 +14,7 @@ import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Workspace } from "@/types/workspace.types";
 
 import { ScopePill } from "./ScopePill";
+import { ServerGameTabs } from "./ServerGameTabs";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -281,6 +282,54 @@ describe("the site scope pill", () => {
     await press(document.activeElement, "Escape");
     expect(popover()).toBeNull();
     expect(document.activeElement).toBe(trigger());
+  });
+
+  describe("beside a page's local game tabs", () => {
+    const INITIAL = { stored: "all", lastGame: null, axis: "all", hostLockedWorkspaceId: null, disciplines: null } as const;
+    const tab = (name: string) =>
+      [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) => node.textContent?.includes(name));
+    const pick = async (name: string) => {
+      const target = tab(name);
+      if (!target) throw new Error(`no ${name} tab`);
+      await act(async () => target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+      await settle();
+    };
+    const page = (
+      <>
+        <ScopePill variant="site" />
+        <ServerGameTabs initial={INITIAL} />
+      </>
+    );
+
+    it("keeps all games on an interim single page after a tab pick, which narrows only the page", async () => {
+      navigation.reset("/statistics");
+      await mount(page);
+      await pick("League of Legends");
+
+      expect(navigation.pushes).toEqual(["/statistics?discipline=lol"]);
+      expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
+      expect(trigger()?.getAttribute("aria-label")).toBe("All communities · All games — change scope");
+    });
+
+    it("a game block on a multi page remembers the tab's game without narrowing the page's URL", async () => {
+      navigation.reset("/");
+      await mount(page);
+      await pick("League of Legends");
+
+      expect(navigation.pushes).toEqual([]);
+      expect(useWorkspaceStore.getState()).toMatchObject({ gameScope: "all", lastGame: "lol" });
+      expect(tab("League of Legends")?.getAttribute("aria-selected")).toBe("true");
+      expect(trigger()?.getAttribute("aria-label")).toBe("All communities · All games — change scope");
+    });
+
+    it("a game block on a multi page answers an invalid URL game with the multi page's way out", async () => {
+      navigation.reset("/?discipline=nope");
+      await mount(page);
+
+      expect(tab("League of Legends")).toBeUndefined();
+      await click([...document.querySelectorAll("button")].find((node) => node.textContent === en.common.discipline.showAll));
+      expect(navigation.pushes).toEqual(["/"]);
+    });
   });
 });
 
