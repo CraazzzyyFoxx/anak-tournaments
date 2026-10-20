@@ -18,6 +18,7 @@ from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import rated_role_codes
+from shared.repository import WorkspaceRepository
 from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
@@ -69,7 +70,7 @@ def _bool(data: dict[str, Any], key: str) -> bool:
     return raw is not None and str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _filters(data: dict[str, Any], discipline: str) -> RankOverviewFilters:
+def _filters(data: dict[str, Any], disciplines: list[str]) -> RankOverviewFilters:
     page = _int(data, "page") or 1
     per_page = _int(data, "per_page") or 50
     sort = str(c.q1(data, "sort") or "display_name")
@@ -80,7 +81,11 @@ def _filters(data: dict[str, Any], discipline: str) -> RankOverviewFilters:
         query=query or None,
         layers=parse_layers(c.q(data, "layer")),
         author_user_ids=_ints(data, "author_user_id"),
-        roles=tuple(role for role in (c.q(data, "role") or []) if role in rated_role_codes(discipline)),
+        roles=tuple(
+            role
+            for role in (c.q(data, "role") or [])
+            if any(role in rated_role_codes(discipline) for discipline in disciplines)
+        ),
         rank_min=_int(data, "rank_min"),
         rank_max=_int(data, "rank_max"),
         differs_from_canon=_bool(data, "differs_from_canon"),
@@ -93,6 +98,31 @@ def _filters(data: dict[str, Any], discipline: str) -> RankOverviewFilters:
     )
 
 
+#: Filters and sorts that only mean something on one game's roles and grid (spec §6.8).
+_GAME_BOUND_FILTERS = ("role", "rank_min", "rank_max")
+_GAME_BOUND_SORTS = ("rank_value", "division")
+
+
+def _refuse_game_bound(data: dict[str, Any]) -> None:
+    """Without a game, a game-bound filter or sort is a 422 naming it, never silently dropped."""
+    for name in _GAME_BOUND_FILTERS:
+        if c.q(data, name) is not None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{name} requires discipline")
+    sort = c.q1(data, "sort")
+    if sort in _GAME_BOUND_SORTS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"sort={sort} requires discipline")
+
+
+async def _games(session: Any, workspace_id: int, requested: str | None) -> list[str]:
+    """The requested enabled game, or every game the workspace runs (the all-games union)."""
+    if requested is not None:
+        return [await workspace_discipline(session, workspace_id=workspace_id, requested=requested)]
+    workspace = await WorkspaceRepository().get(session, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    return list(workspace.disciplines_enabled)
+
+
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.balancer.ranks.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
@@ -103,12 +133,13 @@ def register(broker: Any, logger: Any) -> None:
             # Same gate as writing the canon: this read puts every author's
             # private book on one screen, which only roster management sees.
             c.require_workspace_permission(data, user, workspace_id, "team", "update")
-            discipline = await workspace_discipline(
-                session, workspace_id=workspace_id, requested=c.q1(data, "discipline")
-            )
-            filters = _filters(data, discipline)
+            requested = c.q1(data, "discipline") or None
+            if requested is None:
+                _refuse_game_bound(data)
+            disciplines = await _games(session, workspace_id, requested)
+            filters = _filters(data, disciplines)
             rows, total = await rank_overview_page(
-                session, workspace_id=workspace_id, discipline=discipline, filters=filters
+                session, workspace_id=workspace_id, disciplines=disciplines, filters=filters
             )
             return pagination.paginated_dict(
                 rows, total, pagination.PaginationParams(page=filters.page, per_page=filters.per_page)

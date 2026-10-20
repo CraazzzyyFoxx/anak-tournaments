@@ -119,7 +119,7 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
         with (
             patch.object(ranks_rpc, "_SF", _FakeSession),
             patch.object(ranks_rpc, "rank_overview_page", self.page),
-            patch.object(ranks_rpc, "workspace_discipline", AsyncMock(return_value="overwatch")),
+            patch.object(ranks_rpc, "_games", AsyncMock(return_value=["overwatch"])),
         ):
             return await broker.handlers[SUBJECT]({"workspace_id": WORKSPACE_ID, "identity": identity}, None)
 
@@ -140,6 +140,39 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
         assert response["ok"] is False
         assert response["error"]["code"] == "forbidden"
         self.page.assert_not_awaited()
+
+
+class RankOverviewGameBoundFilterTests(IsolatedAsyncioTestCase):
+    """Without a game, a filter or sort that only means something on one game's grid is a 422 naming it."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_game_bound_filters_need_a_game(self) -> None:
+        broker = _CapturingBroker()
+        ranks_rpc.register(broker, _FakeLogger())
+        page = AsyncMock(return_value=([], 0))
+        identity = _identity(WORKSPACE_ID, "organizer", ("team", "read"), ("team", "update"))
+        cases = (
+            ({"role": ["tank"]}, "role"),
+            ({"rank_min": ["1000"]}, "rank_min"),
+            ({"rank_max": ["3000"]}, "rank_max"),
+            ({"sort": ["rank_value"]}, "sort=rank_value"),
+            ({"sort": ["division"]}, "sort=division"),
+        )
+        for query, name in cases:
+            with (
+                self.subTest(name=name),
+                patch.object(ranks_rpc, "_SF", _FakeSession),
+                patch.object(ranks_rpc, "rank_overview_page", page),
+            ):
+                response = await broker.handlers[SUBJECT](
+                    {"workspace_id": WORKSPACE_ID, "identity": identity, "query": query}, None
+                )
+                assert response["ok"] is False, response
+                assert response["error"]["code"] == "unprocessable"
+                assert response["error"]["message"] == f"{name} requires discipline"
+        page.assert_not_awaited()
 
 
 class GridRankCaseTests(IsolatedAsyncioTestCase):
@@ -426,7 +459,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             return await rank_overview_page(
                 session,
                 workspace_id=self.workspace_id,
-                discipline="overwatch",
+                disciplines=("overwatch",),
                 filters=RankOverviewFilters(**overrides),
             )
 
@@ -574,7 +607,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             rows, total = await rank_overview_page(
                 session,
                 workspace_id=self.workspace_id,
-                discipline="lol",
+                disciplines=("lol",),
                 filters=RankOverviewFilters(layers=LAYERS, per_page=200),
             )
             assert total == 5
@@ -591,7 +624,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             ow, _ = await rank_overview_page(
                 session,
                 workspace_id=self.workspace_id,
-                discipline="overwatch",
+                disciplines=("overwatch",),
                 filters=RankOverviewFilters(layers=("canon",), roles=("support",)),
             )
             assert [row["rank_value"] for row in ow] == [1600]
@@ -721,6 +754,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             "workspace_id": self.workspace_id,
             "identity": _identity(self.workspace_id, "organizer", ("team", "update")),
             "query": {
+                "discipline": ["overwatch"],
                 "layer": ["canon", "casual"],
                 "role": ["tank"],
                 "sort": ["rank_value"],
@@ -736,6 +770,46 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert {row["layer"] for row in body["results"]} == {"canon", "casual"}
         assert body["total"] == len(body["results"]) == 2
         json.dumps(body)
+
+    async def test_without_a_game_every_enabled_games_rows_come_back_tagged(self) -> None:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            workspace = await session.get(models.Workspace, self.workspace_id)
+            workspace.disciplines_enabled = ["overwatch", "lol"]
+            await session.flush()
+            for discipline, value in (("overwatch", 1600), ("lol", 3300)):
+                await member_rank_service.set_ranks(
+                    session,
+                    workspace_id=self.workspace_id,
+                    discipline=discipline,
+                    workspace_member_id=self.member_id,
+                    ranks={"support": value},
+                )
+
+            async def page(**overrides) -> tuple[list[dict], int]:
+                return await rank_overview_page(
+                    session,
+                    workspace_id=self.workspace_id,
+                    disciplines=("overwatch", "lol"),
+                    filters=RankOverviewFilters(layers=("canon",), **overrides),
+                )
+
+            rows, total = await page(per_page=200)
+            assert total == 3
+            assert {(row["discipline"], row["role"], row["rank_value"]) for row in rows} == {
+                ("overwatch", "tank", 2500),
+                ("overwatch", "support", 1600),
+                ("lol", "support", 3300),
+            }
+            # One member, one layer, one role code in both games, no author: every earlier key ties, so only the
+            # game orders the two support rows (the League row was written last, so row_id alone would flip them).
+            first, _ = await page(per_page=1, page=1)
+            second, _ = await page(per_page=1, page=2)
+            assert [(first[0]["discipline"], first[0]["role"]), (second[0]["discipline"], second[0]["role"])] == [
+                ("lol", "support"),
+                ("overwatch", "support"),
+            ]
+            await session.rollback()
 
 
 def _as_pairs(rows: list[dict], member_id: int) -> dict[str, tuple[int, str]]:

@@ -228,7 +228,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.ranks.list": Op(
         response=Paginated[schemas.RankOverviewRow],
         query_params=(
-            QueryParam("discipline", description="Enabled discipline; defaults to the workspace's first."),
+            QueryParam("discipline", description="One enabled discipline; omitted = every enabled discipline."),
             QueryParam("page", "integer", description="1-based page, default 1."),
             QueryParam("per_page", "integer", description="Page size, clamped to 1..200, default 50."),
             QueryParam("player_id", "integer", description="Only this players.user id."),
@@ -239,9 +239,9 @@ OPERATIONS: dict[str, Op] = {
                 description=f"Repeatable. One of {list(LAYERS)}; defaults to the current layers {list(CURRENT_LAYERS)}.",
             ),
             QueryParam("author_user_id", "integer", array=True, description="Repeatable. Only these authors/hosts."),
-            QueryParam("role", array=True, description="Repeatable rated module role code of the selected discipline."),
-            QueryParam("rank_min", "integer", description="Lowest rank_value kept."),
-            QueryParam("rank_max", "integer", description="Highest rank_value kept."),
+            QueryParam("role", array=True, description="Repeatable rated module role code; requires discipline."),
+            QueryParam("rank_min", "integer", description="Lowest rank_value kept; requires discipline."),
+            QueryParam("rank_max", "integer", description="Highest rank_value kept; requires discipline."),
             QueryParam(
                 "differs_from_canon",
                 "boolean",

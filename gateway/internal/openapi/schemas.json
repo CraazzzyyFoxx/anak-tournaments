@@ -5006,13 +5006,13 @@
       "summary": "Set my pickup mix preferences"
     },
     "rpc.balancer.ranks.list": {
-      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).",
+      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.",
       "query_params": [
         {
           "name": "discipline",
           "required": false,
           "schema": {
-            "description": "Enabled discipline; defaults to the workspace's first.",
+            "description": "One enabled discipline; omitted = every enabled discipline.",
             "type": "string"
           }
         },
@@ -5074,7 +5074,7 @@
           "name": "role",
           "required": false,
           "schema": {
-            "description": "Repeatable rated module role code of the selected discipline.",
+            "description": "Repeatable rated module role code; requires discipline.",
             "items": {
               "type": "string"
             },
@@ -5085,7 +5085,7 @@
           "name": "rank_min",
           "required": false,
           "schema": {
-            "description": "Lowest rank_value kept.",
+            "description": "Lowest rank_value kept; requires discipline.",
             "type": "integer"
           }
         },
@@ -5093,7 +5093,7 @@
           "name": "rank_max",
           "required": false,
           "schema": {
-            "description": "Highest rank_value kept.",
+            "description": "Highest rank_value kept; requires discipline.",
             "type": "integer"
           }
         },
@@ -27937,6 +27937,11 @@
           "description": "casual only: how far the match moved this seat.",
           "title": "Delta"
         },
+        "discipline": {
+          "description": "The row's game: one code, or every enabled game's rows without a filter.",
+          "title": "Discipline",
+          "type": "string"
+        },
         "display_name": {
           "anyOf": [
             {
@@ -27959,7 +27964,7 @@
             }
           ],
           "default": null,
-          "description": "Resolved on the workspace's effective grid.",
+          "description": "Resolved on the workspace's effective grid of the row's game; null when the game has none here.",
           "title": "Division"
         },
         "identity": {
@@ -28076,6 +28081,7 @@
       },
       "required": [
         "layer",
+        "discipline",
         "player_id",
         "member_id",
         "rank_value"

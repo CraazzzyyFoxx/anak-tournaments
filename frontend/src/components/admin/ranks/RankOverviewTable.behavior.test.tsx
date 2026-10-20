@@ -99,6 +99,7 @@ vi.mock("@/services/workspace-player.service", async (importOriginal) => {
 function row(overrides: Partial<RankOverviewRow> = {}): RankOverviewRow {
   return {
     layer: "canon",
+    discipline: "overwatch",
     player_id: 42,
     member_id: 9,
     display_name: "Alice",

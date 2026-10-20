@@ -27,6 +27,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core.errors import BaseAPIException
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline as discipline_spec
 from shared.disciplines import rated_role_codes
@@ -184,7 +185,7 @@ def _row(
     ]
 
 
-def _members_cte(workspace_id: int, provider: str | None, filters: RankOverviewFilters) -> Any:
+def _members_cte(workspace_id: int, provider: str | None, filters: RankOverviewFilters, game: str) -> Any:
     where = _roster_filters(workspace_id, filters.query, provider)
     if filters.player_id is not None:
         where.append(models.WorkspaceMember.player_id == filters.player_id)
@@ -197,11 +198,11 @@ def _members_cte(workspace_id: int, provider: str | None, filters: RankOverviewF
         )
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
         .where(*where)
-        .cte("rank_members")
+        .cte(f"rank_members_{game}")
     )
 
 
-def _ow_latest_cte(members: Any) -> Any:
+def _ow_latest_cte(members: Any, game: str) -> Any:
     """Newest snapshot per (account, role, platform), kept only when still ranked.
 
     The same recency/ranked rules as ``fetch_latest_ow_ranks_by_account``: the
@@ -233,9 +234,13 @@ def _ow_latest_cte(members: Any) -> Any:
         )
         .distinct(models.SocialAccount.id, snapshot.role, snapshot.platform)
         .order_by(models.SocialAccount.id, snapshot.role, snapshot.platform, snapshot.captured_at.desc())
-        .subquery("rank_ow_series")
+        .subquery(f"rank_ow_series_{game}")
     )
-    return sa.select(latest).where(latest.c.is_ranked.is_(True), latest.c.rank_value.is_not(None)).cte("rank_ow_latest")
+    return (
+        sa.select(latest)
+        .where(latest.c.is_ranked.is_(True), latest.c.rank_value.is_not(None))
+        .cte(f"rank_ow_latest_{game}")
+    )
 
 
 def _branches(
@@ -247,6 +252,7 @@ def _branches(
     ws_grid: DivisionGrid,
     ranker: RankerSettings,
 ) -> list[Any]:
+    # Every CTE is named per game: the all-games read unions several games' branches in one statement.
     wanted = set(filters.layers)
     rank = models.MemberRank
     canon = (
@@ -263,7 +269,7 @@ def _branches(
             rank.dimension_id == dimension_id,
             rank.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
         )
-        .cte("rank_canon")
+        .cte(f"rank_canon_{discipline}")
     )
     book = (
         sa.select(
@@ -280,16 +286,16 @@ def _branches(
             rank.dimension_id == dimension_id,
             rank.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
         )
-        .cte("rank_book")
+        .cte(f"rank_book_{discipline}")
     )
-    roles = sa.values(sa.column("role", sa.String), name="rank_roles").data(
+    roles = sa.values(sa.column("role", sa.String), name=f"rank_roles_{discipline}").data(
         [(r,) for r in rated_role_codes(discipline)]
     )
 
     # The OverFast snapshot SQL twin of OW's native layer; another native module needs its own twin.
     native = discipline_spec(discipline).native_ranks is not None
     needs_ow = native and bool(wanted & {"ow", "effective_tournament", "effective_mix"})
-    ow_latest = _ow_latest_cte(members) if needs_ow else None
+    ow_latest = _ow_latest_cte(members, discipline) if needs_ow else None
     ow_best = (
         sa.select(
             ow_latest.c.user_id,
@@ -297,7 +303,7 @@ def _branches(
             sa.func.max(ow_latest.c.rank_value).label("rank_value"),
         )
         .group_by(ow_latest.c.user_id, ow_latest.c.role)
-        .cte("rank_ow_best")
+        .cte(f"rank_ow_best_{discipline}")
         if ow_latest is not None
         else None
     )
@@ -402,8 +408,8 @@ def _branches(
         out.append(select.where(value.is_not(None)))
 
     if "effective_mix" in wanted:
-        authors = sa.select(book.c.member_id, book.c.author_user_id).distinct().cte("rank_mix_authors")
-        mix_book = book.alias("rank_mix_book")
+        authors = sa.select(book.c.member_id, book.c.author_user_id).distinct().cte(f"rank_mix_authors_{discipline}")
+        mix_book = book.alias(f"rank_mix_book_{discipline}")
         ow_mix = _grid_rank_case(ow_best.c.rank_value, ws_grid) if ow_best is not None else _null(sa.Integer)
         value = sa.func.coalesce(mix_book.c.rank_value, canon.c.rank_value, ow_mix)
         select = (
@@ -494,7 +500,7 @@ def _branches(
         )
 
     if "casual" in wanted:
-        seat_rows = CustomGameRoundRepository.seat_rows_select(workspace_id).subquery("rank_casual_seat")
+        seat_rows = CustomGameRoundRepository.seat_rows_select(workspace_id).subquery(f"rank_casual_seat_{discipline}")
         game = models.CustomGame
         points = seat_rows.c.points_per_win_applied
         out.append(
@@ -563,6 +569,8 @@ def _order_by(rows: Any, filters: RankOverviewFilters) -> list[Any]:
         rows.c.role.asc(),
         rows.c.member_id.asc(),
         sa.nulls_last(rows.c.author_user_id.asc()),
+        # Two games may share a role code, and the computed layers share row_id 0.
+        rows.c.discipline.asc(),
         rows.c.row_id.asc(),
     ]
 
@@ -579,10 +587,11 @@ def _context(row: Any) -> dict[str, Any] | None:
     }
 
 
-def _dump(row: Any, provider: str | None, author_names: dict[int, str | None]) -> dict[str, Any]:
-    identity = PlayerIdentityRead.of(provider, row.handle)
+def _dump(row: Any, providers: dict[str, str | None], author_names: dict[int, str | None]) -> dict[str, Any]:
+    identity = PlayerIdentityRead.of(providers[row.discipline], row.handle)
     return {
         "layer": row.layer,
+        "discipline": row.discipline,
         "player_id": row.player_id,
         "member_id": row.member_id,
         "display_name": row.display_name,
@@ -603,41 +612,69 @@ def _dump(row: Any, provider: str | None, author_names: dict[int, str | None]) -
     }
 
 
+async def _game_grid(session: AsyncSession, workspace_id: int, discipline: str) -> DivisionGrid | None:
+    """The game's workspace grid; ``None`` when the game has none here (its rows then carry no division)."""
+    try:
+        return await get_effective_division_grid(session, workspace_id, discipline=discipline)
+    except BaseAPIException as exc:
+        if "division_grid_required" not in str(exc.detail):
+            raise
+        return None
+
+
 async def rank_overview_page(
     session: AsyncSession,
     *,
     workspace_id: int,
-    discipline: str,
+    disciplines: Sequence[str],
     filters: RankOverviewFilters,
 ) -> tuple[list[dict[str, Any]], int]:
-    """One page of the flat rank table, plus the exact total behind it."""
-    if not filters.layers:
+    """One page of the flat rank table, plus the exact total behind it.
+
+    One code reads that game; several are the all-games view (spec §6.8): each game's branches are built on its own
+    roles, grid and identity provider, tagged with its code, and the union is filtered, sorted and paged as one.
+    """
+    if not filters.layers or not disciplines:
         return [], 0
 
-    ws_grid = await get_effective_division_grid(session, workspace_id, discipline=discipline)
-    dimension_id = await CatalogRoleRepository().rated_dimension_id(session, discipline=discipline)
-    provider = discipline_spec(discipline).identity_provider
-    members = _members_cte(workspace_id, provider, filters)
-    branches = _branches(
-        workspace_id,
-        discipline,
-        dimension_id,
-        filters,
-        members,
-        ws_grid,
-        await mix_ranker_service.settings(session, workspace_id),
-    )
-    if not branches:
+    ranker = await mix_ranker_service.settings(session, workspace_id)
+    providers: dict[str, str | None] = {}
+    games: list[Any] = []
+    for code in disciplines:
+        grid = await _game_grid(session, workspace_id, code)
+        providers[code] = discipline_spec(code).identity_provider
+        members = _members_cte(workspace_id, providers[code], filters, code)
+        branches = _branches(
+            workspace_id,
+            code,
+            await CatalogRoleRepository().rated_dimension_id(session, discipline=code),
+            filters,
+            members,
+            grid if grid is not None else DivisionGrid(version_id=None, tiers=()),
+            ranker,
+        )
+        if not branches:
+            continue
+        game_rows = (
+            sa.union_all(*branches).subquery(f"rank_rows_{code}")
+            if len(branches) > 1
+            else branches[0].subquery(f"rank_rows_{code}")
+        )
+        division = (
+            division_case_expr(game_rows.c.rank_value, grid) if grid is not None and grid.tiers else _null(sa.Integer)
+        )
+        games.append(sa.select(game_rows, sa.literal(code).label("discipline"), division.label("division")))
+    if not games:
         return [], 0
 
-    rows = sa.union_all(*branches).subquery("rank_rows") if len(branches) > 1 else branches[0].subquery("rank_rows")
+    rows = sa.union_all(*games).subquery("rank_rows") if len(games) > 1 else games[0].subquery("rank_rows")
     preds = _predicates(rows, filters)
 
     total = await session.scalar(
         sa.select(sa.func.count()).select_from(sa.select(sa.literal(1)).select_from(rows).where(*preds).subquery())
     )
     result = await session.execute(
-        sa.select(rows, division_case_expr(rows.c.rank_value, ws_grid).label("division"))
+        sa.select(rows)
         .where(*preds)
         .order_by(*_order_by(rows, filters))
         .limit(filters.per_page)
@@ -649,7 +686,7 @@ async def rank_overview_page(
         workspace_id=workspace_id,
         user_ids=[row.author_user_id for row in page if row.author_user_id is not None],
     )
-    return [_dump(row, provider, author_names) for row in page], int(total or 0)
+    return [_dump(row, providers, author_names) for row in page], int(total or 0)
 
 
 def parse_layers(raw: Sequence[str] | None) -> tuple[str, ...]:

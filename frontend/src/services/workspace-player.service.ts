@@ -98,6 +98,8 @@ export type RankOverviewContext = {
 
 export type RankOverviewRow = {
   layer: RankLayer;
+  /** The row's game; every enabled game's rows come back without a `discipline` filter. */
+  discipline: string;
   /** `players.user` id -- what `/admin/people/{id}` takes. */
   player_id: number;
   member_id: number;
@@ -108,7 +110,7 @@ export type RankOverviewRow = {
   author_name: string | null;
   role: string | null;
   rank_value: number;
-  /** Resolved on the WORKSPACE effective grid, server-side, for every layer. */
+  /** Resolved on the workspace's effective grid of the row's game; null when that game has none. */
   division: number | null;
   /** `effective_*` only: which layer the number was taken from. */
   source: "author" | "workspace" | "native" | null;
@@ -127,6 +129,7 @@ export type RankOverviewRow = {
 };
 
 export type RankOverviewListParams = {
+  /** One game; omitted = every enabled game (then `role`, `rankMin`, `rankMax` and rank/division sorts are refused). */
   discipline?: string;
   page?: number;
   perPage?: number;

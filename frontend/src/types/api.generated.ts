@@ -10659,7 +10659,7 @@ export interface paths {
         };
         /**
          * List all rank values in the workspace
-         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
+         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.
          *
          *     RPC subject: `rpc.balancer.ranks.list`
          */
@@ -21534,13 +21534,18 @@ export interface components {
              */
             delta: number | null;
             /**
+             * Discipline
+             * @description The row's game: one code, or every enabled game's rows without a filter.
+             */
+            discipline: string;
+            /**
              * Display Name
              * @default null
              */
             display_name: string | null;
             /**
              * Division
-             * @description Resolved on the workspace's effective grid.
+             * @description Resolved on the workspace's effective grid of the row's game; null when the game has none here.
              * @default null
              */
             division: number | null;
