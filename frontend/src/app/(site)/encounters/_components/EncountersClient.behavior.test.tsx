@@ -134,7 +134,9 @@ async function mount(
             initialPage={initialPage}
             scope="all"
           />
-          <PillPick code="lol" />
+          {GAMES.map((game) => (
+            <PillPick key={game.code} code={game.code} />
+          ))}
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -422,5 +424,51 @@ describe("the encounters index across games", () => {
     expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null, 1));
     expect((mocks.getAll.mock.lastCall as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null, best_of: 3 });
     expect(window.location.search).toBe("?best_of=3");
+  });
+
+  it("returning from an unknown game to every game, the scope before it, starts on the first page", async () => {
+    const url = "/encounters?page=2";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(seedOf(null, 2), 2);
+    expect(rows()).toEqual(["overwatch", "lol"]);
+
+    const invalid = "/encounters?discipline=xx&page=2";
+    window.history.pushState(null, "", invalid);
+    await act(async () => navigation.push(invalid));
+    await tick();
+    const showAll = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === en.common.discipline.showAll
+    );
+    await act(async () => showAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await tick();
+
+    expect(navigation.pushes.at(-1)).toBe("/encounters");
+    expect(mocks.getAll).toHaveBeenCalledTimes(1);
+    expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null, 1));
+    expect(window.location.search).toBe("");
+  });
+
+  it("returning from an unknown game to the game before it, picked in the pill, leaves its tournament/stage behind", async () => {
+    const url = "/encounters?discipline=overwatch&tournament_id=11&stage_id=5";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(seedOf("overwatch"), 1, { ...DEFAULT_FILTERS, tournament_id: 11, stage_id: 5 });
+
+    const invalid = "/encounters?discipline=xx&tournament_id=11&stage_id=5";
+    window.history.pushState(null, "", invalid);
+    await act(async () => navigation.push(invalid));
+    await tick();
+    await act(async () => {
+      container.querySelector("[data-pill-pick=overwatch]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await tick();
+
+    expect(navigation.pushes.at(-1)).toBe("/encounters?discipline=overwatch");
+    expect(mocks.getAll).toHaveBeenCalledTimes(1);
+    expect(mocks.getAll).toHaveBeenCalledWith(...listRead("overwatch", 1));
+    expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null });
+    // The state the URL mirrors carries no tournament/stage either.
+    expect(window.location.search).toBe("?discipline=overwatch");
   });
 });

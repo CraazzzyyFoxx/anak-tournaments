@@ -63,12 +63,11 @@ export default function EncountersClient({
   const { resolution } = gameScope;
   const discipline = gameScope.game;
   const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
-  // The game the filters belong to — "all", the game, or an invalid request's code — `null` while resolving. Arriving
-  // at a valid game from another one (a recovery from an invalid request included) drops the game-bound filters and
-  // returns to the first page; an invalid request itself changes nothing, its URL included.
-  const invalidRequest = resolution?.game.kind === "invalid" ? resolution.game.requested : null;
-  const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : invalidRequest;
-  const controls = useEncountersFilters(initialFilters, initialPage, gameKey, ready);
+  const unavailable = resolution?.game.kind === "invalid" || resolution?.game.kind === "empty";
+  // "all" or the game once readable, `null` otherwise: leaving one game for another, or an unavailable state for any
+  // game, drops the game-bound filters and returns to the first page.
+  const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : null;
+  const controls = useEncountersFilters(initialFilters, initialPage, gameKey, unavailable);
   const { effectiveFilters, page } = controls;
   const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
     seed,
@@ -91,7 +90,7 @@ export default function EncountersClient({
   const showingStart = rows.length ? (page - 1) * ENCOUNTERS_PAGE_SIZE + 1 : 0;
   const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, total);
 
-  if (resolution?.game.kind === "invalid" || resolution?.game.kind === "empty") {
+  if (unavailable) {
     return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_SCOPED_PARAMS} />;
   }
   if (!ready) {

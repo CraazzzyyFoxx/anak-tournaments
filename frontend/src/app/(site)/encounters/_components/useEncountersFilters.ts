@@ -32,6 +32,9 @@ export interface EncountersFilterControls {
   clearFilters: () => void;
 }
 
+/** What the filter state belongs to once the page showed no readable game: any game that follows starts afresh. */
+const UNAVAILABLE = Symbol("unavailable");
+
 /**
  * Filter/search/page state for the encounters index, mirrored into the URL.
  *
@@ -40,20 +43,19 @@ export interface EncountersFilterControls {
  * keystroke. The previous-value ref keeps the very first render (which already
  * matches the server-rendered URL) from writing a redundant entry. The game is the
  * scope's, not a filter: the mirror keeps an explicit `?discipline=` as it found it and
- * never adds one. `gameKey` is the game the filters belong to — "all", a code, or an
- * invalid request's code; `null` while resolving — and `ready` says it is a valid one
- * (every game or one game). Only a valid game is applied: arriving at one from another
- * game, or from an invalid request, starts again from its first page without the old
- * game's tournament/stage filters, and only then is the state mirrored, so an invalid
- * request's URL stays as typed (spec §4.1) and a way back to the previous game finds its
- * filters intact. Under every game those filters never take effect at all, whatever put
+ * never adds one. `gameKey` is the page's readable game — "all" or a code; `null` while
+ * resolving and while `unavailable` (an invalid request, or no game at all). Arriving at
+ * a game from another one, or from an unavailable state (even back at the game before
+ * it), starts again from its first page without the old game's tournament/stage
+ * filters. Only a readable game is mirrored, so an invalid request's URL stays as typed
+ * (spec §4.1). Under every game those filters never take effect at all, whatever put
  * them in the state (the URL, a saved view): nothing reads or mirrors them.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
   initialPage: number,
   gameKey: string | null,
-  ready: boolean
+  unavailable: boolean
 ): EncountersFilterControls {
   const pathname = usePathname();
   const explicitGame = useSearchParams()?.get(DISCIPLINE_PARAM) ?? null;
@@ -61,8 +63,11 @@ export function useEncountersFilters(
   const [searchValue, setSearchInput] = useState(initialFilters.query);
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
-  const [stateGame, setStateGame] = useState(gameKey);
-  if (ready && gameKey !== stateGame) {
+  const [stateGame, setStateGame] = useState<string | typeof UNAVAILABLE | null>(
+    unavailable ? UNAVAILABLE : gameKey
+  );
+  if (unavailable && stateGame !== UNAVAILABLE) setStateGame(UNAVAILABLE);
+  if (gameKey !== null && gameKey !== stateGame) {
     setStateGame(gameKey);
     if (stateGame !== null) {
       setPage(1);
@@ -80,7 +85,7 @@ export function useEncountersFilters(
   );
 
   useEffect(() => {
-    if (!ready) return;
+    if (gameKey === null) return;
     const params = filtersToSearchParams(effectiveFilters, page);
     if (explicitGame !== null) params.set(DISCIPLINE_PARAM, explicitGame);
     const nextUrl = `${pathname}?${params.toString()}`;
@@ -94,7 +99,7 @@ export function useEncountersFilters(
 
     window.history.replaceState(null, "", nextUrl);
     previousUrlRef.current = { page, filters: effectiveFilters };
-  }, [ready, explicitGame, effectiveFilters, page, pathname]);
+  }, [gameKey, explicitGame, effectiveFilters, page, pathname]);
 
   return {
     filters,
