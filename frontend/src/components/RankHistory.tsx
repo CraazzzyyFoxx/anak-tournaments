@@ -28,7 +28,8 @@ type RankHistoryTarget =
 type RankHistoryProps = RankHistoryTarget & {
   /**
    * The owning game (tournament, mix, draft, registration…). Without one the single-page rules pick it, with local
-   * game tabs under "all games". Either way the game is resolved first and only then checked for rank collection:
+   * game tabs under "all games" — on a game-neutral page (the person hub) the platform rules, with tabs under any
+   * scope (R23). Either way the game is resolved first and only then checked for rank collection:
    * a game that does not collect ranks gets the unsupported state, never another game's history.
    */
   discipline?: string | null;
@@ -97,7 +98,8 @@ export default function RankHistory({
     content = (
       <div className={cn("space-y-3", contentClassName)}>
         {/* An invalid/empty resolution named with its way out (never read as "this game collects no ranks"), or —
-            ownerless under "all games" — the local game tabs, whether or not the picked game collects ranks. */}
+            ownerless, when the resolution asks for them — the local game tabs, whether or not the picked game collects
+            ranks. */}
         <GameScopeControl scope={collector.scope} variant="single" />
         {kind === "invalid" || kind === "empty" ? null : descriptor && collector.supported ? (
           <DisciplineWidget

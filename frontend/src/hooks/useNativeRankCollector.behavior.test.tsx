@@ -11,6 +11,9 @@ import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 let search = "";
 let stored = "overwatch";
+let pathname = "/users/some-player";
+
+vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
 
 const caps = (collects: boolean) => ({
   catalog_sync: true,
@@ -89,6 +92,7 @@ function run(owner?: string | null) {
 beforeEach(() => {
   search = "";
   stored = "overwatch";
+  pathname = "/users/some-player";
 });
 afterEach(() => containers.splice(0));
 
@@ -126,5 +130,14 @@ describe("useNativeRankCollector", () => {
     expect(run("lol").descriptor?.code).toBe("lol");
     expect(run("lol").supported).toBe(false);
     expect(run("chess").descriptor).toBeNull();
+  });
+
+  it("on a game-neutral page gives an ownerless block its own tabs under the saved game (R23)", () => {
+    expect(run().scope.resolution?.tabs).toBe(false);
+
+    pathname = "/admin/people/42";
+    const block = run();
+    expect(block.descriptor?.code).toBe("overwatch");
+    expect(block.scope.resolution?.tabs).toBe(true);
   });
 });

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -37,6 +38,7 @@ import { useQueryParams } from "@/hooks/useQueryParams";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
+import { blockClassOf } from "@/lib/site/discipline-scope";
 import { getDivisionLabel, getDivisionOptions } from "@/lib/divisions/grid";
 import { findRole, ratedDimension, registrationRoles } from "@/lib/roster/ontology";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
@@ -83,13 +85,14 @@ const RANK_GAME_PARAMS = ["role", "div_min", "div_max"];
 
 /**
  * One game's rank values in the workspace — a single page with local game tabs under "all games" until the ranks list
- * spans every game (Task 45). The game's roles, grid and native layer are its own, and an invalid or empty resolution
- * reads nothing. Switching game remounts the table, so no row of the previous game is shown while the next one loads.
+ * spans every game (Task 45); embedded on the game-neutral person page it keeps its own tabs under any scope (R23).
+ * The game's roles, grid and native layer are its own, and an invalid or empty resolution reads nothing. Switching game
+ * remounts the table, so no row of the previous game is shown while the next one loads.
  */
 export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
   const t = useTranslations("admin.rankOverview");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const scope = useGameScope({ pageClass: "single", axis: workspaceId ?? "all" });
+  const scope = useGameScope({ pageClass: blockClassOf(usePathname()), axis: workspaceId ?? "all" });
   useGameBoundParams(RANK_GAME_PARAMS);
   const discipline = scope.game;
   const metadata = useDisciplineMetadata(scope.axis, discipline);

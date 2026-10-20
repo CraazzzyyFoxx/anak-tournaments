@@ -131,6 +131,15 @@ export function pageClassOf(pathname: string): PageClass {
 }
 
 /**
+ * The class an ownerless one-game block (a player's rank table or rank history) resolves under: its route's single
+ * rules, or — on a game-neutral page, whose pill offers no game — the platform rules: its own tabs over ≥2 games,
+ * defaulting to the scope's game (R23).
+ */
+export function blockClassOf(pathname: string): "single" | "platform" {
+  return pageClassOf(pathname) === "none" ? "platform" : "single";
+}
+
+/**
  * Which game a page reads, what the pill shows and whether local tabs appear (spec §4.3). Pure: it
  * never writes the scope, the last game or the URL. `?discipline=all` from old links is no parameter.
  */
