@@ -44,6 +44,15 @@ retire an entry without removing history. Create/PATCH reject invalid character 
 Sync validates a source batch before mirroring images or writing entities and preserves existing
 admin-edited attrs.
 
+**LoL map 11 correction (P8, `e3ef97c2d`).** Maps synced under their slugified name, so Data Dragon's MapId 11 was
+stored as `summoner-s-rift`; it now always syncs under the canonical code `summoners_rift`. The first
+`POST /api/v1/admin/catalog-sync/lol` after the P8 deploy rewrites an existing `summoner-s-rift` row **once**: same id
+(every FK), name, attrs, `active` and parent, with the old code added to its aliases. An already-mirrored image keeps
+its `assets/lol/map/summoner-s-rift.png` key; a never-mirrored one is mirrored as `assets/lol/map/summoners_rift.png`.
+Several matching rows, or one matched only by an alias, answer 409 `catalog_conflict` with no map written: resolve
+them in the catalog admin and sync again. Canonical ingest resolves exact codes only, so documents must name
+`summoners_rift`. See [the P8 release note](releases/2026-10-19-multi-game-p8-lol.md), section 8.
+
 ## Before the window
 
 1. **Rehearse on an isolated restore.** Run the real `uv run alembic upgrade head` from the release
