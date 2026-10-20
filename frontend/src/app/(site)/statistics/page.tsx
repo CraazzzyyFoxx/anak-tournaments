@@ -8,8 +8,8 @@ import TournamentsChart from "@/components/TournamentsChart";
 import TournamentsDivisionChart from "@/components/TournamentsDivisionChart";
 import statisticsService from "@/services/statistics.service";
 import { isTenantHost } from "@/lib/site/tenant-host";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
+import { ServerGameTabs } from "@/components/workspace/ServerGameTabs";
 import disciplineService from "@/services/discipline.service";
 import type { PlayerStatistics, TournamentStatistics } from "@/types/statistics.types";
 import {
@@ -32,8 +32,8 @@ export default async function StatisticsPage({
   const [t, { discipline }] = await Promise.all([getTranslations(), searchParams]);
   // The leaderboards and the division-by-role trend are one game's (§2.3 composite); the totals and the activity
   // trend are game-neutral.
-  const browsing = await resolveServerBrowsingDiscipline(discipline);
-  const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const browsing = await resolveServerPageGame("single", discipline);
+  const game = browsing.resolution?.game.kind === "game" ? browsing.resolution.game.code : null;
   return (
     <div className="space-y-8">
       <header>
@@ -69,7 +69,7 @@ export default async function StatisticsPage({
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SectionLabel>{t("statistics.leaderboards")}</SectionLabel>
-          <ServerBrowsingDiscipline initial={browsing.init} />
+          <ServerGameTabs initial={browsing.init} />
         </div>
         {game === null ? null : (
           <div className="grid gap-4 lg:grid-cols-3">

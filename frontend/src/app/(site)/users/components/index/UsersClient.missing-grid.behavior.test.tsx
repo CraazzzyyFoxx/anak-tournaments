@@ -84,7 +84,7 @@ const renderIndex = async (scope: StatsScope, axis: WorkspaceAxis) => {
     root.render(
       <QueryClientProvider client={makeQueryClient()}>
         <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
-          <UsersClient scope={scope} initial={{ stored: null, axis, hostLockedWorkspaceId: null, disciplines: null }} />
+          <UsersClient scope={scope} initial={{ stored: "all", lastGame: null, axis, hostLockedWorkspaceId: null, disciplines: null }} />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );

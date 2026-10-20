@@ -8,6 +8,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import userService from "@/services/user.service";
 import UsersClient from "./UsersClient";
+import { useWorkspaceStore } from "@/stores/workspace.store";
+import { PillPick } from "@/test/pill-pick";
 import { DEFAULT_MIN_ENCOUNTERS, parseMinEncounters } from "./users-index.model";
 
 declare global {
@@ -15,12 +17,12 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { search } = vi.hoisted(() => ({ search: { current: new URLSearchParams() } }));
+const { search, push } = vi.hoisted(() => ({ search: { current: new URLSearchParams() }, push: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/users",
   useSearchParams: () => search.current,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+  useRouter: () => ({ push, replace: vi.fn() })
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
@@ -116,6 +118,8 @@ const settle = async () => {
 
 beforeEach(() => {
   search.current = new URLSearchParams();
+  push.mockClear();
+  useWorkspaceStore.setState({ gameScope: "all", lastGame: null });
   vi.mocked(userService.getUsersOverview).mockClear();
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -135,8 +139,9 @@ const renderIndex = async () => {
         <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
           <UsersClient
             scope="workspace"
-            initial={{ stored: null, axis: 1, hostLockedWorkspaceId: null, disciplines: null }}
+            initial={{ stored: "all", lastGame: null, axis: 1, hostLockedWorkspaceId: null, disciplines: null }}
           />
+          <PillPick code="lol" />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -214,4 +219,19 @@ it("defaults min_encounters when the param is absent, but honours an explicit 0"
   expect(parseMinEncounters("0")).toBe(0);
   expect(parseMinEncounters("50")).toBe(50);
   expect(parseMinEncounters("7")).toBe(DEFAULT_MIN_ENCOUNTERS);
+});
+
+it("a game picked in the scope pill drops the role and division filters and keeps the search", async () => {
+  search.current = new URLSearchParams("role=support&div=3&query=ana");
+  await renderIndex();
+
+  await act(async () => {
+    container.querySelector("[data-pill-pick=lol]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  const url = new URL(push.mock.calls.at(-1)![0] as string, "http://x");
+  expect(url.searchParams.get("discipline")).toBe("lol");
+  expect(url.searchParams.has("role")).toBe(false);
+  expect(url.searchParams.has("div")).toBe(false);
+  expect(url.searchParams.get("query")).toBe("ana");
 });

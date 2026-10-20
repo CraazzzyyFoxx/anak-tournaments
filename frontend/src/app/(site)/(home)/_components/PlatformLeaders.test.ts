@@ -16,19 +16,22 @@ vi.mock("@/lib/datetime/server", () => ({
   getFormatter: async () => formatterFor("en", "UTC")
 }));
 const browsing = vi.hoisted(() => ({
-  resolved: { kind: "concrete", code: "overwatch", source: "default" } as Record<string, string> | null,
-  explicit: [] as unknown[],
+  game: { kind: "game", code: "overwatch", source: "default" } as Record<string, string> | null,
+  calls: [] as unknown[][],
   champions: [] as unknown[][]
 }));
 vi.mock("@/lib/site/discipline-server", () => ({
-  resolveServerBrowsingDiscipline: async (explicit: unknown) => {
-    browsing.explicit.push(explicit);
-    return { init: null, resolved: browsing.resolved };
+  resolveServerPageGame: async (...args: unknown[]) => {
+    browsing.calls.push(args);
+    return {
+      init: null,
+      resolution: browsing.game ? { game: browsing.game, pill: { kind: "all" }, tabs: true, scope: "all" } : null
+    };
   }
 }));
-// The client game control (selector, or the named invalid value) is the shared component's own concern.
-vi.mock("@/components/workspace/ServerBrowsingDiscipline", () => ({
-  ServerBrowsingDiscipline: () => "[game control]"
+// The client game control (the tabs, or the named invalid value) is the shared component's own concern.
+vi.mock("@/components/workspace/ServerGameTabs", () => ({
+  ServerGameTabs: () => "[game control]"
 }));
 vi.mock("./home-data", () => ({
   getPublicWorkspaces: async () => [{ id: 1 }, { id: 2 }]
@@ -71,8 +74,8 @@ vi.mock("@/services/statistics.service", () => ({
 }));
 
 beforeEach(() => {
-  browsing.resolved = { kind: "concrete", code: "overwatch", source: "default" };
-  browsing.explicit = [];
+  browsing.game = { kind: "game", code: "overwatch", source: "default" };
+  browsing.calls = [];
   browsing.champions = [];
 });
 
@@ -103,12 +106,13 @@ it("preserves zero counts and leaderboard boundaries with incomplete API totals"
   expect(root.querySelector('a[href="/users/Zuuuuuuuuuuz-2690"]')?.textContent).toContain("69.0%");
   expect(root.querySelector('a[href="/users/Oikawa-21544"]')).not.toBeNull();
   expect(root.querySelector('a[href="/users/ch1dan1ch-2938"]')).toBeNull();
-  // The leaderboards are the browsing game's.
+  // Until the cross-game leaderboards land (Task 31) the block is a single page: one game's boards.
+  expect(browsing.calls[0]?.[0]).toBe("single");
   expect(browsing.champions[0]?.[0]).toBe("overwatch");
 });
 
-it("reads no leaderboard without a resolved game, keeping the game-neutral totals", async () => {
-  browsing.resolved = null;
+it("reads no leaderboard without a resolution, keeping the game-neutral totals", async () => {
+  browsing.game = null;
   const root = await renderLeaders();
 
   expect(browsing.champions).toEqual([]);
@@ -116,20 +120,20 @@ it("reads no leaderboard without a resolved game, keeping the game-neutral total
   expect(root.textContent).toContain(messages.site.kpi.players);
 });
 
-it("reads the explicitly requested game's leaderboards", async () => {
-  browsing.resolved = { kind: "concrete", code: "lol", source: "url" };
+it("reads the explicitly requested game's leaderboards, under its game tabs", async () => {
+  browsing.game = { kind: "game", code: "lol", source: "url" };
   const root = await renderLeaders("lol");
 
-  expect(browsing.explicit).toEqual(["lol"]);
+  expect(browsing.calls[0]).toEqual(["single", "lol"]);
   expect(browsing.champions[0]?.[0]).toBe("lol");
   expect(root.textContent).toContain("[game control]");
 });
 
 it("shows the game control for an invalid explicit game and reads no leaderboard", async () => {
-  browsing.resolved = { kind: "invalid", requested: "chess", reason: "unknown" };
+  browsing.game = { kind: "invalid", requested: "chess", reason: "unknown" };
   const root = await renderLeaders("chess");
 
-  expect(browsing.explicit).toEqual(["chess"]);
+  expect(browsing.calls[0]).toEqual(["single", "chess"]);
   expect(browsing.champions).toEqual([]);
   expect(root.textContent).toContain("[game control]");
   expect(root.textContent).toContain(messages.site.kpi.players);

@@ -3,9 +3,9 @@ import { getTranslations } from "next-intl/server";
 
 import { LeadersContent, LeadersSkeleton, type KpiKey } from "@/components/site/leaders";
 import { MoreLink, Section, SectionHead } from "@/components/site/open-layout";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
+import { ServerGameTabs } from "@/components/workspace/ServerGameTabs";
 import statisticsService from "@/services/statistics.service";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 
 import { getPublicWorkspaces } from "./home-data";
 
@@ -25,13 +25,14 @@ const SECONDARY_KEYS = [
 ] as const satisfies readonly KpiKey[];
 
 /**
- * Platform scale first, followed by the two all-time player leaderboards of the browsing game (§2.3 composite): the
- * raw `?discipline=` decides it like any concrete surface, and an invalid one is named, never replaced by a fallback.
+ * Platform scale first, followed by the two all-time player leaderboards of one game (a single block until the
+ * cross-game leaderboards land): the raw `?discipline=` decides it like any single page, with local game tabs under
+ * "all games", and an invalid one is named, never replaced by a fallback.
  */
 export async function PlatformLeaders({ discipline }: Readonly<{ discipline: string | string[] | undefined }>) {
-  const browsing = await resolveServerBrowsingDiscipline(discipline);
+  const browsing = await resolveServerPageGame("single", discipline);
   // The leaderboards are one game's; with no game to read there are none (the totals are game-neutral).
-  const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const game = browsing.resolution?.game.kind === "game" ? browsing.resolution.game.code : null;
   const [t, overall, champions, winrate, workspaces] = await Promise.all([
     getTranslations("home.leaders"),
     statisticsService.getOverallStatistics({ skipWorkspace: true }).catch(() => null),
@@ -56,7 +57,7 @@ export async function PlatformLeaders({ discipline }: Readonly<{ discipline: str
         }
       />
       <div className="flex justify-end">
-        <ServerBrowsingDiscipline initial={browsing.init} />
+        <ServerGameTabs initial={browsing.init} />
       </div>
       {await LeadersContent({
         totals,

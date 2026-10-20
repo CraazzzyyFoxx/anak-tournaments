@@ -20,24 +20,25 @@ const { view, getUserProfile } = vi.hoisted(() => ({
 
 vi.mock("@/lib/site/tenant-host", () => ({ resolveStatsScope: async () => view.scope }));
 vi.mock("@/lib/site/discipline-server", () => ({
-  resolveServerBrowsingDiscipline: async () => ({
+  resolveServerPageGame: async () => ({
     init: {
-      stored: null,
+      stored: "all",
+      lastGame: null,
       axis: view.axis,
       hostLockedWorkspaceId: null,
       disciplines: [
-        { code: "overwatch", name: "Overwatch", enabled: true },
-        { code: "lol", name: "League of Legends", enabled: true }
+        { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
+        { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true }
       ]
     },
-    resolved: { kind: "concrete", code: "lol" }
+    resolution: { game: { kind: "game", code: "lol", source: "url" }, pill: { kind: "all" }, tabs: true, scope: "all" }
   })
 }));
 vi.mock("@/services/user.service", () => ({
   default: { getUserByName: async () => ({ id: 7, name: "Faker" }), getUserProfile }
 }));
-// The game selector above the profile is its own client surface with its own tests.
-vi.mock("@/components/workspace/ServerBrowsingDiscipline", () => ({ ServerBrowsingDiscipline: () => null }));
+// The game tabs above the profile are their own client surface with their own tests.
+vi.mock("@/components/workspace/ServerGameTabs", () => ({ ServerGameTabs: () => null }));
 
 const REFUSAL = new ApiError(422, [
   { msg: "division_grid_required: 'lol' needs a division grid of its own with tiers", code: "unprocessable" }

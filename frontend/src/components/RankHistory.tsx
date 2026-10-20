@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistoryState";
-import { DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadRankUI } from "@/disciplines/registry/rank";
@@ -70,7 +70,7 @@ export default function RankHistory({
   const descriptor = collector.descriptor;
 
   let content: ReactNode;
-  if (resolve.isLoading || collector.isLoading) {
+  if (resolve.isLoading || (collector.scope.resolution === null && !collector.scope.isError)) {
     content = <RankHistorySkeleton className={contentClassName} />;
   } else if (resolvedUserId == null) {
     content = (
@@ -81,7 +81,7 @@ export default function RankHistory({
         body={t("rankHistory.noProfileBody")}
       />
     );
-  } else if (collector.isError) {
+  } else if (collector.scope.isError) {
     content = (
       <ChartEmptyState
         className={contentClassName}
@@ -91,17 +91,15 @@ export default function RankHistory({
         body={t("rankHistory.errorBody")}
       />
     );
-  } else if (collector.resolved?.kind === "invalid" || collector.resolved?.kind === "empty") {
-    // An explicit `?discipline=` the installed games cannot honour is named, with the way out — it is
-    // never read as "this game collects no ranks".
+  } else if (
+    collector.scope.resolution?.game.kind === "invalid" ||
+    collector.scope.resolution?.game.kind === "empty"
+  ) {
+    // An explicit `?discipline=` the installed games cannot honour is named, with the game tabs as the way out — it
+    // is never read as "this game collects no ranks".
     content = (
       <div className={contentClassName}>
-        <DisciplineUnavailable
-          resolved={collector.resolved}
-          disciplines={collector.disciplines ?? []}
-          allowsAll={false}
-          onSelect={collector.select}
-        />
+        <GameScopeControl scope={collector.scope} variant="single" />
       </div>
     );
   } else if (!descriptor || !collector.supported) {

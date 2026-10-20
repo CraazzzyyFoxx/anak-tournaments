@@ -4,8 +4,8 @@ import { getTranslations } from "next-intl/server";
 
 import { SectionStack } from "@/components/site/open-layout";
 import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
+import { ServerGameTabs } from "@/components/workspace/ServerGameTabs";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import type { Workspace } from "@/types/workspace.types";
 
 import { AboutStaff, AboutStaffSkeleton } from "./AboutStaff";
@@ -26,9 +26,9 @@ export async function CommunityPage({
   ownHost,
   discipline
 }: Readonly<{ workspace: Workspace; ownHost: boolean; discipline: string | string[] | undefined }>) {
-  const browsing = await resolveServerBrowsingDiscipline(discipline, workspace.id);
+  const browsing = await resolveServerPageGame("single", discipline, workspace.id);
   // No game (invalid/empty/unreadable): the game-neutral sections stay, the per-game ones read nothing.
-  const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const game = browsing.resolution?.game.kind === "game" ? browsing.resolution.game.code : null;
   return (
     <SectionStack className="pt-5">
       <EntityWorkspace workspaceId={workspace.id} />
@@ -37,7 +37,7 @@ export async function CommunityPage({
         <NowInCommunity workspace={workspace} />
       </Suspense>
       <div className="flex justify-end">
-        <ServerBrowsingDiscipline initial={browsing.init} axis={workspace.id} />
+        <ServerGameTabs initial={browsing.init} axis={workspace.id} />
       </div>
       <Suspense fallback={<HallOfFameSkeleton />}>
         <HallOfFame workspace={workspace} discipline={game} />

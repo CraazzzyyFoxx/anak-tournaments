@@ -28,10 +28,10 @@ import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-json
 import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEmpty";
 import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
+import { ServerGameTabs } from "@/components/workspace/ServerGameTabs";
 
 // The route still renders dynamically (api-fetch reads the workspace cookie),
 // but we no longer force `fetchCache: force-no-store` — public, workspace-scoped
@@ -386,15 +386,16 @@ export default async function UserPage({
   const resolvedSearchParams = await searchParams;
   const [scope, browsing] = await Promise.all([
     resolveStatsScope(),
-    resolveServerBrowsingDiscipline(resolvedSearchParams.discipline)
+    resolveServerPageGame("single", resolvedSearchParams.discipline)
   ]);
   // Without the installed games there is no game to read: an error, never a guessed one.
-  if (browsing.resolved === null) throw new Error("The installed games could not be read.");
-  if (browsing.resolved.kind !== "concrete") {
-    // Invalid/empty: the named value and the selector stand in for the profile; no game request is made.
-    return <ServerBrowsingDiscipline initial={browsing.init} />;
+  if (browsing.resolution === null) throw new Error("The installed games could not be read.");
+  const game = browsing.resolution.game;
+  if (game.kind !== "game") {
+    // Invalid/empty: the named value and the game tabs stand in for the profile; no game request is made.
+    return <ServerGameTabs initial={browsing.init} />;
   }
-  const profileScope: ProfileScope = { scope, discipline: browsing.resolved.code, axis: browsing.init.axis };
+  const profileScope: ProfileScope = { scope, discipline: game.code, axis: browsing.init.axis };
   const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, profileScope.discipline);
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";
@@ -425,7 +426,7 @@ export default async function UserPage({
   return (
     <>
       <div className="flex justify-end">
-        <ServerBrowsingDiscipline initial={browsing.init} />
+        <ServerGameTabs initial={browsing.init} />
       </div>
       <Suspense
         fallback={

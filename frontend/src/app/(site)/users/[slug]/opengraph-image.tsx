@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import userService from "@/services/user.service";
 import { decodePlayerSlug, getPlayerImage } from "@/lib/player";
 import { roleOf } from "@/lib/roster/role-ref";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import { SITE_NAME, SITE_URL_OBJ } from "@/config/site";
 
 export const size = { width: 1200, height: 630 };
@@ -26,10 +26,10 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   try {
     const user = await userService.getUserByName(decodePlayerSlug(slug));
     name = user.name;
-    // The card has no URL of its own to carry a game: the saved choice or the first enabled game decides it.
-    const { resolved } = await resolveServerBrowsingDiscipline(undefined);
-    if (resolved?.kind !== "concrete") throw new Error("no game to summarise the player in");
-    const profile = await userService.getUserProfile(user.id, resolved.code);
+    // The card has no URL of its own to carry a game: the scope's game, the last game or the first enabled game.
+    const { resolution } = await resolveServerPageGame("single", undefined);
+    if (resolution?.game.kind !== "game") throw new Error("no game to summarise the player in");
+    const profile = await userService.getUserProfile(user.id, resolution.game.code);
     const primaryRole = profile.roles.length
       ? profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best))
       : null;
