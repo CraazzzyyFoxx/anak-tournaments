@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.forms import FormSchema
-from shared.repository import RegistrationFormTemplateRepository
+from shared.repository import RegistrationFormTemplateRepository, WorkspaceRepository
 from shared.services.ontology import assert_discipline_enabled
 from src import models
 from src.schemas.registration_form import (
@@ -69,6 +69,7 @@ class RegistrationFormTemplateService:
 
     def __init__(self) -> None:
         self.template_repo = RegistrationFormTemplateRepository()
+        self.workspace_repo = WorkspaceRepository()
 
     async def list(
         self,
@@ -96,7 +97,7 @@ class RegistrationFormTemplateService:
                 "A template belongs to one game",
                 field="discipline",
             )
-        workspace = await session.get(models.Workspace, workspace_id)
+        workspace = await self.workspace_repo.get(session, workspace_id)
         if workspace is None:
             raise _fail(status.HTTP_404_NOT_FOUND, "workspace_not_found", "Workspace not found")
         assert_discipline_enabled(workspace, body.discipline)
