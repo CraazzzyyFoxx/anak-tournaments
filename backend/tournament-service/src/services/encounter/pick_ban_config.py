@@ -327,6 +327,9 @@ def validate_config_payload(
     narrower ones inherit its rotation and steps. It plays nothing
     (``ensure_pick_ban_session`` refuses to open a room on a config with no
     pool), so the pool-shaped rules have nothing to hold and are not checked.
+    Except a hero template that picks sides: 422 ``pool_required``, because
+    ``side_pick_required`` reads its side step all the same and would hold every
+    game's result behind a room that never opens.
 
     ``groups`` is the kind's item-group vocabulary (see :func:`group_vocabulary`);
     ``None`` skips map-group name checks. ``discipline`` decides what the actor
@@ -350,6 +353,26 @@ def validate_config_payload(
                 "message": f"ruleset has {len(errors)} validation error(s)",
                 "issues": [issue.to_json() for issue in issues],
             },
+        )
+
+    if (
+        kind == PickBanKind.HERO
+        and not item_ids
+        and not slots
+        and any(step.action == "side_pick" for phase in pbr.parse_ruleset(ruleset).phases for step in phase.steps)
+    ):
+        label = installed_discipline(discipline).kinds.get("character", "character").lower()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                ApiExc(
+                    code="pool_required",
+                    msg=(
+                        f"These rules pick sides, so the {label} pool has to be saved first: "
+                        "without a pool the room never opens and every game waits on its side pick"
+                    ),
+                )
+            ],
         )
 
     if mode == MapVetoMode.SLOTS:
