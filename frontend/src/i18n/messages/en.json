@@ -12053,7 +12053,6 @@
     },
     "sidebar": {
       "returnToSite": "Return to site",
-      "workspace": "Workspace",
       "roles": {
         "superuser": "Superuser",
         "admin": "Admin",

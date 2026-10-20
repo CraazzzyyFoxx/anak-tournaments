@@ -27,6 +27,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { ScopePill } from "@/components/workspace/ScopePill";
 import { usePermissions } from "@/hooks/usePermissions";
 import { SIDEBAR_COOKIE_NAMES } from "@/lib/site/sidebar-cookies";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -194,6 +195,9 @@ export function AdminLayoutClient({
             <SidebarTrigger className="size-8 rounded-lg border border-border/60" />
             <Separator orientation="vertical" className="h-5" />
             <AdminBreadcrumb />
+            <div className="ml-auto flex min-w-0 items-center">
+              <ScopePill variant="admin" />
+            </div>
           </header>
           {/* Overlay chrome, not a row: it floats over the content below rather
               than displacing every admin screen by its own height. */}

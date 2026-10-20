@@ -39,8 +39,6 @@ type AccountMenuPanelProps = ComponentPropsWithoutRef<typeof PopoverContent> & {
   user: AuthProfile;
   /** Surface rows after account settings (the site's admin entry, the admin's notification settings). */
   actions?: ReactNode;
-  /** Surface section placed above language (the admin workspace switcher). */
-  children?: ReactNode;
 };
 
 /**
@@ -52,7 +50,6 @@ type AccountMenuPanelProps = ComponentPropsWithoutRef<typeof PopoverContent> & {
 export function AccountMenuPanel({
   user,
   actions,
-  children,
   className,
   ...props
 }: Readonly<AccountMenuPanelProps>) {
@@ -124,7 +121,6 @@ export function AccountMenuPanel({
           <span className="min-w-0 flex-1 truncate">{t("common.accountSettings")}</span>
         </button>
       </PopoverClose>
-      {children}
       <AccountMenuSeparator />
       <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
         <span className="text-[color:var(--aqt-fg-dim)]">{t("common.language")}</span>

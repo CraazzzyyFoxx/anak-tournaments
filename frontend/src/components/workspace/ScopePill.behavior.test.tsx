@@ -283,3 +283,25 @@ describe("the site scope pill", () => {
     expect(document.activeElement).toBe(trigger());
   });
 });
+
+describe("the admin scope pill", () => {
+  it("offers the admin's communities without all communities and switches only the community", async () => {
+    navigation.reset("/admin/achievements");
+    await mount(<ScopePill variant="admin" />);
+    expect(trigger()?.getAttribute("aria-label")).toBe("Both Games · All games — change scope");
+
+    await click(trigger());
+    expect(option(group("Communities"), "All communities")).toBeUndefined();
+    expect(document.querySelector('a[href="/get-workspace"]')).toBeNull();
+
+    await click(option(group("Communities"), "No League"));
+    expect(useWorkspaceStore.getState()).toMatchObject({ currentWorkspaceId: 3, statsScope: "all" });
+    expect(option(group("Game"), "Chess")).toBeDefined();
+  });
+
+  it("is absent on platform pages", async () => {
+    navigation.reset("/admin/content/heroes");
+    await mount(<ScopePill variant="admin" />);
+    expect(trigger()).toBeNull();
+  });
+});
