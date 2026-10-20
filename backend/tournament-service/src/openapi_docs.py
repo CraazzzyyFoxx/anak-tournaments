@@ -109,7 +109,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.list_teams": {
         "summary": "List teams",
-        "description": "Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace.",
+        "description": "Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace: every game's, or only the optional `discipline`'s (by the team's tournament; 422 for an unknown code).",
     },
     # ── computation job reads ──────────────────────────────────────────────
     "rpc.tournament.job_get": {
@@ -328,7 +328,8 @@ DOCS: dict[str, dict] = {
         "summary": "List parsed matches",
         "description": (
             "Permission: workspace `match.read` on the workspace named by `workspace_id`. "
-            "Every native Overwatch observed duel map across the workspace, not one encounter. "
+            "Every observed duel map across the workspace, not one encounter: every game's, or only the "
+            "optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. "
             "Scores follow the bound game's historical slots; official game results are unchanged. "
             "`log_record` is its native ingest job and is null for observations with no raw provenance. "
             "Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a "

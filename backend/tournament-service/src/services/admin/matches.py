@@ -48,6 +48,8 @@ class _Query:
             .where(d.workspace_id == workspace_id)
         )
         predicates = []
+        if params.discipline is not None:
+            predicates.append(d.discipline == params.discipline)
         if params.tournament_id is not None:
             predicates.append(d.tournament_id == params.tournament_id)
         if params.encounter_id is not None:

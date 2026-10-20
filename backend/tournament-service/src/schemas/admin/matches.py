@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from shared.core import pagination
 from shared.models.stats.ingest import IngestJobStatus
 from shared.schemas.catalog import CatalogEntityRead
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.match import MatchRead
 
 __all__ = (
@@ -87,6 +88,8 @@ class AdminMatchesQueryParams(pagination.PaginationSortSearchQueryParams):
     map_id: int | None = None
     log_status: list[IngestJobStatus] = []
     unlinked_only: bool = False
+    #: One installed game's observed maps; absent is every game of the workspace (spec §8.1).
+    discipline: InstalledDisciplineFilter = None
 
 
 @dataclass
@@ -103,3 +106,4 @@ class AdminMatchesSearchParams(pagination.PaginationSortSearchParams):
     map_id: int | None = None
     log_status: list[IngestJobStatus] = field(default_factory=list)
     unlinked_only: bool = False
+    discipline: str | None = None

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from pydantic import UUID4, BaseModel, Field
 
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.role import RoleRef
 from src.core import pagination
 from src.schemas import BaseRead
@@ -79,12 +80,15 @@ class TeamRead(BaseRead):
 class TeamFilterQueryParams(pagination.PaginationSortQueryParams):
     tournament_id: int | None = None
     search: str | None = None
+    #: Teams of one installed game's tournaments; absent is every game (spec §8.1).
+    discipline: InstalledDisciplineFilter = None
 
 
 @dataclass
 class TeamFilterParams(pagination.PaginationSortParams):
     tournament_id: int | None = None
     search: str | None = None
+    discipline: str | None = None
 
 
 class PlayerFilterQueryParams(pagination.PaginationSortQueryParams):

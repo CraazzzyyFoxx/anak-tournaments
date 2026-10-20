@@ -3377,7 +3377,7 @@ export interface paths {
         };
         /**
          * List teams
-         * @description Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace.
+         * @description Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace: every game's, or only the optional `discipline`'s (by the team's tournament; 422 for an unknown code).
          *
          *     RPC subject: `rpc.tournament.list_teams`
          */
@@ -6467,7 +6467,7 @@ export interface paths {
         };
         /**
          * List parsed matches
-         * @description Permission: workspace `match.read` on the workspace named by `workspace_id`. Every native Overwatch observed duel map across the workspace, not one encounter. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.
+         * @description Permission: workspace `match.read` on the workspace named by `workspace_id`. Every observed duel map across the workspace, not one encounter: every game's, or only the optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.
          *
          *     RPC subject: `rpc.tournament.admin_matches_list`
          */
@@ -41025,6 +41025,7 @@ export interface operations {
                 order?: components["schemas"]["tournament.SortOrder"];
                 tournament_id?: number | null;
                 search?: string | null;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
@@ -52328,6 +52329,7 @@ export interface operations {
                 map_id?: number | null;
                 log_status?: components["schemas"]["tournament.IngestJobStatus"][];
                 unlinked_only?: boolean;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;

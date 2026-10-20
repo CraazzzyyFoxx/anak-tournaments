@@ -155,11 +155,16 @@ class TeamService:
             query = query.where(models.Team.tournament_id.in_(visible_ids))
             total_query = total_query.where(models.Team.tournament_id.in_(visible_ids))
 
-        if workspace_id is not None:
+        if workspace_id is not None or params.discipline is not None:
             query = query.join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
             total_query = total_query.join(models.Tournament, models.Team.tournament_id == models.Tournament.id)
+        if workspace_id is not None:
             query = query.where(models.Tournament.workspace_id == workspace_id)
             total_query = total_query.where(models.Tournament.workspace_id == workspace_id)
+        if params.discipline is not None:
+            # A team plays its tournament's game.
+            query = query.where(models.Tournament.discipline == params.discipline)
+            total_query = total_query.where(models.Tournament.discipline == params.discipline)
 
         if params.search:
             name_match = models.Team.name.ilike(f"%{params.search}%")

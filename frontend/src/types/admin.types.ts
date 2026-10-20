@@ -1001,6 +1001,8 @@ export interface AdminMatchesQuery {
   map_id?: number | null;
   log_status?: LogProcessingStatus[];
   unlinked_only?: boolean;
+  /** One installed game's maps; `null`/absent is every game of the workspace. */
+  discipline?: string | null;
 }
 
 /** One seat of a new encounter: which slot, and the team that takes it (`null` leaves it empty). */

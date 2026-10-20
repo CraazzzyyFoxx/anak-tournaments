@@ -165,6 +165,7 @@ function buildAdminMatchesQuery(params: AdminMatchesQuery): string {
   if (params.tournament_id != null) search.set("tournament_id", String(params.tournament_id));
   if (params.encounter_id != null) search.set("encounter_id", String(params.encounter_id));
   if (params.map_id != null) search.set("map_id", String(params.map_id));
+  if (params.discipline) search.set("discipline", params.discipline);
   if (params.unlinked_only) search.set("unlinked_only", "true");
   for (const status of params.log_status ?? []) search.append("log_status", status);
   return search.toString();

@@ -323,7 +323,7 @@ class TeamFlowsService:
 
     @cache(
         ttl=config.settings.teams_cache_ttl,
-        key="teams:v2:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}",
+        key="teams:v2:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}:{params.discipline}",
         prefix="fastapi:",
     )
     async def get_all(
