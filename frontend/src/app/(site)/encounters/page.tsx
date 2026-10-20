@@ -14,10 +14,9 @@ import {
   filtersToApiFilters,
   GAME_SCOPED_FILTERS,
   normalizeEncounterFilters,
+  parsePageParam,
   type EncounterFilterState,
 } from "./_components/encounters.helpers";
-
-const DEFAULT_PAGE = 1;
 
 function emptyEncounters(page: number): PaginatedResponse<Encounter> {
   return {
@@ -61,11 +60,8 @@ type EncountersContentProps = ParsedSearchParams & {
 };
 
 function parseSearchParams(params: Record<string, string | undefined>): ParsedSearchParams {
-  const parsedPage = Number.parseInt(params.page ?? String(DEFAULT_PAGE), 10);
-  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_PAGE;
-
   return {
-    page,
+    page: parsePageParam(params.page),
     filters: normalizeEncounterFilters(params),
   };
 }

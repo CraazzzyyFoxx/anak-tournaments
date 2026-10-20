@@ -64,8 +64,8 @@ export default function EncountersClient({
   const discipline = gameScope.game;
   const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
   const unavailable = resolution?.game.kind === "invalid" || resolution?.game.kind === "empty";
-  // "all" or the game once readable, `null` otherwise: leaving one game for another, or an unavailable state for any
-  // game, drops the game-bound filters and returns to the first page.
+  // "all" or the game once readable, `null` otherwise: another game drops the game-bound filters and returns to the
+  // first page; leaving an unavailable state reads them from the URL again.
   const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : null;
   const controls = useEncountersFilters(initialFilters, initialPage, gameKey, unavailable);
   const { effectiveFilters, page } = controls;

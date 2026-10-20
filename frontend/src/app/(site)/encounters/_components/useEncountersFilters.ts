@@ -10,6 +10,8 @@ import {
   DEFAULT_FILTERS,
   filtersToSearchParams,
   GAME_SCOPED_FILTERS,
+  normalizeEncounterFilters,
+  parsePageParam,
   type EncounterFilterState
 } from "./encounters.helpers";
 
@@ -32,7 +34,7 @@ export interface EncountersFilterControls {
   clearFilters: () => void;
 }
 
-/** What the filter state belongs to once the page showed no readable game: any game that follows starts afresh. */
+/** What the filter state belongs to once the page showed no readable game: whatever follows reads the URL afresh. */
 const UNAVAILABLE = Symbol("unavailable");
 
 /**
@@ -44,12 +46,14 @@ const UNAVAILABLE = Symbol("unavailable");
  * matches the server-rendered URL) from writing a redundant entry. The game is the
  * scope's, not a filter: the mirror keeps an explicit `?discipline=` as it found it and
  * never adds one. `gameKey` is the page's readable game — "all" or a code; `null` while
- * resolving and while `unavailable` (an invalid request, or no game at all). Arriving at
- * a game from another one, or from an unavailable state (even back at the game before
- * it), starts again from its first page without the old game's tournament/stage
- * filters. Only a readable game is mirrored, so an invalid request's URL stays as typed
- * (spec §4.1). Under every game those filters never take effect at all, whatever put
- * them in the state (the URL, a saved view): nothing reads or mirrors them.
+ * resolving and while `unavailable` (an invalid request, or no game at all). Another
+ * game starts again from its first page without the old game's tournament/stage
+ * filters. Leaving an unavailable state, the URL is the truth: page and filters are
+ * read from it again — a recovery pushed one without the old game's page and
+ * tournament/stage, Back restores them — and nothing is written back. Only a readable
+ * game is mirrored, so an invalid request's URL stays as typed (spec §4.1). Under every
+ * game the tournament/stage filters never take effect at all, whatever put them in the
+ * state (the URL, a saved view): nothing reads or mirrors them.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
@@ -58,23 +62,33 @@ export function useEncountersFilters(
   unavailable: boolean
 ): EncountersFilterControls {
   const pathname = usePathname();
-  const explicitGame = useSearchParams()?.get(DISCIPLINE_PARAM) ?? null;
+  const searchParams = useSearchParams();
+  const explicitGame = searchParams?.get(DISCIPLINE_PARAM) ?? null;
   const [filters, setFilters] = useState<EncounterFilterState>(initialFilters);
   const [searchValue, setSearchInput] = useState(initialFilters.query);
   const [debouncedSearch] = useDebounce(searchValue, 300);
   const [page, setPage] = useState(initialPage);
+  // What the URL says the state is: the server's reading of it, or the last reading after an unavailable state.
+  const [urlState, setUrlState] = useState({ page: initialPage, filters: initialFilters });
   const [stateGame, setStateGame] = useState<string | typeof UNAVAILABLE | null>(
     unavailable ? UNAVAILABLE : gameKey
   );
   if (unavailable && stateGame !== UNAVAILABLE) setStateGame(UNAVAILABLE);
   if (gameKey !== null && gameKey !== stateGame) {
     setStateGame(gameKey);
-    if (stateGame !== null) {
+    if (stateGame === UNAVAILABLE) {
+      const params = Object.fromEntries(searchParams ?? []);
+      const read = { page: parsePageParam(params.page), filters: normalizeEncounterFilters(params) };
+      setUrlState(read);
+      setPage(read.page);
+      setSearchInput(read.filters.query);
+      setFilters(read.filters);
+    } else if (stateGame !== null) {
       setPage(1);
       setFilters((current) => ({ ...current, ...GAME_SCOPED_FILTERS }));
     }
   }
-  const previousUrlRef = useRef({ page: initialPage, filters: initialFilters });
+  const previousUrlRef = useRef(urlState);
   const effectiveFilters = useMemo(
     () => ({
       ...filters,
@@ -83,6 +97,11 @@ export function useEncountersFilters(
     }),
     [debouncedSearch, filters, gameKey]
   );
+
+  // A reading of the URL is what the URL already says: the mirror compares against it, not against an older write.
+  useEffect(() => {
+    previousUrlRef.current = urlState;
+  }, [urlState]);
 
   useEffect(() => {
     if (gameKey === null) return;

@@ -34,7 +34,19 @@ const mocks = vi.hoisted(() => ({
 }));
 
 // `vi.mock` factories run before the file's static imports exist, hence the import inside.
-vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
+vi.mock("next/navigation", async () => {
+  const { nextNavigationMock } = await import("@/test/url-navigation");
+  const router = nextNavigationMock.useRouter();
+  // The app router moves the address bar with a push (the pill, "Show all games"), as the page's URL mirror expects.
+  const addressBarRouter = {
+    ...router,
+    push: (url: string) => {
+      window.history.pushState(null, "", url);
+      router.push(url);
+    }
+  };
+  return { ...nextNavigationMock, useRouter: () => addressBarRouter };
+});
 vi.mock("@/services/encounter.service", () => ({
   default: { getAll: mocks.getAll, getOverview: mocks.getOverview, getSavedViews: mocks.getSavedViews }
 }));
@@ -468,7 +480,34 @@ describe("the encounters index across games", () => {
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
     expect(mocks.getAll).toHaveBeenCalledWith(...listRead("overwatch", 1));
     expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null });
-    // The state the URL mirrors carries no tournament/stage either.
+    // The URL the pill pushed stands: the state has no tournament/stage to mirror back into it.
     expect(window.location.search).toBe("?discipline=overwatch");
+  });
+
+  it("Back from an unknown game restores the previous game's page and tournament/stage, and its URL as it was", async () => {
+    const url = "/encounters?discipline=overwatch&tournament_id=11&stage_id=5&page=3";
+    navigation.reset(url);
+    window.history.replaceState(null, "", url);
+    await mount(null, 3, { ...DEFAULT_FILTERS, tournament_id: 11, stage_id: 5 });
+    expect(mocks.getAll).toHaveBeenCalledTimes(1);
+    expect(mocks.getAll).toHaveBeenCalledWith(...listRead("overwatch", 3));
+    expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: 11, stage_id: 5 });
+
+    const invalid = "/encounters?discipline=xx";
+    window.history.pushState(null, "", invalid);
+    await act(async () => navigation.push(invalid));
+    await tick();
+    expect(container.textContent).toContain('"xx" is not an installed game.');
+
+    // Back: the browser shows the previous entry again, and the router follows.
+    window.history.replaceState(null, "", url);
+    await act(async () => navigation.back());
+    await tick();
+
+    // The list is that page of that tournament/stage again, the read already made for it; nothing new is read.
+    expect(rows()).toEqual(["overwatch"]);
+    expect(mocks.getAll).toHaveBeenCalledTimes(1);
+    // The mirror writes its own parameter order; the URL keeps the one it came back with.
+    expect(window.location.search).toBe("?discipline=overwatch&tournament_id=11&stage_id=5&page=3");
   });
 });
