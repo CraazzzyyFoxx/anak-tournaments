@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import en from "@/i18n/messages/en.json";
 import type { Encounter } from "@/types/encounter.types";
+import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import AdminMatchesPage from "./page";
 
 declare global {
@@ -122,6 +123,15 @@ vi.mock("@/lib/notify", () => ({
 vi.mock("@/components/kit/AuditTrailSheet", () => ({
   AuditTrailButton: () => <button type="button">Change history</button>
 }));
+const scopeGame = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(scopeGame.value) };
+});
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
 
 const replace = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
@@ -254,6 +264,7 @@ function setViewportWidth(width: number) {
 }
 
 beforeEach(() => {
+  scopeGame.value = "overwatch";
   permitted = true;
   replace.mockClear();
   setViewportWidth(1280);
@@ -264,7 +275,7 @@ beforeEach(() => {
     per_page: 15
   });
   getTournaments.mockReset().mockResolvedValue({
-    results: [{ id: 78, name: "OWT 78" }],
+    results: [{ id: 78, name: "OWT 78", discipline: "overwatch" }],
     total: 1,
     page: 1,
     per_page: -1
@@ -366,5 +377,38 @@ describe("/admin/matches", () => {
     // state are what a phone needs from an encounter.
     expect(cards[0].textContent).toContain("1–2");
     expect(cards[0].querySelector('[role="img"][aria-label="No logs"]')).not.toBeNull();
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    scopeGame.value = null;
+    getEncounters.mockResolvedValue({ results: [encounter({ discipline: "lol" })], total: 1, page: 1, per_page: 15 });
+    setViewportWidth(375);
+    const container = await mount();
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Team C vs Team D");
+    expect(card.textContent).toContain("League of Legends");
+  });
+
+  it("asks the encounters view for the game in scope", async () => {
+    scopeGame.value = "lol";
+    const container = await mount();
+    await waitFor(() => container.querySelector("table"), "the encounters table");
+
+    expect(getEncounters.mock.calls.at(-1)?.[7]).toMatchObject({ discipline: "lol" });
+  });
+
+  it("hides and ignores the one-game filters under all games and registers them for the scope pill", async () => {
+    scopeGame.value = null;
+    window.history.replaceState(null, "", "/admin/matches?tournament=78&stage=5");
+    const container = await mount();
+    await waitFor(() => container.querySelector("table"), "the encounters table");
+
+    const call = getEncounters.mock.calls.at(-1)!;
+    expect(call[2]).toBeNull();
+    expect(call[7]).toMatchObject({ stage_id: null, discipline: null });
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
+    expect(container.textContent).toContain(en.common.discipline.filterHint);
+    expect(useScopePillOpen.getState().gameBoundParams).toEqual(["map_id", "tournament", "stage", "group"]);
   });
 });

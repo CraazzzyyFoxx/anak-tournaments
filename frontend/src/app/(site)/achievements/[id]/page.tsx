@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import achievementsService from "@/services/achievements.service";
 import { cn } from "@/lib/utils";
+import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { resolveServerDisciplineScope, resolveStatsScope } from "@/lib/site/tenant-host";
 import { classifyRarity, rarityVarClass } from "@/lib/achievements/rarity";
 import AchievementUsers from "@/app/(site)/achievements/[id]/components/AchievementUsers";
@@ -25,6 +26,7 @@ const AchievementPage = async (props: { params: Promise<{ id: string }> }) => {
 
   return (
     <div className={cn("aqt-player space-y-6", rarityVarClass(rarity))}>
+      <EntityWorkspace workspaceId={null} discipline={data.discipline} />
       <AchievementDetailHeader achievement={data} />
       <AchievementConditionsCard achievement={data} axis={axis} />
       <AchievementUsers achievement={data} scope={scope} />

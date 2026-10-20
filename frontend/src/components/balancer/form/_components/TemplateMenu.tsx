@@ -50,11 +50,14 @@ export const registrationFormTemplatesKey = (workspaceId: number) =>
 export function TemplateMenu({
   workspaceId,
   tournamentId,
+  discipline,
   dirty,
   onLoad
 }: Readonly<{
   workspaceId: number | null;
   tournamentId: number;
+  /** The tournament's game: only its templates can be loaded (spec §8.4); `null` while it loads. */
+  discipline: string | null;
   dirty: boolean;
   onLoad: (schema: FormSchema) => void;
 }>) {
@@ -68,9 +71,9 @@ export function TemplateMenu({
   const [name, setName] = useState("");
 
   const listQuery = useQuery({
-    queryKey: registrationFormTemplatesKey(workspaceId ?? 0),
-    queryFn: () => registrationFormTemplatesService.list(workspaceId as number),
-    enabled: loadOpen && workspaceId !== null
+    queryKey: balancerQueryKeys.registrationFormTemplateList(workspaceId ?? 0, discipline),
+    queryFn: () => registrationFormTemplatesService.list(workspaceId as number, discipline),
+    enabled: loadOpen && workspaceId !== null && discipline !== null
   });
 
   const saveMutation = useMutation({

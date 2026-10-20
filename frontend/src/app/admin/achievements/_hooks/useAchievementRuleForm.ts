@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { MAX_ACHIEVEMENT_IMAGE_BYTES } from "@/lib/uploads";
 import type {
   AchievementRule,
@@ -39,6 +40,8 @@ export interface AchievementRuleForm {
   error?: string;
   openCreate: () => void;
   openEdit: (rule: AchievementRule) => void;
+  /** Moves a create draft to another game (its game field); the other game's character is dropped. */
+  chooseDiscipline: (code: string) => void;
   /** Closes the dialog and drops the draft, image included. */
   reset: () => void;
   pickImage: (file: File) => void;
@@ -77,6 +80,7 @@ export function useAchievementRuleForm(
 
   const invalidateRules = (discipline: string) => {
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, ALL_DISCIPLINES) });
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
   };
 
@@ -142,6 +146,9 @@ export function useAchievementRuleForm(
     setFormData(achievementFormDataWithSlug(rule));
   };
 
+  const chooseDiscipline = (code: string) =>
+    setFormData({ ...(formData as AchievementRuleCreateInput), discipline: code, entity_id: null });
+
   const pickImage = (file: File) => {
     if (file.size > MAX_ACHIEVEMENT_IMAGE_BYTES) {
       setImageError(t("form.imageTooLarge", { name: file.name, size: (file.size / 1024 / 1024).toFixed(1) }));
@@ -190,6 +197,7 @@ export function useAchievementRuleForm(
       : undefined,
     openCreate,
     openEdit,
+    chooseDiscipline,
     reset,
     pickImage,
     clearImage,

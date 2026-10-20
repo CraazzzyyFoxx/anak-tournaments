@@ -69,6 +69,14 @@ export interface UserRole {
   division_grid_version: DivisionGridVersion | null;
 }
 
+/** One game of a cross-game profile (spec §6.6): its roles on that game's grid, tournaments and wins. */
+export interface UserGameSummary {
+  discipline: string;
+  roles: UserRole[];
+  tournaments_count: number;
+  tournaments_won: number;
+}
+
 export interface UserTournamentWithStats {
   id: number;
   name: string;
@@ -100,6 +108,7 @@ export interface UserTournamentWithStats {
 export interface UserTournamentSummary {
   id: number;
   name: string;
+  discipline: string;
   is_league: boolean;
   is_finished?: boolean;
   status?: string | null;
@@ -195,6 +204,8 @@ export interface EncounterWithUserStats {
   round: number;
   best_of: number;
   tournament_id: number;
+  /** The encounter's game: a cross-game list (spec §6.6) marks each row with it. */
+  discipline: string;
   status: string;
   closeness: number | null;
   has_logs: boolean;
@@ -278,6 +289,8 @@ export interface UserProfile {
   roles: UserRole[];
   character_statistics: CharacterPlaytime[];
   tournaments: UserTournamentSummary[];
+  /** Without a game: one summary per game played, most tournaments first. Empty under a game. */
+  games: UserGameSummary[];
 }
 
 export interface UserMapRead {
@@ -402,6 +415,9 @@ interface UserOverviewBase {
   id: number;
   name: string;
   avatar_url: string | null;
+  /** The games the player played, installed order; listed whether or not the read names a game. */
+  disciplines: string[];
+  /** Game-bound: empty in the all-games read. */
   roles: UserOverviewRoleDivision[];
   top_characters: UserOverviewCharacter[];
   tournaments_count: number;

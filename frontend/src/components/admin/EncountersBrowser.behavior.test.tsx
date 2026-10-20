@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { EncountersBrowser } from "@/components/admin/EncountersBrowser";
+import encounterService from "@/services/encounter.service";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -47,6 +48,7 @@ const encounter = {
   round: 1,
   best_of: 3,
   tournament_id: 7,
+  discipline: "overwatch",
   stage_id: 70,
   stage_item_id: 700,
   status: "OPEN",
@@ -82,6 +84,11 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/tournament/workspace-query-keys", () => ({
   invalidateTournamentWorkspace: vi.fn()
 }));
+
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
 
 async function tick() {
   await act(async () => {
@@ -141,5 +148,55 @@ describe("EncountersBrowser edit dialog", () => {
     await waitFor(() => dialog.textContent?.includes("Playoffs"), "stage label");
     expect(dialog.textContent).toContain("Upper bracket");
     expect(getStages).toHaveBeenCalledWith(7);
+  });
+});
+
+describe("EncountersBrowser under the game scope", () => {
+  async function mountWith(discipline: string | null, search = "") {
+    window.history.replaceState(null, "", `/admin/matches${search}`);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await act(async () => {
+      createRoot(container).render(
+        <NextIntlClientProvider locale="en" messages={en}>
+          <QueryClientProvider client={client}>
+            <EncountersBrowser tournamentId={null} workspaceId={1} discipline={discipline} />
+          </QueryClientProvider>
+        </NextIntlClientProvider>
+      );
+    });
+    // Only data rows carry `tabindex`; the loading skeleton's rows do not.
+    await waitFor(() => container.querySelector("tbody tr[tabindex]"), "the encounter row");
+    return container;
+  }
+  const lastFilters = () =>
+    vi.mocked(encounterService.getAll).mock.calls.at(-1)?.[7] as { discipline?: string | null } | undefined;
+  const headers = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim());
+
+  it("lists every game's encounters with a Game column when no game is chosen", async () => {
+    const container = await mountWith(null);
+
+    expect(lastFilters()?.discipline).toBeNull();
+    expect(headers(container)).toContain("Game");
+    expect(container.querySelector("tbody")?.textContent).toContain("Overwatch");
+  });
+
+  it("asks the server for one game's encounters under a game, without the column", async () => {
+    const container = await mountWith("lol");
+
+    expect(lastFilters()?.discipline).toBe("lol");
+    expect(headers(container)).not.toContain("Game");
+  });
+
+  it("hides and ignores the tournament, stage and group filters under all games", async () => {
+    const container = await mountWith(null, "?tournament=7&stage=70&group=700");
+
+    const call = vi.mocked(encounterService.getAll).mock.calls.at(-1)!;
+    expect(call[2]).toBeNull();
+    expect(call[7]).toMatchObject({ stage_id: null, stage_item_id: null, discipline: null });
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
+    expect(container.textContent).toContain(en.common.discipline.filterHint);
   });
 });

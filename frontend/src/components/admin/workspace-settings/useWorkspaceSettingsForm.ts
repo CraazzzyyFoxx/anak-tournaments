@@ -17,6 +17,7 @@ import {
 } from "./fields";
 import type { WorkspaceRecordSectionKey } from "./sections";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 
 /**
  * Everything a settings section needs to render and save its own fields:
@@ -29,7 +30,7 @@ export interface WorkspaceSettingsForm
   isError: boolean;
   /** Re-runs the workspace read after a failed load. */
   refetch: () => void;
-  /** Re-read `admin-workspaces`, `admin-workspace` and the picker store. */
+  /** Re-read `admin-workspaces`, `admin-workspace`, the community's game list and the picker store. */
   invalidate: () => void;
 }
 
@@ -65,6 +66,8 @@ export function useWorkspaceSettingsForm(
     queryClient.invalidateQueries({ queryKey: adminQueryKeys.workspaces() });
     if (workspaceId !== null) {
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.workspace(workspaceId) });
+      // The scope pill and every game tab read the community's games in `disciplines_enabled` order.
+      queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.list(workspaceId) });
     }
     void fetchWorkspaces();
   }, [queryClient, workspaceId, fetchWorkspaces]);

@@ -11,21 +11,25 @@ import type { FormSchema, RegistrationFormTemplate } from "@/types/forms.types";
  * usual rule and comes back as the whole updated form.
  */
 const registrationFormTemplatesService = {
-  async list(workspaceId: number): Promise<RegistrationFormTemplate[]> {
+  /** The workspace's templates; `discipline` narrows to one game's (omitted: every game's). */
+  async list(workspaceId: number, discipline?: string | null): Promise<RegistrationFormTemplate[]> {
     const response = await apiFetch(
       `/api/v1/admin/ws/${workspaceId}/registration-form-templates`,
+      { query: { discipline: discipline ?? undefined } },
     );
     return response.json();
   },
 
+  /** A new template of one game the workspace runs. */
   async create(
     workspaceId: number,
     name: string,
+    discipline: string,
     formSchema: FormSchema,
   ): Promise<RegistrationFormTemplate> {
     const response = await apiFetch(
       `/api/v1/admin/ws/${workspaceId}/registration-form-templates`,
-      { method: "POST", body: { name, form_schema: formSchema } },
+      { method: "POST", body: { name, discipline, form_schema: formSchema } },
     );
     return response.json();
   },

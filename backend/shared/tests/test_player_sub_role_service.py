@@ -18,6 +18,7 @@ from shared.core.errors import BaseAPIException
 from shared.rpc.crud import CrudDispatcher
 from shared.rpc.player_sub_role import player_sub_role_entity
 from shared.schemas.player_sub_role import PlayerSubRoleUpdate
+from shared.services.ontology import project_disciplines
 from shared.services.player_sub_role import PlayerSubRoleService
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
@@ -244,6 +245,18 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
                 == 0
             )
 
+    async def test_list_without_a_game_returns_every_games_sub_roles(self) -> None:
+        league = SimpleNamespace(**{**vars(_create(self.workspace_id, "top", "Solo")), "discipline": "lol"})
+        async with self.Session() as s:
+            await project_disciplines(s)
+            await s.commit()
+            await self.service.create_sub_role(s, _create(self.workspace_id, "support", "Main"))
+            await self.service.create_sub_role(s, league)
+            every = await self.service.list_sub_roles(s, workspace_id=self.workspace_id, discipline=None)
+            only_league = await self.service.list_sub_roles(s, workspace_id=self.workspace_id, discipline="lol")
+        assert sorted(row.name for row in every) == ["Main", "Solo"]
+        assert [row.name for row in only_league] == ["Solo"]
+
 
 class EntityConfigTests(IsolatedAsyncioTestCase):
     async def test_list_fn_reads_query_and_serializes_rows(self) -> None:
@@ -286,13 +299,32 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
             }
         ]
 
-    async def test_list_requires_explicit_discipline_before_loading_rows(self) -> None:
+    async def test_list_without_a_game_asks_for_every_game(self) -> None:
         cfg = player_sub_role_entity()
+        session = object()
         for query in ({"workspace_id": "7"}, {"workspace_id": "7", "discipline": ""}):
+            with patch(
+                "shared.rpc.player_sub_role.player_sub_role_service.list_sub_roles", AsyncMock(return_value=[])
+            ) as listed:
+                assert await cfg.list_fn(session, {"query": query}) == []
+            listed.assert_awaited_once_with(session, workspace_id=7, discipline=None, role=None, include_inactive=False)
+
+    async def test_list_rejects_an_uninstalled_game_before_loading_rows(self) -> None:
+        cfg = player_sub_role_entity()
+        with patch(
+            "shared.rpc.player_sub_role.player_sub_role_service.list_sub_roles", AsyncMock(return_value=[])
+        ) as listed:
             with self.assertRaises(BaseAPIException) as raised:
-                await cfg.list_fn(object(), {"query": query})
-            assert raised.exception.status_code == 400
-            assert raised.exception.detail == "missing discipline"
+                await cfg.list_fn(object(), {"query": {"workspace_id": "7", "discipline": "chess"}})
+        assert raised.exception.status_code == 422
+        assert raised.exception.detail == "discipline_not_installed: 'chess'"
+        listed.assert_not_awaited()
+
+    async def test_a_parent_role_without_a_game_is_rejected(self) -> None:
+        with self.assertRaises(BaseAPIException) as raised:
+            await PlayerSubRoleService().list_sub_roles(object(), workspace_id=7, discipline=None, role="support")
+        assert raised.exception.status_code == 422
+        assert raised.exception.detail == "role requires discipline"
 
     async def test_list_forwards_non_overwatch_discipline_without_a_default(self) -> None:
         cfg = player_sub_role_entity()

@@ -149,6 +149,12 @@ export function normalizeEncounterFilters(params: Record<string, string | undefi
   };
 }
 
+/** The list page a `?page=` value names; anything but a positive integer is the first page. */
+export function parsePageParam(value: string | undefined): number {
+  const page = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
 export function filtersToSearchParams(filters: EncounterFilterState, page: number): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.query) params.set("search", filters.query);

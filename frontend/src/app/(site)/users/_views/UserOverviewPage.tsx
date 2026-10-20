@@ -2,6 +2,7 @@ import { Suspense, cache } from "react";
 import type { CharacterSummary, CharacterWithUserStats, User, UserMapRead, UserProfile } from "@/types/user.types";
 import { AchievementRarity } from "@/types/achievement.types";
 import userService from "@/services/user.service";
+import disciplineService from "@/services/discipline.service";
 import { Skeleton } from "@/components/ui/skeleton";
 import OverviewLastTournamentCard from "@/app/(site)/users/components/overview/OverviewLastTournamentCard";
 import OverviewRoleSplit from "@/app/(site)/users/components/overview/OverviewRoleSplit";
@@ -84,10 +85,16 @@ const LastTournamentSection = async ({
     userService.getUserTournamentEncounters(user.id, resolvedTournamentId).catch(() => [])
   ]);
   if (!tournament) return null;
+  // The role and stats are drawn in the tournament's own community and game, a scope no other block reads: read here
+  // too, so the first paint names them. A failed read is left to the browser.
+  const metadata = await disciplineService
+    .metadata(tournament.workspace_id, tournament.discipline)
+    .catch(() => undefined);
 
   return (
     <OverviewLastTournamentCard
       tournament={tournament}
+      metadata={metadata}
       tournaments={profile.tournaments}
       userId={user.id}
       mapPips={tournamentMapPips(tournamentEncounters, user.id)}

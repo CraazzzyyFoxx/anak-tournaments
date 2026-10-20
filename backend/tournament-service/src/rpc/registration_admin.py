@@ -46,6 +46,8 @@ from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES, identity_provider
 from shared.rpc.identity import ensure_workspace_permission
+from shared.rpc.query import build_query_model
+from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.services.roster import roster_engine
 from src import models, schemas
 from src.core import auth
@@ -342,7 +344,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _regform_template_list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             ctx = _workspace_ctx(data, "read", resource="registration_form")
-            templates = await template_service.list(session, workspace_id=ctx.ws_id)
+            discipline = build_query_model(DisciplineFilterQuery, data.get("query")).discipline
+            templates = await template_service.list(session, workspace_id=ctx.ws_id, discipline=discipline)
             return [_dump(serialize_registration_form_template(template)) for template in templates]
 
         return await _run(logger, op)

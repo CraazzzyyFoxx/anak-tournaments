@@ -33,6 +33,11 @@ vi.mock("@/services/tournament.service", () => ({
   default: { getAll: vi.fn().mockResolvedValue({ results: [], total: 0, page: 1, per_page: -1 }) }
 }));
 
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
+
 /**
  * In the app every URL write re-renders the tree from the new
  * `useSearchParams`: `router.replace` through the router, a native
@@ -227,6 +232,8 @@ describe("ParsedMatchesBrowser", () => {
     });
     replace.mockClear();
     window.history.replaceState(null, "", "/admin/matches");
+    // Desktop unless a case narrows it: below `md` the table renders cards.
+    Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
     document.body.innerHTML = "";
   });
 
@@ -352,5 +359,38 @@ describe("ParsedMatchesBrowser", () => {
 
     expect(listAdminMatches).not.toHaveBeenCalled();
     expect(container.textContent).toContain("scoped to a workspace");
+  });
+
+  it("lists every game's maps with a Game column and hides and ignores the one-game filters when no game is chosen", async () => {
+    window.history.replaceState(null, "", "/admin/matches?tournament=3&map_id=5");
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
+
+    expect(lastQuery().discipline).toBeUndefined();
+    expect(lastQuery().tournament_id).toBeUndefined();
+    expect(lastQuery().map_id).toBeUndefined();
+    expect(bodyText(container)).toContain("Overwatch");
+    expect(container.textContent).toContain(messages.common.discipline.filterHint);
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
+    await click(chipTrigger(container));
+    await waitFor(() => commandItem("Ingestion status"), "the filter list");
+    expect(commandItem("Map")).toBeUndefined();
+    expect(commandItem("Tournament")).toBeUndefined();
+  });
+
+  it("narrows the list to the chosen game on the server", async () => {
+    await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
+    await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
+
+    expect(lastQuery().discipline).toBe("lol");
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline={null} workspaceId={4} />);
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Ilios");
+    expect(card.textContent).toContain("Overwatch");
   });
 });

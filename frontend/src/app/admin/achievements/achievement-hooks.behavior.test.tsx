@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
-import { act, type ReactNode } from "react";
+import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useWorkspaceStore } from "@/stores/workspace.store";
+import { LOL_GAME, OW_GAME } from "@/test/game-scope";
 import type { AchievementRule } from "@/types/admin.types";
 
+import { AchievementFormDialog } from "./_components/AchievementFormDialog";
 import { useAchievementRuleActions } from "./_hooks/useAchievementRuleActions";
 import { useAchievementRuleForm, type AchievementRuleForm } from "./_hooks/useAchievementRuleForm";
+import { useAchievementDetailMutations } from "./[id]/_hooks/useAchievementDetail";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -24,6 +28,8 @@ const service = vi.hoisted(() => ({
   hardResetAchievementRules: vi.fn(),
   evaluateAchievements: vi.fn(),
   exportAchievementRules: vi.fn(),
+  deleteAchievementRule: vi.fn(),
+  getCatalogCharacters: vi.fn(),
 }));
 
 vi.mock("next-intl", async (importOriginal) => {
@@ -36,6 +42,7 @@ vi.mock("next-intl", async (importOriginal) => {
   };
 });
 vi.mock("@/services/admin.service", () => ({ default: service }));
+vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
 
 const RULE: AchievementRule = {
   id: 5,
@@ -68,6 +75,7 @@ interface ActionsUnderTest {
   importRulesFromFile: (file: File) => Promise<void>;
   exportRules: () => Promise<void>;
   evaluate: (tournamentId: number | undefined, ruleIds: Set<number>) => void;
+  toggle: (rule: AchievementRule, enabled: boolean) => void;
 }
 
 let root: Root;
@@ -174,6 +182,48 @@ describe("the rule form is scoped to a discipline", () => {
     await act(async () => form.openCreate());
     expect(form.open).toBe(false);
   });
+
+  it("moves a create draft to the game picked in its field and drops the other game's character", async () => {
+    await mount(useForm("overwatch"));
+    await act(async () => form.openCreate());
+    await act(async () => form.setFormData({ ...form.formData, name: "Draft", entity_id: 77 }));
+    await act(async () => form.chooseDiscipline("lol"));
+
+    expect(form.discipline).toBe("lol");
+    expect(form.formData).toMatchObject({ discipline: "lol", name: "Draft", entity_id: null });
+  });
+
+  it("keeps the draft's character when its own game is pressed again in the game field", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: 7 });
+    service.getCatalogCharacters.mockResolvedValue([{ id: 77, name: "Tracer", active: true }]);
+    function DialogProbe() {
+      const dialogForm = useAchievementRuleForm(7, "overwatch");
+      useEffect(() => {
+        form = dialogForm;
+      });
+      return <AchievementFormDialog form={dialogForm} games={[OW_GAME, LOL_GAME]} />;
+    }
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <DialogProbe />
+        </QueryClientProvider>
+      );
+    });
+    await act(async () => form.openCreate());
+    // The character is one the game's catalog offers, as when it is picked in the field.
+    await act(() => new Promise<void>((done) => setTimeout(done, 0)));
+    await act(async () => form.setFormData({ ...form.formData, name: "Draft", entity_id: 77 }));
+    expect(form.formData.entity_id).toBe(77);
+
+    const overwatch = Array.from(document.querySelectorAll<HTMLButtonElement>('#rule-game [role="radio"]')).find(
+      (radio) => radio.textContent?.includes("Overwatch")
+    );
+    expect(overwatch?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => overwatch!.click());
+
+    expect(form.formData).toMatchObject({ discipline: "overwatch", name: "Draft", entity_id: 77 });
+  });
 });
 
 describe("the achievement actions are scoped to a discipline", () => {
@@ -205,6 +255,16 @@ describe("the achievement actions are scoped to a discipline", () => {
     expect(service.evaluateAchievements).toHaveBeenCalledWith(7, "lol", { tournament_id: 3, rule_ids: [5] });
     expect(invalidatedKeys()).toContainEqual(["admin", "overrides", 7, "all", "lol"]);
     expect(invalidatedKeys()).not.toContainEqual(["admin", "achievements", 7, "overwatch"]);
+  });
+
+  it("toggles a rule in its own game under all games and refreshes both lists", async () => {
+    service.updateAchievementRule.mockResolvedValue(RULE);
+    await mount(useActions(null));
+    await act(async () => actions.toggle(RULE, false));
+
+    expect(service.updateAchievementRule).toHaveBeenCalledWith(7, 5, { enabled: false });
+    expect(invalidatedKeys()).toContainEqual(["admin", "achievements", 7, "lol"]);
+    expect(invalidatedKeys()).toContainEqual(["admin", "achievements", 7, "all"]);
   });
 
   it("finishes a seed against the game it started in when another game is selected meanwhile", async () => {
@@ -296,5 +356,42 @@ describe("the achievement actions are scoped to a discipline", () => {
     await importFile("{nope");
     expect(service.importAchievementRules).not.toHaveBeenCalled();
     expect(actions.importError).toContain("not valid JSON");
+  });
+});
+
+describe("the rule page's writes", () => {
+  let mutations: ReturnType<typeof useAchievementDetailMutations>;
+  const useDetail = () =>
+    function useDetailProbe() {
+      mutations = useAchievementDetailMutations({
+        workspaceId: 7,
+        ruleId: 5,
+        discipline: "lol",
+        onTreeSaved: () => undefined,
+        onOverrideSaved: () => undefined,
+        onOverrideRemoved: () => undefined,
+        onDeleted: () => undefined,
+      });
+    };
+
+  it("stales every game's rule list after a condition save, a toggle and a delete", async () => {
+    service.updateAchievementRule.mockResolvedValue(RULE);
+    service.deleteAchievementRule.mockResolvedValue(undefined);
+    await mount(useDetail());
+
+    await act(async () => {
+      await mutations.saveTreeMutation.mutateAsync({ type: "and", children: [] });
+    });
+    await act(async () => {
+      await mutations.toggleMutation.mutateAsync(false);
+    });
+    await act(async () => {
+      await mutations.deleteMutation.mutateAsync();
+    });
+
+    // The rule shows on its game's list and on the all-games list: one prefix stales both (and every other game's).
+    const everyGame = invalidatedKeys().filter((key) => JSON.stringify(key) === JSON.stringify(["admin", "achievements", 7]));
+    expect(everyGame).toHaveLength(3);
+    expect(invalidatedKeys()).not.toContainEqual(["admin", "achievements", 7, "lol"]);
   });
 });

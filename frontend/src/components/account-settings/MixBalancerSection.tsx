@@ -19,10 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ratedDimension, selectableRoles } from "@/lib/roster/ontology";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { notify } from "@/lib/notify";
 import {
   mixPreferencesKeys,
@@ -66,9 +66,10 @@ const AUTOSAVE_DELAY_MS = 700;
 export default function MixBalancerSection() {
   const t = useTranslations("accountSettings");
   const queryClient = useQueryClient();
-  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: "all" });
-  const code = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
-  const metadata = useDisciplineMetadata(browsing.axis, code);
+  // A platform section (spec §5): the preferences are the player's, so its game tabs list every installed game.
+  const gameScope = useGameScope({ pageClass: "platform", axis: "all" });
+  const code = gameScope.game;
+  const metadata = useDisciplineMetadata(gameScope.axis, code);
   const rated = metadata.data ? ratedDimension(metadata.data) : null;
   const roleT = useTranslations("common.roleOntology");
   const nameOf = useRoleName();
@@ -133,8 +134,10 @@ export default function MixBalancerSection() {
 
   return (
     <div className="space-y-4">
-      <DisciplineSelector disciplines={browsing.disciplines ?? []} value={code ?? undefined} allowsAll={false} onSelect={browsing.select} disabled={dirty || save.isPending} />
-      {(browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") && <DisciplineUnavailable resolved={browsing.resolved} disciplines={browsing.disciplines ?? []} allowsAll={false} onSelect={browsing.select} />}
+      {/* Switching game mid-save would write one game's knobs under another's roles: the tabs wait for the save. */}
+      <fieldset disabled={dirty || save.isPending} className="m-0 min-w-0 border-0 p-0">
+        <GameScopeControl scope={gameScope} variant="single" />
+      </fieldset>
       <Card className="border-border/40 bg-card/50">
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-4">
           <div className="flex items-center gap-2">

@@ -5,7 +5,7 @@ Re-exports ``shared.services.workspace_scope``.
 Usage (need grid/normalizer), from typed-RPC read handlers:
     from src.core.workspace import resolve_workspace_context
 
-    ws = await resolve_workspace_context(session, workspace_id)
+    ws = await resolve_workspace_context(session, workspace_id, discipline=discipline)  # no game: grid is None
     return await flow(..., workspace_id=ws.id, grid=ws.grid, normalizer=ws.normalizer)
 
 Usage in services:

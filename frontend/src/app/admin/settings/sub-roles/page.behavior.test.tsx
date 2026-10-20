@@ -20,8 +20,11 @@ vi.mock("@/services/admin.service", () => ({ default: {
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: (permission: string) => !denied.includes(permission) }) }));
 vi.mock("@/stores/workspace.store", () => ({ useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) => selector({ currentWorkspaceId: 1 }) }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({ useBrowsingDiscipline: () => ({ axis: 1, resolved: { kind: "concrete", code: discipline }, disciplines: [], select: vi.fn(), refetch: vi.fn(), isError: false }) }));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({ DisciplineSelector: () => null, DisciplineUnavailable: () => null }));
+// The game is the saved scope's (a URL game narrows the list only and never starts a new sub-role).
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(discipline) };
+});
 // A wide viewport: the first role opens without a `?role=`.
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => false }));
 // `?role=` is the selection; a push rewrites the URL and re-renders.
@@ -75,12 +78,14 @@ describe("native sub-role settings", () => {
     expect(push).toHaveBeenCalledWith("/admin/settings/sub-roles?role=mid");
     expect([...container.querySelectorAll("h2")].map(node => node.textContent)).toEqual(["Mid"]);
   });
-  it("creates a child in the captured discipline without implicitly writing presentation overrides", async () => {
+  it("creates a child in the scoped game through the creation dialog, without presentation overrides", async () => {
     discipline = "lol"; getPlayerSubRoles.mockResolvedValue([]); await mount();
-    const input = container.querySelector<HTMLInputElement>('input[aria-label="Name for Top"]') ?? container.querySelector<HTMLInputElement>("input")!;
+    await click(button("New sub-role"));
+    await click([...document.querySelectorAll('[role="radio"]')].find(node => node.textContent === "Top")!);
+    const input = document.querySelector<HTMLInputElement>("#sub-role-label")!;
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Solo"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    const add = [...container.querySelectorAll("button")].find(node => node.textContent?.trim() === "Add")!;
-    await click(add);
+    await click(button("Save"));
+    // The game field started on the saved scope's game; the body carries no icon or color.
     expect(createPlayerSubRole).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol", role: "top", label: "Solo" });
   });
   it("cancels old reads and does not render delayed previous-game children", async () => {
@@ -105,7 +110,7 @@ describe("native sub-role settings", () => {
   });
   it("hides create, and gates delete independently from restore", async () => {
     denied = ["player.create", "player.delete"]; await mount();
-    expect([...container.querySelectorAll("button")].filter(node => node.textContent?.trim() === "Add")).toHaveLength(0);
+    expect([...container.querySelectorAll("button")].filter(node => node.textContent?.trim() === "New sub-role")).toHaveLength(0);
     // A permission-gated action is absent, not disabled.
     expect(toggle("Deactivate Main Tank")).toBeUndefined();
     expect(toggle("Restore Off Tank")!.hasAttribute("disabled")).toBe(false);

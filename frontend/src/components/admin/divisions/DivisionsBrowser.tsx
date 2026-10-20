@@ -12,19 +12,21 @@ import {
   standardTiers,
   type Band
 } from "@/app/admin/settings/divisions/editor/draftReducer";
-import { SettingsHeaderActions } from "@/components/admin/workspace-settings/WorkspaceSettingsShell";
 import { DataTable } from "@/components/data-table";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { activeGridVersionId, resolveOwnerGrid } from "@/lib/divisions/grid";
+import { showsGameMarks } from "@/lib/site/discipline-scope";
 import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
@@ -74,33 +76,40 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   });
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
-  // Every explicitly opened `?grid=` is an OWNER (owner > URL > preference): its own game sets the browsing
-  // game even when a different `?discipline=` is present, and nothing is written to the preference. An
-  // intentional game change goes through the selector, which drops the pin.
+  // An explicitly opened `?grid=` is an OWNER (spec §5, §6.12): its own game is the page's, whatever `?discipline=`
+  // or the scope says, and the pill shows it locked. Without a pin the index is a multi page: every game's grids under
+  // "all games", one game's under a game.
   const gridParam = Number(searchParams?.get("grid"));
   const hasGridPin = searchParams?.has("grid") === true;
   const ownerGrid = hasGridPin ? (grids.find((grid) => grid.id === gridParam) ?? null) : null;
-  const browsing = useBrowsingDiscipline({
-    allowsAll: false,
+  const gameScope = useGameScope({
+    pageClass: ownerGrid ? "owner" : "multi",
     axis: workspaceId,
-    ownerDiscipline: ownerGrid?.discipline ?? null,
-    ownerPending: hasGridPin && !gridsQuery.isSuccess && !gridsQuery.isError
+    ownerGame: ownerGrid?.discipline ?? null
   });
-  const browsedDiscipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
-  const preferredActiveVersionId = activeGridVersionId(workspace, browsedDiscipline);
-  const scopedGrids = grids.filter((grid) => grid.discipline === browsedDiscipline);
+  useEntityWorkspace(ownerGrid ? workspaceId : null, ownerGrid?.discipline ?? null);
+  const browsedDiscipline = gameScope.game;
+  // Only "all games" lists every game's grids: an invalid or empty game opens none.
+  const scopedGrids =
+    gameScope.resolution?.game.kind === "all"
+      ? grids
+      : grids.filter((grid) => grid.discipline === browsedDiscipline);
   const pinnedGrid = scopedGrids.find((grid) => grid.id === gridParam) ?? null;
   const selectedGrid =
     pinnedGrid ??
     scopedGrids.find((grid) =>
-      grid.versions.some((version) => version.id === preferredActiveVersionId)
+      grid.versions.some((version) => version.id === activeGridVersionId(workspace, grid.discipline))
     ) ??
     scopedGrids.find((grid) => grid.archived_at === null) ??
     scopedGrids[0] ??
     null;
-  const selectedDiscipline = browsedDiscipline;
-  // Changing the game is the one place a grid pin of the previous game is dropped.
-  const selectGame = (value: string) => browsing.select(value, { dropParams: ["grid"] });
+  // Under "all games" the open grid's own game drives its ladder, versions and readiness.
+  const selectedDiscipline = browsedDiscipline ?? selectedGrid?.discipline ?? null;
+  const descriptors = useGameDescriptors();
+  const gridMarks =
+    gameScope.resolution !== null && showsGameMarks(gameScope.resolution, gameScope.games ?? [])
+      ? descriptors
+      : undefined;
   const activeVersionId = activeGridVersionId(workspace, selectedDiscipline);
 
   const metadataQuery = useDisciplineMetadata(workspaceId, selectedDiscipline);
@@ -320,31 +329,24 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     );
   }
 
-  // Nothing game-shaped is read or drawn until one installed, enabled game is resolved: an explicit
-  // invalid `?discipline=` is named, never corrected.
-  const resolvedDiscipline = browsing.resolved;
-  if (resolvedDiscipline === null) {
-    return browsing.isError ? (
+  // Nothing game-shaped is read or drawn until the games are known: an explicit invalid `?discipline=` is named,
+  // never corrected.
+  const resolution = gameScope.resolution;
+  if (resolution === null) {
+    return gameScope.isError ? (
       <PageStateCard
         state="error"
         title={t("loadError.title")}
         description={t("loadError.description")}
         actionLabel={t("retry")}
-        onAction={browsing.refetch}
+        onAction={gameScope.refetch}
       />
     ) : (
       <Skeleton className="h-40 w-full rounded-xl" />
     );
   }
-  if (resolvedDiscipline.kind === "invalid" || resolvedDiscipline.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={resolvedDiscipline}
-        disciplines={browsing.disciplines ?? []}
-        allowsAll={false}
-        onSelect={selectGame}
-      />
-    );
+  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
+    return <GameScopeControl scope={gameScope} variant="multi" />;
   }
   if (selectedDiscipline !== null && (metadataQuery.isError || metadataInvalid)) {
     return (
@@ -387,17 +389,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
 
   return (
     <div className="flex flex-col gap-6">
-      {browsing.disciplines ? (
-        <SettingsHeaderActions>
-          <DisciplineSelector
-            disciplines={browsing.disciplines}
-            value={browsedDiscipline ?? undefined}
-            allowsAll={false}
-            onSelect={selectGame}
-            className="w-52"
-          />
-        </SettingsHeaderActions>
-      ) : null}
+
       <GridInForceSection
         ladder={ladder}
         activeVersion={activeVersion}
@@ -415,6 +407,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
             latestVersion={latestVersion}
             ladder={ladder}
             grids={scopedGrids}
+            games={gridMarks}
             selectedGrid={selectedGrid}
             onSelectGrid={(value) => setParams({ grid: value })}
             activeVersionId={activeVersionId}

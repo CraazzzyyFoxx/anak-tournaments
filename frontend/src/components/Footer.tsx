@@ -10,7 +10,6 @@ import Github from "@/components/icons/Github";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { APP_VERSION, BRAND_NAME, SITE_URL } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { useBrowsingHref } from "@/hooks/useBrowsingHref";
 import { getAuthProfileHref } from "@/lib/auth/profile-links";
 import type { Workspace } from "@/types/workspace.types";
 
@@ -42,8 +41,7 @@ const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
  * the right trade. Every route here has a loading boundary.
  */
 function FooterLink({ href, ...props }: ComponentProps<typeof Link>) {
-  // Browsing destinations keep the game the visitor is looking at (§2.4).
-  return <Link prefetch={false} href={useBrowsingHref(href)} {...props} />;
+  return <Link prefetch={false} href={href} {...props} />;
 }
 
 /**

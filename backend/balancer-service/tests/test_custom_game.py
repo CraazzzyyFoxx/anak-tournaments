@@ -2767,6 +2767,30 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_mix_stats_without_a_game_has_no_role_split(self) -> None:
+        played_at = datetime(2026, 3, 1, 21, 30)
+        self.mix_rounds.seats = AsyncMock(
+            return_value=[
+                _row(
+                    workspace_member_id=7,
+                    role="damage",
+                    encounter_id=1,
+                    created_at=played_at,
+                    own_score=2.0,
+                    other_score=1.0,
+                ),
+            ]
+        )
+        self.load_roster.side_effect = None
+        self.load_roster.return_value = _members(7)
+
+        members = await self.service.mix_stats(self.session, workspace_id=1, discipline=None, since=None)
+
+        self.mix_rounds.seats.assert_awaited_once_with(self.session, workspace_id=1, discipline=None, since=None)
+        # Role codes of different games are different roles: across games there is no per-role split.
+        self.assertIsNone(members[0]["by_role"])
+        self.assertEqual((members[0]["games"], members[0]["wins"]), (1, 1))
+
     async def test_set_next_map_stores_a_catalogue_map(self) -> None:
         self.games.get.return_value = _game()
 

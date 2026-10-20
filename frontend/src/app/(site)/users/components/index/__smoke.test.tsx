@@ -8,6 +8,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import userService from "@/services/user.service";
 import UsersClient from "./UsersClient";
+import { useWorkspaceStore } from "@/stores/workspace.store";
+import { PillPick } from "@/test/pill-pick";
 import { DEFAULT_MIN_ENCOUNTERS, parseMinEncounters } from "./users-index.model";
 
 declare global {
@@ -15,12 +17,12 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { search } = vi.hoisted(() => ({ search: { current: new URLSearchParams() } }));
+const { search, push } = vi.hoisted(() => ({ search: { current: new URLSearchParams() }, push: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/users",
   useSearchParams: () => search.current,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() })
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
@@ -56,6 +58,7 @@ vi.mock("@/services/user.service", () => ({
           id: 7,
           name: "Ana#1234",
           avatar_url: null,
+          disciplines: ["overwatch"],
           roles: [{ role: { dimension: "player_role", role: "tank" }, division: 5, division_grid_version_id: null }],
           tournaments_count: 9,
           achievements_count: 3,
@@ -116,6 +119,9 @@ const settle = async () => {
 
 beforeEach(() => {
   search.current = new URLSearchParams();
+  push.mockClear();
+  // The index under one game: its role chips, role divisions and drawer are game-bound.
+  useWorkspaceStore.setState({ gameScope: "overwatch", lastGame: null });
   vi.mocked(userService.getUsersOverview).mockClear();
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -125,6 +131,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  useWorkspaceStore.setState({ gameScope: "all" });
 });
 
 const renderIndex = async () => {
@@ -135,8 +142,9 @@ const renderIndex = async () => {
         <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
           <UsersClient
             scope="workspace"
-            initial={{ stored: null, axis: 1, hostLockedWorkspaceId: null, disciplines: null }}
+            initial={{ stored: "all", lastGame: null, axis: 1, hostLockedWorkspaceId: null, disciplines: null }}
           />
+          <PillPick code="lol" />
         </NextIntlClientProvider>
       </QueryClientProvider>
     );
@@ -151,6 +159,8 @@ it("renders a player row with its winrate and sample size", async () => {
   // 24 of 40 decided maps.
   expect(container.textContent).toContain("60%");
   expect(container.textContent).toContain("30 encounters");
+  // The maps record belongs to the cross-game row only.
+  expect(container.textContent).not.toContain(en.users.list.table.mapsRecord.replace("{won}", "24").replace("{lost}", "16"));
   // Role chips read their counts from the stats endpoint.
   expect(container.textContent).toContain("100");
 });
@@ -159,7 +169,7 @@ it("offers the browsed game's own roles as chips, counted per role code", async 
   await renderIndex();
 
   const chips = [...container.querySelectorAll("button")].map((button) => button.textContent ?? "");
-  // The first installed game here is Overwatch: its three roles, then the open slot.
+  // The scope's game here is Overwatch: its three roles, then the open slot.
   expect(chips).toEqual(expect.arrayContaining(["Tank30", "Damage40", "Support30", "Flex8"]));
 });
 
@@ -192,7 +202,7 @@ it("loads the draft card only once a row is expanded", async () => {
   await act(async () => expand?.click());
   await settle();
 
-  // The card is read in the index's resolved game (the first installed one here), in its workspace.
+  // The card is read in the index's game (the scope's), in its workspace.
   expect(getDraftCard).toHaveBeenCalledWith(7, "overwatch", 1);
   expect(container.textContent).toContain("OWT Cup 12");
   expect(container.textContent).toContain(en.users.list.expanded.openProfile);
@@ -214,4 +224,19 @@ it("defaults min_encounters when the param is absent, but honours an explicit 0"
   expect(parseMinEncounters("0")).toBe(0);
   expect(parseMinEncounters("50")).toBe(50);
   expect(parseMinEncounters("7")).toBe(DEFAULT_MIN_ENCOUNTERS);
+});
+
+it("a game picked in the scope pill drops the role and division filters and keeps the search", async () => {
+  search.current = new URLSearchParams("role=support&div=3&query=ana");
+  await renderIndex();
+
+  await act(async () => {
+    container.querySelector("[data-pill-pick=lol]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  const url = new URL(push.mock.calls.at(-1)![0] as string, "http://x");
+  expect(url.searchParams.get("discipline")).toBe("lol");
+  expect(url.searchParams.has("role")).toBe(false);
+  expect(url.searchParams.has("div")).toBe(false);
+  expect(url.searchParams.get("query")).toBe("ana");
 });

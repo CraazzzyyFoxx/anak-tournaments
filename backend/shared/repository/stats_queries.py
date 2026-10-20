@@ -7,8 +7,8 @@ from shared import models
 __all__ = ("player_facts", "team_scores", "match_context")
 
 
-def player_facts(*, discipline: str) -> sa.Subquery:
-    """Player facts at their original segment/entity grain, including historical members."""
+def player_facts(*, discipline: str | None) -> sa.Subquery:
+    """Player facts at their original segment/entity grain, including historical members; ``None`` spans every game."""
     f, m, d = models.StatsFact, models.StatsMatch, models.StatDef
     wm, e, et = models.WorkspaceMember, models.Encounter, models.EncounterTeam
     mt = models.StatsMatchTeam
@@ -36,7 +36,7 @@ def player_facts(*, discipline: str) -> sa.Subquery:
         .join(mt, sa.and_(mt.match_id == f.match_id, mt.encounter_team_id == f.encounter_team_id))
         .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
         .join(et, et.id == f.encounter_team_id)
-        .where(m.discipline == discipline, f.workspace_member_id.is_not(None))
+        .where(f.workspace_member_id.is_not(None), *([m.discipline == discipline] if discipline is not None else []))
         .subquery()
     )
 

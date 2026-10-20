@@ -22,7 +22,7 @@ export default function PublicDraftRoomPage() {
   const tournamentQuery = useTournamentQuery(params.id);
   const tournament = tournamentQuery.data;
   // The room belongs to its tournament's workspace, not to whichever one the visitor last browsed.
-  useEntityWorkspace(tournament?.workspace_id);
+  useEntityWorkspace(tournament?.workspace_id, tournament?.discipline);
 
   if (tournament && tournament.team_formation !== "draft") {
     redirect(tournamentHref(tournament));

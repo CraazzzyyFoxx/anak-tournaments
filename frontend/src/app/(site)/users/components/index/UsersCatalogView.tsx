@@ -13,6 +13,7 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import {
   CompareCheckbox,
+  GameMarks,
   LastActive,
   PlayerAvatar,
   PlayerName,
@@ -33,7 +34,8 @@ export function PlayerCard({
   grids,
   game,
   minEncounters,
-  compare
+  compare,
+  onSelectGame
 }: Readonly<{
   user: UserCatalogEntry | UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
@@ -41,6 +43,8 @@ export function PlayerCard({
   game: Pick<UsersIndexData, "discipline" | "ontology">;
   minEncounters: number;
   compare: CompareSelection;
+  /** Narrows the scope to a game (a card's mark under "all games"). */
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const selected = compare.isSelected(user.id);
@@ -62,8 +66,14 @@ export function PlayerCard({
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} size={26} />
-        <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
+        {game.discipline === null ? (
+          <GameMarks codes={user.disciplines} onSelect={onSelectGame} />
+        ) : (
+          <>
+            <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} size={26} />
+            <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 border-t border-[color:var(--aqt-border)] pt-2.5">
@@ -77,7 +87,7 @@ export function PlayerCard({
           <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("users.list.table.winrate")}
           </span>
-          <WinrateCell user={user} minEncounters={minEncounters} />
+          <WinrateCell user={user} minEncounters={minEncounters} record={game.discipline === null} />
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
@@ -98,11 +108,14 @@ export function PlayerCard({
 export function UsersCatalogView({
   controls,
   data,
-  compare
+  compare,
+  onSelectGame
 }: Readonly<{
   controls: UsersIndexParamControls;
   data: UsersIndexData;
   compare: CompareSelection;
+  /** Narrows the scope to a game (a card's mark under "all games"). */
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const { letter, minEncounters } = controls.params;
@@ -166,6 +179,7 @@ export function UsersCatalogView({
                     game={data}
                     minEncounters={minEncounters}
                     compare={compare}
+                    onSelectGame={onSelectGame}
                   />
                 ))}
               </div>

@@ -1,6 +1,7 @@
 package tournament
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -56,4 +57,20 @@ func TestRegistrationAdminReadsHaveTimeout(t *testing.T) {
 			t.Errorf("%s %s (%s): writes must keep the default timeout, got %v", r.Method, r.Pattern, r.Queue, r.Timeout)
 		}
 	}
+}
+
+// TestRegistrationFormTemplateListForwardsDiscipline pins that the template
+// list forwards the game filter the worker honours (spec §8.4).
+func TestRegistrationFormTemplateListForwardsDiscipline(t *testing.T) {
+	const pattern = "/api/v1/admin/ws/{workspace_id}/registration-form-templates"
+	for _, r := range RegistrationAdminRoutes {
+		if r.Method != "GET" || r.Pattern != pattern {
+			continue
+		}
+		if r.Queue != "rpc.tournament.regform_template_list" || !slices.Contains(r.Query, "discipline") {
+			t.Fatalf("template list must forward ?discipline=: %#v", r)
+		}
+		return
+	}
+	t.Fatalf("%s is not registered", pattern)
 }

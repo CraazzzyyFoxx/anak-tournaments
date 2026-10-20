@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import userService from "@/services/user.service";
 import { User } from "@/types/user.types";
@@ -27,13 +28,20 @@ export const UserEncountersPage = async ({
   page,
   filters,
   scope,
-  discipline
+  discipline,
+  summaryGame,
+  sidebarTabs
 }: {
   user: User;
   page: number;
   filters?: MatchesFilters;
   scope: StatsScope;
-  discipline: string;
+  /** One game, or `null` for every game (the list is cross-game; rows mark their game). */
+  discipline: string | null;
+  /** The game the (game-bound) matches summary is read in: the page's game, or the per-game tab's under all games. */
+  summaryGame: string | null;
+  /** The per-game tabs over the summary under "all games". */
+  sidebarTabs?: ReactNode;
 }) => {
   const perPage = 15;
   const t = await getTranslations();
@@ -55,7 +63,9 @@ export const UserEncountersPage = async ({
         filters,
         scope
       ),
-      userService.getUserMatchesSummary(user.id, discipline, scope).catch(() => null)
+      summaryGame === null
+        ? Promise.resolve(null)
+        : userService.getUserMatchesSummary(user.id, summaryGame, scope).catch(() => null)
     ]);
   } catch {
     return (
@@ -74,6 +84,8 @@ export const UserEncountersPage = async ({
       selfUserId={user.id}
       opponents={summary?.opponents ?? []}
       stages={summary?.stages ?? EMPTY_STAGES}
+      allGames={discipline === null}
+      sidebarTabs={sidebarTabs}
     />
   );
 };

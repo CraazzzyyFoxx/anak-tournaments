@@ -182,13 +182,13 @@ class UserEncounterQueries(DisciplineQueries):
             sa.select(sa.func.count(sa.distinct(models.Encounter.id)))
             .select_from(seat.team)
             .join(models.Encounter, models.Encounter.id == seat.team.encounter_id)
-            .where(seat.team.id.in_(history_seats), models.Encounter.discipline == self.discipline)
+            .where(seat.team.id.in_(history_seats), *self.discipline_filter(models.Encounter.discipline))
         )
         encounters_query = (
             sa.select(models.Encounter, _PLAYED_AT.label("played_at"))
             .select_from(seat.team)
             .join(models.Encounter, models.Encounter.id == seat.team.encounter_id)
-            .where(seat.team.id.in_(history_seats), models.Encounter.discipline == self.discipline)
+            .where(seat.team.id.in_(history_seats), *self.discipline_filter(models.Encounter.discipline))
             .distinct()
         )
 
@@ -343,7 +343,14 @@ class UserEncounterQueries(DisciplineQueries):
         total_result = await session.execute(total_query)
         rows = result.unique(_encounter_match_identity).all()
         reads = await get_match_reads(session, match_ids=[row[1] for row in rows if row[1] is not None])
-        stats = await self.get_user_match_stats(session, user_id, list(reads.values()))
+        # Each match's facts are its own game's: a cross-game page reads them per game, through that game's reader.
+        reads_by_game: dict[str, list[MatchReadContext]] = {}
+        for encounter, match_id in rows:
+            if match_id is not None:
+                reads_by_game.setdefault(encounter.discipline, []).append(reads[match_id])
+        stats: dict[int, _mappers.UserMatchStats] = {}
+        for game, game_reads in reads_by_game.items():
+            stats |= await UserEncounterQueries.of(game).get_user_match_stats(session, user_id, game_reads)
         return (
             [
                 (encounter, reads[match_id] if match_id is not None else None, stats.get(match_id))

@@ -122,7 +122,11 @@ class AchievementRuleService:
         workspace_id: int,
         params: schemas.AchievementRuleListParams,
     ) -> dict[str, Any]:
-        scope = (AchievementRule.workspace_id == workspace_id, AchievementRule.discipline == params.discipline)
+        # No game is every game of the workspace (spec §8.1); each row names its own `discipline`.
+        scope = (
+            AchievementRule.workspace_id == workspace_id,
+            *([AchievementRule.discipline == params.discipline] if params.discipline is not None else []),
+        )
         query = sa.select(AchievementRule).where(*scope)
         count_query = sa.select(sa.func.count()).select_from(AchievementRule).where(*scope)
         if params.search:

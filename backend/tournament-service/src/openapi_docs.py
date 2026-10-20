@@ -109,7 +109,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.list_teams": {
         "summary": "List teams",
-        "description": "Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace.",
+        "description": "Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace: every game's, or only the optional `discipline`'s (by the team's tournament; 422 for an unknown code).",
     },
     # ── computation job reads ──────────────────────────────────────────────
     "rpc.tournament.job_get": {
@@ -328,7 +328,8 @@ DOCS: dict[str, dict] = {
         "summary": "List parsed matches",
         "description": (
             "Permission: workspace `match.read` on the workspace named by `workspace_id`. "
-            "Every native Overwatch observed duel map across the workspace, not one encounter. "
+            "Every observed duel map across the workspace, not one encounter: every game's, or only the "
+            "optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. "
             "Scores follow the bound game's historical slots; official game results are unchanged. "
             "`log_record` is its native ingest job and is null for observations with no raw provenance. "
             "Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a "
@@ -440,7 +441,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin.list#player_sub_role": {
         "summary": "List player sub-roles",
-        "description": "Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.",
+        "description": "Permission: workspace `player.read`. Requires workspace_id; lists only that workspace's child roles — every installed game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code) — optionally filtered by parent role (which needs `discipline`, else 422) and including inactive ones. Each row names its own `discipline`.",
     },
     # ── generic CRUD engine: tournament_link ───────────────────────────────
     "rpc.tournament.admin.create#tournament_link": {
@@ -846,15 +847,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.regform_template_list": {
         "summary": "List registration form templates",
-        "description": "Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name.",
+        "description": "Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name; each carries its game (`discipline`). The optional `discipline` narrows to one game's (422 `discipline_not_installed` for an unknown code).",
     },
     "rpc.tournament.regform_template_create": {
         "summary": "Create registration form template",
-        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for the workspace (201 Created). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.",
+        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for one game of the workspace (201 Created). `discipline` is required (422 `discipline_required`) and must be enabled for the workspace (422 `discipline_not_enabled`). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.",
     },
     "rpc.tournament.regform_template_update": {
         "summary": "Update registration form template",
-        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.",
+        "description": "Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. Its game never changes: `discipline` is omitted or equal, another game is 409 `template_discipline_immutable`. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.",
     },
     "rpc.tournament.regform_template_delete": {
         "summary": "Delete registration form template",
@@ -862,11 +863,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.regform_template_apply": {
         "summary": "Apply template to registration form",
-        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`).",
+        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`). The template's game must be the tournament's (else 409 `template_discipline_mismatch`).",
     },
     "rpc.tournament.regform_template_save_from_form": {
         "summary": "Save registration form as template",
-        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision.",
+        "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision. The template takes the tournament's game.",
     },
     "rpc.tournament.reg_list": {
         "summary": "List registrations (admin)",

@@ -7,8 +7,8 @@ import { useTranslations } from "next-intl";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useKindLabel } from "@/hooks/useKindLabel";
 import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 import type { CatalogKind } from "@/types/catalog.types";
@@ -24,10 +24,11 @@ const TABS = [...(Object.keys(KIND_TABS) as (keyof typeof KIND_TABS)[]), "unreso
  * Game content (F13): the catalogues the log parser reads for ONE selected game, plus the triage queue of names it
  * could not resolve (every game).
  *
- * The catalogue is platform-wide, so the game choice lists every installed discipline (axis `all`), not just the
- * current workspace's. It is a concrete browsing choice (URL over saved over first available); an invalid `?discipline=`
- * is named, never corrected, and loads nothing. The queue is not a catalogue and ignores the choice, but it is the
- * work the catalogues exist to absorb, so it sits beside them with a badge saying how much of it is waiting.
+ * A platform page (spec §3.7): the catalogue is platform-wide, so its game tabs list every installed discipline (axis
+ * `all`), not the current community's; there is no scope pill. The game is `?discipline=`, else the scope's game,
+ * else the last game, else the first one; an invalid `?discipline=` is named, never corrected, and loads nothing. The
+ * queue is not a catalogue and ignores the choice, but it is the work the catalogues exist to absorb, so it sits
+ * beside them with a badge saying how much of it is waiting.
  *
  * Navigation and chrome only: the tabs own no data beyond that count, and each page keeps its own toolbar.
  */
@@ -39,10 +40,11 @@ export default function GameContentLayout({ children }: Readonly<{ children: Rea
   // covers the frame between navigation and that redirect landing.
   const activeKey = pathname.split("/")[3] ?? TABS[0];
   const openMisses = useOpenMissCount();
-  const { disciplines, resolved, select, isError, refetch } = useBrowsingDiscipline({ allowsAll: false, axis: "all" });
+  const gameScope = useGameScope({ pageClass: "platform", axis: "all" });
+  const { games: disciplines, resolution, isError, refetch } = gameScope;
 
   const descriptor =
-    resolved?.kind === "concrete" ? disciplines?.find((discipline) => discipline.code === resolved.code) : undefined;
+    gameScope.game === null ? undefined : disciplines?.find((discipline) => discipline.code === gameScope.game);
   const carry = descriptor ? `?${DISCIPLINE_PARAM}=${encodeURIComponent(descriptor.code)}` : "";
 
   // A kind the game does not declare (League has no `mode`) has no tab: nothing to list or create there.
@@ -60,10 +62,10 @@ export default function GameContentLayout({ children }: Readonly<{ children: Rea
     body = children;
   } else if (isError) {
     body = <PageStateCard state="error" onAction={refetch} />;
-  } else if (resolved === null || disciplines === undefined) {
+  } else if (resolution === null || disciplines === undefined) {
     body = null;
-  } else if (resolved.kind === "invalid" || resolved.kind === "empty") {
-    body = <DisciplineUnavailable resolved={resolved} disciplines={disciplines} allowsAll={false} onSelect={select} />;
+  } else if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
+    body = <GameScopeControl scope={gameScope} variant="single" />;
   } else if (descriptor) {
     // Keyed by game: another game's open dialog, filters and form drafts never carry over.
     body = (
@@ -78,13 +80,8 @@ export default function GameContentLayout({ children }: Readonly<{ children: Rea
       <AdminPageHeader
         title={t("header")}
         actions={
-          activeKey !== "unresolved" && disciplines && disciplines.length > 1 ? (
-            <DisciplineSelector
-              disciplines={disciplines}
-              value={resolved?.kind === "concrete" ? resolved.code : undefined}
-              allowsAll={false}
-              onSelect={select}
-            />
+          activeKey !== "unresolved" && gameScope.game !== null ? (
+            <GameScopeControl scope={gameScope} variant="single" />
           ) : undefined
         }
       />

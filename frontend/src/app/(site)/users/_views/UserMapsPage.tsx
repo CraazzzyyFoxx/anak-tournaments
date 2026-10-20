@@ -17,7 +17,10 @@ const UserMapsPage = ({
   discipline: string;
   axis: WorkspaceAxis;
 }) => {
-  return <MapsView userId={user.id} scope={scope} discipline={discipline} axis={axis} />;
+  // Keyed by game: the filters (a tournament included) are one game's, never carried into another's.
+  return (
+    <MapsView key={discipline} userId={user.id} scope={scope} discipline={discipline} axis={axis} />
+  );
 };
 
 export default UserMapsPage;

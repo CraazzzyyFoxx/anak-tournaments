@@ -23,7 +23,8 @@ interface UserHeaderProps {
   profile: UserProfile;
   user: User;
   scope: StatsScope;
-  discipline: string;
+  /** The profile's game, or `null` for the cross-game header (no role, no game metadata). */
+  discipline: string | null;
   /** The workspace axis the profile is viewed on: its ontology names the primary role (sub-roles included). */
   axis: WorkspaceAxis;
 }
@@ -35,7 +36,11 @@ const formatPlace = (value: number | null | undefined) => {
   return value.toFixed(1);
 };
 
-const deriveFormStreak = async (userId: number, discipline: string, scope: StatsScope): Promise<FormResult[]> => {
+const deriveFormStreak = async (
+  userId: number,
+  discipline: string | null,
+  scope: StatsScope
+): Promise<FormResult[]> => {
   try {
     const encounters = await userService.getUserEncounters(
       userId,
@@ -82,7 +87,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
     lastSummary
       ? userService.getUserTournament(user.id, lastSummary.id).catch(() => null)
       : Promise.resolve(null),
-    disciplineService.metadata(axis, discipline).catch(() => null)
+    discipline === null ? Promise.resolve(null) : disciplineService.metadata(axis, discipline).catch(() => null)
   ]);
   const lastWinrate =
     lastTournament && lastTournament.maps > 0 ? (lastTournament.maps_won / lastTournament.maps) * 100 : null;
@@ -111,7 +116,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
           <div className="relative h-full w-full overflow-hidden rounded-[14px] border border-[color:var(--aqt-border-2)] md:rounded-[18px]">
             <Image src={avatarSrc} alt={t("users.profile.header.avatarAlt", { name })} fill sizes="104px" className="object-cover" priority />
           </div>
-          {primaryRole ? (
+          {primaryRole && discipline !== null ? (
             <div
               className="absolute -bottom-2 -right-2"
               title={t("users.profile.header.divisionTitle", {

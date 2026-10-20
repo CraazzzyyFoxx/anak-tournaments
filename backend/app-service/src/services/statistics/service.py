@@ -16,7 +16,8 @@ _Leaderboard = tuple[Sequence[tuple[Any, float | int]], int]
 
 
 class StatisticsService:
-    """The three player leaderboards, as ``Paginated[PlayerStatistics]``.
+    """The three player leaderboards, as ``Paginated[PlayerStatistics]``: one game's, or every game's when
+    ``discipline`` is ``None`` (spec §6.5, same thresholds).
 
     All three differ only in which query feeds them and how the value is
     rounded, so they share one assembler instead of three copies of it.
@@ -49,7 +50,7 @@ class StatisticsService:
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         *,
-        discipline: str,
+        discipline: str | None,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.PlayerStatistics]:
         """Players ranked by championships won."""
@@ -64,7 +65,7 @@ class StatisticsService:
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         *,
-        discipline: str,
+        discipline: str | None,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.PlayerStatistics]:
         """Players ranked by map win rate. Rounded — the query returns a ratio."""
@@ -80,7 +81,7 @@ class StatisticsService:
         session: AsyncSession,
         params: pagination.PaginationSortParams,
         *,
-        discipline: str,
+        discipline: str | None,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.PlayerStatistics]:
         """Players ranked by maps won."""

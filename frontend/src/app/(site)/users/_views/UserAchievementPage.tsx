@@ -6,12 +6,13 @@ import AchievementsView from "@/app/(site)/users/components/achievements/Achieve
 
 interface UserAchievementPageProps {
   user: User;
-  /** The profile's tournaments (of the browsed game): the tournament filter's options. */
+  /** The profile's tournaments (of the browsed game, or of every game): the tournament filter's options. */
   tournaments: UserTournamentSummary[];
   selectedTournamentId?: string;
   scope: StatsScope;
-  /** The profile's game: only its rules are listed (earned and locked). */
-  discipline: string;
+  /** One game's rules only (earned and locked); omitted = every game's, marked. */
+  discipline?: string;
+  showGames?: boolean;
 }
 
 const parseAchievementFilter = (selectedTournamentId?: string) => {
@@ -34,7 +35,8 @@ const UserAchievementPage = async ({
   tournaments,
   selectedTournamentId,
   scope,
-  discipline
+  discipline,
+  showGames = false
 }: UserAchievementPageProps) => {
   const { tournamentId, withoutTournament } = parseAchievementFilter(selectedTournamentId);
   const achievements = await userService
@@ -54,6 +56,7 @@ const UserAchievementPage = async ({
         achievements={achievements}
         tournaments={tournaments}
         selectedTournament={withoutTournament ? "none" : tournamentId}
+        showGames={showGames}
       />
     </div>
   );

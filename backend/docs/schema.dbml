@@ -1004,6 +1004,7 @@ Table balancer.registration_form_template {
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz
   workspace_id bigint [not null]
+  discipline VARCHAR(32) [not null]
   name VARCHAR(64) [not null]
   schema_json json [not null]
   created_by bigint
@@ -3399,6 +3400,7 @@ Ref: balancer.registration_form.tournament_id > tournament.tournament.id [delete
 Ref: balancer.registration_form.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.registration_form.current_version_id > balancer.registration_form_version.id [delete: set null]
 Ref: balancer.registration_form_template.workspace_id > workspace.id [delete: cascade]
+Ref: balancer.registration_form_template.discipline > catalog.discipline.code
 Ref: balancer.registration_form_template.created_by > auth.user.id [delete: set null]
 Ref: balancer.registration_form_version.form_id > balancer.registration_form.id [delete: cascade]
 Ref: balancer.registration_form_version.created_by > auth.user.id [delete: set null]

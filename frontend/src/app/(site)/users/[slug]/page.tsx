@@ -1,6 +1,8 @@
 import React, { Suspense, cache } from "react";
 import userService from "@/services/user.service";
+import disciplineService from "@/services/discipline.service";
 import UserHeader from "@/app/(site)/users/components/header/UserHeader";
+import UserGameCards from "@/app/(site)/users/components/header/UserGameCards";
 import { TabsContent } from "@/components/ui/tabs";
 import UserOverviewPage, { UserOverviewPageSkeleton } from "@/app/(site)/users/_views/UserOverviewPage";
 import UserMapsPage from "@/app/(site)/users/_views/UserMapsPage";
@@ -26,12 +28,17 @@ import UserTabsClient from "@/app/(site)/users/components/tabs/UserTabsClient";
 import UserHeaderSkeleton from "@/app/(site)/users/components/header/UserHeaderSkeleton";
 import { ProfileJsonLd } from "@/app/(site)/users/components/shared/profile-jsonld";
 import UserProfileEmpty from "@/app/(site)/users/components/shared/UserProfileEmpty";
+import ProfileGameTabs from "@/app/(site)/users/components/shared/ProfileGameTabs";
+import ProfileGameData from "@/app/(site)/users/components/shared/ProfileGameData";
+import ProfileNotPlayed from "@/app/(site)/users/components/shared/ProfileNotPlayed";
+import { blockGameOf, boundGameSummary, orderPlayerGames } from "@/app/(site)/users/components/shared/profile-games";
 import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
+import ProfileScopeUnavailable from "@/app/(site)/users/components/shared/ProfileScopeUnavailable";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import type { StatsScope } from "@/lib/site/stats-scope";
-import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
+import type { GameScopeInit, WorkspaceAxis } from "@/lib/site/discipline-scope";
+import type { UserProfile } from "@/types/user.types";
 
 // The route still renders dynamically (api-fetch reads the workspace cookie),
 // but we no longer force `fetchCache: force-no-store` — public, workspace-scoped
@@ -57,10 +64,11 @@ type UserPageSearchParams = {
 };
 
 /**
- * What every tab reads with: the viewing scope, the one game the profile shows (§2.3 concrete browsing) and the
- * workspace axis it is viewed on (host lock first) — the ontology role consumers name and draw roles from.
+ * What every tab reads with (spec §6.6, a multi page): the viewing scope, the page's game — `null` under
+ * "all games" — the workspace axis it is viewed on (host lock first) and the scope inputs the per-game tabs resolve
+ * their game from.
  */
-type ProfileScope = { scope: StatsScope; discipline: string; axis: WorkspaceAxis };
+type ProfileView = { scope: StatsScope; game: string | null; axis: WorkspaceAxis; init: GameScopeInit };
 
 const isUserTab = (value: string): value is UserTab => {
   return USER_TABS.includes(value as UserTab);
@@ -118,10 +126,10 @@ export async function generateMetadata(props: {
   }
 }
 
-const getUserAndProfile = cache(async (slug: string, scope: StatsScope, discipline: string) => {
+const getUserAndProfile = cache(async (slug: string, scope: StatsScope, game: string | null) => {
   try {
     const user = await userService.getUserByName(decodePlayerSlug(slug));
-    const profile = await userService.getUserProfile(user.id, discipline, scope);
+    const profile = await userService.getUserProfile(user.id, game, scope);
     return { user, profile };
   } catch (error) {
     if (isNotFoundError(error)) {
@@ -133,21 +141,88 @@ const getUserAndProfile = cache(async (slug: string, scope: StatsScope, discipli
 
 type UserAndProfile = Awaited<ReturnType<typeof getUserAndProfile>>;
 
+/**
+ * What the profile's blocks read of the games, read once for the page alongside the profile: the metadata, on the
+ * viewed axis, of every game the page can show — its game, or under "all games" each of the area's. A failed read is
+ * left out: the browser reads it itself.
+ */
+const loadProfileGameMetadata = async (view: ProfileView) => {
+  const codes = view.game === null ? (view.init.disciplines ?? []).map((entry) => entry.code) : [view.game];
+  const metadata = await Promise.all(
+    codes.map((code) => disciplineService.metadata(view.axis, code).catch(() => null))
+  );
+  return metadata.filter((entry) => entry !== null);
+};
+
+const gameNameOf = (view: ProfileView, code: string) =>
+  view.init.disciplines?.find((entry) => entry.code === code)?.name ?? code;
+
 const UserHeaderSection = async ({
   userAndProfile,
   slug,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
   slug: string;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
   const { user, profile } = await userAndProfile;
   const canonical = new URL(`/users/${slug}`, SITE_URL_OBJ).toString();
   return (
     <>
       <ProfileJsonLd user={user} profile={profile} url={canonical} />
-      <UserHeader user={user} profile={profile} {...profileScope} />
+      <UserHeader user={user} profile={profile} scope={view.scope} discipline={view.game} axis={view.axis} />
+      {view.game === null ? (
+        <UserGameCards games={orderPlayerGames(profile.games, view.init)} axis={view.axis} />
+      ) : profile.tournaments.length > 0 ? (
+        // A concrete scope: that game's card, built from the bound profile (R15).
+        <UserGameCards games={[boundGameSummary(profile, view.game)]} axis={view.axis} />
+      ) : null}
+    </>
+  );
+};
+
+/**
+ * A tab that reads one game (overview, characters, maps): the page's game, or under "all games" the per-game tab's
+ * game (`blockGameOf`) with the tabs above it. That game's own profile (R15) is refused like the page's when the game
+ * has no division grid on the viewed axis: the missing-grid notice then stands under the tabs.
+ */
+const PerGameTab = async ({
+  userAndProfile,
+  view,
+  children
+}: {
+  userAndProfile: Promise<UserAndProfile>;
+  view: ProfileView;
+  /** `gameProfile` is the profile bound to `game` (role split, last-tournament dossier, per-game totals). */
+  children: (game: string, gameProfile: UserProfile) => React.ReactNode;
+}) => {
+  const { user, profile } = await userAndProfile;
+  if (view.game !== null) return children(view.game, profile);
+  const game = blockGameOf(profile.games, view.init);
+  if (game === null) return <UserProfileEmpty name={user.name} />;
+  const tabs = (
+    <ProfileGameTabs
+      initial={view.init}
+      games={orderPlayerGames(profile.games, view.init).map((entry) => entry.discipline)}
+    />
+  );
+  let gameProfile: UserProfile;
+  try {
+    gameProfile = await userService.getUserProfile(user.id, game, view.scope);
+  } catch (error) {
+    if (!isDivisionGridRequired(error)) throw error;
+    return (
+      <>
+        {tabs}
+        <UsersMissingGrid discipline={game} gameName={gameNameOf(view, game)} axis={view.axis} />
+      </>
+    );
+  }
+  return (
+    <>
+      {tabs}
+      {children(game, gameProfile)}
     </>
   );
 };
@@ -155,72 +230,120 @@ const UserHeaderSection = async ({
 const UserOverviewTab = async ({
   userAndProfile,
   tournamentId,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
   tournamentId?: number;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
-  const { user, profile } = await userAndProfile;
-  return <UserOverviewPage user={user} profile={profile} tournamentId={tournamentId} {...profileScope} />;
+  const { user } = await userAndProfile;
+  return (
+    <PerGameTab userAndProfile={userAndProfile} view={view}>
+      {(game, gameProfile) => (
+        <UserOverviewPage
+          user={user}
+          profile={gameProfile}
+          tournamentId={tournamentId}
+          scope={view.scope}
+          discipline={game}
+          axis={view.axis}
+        />
+      )}
+    </PerGameTab>
+  );
 };
 
 const UserTournamentsTab = async ({
   userAndProfile,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
   const { user, profile } = await userAndProfile;
-  return <UserTournamentsPage user={user} profile={profile} {...profileScope} />;
+  return (
+    <UserTournamentsPage
+      user={user}
+      profile={profile}
+      scope={view.scope}
+      discipline={view.game}
+      showGames={view.game === null}
+    />
+  );
 };
 
 const UserMatchesTab = async ({
   userAndProfile,
   page,
   filters,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
   page: number;
   filters?: MatchesFilters;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
-  const { user } = await userAndProfile;
-  return <UserEncountersPage user={user} page={page} filters={filters} {...profileScope} />;
+  const { user, profile } = await userAndProfile;
+  // The list spans every game; its summary sidebars are one game's, picked like the per-game tabs.
+  const summaryGame = view.game ?? blockGameOf(profile.games, view.init);
+  return (
+    <UserEncountersPage
+      user={user}
+      page={page}
+      filters={filters}
+      scope={view.scope}
+      discipline={view.game}
+      summaryGame={summaryGame}
+      sidebarTabs={
+        view.game === null ? (
+          <ProfileGameTabs
+            initial={view.init}
+            games={orderPlayerGames(profile.games, view.init).map((entry) => entry.discipline)}
+          />
+        ) : null
+      }
+    />
+  );
 };
 
 const UserMapsTab = async ({
   userAndProfile,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
   const { user } = await userAndProfile;
-  return <UserMapsPage user={user} {...profileScope} />;
+  return (
+    <PerGameTab userAndProfile={userAndProfile} view={view}>
+      {(game) => <UserMapsPage user={user} scope={view.scope} discipline={game} axis={view.axis} />}
+    </PerGameTab>
+  );
 };
 
 const UserHeroesTab = async ({
   userAndProfile,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
   const { user } = await userAndProfile;
-  return <UserHeroesPage user={user} {...profileScope} />;
+  return (
+    <PerGameTab userAndProfile={userAndProfile} view={view}>
+      {(game) => <UserHeroesPage user={user} scope={view.scope} discipline={game} axis={view.axis} />}
+    </PerGameTab>
+  );
 };
 
 const UserAchievementsTab = async ({
   userAndProfile,
   selectedTournamentId,
-  profileScope
+  view
 }: {
   userAndProfile: Promise<UserAndProfile>;
   selectedTournamentId?: string;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
   const { user, profile } = await userAndProfile;
   return (
@@ -228,8 +351,9 @@ const UserAchievementsTab = async ({
       user={user}
       tournaments={profile.tournaments}
       selectedTournamentId={selectedTournamentId}
-      scope={profileScope.scope}
-      discipline={profileScope.discipline}
+      scope={view.scope}
+      discipline={view.game ?? undefined}
+      showGames={view.game === null}
     />
   );
 };
@@ -241,7 +365,7 @@ const resolveTabContent = ({
   pageNumber,
   achievementTournamentId,
   matchFilters,
-  profileScope
+  view
 }: {
   activeTab: UserTab;
   userAndProfile: Promise<UserAndProfile>;
@@ -249,51 +373,40 @@ const resolveTabContent = ({
   pageNumber: number;
   achievementTournamentId?: string;
   matchFilters?: MatchesFilters;
-  profileScope: ProfileScope;
+  view: ProfileView;
 }) => {
   switch (activeTab) {
     case "overview":
       return {
         value: "overview",
         fallback: <UserOverviewPageSkeleton />,
-        content: (
-          <UserOverviewTab
-            userAndProfile={userAndProfile}
-            tournamentId={tournamentId}
-            profileScope={profileScope}
-          />
-        )
+        content: <UserOverviewTab userAndProfile={userAndProfile} tournamentId={tournamentId} view={view} />
       };
     case "tournaments":
       return {
         value: "tournaments",
         fallback: <UserTournamentsPageSkeleton />,
-        content: <UserTournamentsTab userAndProfile={userAndProfile} profileScope={profileScope} />
+        content: <UserTournamentsTab userAndProfile={userAndProfile} view={view} />
       };
     case "matches":
       return {
         value: "matches",
         fallback: <UserEncountersPageSkeleton />,
         content: (
-          <UserMatchesTab
-            userAndProfile={userAndProfile}
-            page={pageNumber}
-            filters={matchFilters}
-            profileScope={profileScope}
-          />
+          <UserMatchesTab userAndProfile={userAndProfile} page={pageNumber} filters={matchFilters} view={view} />
         )
       };
     case "maps":
       return {
         value: "maps",
         fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
-        content: <UserMapsTab userAndProfile={userAndProfile} profileScope={profileScope} />
+        content: <UserMapsTab userAndProfile={userAndProfile} view={view} />
       };
     case "heroes":
       return {
         value: "heroes",
         fallback: <Skeleton className="min-h-150 w-full rounded-xl" />,
-        content: <UserHeroesTab userAndProfile={userAndProfile} profileScope={profileScope} />
+        content: <UserHeroesTab userAndProfile={userAndProfile} view={view} />
       };
     case "achievements":
       return {
@@ -303,7 +416,7 @@ const resolveTabContent = ({
           <UserAchievementsTab
             userAndProfile={userAndProfile}
             selectedTournamentId={achievementTournamentId}
-            profileScope={profileScope}
+            view={view}
           />
         )
       };
@@ -311,17 +424,18 @@ const resolveTabContent = ({
 };
 
 /**
- * The profile body: either the tab strip (with its count badges) or — for a
- * player with no tournament history — the single empty-career panel. Both
- * branches need the resolved profile, so they share one Suspense boundary.
+ * The profile body: the tab strip (with its count badges), or — for a player with no tournament in view — one
+ * panel: the empty career under "all games", "{player} never played {game}" under a game (spec §6.6).
  */
 const ProfileBody = async ({
   userAndProfile,
   activeTab,
+  view,
   children
 }: {
   userAndProfile: Promise<UserAndProfile>;
   activeTab: UserTab;
+  view: ProfileView;
   children: React.ReactNode;
 }) => {
   const { user, profile } = await userAndProfile;
@@ -329,21 +443,21 @@ const ProfileBody = async ({
   // Any tournament at all — including a league or one still in progress, whose
   // final placement (and therefore `tournaments_count`) does not exist yet.
   if (profile.tournaments.length === 0) {
-    return <UserProfileEmpty name={user.name} />;
+    return view.game === null ? (
+      <UserProfileEmpty name={user.name} />
+    ) : (
+      <ProfileNotPlayed player={user.name} game={gameNameOf(view, view.game)} />
+    );
   }
-
-  const charactersCount = profile.characters_count;
-  const tournamentsCount = profile.tournaments_count ?? null;
-  // Maps badge: not always available — approximate via maps_total
-  const mapsTotal = profile.maps_total ?? null;
 
   return (
     <UserTabsClient
       activeTab={activeTab}
       badges={{
-        tournaments: tournamentsCount,
-        heroes: charactersCount,
-        maps: mapsTotal
+        tournaments: profile.tournaments_count ?? null,
+        // Characters are one game's: no count across games.
+        heroes: view.game === null ? null : profile.characters_count,
+        maps: profile.maps_total ?? null
       }}
     >
       {children}
@@ -352,27 +466,31 @@ const ProfileBody = async ({
 };
 
 /**
- * The profile, or — when the viewed axis has no division grid for the game (the server's `division_grid_required`)
- * — the missing-grid notice in its place: the header and every tab read through the same refused context.
+ * The profile, or — when the viewed axis has no division grid for the page's game (the server's
+ * `division_grid_required`) — the missing-grid notice in its place. The cross-game profile reads no grid.
  */
 const ProfileOrMissingGrid = async ({
   userAndProfile,
-  profileScope,
-  gameName,
+  gameMetadata,
+  view,
   children
 }: {
   userAndProfile: Promise<UserAndProfile>;
-  profileScope: ProfileScope;
-  gameName: string;
+  gameMetadata: ReturnType<typeof loadProfileGameMetadata>;
+  view: ProfileView;
   children: React.ReactNode;
 }) => {
   try {
     await userAndProfile;
   } catch (error) {
-    if (!isDivisionGridRequired(error)) throw error;
-    return <UsersMissingGrid discipline={profileScope.discipline} gameName={gameName} axis={profileScope.axis} />;
+    if (!isDivisionGridRequired(error) || view.game === null) throw error;
+    return <UsersMissingGrid discipline={view.game} gameName={gameNameOf(view, view.game)} axis={view.axis} />;
   }
-  return children;
+  return (
+    <ProfileGameData axis={view.axis} metadata={await gameMetadata}>
+      {children}
+    </ProfileGameData>
+  );
 };
 
 export default async function UserPage({
@@ -384,18 +502,24 @@ export default async function UserPage({
 }>) {
   const resolvedParams = await params;
   const resolvedSearchParams = await searchParams;
-  const [scope, browsing] = await Promise.all([
+  const [scope, page] = await Promise.all([
     resolveStatsScope(),
-    resolveServerBrowsingDiscipline(resolvedSearchParams.discipline)
+    resolveServerPageGame("multi", resolvedSearchParams.discipline)
   ]);
-  // Without the installed games there is no game to read: an error, never a guessed one.
-  if (browsing.resolved === null) throw new Error("The installed games could not be read.");
-  if (browsing.resolved.kind !== "concrete") {
-    // Invalid/empty: the named value and the selector stand in for the profile; no game request is made.
-    return <ServerBrowsingDiscipline initial={browsing.init} />;
+  // Without the installed games there is no scope to read: an error, never a guessed one.
+  if (page.resolution === null) throw new Error("The installed games could not be read.");
+  const kind = page.resolution.game.kind;
+  if (kind === "invalid" || kind === "empty") {
+    return <ProfileScopeUnavailable initial={page.init} />;
   }
-  const profileScope: ProfileScope = { scope, discipline: browsing.resolved.code, axis: browsing.init.axis };
-  const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, profileScope.discipline);
+  const view: ProfileView = {
+    scope,
+    game: page.resolution.game.kind === "game" ? page.resolution.game.code : null,
+    axis: page.init.axis,
+    init: page.init
+  };
+  const userAndProfile = getUserAndProfile(resolvedParams.slug, scope, view.game);
+  const gameMetadata = loadProfileGameMetadata(view);
 
   const requestedTab = resolvedSearchParams.tab ?? "overview";
   const activeTab: UserTab = isUserTab(requestedTab) ? requestedTab : "overview";
@@ -407,7 +531,8 @@ export default async function UserPage({
   const matchFilters: MatchesFilters = {
     result: mResult === "win" || mResult === "loss" || mResult === "draw" ? mResult : undefined,
     stage: mStage === "group" || mStage === "playoffs" || mStage === "finals" ? mStage : undefined,
-    mvp1: mMvp1 === "1",
+    // MVP is one game's fact: no MVP filter across games.
+    mvp1: view.game !== null && mMvp1 === "1",
     hasLogs: mLogs === "1",
     opponent: mOpp || undefined
   };
@@ -418,56 +543,45 @@ export default async function UserPage({
     pageNumber,
     achievementTournamentId,
     matchFilters,
-    profileScope
+    view
   });
-  const gameName =
-    browsing.init.disciplines?.find((entry) => entry.code === profileScope.discipline)?.name ?? profileScope.discipline;
   return (
-    <>
-      <div className="flex justify-end">
-        <ServerBrowsingDiscipline initial={browsing.init} />
-      </div>
-      <Suspense
-        fallback={
-          <>
-            <UserHeaderSkeleton />
+    <Suspense
+      fallback={
+        <>
+          <UserHeaderSkeleton />
+          <UserTabsClient activeTab={activeTab}>
+            <TabsContent value={tabContent.value} className="mt-0">
+              {tabContent.fallback}
+            </TabsContent>
+          </UserTabsClient>
+        </>
+      }
+    >
+      <ProfileOrMissingGrid userAndProfile={userAndProfile} gameMetadata={gameMetadata} view={view}>
+        <Suspense fallback={<UserHeaderSkeleton />}>
+          <UserHeaderSection userAndProfile={userAndProfile} slug={resolvedParams.slug} view={view} />
+        </Suspense>
+        <Suspense
+          fallback={
             <UserTabsClient activeTab={activeTab}>
-              <TabsContent value={tabContent.value} className="mt-0">
-                {tabContent.fallback}
-              </TabsContent>
-            </UserTabsClient>
-          </>
-        }
-      >
-        <ProfileOrMissingGrid userAndProfile={userAndProfile} profileScope={profileScope} gameName={gameName}>
-          <Suspense fallback={<UserHeaderSkeleton />}>
-            <UserHeaderSection
-              userAndProfile={userAndProfile}
-              slug={resolvedParams.slug}
-              profileScope={profileScope}
-            />
-          </Suspense>
-          <Suspense
-            fallback={
-              <UserTabsClient activeTab={activeTab}>
-                <Suspense fallback={tabContent.fallback}>
-                  <TabsContent value={tabContent.value} className="mt-0">
-                    {tabContent.content}
-                  </TabsContent>
-                </Suspense>
-              </UserTabsClient>
-            }
-          >
-            <ProfileBody userAndProfile={userAndProfile} activeTab={activeTab}>
               <Suspense fallback={tabContent.fallback}>
                 <TabsContent value={tabContent.value} className="mt-0">
                   {tabContent.content}
                 </TabsContent>
               </Suspense>
-            </ProfileBody>
-          </Suspense>
-        </ProfileOrMissingGrid>
-      </Suspense>
-    </>
+            </UserTabsClient>
+          }
+        >
+          <ProfileBody userAndProfile={userAndProfile} activeTab={activeTab} view={view}>
+            <Suspense fallback={tabContent.fallback}>
+              <TabsContent value={tabContent.value} className="mt-0">
+                {tabContent.content}
+              </TabsContent>
+            </Suspense>
+          </ProfileBody>
+        </Suspense>
+      </ProfileOrMissingGrid>
+    </Suspense>
   );
 }

@@ -6,9 +6,11 @@ import { useFormatter } from "@/lib/datetime/client";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { EncountersDataTable, FULL_ENCOUNTER_COLUMNS } from "@/components/EncountersTable";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
-import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { useGameScope } from "@/hooks/useGameScope";
+import { ALL_DISCIPLINES, showsGameMarks, type GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 import Loading from "../loading";
@@ -31,18 +33,20 @@ import styles from "./Encounters.module.css";
 
 type EncountersClientProps = {
   seed: EncountersSeed | null;
-  initial: BrowsingDisciplineInit;
+  initial: GameScopeInit;
   initialFilters: EncounterFilterState;
   initialPage: number;
   initialError?: string | null;
   scope: StatsScope;
 };
 
+/** The URL params of one game's tournament/stage: a game picked in the scope pill drops them (ruling R5). */
+const GAME_SCOPED_PARAMS = Object.keys(GAME_SCOPED_FILTERS);
+
 /**
- * The encounters index of one game (§2.3 concrete browsing). Filter/URL state and
- * the reads it drives live in `useEncountersFilters` / `useEncountersData`;
- * everything below is layout plus the one piece of state neither owns — which
- * page of the list is on screen.
+ * The encounters index (spec §5, multi): every game under "all games", one game under a game. Filter/URL state and
+ * the reads it drives live in `useEncountersFilters` / `useEncountersData`; everything below is layout plus the one
+ * piece of state neither owns — which page of the list is on screen.
  */
 export default function EncountersClient({
   seed,
@@ -54,13 +58,17 @@ export default function EncountersClient({
 }: Readonly<EncountersClientProps>) {
   const t = useTranslations();
   const format = useFormatter();
-  const browsing = useBrowsingDiscipline({ allowsAll: false, initial });
-  const { resolved, disciplines } = browsing;
-  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
-  const controls = useEncountersFilters(initialFilters, initialPage, discipline);
+  const gameScope = useGameScope({ initial });
+  useGameBoundParams(GAME_SCOPED_PARAMS);
+  const { resolution } = gameScope;
+  const discipline = gameScope.game;
+  const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
+  const unavailable = resolution?.game.kind === "invalid" || resolution?.game.kind === "empty";
+  // "all" or the game once readable, `null` otherwise: another game drops the game-bound filters and returns to the
+  // first page; leaving an unavailable state reads them from the URL again.
+  const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : null;
+  const controls = useEncountersFilters(initialFilters, initialPage, gameKey, unavailable);
   const { effectiveFilters, page } = controls;
-  // The pushed URL already leaves the old game's tournament/stage behind, as the filter state does.
-  const selectGame = (value: string) => browsing.select(value, { dropParams: Object.keys(GAME_SCOPED_FILTERS) });
   const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
     seed,
     initialFilters,
@@ -68,8 +76,11 @@ export default function EncountersClient({
     effectiveFilters,
     page,
     scope,
-    discipline
+    discipline,
+    enabled: ready
   });
+  const descriptors = useGameDescriptors();
+  const marks = resolution !== null && showsGameMarks(resolution, gameScope.games ?? []) ? descriptors : undefined;
 
   const overview = overviewQuery.data ?? EMPTY_OVERVIEW;
   const rows = listQuery.data?.results ?? [];
@@ -79,14 +90,12 @@ export default function EncountersClient({
   const showingStart = rows.length ? (page - 1) * ENCOUNTERS_PAGE_SIZE + 1 : 0;
   const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, total);
 
-  if ((resolved?.kind === "invalid" || resolved?.kind === "empty") && disciplines) {
-    return (
-      <DisciplineUnavailable resolved={resolved} disciplines={disciplines} allowsAll={false} onSelect={selectGame} />
-    );
+  if (unavailable) {
+    return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_SCOPED_PARAMS} />;
   }
-  if (discipline === null) {
-    return browsing.isError ? (
-      <PageStateCard state="error" description={t("common.loadError")} onAction={browsing.refetch} />
+  if (!ready) {
+    return gameScope.isError ? (
+      <PageStateCard state="error" description={t("common.loadError")} onAction={gameScope.refetch} />
     ) : (
       <Loading />
     );
@@ -109,17 +118,13 @@ export default function EncountersClient({
         rows={rows}
         columns={FULL_ENCOUNTER_COLUMNS}
         loading={listQuery.isFetching && !rows.length}
+        games={marks}
       />
     );
   };
 
   return (
     <div className={styles.surface}>
-      {disciplines ? (
-        <div className="flex justify-end">
-          <DisciplineSelector disciplines={disciplines} value={discipline} allowsAll={false} onSelect={selectGame} />
-        </div>
-      ) : null}
       <EncountersHero overview={overview} />
 
       {initialError ? (
@@ -144,6 +149,7 @@ export default function EncountersClient({
         searchValue={controls.searchValue}
         kpis={overview.kpis}
         tournaments={tournamentsLookupQuery.data ?? []}
+        gameBound={discipline !== null}
         onSearchChange={controls.setSearchValue}
         onPatch={controls.patchFilters}
       />

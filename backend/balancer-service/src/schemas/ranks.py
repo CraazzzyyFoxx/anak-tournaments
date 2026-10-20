@@ -65,6 +65,7 @@ class RankContext(BaseModel):
 
 class RankOverviewRow(BaseModel):
     layer: RankLayer
+    discipline: str = Field(description="The row's game: one code, or every enabled game's rows without a filter.")
     player_id: int = Field(description="players.user id -- the identity /admin/people/[id] is keyed by.")
     member_id: int = Field(description="workspace_member id.")
     display_name: str | None = None
@@ -77,7 +78,10 @@ class RankOverviewRow(BaseModel):
     author_name: str | None = None
     role: str | None = Field(default=None, description="Role code; casual rows may also name an open slot.")
     rank_value: int
-    division: int | None = Field(default=None, description="Resolved on the workspace's effective grid.")
+    division: int | None = Field(
+        default=None,
+        description="Resolved on the workspace's effective grid of the row's game; null when the game has none here.",
+    )
     source: RankSource | None = Field(default=None, description="effective_* only: which layer won.")
     sigma: float | None = Field(default=None, description="hidden only.")
     delta: int | None = Field(default=None, description="casual only: how far the match moved this seat.")

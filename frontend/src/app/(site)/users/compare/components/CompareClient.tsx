@@ -13,22 +13,30 @@ import { useUserCompareData } from "@/app/(site)/users/compare/hooks/useUserComp
 import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { isDivisionGridRequired } from "@/lib/api/error";
+import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 const colorOf = (entity: { attrs: Record<string, unknown> } | undefined) =>
   typeof entity?.attrs.color === "string" ? entity.attrs.color : undefined;
 const imageOf = (entity: { image_path: string | null } | undefined) => entity?.image_path ?? undefined;
 
-const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+/** The URL ids and filters of one game: a tab or a pill pick of another game leaves them behind (spec §4.4, R5). */
+const COMPARE_GAME_PARAMS = ["role", "div_min", "div_max", "tournament_id", "left_hero_id", "right_hero_id", "map_id"];
+
+const PageContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: GameScopeInit }>) => {
   const t = useTranslations();
   const compareParams = useUserCompareSearchParams();
-  const browsing = useBrowsingDiscipline({ allowsAll: false });
-  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
-  const roleMetadata = useDisciplineMetadata(browsing.axis, discipline);
+  // A single page (spec §4.3): the scope's game, else `?discipline=` / the last game / the first game with local tabs.
+  // The server's inputs drive the first render, so the tabs it draws are the ones the browser hydrates.
+  const gameScope = useGameScope({ pageClass: "single", initial });
+  useGameBoundParams(COMPARE_GAME_PARAMS);
+  const discipline = gameScope.game;
+  const roleMetadata = useDisciplineMetadata(gameScope.axis, discipline);
 
   const {
     compareQuery,
@@ -92,34 +100,24 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
       : undefined
     : compareQuery.data;
   const sampleSize = activeData?.baseline.sample_size;
-  const gameName = browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? "";
+  const gameName = gameScope.games?.find((entry) => entry.code === discipline)?.name ?? discipline ?? "";
   const retryActiveQuery = () => {
     void (compareParams.isHeroScope ? heroCompareQuery.refetch() : compareQuery.refetch());
   };
 
-  if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
+  if (gameScope.resolution?.game.kind === "invalid" || gameScope.resolution?.game.kind === "empty") {
     return (
       <div className="aqt-player space-y-3.5">
-        <DisciplineUnavailable
-          resolved={browsing.resolved}
-          disciplines={browsing.disciplines ?? []}
-          allowsAll={false}
-          onSelect={browsing.select}
-        />
+        <GameScopeControl scope={gameScope} variant="single" dropParams={COMPARE_GAME_PARAMS} />
       </div>
     );
   }
 
   return (
     <div className="aqt-player space-y-3.5">
-      {browsing.disciplines ? (
+      {gameScope.resolution?.tabs ? (
         <div className="flex justify-end">
-          <DisciplineSelector
-            disciplines={browsing.disciplines}
-            value={discipline ?? undefined}
-            allowsAll={false}
-            onSelect={browsing.select}
-          />
+          <GameScopeControl scope={gameScope} variant="single" dropParams={COMPARE_GAME_PARAMS} />
         </div>
       ) : null}
       <ComparePageHero
@@ -243,9 +241,9 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   );
 };
 
-const CompareClient = ({ scope }: Readonly<{ scope: StatsScope }>) => (
+const CompareClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: GameScopeInit }>) => (
   <Suspense fallback={null}>
-    <PageContent scope={scope} />
+    <PageContent scope={scope} initial={initial} />
   </Suspense>
 );
 

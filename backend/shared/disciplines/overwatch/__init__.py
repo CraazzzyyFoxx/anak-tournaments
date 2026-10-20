@@ -227,4 +227,5 @@ SPEC = DisciplineSpec(
     analytics=_analytics,
     pick_ban_presets=_pick_ban_presets,
     balancer_role_settings=BALANCER_ROLE_SETTINGS,
+    short_name="OW",
 )

@@ -37,7 +37,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.disciplines.list": {
         "summary": "List installed disciplines",
-        "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
+        "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). Order: declaration order for `all`; for a workspace, its enabled disciplines first in its own `disciplines_enabled` order, then the rest in declaration order. 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
     },
     "rpc.app.disciplines.metadata": {
         "summary": "Get a discipline's native metadata",
@@ -58,15 +58,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.statistics.champion": {
         "summary": "Most-champion players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
     "rpc.app.statistics.winrate": {
         "summary": "Top winrate players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
     "rpc.app.statistics.won_maps": {
         "summary": "Top won-maps players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
     "rpc.app.statistics.tournament_readiness": {
         "summary": "Tournament readiness checklist",
@@ -86,7 +86,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.get_profile": {
         "summary": "User profile",
-        "description": "Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.",
+        "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.",
     },
     "rpc.app.users.draft_card": {
         "summary": "User draft card",
@@ -102,7 +102,10 @@ DOCS: dict[str, dict] = {
             "Permission: public; no authentication required. Returns a paginated, workspace-normalized "
             "player overview table built from the workspace grid. `workspace_id=all` reads across every "
             "workspace instead: divisions are then resolved on each row's own tournament grid and every "
-            "referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400."
+            "referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional "
+            "`discipline` narrows every aggregate to one game; without it the aggregates span every game, "
+            "`roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires "
+            "discipline`). Every row lists the games the player played in `disciplines`."
         ),
     },
     "rpc.app.users.overview_stats": {
@@ -110,15 +113,19 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: public; no authentication required. Returns aggregate statistics for the "
             "players-overview table computed against the workspace grid, or across every workspace "
-            "(each row on its own tournament grid) with `workspace_id=all`."
+            "(each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` "
+            "the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and "
+            "`division_counts` are empty; `role`/`divisions` are then a 422."
         ),
     },
     "rpc.app.users.overview_catalog": {
         "summary": "Users overview catalog",
         "description": (
-            "Permission: public; no authentication required. Returns the filter-catalog (facets) for the "
+            "Permission: public; no authentication required. Returns the A-Z player catalog for the "
             "players-overview table from the workspace grid, or across every workspace with "
-            "`workspace_id=all` (see `division_grids`)."
+            "`workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every "
+            "game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` "
+            "are then a 422."
         ),
     },
     "rpc.app.users.compare": {
@@ -147,7 +154,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.tournaments": {
         "summary": "User tournaments",
-        "description": "Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.",
+        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.",
     },
     "rpc.app.users.tournament": {
         "summary": "User tournament stats",
@@ -171,7 +178,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.encounters": {
         "summary": "User encounters",
-        "description": "Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.",
+        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.",
     },
     "rpc.app.users.matches_summary": {
         "summary": "User matches summary",

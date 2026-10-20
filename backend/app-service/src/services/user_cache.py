@@ -26,13 +26,13 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     "user_draft_card",
     "user_tournaments",
     # Versioned in the prefix, like the compare namespaces: these embed ``MatchReadWithUserStats`` (native match
-    # header + viewer facts) of one discipline, or (tournament stats) the owner workspace/game, and a pickle of an
-    # older shape must sit under a name no reader asks for. The version stays a part of the prefix so the
-    # subject's id is still the first component after it (``{prefix}:{user_id}:*``).
+    # header + viewer facts) of one discipline and the encounter's own `discipline`, or (tournament stats) the owner
+    # workspace/game, and a pickle of an older shape must sit under a name no reader asks for. The version stays a
+    # part of the prefix so the subject's id is still the first component after it (``{prefix}:{user_id}:*``).
     "user_tournament_stats:v2",
-    "user_tournament_encounters:v5",
+    "user_tournament_encounters:v6",
     "user_characters",
-    "user_encounters:v5",
+    "user_encounters:v6",
     "user_maps",
     "user_teammates",
     "user_matches_summary",

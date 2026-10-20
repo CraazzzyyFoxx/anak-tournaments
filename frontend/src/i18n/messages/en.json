@@ -218,10 +218,8 @@
       "invalidTitle": "Unknown game selection",
       "invalid": {
         "unknown": "\"{requested}\" is not an installed game.",
-        "disabled": "\"{requested}\" is not enabled for this workspace.",
-        "all-not-supported": "This page shows one game at a time; \"All games\" is not available here."
+        "disabled": "\"{requested}\" is not enabled for this workspace."
       },
-      "invalidAction": "Choose one of the available games below.",
       "emptyTitle": "No games available",
       "empty": "No game is enabled for this scope yet.",
       "widgetUnsupported": "This game does not support this feature.",
@@ -230,7 +228,28 @@
       "gridMissing": "This game has no usable division grid in this workspace, so ranks cannot be resolved.",
       "gridMissingAction": "Create or select a {game} division grid",
       "gridMissingOrganizer": "Ask a workspace organizer to publish and activate a {game} division grid.",
-      "gridMissingAcross": "{game} has no usable division grid across communities, so ranks cannot be resolved here. Choose a community to see its {game} ranks."
+      "gridMissingAcross": "{game} has no usable division grid across communities, so ranks cannot be resolved here. Choose a community to see its {game} ranks.",
+      "scopeSuffix": "— change scope",
+      "filterHint": "Some filters need a game",
+      "areaNote": "{game} isn't played in this community — showing all games",
+      "ownerLock": {
+        "tournament": "Game set by this tournament: {game}",
+        "match": "Game set by this match: {game}",
+        "encounter": "Game set by this encounter: {game}",
+        "draft": "Game set by this draft: {game}",
+        "scrim": "Game set by this scrim: {game}",
+        "mix": "Game set by this mix: {game}",
+        "grid": "Game set by this division grid: {game}",
+        "template": "Game set by this template: {game}",
+        "subRole": "Game set by this sub-role: {game}",
+        "rule": "Game set by this rule: {game}"
+      },
+      "noneNote": "This page doesn't depend on the game",
+      "pickGameAction": "Pick a game in the scope filter",
+      "showAll": "Show all games",
+      "notPlayed": "{player} hasn't played {game}",
+      "field": "Game",
+      "column": "Game"
     },
     "divisionWithId": "Division {id}",
     "anyDivision": "Any division",
@@ -5385,6 +5404,7 @@
         "topHeroes": "Characters",
         "details": "Details",
         "encounters": "{count, plural, one {# encounter} other {# encounters}}",
+        "mapsRecord": "maps {won}–{lost}",
         "noLogs": "no logs",
         "neverPlayed": "no tournaments"
       },
@@ -5650,7 +5670,6 @@
       "playerLabel": "Player:"
     },
     "workspaces": "Communities",
-    "switchWorkspace": "Filter by community",
     "allWorkspaces": "All communities",
     "createWorkspace": "Create a community",
     "viewingScope": "Viewing scope",
@@ -10299,13 +10318,15 @@
       "empty": "No sub-roles yet.",
       "deactivate": "Deactivate {name}",
       "restore": "Restore {name}",
-      "addPlaceholder": "Add a {role} sub-role",
       "nameLabel": "{role} sub-role name",
-      "add": "Add",
       "deactivationNote": "Deactivating a sub-role hides it from every picker but keeps it on the players already assigned to it. Which of these a specific tournament offers is chosen in that tournament's registration form.",
       "presentation": "Icon and color of {name}",
       "inactive": "Inactive",
-      "rolesLabel": "Roles"
+      "rolesLabel": "Roles",
+      "create": "New sub-role",
+      "parentRole": "Parent role",
+      "labelField": "Name",
+      "backToAll": "Every game's sub-roles"
     },
     "registrationForms": {
       "toast": {
@@ -12089,7 +12110,6 @@
     },
     "sidebar": {
       "returnToSite": "Return to site",
-      "workspace": "Workspace",
       "roles": {
         "superuser": "Superuser",
         "admin": "Admin",

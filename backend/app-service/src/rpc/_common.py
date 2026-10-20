@@ -2,8 +2,8 @@
 
 Re-exports ``shared.rpc.common`` — the gateway envelope/param-decoding
 plumbing is identical across every typed-RPC service and lives there as the
-single source of truth. ``require_discipline`` and ``gate_tournament`` (which
-wraps ``shared.services.tournament.visibility``) are app-service local.
+single source of truth. ``require_discipline``/``optional_discipline`` and ``gate_tournament``
+(which wraps ``shared.services.tournament.visibility``) are app-service local.
 """
 
 from __future__ import annotations
@@ -55,10 +55,24 @@ __all__ = (
     "require_query_int",
     "dump",
     "require_discipline",
+    "optional_discipline",
     "envelope",
 )
 
 envelope = partial(_envelope, service="app")
+
+
+#: ``?discipline=all`` (old links, an explicit "every game") reads as no parameter (spec §4.1).
+_ALL = "all"
+
+
+def _installed(raw: str) -> str:
+    if raw not in DISCIPLINES:
+        raise ApiHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {raw!r} is not installed")],
+        )
+    return raw
 
 
 def require_discipline(data: dict[str, Any], *, in_path: bool = False) -> str:
@@ -70,12 +84,19 @@ def require_discipline(data: dict[str, Any], *, in_path: bool = False) -> str:
     raw = data.get("discipline") if in_path else q1(data, "discipline", str, None)
     if not isinstance(raw, str) or not raw.strip():
         raise HTTPException(status_code=422, detail="discipline is required")
-    if raw not in DISCIPLINES:
-        raise ApiHTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {raw!r} is not installed")],
-        )
-    return raw
+    return _installed(raw)
+
+
+def optional_discipline(data: dict[str, Any], *, in_path: bool = False) -> str | None:
+    """A list read's optional game (spec §8.1): absent, empty or ``all`` is every game (``None``).
+
+    Any other value must be an installed game: an unknown code is the same 404 ``discipline_not_installed`` as
+    :func:`require_discipline`, never every game's rows under a bogus label.
+    """
+    raw = data.get("discipline") if in_path else q1(data, "discipline", str, None)
+    if not isinstance(raw, str) or not raw.strip() or raw == _ALL:
+        return None
+    return _installed(raw)
 
 
 async def gate_tournament(session: Any, data: dict[str, Any], tournament_id: int | None) -> None:

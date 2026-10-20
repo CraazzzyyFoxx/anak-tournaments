@@ -185,7 +185,7 @@ class UserProfileQueries(DisciplineQueries):
     async def get_overall_statistics(
         self, session: AsyncSession, user_id: int, workspace_id: int | None = None
     ) -> tuple[int, int, int]:
-        """A user's ``(maps won, maps lost, average encounter closeness)`` across this game's
+        """A user's ``(maps won, maps lost, average encounter closeness)`` across this game's (or, unbound, every game's)
         tournaments, or the workspace's tournaments of this game when ``workspace_id`` is given.
         """
 
@@ -208,7 +208,7 @@ class UserProfileQueries(DisciplineQueries):
         )
         q = seat.join(q, models.Team.id)
         q = q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
-            models.Tournament.discipline == self.discipline
+            *self.discipline_filter(models.Tournament.discipline)
         )
         if workspace_id is not None:
             q = q.where(models.Tournament.workspace_id == workspace_id)
@@ -252,7 +252,7 @@ class UserProfileQueries(DisciplineQueries):
             sa.select(sa.func.count(sa.distinct(models.Team.id)))
             .join(models.Player, models.Player.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(sa.and_(*scope))
         )
@@ -262,7 +262,7 @@ class UserProfileQueries(DisciplineQueries):
             .options(*_team_load_options(params.entities))
             .join(models.Player, models.Player.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(sa.and_(*scope))
         )
@@ -390,7 +390,7 @@ class UserProfileQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id == user_id,
@@ -431,7 +431,7 @@ class UserProfileQueries(DisciplineQueries):
             )
             .join(agg, agg.c.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             # Newest event first; undated (legacy) tournaments last, by id.
             .order_by(models.Tournament.start_date.desc().nulls_last(), models.Tournament.id.desc())
         )

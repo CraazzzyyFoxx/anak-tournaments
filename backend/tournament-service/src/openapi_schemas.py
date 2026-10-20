@@ -133,7 +133,7 @@ OPERATIONS: dict[str, Op] = {
         response_array=True,
         query_params=(
             _WS,
-            QueryParam("discipline", required=True, description="Explicit discipline code."),
+            QueryParam("discipline", description="Installed discipline code; absent: every game's sub-roles."),
             QueryParam("role"),
             QueryParam("include_inactive", "boolean"),
         ),
@@ -271,7 +271,11 @@ OPERATIONS: dict[str, Op] = {
         request=reg_form_schemas.RegistrationFormUpsert, response=reg_form_schemas.RegistrationFormRead
     ),
     "rpc.tournament.regform_template_list": Op(
-        response=reg_form_schemas.RegistrationFormTemplateRead, response_array=True
+        response=reg_form_schemas.RegistrationFormTemplateRead,
+        response_array=True,
+        query_params=(
+            QueryParam("discipline", description="One installed discipline; omitted = every game's templates."),
+        ),
     ),
     "rpc.tournament.regform_template_create": Op(
         request=reg_form_schemas.RegistrationFormTemplateUpsert,

@@ -108,7 +108,8 @@ beforeEach(() => {
     workspaces: [{ id: 1, name: "OWT", disciplines_enabled: ["overwatch", "lol"] }] as never,
     statsScope: "workspace",
     hostLockedWorkspaceId: null,
-    browsingDiscipline: null,
+    gameScope: "all",
+    lastGame: null,
     isLoading: false
   });
 });
@@ -124,7 +125,7 @@ afterEach(() => {
 const rows = (container: ParentNode) => [...container.querySelectorAll("li a")].map((link) => link.textContent ?? "");
 
 describe("mix directory browsing game", () => {
-  it("lists every game under all games and names each row's game", async () => {
+  it("lists every game under all games and marks each row's game", async () => {
     const container = await mountPage("/balancer/mix?discipline=all");
 
     expect(mocks.list).toHaveBeenCalledTimes(1);
@@ -189,5 +190,15 @@ describe("mix directory browsing game", () => {
     await settle();
 
     expect(mocks.create).toHaveBeenCalledWith(1, "lol", expect.any(String), null);
+  });
+
+  it("narrows to the saved game scope without writing the URL, and marks no row", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol" });
+    const container = await mountPage("/balancer/mix");
+
+    expect(mocks.list.mock.calls.map((call) => [call[0], call[1]])).toEqual([[1, "lol"]]);
+    expect(navigation.replaces).toEqual([]);
+    expect(rows(container).join("|")).toContain("Rift night");
+    expect(rows(container).join("|")).not.toContain("League of Legends");
   });
 });

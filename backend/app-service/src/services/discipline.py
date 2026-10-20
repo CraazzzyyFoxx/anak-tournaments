@@ -85,6 +85,8 @@ def _descriptor(spec: DisciplineSpec, *, enabled: bool) -> DisciplineDescriptor:
         kinds=dict(spec.kinds),  # type: ignore[arg-type]  # validated against the catalog kinds
         character_classes=list(spec.character_classes),
         identity_provider=spec.identity_provider,
+        short_name=spec.short_name or spec.name,
+        icon=spec.icon,
         capabilities=DisciplineCapabilities(
             catalog_sync=spec.catalog_sync is not None,
             native_rank_collection="rank.collect" in spec.collection_handlers,
@@ -102,9 +104,13 @@ def _enabled(workspace: models.Workspace | None, code: str) -> bool:
 async def list_disciplines(
     session: AsyncSession, raw_scope: str | None, viewer: AuthUser | None
 ) -> list[DisciplineDescriptor]:
+    """The installed games; for a community, its own games first in its ``disciplines_enabled`` order (spec §2: that
+    order is "the first enabled game" and every tie-break), then the rest in installed order."""
     workspace_id = _scope(raw_scope)
     workspace = None if workspace_id is None else await _visible_workspace(session, workspace_id, viewer)
-    return [_descriptor(spec, enabled=_enabled(workspace, code)) for code, spec in DISCIPLINES.items()]
+    order = {} if workspace is None else {code: index for index, code in enumerate(workspace.disciplines_enabled)}
+    codes = sorted(DISCIPLINES, key=lambda code: order.get(code, len(order)))  # stable: the rest keep installed order
+    return [_descriptor(DISCIPLINES[code], enabled=_enabled(workspace, code)) for code in codes]
 
 
 async def metadata(

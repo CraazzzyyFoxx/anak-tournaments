@@ -25,6 +25,7 @@ __all__ = (
     "UserDraftCardRole",
     "UserDraftCardTournament",
     "UserRole",
+    "UserGameSummary",
     "UserTournamentWithStats",
     "UserTournament",
     "UserTournamentSummary",
@@ -93,6 +94,15 @@ class UserRole(BaseModel):
     division_grid_version: DivisionGridVersionRead | None = None
 
 
+class UserGameSummary(BaseModel):
+    """One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it."""
+
+    discipline: str
+    roles: list[UserRole]
+    tournaments_count: int
+    tournaments_won: int
+
+
 class UserTournamentSummary(BaseModel):
     """Tournament card shown in user profile / achievement filter lists.
 
@@ -102,6 +112,8 @@ class UserTournamentSummary(BaseModel):
 
     id: int
     name: str
+    #: The tournament's game: a cross-game profile tags every card with it.
+    discipline: str
     is_league: bool
     is_finished: bool = False
     status: enums.TournamentStatus | None = None
@@ -226,6 +238,8 @@ class EncounterReadWithUserStats(BaseModel):
     round: int
     best_of: int = 3
     tournament_id: int
+    #: The encounter's game: a cross-game list (spec §6.6) marks each row with it.
+    discipline: str
     status: str
     closeness: float | None = None
     has_logs: bool = False
@@ -398,6 +412,8 @@ class UserProfile(BaseModel):
 
     roles: list[UserRole]
     tournaments: list[UserTournamentSummary]
+    #: Without a game: one summary per game played, most tournaments first (ties: installed order). Empty with one.
+    games: list[UserGameSummary] = Field(default_factory=list)
     character_statistics: list[schemas.CharacterPlaytime]
 
 
@@ -541,6 +557,9 @@ class UserOverviewRow(BaseModel):
     id: int
     name: str
     avatar_url: str | None = None
+    #: The games the player played (installed order), in both modes; a row's mark narrows the scope to one.
+    disciplines: list[str] = Field(default_factory=list)
+    #: Game-bound: empty in the cross-game read (no ``discipline``).
     roles: list[UserOverviewRoleDivision]
     top_characters: list[UserOverviewCharacter]
     tournaments_count: int
@@ -619,7 +638,7 @@ class UserOverviewStats(BaseModel):
     median_tournaments_per_player: float
     active_last_30d: int
     active_last_30d_pct: float
-    #: Distinct players per top-level role code of the game's rated dimension (only codes somebody played).
+    #: Distinct players per top-level role code of the game's rated dimension (only codes somebody played); empty without a game.
     role_counts: dict[str, int] = Field(default_factory=dict)
     flex_count: int
     #: Players with no rated-role assignment, unlike ``flex_count`` which also counts multi-role players.
@@ -639,6 +658,9 @@ class UserCatalogEntry(BaseModel):
     id: int
     name: str
     avatar_url: str | None = None
+    #: The games the player played (installed order), in both modes; a row's mark narrows the scope to one.
+    disciplines: list[str] = Field(default_factory=list)
+    #: Game-bound: empty in the cross-game read (no ``discipline``).
     roles: list[UserOverviewRoleDivision]
     top_characters: list[UserOverviewCharacter]
     tournaments_count: int

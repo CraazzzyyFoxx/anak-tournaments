@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { GameField } from "@/components/workspace/GameField";
 import {
   ACHIEVEMENT_IMAGE_ACCEPT,
   ACHIEVEMENT_IMAGE_PREVIEW_CLASS,
@@ -27,6 +28,7 @@ import type {
   AchievementRuleCreateInput,
   AchievementScope,
 } from "@/types/admin.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import { CATEGORIES, GRAINS, SCOPES } from "../achievement-meta";
 import type { AchievementRuleForm } from "../_hooks/useAchievementRuleForm";
@@ -36,11 +38,14 @@ import { RuleEntityField } from "./RuleEntityField";
 /**
  * Create and edit share one dialog, on the list and on a rule's own page: the
  * fields are the same, and the only difference is that an existing rule's slug
- * is frozen. The game is the rule's own and immutable, so it is stated, not
- * offered. The condition tree is not here — it is edited on the rule's own
- * page, where there is room for it.
+ * is frozen. An existing rule's game is its own and immutable, so it is stated;
+ * a new rule picks it in the game field (spec §7.2). The condition tree is not
+ * here — it is edited on the rule's own page, where there is room for it.
  */
-export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRuleForm }>) {
+export function AchievementFormDialog({
+  form,
+  games = [],
+}: Readonly<{ form: AchievementRuleForm; games?: DisciplineDescriptor[] }>) {
   const t = useTranslations("adminAchievements");
   const {
     open,
@@ -103,9 +108,17 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {discipline && (
+            {discipline && !editingRule && games.length > 1 ? (
+              <GameField
+                id="rule-game"
+                games={games}
+                value={discipline}
+                onChange={form.chooseDiscipline}
+                disabled={isSubmitting}
+              />
+            ) : discipline ? (
               <InspectorField label={t("form.discipline")}>{disciplineLabel(discipline)}</InspectorField>
-            )}
+            ) : null}
             {discipline && (
               <RuleEntityField
                 discipline={discipline}

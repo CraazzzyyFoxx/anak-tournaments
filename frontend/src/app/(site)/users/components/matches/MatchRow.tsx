@@ -9,6 +9,7 @@ import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import MatchRowBadge from "@/components/match/MatchRowBadge";
 import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
+import { GameMarkTag } from "@/components/workspace/GameMarkTag";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { tournamentHref } from "@/lib/tournament/url";
@@ -16,9 +17,10 @@ import { tournamentHref } from "@/lib/tournament/url";
 interface MatchRowProps {
   enc: EncounterWithUserStats;
   selfUserId: number;
+  showGame?: boolean;
 }
 
-const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
+const MatchRow = ({ enc, selfUserId, showGame = false }: MatchRowProps) => {
   const router = useRouter();
   const t = useTranslations();
   const { opponent, userScore, oppScore, kind: scoreKind } = encounterPerspective(enc, selfUserId);
@@ -46,14 +48,17 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
       className="cursor-pointer border-b border-[color:var(--aqt-border)] transition-colors last:border-b-0 hover:bg-[color:var(--aqt-overlay-2)]"
     >
       <td className="px-3.5 py-3">
-        <HoverPrefetchLink
-          href={tournamentHref(enc.tournament_id)}
-          onClick={(e) => e.stopPropagation()}
-          title={tournamentName}
-          className="block max-w-[200px] truncate text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
-        >
-          {tournamentName}
-        </HoverPrefetchLink>
+        <span className="inline-flex max-w-[220px] items-center gap-1.5">
+          {showGame ? <GameMarkTag code={enc.discipline} /> : null}
+          <HoverPrefetchLink
+            href={tournamentHref(enc.tournament_id)}
+            onClick={(e) => e.stopPropagation()}
+            title={tournamentName}
+            className="block max-w-[200px] truncate text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-teal)]"
+          >
+            {tournamentName}
+          </HoverPrefetchLink>
+        </span>
       </td>
       <td className="px-3.5 py-3 text-[color:var(--aqt-fg-dim)]">
         {(enc.stage_item?.name ?? enc.stage?.name)?.trim() || "—"}

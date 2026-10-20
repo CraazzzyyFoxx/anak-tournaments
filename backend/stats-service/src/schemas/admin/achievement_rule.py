@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from src.core import pagination
 
 __all__ = (
@@ -236,7 +237,8 @@ _RULE_SORT = typing.Literal["id", "name", "slug", "category", "enabled", "scope"
 class AchievementRuleListQueryParams(pagination.PaginationSortQueryParams[_RULE_SORT]):
     per_page: int = Field(default=50, ge=-1, le=500)
     sort: _RULE_SORT = "category"
-    discipline: str
+    #: One installed game's rules; absent is every game of the workspace (spec §8.1).
+    discipline: InstalledDisciplineFilter = None
     search: str | None = None
     category: str | None = None
     enabled: bool | None = None
@@ -245,7 +247,7 @@ class AchievementRuleListQueryParams(pagination.PaginationSortQueryParams[_RULE_
 @dataclass
 class AchievementRuleListParams(pagination.PaginationSortParams):
     per_page: int = 50
-    discipline: str = field(kw_only=True)
+    discipline: str | None = None
     search: str | None = None
     category: str | None = None
     enabled: bool | None = None

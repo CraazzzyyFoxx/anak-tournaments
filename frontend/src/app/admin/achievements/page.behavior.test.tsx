@@ -50,7 +50,7 @@ vi.mock("./_components/DryRunResultPanel", () => ({ DryRunResultPanel: () => nul
 // The table is replaced by a probe whose row action opens the evaluate picker for rule 11.
 vi.mock("./_components/AchievementsTable", () => ({
   AchievementsTable: ({ actions }: { actions: { onEvaluate: (rule: never) => void } }) => (
-    <button data-table data-evaluate onClick={() => actions.onEvaluate({ id: 11 } as never)} />
+    <button data-table data-evaluate onClick={() => actions.onEvaluate({ id: 11, discipline: "overwatch" } as never)} />
   ),
 }));
 vi.mock("./_components/EvaluateAchievementsDialog", () => ({
@@ -58,21 +58,8 @@ vi.mock("./_components/EvaluateAchievementsDialog", () => ({
     <div data-evaluate-open data-selected={[...selectedRuleIds].join(",")} />
   ),
 }));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({
-  DisciplineSelector: ({
-    disciplines,
-    onSelect,
-  }: {
-    disciplines: { code: string }[];
-    onSelect: (game: string) => void;
-  }) => (
-    <div>
-      {disciplines.map((game) => (
-        <button key={game.code} data-pick={game.code} onClick={() => onSelect(game.code)} />
-      ))}
-    </div>
-  ),
-  DisciplineUnavailable: ({ resolved }: { resolved: { kind: string } }) => <p data-unavailable={resolved.kind} />,
+vi.mock("@/components/workspace/DisciplineUnavailable", () => ({
+  DisciplineUnavailable: ({ game }: { game: { kind: string } }) => <p data-unavailable={game.kind} />,
 }));
 
 function workspace(id: number, disciplines: string[]): Workspace {
@@ -129,19 +116,22 @@ beforeEach(() => {
     workspaces: [workspace(7, ["overwatch", "lol"]), workspace(8, ["lol"])],
     currentWorkspaceId: 7,
     statsScope: "workspace",
-    browsingDiscipline: null,
+    gameScope: "all",
+    lastGame: null,
     hostLockedWorkspaceId: null,
     entityWorkspaceId: null,
   });
 });
 
 describe("the achievements page keeps each game's drafts to that game", () => {
-  it("drops an evaluate selection made for Overwatch when the game is switched to League", async () => {
+  it("drops an evaluate selection made for Overwatch when the scope moves to League", async () => {
+    useWorkspaceStore.setState({ gameScope: "overwatch" });
     await mount();
     await click("[data-evaluate]");
     expect(evaluateDialog()?.getAttribute("data-selected")).toBe("11");
 
-    await click("[data-pick=lol]");
+    // What the scope pill's game pick writes (C2/C3); the page has no game control of its own any more.
+    await act(async () => useWorkspaceStore.getState().setGameScope("lol"));
 
     expect(evaluateDialog()).toBeNull();
   });

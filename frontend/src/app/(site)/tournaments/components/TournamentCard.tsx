@@ -9,6 +9,8 @@ import { tournamentHref } from "@/lib/tournament/url";
 import { formatDateRange } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
+import { GameLabel } from "@/components/workspace/GameLabel";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { TeamFormation, Tournament } from "@/types/tournament.types";
 
 import { stageProgress } from "./tournaments-helpers";
@@ -55,7 +57,14 @@ const CoverFallback = ({ name }: { name: string }) => (
  * Both images are `alt=""`: the name, dates and counters directly below carry
  * every fact the picture does, so announcing the artwork adds only noise.
  */
-const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
+const TournamentCard = ({
+  tournament,
+  games
+}: {
+  tournament: Tournament;
+  /** Installed games by code, passed only when the list spans several games (spec §6.1). */
+  games?: Map<string, DisciplineDescriptor>;
+}) => {
   const t = useTranslations();
   const format = useFormatter();
   const { variant } = getTournamentStatusMeta(tournament.status);
@@ -138,6 +147,12 @@ const TournamentCard = ({ tournament }: { tournament: Tournament }) => {
             only made the rows uneven. */}
         <p className="aqt-tnum flex flex-wrap items-center gap-x-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
           <span>{formatDateRange(format, tournament.start_date, tournament.end_date)}</span>
+          {games ? (
+            <>
+              <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">·</span>
+              <GameLabel code={tournament.discipline} games={games} />
+            </>
+          ) : null}
           {tournament.is_league && (
             <>
               <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">·</span>

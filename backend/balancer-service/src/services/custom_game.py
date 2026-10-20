@@ -2918,11 +2918,12 @@ class CustomGameService:
         """Per-member win/loss record across this workspace's mixes: one ``discipline``'s, or every game's.
 
         Workspace-wide on purpose: the scoreboard answers "how does this person
-        do in our mixes", which no single mix can say. ``discipline=None`` tallies
-        across every game (a member's identity then is their first handle in any
-        game's provider, in installed-game order); a code narrows seats, roles and
-        identity to that game. Names come from the *current* roster, so a member who has
-        since left keeps their record and loses only their label.
+        do in our mixes", which no single mix can say. ``discipline=None`` keeps the
+        cross-game tally (a member's identity then is their first handle in any game's
+        provider, in installed-game order) and no per-role split -- role codes of different
+        games are different roles; a code narrows seats, roles and identity to that game.
+        Names come from the *current* roster, so a member who has since left keeps their
+        record and loses only their label.
         """
         rows = await self.mix_rounds.seats(session, workspace_id=workspace_id, discipline=discipline, since=since)
         seats = [
@@ -2968,10 +2969,14 @@ class CustomGameService:
                 "win_rate": entry.win_rate,
                 "streak": entry.streak,
                 "last_played_at": entry.last_played_at.isoformat() if entry.last_played_at is not None else None,
-                "by_role": {
-                    role: {"games": tally.games, "wins": tally.wins, "losses": tally.losses, "draws": tally.draws}
-                    for role, tally in entry.by_role.items()
-                },
+                "by_role": (
+                    None
+                    if discipline is None
+                    else {
+                        role: {"games": tally.games, "wins": tally.wins, "losses": tally.losses, "draws": tally.draws}
+                        for role, tally in entry.by_role.items()
+                    }
+                ),
             }
             for entry, member in ((entry, members.get(entry.member_id)) for entry in stats)
         ]

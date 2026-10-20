@@ -6,6 +6,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import messages from "@/i18n/messages/en.json";
 import { formatterFor } from "@/lib/datetime/formatter";
+import type { PageGameResolution } from "@/lib/site/discipline-scope";
+import { multiResolution } from "@/test/game-scope";
 import { PlatformLeaders } from "./PlatformLeaders";
 
 vi.mock("next-intl/server", () => ({
@@ -15,20 +17,20 @@ vi.mock("next-intl/server", () => ({
 vi.mock("@/lib/datetime/server", () => ({
   getFormatter: async () => formatterFor("en", "UTC")
 }));
-const browsing = vi.hoisted(() => ({
-  resolved: { kind: "concrete", code: "overwatch", source: "default" } as Record<string, string> | null,
-  explicit: [] as unknown[],
+const scope = vi.hoisted(() => ({
+  resolution: null as PageGameResolution | null,
+  calls: [] as unknown[][],
   champions: [] as unknown[][]
 }));
 vi.mock("@/lib/site/discipline-server", () => ({
-  resolveServerBrowsingDiscipline: async (explicit: unknown) => {
-    browsing.explicit.push(explicit);
-    return { init: null, resolved: browsing.resolved };
+  resolveServerPageGame: async (...args: unknown[]) => {
+    scope.calls.push(args);
+    return { init: null, resolution: scope.resolution };
   }
 }));
-// The client game control (selector, or the named invalid value) is the shared component's own concern.
-vi.mock("@/components/workspace/ServerBrowsingDiscipline", () => ({
-  ServerBrowsingDiscipline: () => "[game control]"
+// The invalid/empty notice is the shared client component's own concern.
+vi.mock("@/components/workspace/ServerGameScopeNotice", () => ({
+  ServerGameScopeNotice: () => "[game notice]"
 }));
 vi.mock("./home-data", () => ({
   getPublicWorkspaces: async () => [{ id: 1 }, { id: 2 }]
@@ -46,7 +48,7 @@ vi.mock("@/services/statistics.service", () => ({
       hours: 926
     }),
     getChampions: async (...args: unknown[]) => {
-      browsing.champions.push(args);
+      scope.champions.push(args);
       return {
         page: 1,
         per_page: 20,
@@ -71,9 +73,9 @@ vi.mock("@/services/statistics.service", () => ({
 }));
 
 beforeEach(() => {
-  browsing.resolved = { kind: "concrete", code: "overwatch", source: "default" };
-  browsing.explicit = [];
-  browsing.champions = [];
+  scope.resolution = multiResolution(null);
+  scope.calls = [];
+  scope.champions = [];
 });
 
 async function renderLeaders(discipline?: string) {
@@ -88,13 +90,15 @@ async function renderLeaders(discipline?: string) {
   return root;
 }
 
-it("preserves zero counts and leaderboard boundaries with incomplete API totals", async () => {
+it("shows one cross-game top under all games, keeping zero counts and board boundaries", async () => {
   const root = await renderLeaders();
   const metric = (key: keyof typeof messages.site.kpi) =>
     Array.from(root.querySelectorAll("dl > div"))
       .find((row) => row.querySelector("dt")?.textContent === messages.site.kpi[key])
       ?.querySelector("dd")?.textContent;
 
+  expect(scope.calls).toEqual([["multi", undefined]]);
+  expect(scope.champions[0]?.[0]).toBeNull();
   expect(metric("tournaments")).toBe("0");
   expect(metric("encounters")).toBe("0");
   expect(metric("days")).toBeUndefined();
@@ -103,34 +107,35 @@ it("preserves zero counts and leaderboard boundaries with incomplete API totals"
   expect(root.querySelector('a[href="/users/Zuuuuuuuuuuz-2690"]')?.textContent).toContain("69.0%");
   expect(root.querySelector('a[href="/users/Oikawa-21544"]')).not.toBeNull();
   expect(root.querySelector('a[href="/users/ch1dan1ch-2938"]')).toBeNull();
-  // The leaderboards are the browsing game's.
-  expect(browsing.champions[0]?.[0]).toBe("overwatch");
 });
 
-it("reads no leaderboard without a resolved game, keeping the game-neutral totals", async () => {
-  browsing.resolved = null;
-  const root = await renderLeaders();
+it("reads the game's own boards when the page is on one game", async () => {
+  scope.resolution = multiResolution("lol");
+  await renderLeaders("lol");
 
-  expect(browsing.champions).toEqual([]);
-  expect(root.querySelector('a[href="/users/Askhay-21578"]')).toBeNull();
+  expect(scope.calls).toEqual([["multi", "lol"]]);
+  expect(scope.champions[0]?.[0]).toBe("lol");
+});
+
+it("shows the notice for an invalid explicit game and reads no board", async () => {
+  scope.resolution = {
+    game: { kind: "invalid", requested: "chess", reason: "unknown" },
+    pill: { kind: "all" },
+    tabs: false,
+    scope: "all"
+  };
+  const root = await renderLeaders("chess");
+
+  expect(scope.champions).toEqual([]);
+  expect(root.textContent).toContain("[game notice]");
   expect(root.textContent).toContain(messages.site.kpi.players);
 });
 
-it("reads the explicitly requested game's leaderboards", async () => {
-  browsing.resolved = { kind: "concrete", code: "lol", source: "url" };
-  const root = await renderLeaders("lol");
+it("keeps the game-neutral totals when the games could not be read", async () => {
+  scope.resolution = null;
+  const root = await renderLeaders();
 
-  expect(browsing.explicit).toEqual(["lol"]);
-  expect(browsing.champions[0]?.[0]).toBe("lol");
-  expect(root.textContent).toContain("[game control]");
-});
-
-it("shows the game control for an invalid explicit game and reads no leaderboard", async () => {
-  browsing.resolved = { kind: "invalid", requested: "chess", reason: "unknown" };
-  const root = await renderLeaders("chess");
-
-  expect(browsing.explicit).toEqual(["chess"]);
-  expect(browsing.champions).toEqual([]);
-  expect(root.textContent).toContain("[game control]");
+  expect(scope.champions).toEqual([]);
+  expect(root.querySelector('a[href="/users/Askhay-21578"]')).toBeNull();
   expect(root.textContent).toContain(messages.site.kpi.players);
 });

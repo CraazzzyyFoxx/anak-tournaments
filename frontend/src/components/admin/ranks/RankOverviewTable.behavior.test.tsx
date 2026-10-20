@@ -12,6 +12,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
+import { PillPick } from "@/test/pill-pick";
 import type { RankOverviewListParams, RankOverviewRow } from "@/services/workspace-player.service";
 
 declare global {
@@ -52,22 +53,23 @@ vi.mock("@/stores/workspace.store", () => ({
     selector({ currentWorkspaceId: 7 })
 }));
 
-// The browsing game is a test input; the owner's metadata is the real OW / League fixture.
+// The page's game is a test input; the owner's metadata is the real OW / League fixture.
 let browsing = "overwatch";
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({
-  useBrowsingDiscipline: () => ({
-    axis: 7,
-    resolved: { kind: "concrete", code: browsing },
-    disciplines: [],
-    select: vi.fn(),
-    refetch: vi.fn(),
-    isError: false
-  })
-}));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({
-  DisciplineSelector: () => null,
-  DisciplineUnavailable: () => null
-}));
+// The hook is stubbed, so its pill pick is the hook's own URL write (C3): set `?discipline=`, drop `page` and the
+// `dropParams` the pill passes — which are what the page registered with the pill.
+const selectScope = vi.fn((value: string, options?: { dropParams?: string[] }) => {
+  const next = new URLSearchParams(window.location.search);
+  next.set("discipline", value);
+  next.delete("page");
+  for (const param of options?.dropParams ?? []) next.delete(param);
+  window.history.replaceState(null, "", `/admin/ranks?${next.toString()}`);
+});
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeStub } = await import("@/test/game-scope");
+  return {
+    useGameScope: () => gameScopeStub({ kind: "game", code: browsing, source: "url" }, { axis: 7, selectScope })
+  };
+});
 vi.mock("@/hooks/useDisciplineMetadata", async () => {
   const { LOL_METADATA, OW_METADATA } = await import("@/test/discipline-metadata");
   return {
@@ -75,7 +77,8 @@ vi.mock("@/hooks/useDisciplineMetadata", async () => {
       data: code === "lol" ? LOL_METADATA : OW_METADATA,
       isError: false,
       refetch: vi.fn()
-    })
+    }),
+    useDisciplines: () => ({ data: [OW_METADATA.discipline, LOL_METADATA.discipline], isError: false, refetch: vi.fn() })
   };
 });
 
@@ -97,6 +100,7 @@ vi.mock("@/services/workspace-player.service", async (importOriginal) => {
 function row(overrides: Partial<RankOverviewRow> = {}): RankOverviewRow {
   return {
     layer: "canon",
+    discipline: "overwatch",
     player_id: 42,
     member_id: 9,
     display_name: "Alice",
@@ -135,6 +139,7 @@ async function render(search: string, playerId?: number) {
     root.render(
       <QueryClientProvider client={client}>
         <RankOverviewTable playerId={playerId} />
+        <PillPick code="lol" />
       </QueryClientProvider>
     );
   });
@@ -221,7 +226,8 @@ describe("rank overview table", () => {
       page: 1,
       per_page: 30,
       total: 2,
-      results: [row({ role: "jungle" }), row({ member_id: 10, role: "tank" })]
+      // A League read returns League rows: each row's role is drawn from its own game's dictionary.
+      results: [row({ discipline: "lol", role: "jungle" }), row({ discipline: "lol", member_id: 10, role: "tank" })]
     });
     await render("");
 
@@ -230,5 +236,18 @@ describe("rank overview table", () => {
     // OW's `tank` is not a League position: no glyph, the raw code.
     expect(container.querySelector('[role="img"][title="tank"]')).toBeNull();
     expect(container.textContent).toContain("tank");
+  });
+
+  it("a game picked in the scope pill drops the role and division filters and keeps the others", async () => {
+    await render("?role=tank&div_min=1&div_max=2&layer=author");
+
+    await act(async () => {
+      container.querySelector("[data-pill-pick=lol]")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const search = new URLSearchParams(window.location.search);
+    expect(search.get("discipline")).toBe("lol");
+    for (const param of ["role", "div_min", "div_max"]) expect(search.has(param), param).toBe(false);
+    expect(search.get("layer")).toBe("author");
   });
 });

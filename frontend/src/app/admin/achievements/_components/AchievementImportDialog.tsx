@@ -29,6 +29,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import type { AchievementRuleImportResult } from "@/types/admin.types";
 
 type ImportSource = "workspace" | "file";
@@ -53,8 +54,11 @@ export function AchievementImportDialog({
 }: Readonly<{
   onClose: () => void;
   workspaceId: number;
-  /** The game being copied: the source list, the selection and the import all stay inside it. */
-  discipline: string;
+  /**
+   * The game being copied: the source list, the selection and the import all stay inside it. `null` (every game in
+   * scope): only the file import, which names each rule's game itself.
+   */
+  discipline: string | null;
   onImportFile: (file: File) => void;
   isImportingFile: boolean;
   result: AchievementRuleImportResult | null;
@@ -64,28 +68,30 @@ export function AchievementImportDialog({
   const t = useTranslations("adminAchievements");
   const tc = useTranslations("common");
   const queryClient = useQueryClient();
-  const [source, setSource] = useState<ImportSource>("workspace");
+  const [source, setSource] = useState<ImportSource>(discipline === null ? "file" : "workspace");
   const [file, setFile] = useState<File | null>(null);
   const [sourceWorkspaceId, setSourceWorkspaceId] = useState<number | undefined>(undefined);
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
 
   const { data: libraryWorkspaces } = useQuery({
     queryKey: achievementQueryKeys.libraryWorkspaces(workspaceId, discipline),
-    queryFn: () => adminService.getAchievementLibraryWorkspaces(workspaceId, discipline),
+    queryFn: () => adminService.getAchievementLibraryWorkspaces(workspaceId, discipline!),
+    enabled: discipline !== null,
   });
 
   const { data: libraryRules } = useQuery({
     queryKey: achievementQueryKeys.libraryRules(workspaceId, sourceWorkspaceId, discipline),
-    queryFn: () => adminService.getAchievementLibraryRules(workspaceId, sourceWorkspaceId!, discipline),
-    enabled: !!sourceWorkspaceId,
+    queryFn: () => adminService.getAchievementLibraryRules(workspaceId, sourceWorkspaceId!, discipline!),
+    enabled: discipline !== null && !!sourceWorkspaceId,
   });
 
   // A failed import keeps the selection: nothing was imported, and the admin can fix the cause and retry.
   const libraryMutation = useMutation({
     mutationFn: (data: { source_workspace_id: number; slugs: string[] }) =>
-      adminService.importAchievementLibraryRules(workspaceId, { ...data, discipline }),
+      adminService.importAchievementLibraryRules(workspaceId, { ...data, discipline: discipline! }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, ALL_DISCIPLINES) });
       queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
       onImported(data);
     },
@@ -155,7 +161,7 @@ export function AchievementImportDialog({
               value={source}
               onValueChange={(next) => setSource(next as ImportSource)}
             >
-              <ToggleGroupItem value="workspace">{t("import.fromWorkspace")}</ToggleGroupItem>
+              <ToggleGroupItem value="workspace" disabled={discipline === null}>{t("import.fromWorkspace")}</ToggleGroupItem>
               <ToggleGroupItem value="file">{t("import.fromFile")}</ToggleGroupItem>
             </ToggleGroup>
 

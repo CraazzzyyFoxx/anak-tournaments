@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import Header from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { FloatStack } from "@/components/notifications/FloatStack";
+import disciplineService from "@/services/discipline.service";
 import notificationService from "@/services/notification.service";
 import workspaceService from "@/services/workspace.service";
 import {
@@ -10,6 +11,7 @@ import {
   withoutDismissedAnnouncements
 } from "@/lib/notifications/announcement-dismissed";
 import { deriveWorkspacePalette } from "@/lib/workspace/theme";
+import { InstalledGames } from "@/components/workspace/InstalledGames";
 import { WorkspaceThemeSync } from "@/components/workspace/WorkspaceThemeSync";
 import { WorkspaceHostLock } from "@/components/workspace/WorkspaceHostLock";
 import ZoneIntlProvider from "@/i18n/ZoneIntlProvider";
@@ -63,9 +65,11 @@ export default async function SiteLayout({
   // Custom workspace branding is tenant-only: a subdomain / custom-domain host
   // paints its workspace's palette. The shared platform (apex) host applies no
   // customization at all, so it needs neither the workspace nor a palette seed.
-  const [workspace, announcements, cookieStore] = await Promise.all([
+  const [workspace, announcements, games, cookieStore] = await Promise.all([
     tenantMode ? resolveCurrentWorkspace() : null,
     resolveActiveAnnouncements(),
+    // Every block's game names and marks (spec §6.1), seeded once here for the header and every streamed page.
+    disciplineService.list("all").catch(() => null),
     cookies()
   ]);
 
@@ -76,31 +80,33 @@ export default async function SiteLayout({
 
   return (
     <ZoneIntlProvider zone="web">
-      <div className="site-theme min-h-screen w-full" style={style}>
-        <WorkspaceHostLock workspaceId={tenantMode && workspace ? workspace.id : null} />
-        <WorkspaceThemeSync />
-        <div className="mx-auto h-full w-full max-w-screen-3xl px-4 md:px-6 xl:px-10">
-          <Header
-            tenantMode={tenantMode}
-            tenantWorkspace={
-              tenantMode && workspace
-                ? { id: workspace.id, name: workspace.name, icon_url: workspace.icon_url }
-                : undefined
-            }
-          />
-          <FloatStack
-            initialAnnouncements={withoutDismissedAnnouncements(
-              announcements,
-              cookieStore.get(DISMISSED_ANNOUNCEMENTS_COOKIE)?.value
-            )}
-            tenantWorkspaceId={tenantMode && workspace ? workspace.id : null}
-          />
-          <main id="main-content" tabIndex={-1} className="flex flex-col gap-4 pt-5 md:gap-8">
-            {children}
-          </main>
-          <Footer tenant={tenantMode ? workspace : null} />
+      <InstalledGames games={games}>
+        <div className="site-theme min-h-screen w-full" style={style}>
+          <WorkspaceHostLock workspaceId={tenantMode && workspace ? workspace.id : null} />
+          <WorkspaceThemeSync />
+          <div className="mx-auto h-full w-full max-w-screen-3xl px-4 md:px-6 xl:px-10">
+            <Header
+              tenantMode={tenantMode}
+              tenantWorkspace={
+                tenantMode && workspace
+                  ? { id: workspace.id, name: workspace.name, icon_url: workspace.icon_url }
+                  : undefined
+              }
+            />
+            <FloatStack
+              initialAnnouncements={withoutDismissedAnnouncements(
+                announcements,
+                cookieStore.get(DISMISSED_ANNOUNCEMENTS_COOKIE)?.value
+              )}
+              tenantWorkspaceId={tenantMode && workspace ? workspace.id : null}
+            />
+            <main id="main-content" tabIndex={-1} className="flex flex-col gap-4 pt-5 md:gap-8">
+              {children}
+            </main>
+            <Footer tenant={tenantMode ? workspace : null} />
+          </div>
         </div>
-      </div>
+      </InstalledGames>
     </ZoneIntlProvider>
   );
 }

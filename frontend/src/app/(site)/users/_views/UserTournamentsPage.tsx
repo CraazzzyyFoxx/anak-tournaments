@@ -17,20 +17,23 @@ export const UserTournamentsPage = async ({
   user,
   profile,
   scope,
-  discipline
+  discipline,
+  showGames = false
 }: {
   user: User;
   /** Supplies the career Titles figure shown above the placement timeline. */
   profile: UserProfile;
   scope: StatsScope;
-  discipline: string;
+  discipline: string | null;
+  /** "All games": rows mark their game. */
+  showGames?: boolean;
 }) => {
   // Scoped and cached (Next Data Cache); drives the master-detail Event dossier.
   const tournaments = await userService.getUserTournaments(user.id, discipline, scope === "all" ? "all" : undefined);
 
   return (
     <div className="aqt-player flex flex-col gap-3.5">
-      <TournamentsHistory tournaments={tournaments} selfUserId={user.id} profile={profile} />
+      <TournamentsHistory tournaments={tournaments} selfUserId={user.id} profile={profile} showGames={showGames} />
     </div>
   );
 };

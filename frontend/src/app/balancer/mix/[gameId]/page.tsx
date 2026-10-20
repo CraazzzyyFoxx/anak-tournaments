@@ -85,7 +85,7 @@ export default function BalancerPickupMixPage() {
 function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>) {
   const workspaceId = initialGame.workspace_id;
   const pickedGameId = initialGame.id;
-  useEntityWorkspace(workspaceId);
+  useEntityWorkspace(workspaceId, initialGame.discipline);
   const currentUserId = useAuthProfileStore((state) => state.user?.id ?? null);
   // The board is public (`config/auth.ts`), so the seat read is the one thing
   // here that needs an actual session: without one `GET …/me` 401s and the

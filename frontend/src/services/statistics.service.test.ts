@@ -31,3 +31,23 @@ describe("statisticsService.getCharacterPlaytime", () => {
     expect(calls[0].options?.query).toMatchObject({ workspace_id: 7, tournament_id: undefined });
   });
 });
+
+describe("statisticsService leaderboards", () => {
+  beforeEach(() => {
+    calls.length = 0;
+  });
+
+  it("reads the cross-game board with no game and one game's board with its code", async () => {
+    await statisticsService.getChampions(null, { skipWorkspace: true });
+    await statisticsService.getTopWinratePlayers("lol", { workspaceId: 7 });
+
+    expect(calls[0]).toMatchObject({
+      path: "/api/v1/statistics/champion",
+      options: { query: { discipline: null, sort: "value", order: "desc" } }
+    });
+    expect(calls[1]).toMatchObject({
+      path: "/api/v1/statistics/winrate",
+      options: { query: { discipline: "lol", workspace_id: 7 } }
+    });
+  });
+});

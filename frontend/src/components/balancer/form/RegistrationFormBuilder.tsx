@@ -713,6 +713,7 @@ export default function RegistrationFormBuilder({
             <TemplateMenu
               workspaceId={workspaceId}
               tournamentId={tournamentId}
+              discipline={owner.data?.discipline ?? null}
               dirty={draft !== null}
               onLoad={setDraft}
             />

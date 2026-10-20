@@ -23,6 +23,7 @@ import { DataPagination } from "@/components/ui/data-pagination";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusDot } from "@/components/ui/status-dot";
+import { GameLabel } from "@/components/workspace/GameLabel";
 import { cn } from "@/lib/utils";
 import {
   getEncounterState,
@@ -34,6 +35,7 @@ import { encounterSeatScore } from "@/lib/encounter/detail";
 import { duelSeats, duelWinner, seatTeam } from "@/lib/encounter/seats";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import encounterService from "@/services/encounter.service";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import { Encounter } from "@/types/encounter.types";
 import { PaginatedResponse } from "@/types/pagination.types";
 
@@ -291,12 +293,15 @@ export function EncountersDataTable({
   rows,
   columns = DEFAULT_ENCOUNTER_COLUMNS,
   loading = false,
+  games,
   className
 }: Readonly<{
   rows: Encounter[];
   columns?: readonly EncounterColumnKey[];
   /** Renders placeholder rows instead of collapsing the table to a single line. */
   loading?: boolean;
+  /** Installed games by code, passed only when the list spans several games: each row names its game (§6.1). */
+  games?: Map<string, DisciplineDescriptor>;
   className?: string;
 }>) {
   const router = useRouter();
@@ -359,6 +364,13 @@ export function EncountersDataTable({
       case "tournament":
         return (
           <td key={column}>
+            {games ? (
+              <GameLabel
+                code={encounter.discipline}
+                games={games}
+                className="mb-0.5 flex text-caption text-[color:var(--aqt-fg-muted)]"
+              />
+            ) : null}
             <span className="m-round">{encounter.tournament?.name ?? "—"}</span>
           </td>
         );

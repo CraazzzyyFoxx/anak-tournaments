@@ -66,6 +66,16 @@ def _stats(data: dict[str, Any]) -> UserService:
     return UserService.of(c.require_discipline(data))
 
 
+def _list_game(data: dict[str, Any], *game_bound: str) -> str | None:
+    """A list read's optional game; a game-bound filter sent without one is a 422 naming it (spec §8.2)."""
+    discipline = c.optional_discipline(data)
+    if discipline is None:
+        for name in game_bound:
+            if c.q(data, name) is not None:
+                raise HTTPException(status_code=422, detail=f"{name} requires discipline")
+    return discipline
+
+
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
@@ -86,10 +96,10 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview")
     async def _overview(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            discipline = _list_game(data, "role", "divisions")
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
             qp = build_query_model(schemas.UserOverviewQueryParams, data.get("query"))
-            return await stats.get_overview(
+            return await UserService.of(discipline).get_overview(
                 session,
                 schemas.UserOverviewParams.from_query_params(qp),
                 workspace_id=ws.id,
@@ -102,21 +112,23 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview_stats")
     async def _overview_stats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            discipline = _list_game(data, "role", "divisions")
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
             # The QueryParams model goes straight to the flow (no from_query_params).
             params = build_query_model(schemas.UserOverviewStatsQueryParams, data.get("query"))
-            return await stats.get_overview_stats(session, params, grid=ws.grid, workspace_id=ws.id)
+            return await UserService.of(discipline).get_overview_stats(
+                session, params, grid=ws.grid, workspace_id=ws.id
+            )
 
         return await c.envelope(logger, "users.overview_stats", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.users.overview_catalog")
     async def _overview_catalog(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            discipline = _list_game(data, "role", "divisions")
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
             qp = build_query_model(schemas.UserCatalogQueryParams, data.get("query"))
-            return await stats.get_catalog(
+            return await UserService.of(discipline).get_catalog(
                 session,
                 schemas.UserCatalogParams.from_query_params(qp),
                 grid=ws.grid,
@@ -172,9 +184,11 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.get_profile")
     async def _get_profile(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
-            return await stats.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
+            discipline = c.optional_discipline(data)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
+            return await UserService.of(discipline).get_profile(
+                session, c.require_id(data), workspace_id=ws.id, grid=ws.grid
+            )
 
         return await c.envelope(logger, "users.get_profile", op, session_factory=_SF)
 
@@ -194,8 +208,10 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.tournaments")
     async def _tournaments(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=stats.discipline)
+            # Optional game (spec §6.6, §8.1): absent or "all" lists every game's tournaments, each naming its own.
+            discipline = c.optional_discipline(data)
+            stats = UserService.of(discipline)
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
             return await stats.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.tournaments", op, session_factory=_SF)
@@ -278,7 +294,13 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.encounters")
     async def _encounters(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            stats = _stats(data)
+            # Optional game (spec §6.6, §8.1): absent or "all" lists every game's encounters, each naming its own.
+            discipline = c.optional_discipline(data)
+            mvp1 = c.q1(data, "mvp1", c.qbool, False)
+            if mvp1 and discipline is None:
+                # MVP placement is ranked on one game's facts.
+                raise HTTPException(status_code=422, detail="mvp1 requires discipline")
+            stats = UserService.of(discipline)
             qp = build_query_model(pagination.PaginationSortQueryParams[_ENCOUNTER_SORT], data.get("query"))
             return await stats.get_encounters_by_user(
                 session,
@@ -287,7 +309,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=_ws_id(data),
                 result_filter=c.q1(data, "result", str, None),
                 stage=c.q1(data, "stage", str, None),
-                mvp1=c.q1(data, "mvp1", c.qbool, False),
+                mvp1=mvp1,
                 has_logs=c.q1(data, "has_logs", c.qbool, None),
                 opponent=c.q1(data, "opponent", str, None),
             )

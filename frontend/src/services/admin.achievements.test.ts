@@ -100,4 +100,11 @@ describe("achievement admin calls name the game", () => {
     expect(calls[0].path).toBe("/api/v1/admin/ws/7/catalog/lol/character");
     expect(characters).toEqual([{ id: 1, name: "Ahri" }]);
   });
+
+  it("lists every game's rules when no game is named", async () => {
+    await adminService.getAchievementRules(7, null, { per_page: 15 });
+
+    expect(calls[0].path).toBe(`${WS}/rules`);
+    expect(calls[0].options?.query).toMatchObject({ discipline: null, per_page: 15 });
+  });
 });

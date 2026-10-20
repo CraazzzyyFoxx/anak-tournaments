@@ -41,8 +41,9 @@ const GAMES = [
   { code: "lol", name: "League of Legends", enabled: false }
 ] as DisciplineDescriptor[];
 
+const listGames = vi.fn();
 vi.mock("@/services/discipline.service", () => ({
-  default: { list: vi.fn(async () => GAMES) }
+  default: { list: (...args: unknown[]) => listGames(...args) }
 }));
 
 // The drop is what the games list pins, not dnd-kit's pointer maths (which would
@@ -176,6 +177,7 @@ beforeEach(() => {
   setOwner.mockReset().mockResolvedValue(null);
   update.mockReset().mockResolvedValue(OTHER_WORKSPACE);
   drop = undefined;
+  listGames.mockReset().mockResolvedValue(GAMES);
 });
 
 async function click(node: Element | undefined) {
@@ -337,6 +339,17 @@ describe("Workspaces › [id] › General", () => {
 
       await click(saveButton());
       expect(update).toHaveBeenCalledWith(8, { disciplines_enabled: ["lol", "overwatch"] });
+    });
+
+    // The scope pill and the game tabs list the community's games in this order: a save re-reads them.
+    it("re-reads the community's games after a save", async () => {
+      await render();
+      const reads = listGames.mock.calls.filter(([axis]) => axis === 8).length;
+
+      await click(gameSwitch("League of Legends"));
+      await click(saveButton());
+      expect(update).toHaveBeenCalledWith(8, { disciplines_enabled: ["overwatch", "lol"] });
+      expect(listGames.mock.calls.filter(([axis]) => axis === 8).length).toBeGreaterThan(reads);
     });
   });
 });

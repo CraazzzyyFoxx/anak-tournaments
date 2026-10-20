@@ -13,6 +13,9 @@ export const balancerQueryKeys = {
   /** The workspace's saved form templates, offered by the tournament builder. */
   registrationFormTemplates: (workspaceId: KeyPart) =>
     ["admin", "registration-form-templates", workspaceId] as const,
+  /** One game's templates (`"all"`: every game's); prefixed by `registrationFormTemplates` for invalidation. */
+  registrationFormTemplateList: (workspaceId: KeyPart, discipline: string | null) =>
+    ["admin", "registration-form-templates", workspaceId, discipline ?? "all"] as const,
   registrations: (tournamentId: KeyPart) =>
     ["balancer-admin", "registrations", tournamentId] as const,
   sheetCatalog: (tournamentId: KeyPart) =>

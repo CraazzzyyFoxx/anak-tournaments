@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discipline01c`** (121 revisions in `backend/migrations/versions/`).
+Alembic head: **`discipline01c`** (122 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1942,6 +1942,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint workspace_id FK
+        varchar(32) discipline FK
         varchar(64) name
         json schema_json
         bigint created_by FK "nullable"
@@ -2105,6 +2106,7 @@ erDiagram
     BALANCER_REGISTRATION_ROLE ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "role_id"
     BALANCER_REGISTRATION_TEAM |o--o{ BALANCER_REGISTRATION : "registration_team_id"
     BALANCER_REGISTRATION_TEAM ||--o{ BALANCER_REGISTRATION_TEAM_INVITE : "team_id"
+    CATALOG_DISCIPLINE ||--o{ BALANCER_REGISTRATION_FORM_TEMPLATE : "discipline"
     CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_id"
     CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_kind"
     CATALOG_ROLE ||--o{ BALANCER_REGISTRATION_ROLE : "dimension_id"

@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusDot } from "@/components/ui/status-dot";
 import { formatRelative } from "@/components/kit/format-time";
+import { GameMarkButton } from "@/components/workspace/GameMarkButton";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useFormatter } from "@/lib/datetime/client";
 import { winrateColor } from "@/lib/colors";
 import { getPlayerSlug } from "@/lib/player";
@@ -121,15 +123,18 @@ export function RolesCrests({
  * Map winrate as a plain coloured number with its sample size underneath — no
  * bar: a filled track reads as progress toward a goal, which a winrate is not.
  * Under `minEncounters` the number greys out instead of claiming a rank.
+ * `record` adds the maps won–lost beside it (the cross-game row, spec §6.7).
  */
 export function WinrateCell({
   user,
   minEncounters,
-  align = "center"
+  align = "center",
+  record = false
 }: Readonly<{
   user: { maps_won: number; maps_lost: number; encounters_played: number };
   minEncounters: number;
   align?: "center" | "start";
+  record?: boolean;
 }>) {
   const t = useTranslations();
   const pct = mapsWinratePct(user);
@@ -145,8 +150,15 @@ export function WinrateCell({
 
   return (
     <span className={cn("flex flex-col gap-0.5", align === "center" ? "items-center" : "items-start")}>
-      <span className="font-semibold tabular-nums" style={{ color: winrateColor(pct, lowSample) }}>
-        {pct.toFixed(0)}%
+      <span className={cn("flex flex-wrap items-baseline gap-x-1.5", align === "center" && "justify-center")}>
+        <span className="font-semibold tabular-nums" style={{ color: winrateColor(pct, lowSample) }}>
+          {pct.toFixed(0)}%
+        </span>
+        {record ? (
+          <span className="text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
+            {t("users.list.table.mapsRecord", { won: user.maps_won, lost: user.maps_lost })}
+          </span>
+        ) : null}
       </span>
       <span className="text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
         {t("users.list.table.encounters", { count: user.encounters_played })}
@@ -176,5 +188,21 @@ export function CompareCheckbox({
       aria-label={t("users.list.compare.toggle", { name: user.name })}
       title={disabled ? t("users.list.compare.limit") : undefined}
     />
+  );
+}
+
+/** The games a player played, each a mark that narrows the scope to it (spec §6.7). */
+export function GameMarks({
+  codes,
+  onSelect
+}: Readonly<{ codes: readonly string[]; onSelect: (code: string) => void }>) {
+  const games = useGameDescriptors();
+  return (
+    <span className="inline-flex items-center justify-center gap-1">
+      {codes.map((code) => {
+        const game = games.get(code);
+        return game ? <GameMarkButton key={code} discipline={game} onSelect={onSelect} size={18} /> : null;
+      })}
+    </span>
   );
 }

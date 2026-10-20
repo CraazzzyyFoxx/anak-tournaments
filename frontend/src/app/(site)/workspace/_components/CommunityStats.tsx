@@ -25,10 +25,12 @@ const SKELETON_ROLES = 3;
 
 const BAR_CLASS = "flex-1 min-w-[3px] max-w-9 rounded-t-[3px]";
 
+/** The section frame; `tabs` (the block's game tabs) stays above the body in every state, failed reads included. */
 async function Shell({
   workspace,
+  tabs = null,
   children
-}: Readonly<{ workspace: Workspace; children: React.ReactNode }>) {
+}: Readonly<{ workspace: Workspace; tabs?: React.ReactNode; children: React.ReactNode }>) {
   const t = await getTranslations("workspace");
   return (
     <Section labelledBy={TITLE_ID}>
@@ -43,6 +45,7 @@ async function Shell({
           </ScopedMoreLink>
         }
       />
+      {tabs ? <div className="mb-4">{tabs}</div> : null}
       {children}
     </Section>
   );
@@ -85,11 +88,15 @@ export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace
   );
 }
 
-/** Three readings of the community's whole history: turnout, and (of the browsed game) skill and characters. */
+/**
+ * Three readings of the community's whole history: turnout, and (of the block's game) skill and characters. Under
+ * "all games" the two game-bound columns carry their own game tabs (`tabs`, spec §6.4).
+ */
 export async function CommunityStats({
   workspace,
-  discipline
-}: Readonly<{ workspace: Workspace; discipline: string | null }>) {
+  discipline,
+  tabs = null
+}: Readonly<{ workspace: Workspace; discipline: string | null; tabs?: React.ReactNode }>) {
   const workspaceId = workspace.id;
   const t = await getTranslations("workspace");
 
@@ -106,14 +113,14 @@ export async function CommunityStats({
 
   if (history === null && division === null && characters === null) {
     return (
-      <Shell workspace={workspace}>
+      <Shell workspace={workspace} tabs={tabs}>
         <LoadError what={t("stats.what")} dashed />
       </Shell>
     );
   }
 
   return (
-    <Shell workspace={workspace}>
+    <Shell workspace={workspace} tabs={tabs}>
       <StatsGrid>
         <ActivityColumn history={history} />
         {discipline ? (

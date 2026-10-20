@@ -213,8 +213,8 @@ def _apply_overview_role_filters(
     return query.where(role_exists)
 
 
-def apply_has_logs_filter(query: sa.Select, *, discipline: str) -> sa.Select:
-    """Keep users with observed facts of the selected game."""
+def apply_has_logs_filter(query: sa.Select, *, discipline: str | None) -> sa.Select:
+    """Keep users with observed facts of the selected game (``None``: of any game)."""
     facts = player_facts(discipline=discipline)
     return query.where(sa.exists(sa.select(1).select_from(facts).where(facts.c.player_id == models.User.id)))
 
@@ -244,7 +244,7 @@ def _compare_player_scope_filters(
     player_model: type[models.Player],
     user_id_column: sa.ColumnElement[typing.Any] | int,
     *,
-    discipline: str,
+    discipline: str | None,
     role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
@@ -254,8 +254,10 @@ def _compare_player_scope_filters(
     filters: list[typing.Any] = [
         player_model.workspace_member.has(models.WorkspaceMember.player_id == user_id_column),
         player_model.is_substitution.is_(False),
-        player_model.tournament.has(models.Tournament.discipline == discipline),
     ]
+    # ``None`` is the cross-game read: every game's rows count.
+    if discipline is not None:
+        filters.append(player_model.tournament.has(models.Tournament.discipline == discipline))
 
     if role is not None:
         filters.append(player_role_filter(player_model, role))

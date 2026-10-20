@@ -418,8 +418,11 @@ export type MixMemberStats = {
   /** The run from the newest match: `+n` consecutive wins, `-n` losses, 0 after a draw. */
   streak: number;
   last_played_at: string | null;
-  /** Only roles with games played -- a seat with no role counts in the totals and in no bucket. */
-  by_role: Record<string, MixRoleTally>;
+  /**
+   * Only roles with games played -- a seat with no role counts in the totals and in no bucket. `null` across games:
+   * role codes of different games are different roles.
+   */
+  by_role: Record<string, MixRoleTally> | null;
 };
 
 /** `since` echoes back the window the server parsed, so a reader can tell it from all time. */

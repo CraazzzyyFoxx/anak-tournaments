@@ -55,7 +55,7 @@ const AnalyticsPage = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   });
   const owner = ownerQuery.data;
   const ownerWorkspaceId = owner?.workspace_id ?? null;
-  useEntityWorkspace(ownerWorkspaceId);
+  useEntityWorkspace(ownerWorkspaceId, owner?.discipline);
   const metadataQuery = useDisciplineMetadata(ownerWorkspaceId ?? "all", owner?.discipline ?? null);
   const metadata = metadataQuery.data;
 

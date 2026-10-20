@@ -1405,7 +1405,7 @@
       "summary": "List catalog alias misses"
     },
     "rpc.app.disciplines.list": {
-      "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
+      "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). Order: declaration order for `all`; for a workspace, its enabled disciplines first in its own `disciplines_enabled` order, then the rest in declaration order. 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",
       "query_params": [
         {
           "name": "workspace_id",
@@ -1725,7 +1725,7 @@
       "summary": "List achievements"
     },
     "rpc.app.statistics.champion": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -1792,9 +1792,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -2021,7 +2021,7 @@
       "summary": "Tournament readiness checklist"
     },
     "rpc.app.statistics.winrate": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -2088,9 +2088,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -2102,7 +2102,7 @@
       "summary": "Top winrate players"
     },
     "rpc.app.statistics.won_maps": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.",
+      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
         {
           "name": "page",
@@ -2169,9 +2169,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -2675,7 +2675,7 @@
       "summary": "User draft card"
     },
     "rpc.app.users.encounters": {
-      "description": "Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.",
+      "description": "Permission: public; no authentication required. Returns a player's paginated encounters \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` \u2014 filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.",
       "query_params": [
         {
           "name": "page",
@@ -2744,9 +2744,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         },
@@ -2793,13 +2793,13 @@
       "summary": "User encounters"
     },
     "rpc.app.users.get_profile": {
-      "description": "Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.",
+      "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.",
       "query_params": [
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         },
@@ -3213,7 +3213,7 @@
       "summary": "Preview user merge"
     },
     "rpc.app.users.overview": {
-      "description": "Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400.",
+      "description": "Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional `discipline` narrows every aggregate to one game; without it the aggregates span every game, `roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires discipline`). Every row lists the games the player played in `disciplines`.",
       "query_params": [
         {
           "name": "page",
@@ -3351,9 +3351,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -3365,7 +3365,7 @@
       "summary": "Users overview"
     },
     "rpc.app.users.overview_catalog": {
-      "description": "Permission: public; no authentication required. Returns the filter-catalog (facets) for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`).",
+      "description": "Permission: public; no authentication required. Returns the A-Z player catalog for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` are then a 422.",
       "query_params": [
         {
           "name": "role",
@@ -3462,9 +3462,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -3476,7 +3476,7 @@
       "summary": "Users overview catalog"
     },
     "rpc.app.users.overview_stats": {
-      "description": "Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`.",
+      "description": "Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and `division_counts` are empty; `role`/`divisions` are then a 422.",
       "query_params": [
         {
           "name": "role",
@@ -3533,9 +3533,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         }
@@ -3733,13 +3733,13 @@
       "summary": "Tournament stat leaderboard"
     },
     "rpc.app.users.tournaments": {
-      "description": "Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.",
+      "description": "Permission: public; no authentication required. Returns the tournaments a player participated in \u2014 every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) \u2014 scoped to the workspace context and grid; each row names its own `discipline`.",
       "query_params": [
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Installed discipline code",
+            "description": "Installed discipline code; absent or \"all\": every game",
             "type": "string"
           }
         },
@@ -4435,13 +4435,13 @@
       }
     },
     "rpc.balancer.custom.stats": {
-      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix of one discipline this workspace has run, best record first; `identity` is the member's handle for that discipline's identity provider. The optional `discipline` query parameter defaults to the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
+      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
       "query_params": [
         {
           "name": "discipline",
           "required": false,
           "schema": {
-            "description": "Enabled discipline; defaults to the workspace's first.",
+            "description": "One enabled discipline; omitted or `all` = every game (by_role is then null).",
             "type": "string"
           }
         },
@@ -5006,13 +5006,13 @@
       "summary": "Set my pickup mix preferences"
     },
     "rpc.balancer.ranks.list": {
-      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).",
+      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.",
       "query_params": [
         {
           "name": "discipline",
           "required": false,
           "schema": {
-            "description": "Enabled discipline; defaults to the workspace's first.",
+            "description": "One enabled discipline; omitted = every enabled discipline.",
             "type": "string"
           }
         },
@@ -5074,7 +5074,7 @@
           "name": "role",
           "required": false,
           "schema": {
-            "description": "Repeatable rated module role code of the selected discipline.",
+            "description": "Repeatable rated module role code; requires discipline.",
             "items": {
               "type": "string"
             },
@@ -5085,7 +5085,7 @@
           "name": "rank_min",
           "required": false,
           "schema": {
-            "description": "Lowest rank_value kept.",
+            "description": "Lowest rank_value kept; requires discipline.",
             "type": "integer"
           }
         },
@@ -5093,7 +5093,7 @@
           "name": "rank_max",
           "required": false,
           "schema": {
-            "description": "Highest rank_value kept.",
+            "description": "Highest rank_value kept; requires discipline.",
             "type": "integer"
           }
         },
@@ -6442,7 +6442,7 @@
       "summary": "List library workspaces"
     },
     "rpc.stats.ach.list": {
-      "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.",
+      "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters: every game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code). Each rule names its own `discipline`.",
       "query_params": [
         {
           "name": "page",
@@ -6515,10 +6515,18 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "title": "Discipline",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         },
         {
@@ -7322,7 +7330,7 @@
       "summary": "Get tournament (admin)"
     },
     "rpc.tournament.admin.list#player_sub_role": {
-      "description": "Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.",
+      "description": "Permission: workspace `player.read`. Requires workspace_id; lists only that workspace's child roles \u2014 every installed game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code) \u2014 optionally filtered by parent role (which needs `discipline`, else 422) and including inactive ones. Each row names its own `discipline`.",
       "query_params": [
         {
           "name": "workspace_id",
@@ -7333,9 +7341,9 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "description": "Explicit discipline code.",
+            "description": "Installed discipline code; absent: every game's sub-roles.",
             "type": "string"
           }
         },
@@ -7863,7 +7871,7 @@
       "summary": "Get a parsed match"
     },
     "rpc.tournament.admin_matches_list": {
-      "description": "Permission: workspace `match.read` on the workspace named by `workspace_id`. Every native Overwatch observed duel map across the workspace, not one encounter. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.",
+      "description": "Permission: workspace `match.read` on the workspace named by `workspace_id`. Every observed duel map across the workspace, not one encounter: every game's, or only the optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.",
       "query_params": [
         {
           "name": "page",
@@ -8010,6 +8018,22 @@
             "default": false,
             "title": "Unlinked Only",
             "type": "boolean"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         }
       ],
@@ -9545,7 +9569,7 @@
       "summary": "List matches"
     },
     "rpc.tournament.list_teams": {
-      "description": "Permission: public; no authentication required \u2014 an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace.",
+      "description": "Permission: public; no authentication required \u2014 an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace: every game's, or only the optional `discipline`'s (by the team's tournament; 422 for an unknown code).",
       "query_params": [
         {
           "name": "page",
@@ -9635,6 +9659,22 @@
             ],
             "default": null,
             "title": "Search"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         }
       ],
@@ -10108,7 +10148,7 @@
       "summary": "Withdraw registration (admin)"
     },
     "rpc.tournament.regform_template_apply": {
-      "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`).",
+      "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`). The template's game must be the tournament's (else 409 `template_discipline_mismatch`).",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationFormTemplateApply"
@@ -10120,7 +10160,7 @@
       "summary": "Apply template to registration form"
     },
     "rpc.tournament.regform_template_create": {
-      "description": "Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for the workspace (201 Created). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.",
+      "description": "Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for one game of the workspace (201 Created). `discipline` is required (422 `discipline_required`) and must be enabled for the workspace (422 `discipline_not_enabled`). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationFormTemplateUpsert"
@@ -10136,7 +10176,17 @@
       "summary": "Delete registration form template"
     },
     "rpc.tournament.regform_template_list": {
-      "description": "Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name.",
+      "description": "Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name; each carries its game (`discipline`). The optional `discipline` narrows to one game's (422 `discipline_not_installed` for an unknown code).",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "One installed discipline; omitted = every game's templates.",
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "tournament.RegistrationFormTemplateRead"
@@ -10144,7 +10194,7 @@
       "summary": "List registration form templates"
     },
     "rpc.tournament.regform_template_save_from_form": {
-      "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision.",
+      "description": "Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision. The template takes the tournament's game.",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationFormTemplateSave"
@@ -10156,7 +10206,7 @@
       "summary": "Save registration form as template"
     },
     "rpc.tournament.regform_template_update": {
-      "description": "Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.",
+      "description": "Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. Its game never changes: `discipline` is omitted or equal, another game is 409 `template_discipline_immutable`. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.",
       "request": {
         "array": false,
         "ref": "tournament.RegistrationFormTemplateUpsert"
@@ -15316,6 +15366,17 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "icon": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon"
+        },
         "identity_provider": {
           "anyOf": [
             {
@@ -15344,6 +15405,10 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "short_name": {
+          "title": "Short Name",
+          "type": "string"
         }
       },
       "required": [
@@ -15353,7 +15418,9 @@
         "kinds",
         "character_classes",
         "identity_provider",
-        "capabilities"
+        "capabilities",
+        "short_name",
+        "icon"
       ],
       "title": "DisciplineDescriptor",
       "type": "object"
@@ -15575,6 +15642,10 @@
           "default": null,
           "title": "Closeness"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "has_logs": {
           "default": false,
           "title": "Has Logs",
@@ -15675,6 +15746,7 @@
         "name",
         "round",
         "tournament_id",
+        "discipline",
         "status"
       ],
       "title": "EncounterReadWithUserStats",
@@ -19272,6 +19344,13 @@
           ],
           "title": "Best Placement"
         },
+        "disciplines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disciplines",
+          "type": "array"
+        },
         "encounters_played": {
           "title": "Encounters Played",
           "type": "integer"
@@ -20459,6 +20538,38 @@
       "title": "UserEncounterTournament",
       "type": "object"
     },
+    "app.UserGameSummary": {
+      "description": "One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it.",
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "roles": {
+          "items": {
+            "$ref": "#/components/schemas/app.UserRole"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "tournaments_count": {
+          "title": "Tournaments Count",
+          "type": "integer"
+        },
+        "tournaments_won": {
+          "title": "Tournaments Won",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "discipline",
+        "roles",
+        "tournaments_count",
+        "tournaments_won"
+      ],
+      "title": "UserGameSummary",
+      "type": "object"
+    },
     "app.UserMap": {
       "properties": {
         "character_stats": {
@@ -21564,6 +21675,13 @@
           ],
           "title": "Best Placement"
         },
+        "disciplines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disciplines",
+          "type": "array"
+        },
         "encounters_played": {
           "title": "Encounters Played",
           "type": "integer"
@@ -21797,6 +21915,13 @@
         "characters_count": {
           "title": "Characters Count",
           "type": "integer"
+        },
+        "games": {
+          "items": {
+            "$ref": "#/components/schemas/app.UserGameSummary"
+          },
+          "title": "Games",
+          "type": "array"
         },
         "maps_total": {
           "title": "Maps Total",
@@ -22254,6 +22379,10 @@
     "app.UserTournamentSummary": {
       "description": "Tournament card shown in user profile / achievement filter lists.\n\nNarrow projection of `models.Tournament` \u2014 only fields the frontend\nactually consumes in user-scoped pages.",
       "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "division_grid_version": {
           "anyOf": [
             {
@@ -22297,6 +22426,7 @@
       "required": [
         "id",
         "name",
+        "discipline",
         "is_league"
       ],
       "title": "UserTournamentSummary",
@@ -27815,6 +27945,11 @@
           "description": "casual only: how far the match moved this seat.",
           "title": "Delta"
         },
+        "discipline": {
+          "description": "The row's game: one code, or every enabled game's rows without a filter.",
+          "title": "Discipline",
+          "type": "string"
+        },
         "display_name": {
           "anyOf": [
             {
@@ -27837,7 +27972,7 @@
             }
           ],
           "default": null,
-          "description": "Resolved on the workspace's effective grid.",
+          "description": "Resolved on the workspace's effective grid of the row's game; null when the game has none here.",
           "title": "Division"
         },
         "identity": {
@@ -27954,6 +28089,7 @@
       },
       "required": [
         "layer",
+        "discipline",
         "player_id",
         "member_id",
         "rank_value"
@@ -32570,8 +32706,16 @@
           "title": "Category"
         },
         "discipline": {
-          "title": "Discipline",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
         },
         "enabled": {
           "anyOf": [
@@ -32643,9 +32787,6 @@
           "type": "string"
         }
       },
-      "required": [
-        "discipline"
-      ],
       "title": "AchievementRuleListQueryParams",
       "type": "object"
     },
@@ -36962,6 +37103,18 @@
     "tournament.AdminMatchesQueryParams": {
       "description": "Wire shape of the list's query string.",
       "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "encounter_id": {
           "anyOf": [
             {
@@ -48498,6 +48651,10 @@
     },
     "tournament.RegistrationFormTemplateRead": {
       "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "form_schema": {
           "$ref": "#/components/schemas/tournament.FormSchema-Output"
         },
@@ -48522,6 +48679,7 @@
       "required": [
         "id",
         "workspace_id",
+        "discipline",
         "name",
         "form_schema",
         "updated_at"
@@ -48547,6 +48705,18 @@
     },
     "tournament.RegistrationFormTemplateUpsert": {
       "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "form_schema": {
           "$ref": "#/components/schemas/tournament.FormSchema-Input"
         },
@@ -53186,6 +53356,18 @@
     },
     "tournament.TeamFilterQueryParams": {
       "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "entities": {
           "items": {
             "type": "string"

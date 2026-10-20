@@ -116,7 +116,7 @@ export default function TournamentClientLayout({
   });
 
   // Object-local queries and actions must not change the saved viewing filter.
-  useEntityWorkspace(tournament?.workspace_id);
+  useEntityWorkspace(tournament?.workspace_id, tournament?.discipline);
 
   // The shell owns the tournament's streams, for two consumers that outlive any
   // one section: the persistent broadcast block below the hero, and the Stream

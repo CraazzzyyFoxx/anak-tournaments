@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -28,14 +29,19 @@ import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import { useGameScope } from "@/hooks/useGameScope";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
+import { ALL_DISCIPLINES, pageClassOf, type WorkspaceAxis } from "@/lib/site/discipline-scope";
 import { getDivisionLabel, getDivisionOptions } from "@/lib/divisions/grid";
 import { findRole, ratedDimension, registrationRoles } from "@/lib/roster/ontology";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
@@ -77,32 +83,36 @@ export interface RankOverviewTableProps {
   playerId?: number;
 }
 
+/** The role and division filters are one game's: a pick of another game leaves them behind (R5). */
+const RANK_GAME_PARAMS = ["role", "div_min", "div_max"];
+/** Rank and division orders live on one game's grid: the all-games read never asks for them (spec §6.8). */
+const GAME_BOUND_SORTS: readonly string[] = ["rank_value", "division"];
+
 /**
- * One game's rank values in the workspace. A concrete-browsing surface: the
- * game is the one `?discipline=` names (or the saved/first-enabled choice), its
- * roles, grid and native layer are that game's own, and an invalid or empty
- * resolution reads nothing. Switching game remounts the table, so no row of the
- * previous game is shown while the next one loads.
+ * The workspace's rank values (spec §6.8, a multi surface). Under a game: that game's rows, its role and rank-range
+ * filters and every sort. Under "all games": every enabled game's rows with a game column; role and division stay in
+ * each row (facts of the record, drawn on the row's own game), the role and rank-range filters and the rank sorts step
+ * aside. Embedded on the game-neutral person page it keeps its own tabs under any scope (R23). An invalid or empty
+ * resolution reads nothing. Switching scope remounts the table, so no row of the previous one lingers.
  */
 export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
   const t = useTranslations("admin.rankOverview");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const scope = useBrowsingDiscipline({ allowsAll: false, axis: workspaceId ?? "all" });
-  const discipline = scope.resolved?.kind === "concrete" ? scope.resolved.code : null;
+  // A game-neutral route (class `none`) gets platform rules — its own tabs (R23); elsewhere the route's own class.
+  const routeClass = pageClassOf(usePathname());
+  const pageClass = routeClass === "none" ? "platform" : routeClass;
+  const variant = pageClass === "multi" ? "multi" : "single";
+  const scope = useGameScope({ pageClass, axis: workspaceId ?? "all" });
+  useGameBoundParams(RANK_GAME_PARAMS);
+  const kind = scope.resolution?.game.kind;
+  const discipline = scope.game;
   const metadata = useDisciplineMetadata(scope.axis, discipline);
 
   if (workspaceId == null) {
     return <EmptyNote>{t("noWorkspace")}</EmptyNote>;
   }
-  if (scope.resolved?.kind === "invalid" || scope.resolved?.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={scope.resolved}
-        disciplines={scope.disciplines ?? []}
-        allowsAll={false}
-        onSelect={scope.select}
-      />
-    );
+  if (kind === "invalid" || kind === "empty") {
+    return <GameScopeControl scope={scope} variant={variant} dropParams={RANK_GAME_PARAMS} />;
   }
   if (scope.isError || metadata.isError) {
     return (
@@ -116,27 +126,99 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
       />
     );
   }
-  if (discipline === null || !metadata.data) {
+  if (kind === undefined || (kind === "game" && !metadata.data)) {
     return <Skeleton className="h-64" />;
   }
   return (
-    <RankOverviewRows
-      key={`${workspaceId}:${discipline}`}
-      playerId={playerId}
-      workspaceId={workspaceId}
-      discipline={discipline}
-      ontology={metadata.data}
-      disciplines={scope.disciplines ?? []}
-      onSelectDiscipline={scope.select}
-    />
+    <div className="space-y-4">
+      <GameScopeControl scope={scope} variant={variant} dropParams={RANK_GAME_PARAMS} />
+      <RankOverviewRows
+        key={`${workspaceId}:${discipline ?? ALL_DISCIPLINES}`}
+        playerId={playerId}
+        workspaceId={workspaceId}
+        axis={scope.axis}
+        discipline={discipline}
+        ontology={metadata.data ?? null}
+        games={scope.games ?? []}
+      />
+    </div>
+  );
+}
+
+/** A row's person, linking to their person page. */
+function RowPlayer({ row }: Readonly<{ row: RankOverviewRow }>) {
+  return (
+    <Link
+      href={`/admin/people/${row.player_id}`}
+      className="font-medium text-primary underline-offset-2 hover:underline"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {row.display_name || row.identity?.handle || `#${row.player_id}`}
+    </Link>
+  );
+}
+
+/** A row's layer, the native one named by the row's own game. */
+function RowLayer({ row }: Readonly<{ row: RankOverviewRow }>) {
+  const t = useTranslations("admin.rankOverview");
+  const games = useGameDescriptors();
+  const Icon = LAYER_ICON[row.layer];
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs">
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      {t(`layers.${row.layer}`, { game: games.get(row.discipline)?.name ?? row.discipline })}
+    </span>
+  );
+}
+
+/** A row's role, drawn from its own game's dictionary; a role that dictionary does not know stays its raw code. */
+function RowRole({ role, discipline, axis }: Readonly<{ role: string | null; discipline: string; axis: WorkspaceAxis }>) {
+  const ontology = useDisciplineMetadata(axis, discipline).data ?? null;
+  if (!role) return null;
+  const rated = ontology ? ratedDimension(ontology) : null;
+  const known =
+    role === OPEN_SLOT_CODE ||
+    (ontology !== null && rated !== null && findRole(ontology, { dimension: rated.code, role }) !== null);
+  return known ? (
+    <span className="inline-flex">
+      <PlayerRoleIcon role={role} ontology={ontology} size={18} />
+    </span>
+  ) : (
+    <span className="text-xs">{role}</span>
+  );
+}
+
+/** A row's division on its own game's workspace grid, the native ladder's naming beside it. */
+function RowDivision({ row }: Readonly<{ row: RankOverviewRow }>) {
+  const tBracket = useTranslations("adminBracket");
+  const grid = useDivisionGrid(row.discipline);
+  const { division, ow_division: owDivision, ow_tier: owTier } = row;
+  return (
+    <div className="flex items-center gap-2">
+      {division == null ? null : (
+        <>
+          <DivisionIcon division={division} tournamentGrid={grid} width={20} height={20} />
+          <span className="truncate">
+            {getDivisionLabel(grid, division) ?? tBracket("labels.divisionFallback", { number: division })}
+          </span>
+        </>
+      )}
+      {owDivision ? (
+        // The native ladder's own naming, kept beside the workspace grid's:
+        // the two disagree, and the scrape is only readable as itself.
+        <span className="whitespace-nowrap text-xs capitalize text-muted-foreground">
+          {owDivision}
+          {owTier == null ? "" : ` ${owTier}`}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
 /**
- * Every rank value of the game in the workspace, one row per value: canon, each
- * author's book, the native-ladder scrape (for a game that collects one), the
- * hidden rating, both computed effective numbers, and the three historical
- * layers.
+ * Every rank value in scope, one row per value: canon, each author's book, the
+ * native-ladder scrape (for a game that collects one), the hidden rating, both
+ * computed effective numbers, and the three historical layers.
  *
  * Read-only on purpose. Editing a rank has two owners already (the roster's
  * rank editor and a person's own panel), and a table that mixes nine layers —
@@ -147,25 +229,32 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
 function RankOverviewRows({
   playerId,
   workspaceId,
+  axis,
   discipline,
   ontology,
-  disciplines,
-  onSelectDiscipline,
+  games,
 }: Readonly<{
   playerId?: number;
   workspaceId: number;
-  discipline: string;
-  ontology: DisciplineMetadata;
-  disciplines: readonly DisciplineDescriptor[];
-  onSelectDiscipline: (code: string) => void;
+  axis: WorkspaceAxis;
+  /** One game, or `null` under "all games". */
+  discipline: string | null;
+  /** The game's metadata; `null` under "all games". */
+  ontology: DisciplineMetadata | null;
+  games: readonly DisciplineDescriptor[];
 }>) {
   const t = useTranslations("admin.rankOverview");
+  const tGame = useTranslations("common.discipline");
   const tBracket = useTranslations("adminBracket");
   const slotLabel = useSlotLabel(ontology);
   const format = useFormatter();
-  const grid = useDivisionGrid(discipline);
+  const descriptors = useGameDescriptors();
+  const allGames = discipline === null;
+  const grid = useDivisionGrid(discipline ?? undefined);
   // Only a game that collects a native rank has that layer, named by the game.
-  const nativeRankName = ontology.discipline.capabilities.native_rank_collection ? ontology.discipline.name : null;
+  const nativeRankName =
+    games.find((entry) => (allGames || entry.code === discipline) && entry.capabilities.native_rank_collection)?.name ??
+    null;
   const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page"] });
   const dateFrom = searchParams?.get(DATE_PARAMS.from) ?? "";
   const dateTo = searchParams?.get(DATE_PARAMS.to) ?? "";
@@ -185,27 +274,32 @@ function RankOverviewRows({
     [grid, tBracket],
   );
 
-  const defs = useMemo<FilterDef[]>(
-    () => [
-      {
-        key: "layer",
-        label: t("filters.layer"),
-        kind: "multi",
-        options: RANK_LAYERS.filter((layer) => layer !== "ow" || nativeRankName !== null).map((layer) => ({
-          value: layer,
-          label: t(`layers.${layer}`, { game: nativeRankName ?? "" }),
-        })),
-      },
-      {
-        key: "author",
-        label: t("filters.author"),
-        kind: "multi",
-        options: (authorsQuery.data?.authors ?? []).map((author) => ({
-          value: String(author.user_id),
-          label: author.display_name ?? `#${author.user_id}`,
-          count: author.count,
-        })),
-      },
+  const defs = useMemo<FilterDef[]>(() => {
+    const layer: FilterDef = {
+      key: "layer",
+      label: t("filters.layer"),
+      kind: "multi",
+      options: RANK_LAYERS.filter((value) => value !== "ow" || nativeRankName !== null).map((value) => ({
+        value,
+        label: t(`layers.${value}`, { game: nativeRankName ?? "" }),
+      })),
+    };
+    const author: FilterDef = {
+      key: "author",
+      label: t("filters.author"),
+      kind: "multi",
+      options: (authorsQuery.data?.authors ?? []).map((entry) => ({
+        value: String(entry.user_id),
+        label: entry.display_name ?? `#${entry.user_id}`,
+        count: entry.count,
+      })),
+    };
+    const differs: FilterDef = { key: "differs", label: t("filters.differsFromCanon"), kind: "toggle" };
+    // Role and rank range are one game's: under "all games" the scope hint stands in for them and the URL's are unread.
+    if (ontology === null) return [layer, author, differs];
+    return [
+      layer,
+      author,
       {
         key: "role",
         label: t("filters.role"),
@@ -217,15 +311,15 @@ function RankOverviewRows({
       // to remember that Diamond starts at 3500.
       { key: "div_min", label: t("filters.divisionMin"), kind: "single", options: divisionOptions },
       { key: "div_max", label: t("filters.divisionMax"), kind: "single", options: divisionOptions },
-      { key: "differs", label: t("filters.differsFromCanon"), kind: "toggle" },
-    ],
-    [t, slotLabel, ontology, nativeRankName, authorsQuery.data, divisionOptions],
-  );
+      differs,
+    ];
+  }, [t, slotLabel, ontology, nativeRankName, authorsQuery.data, divisionOptions]);
 
   const filters = useFilters(defs);
   const layerFilter = filters.values.layer as string[];
   const authorFilter = filters.values.author as string[];
-  const roleFilter = filters.values.role as string[];
+  // Absent from `defs` under "all games", so these read nothing there.
+  const roleFilter = (filters.values.role as string[] | undefined) ?? [];
   const differsFilter = filters.values.differs === true;
   const minTier = grid.tiers.find((tier) => String(tier.number) === filters.values.div_min);
   const maxTier = grid.tiers.find((tier) => String(tier.number) === filters.values.div_max);
@@ -234,34 +328,19 @@ function RankOverviewRows({
   const rankMax = maxTier?.rank_max ?? undefined;
 
   const columns = useMemo<ColumnDef<RankOverviewRow>[]>(() => {
+    const gameName = (code: string) => descriptors.get(code)?.name ?? code;
     const player: ColumnDef<RankOverviewRow> = {
       id: "display_name",
       header: t("columns.player"),
       meta: columnMeta<RankOverviewRow>({ sticky: true }),
-      cell: ({ row }) => (
-        <Link
-          href={`/admin/people/${row.original.player_id}`}
-          className="font-medium text-primary underline-offset-2 hover:underline"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {row.original.display_name || row.original.identity?.handle || `#${row.original.player_id}`}
-        </Link>
-      ),
+      cell: ({ row }) => <RowPlayer row={row.original} />,
     };
 
     const rest: ColumnDef<RankOverviewRow>[] = [
       {
         accessorKey: "layer",
         header: t("columns.layer"),
-        cell: ({ row }) => {
-          const Icon = LAYER_ICON[row.original.layer];
-          return (
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs">
-              <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              {t(`layers.${row.original.layer}`, { game: ontology.discipline.name })}
-            </span>
-          );
-        },
+        cell: ({ row }) => <RowLayer row={row.original} />,
       },
       {
         id: "author",
@@ -275,26 +354,13 @@ function RankOverviewRows({
         accessorKey: "role",
         header: t("columns.role"),
         meta: columnMeta<RankOverviewRow>({ align: "center" }),
-        cell: ({ row }) => {
-          const role = row.original.role;
-          if (!role) return null;
-          const rated = ratedDimension(ontology);
-          const known =
-            role === OPEN_SLOT_CODE ||
-            (rated !== null && findRole(ontology, { dimension: rated.code, role }) !== null);
-          // A role the game's dictionary does not know stays its raw code, never a guessed glyph.
-          return known ? (
-            <span className="inline-flex">
-              <PlayerRoleIcon role={role} ontology={ontology} size={18} />
-            </span>
-          ) : (
-            <span className="text-xs">{role}</span>
-          );
-        },
+        cell: ({ row }) => <RowRole role={row.original.role} discipline={row.original.discipline} axis={axis} />,
       },
       {
         accessorKey: "rank_value",
         header: t("columns.rankValue"),
+        // Values of different games live on different grids: no single order across them.
+        enableSorting: !allGames,
         meta: columnMeta<RankOverviewRow>({ align: "right", numeric: true }),
         cell: ({ row }) => row.original.rank_value,
       },
@@ -302,30 +368,7 @@ function RankOverviewRows({
         id: "division",
         header: t("columns.division"),
         enableSorting: false,
-        cell: ({ row }) => {
-          const { division, ow_division: owDivision, ow_tier: owTier } = row.original;
-          return (
-            <div className="flex items-center gap-2">
-              {division == null ? null : (
-                <>
-                  <DivisionIcon division={division} tournamentGrid={grid} width={20} height={20} />
-                  <span className="truncate">
-                    {getDivisionLabel(grid, division) ??
-                      tBracket("labels.divisionFallback", { number: division })}
-                  </span>
-                </>
-              )}
-              {owDivision ? (
-                // The native ladder's own naming, kept beside the workspace grid's:
-                // the two disagree, and the scrape is only readable as itself.
-                <span className="whitespace-nowrap text-xs capitalize text-muted-foreground">
-                  {owDivision}
-                  {owTier == null ? "" : ` ${owTier}`}
-                </span>
-              ) : null}
-            </div>
-          );
-        },
+        cell: ({ row }) => <RowDivision row={row.original} />,
       },
       {
         id: "source",
@@ -336,7 +379,7 @@ function RankOverviewRows({
           if (!source) return null;
           return (
             <span className="text-xs text-muted-foreground">
-              {t(`sources.${source}`, { game: ontology.discipline.name })}
+              {t(`sources.${source}`, { game: gameName(row.original.discipline) })}
             </span>
           );
         },
@@ -423,8 +466,10 @@ function RankOverviewRows({
       },
     ];
 
-    return playerId == null ? [player, ...rest] : rest;
-  }, [t, ontology, tBracket, format, grid, playerId]);
+    // Beside the player: which game a row is matters as much as whose it is.
+    const game = allGames ? [gameColumn<RankOverviewRow>(tGame("column"), (row) => row.discipline)] : [];
+    return playerId == null ? [player, ...game, ...rest] : [...game, ...rest];
+  }, [t, tGame, format, playerId, allGames, axis, descriptors]);
 
   const activeKey = [filters.filterKey, dateFrom, dateTo].filter(Boolean).join("&");
 
@@ -432,7 +477,7 @@ function RankOverviewRows({
     <DataTable<RankOverviewRow>
       queryKey={(page, search, pageSize, sortField, sortDir) =>
         adminQueryKeys.rankOverview(workspaceId, {
-          discipline,
+          discipline: discipline ?? ALL_DISCIPLINES,
           playerId,
           page,
           search,
@@ -444,7 +489,7 @@ function RankOverviewRows({
       }
       queryFn={(page, search, pageSize, sortField, sortDir) =>
         workspacePlayerService.listRanks(workspaceId, {
-          discipline,
+          discipline: discipline ?? undefined,
           page,
           perPage: pageSize,
           playerId,
@@ -457,7 +502,8 @@ function RankOverviewRows({
           differsFromCanon: differsFilter || undefined,
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
-          sort: sortField ?? undefined,
+          // A rank sort left in the URL or a saved view is one game's: the all-games read keeps its default order.
+          sort: sortField && !(allGames && GAME_BOUND_SORTS.includes(sortField)) ? sortField : undefined,
           order: sortDir,
         })
       }
@@ -466,7 +512,7 @@ function RankOverviewRows({
       initialSort={{ field: "display_name", dir: "asc" }}
       filterKey={activeKey}
       getRowId={(row) =>
-        [row.layer, row.member_id, row.author_user_id, row.role, row.at, row.context?.id].join(":")
+        [row.discipline, row.layer, row.member_id, row.author_user_id, row.role, row.at, row.context?.id].join(":")
       }
       searchPlaceholder={playerId == null ? t("searchPlaceholder") : undefined}
       toolbar={
@@ -475,13 +521,7 @@ function RankOverviewRows({
           filters={filters}
           trailing={
             <div className="flex flex-wrap items-center gap-2">
-              <DisciplineSelector
-                disciplines={disciplines}
-                value={discipline}
-                allowsAll={false}
-                onSelect={onSelectDiscipline}
-                className="w-44"
-              />
+              {allGames ? <GameFilterHint /> : null}
               <div className="w-64">
                 <DateRangePicker
                   startDate={dateFrom || undefined}
@@ -497,6 +537,29 @@ function RankOverviewRows({
         />
       }
       emptyMessage={activeKey ? t("emptyFiltered") : t("empty")}
+      // Explicit, not the first three columns: a column order saved before the game column existed would push the game
+      // off a phone card. Whose value, which game, which layer (and author), then role, value and division.
+      renderMobileCard={({ original: row }) => (
+        <div className="min-w-0 flex-1 space-y-0.5">
+          {playerId == null ? (
+            <p className="truncate text-sm">
+              <RowPlayer row={row} />
+            </p>
+          ) : null}
+          {allGames ? <RowGameLabel code={row.discipline} className="flex text-xs text-muted-foreground" /> : null}
+          <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <RowLayer row={row} />
+            <span className="truncate">
+              {row.author_name ?? (row.author_user_id == null ? null : `#${row.author_user_id}`)}
+            </span>
+          </p>
+          <div className="flex items-center gap-2 text-sm tabular-nums">
+            <RowRole role={row.role} discipline={row.discipline} axis={axis} />
+            {row.rank_value}
+            <RowDivision row={row} />
+          </div>
+        </div>
+      )}
     />
   );
 }

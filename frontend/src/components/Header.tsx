@@ -22,7 +22,7 @@ import {
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import UserMenu from "@/components/UserMenu";
 import { WorkspaceAvatar, type WorkspaceAvatarSource } from "@/components/workspace/WorkspaceAvatar";
-import WorkspaceSwitcher from "@/components/workspace/WorkspaceSwitcher";
+import { ScopePill } from "@/components/workspace/ScopePill";
 import { BRAND_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDisciplines } from "@/hooks/useDisciplineMetadata";
@@ -249,6 +249,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               >
                 <Globe className="size-4" aria-hidden />
               </a>
+              <ScopePill variant="site" />
             </>
           ) : (
             <>
@@ -268,7 +269,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 aria-hidden
                 className="hidden h-[22px] w-px shrink-0 bg-[color:var(--aqt-border-2)] sm:block"
               />
-              <WorkspaceSwitcher />
+              <ScopePill variant="site" />
             </>
           )}
 

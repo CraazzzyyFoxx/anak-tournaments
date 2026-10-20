@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { navigation } from "@/test/url-navigation";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 
 import { HoverPrefetchLink } from "./HoverPrefetchLink";
 
@@ -38,30 +37,15 @@ async function hrefsFrom(url: string, ...targets: string[]) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  useWorkspaceStore.setState({ browsingDiscipline: "overwatch" });
 });
 
-describe("browsing links carry the surface's game", () => {
-  it("a shared ?discipline=lol URL follows the nav to other browsing surfaces without touching the saved preference", async () => {
-    const hrefs = await hrefsFrom("/tournaments?discipline=lol", "/achievements", "/tournaments", "/tournaments/spring-cup", "/privacy");
-
-    expect(hrefs).toEqual([
-      "/achievements?discipline=lol",
-      "/tournaments?discipline=lol",
+describe("browsing links", () => {
+  it("keep their plain hrefs: a game in the URL narrows only the page it is on", async () => {
+    expect(await hrefsFrom("/tournaments?discipline=lol", "/achievements", "/tournaments/spring-cup", "/privacy")).toEqual([
+      "/achievements",
       "/tournaments/spring-cup",
       "/privacy"
     ]);
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("overwatch");
-  });
-
-  it("all goes to a directory and is omitted for a concrete destination", async () => {
-    expect(await hrefsFrom("/tournaments?discipline=all", "/tournaments", "/achievements")).toEqual([
-      "/tournaments?discipline=all",
-      "/achievements"
-    ]);
-  });
-
-  it("an owner page's links carry nothing", async () => {
-    expect(await hrefsFrom("/tournaments/spring-cup?discipline=lol", "/achievements")).toEqual(["/achievements"]);
+    expect(await hrefsFrom("/tournaments?discipline=all", "/tournaments")).toEqual(["/tournaments"]);
   });
 });

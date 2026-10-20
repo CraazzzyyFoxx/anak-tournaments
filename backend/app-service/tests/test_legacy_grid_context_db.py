@@ -1,4 +1,4 @@
-"""Public OW statistics must not inherit a LoL-first workspace's grid."""
+"""Public OW statistics must not inherit a LoL-first workspace's grid; a no-game read needs no grid at all."""
 
 import asyncio
 import sys
@@ -8,7 +8,6 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared import models
-from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository.roles import CatalogRoleRepository
 from shared.repository.workspace import WorkspaceRepository
 from shared.services.division_grid import cache
@@ -83,6 +82,7 @@ def test_lol_first_public_statistics_keep_ow_divisions_with_and_without_lol_defa
                     )
                     await session.commit()
                     workspace_id = workspace.id
+                    user_id = user.id
 
                 for has_lol in (False, True):
                     async with sessions() as session:
@@ -96,17 +96,15 @@ def test_lol_first_public_statistics_keep_ow_divisions_with_and_without_lol_defa
                         context = await resolve_workspace_context(session, workspace_id, discipline="overwatch")
                         assert context.grid.version_id == versions["overwatch"]
                         assert context.normalizer.target_version_id == versions["overwatch"]
-                        if has_lol:
-                            generic = await resolve_workspace_context(session, workspace_id)
-                            assert generic.grid.version_id == versions["lol"]
-                        else:
-                            try:
-                                await resolve_workspace_context(session, workspace_id)
-                            except HTTPException as exc:
-                                assert exc.status_code == 422
-                                assert "division_grid_required" in exc.detail
-                            else:
-                                raise AssertionError("generic LoL-first context must require its own grid")
+                        # No game, no grid (R13): with or without a LoL grid, a no-game context resolves no grid and
+                        # never answers `division_grid_required`.
+                        generic = await resolve_workspace_context(session, workspace_id)
+                        assert (generic.id, generic.grid, generic.normalizer) == (workspace_id, None, None)
+                        tournaments = await rpc.call(
+                            "rpc.app.users.tournaments",
+                            {"id": user_id, "query": {"workspace_id": [str(workspace_id)]}},
+                        )
+                        assert tournaments["ok"] is True, tournaments
                     # The read names its game (contract §4.3): OW statistics keep the OW grid in a LoL-first workspace.
                     response = await rpc.call(
                         "rpc.app.users.overview_stats",

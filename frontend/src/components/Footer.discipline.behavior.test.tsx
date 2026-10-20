@@ -23,15 +23,14 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("footer links", () => {
-  it("carry the surface's game to browsing destinations only", async () => {
+  it("keep their plain hrefs whatever game the page shows", async () => {
     navigation.reset("/tournaments?discipline=lol");
     const container = document.body.appendChild(document.createElement("div"));
     await act(async () => createRoot(container).render(<Footer tenant={null} />));
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
 
-    expect(hrefs).toContain("/achievements?discipline=lol");
-    expect(hrefs).toContain("/tournaments?discipline=lol");
-    expect(hrefs).toContain("/privacy");
-    expect(hrefs).toContain("/docs");
+    expect(hrefs).toContain("/achievements");
+    expect(hrefs).toContain("/tournaments");
+    expect(hrefs.some((href) => href?.includes("discipline="))).toBe(false);
   });
 });

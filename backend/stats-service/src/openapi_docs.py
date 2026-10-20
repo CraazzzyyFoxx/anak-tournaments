@@ -122,7 +122,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.ach.list": {
         "summary": "List achievement rules",
-        "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.",
+        "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters: every game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code). Each rule names its own `discipline`.",
     },
     "rpc.stats.ach.get": {
         "summary": "Get achievement rule",

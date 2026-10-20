@@ -1,22 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
-import { useDebounce } from "use-debounce";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useDebouncedCallback } from "use-debounce";
 
-import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
+import { ALL_DISCIPLINES, DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 
 import {
   DEFAULT_FILTERS,
   filtersToSearchParams,
   GAME_SCOPED_FILTERS,
+  normalizeEncounterFilters,
+  parsePageParam,
   type EncounterFilterState
 } from "./encounters.helpers";
 
 export interface EncountersFilterControls {
   /** Raw (undebounced) filter state — what the controls are bound to. */
   filters: EncounterFilterState;
-  /** `filters` with the debounced search term folded in — what the queries read. */
+  /**
+   * `filters` with the search term folded in once typing settles and, under every game,
+   * no tournament/stage — what the queries read.
+   */
   effectiveFilters: EncounterFilterState;
   searchValue: string;
   page: number;
@@ -29,6 +34,9 @@ export interface EncountersFilterControls {
   clearFilters: () => void;
 }
 
+/** What the filter state belongs to once the page showed no readable game: whatever follows reads the URL afresh. */
+const UNAVAILABLE = Symbol("unavailable");
+
 /**
  * Filter/search/page state for the encounters index, mirrored into the URL.
  *
@@ -36,38 +44,82 @@ export interface EncountersFilterControls {
  * off the query cache either way, and a push would stack one history entry per
  * keystroke. The previous-value ref keeps the very first render (which already
  * matches the server-rendered URL) from writing a redundant entry. The game is the
- * browsing selector's, not a filter: the mirror carries it and never writes a URL
- * without it, and another game starts again from its first page without the old
- * game's tournament/stage filters.
+ * scope's, not a filter: the mirror keeps an explicit `?discipline=` as it found it and
+ * never adds one. `gameKey` is the page's readable game — "all" or a code; `null` while
+ * resolving and while `unavailable` (an invalid request, or no game at all). Another
+ * game starts again from its first page without the old game's tournament/stage
+ * filters. Leaving an unavailable state, the URL is the truth: page, filters and search
+ * are read from it again and take effect at once — a recovery pushed one without the old
+ * game's page and tournament/stage, Back restores them — and nothing is written back.
+ * Only a readable game is mirrored, so an invalid request's URL stays as typed (spec
+ * §4.1). Under every game the tournament/stage filters never take effect at all,
+ * whatever put them in the state (the URL, a saved view): nothing reads or mirrors them.
  */
 export function useEncountersFilters(
   initialFilters: EncounterFilterState,
   initialPage: number,
-  discipline: string | null
+  gameKey: string | null,
+  unavailable: boolean
 ): EncountersFilterControls {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const explicitGame = searchParams?.get(DISCIPLINE_PARAM) ?? null;
   const [filters, setFilters] = useState<EncounterFilterState>(initialFilters);
   const [searchValue, setSearchInput] = useState(initialFilters.query);
-  const [debouncedSearch] = useDebounce(searchValue, 300);
+  // The term the reads use: typing reaches it once it settles, a reading of the URL at once.
+  const [query, setQuery] = useState(initialFilters.query);
+  const settleQuery = useDebouncedCallback(setQuery, 300);
   const [page, setPage] = useState(initialPage);
-  const [stateDiscipline, setStateDiscipline] = useState(discipline);
-  if (discipline !== null && discipline !== stateDiscipline) {
-    setStateDiscipline(discipline);
-    if (stateDiscipline !== null) {
+  // What the URL says the state is: the server's reading of it, or the last reading after an unavailable state.
+  const [urlState, setUrlState] = useState({ page: initialPage, filters: initialFilters });
+  const [stateGame, setStateGame] = useState<string | typeof UNAVAILABLE | null>(
+    unavailable ? UNAVAILABLE : gameKey
+  );
+  if (unavailable && stateGame !== UNAVAILABLE) setStateGame(UNAVAILABLE);
+  if (gameKey !== null && gameKey !== stateGame) {
+    setStateGame(gameKey);
+    if (stateGame === UNAVAILABLE) {
+      const params = Object.fromEntries(searchParams ?? []);
+      const read = { page: parsePageParam(params.page), filters: normalizeEncounterFilters(params) };
+      setUrlState(read);
+      setPage(read.page);
+      setSearchInput(read.filters.query);
+      setQuery(read.filters.query);
+      setFilters(read.filters);
+    } else if (stateGame !== null) {
       setPage(1);
       setFilters((current) => ({ ...current, ...GAME_SCOPED_FILTERS }));
     }
   }
-  const previousUrlRef = useRef({ page: initialPage, filters: initialFilters });
+  const previousUrlRef = useRef(urlState);
   const effectiveFilters = useMemo(
-    () => ({ ...filters, query: debouncedSearch }),
-    [debouncedSearch, filters]
+    () => ({
+      ...filters,
+      query,
+      ...(gameKey === ALL_DISCIPLINES ? GAME_SCOPED_FILTERS : null)
+    }),
+    [query, filters, gameKey]
   );
 
+  // A reading of the URL is what the URL already says: the mirror compares against it, not against an older write.
   useEffect(() => {
-    if (discipline === null) return;
+    previousUrlRef.current = urlState;
+  }, [urlState]);
+
+  // A term still settling when the page lost its game is dropped: what follows reads the term from the URL.
+  useEffect(() => {
+    if (unavailable) settleQuery.cancel();
+  }, [unavailable, settleQuery]);
+
+  const typeSearch = (value: string) => {
+    setSearchInput(value);
+    settleQuery(value);
+  };
+
+  useEffect(() => {
+    if (gameKey === null) return;
     const params = filtersToSearchParams(effectiveFilters, page);
-    params.set(DISCIPLINE_PARAM, discipline);
+    if (explicitGame !== null) params.set(DISCIPLINE_PARAM, explicitGame);
     const nextUrl = `${pathname}?${params.toString()}`;
     const previous = previousUrlRef.current;
     if (
@@ -79,7 +131,7 @@ export function useEncountersFilters(
 
     window.history.replaceState(null, "", nextUrl);
     previousUrlRef.current = { page, filters: effectiveFilters };
-  }, [discipline, effectiveFilters, page, pathname]);
+  }, [gameKey, explicitGame, effectiveFilters, page, pathname]);
 
   return {
     filters,
@@ -89,7 +141,7 @@ export function useEncountersFilters(
     setPage,
     setSearchValue: (value) => {
       setPage(1);
-      setSearchInput(value);
+      typeSearch(value);
     },
     patchFilters: (patch) => {
       setPage(1);
@@ -97,11 +149,11 @@ export function useEncountersFilters(
     },
     applyFilters: (next) => {
       setPage(1);
-      setSearchInput(next.query);
+      typeSearch(next.query);
       setFilters(next);
     },
     clearFilters: () => {
-      setSearchInput("");
+      typeSearch("");
       setPage(1);
       setFilters(DEFAULT_FILTERS);
     }

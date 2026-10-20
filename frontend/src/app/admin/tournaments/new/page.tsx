@@ -14,11 +14,13 @@ import {
 } from "@/components/kit/WizardShell";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { DisciplineUnavailable } from "@/components/workspace/DisciplineUnavailable";
+import { GameField } from "@/components/workspace/GameField";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useGameScope } from "@/hooks/useGameScope";
+import { defaultCreationGame } from "@/lib/site/discipline-scope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { normalizeChallongeSlug } from "@/lib/tournament/challonge";
@@ -130,14 +132,19 @@ export default function NewTournamentPage() {
   // the promise ref collapses concurrent triggers into one POST.
   const [draft, setDraft] = useState<Tournament | null>(null);
   const draftRef = useRef<Tournament | null>(null);
-  // The game the tournament is played in: the browsed choice among this workspace's enabled games, never a
-  // default; a resumed draft owns its game and the choice locks once the draft exists.
-  const browsing = useBrowsingDiscipline({
-    allowsAll: false,
-    axis: currentWorkspaceId ?? "all",
-    ownerDiscipline: draft?.discipline ?? null
-  });
-  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  // The game the tournament is played in (spec §7.2): the creation field, defaulted from the scope's game, else the
+  // last game the area runs, else its first enabled game. A resumed draft owns its game: the field locks once the
+  // draft exists, and nothing here reads or writes `?discipline=`.
+  const gameScope = useGameScope({ pageClass: "none", axis: currentWorkspaceId ?? "all" });
+  const lastGame = useWorkspaceStore((s) => s.lastGame);
+  const [pickedGame, setPickedGame] = useState<string | null>(null);
+  const creationGames = (gameScope.games ?? []).filter((game) => game.enabled);
+  const defaultGame = gameScope.resolution
+    ? defaultCreationGame({ scope: gameScope.resolution.scope, lastGame, games: gameScope.games ?? [] })
+    : null;
+  const discipline =
+    draft?.discipline ??
+    (pickedGame !== null && creationGames.some((game) => game.code === pickedGame) ? pickedGame : defaultGame);
   const draftPromiseRef = useRef<Promise<Tournament> | null>(null);
   const [resumeDismissed, setResumeDismissed] = useState(false);
 
@@ -155,8 +162,8 @@ export default function NewTournamentPage() {
     .flatMap((grid) => grid.versions)
     .slice()
     .sort((left, right) => right.version - left.version);
-  // What every step, payload and review reads: a grid of another game never rides along when the resolved game
-  // changes (selector, URL, Back); the next edit writes the reconciled form back.
+  // What every step, payload and review reads: a grid of another game never rides along when the game field
+  // changes; the next edit writes the reconciled form back.
   const form = formForGame(rawForm, divisionGridsQuery.data ?? [], discipline);
 
   // The subscription rule is a workspace property now, so the review step reads it
@@ -344,18 +351,9 @@ export default function NewTournamentPage() {
     );
   }
 
-  // Nothing is created before its game is known; no enabled game (or an invalid `?discipline=`) says so.
-  if (!browsing.resolved) return <Skeleton className="h-64" />;
-  if (browsing.resolved.kind === "invalid" || browsing.resolved.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={browsing.resolved}
-        disciplines={browsing.disciplines ?? []}
-        allowsAll={false}
-        onSelect={browsing.select}
-      />
-    );
-  }
+  // Nothing is created before its game is known; an area with no enabled game says so.
+  if (!gameScope.resolution) return <Skeleton className="h-64" />;
+  if (discipline === null) return <DisciplineUnavailable game={{ kind: "empty" }} />;
 
   return (
     <div className="space-y-5">
@@ -377,12 +375,12 @@ export default function NewTournamentPage() {
         }}
       />
 
-      {(browsing.disciplines?.length ?? 0) > 1 ? (
-        <DisciplineSelector
-          disciplines={browsing.disciplines ?? []}
-          value={discipline ?? undefined}
-          allowsAll={false}
-          onSelect={browsing.select}
+      {creationGames.length > 1 ? (
+        <GameField
+          id="tournament-game"
+          games={creationGames}
+          value={discipline}
+          onChange={setPickedGame}
           disabled={draft !== null}
         />
       ) : null}

@@ -19,6 +19,7 @@ import { PlayerCard } from "./UsersCatalogView";
 import { UserExpandedRow } from "./UserExpandedRow";
 import {
   CompareCheckbox,
+  GameMarks,
   LastActive,
   PlayerAvatar,
   PlayerName,
@@ -80,16 +81,20 @@ function SortHead({
 export function UsersTableView({
   controls,
   data,
-  compare
+  compare,
+  onSelectGame
 }: Readonly<{
   controls: UsersIndexParamControls;
   data: UsersIndexData;
   compare: CompareSelection;
+  /** Narrows the scope to a game (a row's mark under "all games"). */
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const { page, perPage, minEncounters } = controls.params;
   const { overviewQuery, maxPage, range, workspaceId, discipline } = data;
+  const allGames = discipline === null;
   const response = overviewQuery.data;
 
   const toggleRow = (id: number) =>
@@ -147,6 +152,7 @@ export function UsersTableView({
             game={data}
             minEncounters={minEncounters}
             compare={compare}
+            onSelectGame={onSelectGame}
           />
         ))}
       </div>
@@ -165,7 +171,7 @@ export function UsersTableView({
                 {t("users.list.table.player")}
               </SortHead>
               <th scope="col" className={cn(headCellClass, "text-center")}>
-                {t("users.list.table.roles")}
+                {allGames ? t("common.discipline.column") : t("users.list.table.roles")}
               </th>
               <SortHead sort="tournaments_count" controls={controls} className="text-center">
                 {t("users.list.table.tournaments")}
@@ -182,9 +188,11 @@ export function UsersTableView({
               <SortHead sort="achievements_count" controls={controls} className="text-center">
                 {t("users.list.table.achievements")}
               </SortHead>
-              <th scope="col" className={cn(headCellClass, "text-center")}>
-                {t("users.list.table.topHeroes")}
-              </th>
+              {allGames ? null : (
+                <th scope="col" className={cn(headCellClass, "text-center")}>
+                  {t("users.list.table.topHeroes")}
+                </th>
+              )}
               <th scope="col" className={cn(headCellClass, "w-10 pr-3")}>
                 <span className="sr-only">{t("users.list.table.details")}</span>
               </th>
@@ -200,6 +208,7 @@ export function UsersTableView({
                   rank={firstRank + index}
                   minEncounters={minEncounters}
                   compare={compare}
+                  onSelectGame={onSelectGame}
                   expanded={expanded.has(user.id)}
                   onToggle={() => toggleRow(user.id)}
                 />
@@ -270,7 +279,8 @@ function PlayerRow({
   minEncounters,
   compare,
   expanded,
-  onToggle
+  onToggle,
+  onSelectGame
 }: Readonly<{
   user: UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
@@ -280,9 +290,11 @@ function PlayerRow({
   compare: CompareSelection;
   expanded: boolean;
   onToggle: () => void;
+  onSelectGame: (code: string) => void;
 }>) {
   const t = useTranslations();
   const selected = compare.isSelected(user.id);
+  const allGames = game.discipline === null;
 
   return (
     <tr className="border-b border-[color:var(--aqt-border)] transition-colors last:border-b-0 hover:bg-[color:var(--aqt-overlay-1)]">
@@ -307,11 +319,15 @@ function PlayerRow({
         </div>
       </td>
       <td className="px-2 py-2 text-center">
-        <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} />
+        {allGames ? (
+          <GameMarks codes={user.disciplines} onSelect={onSelectGame} />
+        ) : (
+          <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} />
+        )}
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.tournaments_count}</td>
       <td className="px-2 py-2 text-center">
-        <WinrateCell user={user} minEncounters={minEncounters} />
+        <WinrateCell user={user} minEncounters={minEncounters} record={allGames} />
       </td>
       <td className="px-2 py-2 text-center tabular-nums">
         {formatOptional(user.averages.avg_placement)}
@@ -324,27 +340,32 @@ function PlayerRow({
         )}
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.achievements_count}</td>
-      <td className="px-2 py-2">
-        <div className="flex justify-center">
-          <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
-        </div>
-      </td>
+      {allGames ? null : (
+        <td className="px-2 py-2">
+          <div className="flex justify-center">
+            <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
+          </div>
+        </td>
+      )}
+      {/* The drawer reads one game's draft card: under "all games" there is nothing to expand. */}
       <td className="pr-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          aria-label={
-            expanded ? t("users.list.a11y.collapseDetails") : t("users.list.a11y.expandDetails")
-          }
-          className="inline-flex size-7 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-        >
-          {expanded ? (
-            <ChevronUp aria-hidden className="size-3.5" />
-          ) : (
-            <ChevronDown aria-hidden className="size-3.5" />
-          )}
-        </button>
+        {allGames ? null : (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-label={
+              expanded ? t("users.list.a11y.collapseDetails") : t("users.list.a11y.expandDetails")
+            }
+            className="inline-flex size-7 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+          >
+            {expanded ? (
+              <ChevronUp aria-hidden className="size-3.5" />
+            ) : (
+              <ChevronDown aria-hidden className="size-3.5" />
+            )}
+          </button>
+        )}
       </td>
     </tr>
   );

@@ -60,12 +60,14 @@ vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
     selector({ currentWorkspaceId: 1 })
 }));
+vi.mock("@/hooks/useEntityWorkspace", () => ({ useEntityWorkspace: vi.fn() }));
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ canAccessPermission: () => true })
 }));
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({
-  useBrowsingDiscipline: () => ({ axis: 1, resolved: { kind: "concrete", code: "overwatch" }, disciplines: [], select: vi.fn() })
-}));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeStub } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeStub({ kind: "game", code: "overwatch", source: "default" }, { axis: 1 }) };
+});
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), apiError: vi.fn() }
 }));
@@ -85,6 +87,7 @@ function template(id: number, name: string, sectionTitle: string) {
   return {
     id,
     workspace_id: 1,
+    discipline: "overwatch",
     name,
     updated_at: "2026-01-01",
     form_schema: {

@@ -5,17 +5,18 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { TOURNAMENT_QUERY_PARAM } from "@/components/admin/tournament-filter";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { GameScopeGate } from "@/components/workspace/GameScopeGate";
+import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 const VIEWS = ["encounters", "standings", "reports", "parsed", "logs"] as const;
 type MatchesView = (typeof VIEWS)[number];
-
 
 /**
  * Params a view switch keeps. The tournament and stage scope are what the five
@@ -25,27 +26,8 @@ type MatchesView = (typeof VIEWS)[number];
  */
 const SHARED_SCOPE_PARAMS = ["tournament", "stage", "group", "discipline"] as const;
 
-/**
- * The workspace-wide parsed maps: a concrete-browsing view, because its map filter lists one game's catalogue. The
- * other four views are game-agnostic lists and never resolve a game.
- */
-function WorkspaceParsedMatches({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
-  const { disciplines, resolved, select } = useBrowsingDiscipline({ allowsAll: false });
-  if (resolved?.kind === "invalid" || resolved?.kind === "empty") {
-    return <DisciplineUnavailable resolved={resolved} disciplines={disciplines ?? []} allowsAll={false} onSelect={select} />;
-  }
-  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
-  return (
-    <div className="space-y-4">
-      {disciplines && disciplines.length > 1 ? (
-        <div className="flex justify-end">
-          <DisciplineSelector disciplines={disciplines} value={discipline ?? undefined} allowsAll={false} onSelect={select} />
-        </div>
-      ) : null}
-      <ParsedMatchesBrowser tournamentId={null} discipline={discipline} workspaceId={workspaceId} />
-    </div>
-  );
-}
+/** The views' one-game filters (R5): a scope pick drops them from the URL. */
+const GAME_BOUND_PARAMS = ["map_id", TOURNAMENT_QUERY_PARAM, "stage", "group"] as const;
 
 const fallback = (
   <div className="space-y-4">
@@ -100,12 +82,18 @@ const TournamentLogsTab = dynamic(
  * tournament scope at every step. The views mount the same components the
  * tournament hub does, with the tournament unpinned, and `?view=` is the only
  * state the switch owns.
+ *
+ * The encounters and parsed-maps views are multi (spec §6.9): every game of the
+ * workspace with a "Game" column, or the game in scope, filtered on the server.
+ * Standings, reports and logs are game-agnostic.
  */
 export default function AdminMatchesPage() {
   const t = useTranslations("adminMatches.matches");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission, isLoaded } = usePermissions();
   const searchParams = useSearchParams();
+  const gameScope = useGameScope({ axis: workspaceId ?? "all" });
+  useGameBoundParams(GAME_BOUND_PARAMS);
 
   const requested = searchParams.get("view") ?? "";
   const view: MatchesView = (VIEWS as readonly string[]).includes(requested)
@@ -137,7 +125,9 @@ export default function AdminMatchesPage() {
       <LinkTabs items={items} activeKey={view} ariaLabel={t("views")} />
 
       {view === "encounters" ? (
-        <EncountersBrowser tournamentId={null} workspaceId={workspaceId} />
+        <GameScopeGate scope={gameScope}>
+          {(game) => <EncountersBrowser tournamentId={null} workspaceId={workspaceId} discipline={game} />}
+        </GameScopeGate>
       ) : null}
       {view === "standings" ? (
         <StandingsBrowser tournamentId={null} workspaceId={workspaceId} />
@@ -150,7 +140,9 @@ export default function AdminMatchesPage() {
         />
       ) : null}
       {view === "parsed" ? (
-        <WorkspaceParsedMatches workspaceId={workspaceId} />
+        <GameScopeGate scope={gameScope}>
+          {(game) => <ParsedMatchesBrowser tournamentId={null} discipline={game} workspaceId={workspaceId} />}
+        </GameScopeGate>
       ) : null}
       {view === "logs" ? (
         <TournamentLogsTab

@@ -10,6 +10,10 @@ import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { useGameScope } from "@/hooks/useGameScope";
+import { ALL_DISCIPLINES, showsGameMarks } from "@/lib/site/discipline-scope";
 import { notify } from "@/lib/notify";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
@@ -18,7 +22,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
-import { useTournamentColumns } from "./useTournamentColumns";
+import { TournamentMobileCard, useTournamentColumns } from "./useTournamentColumns";
 
 /** The lifecycle chip: which rows each option keeps. */
 const LIFECYCLE = {
@@ -53,9 +57,22 @@ export function TournamentsBrowser() {
 
   const [pendingDelete, setPendingDelete] = useState<Tournament | null>(null);
 
+  // Every game of the workspace under "all games", one game's under a game (spec §6.9); the server filters. The list is
+  // the workspace's: a first visit learns its community after mounting, and nothing is read until then.
+  const gameScope = useGameScope({ axis: currentWorkspaceId ?? "all" });
+  const discipline = gameScope.game;
+  const gameKind = gameScope.resolution?.game.kind;
+  const ready = currentWorkspaceId !== null && (gameKind === "all" || gameKind === "game");
+  const descriptors = useGameDescriptors();
+  const games =
+    gameScope.resolution !== null && showsGameMarks(gameScope.resolution, gameScope.games ?? [])
+      ? descriptors
+      : undefined;
+
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.list(),
-    queryFn: () => tournamentService.getAll(null)
+    queryKey: tournamentQueryKeys.adminList(currentWorkspaceId, discipline ?? ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, currentWorkspaceId, discipline),
+    enabled: ready
   });
   const tournaments = useMemo(() => tournamentsQuery.data?.results ?? [], [tournamentsQuery.data]);
 
@@ -90,18 +107,30 @@ export function TournamentsBrowser() {
   const columns = useTournamentColumns({
     canCreate,
     canDelete,
-    onDelete: useCallback((tournament: Tournament) => setPendingDelete(tournament), [])
+    onDelete: useCallback((tournament: Tournament) => setPendingDelete(tournament), []),
+    games
   });
 
-  if (tournamentsQuery.isError) {
-    return <PageStateCard state="error" onAction={() => void tournamentsQuery.refetch()} />;
+  if (gameKind === "invalid" || gameKind === "empty") {
+    return <GameScopeControl scope={gameScope} variant="multi" />;
+  }
+  if (tournamentsQuery.isError || gameScope.isError) {
+    return (
+      <PageStateCard
+        state="error"
+        onAction={() => {
+          if (gameScope.isError) gameScope.refetch();
+          void tournamentsQuery.refetch();
+        }}
+      />
+    );
   }
 
   return (
     <>
       <DataTable<Tournament>
         rows={rows}
-        isLoading={tournamentsQuery.isLoading}
+        isLoading={!ready || tournamentsQuery.isLoading}
         columns={columns}
         getRowId={(tournament) => String(tournament.id)}
         searchPlaceholder={t("searchPlaceholder")}
@@ -109,6 +138,7 @@ export function TournamentsBrowser() {
         toolbar={<FilterBar defs={defs} filters={filters} />}
         emptyMessage={t("empty")}
         onRowClick={(row) => router.push(`/admin/tournaments/${row.original.id}`)}
+        renderMobileCard={(row) => <TournamentMobileCard tournament={row.original} games={games} />}
       />
 
       {canDelete ? (

@@ -1975,7 +1975,7 @@ export interface paths {
         };
         /**
          * List installed disciplines
-         * @description Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines in declaration order with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.
+         * @description Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). Order: declaration order for `all`; for a workspace, its enabled disciplines first in its own `disciplines_enabled` order, then the rest in declaration order. 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.
          *
          *     RPC subject: `rpc.app.disciplines.list`
          */
@@ -3177,7 +3177,7 @@ export interface paths {
         };
         /**
          * Most-champion players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments of the required `discipline` won, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.champion`
          */
@@ -3221,7 +3221,7 @@ export interface paths {
         };
         /**
          * Top winrate players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate in the required `discipline`, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.winrate`
          */
@@ -3243,7 +3243,7 @@ export interface paths {
         };
         /**
          * Top won-maps players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps of the required `discipline` won, optionally workspace-scoped.
+         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
          *     RPC subject: `rpc.app.statistics.won_maps`
          */
@@ -3377,7 +3377,7 @@ export interface paths {
         };
         /**
          * List teams
-         * @description Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace.
+         * @description Permission: public; no authentication required — an explicit tournament_id filter is visibility-gated against the caller, and an unfiltered page is restricted to publicly visible tournaments. Returns a paginated list of teams for the filter params within the given workspace: every game's, or only the optional `discipline`'s (by the team's tournament; 422 for an unknown code).
          *
          *     RPC subject: `rpc.tournament.list_teams`
          */
@@ -3969,7 +3969,7 @@ export interface paths {
         };
         /**
          * Users overview
-         * @description Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400.
+         * @description Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional `discipline` narrows every aggregate to one game; without it the aggregates span every game, `roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires discipline`). Every row lists the games the player played in `disciplines`.
          *
          *     RPC subject: `rpc.app.users.overview`
          */
@@ -3991,7 +3991,7 @@ export interface paths {
         };
         /**
          * Users overview catalog
-         * @description Permission: public; no authentication required. Returns the filter-catalog (facets) for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`).
+         * @description Permission: public; no authentication required. Returns the A-Z player catalog for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` are then a 422.
          *
          *     RPC subject: `rpc.app.users.overview_catalog`
          */
@@ -4013,7 +4013,7 @@ export interface paths {
         };
         /**
          * Users overview stats
-         * @description Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`.
+         * @description Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and `division_counts` are empty; `role`/`divisions` are then a 422.
          *
          *     RPC subject: `rpc.app.users.overview_stats`
          */
@@ -4167,7 +4167,7 @@ export interface paths {
         };
         /**
          * User encounters
-         * @description Permission: public; no authentication required. Returns a player's paginated encounters filterable by result, stage, MVP, log availability, and opponent.
+         * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.
          *
          *     RPC subject: `rpc.app.users.encounters`
          */
@@ -4255,7 +4255,7 @@ export interface paths {
         };
         /**
          * User profile
-         * @description Permission: public; no authentication required. Returns a player's profile in the required `discipline` (its tournaments, roles and characters), resolved against the workspace context and that game's division grid.
+         * @description Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.
          *
          *     RPC subject: `rpc.app.users.get_profile`
          */
@@ -4321,7 +4321,7 @@ export interface paths {
         };
         /**
          * User tournaments
-         * @description Permission: public; no authentication required. Returns the tournaments of the required `discipline` a player participated in, scoped to the workspace context and grid.
+         * @description Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.
          *
          *     RPC subject: `rpc.app.users.tournaments`
          */
@@ -4919,7 +4919,7 @@ export interface paths {
         put?: never;
         /**
          * Apply template to registration form
-         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`).
+         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`). The template's game must be the tournament's (else 409 `template_discipline_mismatch`).
          *
          *     RPC subject: `rpc.tournament.regform_template_apply`
          */
@@ -4941,7 +4941,7 @@ export interface paths {
         put?: never;
         /**
          * Save registration form as template
-         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision.
+         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision. The template takes the tournament's game.
          *
          *     RPC subject: `rpc.tournament.regform_template_save_from_form`
          */
@@ -6467,7 +6467,7 @@ export interface paths {
         };
         /**
          * List parsed matches
-         * @description Permission: workspace `match.read` on the workspace named by `workspace_id`. Every native Overwatch observed duel map across the workspace, not one encounter. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.
+         * @description Permission: workspace `match.read` on the workspace named by `workspace_id`. Every observed duel map across the workspace, not one encounter: every game's, or only the optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.
          *
          *     RPC subject: `rpc.tournament.admin_matches_list`
          */
@@ -6579,7 +6579,7 @@ export interface paths {
         };
         /**
          * List player sub-roles
-         * @description Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.
+         * @description Permission: workspace `player.read`. Requires workspace_id; lists only that workspace's child roles — every installed game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code) — optionally filtered by parent role (which needs `discipline`, else 422) and including inactive ones. Each row names its own `discipline`.
          *
          *     RPC subject: `rpc.tournament.admin.list`
          */
@@ -8465,7 +8465,7 @@ export interface paths {
         };
         /**
          * List achievement rules
-         * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.
+         * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters: every game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code). Each rule names its own `discipline`.
          *
          *     RPC subject: `rpc.stats.ach.list`
          */
@@ -8893,7 +8893,7 @@ export interface paths {
         };
         /**
          * List registration form templates
-         * @description Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name.
+         * @description Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name; each carries its game (`discipline`). The optional `discipline` narrows to one game's (422 `discipline_not_installed` for an unknown code).
          *
          *     RPC subject: `rpc.tournament.regform_template_list`
          */
@@ -8901,7 +8901,7 @@ export interface paths {
         put?: never;
         /**
          * Create registration form template
-         * @description Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for the workspace (201 Created). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.
+         * @description Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for one game of the workspace (201 Created). `discipline` is required (422 `discipline_required`) and must be enabled for the workspace (422 `discipline_not_enabled`). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.
          *
          *     RPC subject: `rpc.tournament.regform_template_create`
          */
@@ -8922,7 +8922,7 @@ export interface paths {
         get?: never;
         /**
          * Update registration form template
-         * @description Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.
+         * @description Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. Its game never changes: `discipline` is omitted or equal, another game is 409 `template_discipline_immutable`. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.
          *
          *     RPC subject: `rpc.tournament.regform_template_update`
          */
@@ -9865,7 +9865,7 @@ export interface paths {
         };
         /**
          * Get custom game statistics
-         * @description Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across every mix of one discipline this workspace has run, best record first; `identity` is the member's handle for that discipline's identity provider. The optional `discipline` query parameter defaults to the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.
+         * @description Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.
          *
          *     RPC subject: `rpc.balancer.custom.stats`
          */
@@ -10659,7 +10659,7 @@ export interface paths {
         };
         /**
          * List all rank values in the workspace
-         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
+         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.
          *
          *     RPC subject: `rpc.balancer.ranks.list`
          */
@@ -12412,6 +12412,8 @@ export interface components {
             code: string;
             /** Enabled */
             enabled: boolean;
+            /** Icon */
+            icon: string | null;
             /** Identity Provider */
             identity_provider: string | null;
             /** Kinds */
@@ -12420,6 +12422,8 @@ export interface components {
             };
             /** Name */
             name: string;
+            /** Short Name */
+            short_name: string;
         };
         /** DisciplineMetadata */
         "app.DisciplineMetadata": {
@@ -12494,6 +12498,8 @@ export interface components {
              * @default null
              */
             closeness: number | null;
+            /** Discipline */
+            discipline: string;
             /**
              * Has Logs
              * @default false
@@ -13318,6 +13324,8 @@ export interface components {
             avg_placement: number | null;
             /** Best Placement */
             best_placement: number | null;
+            /** Disciplines */
+            disciplines?: string[];
             /** Encounters Played */
             encounters_played: number;
             /** Id */
@@ -13627,6 +13635,20 @@ export interface components {
             /** @default null */
             status: components["schemas"]["app.TournamentStatus"] | null;
         };
+        /**
+         * UserGameSummary
+         * @description One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it.
+         */
+        "app.UserGameSummary": {
+            /** Discipline */
+            discipline: string;
+            /** Roles */
+            roles: components["schemas"]["app.UserRole"][];
+            /** Tournaments Count */
+            tournaments_count: number;
+            /** Tournaments Won */
+            tournaments_won: number;
+        };
         /** UserMap */
         "app.UserMap": {
             /**
@@ -13807,6 +13829,8 @@ export interface components {
             averages: components["schemas"]["app.UserOverviewAverages"];
             /** Best Placement */
             best_placement: number | null;
+            /** Disciplines */
+            disciplines?: string[];
             /** Encounters Played */
             encounters_played: number;
             /** Id */
@@ -13867,6 +13891,8 @@ export interface components {
             character_statistics: components["schemas"]["app.CharacterPlaytime"][];
             /** Characters Count */
             characters_count: number;
+            /** Games */
+            games?: components["schemas"]["app.UserGameSummary"][];
             /** Maps Total */
             maps_total: number;
             /** Maps Won */
@@ -14039,6 +14065,8 @@ export interface components {
          *     actually consumes in user-scoped pages.
          */
         "app.UserTournamentSummary": {
+            /** Discipline */
+            discipline: string;
             /** @default null */
             division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
             /** Id */
@@ -21495,13 +21523,18 @@ export interface components {
              */
             delta: number | null;
             /**
+             * Discipline
+             * @description The row's game: one code, or every enabled game's rows without a filter.
+             */
+            discipline: string;
+            /**
              * Display Name
              * @default null
              */
             display_name: string | null;
             /**
              * Division
-             * @description Resolved on the workspace's effective grid.
+             * @description Resolved on the workspace's effective grid of the row's game; null when the game has none here.
              * @default null
              */
             division: number | null;
@@ -27201,6 +27234,8 @@ export interface components {
         };
         /** RegistrationFormTemplateRead */
         "tournament.RegistrationFormTemplateRead": {
+            /** Discipline */
+            discipline: string;
             form_schema: components["schemas"]["tournament.FormSchema-Output"];
             /** Id */
             id: number;
@@ -27224,6 +27259,11 @@ export interface components {
         };
         /** RegistrationFormTemplateUpsert */
         "tournament.RegistrationFormTemplateUpsert": {
+            /**
+             * Discipline
+             * @default null
+             */
+            discipline: string | null;
             form_schema: components["schemas"]["tournament.FormSchema-Input"];
             /** Name */
             name: string;
@@ -40354,14 +40394,14 @@ export interface operations {
     };
     get__api_v1_statistics_champion: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsChampionGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -40481,14 +40521,14 @@ export interface operations {
     };
     get__api_v1_statistics_winrate: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWinrateGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -40547,14 +40587,14 @@ export interface operations {
     };
     get__api_v1_statistics_won_maps: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWonMapsGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -40977,6 +41017,7 @@ export interface operations {
                 order?: components["schemas"]["tournament.SortOrder"];
                 tournament_id?: number | null;
                 search?: string | null;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
@@ -42951,7 +42992,7 @@ export interface operations {
     };
     get__api_v1_users_overview: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
@@ -42964,7 +43005,7 @@ export interface operations {
                 divisions?: number[];
                 has_logs?: boolean;
                 min_encounters?: number;
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -43023,7 +43064,7 @@ export interface operations {
     };
     get__api_v1_users_overview_catalog: {
         parameters: {
-            query: {
+            query?: {
                 role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
@@ -43031,7 +43072,7 @@ export interface operations {
                 letter?: string | null;
                 per_letter?: number;
                 max_letters?: number;
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -43090,12 +43131,12 @@ export interface operations {
     };
     get__api_v1_users_overview_stats: {
         parameters: {
-            query: {
+            query?: {
                 role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
-                discipline: string;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -43548,14 +43589,14 @@ export interface operations {
     };
     get__api_v1_users__id__encounters: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersIdEncountersGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                discipline: string;
+                discipline?: string;
                 result?: string;
                 stage?: string;
                 mvp1?: boolean;
@@ -43830,8 +43871,8 @@ export interface operations {
     };
     get__api_v1_users__id__profile: {
         parameters: {
-            query: {
-                discipline: string;
+            query?: {
+                discipline?: string;
                 workspace_id?: number;
             };
             header?: never;
@@ -44028,8 +44069,8 @@ export interface operations {
     };
     get__api_v1_users__id__tournaments: {
         parameters: {
-            query: {
-                discipline: string;
+            query?: {
+                discipline?: string;
                 workspace_id?: number;
             };
             header?: never;
@@ -52280,6 +52321,7 @@ export interface operations {
                 map_id?: number | null;
                 log_status?: components["schemas"]["tournament.IngestJobStatus"][];
                 unlinked_only?: boolean;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
@@ -52673,9 +52715,9 @@ export interface operations {
     };
     get__api_v1_admin_player_sub_roles: {
         parameters: {
-            query: {
+            query?: {
                 workspace_id?: number;
-                discipline: string;
+                discipline?: string;
                 role?: string;
                 include_inactive?: boolean;
             };
@@ -61255,14 +61297,14 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_rules: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1AdminWsWorkspace_idAchievementsRulesGetParametersQuerySort;
                 order?: components["schemas"]["stats.SortOrder"];
-                discipline: string;
+                discipline?: string | null;
                 search?: string | null;
                 category?: string | null;
                 enabled?: boolean | null;
@@ -63119,7 +63161,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__registration_form_templates: {
         parameters: {
-            query?: never;
+            query?: {
+                discipline?: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;

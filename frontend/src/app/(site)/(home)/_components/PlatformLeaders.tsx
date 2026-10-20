@@ -3,9 +3,9 @@ import { getTranslations } from "next-intl/server";
 
 import { LeadersContent, LeadersSkeleton, type KpiKey } from "@/components/site/leaders";
 import { MoreLink, Section, SectionHead } from "@/components/site/open-layout";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
+import { ServerGameScopeNotice } from "@/components/workspace/ServerGameScopeNotice";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import statisticsService from "@/services/statistics.service";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
 
 import { getPublicWorkspaces } from "./home-data";
 
@@ -25,18 +25,19 @@ const SECONDARY_KEYS = [
 ] as const satisfies readonly KpiKey[];
 
 /**
- * Platform scale first, followed by the two all-time player leaderboards of the browsing game (§2.3 composite): the
- * raw `?discipline=` decides it like any concrete surface, and an invalid one is named, never replaced by a fallback.
+ * Platform scale first, then the two all-time player leaderboards (spec §6.5): one cross-game top under "all games",
+ * the game's own under one. An invalid or empty game reads no board and shows its notice, never another game's.
  */
 export async function PlatformLeaders({ discipline }: Readonly<{ discipline: string | string[] | undefined }>) {
-  const browsing = await resolveServerBrowsingDiscipline(discipline);
-  // The leaderboards are one game's; with no game to read there are none (the totals are game-neutral).
-  const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const { init, resolution } = await resolveServerPageGame("multi", discipline);
+  const page = resolution?.game ?? null;
+  const boards = page?.kind === "all" || page?.kind === "game";
+  const game = page?.kind === "game" ? page.code : null;
   const [t, overall, champions, winrate, workspaces] = await Promise.all([
     getTranslations("home.leaders"),
     statisticsService.getOverallStatistics({ skipWorkspace: true }).catch(() => null),
-    game ? statisticsService.getChampions(game, { skipWorkspace: true }).catch(() => null) : null,
-    game ? statisticsService.getTopWinratePlayers(game, { skipWorkspace: true }).catch(() => null) : null,
+    boards ? statisticsService.getChampions(game, { skipWorkspace: true }).catch(() => null) : null,
+    boards ? statisticsService.getTopWinratePlayers(game, { skipWorkspace: true }).catch(() => null) : null,
     getPublicWorkspaces().catch(() => null)
   ]);
 
@@ -55,14 +56,12 @@ export async function PlatformLeaders({ discipline }: Readonly<{ discipline: str
           </MoreLink>
         }
       />
-      <div className="flex justify-end">
-        <ServerBrowsingDiscipline initial={browsing.init} />
-      </div>
+      <ServerGameScopeNotice initial={init} />
       {await LeadersContent({
         totals,
         primaryKeys: PRIMARY_KEYS,
         secondaryKeys: SECONDARY_KEYS,
-        boards: game
+        boards: boards
           ? [
               {
                 title: t("mostWins"),

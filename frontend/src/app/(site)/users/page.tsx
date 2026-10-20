@@ -1,12 +1,12 @@
 import { Suspense } from "react";
 
-import { loadBrowsingDisciplineInit } from "@/lib/site/discipline-server";
+import { loadGameScopeInit } from "@/lib/site/discipline-server";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
 
 import UsersClient from "./components/index/UsersClient";
 
 const UsersPage = async () => {
-  const [scope, initial] = await Promise.all([resolveStatsScope(), loadBrowsingDisciplineInit()]);
+  const [scope, initial] = await Promise.all([resolveStatsScope(), loadGameScopeInit()]);
 
   return (
     <Suspense fallback={null}>

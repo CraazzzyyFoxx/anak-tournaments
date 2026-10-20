@@ -15,6 +15,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Player, Team } from "@/types/team.types";
+import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import TeamsPage from "./page";
 
 declare global {
@@ -35,10 +37,6 @@ vi.mock("@/hooks/usePermissions", () => ({
     isSuperuser: false
   })
 }));
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
-    selector({ currentWorkspaceId: 1 })
-}));
 vi.mock("@/services/team.service", () => ({
   default: { getAll: (...args: unknown[]) => getTeams(...args) }
 }));
@@ -51,6 +49,15 @@ vi.mock("@/services/admin.service", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
+const scopeGame = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(scopeGame.value) };
+});
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
 
 // Every URL write re-renders from the new `useSearchParams` in the app — the
 // router's `replace` and, through Next's History patch, the inspector's native
@@ -72,8 +79,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 const TOURNAMENTS = [
-  { id: 7, name: "MoonRise Mix Vol.4" },
-  { id: 8, name: "MoonRise Draft Vol.2" }
+  { id: 7, name: "MoonRise Mix Vol.4", discipline: "overwatch" },
+  { id: 8, name: "MoonRise Draft Vol.2", discipline: "overwatch" }
 ];
 
 function player(overrides: Partial<Player> = {}): Player {
@@ -109,7 +116,7 @@ function team(overrides: Partial<Team> = {}): Team {
     captain_id: 91,
     tournament_id: 7,
     players: [player(), player({ id: 502, name: "Echo", user_id: 92, is_substitution: true, user: { id: 92, name: "Echo" } as Player["user"] })],
-    tournament: { id: 7, name: "MoonRise Mix Vol.4" } as Team["tournament"],
+    tournament: { id: 7, name: "MoonRise Mix Vol.4", discipline: "overwatch" } as Team["tournament"],
     placement: 3,
     group: null,
     ...overrides
@@ -213,6 +220,8 @@ function setViewportWidth(width: number) {
 }
 
 beforeEach(() => {
+  useWorkspaceStore.setState({ currentWorkspaceId: 1 });
+  scopeGame.value = "overwatch";
   permitted = true;
   replace.mockClear();
   setViewportWidth(1280);
@@ -344,5 +353,62 @@ describe("/admin/teams", () => {
     // roster size are what a phone needs from a team.
     expect(cards[0].textContent).toContain("MoonRise Mix Vol.4");
     expect(cards[0].textContent).toContain("2 players");
+    // Under a game every card is that game's: no game label.
+    expect(cards[0].textContent).not.toContain("Overwatch");
+  });
+
+  it("names each card's game below md under all games, where the Game column is not shown", async () => {
+    scopeGame.value = null;
+    setViewportWidth(375);
+    const container = await mount();
+    const card = await waitFor(() => container.querySelector("ul[aria-label='Rows'] > li"), "the mobile card");
+
+    expect(card.textContent).toContain("Wombat Warriors");
+    expect(card.textContent).toContain("Overwatch");
+  });
+
+  it("lists every game's teams with a Game column and ignores a one-game tournament filter when no game is chosen", async () => {
+    scopeGame.value = null;
+    const container = await mount("?tournament=7");
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: null, tournamentId: null }));
+    expect(Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim())).toContain("Game");
+    expect(container.querySelector("tbody")?.textContent).toContain("Overwatch");
+    expect(document.querySelector('button[aria-label^="Remove filter Tournament"]')).toBeNull();
+    expect(container.textContent).toContain("Some filters need a game");
+    // A scope pick drops the tournament chip from the URL (R5).
+    expect(useScopePillOpen.getState().gameBoundParams).toEqual(["tournament"]);
+  });
+
+  it("asks the server for one game's teams under a game, without the column", async () => {
+    scopeGame.value = "lol";
+    const container = await mount();
+    await waitFor(() => getTeams.mock.calls.length > 0, "the roster request");
+
+    expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: "lol" }));
+    expect(Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim())).not.toContain("Game");
+  });
+
+  it("reads nothing on a first visit until the community is known, then reads that community's teams once", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: null });
+    // Without a workspace the server answers with every community's rosters.
+    getTeams.mockImplementation(async ({ workspaceId }: { workspaceId?: number }) => ({
+      results: workspaceId === 1 ? [team()] : [team(), team({ id: 77, name: "Other Community Squad", tournament_id: 9 })],
+      total: workspaceId === 1 ? 1 : 2,
+      page: 1,
+      per_page: 15
+    }));
+    const container = await mount();
+    expect(getTeams).not.toHaveBeenCalled();
+    expect(getTournaments).not.toHaveBeenCalled();
+
+    await act(async () => useWorkspaceStore.setState({ currentWorkspaceId: 1 }));
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    expect(getTeams).toHaveBeenCalledTimes(1);
+    expect(getTeams).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 1 }));
+    expect(getTournaments.mock.calls).toEqual([[null, 1]]);
+    expect(container.textContent).not.toContain("Other Community Squad");
   });
 });

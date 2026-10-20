@@ -5,6 +5,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import type { DisciplineMetadata } from "@/types/discipline.types";
@@ -23,21 +24,23 @@ export interface UsersIndexData {
   availableLetters: Set<string>;
   /** `workspace_id` every read on this page is pinned to. */
   workspaceId: number | "all" | null;
-  /** The game every read is in; `null` while unresolved or invalid. */
+  /** The game every read is in; `null` under "all games" (every read spans the scope's games). */
   discipline: string | null;
   /** That game's role dictionary (names and glyphs); `null` while it loads. */
   ontology: RoleOntology | null;
 }
 
 /**
- * The three reads behind the index, all in the browsed game (`discipline`, `null` while unresolved or invalid —
- * nothing is read then). Only the view on screen pays for its own list — the stats strip is shared by both, so
- * it always runs. A previous result is kept on screen while a filter changes, never across games.
+ * The three reads behind the index: in one game (`discipline`), or across every game of the scope (`null`, once
+ * `resolved`). Nothing is read until the scope is resolved. Only the view on screen pays for its own list — the
+ * stats strip is shared by both, so it always runs. A previous result is kept on screen while a filter changes,
+ * never across games.
  */
 export function useUsersIndexData(
   params: UsersIndexParams,
   discipline: string | null,
-  metadata: DisciplineMetadata | null
+  metadata: DisciplineMetadata | null,
+  resolved: boolean
 ): UsersIndexData {
   const currentWorkspaceId = useCurrentWorkspaceId();
   const { page, perPage, query, sort, order, role, divisions, hasLogs, minEncounters, letter, view, scope } =
@@ -47,13 +50,13 @@ export function useUsersIndexData(
   const workspaceId = scope === "all" ? "all" : currentWorkspaceId;
   // Query keys take scalars only, and the array identity changes every render.
   const divisionsKey = divisions.join(",");
-  const game = discipline ?? "";
-  // Every index key carries the game at position 2.
+  // Every index key carries the game (or "all") at position 2.
+  const game = discipline ?? ALL_DISCIPLINES;
   const sameGame = <T,>(previous: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
-    previousQuery?.queryKey[2] === discipline ? previous : undefined;
+    previousQuery?.queryKey[2] === game ? previous : undefined;
   // A role chip needs the game's rated dimension: such a read waits for the metadata rather than running unfiltered.
   const roleFilter = roleFilterOf(metadata, role);
-  const ready = discipline !== null && (role === undefined || roleFilter !== undefined);
+  const ready = resolved && (role === undefined || roleFilter !== undefined);
   // A game without a grid on this axis refuses all three reads alike; the index shows `MissingGridNotice` for it.
   const meta = { rendersGridRefusal: true };
 
@@ -73,7 +76,7 @@ export function useUsersIndexData(
     ),
     queryFn: ({ signal }) =>
       userService.getUsersOverview({
-        discipline: game,
+        discipline,
         page,
         perPage,
         sort,
@@ -96,7 +99,7 @@ export function useUsersIndexData(
     queryKey: userQueryKeys.overviewStats(workspaceId, game, query, role, divisionsKey, hasLogs),
     queryFn: ({ signal }) =>
       userService.getUsersOverviewStats({
-        discipline: game,
+        discipline,
         query: query || undefined,
         role: roleFilter,
         divisions,
@@ -114,7 +117,7 @@ export function useUsersIndexData(
     queryKey: userQueryKeys.overviewCatalog(workspaceId, game, query, role, divisionsKey, hasLogs, letter),
     queryFn: ({ signal }) =>
       userService.getUsersCatalog({
-        discipline: game,
+        discipline,
         query: query || undefined,
         role: roleFilter,
         // A pinned letter is the "show more" affordance: one bucket, deeper.

@@ -109,6 +109,8 @@ class RegistrationFormUpsert(BaseModel):
 class RegistrationFormTemplateRead(BaseModel):
     id: int
     workspace_id: int
+    #: The game the template belongs to: its identity question is that game's.
+    discipline: str
     name: str
     form_schema: FormSchema
     updated_at: datetime
@@ -116,6 +118,8 @@ class RegistrationFormTemplateRead(BaseModel):
 
 class RegistrationFormTemplateUpsert(BaseModel):
     name: str = Field(min_length=1, max_length=64)
+    #: Required on create (a game the workspace runs). On update omitted or equal; another game is a 409.
+    discipline: str | None = None
     form_schema: FormSchema
 
 

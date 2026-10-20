@@ -70,10 +70,10 @@ export default class userService {
       next: { revalidate: USER_TTL_SECONDS, tags: ["users"] }
     }).then((res) => res.json());
   }
-  /** Every stats read below names its game: `discipline` is required by the server and never defaulted. */
-  static async getUserProfile(id: number, discipline: string, scope?: StatsScope): Promise<UserProfile> {
+  /** A player's profile in one game, or across every game (`discipline: null`, spec §6.6). */
+  static async getUserProfile(id: number, discipline: string | null, scope?: StatsScope): Promise<UserProfile> {
     return apiFetch(`/api/v1/users/${id}/profile`, {
-      query: { ...scopeQuery(scope), discipline },
+      query: { ...scopeQuery(scope), discipline: discipline ?? undefined },
       next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
@@ -108,11 +108,12 @@ export default class userService {
         return null;
       });
   }
-  /** One game's tournaments of a player. `workspaceId` pins the read: a number/`null` behaves as before, `"all"`
-   *  reads every workspace (platform apex only). */
+  /** A player's tournaments: one game's, or every game's when `discipline` is `null` (each row names its own).
+   *  `workspaceId` pins the read: a number/`null` behaves as before, `"all"` reads every workspace (platform apex
+   *  only). */
   static async getUserTournaments(
     id: number,
-    discipline: string,
+    discipline: string | null,
     workspaceId?: number | "all" | null
   ): Promise<UserTournament[]> {
     const query = { discipline, ...(workspaceId != null ? { workspace_id: workspaceId } : {}) };
@@ -210,9 +211,10 @@ export default class userService {
       }
     }).then((res) => res.json());
   }
+  /** A player's encounters: one game's, or every game's when `discipline` is `null` (each row names its own). */
   static async getUserEncounters(
     id: number,
-    discipline: string,
+    discipline: string | null,
     page: number,
     perPage: number = 10,
     sort: string = "played_at",
@@ -346,7 +348,8 @@ export default class userService {
     workspaceId,
     signal
   }: {
-    discipline: string;
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     page?: number;
     perPage?: number;
     sort?:
@@ -383,7 +386,7 @@ export default class userService {
         divisions,
         has_logs: hasLogs || undefined,
         min_encounters: minEncounters,
-        discipline,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -398,7 +401,8 @@ export default class userService {
     workspaceId,
     signal
   }: {
-    discipline: string;
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     query?: string;
     role?: RoleRef | null;
     divisions?: number[];
@@ -413,7 +417,7 @@ export default class userService {
         role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
-        discipline,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());
@@ -431,7 +435,8 @@ export default class userService {
     workspaceId,
     signal
   }: {
-    discipline: string;
+    /** One game, or `null` for every game of the scope (the game-bound `role`/`divisions` must then be omitted). */
+    discipline: string | null;
     query?: string;
     role?: RoleRef | null;
     divisions?: number[];
@@ -452,7 +457,7 @@ export default class userService {
         letter,
         per_letter: perLetter,
         max_letters: maxLetters,
-        discipline,
+        discipline: discipline ?? undefined,
         workspace_id: workspaceId ?? undefined
       }
     }).then((res) => res.json());

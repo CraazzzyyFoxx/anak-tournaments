@@ -70,4 +70,12 @@ describe("teamService.getAll", () => {
       tournament_id: 72,
     });
   });
+
+  it("narrows teams to the game in scope and names none for every game", async () => {
+    await teamService.getAll({ page: 1, perPage: 15, discipline: "lol" });
+    await teamService.getAll({ page: 1, perPage: 15, discipline: null });
+
+    expect(calls[0]?.options?.query).toMatchObject({ discipline: "lol" });
+    expect(calls[1]?.options?.query).not.toHaveProperty("discipline");
+  });
 });

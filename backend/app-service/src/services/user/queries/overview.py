@@ -10,8 +10,9 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from shared.disciplines import discipline, rated_role_codes
+from shared.disciplines import DISCIPLINES, discipline, rated_role_codes
 from shared.division_grid import DivisionGrid
+from shared.repository.stats_queries import player_facts
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.division_grid.access import tournament_effective_version_id_expr
@@ -67,7 +68,7 @@ class UserOverviewQueries(DisciplineQueries):
             *_compare_player_scope_filters(
                 models.Player,
                 user_id_column,
-                discipline=self.discipline,
+                discipline=self._discipline,
                 role=role,
                 div_min=div_min,
                 div_max=div_max,
@@ -91,7 +92,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(
                 models.Standing,
                 sa.and_(
@@ -121,7 +122,7 @@ class UserOverviewQueries(DisciplineQueries):
         return (
             seat.join(query, models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .where(*where_conditions)
         )
 
@@ -150,7 +151,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .where(*where_conditions)
             .scalar_subquery()
         )
@@ -171,7 +172,7 @@ class UserOverviewQueries(DisciplineQueries):
         effective_rows = build_effective_achievement_rows_subquery(
             user_ids=None,
             workspace_id=workspace_id,
-            discipline=self.discipline,
+            discipline=self._discipline,
             name="overview_effective_achievement_rows",
         )
         query = sa.select(sa.func.count(sa.distinct(effective_rows.c.achievement_rule_id))).where(
@@ -574,7 +575,7 @@ class UserOverviewQueries(DisciplineQueries):
     # (services.cache_resources) bound staleness.
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_overview_order:{self.discipline}:{workspace_id}:{sort_key}:{descending}:{min_encounters}",
+        key="backend:user_overview_order:{self._discipline}:{workspace_id}:{sort_key}:{descending}:{min_encounters}",
     )
     async def _overview_ordered_ids(
         self,
@@ -611,7 +612,7 @@ class UserOverviewQueries(DisciplineQueries):
         self,
         session: AsyncSession,
         params: app_schemas.UserOverviewParams,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         workspace_id: int | None = None,
     ) -> tuple[typing.Sequence[models.User], int]:
         is_desc = params.order == pagination.SortOrder.DESC or params.order == "desc"
@@ -658,8 +659,8 @@ class UserOverviewQueries(DisciplineQueries):
             total_query = params.apply_search(total_query, models.User)
 
         if params.has_logs:
-            query = apply_has_logs_filter(query, discipline=self.discipline)
-            total_query = apply_has_logs_filter(total_query, discipline=self.discipline)
+            query = apply_has_logs_filter(query, discipline=self._discipline)
+            total_query = apply_has_logs_filter(total_query, discipline=self._discipline)
 
         if params.has_role_filter or params.role is not None or params.divisions:
             query = _apply_overview_role_filters(
@@ -713,7 +714,8 @@ class UserOverviewQueries(DisciplineQueries):
         considered (so the "latest" rank per role is the latest *within the
         workspace*), matching the scoped user list.
         """
-        if not user_ids:
+        # A role and its division are facts of one game: the cross-game read has none.
+        if not user_ids or self._discipline is None:
             return {}
 
         latest_roles_select = (
@@ -733,7 +735,7 @@ class UserOverviewQueries(DisciplineQueries):
             )
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Player.is_substitution.is_(False),
@@ -788,7 +790,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -817,7 +819,7 @@ class UserOverviewQueries(DisciplineQueries):
         effective_rows = build_effective_achievement_rows_subquery(
             user_ids=user_ids,
             workspace_id=workspace_id,
-            discipline=self.discipline,
+            discipline=self._discipline,
             name="overview_achievement_count_rows",
         )
         query = sa.select(
@@ -852,7 +854,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(
                 models.Standing,
                 sa.and_(
@@ -891,7 +893,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(
                 models.Standing,
                 sa.and_(
@@ -922,7 +924,7 @@ class UserOverviewQueries(DisciplineQueries):
                 models.Team.id,
             )
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -970,7 +972,8 @@ class UserOverviewQueries(DisciplineQueries):
         limit: int = 5,
         workspace_id: int | None = None,
     ) -> dict[int, list[tuple[models.CatalogEntity, float]]]:
-        if not user_ids:
+        # Characters are one game's catalog: the cross-game read lists none.
+        if not user_ids or self._discipline is None:
             return {}
         playtime_sum = sa.func.sum(
             aggregate_order_by(
@@ -1064,7 +1067,7 @@ class UserOverviewQueries(DisciplineQueries):
                 models.Team.id,
             )
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -1111,7 +1114,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -1123,6 +1126,40 @@ class UserOverviewQueries(DisciplineQueries):
         )
         return dict((await session.execute(query)).all())
 
+    async def get_overview_disciplines(
+        self,
+        session: AsyncSession,
+        user_ids: list[int],
+        workspace_id: int | None = None,
+    ) -> dict[int, list[str]]:
+        """The games each user played (any roster seat, substitutes excluded), in installed order.
+
+        Independent of the game this instance is bound to: a row lists every game it played in both modes.
+        """
+        if not user_ids:
+            return {}
+        query = (
+            sa.select(models.WorkspaceMember.player_id, models.Tournament.discipline)
+            .select_from(models.Player)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(
+                models.WorkspaceMember.player_id.in_(user_ids),
+                models.Player.is_substitution.is_(False),
+            )
+            .distinct()
+        )
+        if workspace_id is not None:
+            query = query.where(models.Tournament.workspace_id == workspace_id)
+        installed = {code: index for index, code in enumerate(DISCIPLINES)}
+        played: dict[int, list[str]] = defaultdict(list)
+        for user_id, code in (await session.execute(query)).all():
+            played[user_id].append(code)
+        return {
+            user_id: sorted(codes, key=lambda code: installed.get(code, len(installed)))
+            for user_id, codes in played.items()
+        }
+
     async def get_overview_stats(
         self,
         session: AsyncSession,
@@ -1132,7 +1169,7 @@ class UserOverviewQueries(DisciplineQueries):
         divisions: typing.Sequence[int],
         has_logs: bool,
         query: str | None,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         workspace_id: int | None = None,
     ) -> dict[str, typing.Any]:
         """Compute KPI numbers for the users hero header.
@@ -1155,7 +1192,7 @@ class UserOverviewQueries(DisciplineQueries):
             base_query = pagination.apply_search(models.User, base_query, query, ["name"])
 
         if has_logs:
-            base_query = apply_has_logs_filter(base_query, discipline=self.discipline)
+            base_query = apply_has_logs_filter(base_query, discipline=self._discipline)
 
         if has_role_filter or role is not None:
             base_query = _apply_overview_role_filters(
@@ -1213,9 +1250,8 @@ class UserOverviewQueries(DisciplineQueries):
 
         # has-logs counts a candidate's logs from any workspace; the statistic
         # aggregates apply their own workspace filters.
-        owns_logs = (
-            sa.select(sa.literal(1)).select_from(self._facts).where(self._facts.c.player_id == candidates.c.id).exists()
-        )
+        facts = player_facts(discipline=self._discipline)
+        owns_logs = sa.select(sa.literal(1)).select_from(facts).where(facts.c.player_id == candidates.c.id).exists()
         with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(owns_logs)
         with_logs_count = (await session.execute(with_logs_query)).scalar_one() or 0
 
@@ -1227,7 +1263,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(candidate_ids),
@@ -1257,7 +1293,7 @@ class UserOverviewQueries(DisciplineQueries):
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.discipline == self.discipline)
+            .where(*self.discipline_filter(models.Tournament.discipline))
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(
                 models.WorkspaceMember.player_id.in_(candidate_ids),
@@ -1272,59 +1308,62 @@ class UserOverviewQueries(DisciplineQueries):
         )
         active_last_30d = (await session.execute(active_query)).scalar_one() or 0
 
-        roles_query = (
-            sa.select(models.WorkspaceMember.player_id.label("user_id"), models.Player.role)
-            .select_from(models.Player)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(
-                models.WorkspaceMember.player_id.in_(candidate_ids),
-                models.Player.is_substitution.is_(False),
-                models.Tournament.discipline == self.discipline,
-                *ws_filter,
-            )
-            .distinct()
-        )
-        user_roles: dict[int, set[str | None]] = defaultdict(set)
-        for user_id, player_role in (await session.execute(roles_query)).all():
-            user_roles[user_id].add(player_role)
-
         role_counts: Counter[str] = Counter()
         flex_count = flex_declared_count = 0
-        for roles_set in user_roles.values():
-            # An open slot has no assignment; multi-role players also count as flex.
-            if len(roles_set) > 1 or None in roles_set:
-                flex_count += 1
-            if None in roles_set:
-                flex_declared_count += 1
-            role_counts.update(code for code in roles_set if code is not None)
-
-        # Per-division chip counts, over the candidate set *before* the division
-        # chips were applied: picking division 5 must not zero every other chip.
-        # ponytail: in the all-workspaces read the division number is a correlated
-        # per-row subquery (each rank on its own grid), so this groups over one
-        # subquery per player row; add a materialized player-division view if the
-        # stats call shows up in the slow log.
-        division_expr = overview_division_number_expr(
-            models.Player.rank, models.Player.tournament_id, grid, workspace_id
-        )
-        division_counts_query = (
-            sa.select(division_expr.label("division"), sa.func.count(sa.distinct(models.WorkspaceMember.player_id)))
-            .select_from(models.Player)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(
-                models.WorkspaceMember.player_id.in_(sa.select(division_candidates.c.id)),
-                models.Player.is_substitution.is_(False),
-                *([player_role_filter(models.Player, role)] if has_role_filter or role is not None else []),
+        division_counts: list[dict[str, int]] = []
+        # Roles and divisions are one game's facets: the cross-game read reports none.
+        if self._discipline is not None:
+            roles_query = (
+                sa.select(models.WorkspaceMember.player_id.label("user_id"), models.Player.role)
+                .select_from(models.Player)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+                .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+                .where(
+                    models.WorkspaceMember.player_id.in_(candidate_ids),
+                    models.Player.is_substitution.is_(False),
+                    models.Tournament.discipline == self.discipline,
+                    *ws_filter,
+                )
+                .distinct()
             )
-            .group_by(division_expr)
-            .order_by(division_expr)
-        )
-        division_counts = [
-            {"division": int(division), "count": int(count)}
-            for division, count in (await session.execute(division_counts_query)).all()
-            if division is not None
-        ]
+            user_roles: dict[int, set[str | None]] = defaultdict(set)
+            for user_id, player_role in (await session.execute(roles_query)).all():
+                user_roles[user_id].add(player_role)
+
+            for roles_set in user_roles.values():
+                # An open slot has no assignment; multi-role players also count as flex.
+                if len(roles_set) > 1 or None in roles_set:
+                    flex_count += 1
+                if None in roles_set:
+                    flex_declared_count += 1
+                role_counts.update(code for code in roles_set if code is not None)
+
+            # Per-division chip counts, over the candidate set *before* the division
+            # chips were applied: picking division 5 must not zero every other chip.
+            # ponytail: in the all-workspaces read the division number is a correlated
+            # per-row subquery (each rank on its own grid), so this groups over one
+            # subquery per player row; add a materialized player-division view if the
+            # stats call shows up in the slow log.
+            division_expr = overview_division_number_expr(
+                models.Player.rank, models.Player.tournament_id, grid, workspace_id
+            )
+            division_counts_query = (
+                sa.select(division_expr.label("division"), sa.func.count(sa.distinct(models.WorkspaceMember.player_id)))
+                .select_from(models.Player)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+                .where(
+                    models.WorkspaceMember.player_id.in_(sa.select(division_candidates.c.id)),
+                    models.Player.is_substitution.is_(False),
+                    *([player_role_filter(models.Player, role)] if has_role_filter or role is not None else []),
+                )
+                .group_by(division_expr)
+                .order_by(division_expr)
+            )
+            division_counts = [
+                {"division": int(division), "count": int(count)}
+                for division, count in (await session.execute(division_counts_query)).all()
+                if division is not None
+            ]
 
         return {
             "total_players": total_players,
@@ -1361,7 +1400,7 @@ class UserOverviewQueries(DisciplineQueries):
         letter: str | None,
         per_letter: int,
         max_letters: int,
-        grid: DivisionGrid,
+        grid: DivisionGrid | None,
         workspace_id: int | None = None,
     ) -> tuple[list[tuple[str, list[models.User]]], int, list[str]]:
         """Return (letters_with_users, total_users, available_letters).
@@ -1383,7 +1422,7 @@ class UserOverviewQueries(DisciplineQueries):
             base_query = pagination.apply_search(models.User, base_query, query, ["name"])
 
         if has_logs:
-            base_query = apply_has_logs_filter(base_query, discipline=self.discipline)
+            base_query = apply_has_logs_filter(base_query, discipline=self._discipline)
 
         if has_role_filter or role is not None or divisions:
             base_query = _apply_overview_role_filters(

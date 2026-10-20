@@ -20,9 +20,11 @@ interface Props {
   selfUserId: number;
   /** Career totals for the KPI strip; optional so the tab still renders without it. */
   profile?: UserProfile | null;
+  /** "All games": rows mark their game. */
+  showGames?: boolean;
 }
 
-const TournamentsHistory = ({ tournaments, selfUserId, profile = null }: Props) => {
+const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames = false }: Props) => {
   const searchParams = useSearchParams();
   const dossierRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +149,7 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null }: Props) 
         </div>
         {/* Desktop: the list is taken out of flow so the row height is the dossier's and the list scrolls inside it. */}
         <div className="order-1 min-[1081px]:relative min-[1081px]:order-2 min-[1081px]:min-h-[520px]">
-          <TournamentList groups={groups} selectedKey={effectiveKey} onSelect={selectEvent} />
+          <TournamentList groups={groups} selectedKey={effectiveKey} onSelect={selectEvent} showGames={showGames} />
         </div>
       </div>
     </>

@@ -6,10 +6,11 @@ import { LeaderboardCard } from "@/components/stats/LeaderboardCard";
 import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
 import TournamentsChart from "@/components/TournamentsChart";
 import TournamentsDivisionChart from "@/components/TournamentsDivisionChart";
+import { BlockGameTabs } from "@/components/workspace/BlockGameTabs";
+import { ServerGameScopeNotice } from "@/components/workspace/ServerGameScopeNotice";
 import statisticsService from "@/services/statistics.service";
 import { isTenantHost } from "@/lib/site/tenant-host";
-import { resolveServerBrowsingDiscipline } from "@/lib/site/discipline-server";
-import { ServerBrowsingDiscipline } from "@/components/workspace/ServerBrowsingDiscipline";
+import { resolveServerPageGame } from "@/lib/site/discipline-server";
 import disciplineService from "@/services/discipline.service";
 import type { PlayerStatistics, TournamentStatistics } from "@/types/statistics.types";
 import {
@@ -30,10 +31,15 @@ export default async function StatisticsPage({
   searchParams
 }: Readonly<{ searchParams: Promise<{ discipline?: string | string[] }> }>) {
   const [t, { discipline }] = await Promise.all([getTranslations(), searchParams]);
-  // The leaderboards and the division-by-role trend are one game's (§2.3 composite); the totals and the activity
-  // trend are game-neutral.
-  const browsing = await resolveServerBrowsingDiscipline(discipline);
-  const game = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  // A multi page (spec §5): the totals and the activity trend are game-neutral; the leaderboards are every game's
+  // under "all games" and the game's own under one (§6.5); the division trend is one game's by nature, so under
+  // "all games" it reads the "single" rows for itself, with block tabs (§6.4).
+  const { init, resolution } = await resolveServerPageGame("multi", discipline);
+  const page = resolution?.game ?? null;
+  const boards = page?.kind === "all" || page?.kind === "game";
+  const game = page?.kind === "game" ? page.code : null;
+  const block = page?.kind === "all" ? (await resolveServerPageGame("single", undefined)).resolution : resolution;
+  const blockGame = block?.game.kind === "game" ? block.game.code : null;
   return (
     <div className="space-y-8">
       <header>
@@ -48,6 +54,8 @@ export default async function StatisticsPage({
         </p>
       </header>
 
+      <ServerGameScopeNotice initial={init} />
+
       <section>
         <Suspense fallback={<StatsGridSkeleton />}>
           <OverallStats />
@@ -59,19 +67,17 @@ export default async function StatisticsPage({
         <Suspense fallback={<ChartCardSkeleton />}>
           <ActivityTrendCard />
         </Suspense>
-        {game === null ? null : (
-          <Suspense fallback={<ChartCardSkeleton />}>
-            <DivisionTrendCard discipline={game} />
+        {page?.kind === "all" && block?.tabs ? <BlockGameTabs initial={init} /> : null}
+        {blockGame === null ? null : (
+          <Suspense key={blockGame} fallback={<ChartCardSkeleton />}>
+            <DivisionTrendCard discipline={blockGame} />
           </Suspense>
         )}
       </section>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      {boards ? (
+        <section className="space-y-4">
           <SectionLabel>{t("statistics.leaderboards")}</SectionLabel>
-          <ServerBrowsingDiscipline initial={browsing.init} />
-        </div>
-        {game === null ? null : (
           <div className="grid gap-4 lg:grid-cols-3">
             <Suspense fallback={<TableCardSkeleton />}>
               <ChampionsLeaderboard discipline={game} />
@@ -83,8 +89,8 @@ export default async function StatisticsPage({
               <WonMapsLeaderboard discipline={game} />
             </Suspense>
           </div>
-        )}
-      </section>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -204,7 +210,8 @@ async function DivisionTrendCard({ discipline }: Readonly<{ discipline: string }
 // Leaderboards
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function ChampionsLeaderboard({ discipline }: Readonly<{ discipline: string }>) {
+/** `discipline: null` is one cross-game board (spec §6.5). */
+async function ChampionsLeaderboard({ discipline }: Readonly<{ discipline: string | null }>) {
   const t = await getTranslations();
   const skipWorkspace = !(await isTenantHost());
   let rows: PlayerStatistics[] = [];
@@ -227,7 +234,7 @@ async function ChampionsLeaderboard({ discipline }: Readonly<{ discipline: strin
   );
 }
 
-async function WinRateLeaderboard({ discipline }: Readonly<{ discipline: string }>) {
+async function WinRateLeaderboard({ discipline }: Readonly<{ discipline: string | null }>) {
   const t = await getTranslations();
   const skipWorkspace = !(await isTenantHost());
   let rows: PlayerStatistics[] = [];
@@ -250,7 +257,7 @@ async function WinRateLeaderboard({ discipline }: Readonly<{ discipline: string 
   );
 }
 
-async function WonMapsLeaderboard({ discipline }: Readonly<{ discipline: string }>) {
+async function WonMapsLeaderboard({ discipline }: Readonly<{ discipline: string | null }>) {
   const t = await getTranslations();
   const skipWorkspace = !(await isTenantHost());
   let rows: PlayerStatistics[] = [];

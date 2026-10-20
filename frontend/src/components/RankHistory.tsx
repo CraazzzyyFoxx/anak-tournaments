@@ -6,13 +6,14 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistoryState";
-import { DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadRankUI } from "@/disciplines/registry/rank";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
 import { useNativeRankCollector } from "@/hooks/useNativeRankCollector";
 import { userQueryKeys } from "@/lib/users/query-keys";
+import { cn } from "@/lib/utils";
 import userService from "@/services/user.service";
 
 /**
@@ -26,9 +27,10 @@ type RankHistoryTarget =
 
 type RankHistoryProps = RankHistoryTarget & {
   /**
-   * The owning game (tournament, mix, draft, registration…). Without one the concrete browsing game is
-   * used. Either way the game is resolved first and only then checked for rank collection: a game that
-   * does not collect ranks gets the unsupported state, never another game's history.
+   * The owning game (tournament, mix, draft, registration…). Without one the single-page rules pick it, with local
+   * game tabs under "all games" — on a game-neutral page (the person hub) the platform rules, with tabs under any
+   * scope (R23). Either way the game is resolved first and only then checked for rank collection:
+   * a game that does not collect ranks gets the unsupported state, never another game's history.
    */
   discipline?: string | null;
   /** When set, the chart is wrapped in a titled card; otherwise it renders bare. */
@@ -70,7 +72,7 @@ export default function RankHistory({
   const descriptor = collector.descriptor;
 
   let content: ReactNode;
-  if (resolve.isLoading || collector.isLoading) {
+  if (resolve.isLoading || (collector.scope.resolution === null && !collector.scope.isError)) {
     content = <RankHistorySkeleton className={contentClassName} />;
   } else if (resolvedUserId == null) {
     content = (
@@ -81,7 +83,7 @@ export default function RankHistory({
         body={t("rankHistory.noProfileBody")}
       />
     );
-  } else if (collector.isError) {
+  } else if (collector.scope.isError) {
     content = (
       <ChartEmptyState
         className={contentClassName}
@@ -91,40 +93,31 @@ export default function RankHistory({
         body={t("rankHistory.errorBody")}
       />
     );
-  } else if (collector.resolved?.kind === "invalid" || collector.resolved?.kind === "empty") {
-    // An explicit `?discipline=` the installed games cannot honour is named, with the way out — it is
-    // never read as "this game collects no ranks".
-    content = (
-      <div className={contentClassName}>
-        <DisciplineUnavailable
-          resolved={collector.resolved}
-          disciplines={collector.disciplines ?? []}
-          allowsAll={false}
-          onSelect={collector.select}
-        />
-      </div>
-    );
-  } else if (!descriptor || !collector.supported) {
-    content = (
-      <ChartEmptyState
-        className={contentClassName}
-        icon={Radar}
-        title={t("rankHistory.unsupportedTitle")}
-        body={t("rankHistory.unsupportedBody")}
-      />
-    );
   } else {
+    const kind = collector.scope.resolution?.game.kind;
     content = (
-      <div className={contentClassName}>
-        <DisciplineWidget
-          discipline={descriptor.code}
-          load={loadRankUI}
-          slot="rankHistory"
-          capabilities={descriptor.capabilities}
-          requires="native_rank_collection"
-          props={{ userId: resolvedUserId, axis }}
-          fallback={null}
-        />
+      <div className={cn("space-y-3", contentClassName)}>
+        {/* An invalid/empty resolution named with its way out (never read as "this game collects no ranks"), or —
+            ownerless, when the resolution asks for them — the local game tabs, whether or not the picked game collects
+            ranks. */}
+        <GameScopeControl scope={collector.scope} variant="single" />
+        {kind === "invalid" || kind === "empty" ? null : descriptor && collector.supported ? (
+          <DisciplineWidget
+            discipline={descriptor.code}
+            load={loadRankUI}
+            slot="rankHistory"
+            capabilities={descriptor.capabilities}
+            requires="native_rank_collection"
+            props={{ userId: resolvedUserId, axis }}
+            fallback={null}
+          />
+        ) : (
+          <ChartEmptyState
+            icon={Radar}
+            title={t("rankHistory.unsupportedTitle")}
+            body={t("rankHistory.unsupportedBody")}
+          />
+        )}
       </div>
     );
   }

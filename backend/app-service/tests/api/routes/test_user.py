@@ -538,6 +538,23 @@ def test_get_users_overview_rejects_a_division_outside_the_grid(rpc: RpcHarness)
     assert env["error"]["code"] == "unprocessable"
 
 
+def test_users_overview_without_a_game_lists_the_games_each_row_played(rpc: RpcHarness) -> None:
+    env = rpc.call_sync(
+        "rpc.app.users.overview",
+        {"query": build_query({"workspace_id": "all", "per_page": 5, "sort": "tournaments_count", "order": "desc"})},
+    )
+    assert env["ok"] is True, env
+
+    for row in env["data"]["results"]:
+        # Game-bound fields keep their shape and stay empty across games.
+        assert row["roles"] == []
+        assert row["top_characters"] == []
+        if row["tournaments_count"] > 0:
+            assert row["disciplines"], row
+        assert set(row["disciplines"]) <= {"overwatch", "lol"}
+    assert env["data"]["division_grids"] == []
+
+
 @pytest.mark.parametrize(("user_id",), [(599,), (79,)])
 @pytest.mark.db
 def test_get_user_compare_global(rpc: RpcHarness, user_id: int) -> None:

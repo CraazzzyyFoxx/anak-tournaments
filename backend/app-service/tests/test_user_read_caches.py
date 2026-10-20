@@ -206,7 +206,7 @@ class CacheKeyRoutabilityTests(_CacheTestBase):
 
     async def test_the_versioned_encounter_families_are_dropped_by_both_invalidation_shapes(self) -> None:
         """``user_encounters`` and ``user_tournament_encounters`` embed the native match header of one game, so their
-        keys are versioned (``:v5:``). The version belongs to the prefix: a subject's precise pattern is
+        keys are versioned (``:v6:``). The version belongs to the prefix: a subject's precise pattern is
         ``{prefix}:{user_id}:*`` and must still reach the key the decorator wrote, and so must the broad one."""
         user = SimpleNamespace(id=404, name="Player")
         page = AsyncMock(return_value=([], 0))
@@ -223,8 +223,8 @@ class CacheKeyRoutabilityTests(_CacheTestBase):
                 stored = sorted([key async for key in cache.scan("backend:*")])
                 self.assertEqual(
                     [
-                        "backend:user_encounters:v5:404:",
-                        "backend:user_tournament_encounters:v5:404:",
+                        "backend:user_encounters:v6:404:",
+                        "backend:user_tournament_encounters:v6:404:",
                     ],
                     [key[: key.index("404:") + 4] for key in stored],
                 )

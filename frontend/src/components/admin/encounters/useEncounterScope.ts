@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
@@ -10,25 +11,29 @@ import tournamentService from "@/services/tournament.service";
 
 /**
  * What a tournament scope brings with it: the tournament itself, its stages and
- * groups, and its teams.
+ * groups, and its teams — and, while the chip picks the scope, the workspace's
+ * tournaments to pick from.
  *
  * Every one of these reads is gated on a scope actually being chosen — the
  * workspace-wide browser opens with none, and four unscoped requests for
- * "every team ever" is what that used to cost.
+ * "every team ever" is what that used to cost. The chip's list is the
+ * workspace's: it waits until the workspace is known.
  */
 export function useEncounterScope({
   tournamentId,
-  scopeTournamentId
+  scopeTournamentId,
+  workspaceId
 }: Readonly<{
   /** Pinned by the hub; `null` means the chip picks the scope instead. */
   tournamentId: number | null;
   /** The pin, or the chip — whichever is in force. */
   scopeTournamentId: number | null;
+  workspaceId: number | null;
 }>) {
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.list(),
-    queryFn: () => tournamentService.getAll(null),
-    enabled: tournamentId == null
+    queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, workspaceId),
+    enabled: tournamentId == null && workspaceId != null
   });
 
   const tournamentQuery = useQuery({

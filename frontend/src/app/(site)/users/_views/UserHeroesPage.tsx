@@ -19,7 +19,10 @@ const UserHeroesPage = ({
   discipline: string;
   axis: WorkspaceAxis;
 }) => {
-  return <UserHeroesContainer userId={user.id} scope={scope} discipline={discipline} axis={axis} />;
+  // Keyed by game: the tournament filter is one game's, never carried into another's.
+  return (
+    <UserHeroesContainer key={discipline} userId={user.id} scope={scope} discipline={discipline} axis={axis} />
+  );
 };
 
 export default UserHeroesPage;

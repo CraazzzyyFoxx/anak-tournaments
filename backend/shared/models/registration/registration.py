@@ -156,7 +156,9 @@ class BalancerRegistrationFormTemplate(db.TimeStampIntegerMixin):
     """A workspace-level named schema, copied into a tournament's form on apply.
 
     Copy-on-apply: nothing links the tournament back to the template afterwards,
-    so editing a template never rewrites a live form.
+    so editing a template never rewrites a live form. Owned by one game
+    (``discipline``): its identity question is that game's, and it applies to
+    that game's tournaments only.
     """
 
     __tablename__ = "registration_form_template"
@@ -171,6 +173,10 @@ class BalancerRegistrationFormTemplate(db.TimeStampIntegerMixin):
     )
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
+    #: The game the template belongs to (``catalog.discipline.code``); immutable once created.
+    discipline: Mapped[str] = mapped_column(
+        String(32), ForeignKey("catalog.discipline.code", name="fk_registration_form_template_discipline")
+    )
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     schema_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True)

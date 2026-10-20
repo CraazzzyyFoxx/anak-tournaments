@@ -87,8 +87,9 @@ export function useAchievementDetailMutations({
   const queryClient = useQueryClient();
   const ruleKey = achievementQueryKeys.rule(workspaceId, ruleId);
 
+  // The rule is on its game's list and on the all-games list: stale every game's rule list of the workspace (R17).
   const invalidateLists = () => {
-    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminListsOf(workspaceId) });
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
   };
 

@@ -17,7 +17,7 @@ from unittest.mock import patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.disciplines import DISCIPLINES
+from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.repository import CatalogRoleRepository
 from shared.services.ontology import project_disciplines
 from shared.testing import create_test_async_engine, ensure_test_postgres
@@ -55,6 +55,21 @@ def test_the_scope_query_param_is_documented_as_an_id_or_the_literal_all() -> No
         assert (param.name, param.type, param.array, param.required) == ("workspace_id", "string", False, False)
         assert "all" in param.description and "integer" in param.description
         assert param is not openapi_schemas._WS  # the plain integer param would reject the literal
+
+
+def test_a_descriptor_carries_the_module_marks_and_falls_back_to_the_name() -> None:
+    bare = discipline_service._descriptor(DisciplineSpec("x", "Xgame"), enabled=True)
+    assert (bare.short_name, bare.icon) == ("Xgame", None)
+    marked = discipline_service._descriptor(
+        DisciplineSpec("x", "Xgame", short_name="XG", icon="/disciplines/x/icon.svg"), enabled=False
+    )
+    assert (marked.short_name, marked.icon) == ("XG", "/disciplines/x/icon.svg")
+
+
+def test_every_installed_game_declares_its_own_short_name() -> None:
+    names = [spec.short_name for spec in DISCIPLINES.values()]
+    assert all(names)
+    assert len(set(names)) == len(names)
 
 
 class DisciplineMetadataTests(IsolatedAsyncioTestCase):
@@ -171,6 +186,10 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
             },
             lol["capabilities"],
         )
+        self.assertEqual(
+            [(spec.short_name, spec.icon) for spec in DISCIPLINES.values()],
+            [(row["short_name"], row["icon"]) for row in listed],
+        )
 
     async def test_an_omitted_scope_is_the_global_view(self) -> None:
         self.assertEqual(await self.list("all"), await self.list())
@@ -182,6 +201,19 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         self.assertEqual({"overwatch": True, "lol": False}, {row["code"]: row["enabled"] for row in reply["data"]})
         both = await self.workspace("both", enabled=("overwatch", "lol"))
         self.assertTrue(all(row["enabled"] for row in (await self.list(both.id))["data"]))
+
+    async def test_a_community_lists_its_own_games_first_in_its_own_order(self) -> None:
+        # Spec §2: the community's order is "the first enabled game" and every tie-break; the rest follow installed.
+        installed = list(DISCIPLINES)
+        reversed_order = await self.workspace("reversed", enabled=tuple(reversed(installed)))
+        reply = await self.list(reversed_order.id)
+        self.assertTrue(reply["ok"], reply)
+        self.assertEqual(installed[::-1], [row["code"] for row in reply["data"]])
+        last_only = await self.workspace("last-only", enabled=(installed[-1],))
+        listed = (await self.list(last_only.id))["data"]
+        self.assertEqual([installed[-1], *installed[:-1]], [row["code"] for row in listed])
+        self.assertEqual([True] + [False] * (len(installed) - 1), [row["enabled"] for row in listed])
+        self.assertEqual(installed, [row["code"] for row in (await self.list("all"))["data"]])
 
     async def test_a_non_integer_scope_is_422_and_any_unknown_integer_is_the_404(self) -> None:
         for call in (self.list, lambda scope: self.metadata("overwatch", scope)):

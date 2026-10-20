@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import { navigation } from "@/test/url-navigation";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Workspace } from "@/types/workspace.types";
@@ -23,51 +24,32 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next-intl", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next-intl")>();
-  const { default: en } = await import("@/i18n/messages/en.json");
-  return { ...actual, useTranslations: (namespace?: string) => actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never }) };
+  const { default: messages } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages, namespace: namespace as never }),
+  };
 });
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
 vi.mock("@/services/achievements.service", () => ({ default: { getAll: mocks.getAll } }));
 vi.mock("@/services/discipline.service", () => ({ default: { list: mocks.list } }));
 vi.mock("./AchievementsHero", () => ({ default: () => null }));
+// `data-marked` is whether the catalogue asked the tile to name its game.
 vi.mock("./AchievementTile", () => ({
-  default: ({ achievement }: { achievement: { id: number; discipline: string } }) => (
-    <i data-tile={achievement.id} data-game={achievement.discipline} />
+  default: ({ achievement, games }: { achievement: { id: number; discipline: string }; games?: Map<string, unknown> }) => (
+    <i data-tile={achievement.id} data-game={achievement.discipline} data-marked={games ? "yes" : "no"} />
   ),
 }));
 vi.mock("@/components/achievements/RarityStrip", () => ({ RarityStrip: () => null }));
-vi.mock("@/components/workspace/DisciplineSelector", () => ({
-  DisciplineSelector: ({
-    disciplines,
-    value,
-    onSelect,
-  }: {
-    disciplines: { code: string; name: string }[];
-    value: string | undefined;
-    onSelect: (code: string) => void;
-  }) => (
-    <div data-selector={value}>
-      {disciplines.map((game) => (
-        <button key={game.code} data-pick={game.code} onClick={() => onSelect(game.code)}>
-          {game.name}
-        </button>
-      ))}
-    </div>
-  ),
-  DisciplineUnavailable: ({ resolved }: { resolved: { kind: string; requested?: string } }) => (
-    <p role="alert" data-unavailable={resolved.kind}>
-      {resolved.requested}
-    </p>
-  ),
-}));
 
 function workspace(id: number, disciplines: string[]): Workspace {
   return { id, slug: `w${id}`, name: `w${id}`, disciplines_enabled: disciplines } as Workspace;
 }
 
 const GAMES = [
-  { code: "overwatch", name: "Overwatch", enabled: true },
-  { code: "lol", name: "League of Legends", enabled: true },
+  { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
+  { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true },
 ];
 
 const RULES: Record<string, { id: number; name: string; discipline: string; rarity: number; count: number; category: string }> = {
@@ -78,7 +60,7 @@ const RULES: Record<string, { id: number; name: string; discipline: string; rari
 let root: Root;
 let container: HTMLElement;
 
-// The chain list → resolve → canonical URL → read → render needs several turns; one wait is not enough.
+// The chain list → resolve → read → render needs several turns; one wait is not enough.
 const tick = async () => {
   for (let turn = 0; turn < 3; turn++) {
     const { promise, resolve } = Promise.withResolvers<void>();
@@ -100,16 +82,15 @@ async function mount() {
 }
 
 const tiles = () => [...container.querySelectorAll("[data-tile]")].map((tile) => tile.getAttribute("data-game"));
-const pick = (code: string) =>
-  act(async () => {
-    container.querySelector(`[data-pick=${code}]`)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+const marks = () => [...container.querySelectorAll("[data-tile]")].map((tile) => tile.getAttribute("data-marked"));
 
 beforeEach(() => {
-  mocks.getAll.mockReset().mockImplementation(async (_page: number, _per: number, _scope: unknown, game: string) => ({
-    results: [RULES[game]],
-    total: 1,
-  }));
+  mocks.getAll
+    .mockReset()
+    .mockImplementation(async (_page: number, _per: number, _scope: unknown, game: string | null) => {
+      const results = game === null ? [RULES.overwatch, RULES.lol] : [RULES[game]];
+      return { results, total: results.length };
+    });
   mocks.list.mockReset().mockResolvedValue(GAMES);
   navigation.reset("/achievements");
   document.body.innerHTML = "";
@@ -121,7 +102,8 @@ beforeEach(() => {
     currentWorkspaceId: 1,
     statsScope: "all",
     hostLockedWorkspaceId: null,
-    browsingDiscipline: null,
+    gameScope: "all",
+    lastGame: null,
   });
 });
 
@@ -129,30 +111,31 @@ afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-describe("the public achievement catalogue is one game at a time", () => {
-  it("reads the first enabled game when nothing is chosen and writes it to the URL without a history entry", async () => {
+describe("the public achievement catalogue", () => {
+  it("lists every game's rules under all games, marks each tile, and writes nothing to the URL", async () => {
     await mount();
 
     expect(mocks.list).toHaveBeenCalledWith("all", expect.anything());
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
-    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "overwatch", expect.anything());
-    expect(tiles()).toEqual(["overwatch"]);
-    expect(navigation.replaces).toEqual(["/achievements?discipline=overwatch"]);
+    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", null, expect.anything());
+    expect(tiles().sort()).toEqual(["lol", "overwatch"]);
+    expect(marks()).toEqual(["yes", "yes"]);
+    expect(navigation.replaces).toEqual([]);
     expect(navigation.pushes).toEqual([]);
   });
 
-  it("asks for the explicit game and shows only its rules", async () => {
+  it("asks for the explicit game and shows only its rules, unmarked", async () => {
     navigation.reset("/achievements?discipline=lol");
     await mount();
 
     expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "lol", expect.anything());
     expect(tiles()).toEqual(["lol"]);
-    expect(container.querySelector("[data-selector]")?.getAttribute("data-selector")).toBe("lol");
+    expect(marks()).toEqual(["no"]);
     expect(navigation.replaces).toEqual([]);
   });
 
-  it("prefers the saved game when the URL names none, but never over the URL", async () => {
-    useWorkspaceStore.setState({ browsingDiscipline: "lol" });
+  it("narrows to the saved game scope when the URL names none, and the URL wins over it without changing it", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol" });
     await mount();
     expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "lol", expect.anything());
 
@@ -162,24 +145,34 @@ describe("the public achievement catalogue is one game at a time", () => {
     navigation.reset("/achievements?discipline=overwatch");
     await mount();
     expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "overwatch", expect.anything());
-    expect(useWorkspaceStore.getState().browsingDiscipline).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("lol");
   });
 
-  it("no longer reads the removed ?game= parameter", async () => {
-    navigation.reset("/achievements?game=lol");
-    await mount();
-
-    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", "overwatch", expect.anything());
-    expect(tiles()).toEqual(["overwatch"]);
-  });
-
-  it("shows an explicit unusable value as an error, reads no game and leaves the URL alone", async () => {
+  it("reads an old ?discipline=all link as no parameter: every game", async () => {
     navigation.reset("/achievements?discipline=all");
     await mount();
 
-    expect(container.querySelector("[data-unavailable=invalid]")?.textContent).toBe("all");
-    expect(mocks.getAll).not.toHaveBeenCalled();
+    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", null, expect.anything());
+    expect(tiles().sort()).toEqual(["lol", "overwatch"]);
     expect(navigation.current()).toBe("/achievements?discipline=all");
+  });
+
+  it("names an unknown game, reads nothing and leaves the URL alone, then widens to every game on request", async () => {
+    navigation.reset("/achievements?discipline=starcraft");
+    await mount();
+
+    expect(container.textContent).toContain('"starcraft" is not an installed game.');
+    expect(mocks.getAll).not.toHaveBeenCalled();
+    expect(navigation.current()).toBe("/achievements?discipline=starcraft");
+
+    const showAll = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === en.common.discipline.showAll
+    );
+    await act(async () => showAll?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await tick();
+
+    expect(new URL(navigation.current(), "http://x").searchParams.has("discipline")).toBe(false);
+    expect(tiles().sort()).toEqual(["lol", "overwatch"]);
   });
 
   it("scopes the read to the viewed workspace", async () => {
@@ -187,28 +180,22 @@ describe("the public achievement catalogue is one game at a time", () => {
     await mount();
 
     expect(mocks.list).toHaveBeenCalledWith(2, expect.anything());
-    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, 2, "overwatch", expect.anything());
+    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, 2, null, expect.anything());
   });
 
-  it("a pick pushes the shareable URL, keeps other filters, and Back returns to the previous game", async () => {
-    navigation.reset("/achievements?discipline=overwatch&sort=name");
+  it("no longer reads the removed ?game= parameter", async () => {
+    navigation.reset("/achievements?game=lol");
     await mount();
-    await pick("lol");
-    await tick();
 
-    expect(navigation.pushes).toEqual(["/achievements?discipline=lol&sort=name"]);
-    expect(tiles()).toEqual(["lol"]);
-
-    await act(async () => navigation.back());
-    await tick();
-    expect(tiles()).toEqual(["overwatch"]);
+    expect(mocks.getAll).toHaveBeenCalledWith(1, -1, "all", null, expect.anything());
+    expect(tiles().sort()).toEqual(["lol", "overwatch"]);
   });
 
   it("drops the previous game's rules the moment the game changes and ignores its late response", async () => {
     const overwatch = Promise.withResolvers<{ results: unknown[]; total: number }>();
     let overwatchSignal: AbortSignal | undefined;
     mocks.getAll.mockImplementation(
-      (_page: number, _per: number, _scope: unknown, game: string, opts: { signal: AbortSignal }) => {
+      (_page: number, _per: number, _scope: unknown, game: string | null, opts: { signal: AbortSignal }) => {
         if (game === "overwatch") {
           overwatchSignal = opts.signal;
           return overwatch.promise;
@@ -220,7 +207,7 @@ describe("the public achievement catalogue is one game at a time", () => {
     await mount();
     expect(tiles()).toEqual([]); // still pending
 
-    // The page is a skeleton while loading, so the game changes from outside it: a link or the address bar.
+    // The page is a skeleton while loading, so the game changes from outside it: the pill or the address bar.
     await act(async () => navigation.push("/achievements?discipline=lol"));
     await tick();
     expect(tiles()).toEqual(["lol"]);

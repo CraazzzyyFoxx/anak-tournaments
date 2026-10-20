@@ -537,11 +537,13 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: public; no authentication required. "
             "Per-member wins/losses/draws, win rate, current streak and the per-role split across "
-            "every mix of one discipline this workspace has run, best record first; `identity` is the member's "
-            "handle for that discipline's identity provider. The optional `discipline` query parameter defaults to "
-            "the workspace's first enabled discipline (422 `discipline_not_enabled` for another). The optional "
-            "since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it "
-            "the whole history counts. Read-only."
+            "the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows "
+            "it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the "
+            "member's handle for that game's identity provider) are that game's. Without it (or `all`) the "
+            "scoreboard spans every game, `identity` is the member's first handle in any game's provider, and "
+            "`by_role` is null -- role codes of different games are different roles. The optional since query "
+            "parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole "
+            "history counts. Read-only."
         ),
     },
     "rpc.balancer.custom.close": {
@@ -639,11 +641,13 @@ DOCS: dict[str, dict] = {
             "layers are the default. The two effective layers are computed in SQL and agree with the "
             "resolver the balancer runs on: effective_tournament is canon over OW on the workspace "
             "grid, effective_mix is the author's book over the canon over OW on the same workspace grid. "
-            "`division` is resolved on the workspace's effective grid for every row. Filtering, "
+            "`division` is resolved on the workspace's effective grid of the row's game. Filtering, "
             "sorting, the exact total and the page all run in the database. "
-            "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
-            "are held on; omitted, the workspace's first enabled discipline "
-            "(422 `discipline_not_enabled` for another)."
+            "Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it "
+            "the rows are the union over every game the workspace runs, each tagged with its `discipline`, and "
+            "`role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires "
+            "discipline`): those values live on different grids. A game with no grid here lists its rows with a "
+            "null `division`."
         ),
     },
     "rpc.balancer.teams.export_registered": {

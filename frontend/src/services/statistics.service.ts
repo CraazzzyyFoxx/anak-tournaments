@@ -36,10 +36,11 @@ function buildWorkspaceOpts(opts?: StatsOpts) {
   };
 }
 
-/** A one-game leaderboard (`/statistics/{champion,winrate,won-maps}`): the game is always explicit, never defaulted. */
+/** A player leaderboard (`/statistics/{champion,winrate,won-maps}`): one game's, or every game's when `discipline` is
+ *  `null` (spec §6.5; the param is then omitted). */
 function playerLeaderboard(
   path: string,
-  discipline: string,
+  discipline: string | null,
   opts?: StatsOpts
 ): Promise<PaginatedResponse<PlayerStatistics>> {
   const base = buildWorkspaceOpts(opts);
@@ -74,19 +75,19 @@ export default class statisticsService {
     );
   }
 
-  static async getChampions(discipline: string, opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
+  static async getChampions(discipline: string | null, opts?: StatsOpts): Promise<PaginatedResponse<PlayerStatistics>> {
     return playerLeaderboard("/api/v1/statistics/champion", discipline, opts);
   }
 
   static async getTopWinratePlayers(
-    discipline: string,
+    discipline: string | null,
     opts?: StatsOpts
   ): Promise<PaginatedResponse<PlayerStatistics>> {
     return playerLeaderboard("/api/v1/statistics/winrate", discipline, opts);
   }
 
   static async getTopWonMapsPlayers(
-    discipline: string,
+    discipline: string | null,
     opts?: StatsOpts
   ): Promise<PaginatedResponse<PlayerStatistics>> {
     return playerLeaderboard("/api/v1/statistics/won-maps", discipline, opts);
