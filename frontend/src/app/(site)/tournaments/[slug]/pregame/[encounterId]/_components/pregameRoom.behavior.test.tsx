@@ -2770,6 +2770,51 @@ describe("side selection", () => {
       expect(adminPickBanAct).not.toHaveBeenCalled();
     });
 
+    /** Round 1's side is picked: a side-only round has no step left until its game is played. */
+    function sidePicked(): PickBanState {
+      return sideRoom({
+        viewer_team_id: null,
+        viewer_can_act: false,
+        allowed_actions: [],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: null,
+        current_step_index: null,
+        acting_team_ids: [],
+        expected_action: null,
+        is_complete: true,
+        starting_sides: [{ game_id: 901, position: 1, sides: { [HOME]: "blue", [AWAY]: "red" } }]
+      });
+    }
+
+    it("reopens a settled side pick whose game is not played yet", async () => {
+      adminPickBanReopen.mockResolvedValue({});
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [game({ position: 1 })] },
+        sidePicked()
+      );
+      await render();
+      await showAdminUi();
+
+      await act(async () => buttonIn(adminSection(), ROOM.admin.reopen)!.click());
+      await settle();
+      expect(adminPickBanReopen).toHaveBeenCalledWith(4242, "hero");
+    });
+
+    it.each([
+      ["claimed", game({ position: 1, claims: [{ claimant_team_id: HOME, basis_version: 1, results: lines(1, 0) }] })],
+      ["confirmed", confirmed(1, 21, 1, 0)]
+    ])("never offers to reopen a side its %s game was played on", async (_label, played) => {
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [played] },
+        sidePicked()
+      );
+      await render();
+      await showAdminUi();
+
+      expect(buttonIn(adminSection(), ROOM.admin.reset)).toBeTruthy();
+      expect(buttonIn(adminSection(), ROOM.admin.reopen)).toBeUndefined();
+    });
+
     it("corrects a hero-only room's games, and names a correction the next game already depends on", async () => {
       correctGameResult.mockRejectedValue(
         new ApiError(409, [{ msg: "Game 2's pick-ban already started", code: "dependent_round_started" }])

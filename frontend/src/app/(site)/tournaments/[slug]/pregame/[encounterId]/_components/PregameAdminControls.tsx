@@ -95,6 +95,38 @@ function technicalLossScore(
 }
 
 /**
+ * Whether the organizer's reopen lands on a settled side pick the series has not played on yet.
+ *
+ * Mirrors the route: it reopens the latest step anybody answered once every actor of it revealed
+ * (`_reopenable`), and refuses a side step whose position carries a claim or a confirmed result
+ * (`played_positions`, non-cancelled games only). A side step never disputes, so `state.dispute`
+ * never names it. Games not loaded read as played: never offer a reopen that may be locked.
+ */
+function sideStepReopenable(state: PickBanState, games: PickBanGame[] | undefined): boolean {
+  if (games == null || state.session == null || state.session.status === "cancelled") return false;
+  // A later blind step's drafts are hidden from the organizer; its progress still says it was touched.
+  const progress = Object.values(state.step_progress ?? {});
+  if (progress.some((entry) => entry.locked || entry.filled > 0)) return false;
+  const latest = Math.max(-1, ...state.submissions.map((row) => row.step_index));
+  const step = state.sequence.find((candidate) => candidate.index === latest);
+  if (step?.action !== "side_pick") return false;
+  const settled = step.actors.every((actor) =>
+    state.submissions.some(
+      (row) =>
+        row.step_index === step.index && row.encounter_team_id === actor && row.state === "revealed"
+    )
+  );
+  const position = step.round ?? 1;
+  const played = games.some(
+    (game) =>
+      game.position === position &&
+      game.state !== "cancelled" &&
+      (game.state === "confirmed" || game.claims.length > 0)
+  );
+  return settled && !played;
+}
+
+/**
  * Workspace-admin overrides: reset the whole pick-ban session (drop +
  * re-create with seeds re-resolved), act or submit a draft on behalf of either
  * team, reopen a revealed step, and correct the accepted result of a game that
@@ -272,6 +304,10 @@ export function PregameAdminControls({
   const awaitingChoice = state.session?.awaiting_choice === true;
 
   const active = state.session?.status === "active" && !state.is_complete;
+  // A side-only round's step list is done once its side is picked, so the side's reopen outlives `active`.
+  const sideReopenable = sideStepReopenable(state, games);
+  const reopenable = (active && state.dispute.step_index != null) || sideReopenable;
+  const stepRow = active || awaitingChoice || sideReopenable;
   const canAct = active && selectedItemId != null;
   const pending =
     resetMutation.isPending ||
@@ -295,8 +331,9 @@ export function PregameAdminControls({
       </div>
 
       {/* A completed or cancelled session has no step to act on and no opener
-          to name, so this row -- and the divider under it -- would be empty. */}
-      {active || awaitingChoice ? (
+          to name, so this row -- and the divider under it -- would be empty,
+          unless a settled side pick can still be reopened. */}
+      {stepRow ? (
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           {active ? (
             <>
@@ -434,22 +471,23 @@ export function PregameAdminControls({
                   ) : null}
                 </>
               )}
-              {state.dispute.step_index != null ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => reopenMutation.mutate()}
-                >
-                  {reopenMutation.isPending ? (
-                    <Spinner className="mr-2" />
-                  ) : (
-                    <Undo2 className="mr-2 h-4 w-4" aria-hidden />
-                  )}
-                  {t("admin.reopen")}
-                </Button>
-              ) : null}
             </>
+          ) : null}
+
+          {reopenable ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => reopenMutation.mutate()}
+            >
+              {reopenMutation.isPending ? (
+                <Spinner className="mr-2" />
+              ) : (
+                <Undo2 className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              {t("admin.reopen")}
+            </Button>
           ) : null}
 
           {awaitingChoice ? (
@@ -483,7 +521,7 @@ export function PregameAdminControls({
       <div
         className={cn(
           "flex flex-wrap items-center gap-2",
-          (active || awaitingChoice) &&
+          stepRow &&
             "mt-4 border-t border-dashed border-[color:var(--aqt-amber)]/35 pt-3"
         )}
       >
