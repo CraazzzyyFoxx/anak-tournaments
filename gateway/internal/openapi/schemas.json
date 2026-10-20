@@ -6442,7 +6442,7 @@
       "summary": "List library workspaces"
     },
     "rpc.stats.ach.list": {
-      "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.",
+      "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters: every game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code). Each rule names its own `discipline`.",
       "query_params": [
         {
           "name": "page",
@@ -6515,10 +6515,18 @@
         },
         {
           "name": "discipline",
-          "required": true,
+          "required": false,
           "schema": {
-            "title": "Discipline",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         },
         {
@@ -32589,8 +32597,16 @@
           "title": "Category"
         },
         "discipline": {
-          "title": "Discipline",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
         },
         "enabled": {
           "anyOf": [
@@ -32662,9 +32678,6 @@
           "type": "string"
         }
       },
-      "required": [
-        "discipline"
-      ],
       "title": "AchievementRuleListQueryParams",
       "type": "object"
     },

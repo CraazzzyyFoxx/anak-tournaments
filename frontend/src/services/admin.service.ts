@@ -966,9 +966,10 @@ class AdminService {
 
   // ─── Achievement Rule Engine ────────────────────────────────────────────────
 
+  /** The workspace's rules: one game's, or every game's when `discipline` is `null` (each rule names its own). */
   async getAchievementRules(
     workspaceId: number,
-    discipline: string,
+    discipline: string | null,
     params: {
       page?: number;
       per_page?: number;

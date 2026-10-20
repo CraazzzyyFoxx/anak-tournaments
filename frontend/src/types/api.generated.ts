@@ -8465,7 +8465,7 @@ export interface paths {
         };
         /**
          * List achievement rules
-         * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.
+         * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters: every game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code). Each rule names its own `discipline`.
          *
          *     RPC subject: `rpc.stats.ach.list`
          */
@@ -61303,14 +61303,14 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_rules: {
         parameters: {
-            query: {
+            query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1AdminWsWorkspace_idAchievementsRulesGetParametersQuerySort;
                 order?: components["schemas"]["stats.SortOrder"];
-                discipline: string;
+                discipline?: string | null;
                 search?: string | null;
                 category?: string | null;
                 enabled?: boolean | null;

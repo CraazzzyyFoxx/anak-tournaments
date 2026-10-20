@@ -72,6 +72,12 @@ class RuleListFilterTests(IsolatedAsyncioTestCase):
         self.assertEqual(sql.count("achievements.rule.discipline = 'lol'"), 2)
         self.assertNotIn("'overwatch'", sql)
 
-    async def test_discipline_is_required(self) -> None:
-        with self.assertRaises(ValueError):
-            schemas.AchievementRuleListQueryParams(page=1, per_page=15)
+    async def test_absent_discipline_lists_every_game_of_the_workspace(self) -> None:
+        sql = await self._sql(discipline=None)
+        self.assertNotIn("achievements.rule.discipline =", sql)
+        self.assertEqual(sql.count("achievements.rule.workspace_id = 3"), 2)
+
+    async def test_an_uninstalled_discipline_is_rejected_not_listed(self) -> None:
+        for bogus in ("starcraft", "", "all"):
+            with self.assertRaises(ValueError):
+                schemas.AchievementRuleListQueryParams(page=1, per_page=15, discipline=bogus)
