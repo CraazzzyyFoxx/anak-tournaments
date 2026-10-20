@@ -150,7 +150,7 @@ class DiscordMessageRepository(BaseRepository[models.DiscordMessage]):
     async def mark_posted(
         self, session: AsyncSession, row_id: int, *, discord_channel_id: int, discord_message_id: int
     ) -> bool:
-        """Record where a sent message landed; ``False`` when the row was no longer ``pending``.
+        """Record where a sent message landed; ``False`` when the row has left ``pending``.
 
         Conditional on purpose: a delete can reach the row while the bot is
         still inside ``channel.send``, moving it to ``deleting``. Overwriting

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.balancer import UserBalancerConfig
 from shared.repository import UserBalancerConfigRepository
-from src.services.balancer.config.public_contract import normalize_config_payload
+from src.domain.balancer.config.public_contract import normalize_config_payload
 
 __all__ = ("UserMixPrefsService", "user_mix_prefs_service")
 

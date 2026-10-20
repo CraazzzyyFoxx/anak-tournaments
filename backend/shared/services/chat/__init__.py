@@ -1,7 +1,4 @@
-"""Room chat, shared by every live room.
-
-Design: docs/plans/2026-09-21-shared-room-chat.md
-"""
+"""Room chat, shared by every live room."""
 
 from shared.services.chat.access import SPECTATOR_ROLE, ChatAccess, ChatMembership
 from shared.services.chat.room import CHAT_DOMAIN, ChatRoom, ChatRoomKind

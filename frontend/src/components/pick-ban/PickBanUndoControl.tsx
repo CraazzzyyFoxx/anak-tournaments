@@ -23,6 +23,8 @@ interface PickBanUndoControlProps {
   /** Null for anyone who captains no participation — they read, they never consent. */
   viewerTeamId: number | null;
   itemsById: Record<number, PickBanItemLike | undefined>;
+  /** The room's side labels in `state.sides` order: a `side_pick` undo reverts side indices, not items. */
+  sideLabels: string[];
   /** The room's participations, for the "who asked" copy. */
   seats: PickBanSeat[];
   /** Query keys to refetch once the consent (or the undo itself) lands. */
@@ -52,6 +54,7 @@ export function PickBanUndoControl({
   undo,
   viewerTeamId,
   itemsById,
+  sideLabels,
   seats,
   invalidateKeys,
   className
@@ -113,6 +116,13 @@ export function PickBanUndoControl({
               along, which is the case a captain would otherwise not expect. */}
           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             {undo.item_ids.map((itemId) => {
+              if (undo.action === "side_pick") {
+                return (
+                  <span key={itemId} className="text-xs font-medium text-[color:var(--aqt-fg-muted)]">
+                    {sideLabels[itemId] ?? `#${itemId}`}
+                  </span>
+                );
+              }
               const name = itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
               return (
                 <span key={itemId} className="flex min-w-0 items-center gap-1">

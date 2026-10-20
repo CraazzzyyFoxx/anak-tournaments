@@ -5,7 +5,7 @@ weekly OW rank-snapshot composites, past balancer-registration ranks
 ("division_history") and past tournament-participation ranks ("analytics"),
 plus the grid normalization that maps historical ranks into the target
 tournament's division grid. The stage resolution and orchestration live in
-``rank_autofill``; everything here is re-exported by the ``admin`` facade.
+``rank_autofill``.
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ async def native_ranks_by_registration(
 ) -> dict[int, dict[str, int]]:
     """Each registration's OverFast ranks -- main accounts preferred, the best per role -- placed on ``grid``.
 
-    The OverFast twin of Overwatch's native layer (Deviation 5): a discipline whose module declares no native layer gets
-    nothing, so a LoL registrant's linked BattleTag never reads as a LoL rank (D87; scan F4).
+    The OverFast twin of Overwatch's native layer: a discipline whose module declares no native layer gets nothing, so
+    a LoL registrant's linked BattleTag never reads as a LoL rank.
     """
     if discipline(discipline_code).native_ranks is None:
         return {}
@@ -251,8 +251,8 @@ def _compute_ow_week_ranks(
     """``(composite, peak)`` OW rank_value over a weekly window.
 
     ``composite`` is ``round((max + mean) / 2)``, the mean weighted by how long each rank held
-    inside the window -- what the mean over 15-minute polls measured before the table kept only
-    changes. ``peak`` is that ``max``: the highest rank a poll saw, a lower bound on the real one.
+    inside the window. ``peak`` is that ``max``: the highest rank a poll saw, a lower bound on
+    the real one.
 
     ``snapshots`` are one (account, role)'s changes (any platform, unranked ones included, the
     row each platform entered the window in among them); ``known_until`` is the account's last
@@ -421,7 +421,7 @@ class RankSourcesService:
 
         # Registrations are anchored on workspace_member; the domain player id is
         # the member's player_id. Inner join: member-less registrations have no
-        # player identity and (as before, when user_id was NULL) never match.
+        # player identity and never match.
         stmt = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),

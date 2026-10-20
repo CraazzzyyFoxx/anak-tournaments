@@ -2,14 +2,11 @@
 
 A ``StatsMatch`` (``stats.match``) is what a parsed log OBSERVED; ``EncounterGame``
 is what the tournament DECIDED for position ``position``. A cancelled game keeps
-its position as history and is never revived -- a replayed position is a new row
-(D64).
+its position as history and is never revived -- a replayed position is a new row.
 
 ``EncounterGameTeam`` carries both halves of "who is in this game": the side
 drawn before it starts and the accepted numbers after it ends. One row per
-active participation, written when the game is. It replaces
-``accepted_home_score``/``accepted_away_score``, ``encounter_game_result`` and
-``encounter_map_code``.
+active participation, written when the game is.
 """
 
 from __future__ import annotations
@@ -96,7 +93,7 @@ class EncounterGame(db.TimeStampIntegerMixin):
     position: Mapped[int] = mapped_column(Integer())
     # RESTRICT, not CASCADE: deleting a catalog map must not silently erase a played position's identity.
     map_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    #: Kind constant of the composite FK (spec §14.1): the database guarantees a game is played on a map.
+    #: Kind constant of the composite FK: the database guarantees a game is played on a map.
     map_kind: Mapped[str] = mapped_column(String(16), default="map", server_default="map")
     state: Mapped[enums.EncounterGameState] = mapped_column(
         ENCOUNTER_GAME_STATE_ENUM,
@@ -164,6 +161,6 @@ class EncounterGameTeam(db.Base):
     #: The organizer's columns for this participation in this game; an absent
     #: key reads as 0.
     column_values: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
-    #: Discipline side code (§6); NULL when the discipline has no sides.
+    #: Discipline side code; NULL when the discipline has no sides.
     starting_side: Mapped[str | None] = mapped_column(String(16), nullable=True)
     replay_code: Mapped[str | None] = mapped_column(String(32), nullable=True)

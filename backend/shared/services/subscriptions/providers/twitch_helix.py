@@ -8,8 +8,7 @@ question. Constraints that shape the code:
 - Only works for broadcasters who are Affiliate or Partner; otherwise Helix
   answers 400, which is an organizer configuration problem and must NOT be read
   as "this patron is not subscribed".
-- The scope was added to ``TwitchOAuthProvider`` alongside this module, so every
-  connection created before that resolves as ``unknown`` with
+- A connection whose token lacks that scope resolves as ``unknown`` with
   ``evidence.reason == "missing_scope"`` and the UI offers a reconnect.
 - Our own ``TWITCH_CLIENT_ID`` is a separate failure from the patron's token: it
   raises ``HelixNotConfigured`` and resolves ``twitch_client_not_configured``,
@@ -56,7 +55,7 @@ class HelixNotFound(HelixError):
 
 
 class HelixMissingScope(HelixError):
-    """401 that survived a token refresh: the token lacks the new scope."""
+    """401 that survived a token refresh: the token lacks the subscriptions scope."""
 
 
 class HelixNotConfigured(HelixError):

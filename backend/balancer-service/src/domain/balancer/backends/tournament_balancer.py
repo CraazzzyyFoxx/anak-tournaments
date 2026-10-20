@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from src.domain.balancer.backends.base import BalanceMetrics, BalanceSolution
+from src.domain.balancer.config.defaults import AlgorithmConfig
 from src.domain.balancer.entities import Player
 from src.domain.balancer.moo_backend import run_moo_optimizer
 from src.domain.balancer.progress import ProgressCallback
-from src.services.balancer.config.defaults import AlgorithmConfig
 
 
 class TournamentBalancerBackend:
@@ -12,10 +12,8 @@ class TournamentBalancerBackend:
     ``balancer_native.run_moo_optimizer``) -- the default, N-team-capable algorithm used
     for tournament balancing (and anything else not pinned to ``mix_balancer``).
 
-    ``moo_backend`` still returns its native ``(teams, metrics dict)`` tuples
-    unchanged (that boundary is a JSON wire format to the Rust extension, not
-    ours to restyle) -- this adapter's only job is wrapping each pair into a
-    typed ``BalanceSolution`` so callers never see a bare dict.
+    Wraps each ``(teams, metrics dict)`` pair ``moo_backend`` returns into a
+    typed ``BalanceSolution``.
     """
 
     name = "tournament_balancer"

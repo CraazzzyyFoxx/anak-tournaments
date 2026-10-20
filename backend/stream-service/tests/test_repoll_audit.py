@@ -42,6 +42,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models.platform.audit import AuditLog  # noqa: E402
 from shared.rpc import identity as shared_identity  # noqa: E402
 from src.rpc import admin  # noqa: E402
+from src.services import admin as admin_service  # noqa: E402
 from src.services import state  # noqa: E402
 
 TOURNAMENT_ID = 5
@@ -169,7 +170,7 @@ class _RepollCase(IsolatedAsyncioTestCase):
         #: tests never run. Kept as a handle so the rejection cases can assert the
         #: call was refused before any quota was spent.
         self.charge = AsyncMock()
-        quota_patcher = patch.object(admin, "quota", SimpleNamespace(charge=self.charge))
+        quota_patcher = patch.object(admin_service, "quota", SimpleNamespace(charge=self.charge))
         quota_patcher.start()
         self.addCleanup(quota_patcher.stop)
 

@@ -65,7 +65,7 @@ def _collect(extra_dirs: Sequence[Path]) -> dict[str, Path]:
     """Emoji name -> the picture to upload for it.
 
     Later sources win: a file in ``assets/emoji`` (or a ``--dir``) named like a
-    rank badge replaces the repo's picture, which is the point of the
+    rank badge overrides the repo's picture, which is the point of the
     directory. The site's own role icons are not a source: they are white and
     vanish on Discord's light theme; ``assets/emoji`` holds tinted ones.
     """

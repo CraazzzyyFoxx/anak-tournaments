@@ -47,15 +47,13 @@ async def execute_consecutive(
 
     # Per-workspace chronological sequence over regular (non-league) tournaments.
     #
-    # Hidden tournaments are excluded because the scrim container is one
-    # (docs/plans/2026-08-12-scrim-rooms.md §4.1) and this rank is an ordinal
-    # timeline: a row that takes a rank in the middle of it splits any streak
-    # that spans it. The container used to be harmless here only by accident --
-    # it had no start date, so ``NULLS LAST`` parked it at the end -- and it now
-    # carries its creation date, so the accident is gone and the filter is what
-    # keeps the sequence honest. Hidden PREVIEW tournaments are excluded too:
-    # they are real tournaments, but one that is still hidden has not been played
-    # yet, so it cannot be a link in a consecutive-tournament streak either.
+    # Hidden tournaments are excluded because the scrim container is one and
+    # this rank is an ordinal timeline: a row that takes a rank in the middle of
+    # it splits any streak that spans it (the container carries its creation
+    # date, so ``NULLS LAST`` does not park it at the end). Hidden PREVIEW
+    # tournaments are excluded too: they are real tournaments, but one that is
+    # still hidden has not been played yet, so it cannot be a link in a
+    # consecutive-tournament streak either.
     tournament_seq = (
         sa.select(
             models.Tournament.id.label("tournament_id"),
@@ -249,7 +247,7 @@ async def execute_stable_streak(
 ) -> ResultSet:
     """N+ consecutive participations at same values for given fields. Grain: user.
 
-    Uses segment-based detection (like the legacy code): a new segment starts when
+    Uses segment-based detection: a new segment starts when
     any tracked field changes or when prev is NULL. Skipping a tournament does
     not break the streak — only chronological order matters.
 

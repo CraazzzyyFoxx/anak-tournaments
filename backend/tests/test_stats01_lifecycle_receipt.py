@@ -122,7 +122,6 @@ def _execute_user_merge(native, source_user, target_user):
 import asyncio
 import json
 import sys
-from unittest.mock import AsyncMock, Mock, patch
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from shared.testing import apply_test_env_defaults, configure_test_cache
@@ -147,11 +146,9 @@ async def run():
             )
             async def finalized(result):
                 assert result.affected_auth_user_ids
-            redis = Mock(delete=AsyncMock(), aclose=AsyncMock())
-            with patch("src.services.admin.user_merge.Redis.from_url", return_value=redis):
-                result = await service.execute_merge(
-                    session, request, operator_auth_user_id=None, auth_finalizer=finalized,
-                )
+            result = await service.execute_merge(
+                session, request, operator_auth_user_id=None, auth_finalizer=finalized,
+            )
             print(json.dumps({"audit_id": result.audit_id}))
     finally:
         await engine.dispose()

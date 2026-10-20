@@ -3,14 +3,9 @@
 The organizer-facing half of the pick-ban domain: the list/get/upsert/delete of
 the config rows that :mod:`pick_ban_session` later cascade-resolves onto an
 encounter, plus the body validation and the wire shape those rows are written
-and read through. It lived in ``rpc/pick_ban_admin.py`` and ``rpc/reads.py`` as
-raw SQL in the transport layer -- the upsert's ``session.add``/relationship
-replacement and the reads' ordered listing -- which put a domain rule (what
-"the config in scope" means, and in what order the cascade reads) in a layer
-that owns none.
+and read through.
 
-Since ruleset v2 (``docs/plans/2026-09-28-pick-ban-constructor.md``) the rules
-themselves are a document validated by the pure engine
+The rules themselves are a document validated by the pure engine
 (:mod:`shared.domain.pick_ban_rules`); what stays here is everything the engine
 cannot know -- the POOL the rules will be played out of, the cascade
 coordinates, and the DB vocabulary of item groups.
@@ -64,10 +59,10 @@ class SlotSpec:
     """One slot of a slot-mode upsert, as plain data.
 
     A value type rather than the transport's pydantic body model: the service
-    must not import from ``rpc/``, and the two callers of the upsert (the admin
-    route today, a config copier tomorrow) agree on "candidates + optional
-    reserve" and nothing else. ``position`` is absent on purpose -- list order
-    IS the position, assigned 1-based by :meth:`PickBanConfigService.upsert_config`.
+    must not import from ``rpc/``, and every caller of the upsert agrees on
+    "candidates + optional reserve" and nothing else. ``position`` is absent on
+    purpose -- list order IS the position, assigned 1-based by
+    :meth:`PickBanConfigService.upsert_config`.
     """
 
     candidates: list[int] = field(default_factory=list)
@@ -260,10 +255,9 @@ async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[
 def validate_pick_ban_slot_config(slots: list[list[int]], *, reserves: list[int | None]) -> None:
     """Validate the slot POOL of a slot-mode :class:`PickBanConfig` upsert.
 
-    Untouched by ruleset v2: a slot is a pool partition, not a rule -- the
-    steps that ban a slot down to its survivor are the ``slot_veto`` generator's
-    business. Generalized to "item" (map or hero id, per the config's ``kind``)
-    instead of "map"."""
+    A slot is a pool partition, not a rule -- the steps that ban a slot down to
+    its survivor are the ``slot_veto`` generator's business. Items are map or
+    hero ids, per the config's ``kind``."""
     if not slots:
         raise HTTPException(status_code=422, detail="slots must not be empty")
     if len(reserves) != len(slots):
@@ -332,12 +326,14 @@ def validate_config_payload(
     A pool-less row is a rules TEMPLATE -- authored at a wide cascade scope so
     narrower ones inherit its rotation and steps. It plays nothing
     (``ensure_pick_ban_session`` refuses to open a room on a config with no
-    pool), so the pool-shaped rules have nothing to hold and are not checked,
-    exactly as in v1.
+    pool), so the pool-shaped rules have nothing to hold and are not checked.
+    Except a hero template that picks sides: 422 ``pool_required``, because
+    ``side_pick_required`` reads its side step all the same and would hold every
+    game's result behind a room that never opens.
 
     ``groups`` is the kind's item-group vocabulary (see :func:`group_vocabulary`);
     ``None`` skips map-group name checks. ``discipline`` decides what the actor
-    vocabulary may say -- whether the game has sides to pick at all (D25).
+    vocabulary may say -- whether the game has sides to pick at all.
     """
     if round is not None and stage_id is None:
         raise HTTPException(status_code=422, detail="round requires stage_id")
@@ -357,6 +353,26 @@ def validate_config_payload(
                 "message": f"ruleset has {len(errors)} validation error(s)",
                 "issues": [issue.to_json() for issue in issues],
             },
+        )
+
+    if (
+        kind == PickBanKind.HERO
+        and not item_ids
+        and not slots
+        and any(step.action == "side_pick" for phase in pbr.parse_ruleset(ruleset).phases for step in phase.steps)
+    ):
+        label = installed_discipline(discipline).kinds.get("character", "character").lower()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                ApiExc(
+                    code="pool_required",
+                    msg=(
+                        f"These rules pick sides, so the {label} pool has to be saved first: "
+                        "without a pool the room never opens and every game waits on its side pick"
+                    ),
+                )
+            ],
         )
 
     if mode == MapVetoMode.SLOTS:
@@ -515,8 +531,8 @@ class PickBanConfigService:
 
         ruleset_json = normalized_ruleset(ruleset)
 
-        # Upsert key = (tournament_id, kind, stage_id, round) — same cascade
-        # level as veto_admin, additionally partitioned by kind.
+        # Upsert key = (tournament_id, kind, stage_id, round): one config per
+        # cascade level and kind.
         config = await self.config_repo.find_for_stage_round(
             session,
             tournament_id=tournament_id,
@@ -549,13 +565,10 @@ class PickBanConfigService:
             config.first_pick_rule = first_pick_rule
             config.first_ban_rotation = first_ban_rotation
             config.ruleset_json = ruleset_json
-            # Wholesale replace, cleared+flushed first — same ordering rationale
-            # as veto_admin's upsert (SQLAlchemy would otherwise emit the new
-            # children's INSERTs before the old ones' DELETEs and trip the
-            # plain UNIQUE constraints on position/item_id). The clear rides the
-            # `delete-orphan` cascade on both relationships, so it stays ORM-level
-            # rather than becoming a statement delete the loaded collection would
-            # then disagree with.
+            # Wholesale replace, cleared+flushed first: SQLAlchemy would otherwise
+            # emit the new children's INSERTs before the old ones' DELETEs and trip
+            # the plain UNIQUE constraints on position/item_id. The clear rides the
+            # `delete-orphan` cascade, so the loaded collection stays in step.
             config.items = []
             config.slots = []
             await session.flush()

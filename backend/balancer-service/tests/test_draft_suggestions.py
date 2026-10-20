@@ -13,9 +13,9 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from shared.core.enums import DraftAutopickStrategy  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from src.domain.balancer.config.defaults import default_role_settings  # noqa: E402
 from src.domain.draft import fit as sug  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
-from src.services.balancer.config.defaults import default_role_settings  # noqa: E402
 
 T, D, SUP = "tank", "damage", "support"
 #: The Overwatch module's declared impacts: what a draft of that game scores fit with.

@@ -52,6 +52,9 @@ the frontend omits `discipline` under "all games", which the previous backends r
   pages and for game blocks on `none` pages). Landing never rewrites the URL; links no longer carry the game;
   `?discipline=all` from old links reads as "no parameter"; an explicit unknown or disabled code shows the unavailable
   state, never a silent correction.
+* **Enabled games and their order.** Owners switch games on and drag their priority in General (`disciplines_enabled`
+  is `workspace.update`); a save there re-reads the community's game list, so the pill, local tabs and every "first
+  enabled game" default follow the new set and order at once.
 * **Page classes** (one route table, `pageClassOf`) follow the spec §5 table; no interim single page remains. Multi:
   home, `/tournaments`, `/balancer/mix`, `/encounters`, `/achievements`, `/statistics`, `/users`, the profile, the
   community page and the multi admin lists (tournaments, teams, matches, ranks, achievements, division grids index,

@@ -6,10 +6,6 @@ the owning service knows how its keys are shaped, and the manifest
 (``shared/realtime/resources.json``) is what keeps the vocabulary itself
 shared. A parity test per service asserts the table covers exactly the
 resources that service caches.
-
-Replaces the ``tournament.changed`` consumers, which received a "reason" and
-re-derived which of their own keys it implied — three copies of that derivation
-existed and drifted apart (see the design doc's §1).
 """
 
 from __future__ import annotations
@@ -26,8 +22,7 @@ __all__ = ("ResourcePatterns", "invalidate_from_event", "register_invalidation_c
 
 #: ``resource -> callable(scope_id) -> cache-key patterns``. A callable, not a
 #: format string: some resources fan out to patterns that do not mention the
-#: scope id at all (cross-user aggregates), and hiding that behind ``%s``
-#: substitution made the app-service table unreadable.
+#: scope id at all (cross-user aggregates).
 ResourcePatterns = Mapping[str, Callable[[int], Sequence[str]]]
 
 ExtraHandler = Callable[[CacheInvalidatedEvent], Awaitable[None]]
@@ -86,7 +81,7 @@ def register_invalidation_consumer(
 
     # `msg` MUST be annotated RabbitMessage: with a loose annotation FastStream
     # treats it as another payload field, every message fails validation and is
-    # rejected straight into the DLQ (observed on the dev stand, 5/5 messages).
+    # rejected straight into the DLQ.
     @broker.subscriber(queue, **subscriber_kwargs)
     async def process_cache_invalidated(data: dict[str, Any], msg: RabbitMessage) -> None:
         async with observe_message_processing(

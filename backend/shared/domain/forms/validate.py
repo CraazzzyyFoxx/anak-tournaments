@@ -333,9 +333,8 @@ def _check_pattern(field: FormField, value: Any) -> FieldError | None:
     if not targets:
         return None
     # Defence in depth only: `FormSchema` refuses an uncompilable `validation.regex`
-    # at save time (where `field` is the schema path, as the design says). This
-    # branch catches a row stored before that invariant existed, so all it can name
-    # is the answer key.
+    # at save time (where `field` is the schema path). This branch catches a stored
+    # row that never went through that check, so all it can name is the answer key.
     try:
         compiled = compile_handle_pattern(pattern)
     except InvalidHandlePattern as exc:

@@ -1,7 +1,5 @@
 """Ad-hoc pre-game rooms ("scrims") that exist outside any real tournament.
 
-Design: ``docs/plans/2026-08-12-scrim-rooms.md``.
-
 A scrim reuses the whole pick-ban stack unchanged, so it must present itself as
 an ordinary encounter: ``PickBanSession.encounter_id`` is NOT NULL, and
 ``Encounter.tournament_id``/``Team.tournament_id`` are too. The rows that

@@ -1,4 +1,4 @@
-"""Overwatch's catalog source: OverFast (D85, §8.1).
+"""Overwatch's catalog source: OverFast.
 
 Modes, then maps (each under the first mode that lists it), then heroes with the Blizzard name of every locale as
 aliases — match logs are written in the reporting client's locale. Every OverFast round-trip happens before the first

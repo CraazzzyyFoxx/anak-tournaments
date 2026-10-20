@@ -1,16 +1,10 @@
 """Bespoke (non-CRUD) admin tournament methods over typed RPC.
 
-Each handler mirrors a route in ``src/routes/admin/{encounter,tournament,standing,
-computation}.py`` exactly: it rehydrates the gateway-injected identity, runs the
-SAME imperative permission check the route's dependency performed, validates the
-SAME body schema, calls the SAME service function with the SAME args, and
-serializes the SAME way the route returned (admin routes do NOT use
-``response_model_exclude_none`` -> plain ``model_dump(mode="json")``; the custom
-dict-returning routes return their dicts verbatim).
-
 The gateway passes path params as ``data["<name>"]`` (and the primary id as
 ``data["id"]`` when the RouteSpec sets IDParam), query params as
 ``data["query"][key] = [values]``, and the JSON body as ``data["payload"]``.
+Responses are plain ``model_dump(mode="json")`` (nulls kept); the custom
+dict-returning handlers return their dicts verbatim.
 
 Commit semantics: every write service called here commits internally
 (update_match, swap_slots, set_encounter_result, toggle_finished,
@@ -23,21 +17,20 @@ from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.repository import UserRepository
+from shared.repository import StatsMatchRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.services.audit import record_admin_audit
-from shared.services.bracket.usability import assert_encounter_live
 from shared.services.encounter.participants import active_teams
 from shared.services.match_reads import match_header_fields
 from src import models, schemas
 from src.core import auth
 from src.rpc._helpers import (
+    _actor_player_id,
     _bool,
     _dump,
     _identity,
@@ -56,6 +49,7 @@ from src.services.admin.matches import matches_service
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.admin.standing import standing_service
 from src.services.admin.tournament import tournament_service
+from src.services.bracket.usability import assert_encounter_live
 from src.services.computation import jobs as computation_jobs
 from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.report_form import report_form_service
@@ -66,9 +60,9 @@ from src.services.tournament.schedule import schedule_service
 async def _serialize_result(session: Any, encounter: models.Encounter) -> dict:
     """The settled result state both result endpoints return.
 
-    The standing lives on the participations now, so the seats are re-read
-    rather than taken off the encounter row: the result writer has just
-    rewritten them and the caller holds no loaded collection.
+    The standing lives on the participations, so the seats are re-read rather
+    than taken off the encounter row: the result writer has just rewritten them
+    and the caller holds no loaded collection.
     """
     seats = await active_teams(session, encounter.id)
     return schemas.EncounterResultRead(
@@ -119,24 +113,7 @@ async def _slot_state(session: Any, encounter: models.Encounter) -> schemas.Enco
     )
 
 
-_user_repo = UserRepository()
-
-
-async def _actor_player_id(session: Any, user: models.AuthUser) -> int | None:
-    """Translate the caller's auth id into the ``players.user`` id the audit stores.
-
-    ``EncounterResultAudit.actor_user_id`` is a FK to ``players.user``, not to
-    ``auth.user``. Passing ``user.id`` straight through wrote an id from the wrong
-    space, and the name join then resolved to whichever unrelated player happened
-    to hold that number -- "confirmed by craazzzyyfoxx" (auth 7) read as
-    "Hardstylerz#21775" (player 7). The captain paths already store the linked
-    player id (``_resolve_captain_identity``); this is the same translation at the
-    admin boundary.
-
-    ``None`` -- an account with no linked player -- reads as a machine actor, which
-    is what an unresolvable actor already displayed as.
-    """
-    return await _user_repo.get_id_by_auth_user_id(session, user.id)
+_match_repo = StatsMatchRepository()
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -150,9 +127,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_match_workspace_id(session, match_id)
             ensure_workspace_permission(user, ws_id, "match", "result")
             body = schemas.MatchUpdate.model_validate(_payload(data))
-            encounter_id = await session.scalar(
-                sa.select(models.StatsMatch.encounter_id).where(models.StatsMatch.id == match_id)
-            )
+            encounter_id = await _match_repo.get_encounter_id(session, match_id)
             await record_admin_audit(
                 session,
                 action="encounter.update_match",
@@ -189,7 +164,7 @@ def register(broker: Any, logger: Any) -> None:
                 after=body.model_dump(mode="json", exclude_none=True),
             )
             await _assert_source_correction_allowed(session, encounter_id)
-            # set_encounter_result commits internally; route returns the settled state.
+            # set_encounter_result commits internally.
             encounter = await captain_service.set_encounter_result(
                 session,
                 encounter_id,
@@ -280,7 +255,6 @@ def register(broker: Any, logger: Any) -> None:
 
     # ── match report form (per-tournament captain-report config) ──────────
 
-    # GET /admin/tournaments/{tournament_id}/report-form -> match.read
     @broker.subscriber("rpc.tournament.report_form_get")
     async def _report_form_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -297,7 +271,6 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _run(logger, op)
 
-    # PUT /admin/tournaments/{tournament_id}/report-form -> match.update
     @broker.subscriber("rpc.tournament.report_form_upsert")
     async def _report_form_upsert(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -333,7 +306,6 @@ def register(broker: Any, logger: Any) -> None:
     async def _tournament_finish(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             user = _identity(data)
-            # Route gates on get_current_superuser.
             if not user.is_superuser:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -364,7 +336,6 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_tournament_workspace_id(session, tournament_id)
             ensure_workspace_permission(user, ws_id, "tournament", "update")
             body = schemas.TournamentStatusTransition.model_validate(_payload(data))
-            # force bypass is superuser-only (matches the route's explicit gate).
             if body.force and not user.is_superuser:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -582,11 +553,7 @@ def register(broker: Any, logger: Any) -> None:
 
             scoped_tournament_id = tournament_id
             if scoped_tournament_id is None and stage_id is not None:
-                scoped_tournament_id = await session.scalar(
-                    sa.select(models.Stage.tournament_id).where(models.Stage.id == stage_id)
-                )
-                if scoped_tournament_id is None:
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
+                scoped_tournament_id = await admin_stage_service.get_tournament_id(session, stage_id)
             if scoped_tournament_id is None and not user.is_superuser:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,

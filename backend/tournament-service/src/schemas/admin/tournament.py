@@ -23,8 +23,6 @@ RULES_MAX_LENGTH = 32_000
 
 
 class TournamentCreate(BaseModel):
-    """Schema for creating a tournament"""
-
     workspace_id: int
     #: The game the tournament is played in; always the caller's explicit choice (enabled in the workspace).
     discipline: str
@@ -53,8 +51,6 @@ class TournamentCreate(BaseModel):
 
 
 class TournamentUpdate(BaseModel):
-    """Schema for updating a tournament"""
-
     name: str | None = None
     description: str | None = None
     rules: str | None = Field(default=None, max_length=RULES_MAX_LENGTH)
@@ -81,8 +77,6 @@ class TournamentUpdate(BaseModel):
 
 
 class TournamentStatusTransition(BaseModel):
-    """Schema for transitioning tournament status"""
-
     status: TournamentStatus
     force: bool = False
 
@@ -96,7 +90,7 @@ class TournamentScheduleEntryInput(BaseModel):
 
 
 class TournamentScheduleSet(BaseModel):
-    """Schema for replacing a tournament's phase schedule (full replace)."""
+    """A tournament's whole phase schedule; replaces the stored one."""
 
     schedule: list[TournamentScheduleEntryInput]
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Ban, Pause, Play, RotateCcw, ShieldCheck, Timer, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +26,7 @@ import type {
 
 import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { Spinner } from "@/components/ui/spinner";
 
 import type { PickBanAdminSlot } from "./PickBanPanel";
@@ -38,6 +39,13 @@ interface PregameAdminControlsProps {
   selectedItemName: string | null;
   /** This kind's catalog, to name the tiles an organizer clicked. */
   itemsById: Record<number, PickBanItemLike | undefined>;
+  /** The game's side labels in `state.sides` order: what a `side_pick` step chooses between. */
+  sideLabels: string[];
+  /**
+   * The series' games, from the MAP state whatever kind these controls act on:
+   * a hero-only room's hero state carries none, and its games still need correcting.
+   */
+  games: PickBanGame[] | undefined;
   /**
    * The blind draft the board on screen is building for an absent captain —
    * null when no pool is on screen for this kind, or no blind step is open.
@@ -87,6 +95,38 @@ function technicalLossScore(
 }
 
 /**
+ * Whether the organizer's reopen lands on a settled side pick the series has not played on yet.
+ *
+ * Mirrors the route: it reopens the latest step anybody answered once every actor of it revealed
+ * (`_reopenable`), and refuses a side step whose position carries a claim or a confirmed result
+ * (`played_positions`, non-cancelled games only). A side step never disputes, so `state.dispute`
+ * never names it. Games not loaded read as played: never offer a reopen that may be locked.
+ */
+function sideStepReopenable(state: PickBanState, games: PickBanGame[] | undefined): boolean {
+  if (games == null || state.session == null || state.session.status === "cancelled") return false;
+  // A later blind step's drafts are hidden from the organizer; its progress still says it was touched.
+  const progress = Object.values(state.step_progress ?? {});
+  if (progress.some((entry) => entry.locked || entry.filled > 0)) return false;
+  const latest = Math.max(-1, ...state.submissions.map((row) => row.step_index));
+  const step = state.sequence.find((candidate) => candidate.index === latest);
+  if (step?.action !== "side_pick") return false;
+  const settled = step.actors.every((actor) =>
+    state.submissions.some(
+      (row) =>
+        row.step_index === step.index && row.encounter_team_id === actor && row.state === "revealed"
+    )
+  );
+  const position = step.round ?? 1;
+  const played = games.some(
+    (game) =>
+      game.position === position &&
+      game.state !== "cancelled" &&
+      (game.state === "confirmed" || game.claims.length > 0)
+  );
+  return settled && !played;
+}
+
+/**
  * Workspace-admin overrides: reset the whole pick-ban session (drop +
  * re-create with seeds re-resolved), act or submit a draft on behalf of either
  * team, reopen a revealed step, and correct the accepted result of a game that
@@ -110,6 +150,8 @@ export function PregameAdminControls({
   selectedItemId,
   selectedItemName,
   itemsById,
+  sideLabels,
+  games,
   blind,
   seats,
   bestOf,
@@ -122,12 +164,31 @@ export function PregameAdminControls({
   // The step names the action; the override only chooses WHOSE turn is being
   // taken, and it is stored with the step it was made for so the next step
   // falls back to whoever is actually on the clock.
-  const action: PickBanAction =
-    step?.action === "pick" ? "pick" : step?.action === "protect" ? "protect" : "ban";
+  const action: PickBanAction = step != null && step.action !== "decider" ? step.action : "ban";
+  const sideStep = step?.action === "side_pick";
   const defaultTeamId = state.acting_team_ids[0] ?? seats[0]?.id ?? 0;
   const [resetOpen, setResetOpen] = useState(false);
   const [override, setOverride] = useState<{ step: number | null; teamId: number } | null>(null);
   const teamId = override?.step === (step?.index ?? null) ? override.teamId : defaultTeamId;
+  // The side an organizer chose, by index, belongs to exactly one turn: this kind's session, this step and action
+  // as it was (re)opened and its attempt, and the team it is chosen FOR. Any change discards it — a choice made
+  // for one team must never be confirmed for the other, nor survive a reopen.
+  const attempt =
+    state.submissions.find((entry) => entry.step_index === step?.index && entry.encounter_team_id === teamId)
+      ?.attempt ?? 0;
+  const sideKey = [
+    kind,
+    state.session?.id,
+    step?.index,
+    step?.action,
+    state.session?.current_step_started_at,
+    attempt,
+    teamId
+  ].join(":");
+  const [sidePick, setSidePick] = useState<{ key: string; index: number | null }>({ key: sideKey, index: null });
+  if (sidePick.key !== sideKey) setSidePick({ key: sideKey, index: null });
+  const sideIndex = sidePick.key === sideKey ? sidePick.index : null;
+  const sideChoiceId = useId();
   const [lockSubmission, setLockSubmission] = useState(true);
   const itemName = (itemId: number) =>
     itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
@@ -243,6 +304,10 @@ export function PregameAdminControls({
   const awaitingChoice = state.session?.awaiting_choice === true;
 
   const active = state.session?.status === "active" && !state.is_complete;
+  // A side-only round's step list is done once its side is picked, so the side's reopen outlives `active`.
+  const sideReopenable = sideStepReopenable(state, games);
+  const reopenable = (active && state.dispute.step_index != null) || sideReopenable;
+  const stepRow = active || awaitingChoice || sideReopenable;
   const canAct = active && selectedItemId != null;
   const pending =
     resetMutation.isPending ||
@@ -253,7 +318,7 @@ export function PregameAdminControls({
   // Only a settled position can be corrected: `planned`/`awaiting_result` have
   // no accepted score to overwrite, and a captain claim is the normal path
   // there. A dispute is here because it is the ONLY way one ever clears.
-  const correctable = (state.games ?? []).filter(
+  const correctable = (games ?? []).filter(
     (game) => game.state === "confirmed" || game.state === "disputed"
   );
 
@@ -266,8 +331,9 @@ export function PregameAdminControls({
       </div>
 
       {/* A completed or cancelled session has no step to act on and no opener
-          to name, so this row -- and the divider under it -- would be empty. */}
-      {active || awaitingChoice ? (
+          to name, so this row -- and the divider under it -- would be empty,
+          unless a settled side pick can still be reopened. */}
+      {stepRow ? (
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           {active ? (
             <>
@@ -354,6 +420,36 @@ export function PregameAdminControls({
                     {t("admin.submitConfirm")}
                   </Button>
                 </>
+              ) : sideStep ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <span
+                      id={sideChoiceId}
+                      className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                    >
+                      {t("admin.sideChoiceLabel")}
+                    </span>
+                    <PickBanSideChoice
+                      labelledBy={sideChoiceId}
+                      labels={sideLabels}
+                      value={sideIndex}
+                      disabled={pending}
+                      onChange={(index) => setSidePick({ key: sideKey, index })}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={!active || sideIndex == null || pending}
+                    onClick={() => {
+                      if (sideIndex == null) return;
+                      actMutation.mutate({ encounter_team_id: teamId, item_id: sideIndex, action: "side_pick" });
+                    }}
+                  >
+                    {actMutation.isPending ? <Spinner className="mr-2" /> : null}
+                    {t("admin.confirm")}
+                    {sideIndex != null ? `: ${sideLabels[sideIndex] ?? `#${sideIndex}`}` : ""}
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button
@@ -375,22 +471,23 @@ export function PregameAdminControls({
                   ) : null}
                 </>
               )}
-              {state.dispute.step_index != null ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => reopenMutation.mutate()}
-                >
-                  {reopenMutation.isPending ? (
-                    <Spinner className="mr-2" />
-                  ) : (
-                    <Undo2 className="mr-2 h-4 w-4" aria-hidden />
-                  )}
-                  {t("admin.reopen")}
-                </Button>
-              ) : null}
             </>
+          ) : null}
+
+          {reopenable ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => reopenMutation.mutate()}
+            >
+              {reopenMutation.isPending ? (
+                <Spinner className="mr-2" />
+              ) : (
+                <Undo2 className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              {t("admin.reopen")}
+            </Button>
           ) : null}
 
           {awaitingChoice ? (
@@ -424,7 +521,7 @@ export function PregameAdminControls({
       <div
         className={cn(
           "flex flex-wrap items-center gap-2",
-          (active || awaitingChoice) &&
+          stepRow &&
             "mt-4 border-t border-dashed border-[color:var(--aqt-amber)]/35 pt-3"
         )}
       >
@@ -668,14 +765,15 @@ function GameCorrection({
       onMutated();
     },
     onError: (error) => {
-      // A later encounter of the bracket already started on the old result, so
-      // the correction would silently invalidate a match in progress. Naming it
-      // is the difference between "try again" and "go roll that back first".
+      // The next game's pick-ban already ran on the old result (its round
+      // opener came from it), so the correction would silently rewrite a
+      // round in progress. Naming it is the difference between "try again"
+      // and "undo that round first".
       if (
         error instanceof ApiError &&
-        error.details.some((detail) => detail.code === "downstream_started")
+        error.details.some((detail) => detail.code === "dependent_round_started")
       ) {
-        notify.error(t("admin.downstreamStarted"));
+        notify.error(t("admin.dependentRoundStarted"));
         return;
       }
       notify.apiError(error, { title: t("admin.correctFailed") });

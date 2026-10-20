@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from shared.core.enums import DraftAutopickStrategy, DraftFormat, DraftPoolSource, DraftStatus
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftSession
-from shared.services.team_export import ExportOutcome, MaterializationResult
 from src import schemas
 from src.rpc import admin, binary, draft
+from src.services.team_export import ExportOutcome, MaterializationResult
 
 
 class ExportAdvisoryWireTests(IsolatedAsyncioTestCase):
@@ -30,10 +30,8 @@ class ExportAdvisoryWireTests(IsolatedAsyncioTestCase):
                 stack.enter_context(patch.object(module, name, value))
             stack.enter_context(patch.object(module.c, "envelope", envelope))
             stack.enter_context(patch.object(module.c, "active_actor", return_value=SimpleNamespace(id=1)))
-            stack.enter_context(patch.object(module.c, "require_workspace_permission"))
+            stack.enter_context(patch.object(module, "ensure_workspace_permission"))
             stack.enter_context(patch.object(module.c, "require_admin_panel"))
-            stack.enter_context(patch.object(module, "emit", AsyncMock()))
-            stack.enter_context(patch.object(module, "enqueue_invalidation_outbox", AsyncMock()))
             return await handlers[subject]({"id": 1, "tournament_id": 2}, None)
 
     async def test_balance_export_returns_named_advisories(self):
@@ -47,7 +45,6 @@ class ExportAdvisoryWireTests(IsolatedAsyncioTestCase):
                 "balancer_admin_service": SimpleNamespace(
                     export_balance=AsyncMock(return_value=(SimpleNamespace(id=1, tournament_id=2), 0, 1, advisories))
                 ),
-                "emit_balancer_data": AsyncMock(),
             },
         )
         self.assertEqual(body["advisories"], advisories)
@@ -67,7 +64,6 @@ class ExportAdvisoryWireTests(IsolatedAsyncioTestCase):
                         return_value=ExportOutcome(materialization=MaterializationResult(advisories=advisories))
                     )
                 ),
-                "emit_balancer_data": AsyncMock(),
             },
         )
         self.assertEqual(body["advisories"], advisories)
@@ -98,10 +94,9 @@ class ExportAdvisoryWireTests(IsolatedAsyncioTestCase):
             "rpc.balancer.draft.export",
             {
                 "_get_tournament_workspace_id": AsyncMock(return_value=3),
-                "_load_session": AsyncMock(return_value=row),
+                "lifecycle_service": SimpleNamespace(get_session=AsyncMock(return_value=row)),
                 "export_service": SimpleNamespace(export=AsyncMock(return_value=(row, 0, 1, advisories))),
                 "board_service": SimpleNamespace(session_read=AsyncMock(return_value=read)),
-                "draft_rt": SimpleNamespace(publish_draft_event=AsyncMock()),
             },
         )
         self.assertEqual(body["advisories"], advisories)

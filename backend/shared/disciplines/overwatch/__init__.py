@@ -1,4 +1,4 @@
-"""The Overwatch module (D83). Core reaches it only through ``shared.disciplines``."""
+"""The Overwatch module. Core reaches it only through ``shared.disciplines``."""
 
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.catalog_sync import CatalogImageMirror
+    from shared.disciplines.analytics import AnalyticsExports
     from shared.disciplines.ingest import BoundMatch, DecodeContext
     from shared.disciplines.spec import CollectionHandler
     from shared.domain.achievements.context import EvalContext
-    from shared.domain.analytics import AnalyticsExports
     from shared.domain.pick_ban_rules.presets import Preset
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
     from shared.models.catalog.entity import CatalogEntity
@@ -201,7 +201,7 @@ SPEC = DisciplineSpec(
     # A map is played attack/defence per round, not per team: no sides.
     (),
     kinds={"character": "Hero", "map": "Map", "mode": "Mode"},
-    # Never "flex": flex is a slot without a constraint (D86), not a hero's class.
+    # Never "flex": flex is a slot without a constraint, not a hero's class.
     character_classes=("tank", "damage", "support"),
     catalog_sync=_catalog_sync,
     native_ranks=_native_ranks,

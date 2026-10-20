@@ -1,9 +1,9 @@
 """Read and write a workspace member's ranks, in layers.
 
-One service replaces ``WorkspacePlayerService`` (canon) and ``HostBookService``
-(per-host book). The two differed only in which columns keyed the row, so they
-are now one write method taking ``author_user_id`` and one resolver taking the
-layer order it should honour.
+Workspace canon (``author_user_id`` ``None``) and a host's per-host book
+(``author_user_id`` set) differ only in which columns key the row: one write
+method takes ``author_user_id`` and one resolver takes the layer order it should
+honour.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ MIX_ORDER: tuple[RankScope, ...] = ("author", "workspace", "native")
 #: Layer order for a tournament: the registration's own number (what the
 #: organiser set), then the workspace canon, then the game's native ladder. An empty
 #: ``registration_role.rank_value`` therefore *inherits* rather than reading as
-#: "unranked" -- which is what it used to do before the resolver was stubbed out.
+#: "unranked".
 TOURNAMENT_ORDER: tuple[RankScope, ...] = ("registration", "workspace", "native")
 
 
@@ -47,7 +47,7 @@ class MemberRankService:
         self.roles = roles
 
     async def _dimension_id(self, session: AsyncSession, discipline: str) -> int:
-        """The discipline's rated dimension: the axis every rank is held on (D32, D87)."""
+        """The discipline's rated dimension: the axis every rank is held on."""
         dimension_id = await self.roles.rated_dimension_id(session, discipline=discipline)
         if dimension_id is None:
             raise HTTPException(
@@ -80,7 +80,7 @@ class MemberRankService:
         Deleting rather than zeroing is what keeps inheritance working: an absent
         row falls through to the next layer, a row holding ``0`` would not. An
         omitted role is left alone, so saving one role never disturbs the others.
-        A code outside the discipline's rated module roles -- ``flex`` included, D86 -- is refused.
+        A code outside the discipline's rated module roles -- ``flex`` included -- is refused.
         """
         await self.member_in_workspace(session, workspace_id=workspace_id, workspace_member_id=workspace_member_id)
         catalog = await self.roles.rated_rows(session, discipline=discipline, workspace_id=None)
@@ -172,12 +172,10 @@ class MemberRankService:
     ) -> Sequence[models.MemberRank]:
         """Canon + one author's own layer, raw rows, in one round trip.
 
-        Exactly the fetch ``resolve`` makes internally to build its ``canon``/
-        ``author`` buckets. A caller that also needs the author-only rows
-        un-mixed with canon (to show the host's own book verbatim) would
-        otherwise pay for that same query twice -- once here, once inside
-        ``resolve``. Feed the result back into ``resolve(layers=...)`` to make
-        it skip its own fetch and reuse these rows instead.
+        The same fetch ``resolve`` makes internally. A caller that also needs the
+        author-only rows un-mixed with canon (to show the host's own book
+        verbatim) feeds the result back into ``resolve(layers=...)`` so the query
+        runs once.
         """
         return await self.ranks.list_layers(
             session,

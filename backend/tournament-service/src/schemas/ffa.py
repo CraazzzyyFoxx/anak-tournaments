@@ -3,7 +3,7 @@
 The write side mirrors what ``FfaEncounterService`` accepts; the read side is
 one shape for both public endpoints -- a stage answers a list of lobbies and a
 single lobby answers one of them, so the table renders from the same model
-either way (docs/plans/2026-09-24-ffa-encounters.md §6).
+either way.
 
 Nulls carry meaning here and are never dropped on the wire: a cell with no
 ``state`` is a game nobody has entered yet, and a row with no ``position`` is a
@@ -37,7 +37,7 @@ class FfaGameResultLineInput(BaseModel):
     team_id: int
     placement: int | None = Field(default=None, ge=1)
     #: One value per column of the stage; the service refuses a missing or
-    #: unknown key, so the dialog cannot silently drop a column (plan §5.2).
+    #: unknown key, so the dialog cannot silently drop a column.
     stats: dict[str, float]
 
 

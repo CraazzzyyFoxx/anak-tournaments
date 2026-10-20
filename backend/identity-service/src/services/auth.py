@@ -1,9 +1,6 @@
 """RPC-facing orchestration of the password/session lifecycle.
 
-Faithful port of the auth-service HTTP route bodies (register/login/refresh/
-logout/me), with client metadata (user-agent, ip) passed explicitly so
-behaviour — session tracking, refresh rotation, reuse-detection, the
-idempotency cache — stays byte-for-byte identical. The gateway forwards the
+Client metadata (user-agent, ip) arrives explicitly: the gateway forwards the
 UA/IP it sees from nginx.
 """
 
@@ -24,8 +21,9 @@ from shared.repository import (
     UserRepository,
     WorkspaceMemberRepository,
 )
-from shared.services.audit import record_audit
 from src import models, schemas
+from src.schemas.auth import permission_key
+from src.services.audit import record_operator_audit
 from src.services.auth_users import AuthUserService, auth_users
 from src.services.security import PasswordHasher, TokenCodec, passwords, token_codec
 from src.services.session_cache import SessionCache, session_cache
@@ -236,7 +234,16 @@ class AuthenticationService:
         )
         return [schemas.SessionRead.model_validate(summary) for summary in summaries]
 
-    async def revoke_session(self, session: AsyncSession, user: models.AuthUser, session_id: UUID) -> None:
+    async def revoke_session(
+        self,
+        session: AsyncSession,
+        user: models.AuthUser,
+        session_id: UUID,
+        *,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        """Revoke one of the caller's other sessions, journalled (it kills a credential)."""
         current_session_id = getattr(user, "_current_session_id", None)
         if current_session_id == str(session_id):
             raise HTTPException(
@@ -248,6 +255,16 @@ class AuthenticationService:
         )
         if summary is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        # Staged before ``revoke_session`` commits, so it shares the revoke's transaction.
+        await record_operator_audit(
+            session,
+            user,
+            action="session.revoke",
+            entity_type="session",
+            after={"session_id": str(session_id)},
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         await self.tokens.revoke_session(session, user.id, session_id)
 
     # --- account ---
@@ -274,13 +291,8 @@ class AuthenticationService:
                 schemas.AuthUserWorkspace(
                     workspace_id=workspace_id,
                     slug=slug,
-                    # The wildcard grant reads as "admin.*" everywhere it is
-                    # shown to a human, unlike the literal "*.*".
                     rbac_permissions=[
-                        "admin.*"
-                        if perm.get("resource") == "*" and perm.get("action") == "*"
-                        else f"{perm.get('resource', '')}.{perm.get('action', '')}"
-                        for perm in permissions
+                        permission_key(perm.get("resource", ""), perm.get("action", "")) for perm in permissions
                     ],
                     rbac_roles=role_names,
                 )
@@ -314,11 +326,9 @@ class AuthenticationService:
             if await self.auth_users_repo.email_taken(session, payload.email, exclude_user_id=user.id):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
             user.email = payload.email
-            # Changing the email invalidates any prior verification of the old
-            # address (review C1). Ownership of the new address is unproven
-            # until a verification flow confirms it, so drop the verified flag.
-            # Combined with fail-closed OAuth email-matching, this breaks the
-            # "swap email -> take over via OAuth" chain.
+            # Ownership of the new address is unproven until a verification flow
+            # confirms it. Together with fail-closed OAuth email matching, this
+            # breaks the "swap email -> take over via OAuth" chain.
             user.is_verified = False
 
         try:
@@ -399,12 +409,10 @@ class AuthenticationService:
         # stay decodable until they expire on their own.
         await self.tokens.revoke_all(session, user_id, commit=False)
 
-        await record_audit(
+        await record_operator_audit(
             session,
+            user,
             action="auth_user.delete_self",
-            source="admin",
-            actor=user,
-            actor_label=username or email,
             entity_type="auth_user",
             entity_id=user_id,
             entity_label=username or email,
@@ -412,7 +420,7 @@ class AuthenticationService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        await session.delete(user)
+        await self.auth_users_repo.delete(session, user)
         await session.commit()
         await self.cache.invalidate_rbac(user_id)
         logger.info(f"Account self-deleted: user_id={user_id} email={email} player_id={player_id}")

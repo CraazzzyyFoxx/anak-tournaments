@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.repository import RoleRepository, UserPermissionDenyRepository, WorkspaceMemberRepository
 from src import models, schemas
+from src.services.players import describe_link
 from src.services.session_cache import SessionCache, session_cache
 
 __all__ = ["TokenPayloadBuilder", "token_payloads"]
@@ -59,8 +60,8 @@ class TokenPayloadBuilder:
         # ``None`` means "not in the cache" and must trigger a load; an empty
         # list is a real answer ("this user has no denies") and must not.
         denies: list[dict[str, Any]] | None = entry.get("denies")
-        # Same distinction: v3 entries always carry the key, so its absence
-        # means the entry predates membership caching, not "member of nothing".
+        # Same distinction for memberships: a missing key loads them, an empty
+        # list means "member of nothing".
         memberships_cached: list[list[Any]] | None = entry.get("workspaces")
 
         loaded_from_db = False
@@ -143,24 +144,8 @@ class TokenPayloadBuilder:
 
     @staticmethod
     def linked_players(user: models.AuthUser) -> list[schemas.AuthLinkedPlayer]:
-        """The 0-or-1 player linked to ``user`` via ``players.user.auth_user_id``.
-
-        Kept as a list (rather than an optional single value) for wire-shape
-        compatibility with the historical many-to-many ``auth.user_player``
-        model; every returned player is, by construction, the single link, so
-        ``is_primary`` is always ``True``.
-        """
-        player = user.player
-        if player is None:
-            return []
-        return [
-            schemas.AuthLinkedPlayer(
-                player_id=player.id,
-                player_name=player.name,
-                is_primary=True,
-                linked_at=player.created_at.isoformat(),
-            )
-        ]
+        """The 0-or-1 player linked to ``user``, as a list for wire-shape compatibility."""
+        return [] if user.player is None else [schemas.AuthLinkedPlayer(**describe_link(user.player))]
 
 
 token_payloads = TokenPayloadBuilder()

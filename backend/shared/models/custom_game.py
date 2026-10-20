@@ -61,7 +61,7 @@ class CustomGame(db.TimeStampIntegerMixin):
             name="ck_custom_game_self_signup",
         ),
         CheckConstraint(f"lobby_count BETWEEN 1 AND {MAX_LOBBIES}", name="ck_custom_game_lobby_count"),
-        # Target of ``fk_encounter_custom_game``: owner, workspace and discipline in one key (D62).
+        # Target of ``fk_encounter_custom_game``: owner, workspace and discipline in one key.
         UniqueConstraint("id", "workspace_id", "discipline", name="uq_custom_game_owner_key"),
         # Deferred like ``fk_encounter_scoring_rule``: a workspace delete removes rule and mix in one statement.
         ForeignKeyConstraint(
@@ -97,14 +97,14 @@ class CustomGame(db.TimeStampIntegerMixin):
     # The mix's general voice: where "return" sends everyone. One of the
     # workspace's general voices (``workspace_config.mix_general_voice_channel_ids``).
     general_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    #: Which game this mix is played in (``catalog.discipline.code``, D72); not on the API until V3.
+    #: Which game this mix is played in (``catalog.discipline.code``); fixed at create, carried on every mix read.
     discipline: Mapped[str] = mapped_column(
         String(32),
         ForeignKey("catalog.discipline.code", name="fk_custom_game_discipline"),
         default="overwatch",
         server_default="overwatch",
     )
-    #: The mix's own ``wins`` rule: Bo1, draws allowed (D73). Every round encounter points at it.
+    #: The mix's own ``wins`` rule: Bo1, draws allowed. Every round encounter points at it.
     scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
 
 
@@ -257,7 +257,7 @@ class CustomGameTeamName(db.Base):
 
 
 class CustomGameRound(db.Base):
-    """Balancer-only facts of one recorded mix round (D74). The round itself is ``encounter.encounter``."""
+    """Balancer-only facts of one recorded mix round. The round itself is ``encounter.encounter``."""
 
     __tablename__ = "custom_game_round"
     __table_args__ = (
@@ -280,7 +280,7 @@ class CustomGameRound(db.Base):
 
 
 class CustomGameRoundMember(db.Base):
-    """One member's balancer facts in one round: seated (with its frozen rank delta) or busy next door (D74).
+    """One member's balancer facts in one round: seated (with its frozen rank delta) or busy next door.
 
     Who sat on which seat is ``encounter.team_member`` only. The writer never stores a member both busy and seated.
     """
@@ -298,7 +298,7 @@ class CustomGameRoundMember(db.Base):
         ),
         primary_key=True,
     )
-    # NO ACTION, deferred: the D66 anchor rule of ``encounter.team_member``.
+    # NO ACTION, deferred: the anchor rule of ``encounter.team_member``.
     workspace_member_id: Mapped[int] = mapped_column(
         ForeignKey(
             "workspace_member.id",

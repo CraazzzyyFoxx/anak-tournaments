@@ -12,13 +12,10 @@ so no reverse-engineering and no new user-facing scope.
 ``config["guild_id"]`` is NOT stored in the provider blob: it is injected by
 ``SqlEntitlementStore.load_configs`` from ``Workspace.discord_guild_id``, so one
 organizer's guild is configured once and every feature reads the same snowflake.
-That injection is deliberately invisible here -- this resolver's contract and its
-whole decision table (including the fail-open ``unknown("guild_not_configured")``
-branch, which is now reached when the *workspace* has no guild) are unchanged by
-the move. Do NOT "tidy" the injection into an explicit parameter: that would
-re-open the fail-open question argued in ``shared.services.subscriptions.verification``.
+A workspace with no guild reaches the fail-open ``unknown("guild_not_configured")``
+branch.
 
-Discord access notes (verified against the API docs, see the design doc):
+Discord access notes:
 
 - ``GET /guilds/{guild}/members/{user}`` needs NO privileged intent. Do not use
   the *list* endpoint, which does.
@@ -62,7 +59,7 @@ GuildRolesFetcher = Callable[[str], Awaitable[set[str]]]
 
 
 class DiscordError(Exception):
-    """Base for the three outcomes the resolver distinguishes."""
+    """Base for the outcomes the resolver distinguishes."""
 
 
 class MemberNotFound(DiscordError):
@@ -77,10 +74,9 @@ class DiscordNotConfigured(DiscordError):
     """Our own bot token is missing, so no request was ever made.
 
     Deliberately distinct from ``DiscordForbidden``: a 403 means the guild really
-    is unreachable, while this means we never asked. Collapsing the two made
-    every check run by a service without ``DISCORD_TOKEN`` read as
-    ``guild_not_accessible`` -- pointing the operator at a guild id that was
-    fine, instead of at the credential that was missing.
+    is unreachable, while this means we never asked. Reporting it as
+    ``guild_not_accessible`` would point the operator at a guild id that is fine
+    instead of at the missing credential.
     """
 
 

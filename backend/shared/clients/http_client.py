@@ -175,13 +175,13 @@ class ResilientHttpClient:
             # only re-raise a repr, which is how an unreachable upstream reaches
             # the logs as an anonymous traceback. Name the target and the cause.
             # The path stays OUT of the message: with it, one upstream outage
-            # opened a Sentry issue per player URL instead of one per
+            # opens a Sentry issue per player URL instead of one per
             # host+error type (message-only records group by message).
             # WARNING, not ERROR: the exception is re-raised, so the caller owns
             # the verdict (the rank fetch records a backoff and moves on; an
             # unhandled one still surfaces as its own event), and a real outage is
             # already reported once by the breaker's "opened" ERROR. At ERROR every
-            # slow OverFast player summary became a Sentry event (OWT-TOURNAMENTS-2C1).
+            # slow OverFast player summary would become a Sentry event.
             logger.warning(
                 "{} {} failed: {}",
                 method,

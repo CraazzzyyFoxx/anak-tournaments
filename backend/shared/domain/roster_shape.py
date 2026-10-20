@@ -1,8 +1,8 @@
 """Per-team roster shape: how many slots of which kind one team has.
 
-The D33 projection of a team format (``shared.domain.team_format.slot_shape``) and the single input of draft, balancer
+The projection of a team format (``shared.domain.team_format.slot_shape``) and the single input of draft, balancer
 and slot UI. A slot code is a role code of the discipline's rated dimension or the reserved ``flex`` -- the open slots,
-which are not a role (D86).
+which are not a role.
 
 Deliberately pure: no I/O, no service imports. Looking a shape up for a
 tournament or workspace, and caching that lookup, lives elsewhere.
@@ -32,8 +32,6 @@ FLEX_SLOT_CODE: Final[str] = "flex"
 # legal format. A draft refuses a shape it has nothing to pick for on its own
 # (balancer-service ``DraftLifecycleService.create_session``).
 MIN_TEAM_SIZE: Final[int] = 1
-# Upper bound inherited from the validator this shape replaces:
-# DraftSessionCreateRequest._team_size_range in balancer-service/src/schemas/draft.py.
 MAX_TEAM_SIZE: Final[int] = 12
 
 

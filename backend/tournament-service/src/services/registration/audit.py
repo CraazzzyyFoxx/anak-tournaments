@@ -1,11 +1,10 @@
 """Platform-audit rows for the registration admin surface.
 
 Registrations sit outside the shared CRUD dispatcher -- ``rpc/registration_admin.py``
-drives bespoke lifecycle services instead of ``EntityConfig`` hooks -- so nothing
-was appending to ``audit_log`` for them. However many times an admin edited a
-registration, the feed and any per-entity trail came back empty. This module is
-the one place those handlers stage a row from, so ``entity_type``/``action`` stay
-spelled the same way across every call site.
+drives bespoke lifecycle services instead of ``EntityConfig`` hooks -- so the
+dispatcher's audit staging never runs for them. This module is the one place
+those handlers stage a row from, so ``entity_type``/``action`` stay spelled the
+same way across every call site.
 
 Call order follows ``shared.rpc.crud``'s service-backed branches: the lifecycle
 services own their ``commit()``, so a row is staged BEFORE the service runs and

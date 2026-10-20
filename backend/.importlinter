@@ -1,5 +1,5 @@
 [importlinter]
-# Core reaches a discipline module only through the registry ``shared.disciplines`` (D83, D99).
+# Core reaches a discipline module only through the registry ``shared.disciplines``.
 # Services are covered by backend/tests/test_discipline_module_boundary.py (their root package is ``src``).
 root_packages =
     shared
@@ -39,11 +39,12 @@ forbidden_modules =
 [importlinter:contract:registry-support-modules-are-module-agnostic]
 name = shared.disciplines support modules never import a concrete discipline module
 type = forbidden
-# Only the registry assembly (shared/disciplines/__init__.py) loads the module packages (D83, D99). The generic spec,
-# ingest protocol and job registry that the stats worker's generic ingest code reads must stay module-agnostic.
+# Only the registry assembly (shared/disciplines/__init__.py) loads the module packages. The generic spec, ingest
+# protocol, analytics contract and job registry that core and service code read must stay module-agnostic.
 allow_indirect_imports = True
 source_modules =
     shared.disciplines.spec
+    shared.disciplines.analytics
     shared.disciplines.ingest
     shared.disciplines.jobs
 forbidden_modules =

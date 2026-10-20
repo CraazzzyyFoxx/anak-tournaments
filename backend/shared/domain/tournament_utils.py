@@ -1,11 +1,4 @@
-"""Shared tournament utility functions used by both stats-service and
-app-service (Phase E consolidation).
-
-Eliminates the duplication of ``sort_matches`` and ``_completed_encounters``
-between stats-service/services/standings/service.py,
-stats-service/services/standings/flows.py and
-app-service/services/standings/flows.py.
-"""
+"""Encounter-completion and bracket-round helpers shared by stats-service and app-service."""
 
 from __future__ import annotations
 
@@ -28,16 +21,13 @@ __all__ = (
 def is_completed_encounter(encounter: Encounter) -> bool:
     """Canonical "this encounter counts toward standings" predicate.
 
-    ``status == COMPLETED`` is the single form. A CHECK constraint makes it
-    equivalent to ``result_status == CONFIRMED``, so the old OR of both was
-    redundant — and the risk was never the OR itself but three call sites each
-    free to phrase the question their own way. Non-zero scores alone do NOT
-    count: that rule previously masked state desyncs.
+    ``status == COMPLETED`` is the single form: a CHECK constraint makes it
+    equivalent to ``result_status == CONFIRMED``. Non-zero scores alone do NOT
+    count: they would mask state desyncs.
 
-    It no longer asks whether both seats are filled. An unplaced seat has no
-    participation row at all now, and an encounter that was never played
-    cannot be COMPLETED: the constraint above is the guard the team columns
-    used to be.
+    Whether both seats are filled is not asked: an unplaced seat has no
+    participation row at all, and an encounter that was never played cannot be
+    COMPLETED.
     """
     return encounter.status == enums.EncounterStatus.COMPLETED
 
@@ -56,11 +46,10 @@ def _playable_rounds(
     """Group the playable encounters by bracket round.
 
     ``rounds`` maps encounter id to its ``tournament.bracket_encounter.round``
-    and IS the playable set: the round lives off the encounter now, and whether
+    and IS the playable set: the round lives off the encounter, and whether
     every seat of a fixture is filled is a participation query only the caller
     can run. An encounter the caller left out — no bracket position, or a seat
-    still waiting on an upstream result — is skipped, exactly as an encounter
-    missing a team used to be.
+    still waiting on an upstream result — is skipped.
     """
     grouped: dict[int, list[Encounter]] = {}
     for encounter in encounters:

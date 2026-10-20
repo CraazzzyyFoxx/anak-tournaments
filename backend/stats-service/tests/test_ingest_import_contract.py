@@ -52,7 +52,7 @@ print(json.dumps({"baseline": baseline, "after": overwatch(), "imported": import
 """
     )
     assert out["after"] == out["baseline"], sorted(set(out["after"]) - set(out["baseline"]))
-    assert {"src.services.ingest.validation", "shared.services.decode_context", "shared.repository.stats"} <= set(
+    assert {"src.services.ingest.validation", "src.services.ingest.decode_context", "shared.repository.stats"} <= set(
         out["imported"]
     )
     # The registry itself declares the decoder through lazy wrappers.

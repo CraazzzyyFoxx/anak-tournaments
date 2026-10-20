@@ -4,15 +4,10 @@ Every admin mutation of a tournament's registrations announces itself on
 ``tournament:{id}:balancer`` so that everyone with the balancer page open
 refetches the live list. That signal is DATA for the admin tool; the staleness
 of the public participants list travels separately, as the
-``tournament.registrations`` resource on the invalidation topic — the two used
-to be conflated, which is how a balancer export came to invalidate nothing
-public at all.
+``tournament.registrations`` resource on the invalidation topic.
 
-The former shape — a fire-and-forget task publishing from its own short-lived
-session after the caller had already committed — is gone with the rest of the
-per-call-site transports: it could publish an event for a transaction that
-later failed, and its own docstring had to explain the ordering caveat that
-riding the caller's transaction now removes.
+The signal is staged in the caller's transaction, so a write that later fails
+publishes nothing.
 """
 
 from __future__ import annotations

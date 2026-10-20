@@ -23,18 +23,19 @@ from shared.models.identity.auth_user import AuthUser
 from shared.models.identity.rbac import Permission, Role, role_permissions, user_roles
 from shared.models.identity.user import User
 from shared.models.platform.notification import Notification
+from shared.models.platform.outbox import EventOutbox
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Team
-from shared.services.bracket import advancement
 from shared.services.encounter import participants
 from shared.tests.encounter_writer_case import EncounterWriterCase
 from src import schemas
 from src.services.admin.encounter import encounter_service as admin_encounter_service
 from src.services.admin.encounter_reports import encounter_reports_service
 from src.services.admin.stage import stage_service
+from src.services.bracket import advancement
 from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.ffa import ffa_encounter_service
 from src.services.encounter.flows import flows_service, to_summary
@@ -689,7 +690,7 @@ class SeriesReportTests(ResultFlowCase):
 class DisputeNotificationTests(ResultFlowCase):
     """A real disagreement through the public flow reaches the inbox.
 
-    The two producers (``map_report._notify_dispute``, ``captain._notify_dispute``)
+    The two disputes (per-game and series, both through ``dispute_review.notify_dispute``)
     validate their payloads against the ``extra="forbid"`` notification schemas,
     so a field the schema does not know is a ValidationError that rolls the
     whole claim back. Driving the claim itself is what proves the wiring.
@@ -948,7 +949,11 @@ class LobbyResultTests(ResultFlowCase):
 
         with (
             patch("src.services.encounter.settle.enqueue_tournament_recalculation", AsyncMock()) as recalc,
-            patch("src.services.encounter.ffa.push_confirmed_to_challonge", AsyncMock()) as push,
+            # Linked to a Challonge match, so the confirmation owes a push.
+            patch(
+                "src.services.encounter.settle.resolve_encounter_challonge",
+                AsyncMock(side_effect=lambda _s, ids: dict.fromkeys(ids, 1)),
+            ),
         ):
             for position, ranked in enumerate((order, order[::-1]), 1):
                 async with self.Session() as s:
@@ -962,10 +967,19 @@ class LobbyResultTests(ResultFlowCase):
                     )
                 if position == 1:
                     recalc.assert_not_awaited()
-                    push.assert_not_awaited()
 
         recalc.assert_awaited_once_with(ANY, self.ids["t"])
-        push.assert_awaited_once_with(ANY, self.ids["e"])
+        async with self.Session() as s:
+            version = (await self.encounter(s)).result_version
+            pushes = list(
+                await s.scalars(
+                    sa.select(EventOutbox.payload_json).where(
+                        EventOutbox.event_id.startswith(f"challonge_push:{self.ids['e']}:")
+                    )
+                )
+            )
+        # One request, carrying the version that confirmed the lobby: game 1 left it unconfirmed.
+        self.assertEqual([version], [push["result_version"] for push in pushes])
 
 
 class CascadeTests(ResultFlowCase):
@@ -1024,6 +1038,11 @@ class CascadeTests(ResultFlowCase):
 
         # The organizer corrects the SECOND map: the other team won it, so the
         # series is 1:1 and nobody has advanced any more.
+        audited: list[object] = []
+
+        async def record_audit(session) -> None:
+            audited.append(session)
+
         async with self.Session() as s:
             await game_correction_service.correct_game(
                 s,
@@ -1032,7 +1051,9 @@ class CascadeTests(ResultFlowCase):
                 results=self.win(second.id, first.id),
                 actor_user_id=self.users[0],
                 reason="the second map was scored backwards",
+                audit=record_audit,
             )
+        self.assertEqual(1, len(audited))
 
         async with self.Session() as s:
             encounter = await self.encounter(s)

@@ -48,7 +48,7 @@ export default function WorkspaceSubscriptionsSettingsPage() {
   if (!canConfigureWorkspace) {
     return (
       <PageStateCard
-        state="not-found"
+        state="error"
         title={t("notAvailable.title")}
         description={t("notAvailable.description")}
       />
@@ -127,7 +127,7 @@ function SubscriptionsSettings({ workspaceId }: Readonly<{ workspaceId: number }
   });
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4">
       <SubscriptionProvidersCard
         workspaceId={workspaceId}
         resetKey={resetKey}

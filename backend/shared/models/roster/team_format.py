@@ -1,4 +1,4 @@
-"""Team formats (D35, D88; spec §14.3): a workspace's default per discipline, a tournament's copy, a mix's frozen copy.
+"""Team formats: a workspace's default per discipline, a tournament's copy, a mix's frozen copy.
 
 The children are written by ``TeamFormatRepository.save`` as a whole (delete, then insert), so the ORM collections
 are read-only views: ``dimensions`` with each dimension's code, ``rules`` with each role's code.
@@ -67,7 +67,7 @@ class RosterTeamFormat(db.TimeStampIntegerMixin):
     )
     tournament_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     custom_game_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    #: Which module preset this was copied from; informational only (D88).
+    #: Which module preset this was copied from; informational only.
     preset_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name: Mapped[str] = mapped_column(String(128))
     starter_min: Mapped[int] = mapped_column(Integer())

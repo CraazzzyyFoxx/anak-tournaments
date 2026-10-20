@@ -1,4 +1,4 @@
-"""The service's one door to a discipline's analytics module (D83, D99).
+"""The service's one door to a discipline's analytics module.
 
 Concrete features, models and the canonical division scale live in ``shared.disciplines.<slug>.analytics``; this
 service reaches them only through the registry's lazy ``DisciplineSpec.analytics`` hook. A discipline that declares none
@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.disciplines import DISCIPLINES, DisciplineSpec, discipline
-from shared.domain.analytics import AnalyticsExports
+from shared.disciplines.analytics import AnalyticsExports
 from shared.repository import TournamentRepository
 
 __all__ = (

@@ -27,11 +27,11 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
 
 
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from shared.services.team_export import ExportOutcome, ExportPlan  # noqa: E402
-from shared.services.team_export.materialization import MaterializationTeam  # noqa: E402
-from shared.services.team_export.registered import RegisteredExportPayload, SkippedTeam  # noqa: E402
 from src import models  # noqa: E402
 from src.services import registered_teams  # noqa: E402
+from src.services.team_export import ExportOutcome, ExportPlan  # noqa: E402
+from src.services.team_export.materialization import MaterializationTeam  # noqa: E402
+from src.services.team_export.registered import RegisteredExportPayload, SkippedTeam  # noqa: E402
 
 SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
 
@@ -93,8 +93,11 @@ class PlanWiringTests(IsolatedAsyncioTestCase):
             mock.patch.object(registered_teams, "build_registered_export", return_value=payload),
             mock.patch.object(registered_teams, "tournament_slot_shape", return_value=SHAPE),
             mock.patch.object(registered_teams.team_materialization, "run", side_effect=_run),
+            mock.patch.object(registered_teams, "stage_export_invalidation", mock.AsyncMock()),
         ):
-            await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
+            await registered_teams.registered_teams_service.export_registered(
+                _Session(_tournament()), 7, actor_user_id=1
+            )  # type: ignore[arg-type]
         self.assertEqual(1, len(captured))
         return captured[0]
 
@@ -136,14 +139,16 @@ class NoOpExportTests(IsolatedAsyncioTestCase):
             mock.patch.object(registered_teams, "tournament_slot_shape", return_value=SHAPE),
             mock.patch.object(registered_teams.team_materialization, "run", runner),
         ):
-            result = await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
+            result = await registered_teams.registered_teams_service.export_registered(
+                _Session(_tournament()), 7, actor_user_id=1
+            )  # type: ignore[arg-type]
 
         runner.assert_not_awaited()
         self.assertEqual(0, result.imported_teams)
         self.assertEqual(["team_incomplete"], [item.code for item in result.skipped])
 
     async def test_skipped_teams_are_reported_alongside_a_real_export(self) -> None:
-        """§12.5: the people in an incomplete team must be told. Dropping the report
+        """The people in an incomplete team must be told. Dropping the report
         when *some* teams exported is the easy mistake."""
         payload = _payload_with_one_team()
         payload.skipped.append(SkippedTeam(team_id=4, name="Beta", code="team_incomplete"))
@@ -155,13 +160,16 @@ class NoOpExportTests(IsolatedAsyncioTestCase):
             mock.patch.object(registered_teams, "build_registered_export", return_value=payload),
             mock.patch.object(registered_teams, "tournament_slot_shape", return_value=SHAPE),
             mock.patch.object(registered_teams.team_materialization, "run", side_effect=_run),
+            mock.patch.object(registered_teams, "stage_export_invalidation", mock.AsyncMock()),
         ):
-            result = await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
+            result = await registered_teams.registered_teams_service.export_registered(
+                _Session(_tournament()), 7, actor_user_id=1
+            )  # type: ignore[arg-type]
 
         self.assertEqual(1, result.imported_teams)
         self.assertEqual(["team_incomplete"], [item.code for item in result.skipped])
 
     async def test_a_missing_tournament_is_a_404(self) -> None:
         with self.assertRaises(Exception) as caught:
-            await registered_teams.registered_teams_service.export_registered(_Session(None), 7)  # type: ignore[arg-type]
+            await registered_teams.registered_teams_service.export_registered(_Session(None), 7, actor_user_id=1)  # type: ignore[arg-type]
         self.assertEqual(404, getattr(caught.exception, "status_code", None))

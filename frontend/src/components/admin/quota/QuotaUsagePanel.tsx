@@ -29,8 +29,8 @@ function QuotaScopeBars({ usage }: Readonly<{ usage: QuotaScopeUsage }>) {
   const now = useMinuteClock();
 
   return (
-    <section className="border-t border-border/60 pt-3 first:border-t-0 first:pt-0">
-      <h4 className="text-sm font-medium">{t(`scopes.${usage.scope}.label`)}</h4>
+    <section className="border-t border-border/60 pt-4 first:border-t-0 first:pt-0">
+      <h3 className="text-body font-medium text-foreground">{t(`scopes.${usage.scope}.label`)}</h3>
       <p className="mt-0.5 text-xs text-muted-foreground">{t(`scopes.${usage.scope}.hint`)}</p>
 
       <div className="mt-3 space-y-3">
@@ -119,7 +119,7 @@ export function QuotaUsagePanel({ usage }: Readonly<{ usage: QuotaUsage }>) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {usage.plan_slug ? (
         <p className="text-xs text-muted-foreground">{t("plan", { slug: usage.plan_slug })}</p>
       ) : null}

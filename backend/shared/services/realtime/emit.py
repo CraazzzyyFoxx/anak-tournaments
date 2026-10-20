@@ -1,19 +1,11 @@
 """The single realtime publication path.
 
-Everything a service wants to announce goes through :func:`emit`. It replaced
-six mechanisms that each carried their own guarantees, picked by hand at the
-call site: ``register_tournament_realtime_update`` (session hook, bracket only),
-``register_realtime_update`` (generic factory), ``publish_event`` /
-``publish_patch`` (durable, published BEFORE the caller's commit),
-``publish_envelope_to_redis`` (non-durable, no row), ``emit_balancer_data_event``
-(its own session, fire-and-forget task) and ``enqueue_tournament_changed``
-(outbox to RabbitMQ). Two production bugs came directly out of that choice
-being manual — see docs/plans/2026-09-09-unified-event-delivery.md §1.
+Everything a service wants to announce goes through :func:`emit`.
 
 Invariants this module owns, so no caller has to remember them:
 
 1. **Publication happens after the caller's commit, never before.** Rows are
-   staged on the session and persisted in its ``before_flush``; the publish
+   staged on the session and persisted in its ``before_commit``; the publish
    fires from ``after_commit``. A rolled-back transaction publishes nothing.
 2. **Invalidation is a set.** Every ``invalidates`` list registered in one
    transaction for one scope is UNIONed into a single event. Union is
@@ -73,9 +65,9 @@ _cache_invalidator: CacheInvalidator | None = None
 def configure_realtime(*, redis_url: str, cache_invalidator: CacheInvalidator | None = None) -> None:
     """Wire the process into the realtime rail. One call per entrypoint.
 
-    Same shape and same reason as ``configure_cache()``: this module is shared
-    across services and has no ``src.core.config`` of its own. ``main`` and
-    ``serve`` are separate processes and each configures independently.
+    This module is shared across services and has no ``src.core.config`` of its
+    own (same reason as ``configure_cache()``). ``main`` and ``serve`` are
+    separate processes and each configures independently.
 
     ``cache_invalidator`` is how a service declares "I own caches that these
     resources describe". It runs BEFORE the publish (invariant 3). A service
@@ -127,14 +119,13 @@ async def emit(
 ) -> None:
     """Stage an invalidation and/or a domain event for this transaction.
 
-    Async purely for call-site symmetry with the rest of the service layer (and
-    so a future implementation may do IO here); it stages synchronously and
-    performs no IO of its own.
+    Async for call-site symmetry with the rest of the service layer; it stages
+    synchronously and performs no IO of its own.
 
     ``entity_ids`` narrows an invalidation for consumers that can use it
     (``{"registration_ids": [77]}``). Every consumer is free to ignore it and
-    drop the whole resource — it exists so that adding precision later is not a
-    format change across every publisher.
+    drop the whole resource, so adding precision is never a format change
+    across every publisher.
     """
     if not invalidates and data is None:
         raise ValueError("emit() needs invalidates, data, or both")
@@ -146,9 +137,8 @@ async def emit(
 
     staged = _staged(session)
     if staged is None:
-        # No session.info (a plain object in a unit test): nothing to hang the
-        # transaction hooks on. Silently doing nothing here is what the old
-        # factory did too, and it keeps callers free of session-shape checks.
+        # Not a real session (a plain object in a unit test): nothing to hang the
+        # transaction hooks on. Doing nothing keeps callers free of session-shape checks.
         return
 
     if invalidates:
@@ -164,10 +154,9 @@ async def emit(
 def _staged(session: Any) -> _Staged | None:
     sync_session = getattr(session, "sync_session", None)
     info = getattr(sync_session or session, "info", None)
-    # A real Session.info is always a dict. Anything else means this is not a
-    # session at all (a Mock or a plain object in a unit test), and there is
-    # nothing to hang the transaction hooks on — staging into it would produce
-    # an event nobody ever publishes.
+    # A real Session.info is always a dict. Anything else (a Mock, a plain
+    # object) has no transaction hooks, so staging into it would produce an
+    # event nobody ever publishes.
     if not isinstance(info, dict):
         return None
     staged = info.get(_STAGED_KEY)
@@ -209,15 +198,10 @@ def _domain_row(scope: Scope, data: DomainEvent, actor_user_id: int | None) -> W
 # before_commit, NOT before_flush: Session._flush early-returns on a clean
 # session, so a commit whose write already landed elsewhere (or that has no ORM
 # write at all — the balancer job worker keeps its jobs in Redis) would never
-# fire before_flush and would drop the staged rows silently. The predecessor
-# factory had exactly this hole, which is why tournament-service carried a
-# second after_commit listener of its own "regardless of whether the shared
-# factory's own before_flush actually ran this transaction".
-#
+# fire before_flush and would drop the staged rows silently.
 # _prepare_impl dispatches before_commit and only THEN runs its
 # `while not _is_clean(): flush()` loop, so rows added here are still flushed
-# inside the caller's transaction and still get their ids before after_commit
-# reads them.
+# inside the caller's transaction and get their ids before after_commit reads them.
 @event.listens_for(Session, "before_commit")
 def _persist_staged(session: Session) -> None:
     if session.in_nested_transaction():

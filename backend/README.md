@@ -20,7 +20,7 @@ directory; each service still keeps its own `pyproject.toml` as a workspace memb
 | --- | --- | --- | --- |
 | [`app-service`](./app-service/README.md) | `app-svc` | RPC worker | Core public read/data API + workspace/user/metadata admin + binary assets |
 | [`identity-service`](./identity-service/README.md) | `identity-svc` | RPC worker | AuthN/AuthZ: JWT, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
-| [`tournament-service`](./tournament-service/README.md) | `tournament-svc` | RPC + scheduler | Tournament lifecycle: CRUD, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine; runs the outbox sweeper |
+| [`tournament-service`](./tournament-service/README.md) | `tournament-svc` | RPC + scheduler | Tournament lifecycle: CRUD, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine; drains its own outbox rows (as every producing service does) |
 | [`stats-service`](./stats-service/README.md) | `stats-svc` | RPC + scheduler | Match-log ingestion/parsing, OverFast rank fetch (leader-locked), achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](./balancer-service/README.md) | `balancer-svc` | RPC worker | Genetic team balancing + live draft; heavy solve in native Rust `tournament_balancer` (NSGA multi-objective) |
 | [`analytics-service`](./analytics-service/README.md) | `analytics-svc` + `analytics-worker` | RPC worker + compute worker | Post-tournament analytics, split into two processes: `analytics-svc` (light RPC reads/mutations/job-control) and `analytics-worker` (heavy ML: LightGBM/XGBoost + Bayesian + Monte Carlo) |

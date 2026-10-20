@@ -5,9 +5,6 @@ shared part is the vocabulary (``shared/realtime/resources.json``), and
 ``tests/test_cache_resources.py`` asserts this table covers every
 tournament-scoped resource — an explicitly empty tuple is how "this service
 caches nothing of that" is said out loud.
-
-Replaces the old reason-keyed pattern table: the publisher used to say WHY
-and every consumer re-derived WHAT from it, three times, differently.
 """
 
 from __future__ import annotations
@@ -42,8 +39,7 @@ def _encounters(tournament_id: int) -> tuple[str, ...]:
     # `native_encounters:` and `native_encounters_overview:` (`{workspace}:{tournament}:...`, see
     # ``services.encounter.flows.ENCOUNTERS_CACHE_KEY``). Cross-tournament keys
     # (`...:{workspace}:None:...`) are left to TTL: a per-tournament write must
-    # not SCAN every workspace's unscoped list. The glob also matches the
-    # pre-native `encounters*` names, so a leftover entry is dropped, not stranded.
+    # not SCAN every workspace's unscoped list.
     return _with_prefixes(f"*encounters*:{tournament_id}:*")
 
 
@@ -53,13 +49,13 @@ def _standings(tournament_id: int) -> tuple[str, ...]:
 
 def _teams(tournament_id: int) -> tuple[str, ...]:
     # `teams:v2:` and `teams_by_tournament:v2:` (``services.team.flows``); the glob
-    # also matches the unversioned names, so a leftover entry is dropped, not stranded.
+    # spans every key version, so a version bump never strands an entry.
     return _with_prefixes(f"*teams*:{tournament_id}:*")
 
 
 def _registration_list(tournament_id: int) -> tuple[str, ...]:
-    # `registration_list:v2:{id}:` (``rpc.public_rpc._build_registration_list``); the
-    # glob also matches the unversioned `registration_list:{id}:` leftovers.
+    # `registration_list:v2:{id}:` (``registration.public_list.build_registration_list``); the
+    # glob spans every key version, so a version bump never strands an entry.
     return _with_prefixes(f"*registration_list*:{tournament_id}:*")
 
 

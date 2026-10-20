@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from src.schemas.base import BaseRead
+from shared.schemas.base import BaseRead
 
 __all__ = (
     "BalanceExportResponse",
@@ -40,9 +40,8 @@ class BalancerTournamentConfigRead(BaseRead):
 
 
 def _snowflake_or_none(value: str | None, field: str) -> str | None:
-    """Digits or ``None``: a snowflake outgrows a JavaScript safe integer, so it
-    travels as a string -- same contract as the per-mix
-    ``CustomGameDiscordChannelPatch.channel_id``. Empty means "none".
+    """Digits or ``None`` (empty means none): a snowflake outgrows a JavaScript
+    safe integer, so it travels as a string.
     """
     if value is None:
         return None

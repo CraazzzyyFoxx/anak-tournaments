@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
 
+from shared.messaging import outbox  # noqa: E402
 from shared.messaging.outbox import enqueue_outbox_event, publish_pending_outbox_events  # noqa: E402
 from shared.schemas.events import EncounterCompletedEvent  # noqa: E402
 
@@ -79,6 +80,25 @@ def _row(row_id: int, *, now: datetime | None = None) -> SimpleNamespace:
 
 
 class OutboxTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        outbox._declared_exchanges.clear()
+
+    async def test_drain_declares_each_target_exchange_once_per_process(self) -> None:
+        """A publish to an undeclared exchange closes the channel and fails the rest of the batch.
+
+        Every producing service drains now, so the first process to publish onto an
+        exchange on a fresh broker may be one that never consumes from it.
+        """
+        db = _Db([_row(1), _row(2)])
+        broker = SimpleNamespace(publish=AsyncMock(), declare_exchange=AsyncMock())
+
+        await publish_pending_outbox_events(_Session(db), broker)
+        db.rows[0].status = db.rows[1].status = "pending"
+        await publish_pending_outbox_events(_Session(db), broker)
+
+        self.assertEqual(1, broker.declare_exchange.await_count)
+        self.assertEqual("tournament.events", broker.declare_exchange.await_args.args[0].name)
+
     async def test_enqueue_outbox_event_adds_row_without_publishing(self) -> None:
         session = _Session()
         event = EncounterCompletedEvent(
@@ -106,7 +126,7 @@ class OutboxTests(IsolatedAsyncioTestCase):
     async def test_publish_pending_marks_success_and_skips_repeated_drain(self) -> None:
         row = _row(1)
         session = _Session(_Db([row]))
-        broker = SimpleNamespace(publish=AsyncMock())
+        broker = SimpleNamespace(publish=AsyncMock(), declare_exchange=AsyncMock())
 
         first = await publish_pending_outbox_events(session, broker, commit=True)
         second = await publish_pending_outbox_events(session, broker, commit=True)
@@ -122,7 +142,9 @@ class OutboxTests(IsolatedAsyncioTestCase):
         now = datetime.now(UTC)
         row = _row(1, now=now)
         session = _Session(_Db([row], now=now))
-        broker = SimpleNamespace(publish=AsyncMock(side_effect=RuntimeError("broker down")))
+        broker = SimpleNamespace(
+            publish=AsyncMock(side_effect=RuntimeError("broker down")), declare_exchange=AsyncMock()
+        )
 
         published = await publish_pending_outbox_events(session, broker, now=now, commit=True)
 
@@ -147,7 +169,7 @@ class OutboxTests(IsolatedAsyncioTestCase):
             published.append(payload["event_id"])
             await asyncio.sleep(0)  # a real publish awaits the broker; the other drain runs meanwhile
 
-        broker = SimpleNamespace(publish=publish)
+        broker = SimpleNamespace(publish=publish, declare_exchange=AsyncMock())
         first = asyncio.create_task(publish_pending_outbox_events(_Session(db), broker))
         await asyncio.sleep(0)  # the first drain holds its rows and is mid-publish
         while not first.done():

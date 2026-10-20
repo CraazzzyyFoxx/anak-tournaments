@@ -17,8 +17,6 @@ __all__ = (
 
 
 class TeamCreate(BaseModel):
-    """Schema for creating a team"""
-
     name: str
     balancer_name: str | None = None
     tournament_id: int
@@ -26,16 +24,12 @@ class TeamCreate(BaseModel):
 
 
 class TeamUpdate(BaseModel):
-    """Schema for updating a team"""
-
     name: str | None = None
     balancer_name: str | None = None
     captain_id: int | None = None
 
 
 class PlayerCreate(BaseModel):
-    """Schema for creating a player"""
-
     name: str
     user_id: int
     team_id: int
@@ -49,8 +43,6 @@ class PlayerCreate(BaseModel):
 
 
 class PlayerUpdate(BaseModel):
-    """Schema for updating a player"""
-
     name: str | None = None
     role: RoleRef | None = None
     rank: int | None = None

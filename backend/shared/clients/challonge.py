@@ -44,16 +44,20 @@ def _validate_slug(value: str | int) -> str:
 
 
 def _check_response(resp: Any, entity: str, entity_id: Any) -> None:
-    if resp.status_code not in (200, 201):
-        raise ApiHTTPException(
-            status_code=400,
-            detail=[
-                ApiExc(
-                    code="challonge_error",
-                    msg=f"{entity} with id {entity_id} — Challonge returned {resp.status_code}.",
-                )
-            ],
-        )
+    if resp.status_code in (200, 201):
+        return
+    # Rate limit or Challonge's own failure: the request was fine, a later retry may land (503 ``unavailable``).
+    # Anything else is Challonge refusing this request, which a retry cannot change.
+    unavailable = resp.status_code == 429 or resp.status_code >= 500
+    raise ApiHTTPException(
+        status_code=503 if unavailable else 400,
+        detail=[
+            ApiExc(
+                code="challonge_unavailable" if unavailable else "challonge_error",
+                msg=f"{entity} with id {entity_id} — Challonge returned {resp.status_code}.",
+            )
+        ],
+    )
 
 
 class ChallongeClient:

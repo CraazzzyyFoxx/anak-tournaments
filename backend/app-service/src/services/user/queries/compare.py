@@ -13,8 +13,8 @@ from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
 from src.core import enums
-from src.domain.encounter_seats import Seat
 from src.services.discipline_queries import DisciplineQueries
+from src.services.encounter_seats import Seat
 
 from ._scope import (
     _compare_user_scope_exists,
@@ -316,12 +316,11 @@ class UserCompareQueries(DisciplineQueries):
             .cte("compare_average_closeness")
         )
 
-        # Unrestricted, this scans every evaluation result and grant in the database and
-        # runs the correlated revoke NOT EXISTS over all of them before grouping -- and
-        # the cohort was only met at the ``candidates`` join below, which cannot be
-        # pushed through the subquery's GROUP BY. Same rows, whole-table cost, and it is
-        # what timed the compare page out. ``candidates.id`` is a primary key, so
-        # joining it and filtering by membership in it are the same thing.
+        # Scoped to the cohort here because the ``candidates`` join below cannot be
+        # pushed through the subquery's GROUP BY: unscoped, it scans every evaluation
+        # result and grant and runs the correlated revoke NOT EXISTS over all of them.
+        # ``candidates.id`` is a primary key, so joining it and filtering by
+        # membership in it are the same thing.
         effective_achievements = build_effective_achievement_rows_subquery(
             workspace_id=workspace_id,
             discipline=self.discipline,
@@ -363,10 +362,9 @@ class UserCompareQueries(DisciplineQueries):
 
         # One pass over the per-hero stat rows: each (match, user, hero) is grouped
         # once and kept only if that hero was played for more than a minute, then
-        # `match` is joined per group for its duration. Joining a separate
-        # "eligible hero time" set back into `statistics` row by row is what timed
-        # the global compare out (OWT-TOURNAMENTS-21T): the planner expects ~10 rows
-        # from that join, gets ~500k, and nested-loops ~115k index probes.
+        # `match` is joined per group for its duration. Never join a separate
+        # "eligible hero time" set back into `statistics` row by row: the planner
+        # expects ~10 rows from that join, gets ~500k, and nested-loops the probes.
         per_10_metrics = (
             (enums.LogStatsName.Eliminations, "eliminations_avg_10"),
             (enums.LogStatsName.FinalBlows, "final_blows_avg_10"),
@@ -613,10 +611,9 @@ class UserCompareQueries(DisciplineQueries):
     ) -> bool:
         """Does the baseline cohort contain anybody?
 
-        ``_compare_user_scope_exists`` without materializing the cohort. Its caller
+        ``_compare_user_scope_exists`` without materializing the cohort: its caller
         only needs this to tell "empty cohort" from "empty result" apart — the two are
-        different 404s — and used to pull the whole population (~560 ``(id, name)``
-        rows) to evaluate ``if not population_users``.
+        different 404s.
         """
         query = sa.select(sa.literal(1)).select_from(models.User)
         if (
@@ -653,9 +650,8 @@ class UserCompareQueries(DisciplineQueries):
     ) -> sa.Select:
         """The users a hero-compare baseline covers, as a selectable.
 
-        Public (not ``_``-prefixed) so a test can execute the real thing instead of a
-        re-implementation of the predicate: the whole point of the change is that this
-        set must stay identical while it stops travelling through Python.
+        Public (not ``_``-prefixed) so a test can execute the real predicate instead
+        of a re-implementation.
 
         ``user_ids=None`` = the whole cohort, filtered exactly the way
         ``compare_population_exists`` tests it. An explicit list is passed through
@@ -696,21 +692,16 @@ class UserCompareQueries(DisciplineQueries):
         """Return playtime and per-stat rows for all candidates in one statement.
 
         ``user_ids=None`` means "the whole baseline population", resolved HERE as a
-        subquery rather than handed in as a list. The list form is still supported for
-        callers that genuinely hold a few ids, but the population must not travel
-        through Python: the caller used to resolve the cohort and hand ~560 ids straight
-        back as an ``IN`` list, so this statement arrived with 584 bind
-        parameters. That is slow twice over -- the planner cannot estimate selectivity
-        through a list that long, and under pgBouncer (``prepared_statement_cache_size
-        = 0``) the plan is rebuilt on every call, on a statement whose text changes
-        whenever the population size does, so nothing is ever reused. It timed out.
+        subquery; the list form is for callers that genuinely hold a few ids. The
+        population must not travel through Python as an ``IN`` list: the planner
+        cannot estimate selectivity through a list that long, and under pgBouncer
+        (``prepared_statement_cache_size = 0``) the plan is rebuilt on every call, on
+        a statement whose text changes whenever the population size does.
 
-        The predicate is ``_compare_user_scope_exists``, the same one the caller applied when it
-        resolved the cohort itself, so the
-        candidate set is unchanged. It is NOT the same as ``scoped_players`` below,
-        which deliberately drops the finished/non-league restriction
-        (``require_finished_nonleague=False``) -- reusing that CTE here would silently
-        widen the baseline.
+        The predicate is ``_compare_user_scope_exists``. It is NOT the same as
+        ``scoped_players`` below, which deliberately drops the finished/non-league
+        restriction (``require_finished_nonleague=False``) -- reusing that CTE here
+        would silently widen the baseline.
         """
 
         candidates = self.compare_hero_candidates_select(

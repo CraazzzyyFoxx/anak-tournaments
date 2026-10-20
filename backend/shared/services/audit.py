@@ -11,8 +11,7 @@ happened, and a mutation that commits cannot be missing its row.
 
 That makes call order part of the contract: ``record_audit`` belongs *before*
 the flow's own ``await session.commit()``. Placed after it, the row goes into a
-separate transaction and atomicity is silently gone — the naive test "a row
-appeared" stays green while a rolled-back mutation keeps its audit trail.
+separate transaction and atomicity is silently gone.
 """
 
 from __future__ import annotations
@@ -31,8 +30,7 @@ from shared.rpc.identity import api_key_label, credential_type
 
 __all__ = ("AuditSource", "json_safe", "record_audit", "record_admin_audit")
 
-# Mirrors ``audit_log.source`` — a plain ``String(16)`` with no DB enum, the same
-# shape ``EncounterResultSource`` gives ``encounter.result_audit.source``.
+# Mirrors ``audit_log.source`` — a plain ``String(16)`` with no DB enum.
 AuditSource = Literal["admin", "api_key", "challonge", "discord", "player", "scheduler", "system"]
 
 # ``actor_label``, ``entity_label`` and ``user_agent`` are ``String(255)``;
@@ -60,10 +58,9 @@ def _actor_label(actor: AuthUser | None, label: str | None) -> str | None:
     """Fold the credential the actor used into the label they are recorded under.
 
     ``actor_auth_user_id`` names the *account*, and an API key is owned by a real
-    account, so a keyed mutation and that same person's browser session were
-    landing as byte-identical rows. This is the whole of the fix: no new column,
-    no migration, and nothing for the 100+ call sites to pass — the credential is
-    already on the actor by the time it gets here (``shared.rpc.identity``).
+    account, so without the suffix a keyed mutation and that same person's browser
+    session would be byte-identical rows. The credential is already on the actor by
+    the time it gets here (``shared.rpc.identity``), so call sites pass nothing extra.
     """
     credential = api_key_label(actor) if actor is not None else None
     if credential is None and actor is not None and credential_type(actor) == "discord":
@@ -72,9 +69,9 @@ def _actor_label(actor: AuthUser | None, label: str | None) -> str | None:
         return label
     if not label:
         return credential
-    # Clip the name, never the credential: which key acted is the new
-    # information the suffix exists to carry, and losing the tail of a long
-    # username is already an accepted trade (see ``_clip``).
+    # Clip the name, never the credential: which key acted is the information
+    # the suffix exists to carry, and losing the tail of a long username is
+    # already an accepted trade (see ``_clip``).
     suffix = f" ({credential})"
     return f"{_clip(label, _LABEL_LIMIT - len(suffix))}{suffix}"
 
@@ -95,9 +92,7 @@ def json_safe(value: Any) -> Any:
     Same reasoning as ``_clip``, one layer up: the audit row shares the
     mutation's transaction, so a value asyncpg cannot encode — a bare
     ``datetime``, an ``Enum``, a ``Decimal`` — would raise on flush and take the
-    audited mutation down with it. Every current call site already hands over
-    JSON-ready primitives; this makes that a property of the primitive instead of
-    a convention each new call site has to remember.
+    audited mutation down with it.
 
     ``Decimal`` becomes ``str``, never ``float``: an audited money value must not
     drift on the way in.
@@ -149,8 +144,8 @@ async def record_audit(
     journal records which of the account's credentials acted.
 
     ``source`` is rewritten to ``api_key`` / ``discord`` when the actor came in
-    that way. Callers keep passing ``admin`` for operator writes; the credential
-    already rides the actor, so the 100+ sites do not have to know.
+    that way; callers pass ``admin`` for operator writes and the credential
+    rides the actor.
     """
     from shared.repository import AuditLogRepository
 

@@ -37,6 +37,9 @@ export const FIELD_DEFS = {
   twitch_url: field("general", (ws) => ws.twitch_url ?? ""),
   boosty_url: field("general", (ws) => ws.boosty_url ?? ""),
   timezone: field("general", (ws) => ws.timezone ?? DEFAULT_WORKSPACE_TIMEZONE),
+  // Order is data: `[0]` is the default game for new tournaments, grids and
+  // mixes, so a drag that only reorders is a real change.
+  disciplines_enabled: field("general", (ws) => ws.disciplines_enabled),
 
   branding_enabled: field("branding", (ws) => ws.branding_enabled),
   brand_primary: field("branding", (ws) => ws.brand_primary, trimOrNull),
@@ -91,14 +94,14 @@ function buildPayload(form: WorkspaceSettingsFormState): WorkspaceSettingsFormSt
   return payload as WorkspaceSettingsFormState;
 }
 
-/** Every key whose normalised value differs from the baseline. */
+/** Every key whose normalised value differs from the baseline (by value: one field is an array). */
 function diffPayload(
   current: WorkspaceSettingsFormState,
   baseline: WorkspaceSettingsFormState
 ): Partial<WorkspaceSettingsFormState> {
   const changes: Record<string, unknown> = {};
   for (const key of FIELD_KEYS) {
-    if (current[key] !== baseline[key]) changes[key] = current[key];
+    if (JSON.stringify(current[key]) !== JSON.stringify(baseline[key])) changes[key] = current[key];
   }
   return changes as Partial<WorkspaceSettingsFormState>;
 }

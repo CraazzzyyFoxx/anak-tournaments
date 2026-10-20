@@ -1,6 +1,6 @@
 """The bot's verdict reactions on a log-upload message.
 
-``build_message_feedback`` names them (``ok``/``warn``/``error``) and the
+``upload_reactions`` names them (``ok``/``warn``/``error``) and the
 processor resolves each name to the uploaded application emoji, or to the
 Unicode fallback while none is uploaded. Reconciliation has to clear whatever
 the bot left there before -- including the Unicode it used before the emoji
@@ -19,11 +19,7 @@ from src.services.attachment_processor import AttachmentProcessor  # noqa: E402
 
 
 def _processor(client: MagicMock) -> AttachmentProcessor:
-    return AttachmentProcessor(
-        client=client,
-        attachment_clients=MagicMock(),
-        result_waiter=MagicMock(),
-    )
+    return AttachmentProcessor(client=client, attachment_clients=MagicMock())
 
 
 def _reaction(emoji: object, *, mine: bool = True) -> MagicMock:

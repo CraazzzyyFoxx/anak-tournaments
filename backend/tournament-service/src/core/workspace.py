@@ -1,9 +1,8 @@
 """Workspace filtering utilities for SQLAlchemy queries.
 
-Re-exports ``shared.services.workspace_scope`` — this was a byte-identical
-copy of app-service's ``core/workspace.py``; the single source of truth now
-lives in ``shared`` since every service's ``models.Tournament`` (etc.) is the
-same class object as ``shared.models.*``.
+Re-exports ``shared.services.workspace_scope``: every service's
+``models.Tournament`` (etc.) is the same class object as ``shared.models.*``,
+so one implementation serves them all.
 
 Usage (need grid/normalizer), from typed-RPC read handlers:
     from src.core.workspace import resolve_workspace_context

@@ -37,10 +37,9 @@ from src.domain.notification_render import render_discord
 
 __all__ = ("NotificationDeliveryService", "notification_delivery_service")
 
-#: ``ponytail:`` D11 -- DMs are rendered in Russian for everyone. The server
-#: does not know a user's language (only the browser's ``NEXT_LOCALE`` cookie
-#: does), and storing it belongs to the email issue, where a locale is
-#: mandatory rather than a nicety.
+#: ``ponytail:`` DMs are rendered in Russian for everyone. The server does not
+#: know a user's language (only the browser's ``NEXT_LOCALE`` cookie does); store
+#: a per-user locale once email delivery, where it is mandatory, needs one.
 _DM_LOCALE = "ru"
 
 
@@ -111,9 +110,8 @@ class NotificationDeliveryService:
             card=card,
             workspace_id=row.source_workspace_id,
             discord_user_id=int(target),
-            # Unchanged from the ledger this table took over: rows written
-            # before the rename still guard their notification against a
-            # redelivery.
+            # Keep this key format: stored rows already claimed under it guard
+            # their notification against a redelivery.
             dedupe_key=f"notification:{row.id}",
             notification_id=row.id,
         )
@@ -137,8 +135,8 @@ class NotificationDeliveryService:
             return "skipped_no_config"
 
         channel_id = int(stored.discord_channel_id)
-        # Unchanged from the ledger this table took over, so a broadcast
-        # already claimed before the rename is not posted a second time.
+        # Keep this key format: a broadcast already claimed under it is not
+        # posted a second time.
         dedupe_key = f"{event.kind}:{event.dedupe_key}"
 
         workspace_name, image_url = await _branding(session, event.workspace_id, event.payload)

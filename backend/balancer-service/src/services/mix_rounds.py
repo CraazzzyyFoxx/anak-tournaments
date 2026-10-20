@@ -1,4 +1,4 @@
-"""One recorded mix round, written onto the encounter layer in the caller's transaction (D75).
+"""One recorded mix round, written onto the encounter layer in the caller's transaction.
 
 An encounter owned by the mix (2 slots, Bo1), two participations with the roster snapshot of the selected
 variant, one confirmed game, a ``host`` result through the single result writer (one journal row, actor = the

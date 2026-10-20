@@ -21,9 +21,9 @@ from shared.domain.tournament_utils import (
 )
 from shared.domain.tournament_utils import is_completed_encounter, sort_bracket_matches
 from shared.repository import EncounterRepository, StandingRepository, TeamRepository, TournamentRepository
-from shared.services.bracket.swiss_state import bye_counts_by_scope, stopped_scopes
 from src import models, schemas
 from src.core import utils
+from src.services.bracket.swiss_state import bye_counts_by_scope, stopped_scopes
 from src.services.encounter.ffa import ffa_encounter_service
 
 GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
@@ -106,7 +106,7 @@ class RankedStageTeam:
     head_to_head: int = 0
     score_differential: int = 0
     #: FFA only: every stage column summed, already oriented so that more is
-    #: better (plan §5.4), plus the placement metrics below.
+    #: better, plus the placement metrics below.
     ffa_stats: dict[str, float] = field(default_factory=dict)
     ffa_best_placement: int | None = None
     ffa_last_placement: int | None = None
@@ -139,7 +139,7 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
 
 @dataclass(frozen=True, slots=True)
 class Seat:
-    """One participation as the stage table reads it (D55)."""
+    """One participation as the stage table reads it."""
 
     team_id: int
     slot: int
@@ -151,12 +151,11 @@ class Seat:
 class StageEncounter:
     """One encounter of a stage, flattened for the ranking engine.
 
-    Everything the engine used to read off the ``tournament.encounter`` row and
-    cannot any more: the bracket position lives in
-    ``tournament.bracket_encounter`` (D22) and the result on the participations
-    (D53, D60). Assembled once by :meth:`StandingsService.load_stage_encounters`
-    so the ranking below stays a pure function of plain data -- which is also
-    what lets the Swiss pairing preview and the tests build one by hand.
+    The bracket position lives in ``tournament.bracket_encounter`` and the
+    result on the participations, not on the ``tournament.encounter`` row.
+    Assembled once by :meth:`StandingsService.load_stage_encounters` so the
+    ranking below stays a pure function of plain data, which the Swiss pairing
+    preview and the tests also build by hand.
     """
 
     id: int
@@ -170,8 +169,8 @@ class StageEncounter:
     @property
     def is_duel(self) -> bool:
         """Two seats: the only shape ``score_differential`` and head-to-head
-        are defined for (plan §5). A wider encounter is not given an invented
-        home side so the metric can be computed anyway."""
+        are defined for. A wider encounter is not given an invented home side
+        so the metric can be computed anyway."""
         return len(self.seats) == 2
 
     def places(self) -> dict[int, int]:
@@ -222,7 +221,7 @@ def _rounds(encounters: typing.Sequence[StageEncounter]) -> dict[int, int]:
 def _completed_encounters(
     encounters: typing.Sequence[StageEncounter],
 ) -> list[StageEncounter]:
-    """Phase E: delegate to shared predicate to avoid drift between services."""
+    """The shared "counts toward standings" predicate, so every service agrees."""
     return _shared_completed_encounters(encounters)
 
 
@@ -294,9 +293,9 @@ def normalize_tiebreak_order(
     """The order the engine will actually apply, from whatever was configured.
 
     The stored order's own sequence is honoured verbatim, including where it
-    puts ``points`` (see a0f866e2: hoisting ``points`` to the front overrode an
-    explicit organizer choice, and every preset already leads with it). What
-    this does fix are the two things a stored list can say that mean nothing:
+    puts ``points``: every preset already leads with it, and hoisting it would
+    override an explicit organizer choice. What this does fix are the two things
+    a stored list can say that mean nothing:
 
     - unknown metrics are dropped: ``_metric_value`` scores them 0 for every
       team, which is indistinguishable from a tiebreaker that never fires;
@@ -322,7 +321,7 @@ def normalize_tiebreak_order(
 def stage_rules(stage: models.Stage) -> ScoringRules:
     """The stage's compiled ``encounter.scoring_rule`` -- the same row every
     encounter of the stage points at, so the table and the cards agree by
-    construction (D51)."""
+    construction."""
     return compile_rules(stage.scoring_rule)
 
 
@@ -565,12 +564,10 @@ def prepare_teams_for_groups(
 ) -> list[RankedStageTeam]:
     """Rank one group's teams from the encounters they played.
 
-    A result is a PLACE inside the encounter now, not a pair of scores: the
-    team alone in first won, teams sharing first drew, everyone else lost. That
-    is exactly what the two score columns said for a duel, and it is also the
-    answer for a group whose encounters seat more than two -- the one thing it
-    cannot say is ``score_differential``, which is a difference between TWO
-    numbers and is therefore only summed for two-seat encounters (plan §5).
+    A result is a PLACE inside the encounter: the team alone in first won, teams
+    sharing first drew, everyone else lost -- for a duel and for a group whose
+    encounters seat more than two alike. ``score_differential`` is a difference
+    between TWO numbers and is therefore only summed for two-seat encounters.
     """
     completed_encounters = _completed_encounters_in_finished_rounds(encounters)
     team_cache: dict[int, RankedStageTeam] = {}
@@ -927,7 +924,6 @@ def _build_elimination_stage_standings(
     *,
     pins: typing.Mapping[int, int] = _EMPTY,
 ) -> list[models.Standing]:
-    # Collect all team ids participating in this stage from inputs.
     seed_team_ids: list[int] = []
     seen: set[int] = set()
     for item in sorted(stage.items, key=lambda it: (it.order, it.id)):
@@ -1005,15 +1001,11 @@ def calculate_overall_positions(
 ) -> list[models.Standing]:
     stage_order = {stage.id: stage.order for stage in stages}
 
-    # A standing with zero completed matches carries no real signal — ranking
-    # it would fabricate a "1st place" out of pure seed/tiebreak order before
-    # a single game has been played. Leave it at the placeholder 0 that the
-    # stage builders already assign it, and only rank standings backed by at
-    # least one played match. This is deliberately per-team/per-stage, not
-    # gated on reaching a playoff stage: league (round-robin-only) tournaments
-    # never have a playoff stage and still need real, incrementally-updated
-    # overall standings as soon as their teams start playing. A pinned row is
-    # the exception: its place is the organizer's decision, not a result.
+    # A standing with zero completed matches stays at the placeholder 0: ranking
+    # it would fabricate a "1st place" from seed/tiebreak order alone. Gated per
+    # team/stage, not on reaching a playoff stage, because league tournaments have
+    # none and still need overall standings as soon as teams play. A pinned row is
+    # the organizer's decision, not a result, so it ranks regardless.
     rankable = [standing for standing in standings if standing.matches > 0 or standing.is_pinned]
 
     playoff_standings = [
@@ -1027,14 +1019,12 @@ def calculate_overall_positions(
         for standing in playoff_standings:
             standing.overall_position = standing.position
 
-        # Number of distinct teams that reached playoffs
         playoff_team_count = len(progressed_team_ids)
 
         remaining = _sort_for_overall(
             [standing for standing in rankable if standing.team_id not in progressed_team_ids],
             stage_order,
         )
-        # Best group-only team gets position playoff_team_count + 1
         next_position = playoff_team_count + 1
         for standing in remaining:
             standing.overall_position = next_position
@@ -1056,7 +1046,6 @@ def calculate_overall_positions(
             latest_by_team[standing.team_id] = standing
 
     remaining = _sort_for_overall(list(latest_by_team.values()), stage_order)
-    # Best team (first after sort) gets position 1
     for position, standing in enumerate(remaining, start=1):
         standing.overall_position = position
     # Return every standing, not just the ranked subset: unrankable (0-match)
@@ -1067,7 +1056,7 @@ def calculate_overall_positions(
 def sort_matches(
     matches: typing.Sequence[StageEncounter],
 ) -> list[StageEncounter]:
-    """Phase E: delegate to shared utility."""
+    """Sort bracket matches with the shared helper every service uses."""
     return sort_bracket_matches(matches)
 
 
@@ -1173,9 +1162,9 @@ class StandingsService:
         Deliberately the same set the ranking engine counts
         (:func:`_completed_encounters_in_finished_rounds`): the embedded
         ``matches_history`` feeds the FORM column, which sits in the same row as
-        W·D·L / points / Buchholz. Serving every completed encounter here made
-        FORM run a round ahead of its own row — a team could show a ``W`` chip
-        with zero wins because the rest of its round had not reported yet.
+        W·D·L / points / Buchholz. Serving every completed encounter would run
+        FORM a round ahead of its own row — a ``W`` chip with zero wins while the
+        rest of its round has not reported.
 
         Open encounters are selected too (not filtered in SQL): a round is only
         closed if *none* of its playable encounters is still open, which cannot
@@ -1226,10 +1215,9 @@ class StandingsService:
     async def delete_by_tournament(self, session: AsyncSession, tournament_id: int, *, commit: bool = True) -> None:
         """Delete all Standing rows for a tournament.
 
-        When called as part of :meth:`recalculate_for_tournament` we pass
-        ``commit=False`` so that the DELETE and the subsequent INSERT land in the
-        same transaction — avoiding the brief window where the table is empty
-        (Phase D: transactional recalculation).
+        :meth:`recalculate_for_tournament` passes ``commit=False`` so the DELETE
+        and the subsequent INSERT land in one transaction — readers never see
+        the table empty.
         """
         await self.standing_repo.delete_for_tournament(session, tournament_id)
         if commit:
@@ -1430,8 +1418,7 @@ class StandingsService:
 
         final_standings = calculate_overall_positions(all_standings, stages)
         await self.standing_repo.create_many(session, final_standings)
-        # Phase P0.4: auto-flip Stage.is_completed to reflect encounter progress
-        # in the same transaction as the standings write.
+        # Flip Stage.is_completed in the same transaction as the standings write.
         await self._update_stage_completion_flags(session, tournament)
         if commit:
             await session.commit()

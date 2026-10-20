@@ -1,11 +1,8 @@
-"""Eager-load option sets for draft rows.
+"""Eager-load option sets for draft rows, and the owning tournament's reads.
 
-``DraftPlayer`` no longer carries roles or ranks (``draftreg1`` deleted the
-snapshot), so what has to be eager-loaded is its identity: the member behind
-``user_id``. The registration itself is NOT loaded here -- nothing reads
-``DraftPlayer.registration``, and the roster engine selects the registrations
-it resolves itself, so eager-loading them alongside the seats only re-ran the
-engine's own five queries and threw the rows away (2026-09-30).
+Roles and ranks come from the roster engine, so what a seat eager-loads is its
+identity: the member behind ``user_id``. The registration is NOT loaded here:
+the roster engine selects the registrations it resolves itself.
 
 Async code must eager-load these; a lazy load would raise ``MissingGreenlet``.
 """
@@ -14,7 +11,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,8 +19,11 @@ from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, D
 from shared.models.catalog import CatalogRole
 from shared.models.tournament import Tournament
 from shared.repository import CatalogRoleRepository
+from shared.repository.tournament import TournamentRepository
 
 __all__ = ("pick_options", "player_options", "rated_dimension", "rated_rows", "team_options", "tournament")
+
+_tournaments = TournamentRepository()
 
 
 def player_options() -> list[Any]:
@@ -43,12 +42,15 @@ def pick_options() -> list[Any]:
 
 
 async def rated_rows(session: AsyncSession, draft_session: DraftSession) -> dict[str, CatalogRole]:
-    discipline = await session.scalar(select(Tournament.discipline).where(Tournament.id == draft_session.tournament_id))
-    return await CatalogRoleRepository().rated_rows(session, discipline=discipline, workspace_id=None)
+    owner = await tournament(session, draft_session)
+    return await CatalogRoleRepository().rated_rows(session, discipline=owner.discipline, workspace_id=None)
 
 
 async def tournament(session: AsyncSession, draft_session: DraftSession) -> Tournament:
-    return (await session.scalars(select(Tournament).where(Tournament.id == draft_session.tournament_id))).one()
+    owner = await _tournaments.get(session, draft_session.tournament_id)
+    if owner is None:  # unreachable while draft_session.tournament_id is a live FK
+        raise LookupError(f"Tournament {draft_session.tournament_id} of draft {draft_session.id} not found")
+    return owner
 
 
 async def rated_dimension(session: AsyncSession, draft_session: DraftSession) -> str:

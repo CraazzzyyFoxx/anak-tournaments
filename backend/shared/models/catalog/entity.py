@@ -1,4 +1,4 @@
-"""The game catalog of every discipline: characters, maps and modes (D84, D85, D101, spec §14.2).
+"""The game catalog of every discipline: characters, maps and modes.
 
 One table for every kind, so a fact, a pick-ban pool or a game names an entity the same way in any game. ``kind`` is
 the core's vocabulary (``shared.disciplines.CATALOG_KINDS``); what a kind is called in a game's UI is the module's
@@ -60,7 +60,7 @@ class CatalogEntity(db.TimeStampIntegerMixin):
     aliases: Mapped[list[str]] = mapped_column(
         JSONB(), nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
-    #: The sync never deletes; a row it no longer sees stays (deactivation lands with its first reader, P7).
+    #: The sync never deletes; a row that vanishes from the source stays.
     active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True, server_default=text("true"))
 
     parent: Mapped[CatalogEntity | None] = relationship(

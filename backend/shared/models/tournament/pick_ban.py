@@ -97,7 +97,7 @@ class PickBanConfig(db.TimeStampIntegerMixin):
         default=enums.FirstBanRotation.FIXED,
         server_default=enums.FirstBanRotation.FIXED.value,
     )
-    # Ruleset v2 (docs/plans/2026-09-28-pick-ban-constructor.md §1): phases with
+    # Ruleset v2: phases with
     # a ``when`` round condition, a ``pool_filter``, and either a generator
     # (bracket/slot_veto, map kind) or explicit steps. Parsed and validated by
     # ``shared.domain.pick_ban_rules``; the DB keeps it opaque.

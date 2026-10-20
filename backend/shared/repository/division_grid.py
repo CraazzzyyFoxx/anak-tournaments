@@ -190,8 +190,8 @@ class DivisionGridImportJobRepository(BaseRepository[models.DivisionGridImportJo
         """Conditional status transition — the claim race between pollers.
 
         Returns ``True`` only for the caller whose UPDATE actually matched, so a job
-        is never picked up twice. Preserved as a single conditional statement on
-        purpose: a read-then-write would reintroduce the race.
+        is never picked up twice. A single conditional statement on purpose: a
+        read-then-write would race.
 
         ``extra_values`` rides in the *same* statement so per-attempt resets
         (``progress``, ``error``, ``finished_at``) commit atomically with the claim —

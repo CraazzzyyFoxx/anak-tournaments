@@ -11,7 +11,7 @@ Two steps with different side effects:
   link-time role autofill skip such an anchor, and ``removed_at`` stays NULL because nothing was removed.
 
 A canonical identity is matched exactly (its provider-normalized handle). A decoded Workshop log only has bare in-game
-names, so the module's P4 rule applies: the name before ``#`` also matches (never across providers).
+names, so the name before ``#`` also matches (never across providers).
 """
 
 from __future__ import annotations
@@ -62,8 +62,8 @@ async def lookup_identities(
     """Participant key -> global player id for every identity that already exists; unknown ones are absent.
 
     A canonical identity owned by several global players is an :class:`IdentityConflict`. A decoded bare Workshop name
-    (P4's prefix rule) that several players answer to is narrowed to the workspace's own (anchored) players; if that
-    still leaves more than one it is also a conflict. Nobody is merged and no row is picked.
+    (the ``#`` prefix rule) that several players answer to is narrowed to the workspace's own (anchored) players; if
+    that still leaves more than one it is also a conflict. Nobody is merged and no row is picked.
     """
     wanted = _wanted(doc)
     if not wanted:
@@ -166,7 +166,7 @@ async def resolve_identities(
         user = await _users.create(
             session, models.User(name=await _user_name(session, identity[0], display, identity[1]))
         )
-        # Virtual players are not shown on any profile (D30): no global visibility row.
+        # Virtual players are not shown on any profile: no global visibility row.
         await social_identity_service.upsert(
             session, user_id=user.id, provider=identity[0], username=display, ensure_global_visibility=False
         )

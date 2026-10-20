@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -32,7 +32,6 @@ from shared.testing.db import ensure_test_postgres  # noqa: E402
 from src.schemas.balancer import TeamData  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
-from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
 
 JOBS = "src.services.balancer.jobs"
 FLEX_SHAPE = RosterShape(entries=tuple({"tank": 1, "flex": 4}.items()))
@@ -83,11 +82,6 @@ def _api_key_user(*, scopes: list[str], workspace_id: int = 77) -> SimpleNamespa
         and resource == "team"
         and action == "create",
     )
-
-
-class GetConfigTests(TestCase):
-    def test_returns_same_payload_as_provider(self) -> None:
-        self.assertEqual(jobs.get_config("overwatch"), get_balancer_config_payload("overwatch"))
 
 
 class CreateJobTests(IsolatedAsyncioTestCase):

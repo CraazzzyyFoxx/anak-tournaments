@@ -2,7 +2,7 @@
 
 Grain: user (global).
 
-Ports the legacy ``calculate_wins_achievement`` helper: counts how many
+Counts how many
 tournaments (or distinct roles across tournaments) a user reached a given
 elimination-standing position in.
 """

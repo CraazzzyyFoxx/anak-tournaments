@@ -12,6 +12,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import { ApiError } from "@/lib/api/error";
+import { notify } from "@/lib/notify";
 import type { Encounter } from "@/types/encounter.types";
 import type {
   PickBanEntry,
@@ -37,6 +39,7 @@ const undoLastAction = vi.fn();
 const submitDraft = vi.fn();
 const disputeStep = vi.fn();
 const adminPickBanSubmit = vi.fn();
+const adminPickBanAct = vi.fn();
 const adminPickBanReopen = vi.fn();
 const resetPickBanSession = vi.fn();
 const adminPickBanPause = vi.fn();
@@ -90,7 +93,7 @@ vi.mock("@/services/captain.service", () => ({
 vi.mock("@/services/admin.service", () => ({
   default: {
     resetPickBanSession: (...args: unknown[]) => resetPickBanSession(...args),
-    adminPickBanAct: vi.fn(),
+    adminPickBanAct: (...args: unknown[]) => adminPickBanAct(...args),
     adminPickBanElectOpener: vi.fn(),
     adminPickBanSubmit: (...args: unknown[]) => adminPickBanSubmit(...args),
     adminPickBanReopen: (...args: unknown[]) => adminPickBanReopen(...args),
@@ -430,6 +433,8 @@ function unavailableState(
 let container: HTMLDivElement;
 let root: Root;
 let scrollIntoView: Mock;
+/** The room's query client, so a case can make the server's next answer land without waiting for a poll. */
+let roomClient: QueryClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -489,6 +494,7 @@ async function debounce() {
 
 async function render(props: { seriesReport?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  roomClient = client;
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
@@ -1395,7 +1401,7 @@ describe("phase selection", () => {
     expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
   });
 
-  it("renders no bans board for a game whose module declares no renderer", async () => {
+  it("renders League's own bans board on the result screen, never Overwatch's", async () => {
     getEncounter.mockResolvedValue({ ...encounter(), discipline: "lol" } as Encounter);
     mockStates(
       readyState({
@@ -1412,11 +1418,16 @@ describe("phase selection", () => {
       })
     );
     await render();
-    await settle(10);
+    for (let tries = 0; tries < 100 && !document.body.querySelector("[data-character-bans]"); tries += 1) {
+      await settle(1);
+    }
 
-    // The room still reaches the map result; the OW-only board stays out and nothing claims support.
     expect(document.body.textContent).toContain(ROOM.mapResult.report);
+    expect(document.body.querySelector('[data-character-bans="1"]')?.textContent).toContain("Hero 101");
+    expect(document.body.textContent).toContain(ROOM.characterBans.eyebrow);
+    // The Overwatch board and its lobby copy stay out; nothing claims an error.
     expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+    expect(document.body.textContent).not.toContain(ROOM.heroBans.copy);
     expect(document.body.querySelector('[role="alert"]')).toBeNull();
   });
 
@@ -2436,6 +2447,446 @@ describe("captain actions", () => {
     await settle();
 
     expect(performPickBanAction).toHaveBeenCalledWith("map", 4242, { item_id: 21, action: "ban" });
+  });
+});
+
+describe("side selection", () => {
+  const SIDE = en.pickBan.room.sides.lol;
+
+  /** A League side step: one side choice by `actors`, round 1 unless told otherwise. */
+  function sideStep(overrides: Partial<PickBanResolvedStep> & { index: number }): PickBanResolvedStep {
+    return step({ action: "side_pick", lifetime: null, ...overrides });
+  }
+
+  /** The hero room on its side step, with the champion pool the organizer had to save (R1). */
+  function sideRoom(overrides: Partial<PickBanState> = {}): PickBanState {
+    const current = sideStep({ index: 0 });
+    return readyState({
+      session: session({ kind: "hero" }),
+      sequence: [current],
+      current_step: current,
+      current_step_index: 0,
+      acting_team_ids: [HOME],
+      current_round: 1,
+      expected_action: "side_pick",
+      viewer_can_act: true,
+      allowed_actions: ["side_pick"],
+      sides: ["blue", "red"],
+      starting_sides: [],
+      pool: HEROES.map((hero, index) => entry({ id: 30 + index, item_id: hero.id, round: 1 })),
+      ...overrides
+    });
+  }
+
+  /** A choice group by the visible text that labels it. */
+  function choiceGroup(label: string): HTMLElement {
+    const found = Array.from(document.body.querySelectorAll<HTMLElement>('[role="group"]')).find(
+      (group) =>
+        document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent?.trim() === label
+    );
+    if (!found) throw new Error(`no choice group labelled "${label}"`);
+    return found;
+  }
+
+  const buttonIn = (scope: ParentNode, label: string) =>
+    Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.trim() === label
+    );
+  const confirmSide = (side: string) => buttonIn(document.body, ROOM.captain.confirmSide.replace("{side}", side));
+
+  async function nextAnswer(hero: PickBanState) {
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), hero);
+    await act(async () => {
+      await roomClient.invalidateQueries();
+    });
+    await settle();
+  }
+
+  beforeEach(() => {
+    getEncounter.mockResolvedValue({ ...encounter(), discipline: "lol" } as Encounter);
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+    performPickBanAction.mockResolvedValue(readyState({ session: session({ kind: "hero" }), is_complete: true }));
+  });
+
+  it("asks the captain for a side instead of a champion, and sends index 0 for the first side", async () => {
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), sideRoom());
+    await render();
+
+    // No pool on a side step: no champion tile to misclick into a 400.
+    expect(document.body.textContent).not.toContain(ROOM.hero.title);
+    expect(document.body.querySelector('button[aria-label^="Hero 101"]')).toBeNull();
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    const blue = buttonIn(group, SIDE.blue)!;
+    const red = buttonIn(group, SIDE.red)!;
+    // Native buttons: in the tab order, Enter/Space activate them, and the pressed state is announced.
+    for (const button of [blue, red]) {
+      expect(button.getAttribute("type")).toBe("button");
+      expect(button.disabled).toBe(false);
+      expect(button.getAttribute("aria-pressed")).toBe("false");
+    }
+    blue.focus();
+    expect(document.activeElement).toBe(blue);
+    expect(confirmSide("—")?.disabled).toBe(true);
+
+    await act(async () => blue.click());
+    await settle();
+    expect(blue.getAttribute("aria-pressed")).toBe("true");
+    expect(red.getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => confirmSide(SIDE.blue)!.click());
+    await settle();
+
+    expect(performPickBanAction).toHaveBeenCalledWith("hero", 4242, { item_id: 0, action: "side_pick" });
+  });
+
+  it("drops the chosen side when the room moves to another step", async () => {
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), sideRoom());
+    await render();
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    expect(confirmSide(SIDE.red)).toBeTruthy();
+
+    // The next round's side step: same action, new step — the old choice must not carry over.
+    const next = sideStep({ index: 1, round: 2, actors: [HOME] });
+    await nextAnswer(
+      sideRoom({
+        sequence: [sideStep({ index: 0 }), next],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 1, target_player_id: null }] })],
+        current_step: next,
+        current_step_index: 1,
+        current_round: 2
+      })
+    );
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(confirmSide("—")?.disabled).toBe(true);
+    expect(performPickBanAction).not.toHaveBeenCalled();
+  });
+
+  it("forgets the chosen side when its step closes and is undone back open, under the same step index", async () => {
+    // Custom side → ban room: the captain picks Red locally, the step is answered elsewhere, then mutually undone
+    // before any ban. The reopened step has the very same index and attempt; the old choice must not come back.
+    const side = sideStep({ index: 0 });
+    const ban = step({ index: 1, actors: [AWAY] });
+    const open = sideRoom({ sequence: [side, ban] });
+    mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), open);
+    await render();
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    expect(confirmSide(SIDE.red)).toBeTruthy();
+
+    await nextAnswer(
+      sideRoom({
+        sequence: [side, ban],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: ban,
+        current_step_index: 1,
+        acting_team_ids: [AWAY],
+        expected_action: "ban",
+        viewer_can_act: false,
+        allowed_actions: []
+      })
+    );
+    await nextAnswer(open);
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(confirmSide("—")?.disabled).toBe(true);
+    expect(confirmSide(SIDE.red)).toBeUndefined();
+  });
+
+  it("keeps a champion picked on the step before out of the side step, and sends the side's index", async () => {
+    const ban = step({ index: 0 });
+    mockStates(
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+      sideRoom({
+        sequence: [ban, sideStep({ index: 1 })],
+        current_step: ban,
+        expected_action: "ban",
+        allowed_actions: ["ban"],
+        eligible: { item_ids: [101, 102, 103], by_target: null }
+      })
+    );
+    await render();
+    await act(async () => document.body.querySelector<HTMLButtonElement>('button[aria-label^="Hero 101"]')!.click());
+    await settle();
+    expect(buttonIn(document.body, ROOM.captain.confirmBan.replace("{item}", "Hero 101"))).toBeTruthy();
+
+    const side = sideStep({ index: 1 });
+    await nextAnswer(
+      sideRoom({
+        sequence: [ban, side],
+        current_step: side,
+        current_step_index: 1,
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 102, target_player_id: null }] })]
+      })
+    );
+
+    expect(document.querySelector('[aria-label="' + ROOM.commandBar + '"]')?.textContent).not.toContain("Hero 101");
+    expect(confirmSide("—")?.disabled).toBe(true);
+    await act(async () => buttonIn(choiceGroup(ROOM.captain.chooseSideHint), SIDE.red)!.click());
+    await settle();
+    await act(async () => confirmSide(SIDE.red)!.click());
+    await settle();
+
+    expect(performPickBanAction).toHaveBeenCalledWith("hero", 4242, { item_id: 1, action: "side_pick" });
+  });
+
+  it("shows a viewer who is not on the clock the sides, but not as choices", async () => {
+    getMyRole.mockResolvedValue({ encounter_team_id: AWAY, slot: 2 });
+    mockStates(
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+      sideRoom({ viewer_team_id: AWAY, viewer_can_act: false, allowed_actions: [] })
+    );
+    await render();
+
+    const group = choiceGroup(ROOM.captain.chooseSideHint);
+    expect(buttonIn(group, SIDE.blue)?.disabled).toBe(true);
+    expect(buttonIn(group, SIDE.red)?.disabled).toBe(true);
+    expect(confirmSide("—")).toBeUndefined();
+  });
+
+  it("speaks in sides on the timeline, the undo and the assignment, never in champions", async () => {
+    const chosen = sideStep({ index: 0 });
+    const ban = step({ index: 1, actors: [AWAY] });
+    mockStates(
+      unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+      sideRoom({
+        sequence: [chosen, ban],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: ban,
+        current_step_index: 1,
+        acting_team_ids: [AWAY],
+        expected_action: "ban",
+        viewer_can_act: false,
+        allowed_actions: [],
+        starting_sides: [{ game_id: 901, position: 1, sides: { [HOME]: "blue", [AWAY]: "red" } }],
+        undo: { requested_by_team_id: null, step_index: 0, item_ids: [0], action: "side_pick", encounter_team_id: HOME }
+      })
+    );
+    await render();
+
+    const row = document.body.querySelector('[data-pick-ban-step="0"]');
+    expect(row?.textContent).toContain(ROOM.step.side.side_pick.replace("{team}", "Bright Wolves"));
+    expect(row?.textContent).toContain(SIDE.blue);
+
+    const undo = Array.from(document.body.querySelectorAll("div")).find(
+      (node) => node.firstElementChild?.textContent === ROOM.undo.label
+    );
+    expect(undo?.textContent).toContain(SIDE.blue);
+
+    const assignment = document.body.querySelector('[data-side-assignment="1"]');
+    expect(assignment?.textContent).toContain(
+      ROOM.sideAssignment.replace("{side}", SIDE.blue).replace("{team}", "Bright Wolves")
+    );
+    expect(assignment?.textContent).toContain(
+      ROOM.sideAssignment.replace("{side}", SIDE.red).replace("{team}", "Quiet Foxes")
+    );
+    expect(document.body.textContent).not.toContain("Hero #0");
+    expect(document.body.textContent).not.toContain("Hero #1");
+  });
+
+  describe("for an organizer", () => {
+    beforeEach(() => {
+      getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
+      usePermissionsMock.mockReturnValue({
+        isSuperuser: true,
+        isWorkspaceAdmin: () => true,
+        hasWorkspacePermission: () => true
+      });
+      adminPickBanAct.mockResolvedValue({});
+    });
+
+    const adminSection = () =>
+      Array.from(document.body.querySelectorAll("section")).find(
+        (section) => section.querySelector("h2")?.textContent === ROOM.admin.title
+      )!;
+
+    it("chooses a side for either team without a champion tile", async () => {
+      mockStates(
+        unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+        sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] })
+      );
+      await render();
+      await showAdminUi();
+
+      const panel = adminSection();
+      const actionField = Array.from(panel.querySelectorAll("div")).find(
+        (node) => node.firstElementChild?.textContent === ROOM.admin.actionLabel
+      );
+      expect(actionField?.textContent).toBe(`${ROOM.admin.actionLabel}${ROOM.action.side_pick}`);
+      expect(panel.textContent).not.toContain(ROOM.admin.selectItemFirst);
+
+      // The team override is kept; the side is the step's own choice.
+      await act(async () => buttonIn(panel, "Quiet Foxes")!.click());
+      await settle();
+      await act(async () => buttonIn(choiceGroup(ROOM.admin.sideChoiceLabel), SIDE.blue)!.click());
+      await settle();
+      await act(async () => buttonIn(panel, `${ROOM.admin.confirm}: ${SIDE.blue}`)!.click());
+      await settle();
+
+      expect(adminPickBanAct).toHaveBeenCalledWith(4242, {
+        kind: "hero",
+        encounter_team_id: AWAY,
+        item_id: 0,
+        action: "side_pick"
+      });
+    });
+
+    it("drops the organizer's side when the team it was chosen for changes, and when the step is reopened", async () => {
+      const open = sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] });
+      mockStates(unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), open);
+      await render();
+      await showAdminUi();
+      const panel = adminSection();
+      const adminSides = () => choiceGroup(ROOM.admin.sideChoiceLabel);
+      const perform = () =>
+        Array.from(panel.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+          button.textContent?.trim().startsWith(ROOM.admin.confirm)
+        )!;
+
+      // Chosen for the team on the clock, then the override moves to the other team: the choice is gone.
+      await act(async () => buttonIn(adminSides(), SIDE.blue)!.click());
+      await settle();
+      expect(perform().textContent?.trim()).toBe(`${ROOM.admin.confirm}: ${SIDE.blue}`);
+      await act(async () => buttonIn(panel, "Quiet Foxes")!.click());
+      await settle();
+      expect(adminSides().querySelector('[aria-pressed="true"]')).toBeNull();
+      expect(perform().disabled).toBe(true);
+
+      // Chosen again, then an organizer reopens the step (a new attempt, a new clock): gone again.
+      await act(async () => buttonIn(adminSides(), SIDE.red)!.click());
+      await settle();
+      expect(perform().disabled).toBe(false);
+      await nextAnswer({
+        ...open,
+        session: session({ kind: "hero", current_step_started_at: "2026-08-01T10:05:00Z" }),
+        submissions: [submission({ step_index: 0, encounter_team_id: AWAY, attempt: 2, state: "draft", items: [] })]
+      });
+      expect(adminSides().querySelector('[aria-pressed="true"]')).toBeNull();
+      expect(perform().disabled).toBe(true);
+      expect(adminPickBanAct).not.toHaveBeenCalled();
+    });
+
+    /** Round 1's side is picked: a side-only round has no step left until its game is played. */
+    function sidePicked(): PickBanState {
+      return sideRoom({
+        viewer_team_id: null,
+        viewer_can_act: false,
+        allowed_actions: [],
+        submissions: [submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 0, target_player_id: null }] })],
+        current_step: null,
+        current_step_index: null,
+        acting_team_ids: [],
+        expected_action: null,
+        is_complete: true,
+        starting_sides: [{ game_id: 901, position: 1, sides: { [HOME]: "blue", [AWAY]: "red" } }]
+      });
+    }
+
+    it("reopens a settled side pick whose game is not played yet", async () => {
+      adminPickBanReopen.mockResolvedValue({});
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [game({ position: 1 })] },
+        sidePicked()
+      );
+      await render();
+      await showAdminUi();
+
+      await act(async () => buttonIn(adminSection(), ROOM.admin.reopen)!.click());
+      await settle();
+      expect(adminPickBanReopen).toHaveBeenCalledWith(4242, "hero");
+    });
+
+    it.each([
+      ["claimed", game({ position: 1, claims: [{ claimant_team_id: HOME, basis_version: 1, results: lines(1, 0) }] })],
+      ["confirmed", confirmed(1, 21, 1, 0)]
+    ])("never offers to reopen a side its %s game was played on", async (_label, played) => {
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [played] },
+        sidePicked()
+      );
+      await render();
+      await showAdminUi();
+
+      expect(buttonIn(adminSection(), ROOM.admin.reset)).toBeTruthy();
+      expect(buttonIn(adminSection(), ROOM.admin.reopen)).toBeUndefined();
+    });
+
+    it("corrects a hero-only room's games, and names a correction the next game already depends on", async () => {
+      correctGameResult.mockRejectedValue(
+        new ApiError(409, [{ msg: "Game 2's pick-ban already started", code: "dependent_round_started" }])
+      );
+      const next = sideStep({ index: 1, round: 2 });
+      mockStates(
+        { ...unavailableState("not_configured", { [HOME]: true, [AWAY]: true }), games: [confirmed(1, 21, 2, 1)] },
+        sideRoom({
+          viewer_team_id: null,
+          viewer_can_act: false,
+          allowed_actions: [],
+          sequence: [sideStep({ index: 0 }), next],
+          current_step: next,
+          current_step_index: 1,
+          current_round: 2
+        })
+      );
+      await render();
+      await showAdminUi();
+
+      const row = document.body.querySelector<HTMLElement>('[data-game-correction="901"]');
+      expect(row).not.toBeNull();
+      const reason = row!.querySelector<HTMLInputElement>(`input[aria-label="${ROOM.admin.correctReason}"]`)!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(reason, "wrong winner");
+        reason.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => buttonIn(row!, ROOM.admin.correctSubmit)!.click());
+      await settle();
+
+      expect(correctGameResult).toHaveBeenCalledWith(4242, 901, expect.objectContaining({ reason: "wrong winner" }));
+      expect(notify.error).toHaveBeenCalledWith(ROOM.admin.dependentRoundStarted);
+      expect(notify.apiError).not.toHaveBeenCalled();
+    });
+
+    it("reads a side pick back in the room history by the side's name", async () => {
+      getPregameRoomHistory.mockResolvedValue({
+        encounter_id: 4242,
+        entries: [
+          {
+            id: "room:1",
+            at: "2026-10-02T11:58:00Z",
+            origin: "room",
+            kind: "hero",
+            action: "acted",
+            source: "captain",
+            side: null,
+            encounter_team_id: HOME,
+            actor_auth_user_id: 9,
+            actor_name: "Captain Bright",
+            reason: null,
+            data: { step_index: 0, round: 1, action: "side_pick", item_id: 0 }
+          }
+        ]
+      });
+      mockStates(
+        unavailableState("not_configured", { [HOME]: true, [AWAY]: true }),
+        sideRoom({ viewer_team_id: null, viewer_can_act: false, allowed_actions: [] })
+      );
+      await render();
+      await showAdminUi();
+      await act(async () =>
+        Array.from(document.body.querySelectorAll("button"))
+          .find((button) => button.textContent?.includes(ROOM.history.toggle))!
+          .click()
+      );
+      await settle();
+
+      const log = document.body.querySelector<HTMLElement>(`[aria-label="${ROOM.history.label}"]`);
+      expect(log?.textContent).toContain(`Bright Wolves ${ROOM.history.verb.side_pick} ${SIDE.blue}`);
+      expect(log?.textContent).not.toContain("#0");
+    });
   });
 });
 

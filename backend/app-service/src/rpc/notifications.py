@@ -8,7 +8,7 @@ every visitor.
 
 No handler ever reads a caller-supplied user or workspace id: the audience --
 and, for the preference writes, the row being edited -- is computed from
-``c.actor(data).id`` alone (Global Constraint 3).
+``c.actor(data).id`` alone.
 """
 
 from __future__ import annotations

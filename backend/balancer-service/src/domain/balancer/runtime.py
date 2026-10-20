@@ -11,6 +11,8 @@ from shared.domain.roles import Ontology
 from shared.domain.team_format import TeamFormat
 from src.domain.balancer.backends import get_backend
 from src.domain.balancer.captain_assignment_service import assign_captains
+from src.domain.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
+from src.domain.balancer.config.public_contract import normalize_config_payload
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
 from src.domain.balancer.entities import Player
 from src.domain.balancer.feasibility_analyzer import analyze_feasibility
@@ -19,18 +21,11 @@ from src.domain.balancer.progress import ProgressCallback, emit_progress
 from src.domain.balancer.rating_normalizer import RatingNormalizer
 from src.domain.balancer.result_serializer import _build_response_payload
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
-from src.services.balancer.config.public_contract import normalize_config_payload
 
 
 @dataclasses.dataclass(slots=True)
 class BalanceContext:
-    """Shared, algorithm-agnostic setup produced once per balance run.
-
-    Replaces the 7-element positional tuple ``_prepare_balance_context`` used
-    to return: every one of its five call sites (this module, two tests, the
-    benchmark script) had to keep that field order in sync by hand.
-    """
+    """Shared, algorithm-agnostic setup produced once per balance run."""
 
     config: AlgorithmConfig
     players: list[Player]
@@ -90,8 +85,7 @@ def _prepare_balance_context(
         message="Validating request payload",
     )
 
-    # ``normalize_config_payload`` already guarantees real, non-None knobs, so
-    # there is nothing left here to check or skip.
+    # ``normalize_config_payload`` guarantees non-None knobs.
     overrides = normalize_config_payload(config_overrides) if config_overrides else {}
     if overrides:
         logger.info(f"Applying configuration overrides: {overrides}")
@@ -178,15 +172,11 @@ def _prepare_balance_context(
         )
         num_teams = max_teams
 
-    # A player count that isn't an exact multiple of the team size no longer
-    # blocks the run: the leftover players just sit out, exactly like a host
-    # manually benching someone. A ``must_play`` player is never among them
-    # unless there are more of them than team slots exist -- they are moved to
-    # the front before the tail is cut, so trimming always reaches for an
-    # optional player first, and within the optional group ``rotation_priority``
-    # (ascending, default 0.0) breaks the tie -- the tournament balancer never
-    # sets it, so ``sorted``'s stability leaves that group's input order
-    # untouched, exactly as before this field existed.
+    # Players past the last full team sit out. ``must_play`` players move to the
+    # front before the tail is cut, so trimming reaches an optional player first
+    # unless there are more must-play players than slots; among optional players
+    # ``rotation_priority`` (ascending) breaks the tie, and ``sorted``'s stability
+    # keeps input order when nobody sets it.
     usable_count = num_teams * players_per_team
     if usable_count < len(valid_players):
         must_play_players = [player for player in valid_players if player.must_play]
@@ -395,26 +385,3 @@ def balance_teams(
         message=f"Prepared {len(payloads)} variants",
     )
     return payloads
-
-
-def balance_teams_tournament(
-    input_data: dict[str, typing.Any],
-    config_overrides: dict[str, typing.Any] | None = None,
-    progress_callback: ProgressCallback | None = None,
-    role_mask: dict[str, int] | None = None,
-    *,
-    team_format: TeamFormat | None = None,
-    ontology: Ontology | None = None,
-    discipline: str | None = None,
-) -> list[dict[str, typing.Any]]:
-    """Return a Pareto front of balance solutions for the same payload format."""
-    return balance_teams(
-        input_data,
-        config_overrides,
-        progress_callback,
-        role_mask,
-        algorithm="tournament_balancer",
-        team_format=team_format,
-        ontology=ontology,
-        discipline=discipline,
-    )

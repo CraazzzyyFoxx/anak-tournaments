@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src import models, schemas
-from src.services.balancer.config.public_contract import (
+from src.domain.balancer.config.public_contract import (
     normalize_balance_response_payload,
     normalize_config_payload,
 )

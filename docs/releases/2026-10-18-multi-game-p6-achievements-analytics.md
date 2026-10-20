@@ -90,7 +90,9 @@ artifact (active and historical) must be converted in a maintenance window with
   stack: real identity, tournament, stats RPC and two workers, RabbitMQ, Redis, S3, gateway): Overwatch ingest awards the
   three qualifying members once; the standings invalidation still reaches its original consumer; encounter completion and
   twice-redelivered events converge; awaiting-link and failed ingests award nothing; a LoL ingest evaluates only LoL's
-  condition-less rule and leaves its sentinel award untouched. Recipe: the P5 release note, section 15.
+  condition-less rule and leaves its sentinel award untouched. Recipe: the P5 release note, section 15. P8 moved the
+  shared stack into `live_smoke_support.bring_up` and re-ran this smoke unchanged (18 passed at `8588e360e`); its
+  two-game module (section 15.1) also asserts LoL's condition types are 200 `[]` and that no LoL match is awarded.
 * **Analytics runtime smoke** (`analytics-service/tests/test_discipline_runtime_smoke.py`): export under the archived
   pre-move source → stage → apply → registry/`run_for_tournament` as a non-owner role without legacy schema USAGE →
   frozen receipts reproduced bit-for-bit, written tables equal an independently assembled registry (the standings

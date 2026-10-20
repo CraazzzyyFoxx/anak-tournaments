@@ -265,8 +265,8 @@ class FakeSessionCache:
     async def set_rbac(self, user_id: int, **payload: object) -> None:
         self.writes.append((user_id, payload))
 
-    async def invalidate_rbac(self, user_id: int) -> None:
-        self.invalidated.append(user_id)
+    async def invalidate_rbac(self, *user_ids: int) -> None:
+        self.invalidated.extend(user_ids)
 
     async def blacklist_session(self, session_id: str, ttl_seconds: int) -> None:
         self.blacklisted.append((session_id, ttl_seconds))

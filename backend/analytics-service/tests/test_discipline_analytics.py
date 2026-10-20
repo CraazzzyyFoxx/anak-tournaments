@@ -14,7 +14,8 @@ import pandas as pd
 import pytest
 
 from shared.disciplines import DISCIPLINES, discipline
-from shared.domain import analytics as contract
+from shared.disciplines.analytics import AnalyticsExports
+from shared.domain.analytics import align_features
 from src.core.analytics_exports import UnsupportedAnalytics, analytics_exports, assert_unique_algorithm_names
 from tests.ow_analytics import exports, module
 
@@ -59,8 +60,8 @@ def test_analytics_algorithm_names_are_unique_across_disciplines() -> None:
 
 def _declared_members() -> dict[str, typing.Any]:
     """Methods by name, plus the plain attributes (annotation-only) the contract lists."""
-    members = {name: member for name, member in vars(contract.AnalyticsExports).items() if inspect.isfunction(member)}
-    members.update(dict.fromkeys(contract.AnalyticsExports.__annotations__))
+    members = {name: member for name, member in vars(AnalyticsExports).items() if inspect.isfunction(member)}
+    members.update(dict.fromkeys(AnalyticsExports.__annotations__))
     return members
 
 
@@ -109,7 +110,7 @@ def test_an_unknown_role_is_rejected_rather_than_given_the_damage_model(role: st
 
 def test_align_features_preserves_the_index_adds_nan_and_drops_extras() -> None:
     frame = pd.DataFrame({"b": [1.0, 2.0], "extra": [9, 9]}, index=[7, 5])
-    aligned = contract.align_features(frame, ["a", "b"])
+    aligned = align_features(frame, ["a", "b"])
     assert list(aligned.index) == [7, 5] and list(aligned.columns) == ["a", "b"]
     assert aligned["a"].isna().all() and aligned["b"].tolist() == [1.0, 2.0]
 

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from shared import models
 from shared.schemas.match_doc import MatchSource
-from shared.services.decode_context import load_decode_context
+from src.services.ingest.decode_context import load_decode_context
 
 
 def test_names_aliases_modes_and_activity_resolve_with_the_p4_precedence(stats_parity_database):

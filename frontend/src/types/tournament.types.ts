@@ -361,7 +361,7 @@ export interface Standings {
 // state builder. Design + semantics: docs/plans/2026-09-28-pick-ban-constructor.md.
 
 export type PickBanKind = "map" | "hero";
-export type PickBanAction = "ban" | "pick" | "protect";
+export type PickBanAction = "ban" | "pick" | "protect" | "side_pick";
 export type PickBanStepAction = PickBanAction | "decider";
 export type PickBanEntryStatus = "available" | "picked" | "banned" | "protected";
 
@@ -658,9 +658,11 @@ export interface PickBanSeries {
   placements: Record<string, number>;
 }
 
-/** What each position's sides stand at, for a discipline that has any. */
+/** What one game's sides stand at, for a discipline that has any (both kinds' states carry it). */
 export interface PickBanStartingSides {
   game_id: number;
+  /** The game's series position — the round its side step belongs to. */
+  position: number;
   /** `EncounterTeam.id` (string) -> side code. */
   sides: Record<string, string | null>;
 }
@@ -734,6 +736,7 @@ export interface PickBanState {
   games?: PickBanGame[];
   /** What the confirmed games add up to so far. */
   series?: PickBanSeries;
+  /** One entry per game that has a side set; absent on the no-session state. */
   starting_sides?: PickBanStartingSides[];
   undo: PickBanUndo;
 }

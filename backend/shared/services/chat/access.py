@@ -4,10 +4,7 @@ The resolver answers a DOMAIN question ("is this account a captain of this
 encounter / this draft session, an organizer of its workspace, or just
 watching?") and nothing else. Room POLICY -- whether a spectator may read at
 all, whether this account is muted -- belongs to ``ChatService``, which owns the
-settings and mute tables. Splitting it that way is what keeps the resolvers to
-about thirty lines each and keeps every policy rule written exactly once.
-
-Design: docs/plans/2026-09-21-shared-room-chat.md.
+settings and mute tables, so every policy rule is written exactly once.
 """
 
 from __future__ import annotations

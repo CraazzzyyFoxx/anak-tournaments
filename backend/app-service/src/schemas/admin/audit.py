@@ -4,11 +4,8 @@ The journal is append-only and write-side-owned (``shared.services.audit``), so
 there is no create/update model here — only the row shape the admin feed renders
 and the filter set it is allowed to ask for.
 
-The filter set is deliberately five values plus pagination, not the eleven an
-audit feed invites. The admin house style is one search input with an optional
-second control on the same row; no other admin table carries a date range, and
-adding one here would have been the only such control in the panel. Dates are
-served by sorting, and ``source`` is served by ``search``.
+The filter set is five values plus pagination, matching the admin one-search-input
+style: dates are served by sorting, and ``source`` is served by ``search``.
 """
 
 import typing

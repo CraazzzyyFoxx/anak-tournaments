@@ -99,11 +99,11 @@ class NotificationRepository(BaseRepository[models.Notification]):
     ) -> sa.ColumnElement[bool]:
         """WHERE term for "rows this identity is allowed to see, right now".
 
-        Audience and time window are one clause, never two: the plan's SQL
-        sketch wrote them as ``... or audience = 'global' and published_at <=
-        now() ...``, where SQL precedence binds the window to the ``global``
-        branch alone and lets an unpublished personal row through. Both halves
-        are conjoined here for every branch.
+        Audience and time window are one clause, never two: written as
+        ``... or audience = 'global' and published_at <= now() ...``, SQL
+        precedence binds the window to the ``global`` branch alone and lets an
+        unpublished personal row through. Both halves are conjoined here for
+        every branch.
 
         A row this identity deleted is likewise not a row it may see, so the
         dismissal filter lives here too: the page, the badge count and the

@@ -8,9 +8,9 @@ from typing import Any
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.roles import DimensionNode, Ontology, RoleNode
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat
+from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS
 from src.domain.balancer.result_serializer import lobby_document
-from src.domain.balancer.runtime import balance_teams, balance_teams_tournament
-from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS
+from src.domain.balancer.runtime import balance_teams
 
 #: How many balance options one mix run hands back: the deepest pager the cap
 #: allows. The brute-force mix engine has already enumerated every legal split
@@ -56,12 +56,15 @@ async def run_balance(
     *,
     discipline: str | None = None,
 ) -> dict[str, Any]:
-    """``discipline`` names the game of a payload that carries no owner format (the synchronous API); a payload with
-    a frozen ``format_context`` is its own game's."""
+    """Run the tournament solver off the event loop; a ``ValueError`` from it is a 422.
+
+    ``discipline`` names the game of a payload that carries no owner format (the synchronous API); a payload with
+    a frozen ``format_context`` is its own game's.
+    """
     try:
         variants = await asyncio.to_thread(
             functools.partial(
-                balance_teams_tournament,
+                balance_teams,
                 input_data,
                 config_overrides,
                 progress_callback,
@@ -87,10 +90,7 @@ async def run_mix_balance(
     so this is the one call site allowed to request it; tournament balancing
     (``run_balance`` above) stays on ``tournament_balancer``.
     """
-    # The mix engine enumerates every split exhaustively, so the extra options
-    # cost only the trim at the end -- a host paging the matchup wants the deep
-    # list, not the solver's top ten. A mix that stored its own override still
-    # wins.
+    # A mix that stored its own override still wins.
     mix_overrides = {"max_result_variants": MIX_RESULT_VARIANTS, **(config_overrides or {})}
     variants = await asyncio.to_thread(
         balance_teams,

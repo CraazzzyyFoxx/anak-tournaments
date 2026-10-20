@@ -18,7 +18,6 @@ from shared.core.enums import MatchEvent as MatchEventName
 from shared.disciplines.overwatch.achievements import conditions
 from shared.disciplines.overwatch.achievements.conditions import log_stat_rank
 from shared.disciplines.overwatch.achievements.eligibility import eligible_keys
-from shared.domain.achievements import evaluator
 from shared.domain.achievements.context import EvalContext
 from shared.domain.achievements.validation import infer_grain, validate_condition_tree
 from shared.models.achievements.achievement import (
@@ -28,6 +27,7 @@ from shared.models.achievements.achievement import (
     AchievementRule,
     EvaluationRunTrigger,
 )
+from shared.services.achievements import evaluator
 from src import models
 from src.services.achievement.engine.runner import AchievementEvaluationRunnerService
 from src.services.achievement.rule_service import AchievementRuleService
@@ -193,15 +193,12 @@ async def _stored_state(session: AsyncSession, workspace_id: int) -> dict:
 async def _runner_outputs(session: AsyncSession, ids: dict[str, int], trees: dict[str, dict]) -> dict:
     runner = AchievementEvaluationRunnerService()
     service = AchievementRuleService()
-    rule = await session.get(AchievementRule, ids["rule"])
-    assert rule is not None
     # Updating a disabled rule exercises real dependency derivation without
     # sending a deferred manual run to RabbitMQ. parse_complete runs inline.
     rule = await service.update_rule(
         session,
-        rule,
         workspace_id=ids["workspace"],
-        condition_tree_changed=True,
+        rule_id=ids["rule"],
         update_data={
             "enabled": False,
             "grain": "user_match",
@@ -640,7 +637,7 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
                 assert len(bulk_results) == 1
                 result_ids.update(bulk_results)
                 rule_id = rule.id
-                await service.delete_rule(session, rule)
+                await service.delete_rule(session, workspace_id=rule.workspace_id, rule_id=rule_id)
                 assert await session.get(AchievementOverride, override_id, populate_existing=True) is None
                 assert not list(
                     await session.scalars(

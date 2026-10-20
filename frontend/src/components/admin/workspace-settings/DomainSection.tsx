@@ -6,7 +6,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -14,13 +13,11 @@ import {
   InputGroupInput,
   InputGroupText
 } from "@/components/ui/input-group";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { PhaseStrip, type PhaseState } from "@/components/kit/PhaseStrip";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { SettingGroup } from "@/components/kit/SettingRow";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { PLATFORM_ZONE } from "@/lib/site/host";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
@@ -157,47 +154,42 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
     <WorkspaceSettingsFrame workspaceId={workspaceId} settings={settings}>
       {({ form: values, workspace: ws }) => (
         <>
-          <Card>
-            <CardContent className="pt-6">
-              <SettingGroup
-                title={t("groups.address.title")}
-                description={t("groups.address.description")}
-              >
-                <div>
-                  <Label htmlFor="workspace-subdomain">{t("subdomain")}</Label>
-                  <InputGroup className="mt-1.5">
-                    <InputGroupInput
-                      id="workspace-subdomain"
-                      value={values.subdomain ?? ""}
-                      onChange={(event) =>
-                        patch({
-                          subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
-                        })
-                      }
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupText>.{PLATFORM_ZONE}</InputGroupText>
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {values.subdomain
-                      ? `https://${values.subdomain}.${PLATFORM_ZONE}`
-                      : t("platformUrlOnly")}
-                  </p>
-                </div>
-              </SettingGroup>
-            </CardContent>
-          </Card>
+          <SettingGroup
+            title={t("groups.address.title")}
+            description={t("groups.address.description")}
+          >
+            <SettingRow
+              htmlFor="workspace-subdomain"
+              label={t("subdomain")}
+              hint={
+                values.subdomain
+                  ? `https://${values.subdomain}.${PLATFORM_ZONE}`
+                  : t("platformUrlOnly")
+              }
+            >
+              <InputGroup>
+                <InputGroupInput
+                  id="workspace-subdomain"
+                  value={values.subdomain ?? ""}
+                  onChange={(event) =>
+                    patch({
+                      subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
+                    })
+                  }
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupText>.{PLATFORM_ZONE}</InputGroupText>
+                </InputGroupAddon>
+              </InputGroup>
+            </SettingRow>
+          </SettingGroup>
 
-          <Card>
-            <CardContent className="flex flex-col gap-3 pt-6">
-              <div>
-                <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
-                <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-                  {t("groups.customDomain.description")}
-                </p>
-              </div>
-
+          <SettingGroup
+            title={t("customDomain")}
+            description={t("groups.customDomain.description")}
+            immediate
+          >
+            <div className="pb-4">
               <PhaseStrip
                 phases={[
                   { key: "add", label: t("addDomain"), state: phaseState(0) },
@@ -205,11 +197,12 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                   { key: "verified", label: t("verifyLabel"), state: phaseState(2) }
                 ]}
               />
+            </div>
 
-              <div className="flex flex-wrap gap-2">
+            <SettingRow htmlFor="workspace-custom-domain" label={t("domainLabel")} stacked>
+              <div className="flex w-full flex-wrap gap-2">
                 <Input
                   id="workspace-custom-domain"
-                  aria-label={t("domainLabel")}
                   className="min-w-[16rem] flex-1"
                   value={draftDomain}
                   placeholder={t("domainPlaceholder")}
@@ -242,83 +235,74 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     {setDomainMutation.isPending ? t("saving") : t("saveDomain")}
                   </Button>
                 )}
-              </div>
-
-              {pending ? (
-                <div className="flex flex-col gap-3 border-t border-border pt-3">
-                  <p className="max-w-prose text-xs text-muted-foreground">
-                    {t("addRecords", { seconds: VERIFY_POLL_MS / 1000 })}
-                  </p>
-                  <dl className="divide-y divide-border/60 font-mono text-xs">
-                    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
-                      <dt className="text-muted-foreground">TXT</dt>
-                      <dd className="break-all">{`_owt-verify.${domain.domain}`}</dd>
-                      <dd className="break-all">{domain.token}</dd>
-                      <dd>
-                        {domain.token ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-5"
-                            aria-label={t("copyTxt")}
-                            title={t("copyTxt")}
-                            onClick={() => domain.token && copy(domain.token)}
-                          >
-                            <Copy aria-hidden className="size-3" />
-                          </Button>
-                        ) : null}
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
-                      <dt className="text-muted-foreground">CNAME</dt>
-                      <dd className="break-all">{domain.domain}</dd>
-                      <dd className="break-all">{PLATFORM_ZONE}</dd>
-                    </div>
-                  </dl>
+                {pending ? (
                   <Button
                     type="button"
-                    size="sm"
-                    className="self-start"
                     disabled={verifyMutation.isPending}
                     onClick={() => verifyMutation.mutate()}
                   >
                     {verifyMutation.isPending ? t("saving") : t("verifyNow")}
                   </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+                ) : null}
+              </div>
+            </SettingRow>
 
-          <Card>
-            <CardContent className="pt-6">
-              <SettingGroup
-                title={t("groups.search.title")}
-                description={t("groups.search.description")}
+            {pending ? (
+              <SettingRow
+                label={t("dnsRecords")}
+                hint={t("addRecords", { seconds: VERIFY_POLL_MS / 1000 })}
+                stacked
               >
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <Label htmlFor="workspace-seo-title">{t("seoTitle")}</Label>
-                    <Input
-                      id="workspace-seo-title"
-                      className="mt-1.5"
-                      value={values.seo_title ?? ""}
-                      onChange={(event) => patch({ seo_title: event.target.value })}
-                    />
+                <dl className="w-full divide-y divide-border/60 font-mono text-xs">
+                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
+                    <dt className="text-muted-foreground">TXT</dt>
+                    <dd className="break-all">{`_owt-verify.${domain.domain}`}</dd>
+                    <dd className="break-all">{domain.token}</dd>
+                    <dd>
+                      {domain.token ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-5"
+                          aria-label={t("copyTxt")}
+                          title={t("copyTxt")}
+                          onClick={() => domain.token && copy(domain.token)}
+                        >
+                          <Copy aria-hidden className="size-3" />
+                        </Button>
+                      ) : null}
+                    </dd>
                   </div>
-                  <div>
-                    <Label htmlFor="workspace-seo-description">{t("seoDescription")}</Label>
-                    <Textarea
-                      id="workspace-seo-description"
-                      className="mt-1.5"
-                      value={values.seo_description ?? ""}
-                      onChange={(event) => patch({ seo_description: event.target.value })}
-                    />
+                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
+                    <dt className="text-muted-foreground">CNAME</dt>
+                    <dd className="break-all">{domain.domain}</dd>
+                    <dd className="break-all">{PLATFORM_ZONE}</dd>
                   </div>
-                </div>
-              </SettingGroup>
-            </CardContent>
-          </Card>
+                </dl>
+              </SettingRow>
+            ) : null}
+          </SettingGroup>
+
+          <SettingGroup
+            title={t("groups.search.title")}
+            description={t("groups.search.description")}
+          >
+            <SettingRow htmlFor="workspace-seo-title" label={t("seoTitle")}>
+              <Input
+                id="workspace-seo-title"
+                value={values.seo_title ?? ""}
+                onChange={(event) => patch({ seo_title: event.target.value })}
+              />
+            </SettingRow>
+            <SettingRow htmlFor="workspace-seo-description" label={t("seoDescription")} stacked>
+              <Textarea
+                id="workspace-seo-description"
+                value={values.seo_description ?? ""}
+                onChange={(event) => patch({ seo_description: event.target.value })}
+              />
+            </SettingRow>
+          </SettingGroup>
 
           <SaveBar
             dirty={settings.dirty}

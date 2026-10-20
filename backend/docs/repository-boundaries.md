@@ -24,8 +24,8 @@ full rpc → services → domain → repository → models stack described in
 - `APPROVED_DIRECT_WRITE_FILES` — access that is intentionally not CRUD: outbox
   draining, bracket advancement internals, analytics materialization, bulk
   association-table updates, append-only journals (`realtime/emit.py`,
-  `notifications.py`), executemany ingest (`match_logs/flows.py`), and
-  synchronous ORM collection replacement (`stage_common.py`).
+  `notifications.py`), and synchronous ORM collection replacement
+  (`stage_common.py`).
 - `PENDING_REPOSITORY_MIGRATION` — direct writes that predate their repository.
   Every entry is a line to delete once the repository method exists, not a
   pattern to copy.

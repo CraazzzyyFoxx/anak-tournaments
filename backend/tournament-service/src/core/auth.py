@@ -5,9 +5,7 @@ cross-module authorization contract: RPC handlers resolve the workspace from
 the actual object being acted on (never from a client-supplied field) and then
 check the caller's permission in that workspace.
 
-Re-exports ``shared.rbac.workspace_lookup`` — stats-service's and (until this
-consolidation) analytics-service's ``core/auth.py`` reimplemented the same
-getters under leading-underscore names.
+Re-exports ``shared.rbac.workspace_lookup``.
 """
 
 from shared.rbac.workspace_lookup import (

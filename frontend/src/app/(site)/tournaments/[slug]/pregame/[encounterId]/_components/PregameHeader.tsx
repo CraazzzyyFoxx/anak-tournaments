@@ -20,7 +20,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import { seatAt, seatTeam, type Duel } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
-import type { PickBanSession } from "@/types/tournament.types";
+import type { PickBanResolvedStep, PickBanSession, PickBanState } from "@/types/tournament.types";
 
 /** One step of the round the room is on. `map`/`hero` mirror `PickBanKind`. */
 export type PregamePhase = "map" | "hero" | "report" | "done";
@@ -52,8 +52,11 @@ export interface PregameSeriesMap {
 
 interface PregameHeaderProps {
   encounter: Encounter;
-  /** Null before both captains are ready -- no session exists yet (see `PregameReadiness`). */
-  session: PickBanSession | null;
+  /**
+   * The room state of the kind in play. Its `session` is null before both
+   * captains are ready -- no session exists yet (see `PregameReadiness`).
+   */
+  state: PickBanState;
   activePhase: PregamePhase;
   /**
    * The steps of ONE round of the series, in loop order: the map is picked, its
@@ -103,7 +106,7 @@ const PHASE_ICON: Record<PregamePhase, typeof MapPin> = {
  * seed · 1st" text line, where nothing carried the one number a captain
  * actually opens this room for -- where the series stands.
  *
- * Renders with `session=null` while the room is open but waiting on captain
+ * Renders with `state.session=null` while the room is open but waiting on captain
  * readiness -- `PregameReadiness` then takes the pool's place BELOW this header
  * rather than covering it, which is why the header must stay legible in that
  * state: every session-derived piece (status chip, seeds, opener marker) is
@@ -114,7 +117,7 @@ const PHASE_ICON: Record<PregamePhase, typeof MapPin> = {
  */
 export function PregameHeader({
   encounter,
-  session,
+  state,
   activePhase,
   phases,
   round,
@@ -123,6 +126,8 @@ export function PregameHeader({
   returnTo
 }: Readonly<PregameHeaderProps>) {
   const t = useTranslations("pickBan.room");
+  const session = state.session;
+  const opener = roundOpener(state.sequence);
   const seatOne = seatAt(encounter.teams, 1);
   const seatTwo = seatAt(encounter.teams, 2);
   const bestOf = encounter.best_of ?? null;
@@ -159,13 +164,13 @@ export function PregameHeader({
           name: seatOne?.name ?? t("tbd"),
           team: seatTeam(seatOne),
           seed: seatOne?.seed ?? null,
-          opens: seatOne != null && session?.first_team_id === seatOne.id
+          opens: seatOne != null && opener === seatOne.id
         }}
         two={{
           name: seatTwo?.name ?? t("tbd"),
           team: seatTeam(seatTwo),
           seed: seatTwo?.seed ?? null,
-          opens: seatTwo != null && session?.first_team_id === seatTwo.id
+          opens: seatTwo != null && opener === seatTwo.id
         }}
         score={score}
         official={official}
@@ -177,6 +182,20 @@ export function PregameHeader({
       {series.length > 0 ? <SeriesStrip series={series} /> : null}
     </div>
   );
+}
+
+/**
+ * Who opens the round in play: the first seat acting in the latest round the
+ * session has appended. Not `session.first_team_id` -- that stays the SEED
+ * opener (round 1), the rotation's baseline; each later round's opener is bound
+ * into that round's own step actors (`advance_to_next_round`).
+ */
+function roundOpener(sequence: readonly PickBanResolvedStep[]): number | null {
+  const round = sequence[sequence.length - 1]?.round;
+  for (const step of sequence) {
+    if (step.round === round && step.actors[0] != null) return step.actors[0];
+  }
+  return null;
 }
 
 /**

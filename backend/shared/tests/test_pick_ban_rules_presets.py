@@ -39,6 +39,20 @@ def test_the_overwatch_presets_are_the_documented_five_then_the_generic_two():
     ]
 
 
+def test_the_lol_preset_is_side_selection_only_and_rotates_to_the_loser():
+    preset = pbr.presets_for("lol")[0]
+    assert (preset.id, preset.kind, preset.modes) == ("lol_side_selection", "hero", ("pool",))
+    assert preset.first_ban_rotation == "result_loser_first"
+    (phase,) = preset.ruleset.phases
+    (step,) = phase.steps
+    assert (step.action, step.actors, step.count, step.blind, step.target) == ("side_pick", "first", 1, False, None)
+    assert preset.to_json()["first_ban_rotation"] == "result_loser_first"
+    # The every-preset loop above iterates every registered discipline, LoL included.
+    assert "lol" in DISCIPLINES
+    issues = pbr.validate_ruleset(preset.ruleset.to_json(), kind="hero", mode="pool", discipline="lol")
+    assert [issue.to_json() for issue in issues if issue.severity == "error"] == []
+
+
 def test_the_tournament_preset_is_the_anti_one_trick_rules():
     map1, map2 = ANTI.phases
     (blind2,) = map1.steps

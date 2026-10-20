@@ -1,9 +1,9 @@
-"""Shared pick-ban helpers that outlived the legacy map-veto session.
+"""Shared pick-ban helpers: round-1 seeding and the room's side-pick gates.
 
-``VetoSessionService`` and the ``MapVetoConfig`` tables are gone. What remains
-is the seed vocabulary ``pick_ban_session`` still calls -- which PARTICIPATION
-opens round 1, and where that answer came from -- plus the one gate the RESULT
-paths have to ask of the room: :func:`side_pick_pending`.
+The seed vocabulary ``pick_ban_session`` calls -- which PARTICIPATION opens
+round 1, and where that answer came from -- plus the two gates the RESULT paths
+have to ask of the room: :func:`side_pick_pending` and
+:func:`side_pick_required`.
 
 Seeding reads the bracket, never the card's order: a seat's slot says where a
 team sits, not how it was ranked. The bracket slot it was fed into comes first,
@@ -22,12 +22,19 @@ import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import VetoSeedSource
+from shared.core.enums import MapVetoMode, MapVetoSessionStatus, PickBanKind, VetoSeedSource
+from shared.disciplines import discipline as discipline_spec
+from shared.domain import pick_ban_rules as pbr
+from shared.domain.pick_ban_config import pick_config
 from shared.models.encounter.team import EncounterTeam
-from shared.repository import BracketEncounterRepository
+from shared.models.tournament.pick_ban import PickBanConfig
+from shared.repository import BracketEncounterRepository, PickBanConfigRepository, PickBanSessionRepository
+from shared.repository.pick_ban import CONFIG_POOL_LOAD
 from src import models
 
 _positions = BracketEncounterRepository()
+_configs = PickBanConfigRepository()
+_sessions = PickBanSessionRepository()
 
 REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
@@ -43,11 +50,35 @@ SLOT_CANDIDATE_FLOOR = 2
 ROOM_SLOT_COUNT = 2
 
 
+def side_codes(encounter: models.Encounter) -> tuple[str, ...]:
+    """The sides a ``side_pick`` step hands out for this encounter.
+
+    Empty for a discipline with no sides, and for one whose side count does
+    not match the card -- the same gate the ruleset validator applies, so a
+    session that somehow holds a ``side_pick`` it may not play refuses it
+    here too rather than writing half a game row.
+    """
+    sides = discipline_spec(encounter.discipline).sides
+    return sides if len(sides) == encounter.slot_count else ()
+
+
+def rounds_are_progressive(config: PickBanConfig, kind: PickBanKind) -> bool:
+    """Whether this config's rounds are created one map at a time.
+
+    Slot mode says so structurally -- one slot IS one map of the series -- and
+    every hero config says so by domain: heroes are banned per map, never once
+    per series. A flat ``kind=map`` config is the classic veto, one sequence
+    that settles the whole series' map order up front, and
+    stays single-round (``PickBanEntry.round IS NULL``).
+    """
+    return config.mode == MapVetoMode.SLOTS or kind == PickBanKind.HERO
+
+
 async def side_pick_pending(session: AsyncSession, encounter_id: int, position: int) -> bool:
     """Whether series position ``position`` still owes a ``side_pick`` an answer.
 
-    A game cannot START while the side it is played on is undecided (spec §6
-    row 9): the position may be named, but no claim and no accepted result may
+    A game cannot START while the side it is played on is undecided: the
+    position may be named, but no claim and no accepted result may
     land on it until the pick resolves -- or the clock flips a coin for it.
 
     Read straight off ``resolved_sequence_json`` and the submission log rather
@@ -58,7 +89,10 @@ async def side_pick_pending(session: AsyncSession, encounter_id: int, position: 
     rows = (
         await session.execute(
             select(models.PickBanSession.id, models.PickBanSession.resolved_sequence_json).where(
-                models.PickBanSession.encounter_id == encounter_id
+                models.PickBanSession.encounter_id == encounter_id,
+                # A cancelled room is the organizer's opt-out: its unanswered
+                # step must not refuse every claim of the series forever.
+                models.PickBanSession.status != MapVetoSessionStatus.CANCELLED,
             )
         )
     ).all()
@@ -92,6 +126,51 @@ async def side_pick_pending(session: AsyncSession, encounter_id: int, position: 
     return False
 
 
+async def side_pick_required(session: AsyncSession, encounter: models.Encounter, position: int) -> bool:
+    """Whether the room picks position ``position``'s sides -- so its game may
+    not start, nor take a result, without both of them.
+
+    Per kind, the room's ruleset is the live session's snapshot, or -- before
+    the room opens -- the config the cascade resolves for this encounter, so a
+    room the captains have not readied yet cannot be played around. A CANCELLED
+    session ends that kind's answer: the organizer opted the room out. Only the
+    phase the engine would select for that game counts (the same ``RoundCtx``
+    session creation and the round append select with); a flat ruleset describes
+    position 1 alone.
+    """
+    for kind in (PickBanKind.MAP, PickBanKind.HERO):
+        pick_ban = await _sessions.get_for_encounter(session, encounter_id=encounter.id, kind=kind)
+        if pick_ban is not None:
+            if pick_ban.status == MapVetoSessionStatus.CANCELLED:
+                continue
+            ruleset_json, progressive = pick_ban.ruleset_json, bool((pick_ban.pool_json or {}).get("progressive"))
+        else:
+            bracket = await _positions.get_position(session, encounter.id)
+            config = pick_config(
+                await _configs.list_by_tournament(
+                    session, encounter.tournament_id, kind=kind, options=CONFIG_POOL_LOAD
+                ),
+                stage_id=bracket.stage_id if bracket is not None else None,
+                round=bracket.round if bracket is not None else None,
+            )
+            if config is None:
+                continue
+            ruleset_json, progressive = config.ruleset_json, rounds_are_progressive(config, kind)
+        if position > 1 and not progressive:
+            continue
+        try:
+            ruleset = pbr.parse_ruleset(ruleset_json)
+        except pbr.RulesetError:
+            continue  # a room that cannot be played cannot open either
+        phase = pbr.select_phase(
+            ruleset,
+            pbr.RoundCtx(round=position if progressive else 1, best_of=max(encounter.best_of, 1), kind=kind.value),
+        )
+        if phase is not None and any(step.action == "side_pick" for step in phase.steps):
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class SeedResolution:
     """Who opens round 1, and on what evidence.
@@ -110,8 +189,7 @@ def decide_seeds(ordered: list[EncounterTeam], seeds: dict[int, int], source: Ve
     """Pure seed decision: the lowest seed opens, ties fall back to the first slot.
 
     ``ordered`` is the encounter's live seats in slot order, so "the first
-    slot" is simply the first of them -- the same tiebreak the two-sided
-    version spelled ``home``.
+    slot" is simply the first of them.
     """
     ranked = [(seeds[team.id], team.slot, team.id) for team in ordered if team.id in seeds]
     if len(ranked) == len(ordered) and len({seed for seed, _slot, _id in ranked}) == len(ranked):

@@ -62,8 +62,6 @@ def _merge_account_verdicts(pairs: Sequence[tuple[str | None, SubscriptionVerdic
     A user may link SEVERAL accounts of the same provider (the schema allows it
     deliberately) and the subscription sits on whichever one they happened to pay
     with, so every linked account is resolved and the strongest verdict wins.
-    Resolving only the first-linked account made a patron who paid with their
-    second Discord or Twitch read as "not subscribed".
 
     Ties keep the earliest-linked account (``max`` is stable and the loader orders
     by connection id), so the answer does not flap between equal accounts.
@@ -90,13 +88,11 @@ async def _gather_verdicts(
     """Run per-user resolutions concurrently, degrading a crash to ``unknown``.
 
     ``return_exceptions`` is not optional here. Each resolver converts only its
-    OWN typed errors, so an untyped escape -- a malformed 200 body making
-    ``response.json()`` raise, say -- would otherwise propagate straight out of
-    ``gather`` while its siblings are still scheduled. The enclosing
-    ``async with httpx.AsyncClient(...)`` then closes the client under them and
-    the whole batch is lost, when this module's entire failure philosophy is
-    that one broken user resolves ``unknown`` and everyone else still gets a
-    verdict.
+    OWN typed errors, so an untyped escape (a malformed 200 body making
+    ``response.json()`` raise) would otherwise propagate out of ``gather`` while
+    its siblings are still scheduled; the enclosing ``async with
+    httpx.AsyncClient(...)`` then closes the client under them and the whole
+    batch is lost instead of one user resolving ``unknown``.
     """
     settled = await asyncio.gather(*coros, return_exceptions=True)
 
@@ -129,9 +125,7 @@ async def load_provider_user_ids(
 
     A user may have several connections of the same provider (the schema allows it
     deliberately) and the subscription can sit on any of them, so all are returned,
-    earliest-linked first. Returning only the lowest id silently ignored every
-    account but the first: a patron who paid with their second Discord resolved as
-    "not subscribed".
+    earliest-linked first.
     """
     if not auth_user_ids:
         return {}

@@ -1,5 +1,5 @@
 """Per-game result confirmation: one claim per participation for ONE position,
-reconciled the moment the last one arrives (D14, D58).
+reconciled the moment the last one arrives.
 
 A claim is not "my side's score": it is what the claimant says the WHOLE game
 ended on -- one ``game_claim_result`` row per participation in it -- so a lobby
@@ -14,8 +14,7 @@ the game underneath it.
 
 No ``stats.match`` row is written here, and none is read: that table records
 what a parsed log OBSERVED, while an ``EncounterGame`` records what the
-tournament DECIDED
-(docs/plans/2026-09-20-pregame-results-statistics-separation.md §5.1/§5.2).
+tournament DECIDED.
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -36,16 +34,13 @@ from shared.core.enums import (
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.encounter.claim import EncounterGameClaim, EncounterGameClaimResult
-from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
-from shared.models.tournament.tournament import Tournament
 from shared.repository import EncounterGameClaimRepository
-from shared.services.bracket.usability import is_encounter_live
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import lock_encounter
-from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit
-from src.services.encounter.dispute_review import notify_dispute_review
+from src.services.bracket.usability import is_encounter_live
+from src.services.encounter.dispute_review import notify_dispute
 from src.services.encounter.games import (
     EncounterGameService,
     GameResultIn,
@@ -55,7 +50,7 @@ from src.services.encounter.games import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
-from src.services.encounter.settle import push_confirmed_to_challonge
+from src.services.encounter.settle import enqueue_challonge_push
 
 __all__ = ("ClaimResultIn", "GameClaimService", "map_report_service")
 
@@ -125,7 +120,7 @@ class GameClaimService:
                 detail="Stage bracket is a preview and is not active yet; wait for the organizer to activate it",
             )
         # A claim is a game STARTING, so the side it is played on has to be
-        # decided first (spec §6 row 9).
+        # decided first.
         await self.games.assert_side_settled(session, encounter, game)
         if encounter.result_status == EncounterResultStatus.CONFIRMED:
             # A confirmed encounter has a standing somebody decided -- the
@@ -212,10 +207,9 @@ class GameClaimService:
         )
         # Unconditional, before every branch below: the other participants'
         # tiles only flip from "not reported" to "sealed" on this signal, and
-        # the FIRST claim -- the one that resolves nothing -- is exactly the
-        # case that used to commit silently. Both topics, because the room
-        # refetches map and hero state together: two phases of one loop. It is
-        # also what stages the room's reconcile pass.
+        # the FIRST claim -- the one that resolves nothing -- would otherwise
+        # commit silently. Both topics, because the room refetches map and hero
+        # state together. It is also what stages the room's reconcile pass.
         await emit_pick_ban_update(session, encounter.id)
         await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
         claimed = {row.claimant_team_id for row in claims}
@@ -237,9 +231,7 @@ class GameClaimService:
                     data={"position": game.position, "game_id": game.id},
                 )
             game.state = EncounterGameState.DISPUTED
-            await self._notify_dispute(
-                session, encounter, game=game, seats=seats, reporter_auth_user_id=actor_auth_user_id
-            )
+            await notify_dispute(session, encounter, seats=seats, actor_auth_user_id=actor_auth_user_id, game=game)
             await session.commit()
             return await self._answer(session, game, disputed=True, resolved=False)
 
@@ -267,10 +259,9 @@ class GameClaimService:
             invalidates=[Resource.TOURNAMENT_ENCOUNTERS],
             entity_ids={"encounter_ids": [encounter.id]},
         )
-        confirmed, encounter_id = encounter.result_status == EncounterResultStatus.CONFIRMED, encounter.id
+        if encounter.result_status == EncounterResultStatus.CONFIRMED:
+            await enqueue_challonge_push(session, encounter)
         await session.commit()
-        if confirmed:
-            await push_confirmed_to_challonge(session, encounter_id)
         return await self._answer(session, game, disputed=False, resolved=True)
 
     @staticmethod
@@ -297,64 +288,6 @@ class GameClaimService:
         lines = (await self.games.lines_by_game(session, [game])).get(game.id) or []
         claims = (await self.games.claim_payloads(session, [game]))[game.id]
         return {"disputed": disputed, "resolved": resolved, "game": self.games.serialize(game, lines, claims)}
-
-    async def _notify_dispute(
-        self,
-        session: AsyncSession,
-        encounter: Encounter,
-        *,
-        game: EncounterGame,
-        seats: Sequence,
-        reporter_auth_user_id: int | None,
-    ) -> None:
-        """Every captain in the game, not just the opponent -- and the organizers
-        behind them.
-
-        A contradiction needs one of the claimants to correct theirs, and from
-        inside the reconciliation none of them is known to be the wrong one. And
-        nobody watches the admin screens for a dispute to appear, so the staff
-        who can actually retire the claims are told too: participants can only
-        re-claim, and participants who disagree twice are still disputed.
-        """
-        from src import models  # noqa: PLC0415 -- cycle: models imports the schemas that import this package
-
-        team_ids = [seat.team_id for seat in seats if seat.team_id is not None]
-        recipients: list[int] = []
-        if team_ids:
-            rows = await session.execute(
-                sa.select(models.User.auth_user_id)
-                .join(models.Team, models.Team.captain_id == models.User.id)
-                .where(models.Team.id.in_(team_ids), models.User.auth_user_id.is_not(None))
-            )
-            recipients = [int(value) for value in rows.scalars()]
-        workspace_id = await session.scalar(
-            sa.select(Tournament.workspace_id).where(Tournament.id == encounter.tournament_id)
-        )
-        source_workspace_id = int(workspace_id) if workspace_id is not None else None
-        for recipient in recipients:
-            await notify(
-                session,
-                kind="encounter.report_disputed",
-                recipient_auth_user_id=recipient,
-                source_workspace_id=source_workspace_id,
-                actor_auth_user_id=reporter_auth_user_id,
-                payload={
-                    "encounter_id": encounter.id,
-                    "tournament_id": encounter.tournament_id,
-                    "game_id": game.id,
-                    "position": game.position,
-                    "map_id": game.map_id,
-                },
-            )
-        await notify_dispute_review(
-            session,
-            encounter,
-            workspace_id=source_workspace_id,
-            team_names=[seat.name for seat in seats],
-            game=game,
-            actor_auth_user_id=reporter_auth_user_id,
-            skip_auth_user_ids=recipients,
-        )
 
 
 map_report_service = GameClaimService()

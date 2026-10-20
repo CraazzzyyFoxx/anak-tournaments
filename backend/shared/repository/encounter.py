@@ -46,6 +46,11 @@ class EncounterGameTeamRepository(BaseRepository[models.EncounterGameTeam]):
     def __init__(self) -> None:
         super().__init__(models.EncounterGameTeam)
 
+    def add(self, session: AsyncSession, row: models.EncounterGameTeam) -> models.EncounterGameTeam:
+        """Stage one row. No flush: the caller sets its side before its own flush."""
+        session.add(row)
+        return row
+
     async def confirmed_lines(self, session: AsyncSession, encounter_id: int) -> list[list[models.EncounterGameTeam]]:
         """Every confirmed game's rows, oldest position first, grouped per game.
 
@@ -234,7 +239,7 @@ class EncounterTeamReportRepository(BaseRepository[models.EncounterTeamReport]):
 
 
 class EncounterTeamRepository(BaseRepository[models.EncounterTeam]):
-    """``encounter.team`` — the participations (D55).
+    """``encounter.team`` — the participations.
 
     Append-only by design: there is no reactivate and no delete here. A seat
     changes hands by retiring one row and writing the next, which is what keeps
@@ -370,6 +375,11 @@ class EncounterResultAuditRepository(BaseRepository[models.EncounterResultAudit]
 class EncounterRoomEventRepository(BaseRepository[models.EncounterRoomEvent]):
     def __init__(self) -> None:
         super().__init__(models.EncounterRoomEvent)
+
+    def add(self, session: AsyncSession, row: models.EncounterRoomEvent) -> models.EncounterRoomEvent:
+        """Stage one journal row. No flush — rides the caller's transaction."""
+        session.add(row)
+        return row
 
     async def list_with_actor(
         self, session: AsyncSession, encounter_id: int, *, limit: int

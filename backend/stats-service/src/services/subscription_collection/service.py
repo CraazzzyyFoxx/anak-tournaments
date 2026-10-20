@@ -45,10 +45,9 @@ class SubscriptionCollectionService:
 
         ``require_subscription`` is the per-tournament toggle; the rule itself belongs to
         the workspace. The join to ``subscriptions.requirement`` is deliberately **inner**:
-        a workspace with no rule has nothing to collect, which is exactly the row the old
-        per-form code dropped afterwards via ``if not requirement.requirements``. A rule
-        that parses to nothing enforceable, or fails to parse at all, is still dropped
-        below -- an empty blob is reachable through the workspace editor too.
+        a workspace with no rule has nothing to collect. A rule that parses to nothing
+        enforceable, or fails to parse at all, is still dropped below -- an empty blob is
+        reachable through the workspace editor too.
 
         ``workspace_id`` narrows the sweep to one tenant, which is how a
         workspace-scoped admin triggers a re-check without touching anybody else's
@@ -74,7 +73,7 @@ class SubscriptionCollectionService:
             .where(
                 models.Tournament.is_finished.is_(False),
                 models.BalancerRegistrationForm.require_subscription.is_(True),
-                # Openness is the REGISTRATION schedule window now, not a form flag.
+                # Openness is the REGISTRATION schedule window, not a form flag.
                 registration_open_clause(),
             )
         )

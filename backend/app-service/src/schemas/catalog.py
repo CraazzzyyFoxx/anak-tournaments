@@ -26,7 +26,7 @@ __all__ = (
 
 
 class CatalogLegacyRead(BaseModel):
-    """What an old ``overwatch.hero|map|gamemode`` id became (D84)."""
+    """What an old ``overwatch.hero|map|gamemode`` id became."""
 
     entity_id: int
     discipline: str

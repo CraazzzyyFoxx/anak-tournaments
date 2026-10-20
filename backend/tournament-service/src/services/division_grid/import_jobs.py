@@ -288,8 +288,8 @@ class ImportJobsService:
 import_jobs_service = ImportJobsService()
 
 
-# Worker/scheduler entrypoints. They take no `session` — they OWN one — so they
-# stay module-level (rule 12) and `serve.py` keeps importing them by name.
+# Worker/scheduler entrypoints: they own their session, so they stay
+# module-level and `serve.py` imports them by name.
 async def recover_stale_import_jobs() -> int:
     """Requeue imports abandoned by a worker after its lease window."""
     cutoff = datetime.now(UTC) - _STALE_RUNNING_AFTER

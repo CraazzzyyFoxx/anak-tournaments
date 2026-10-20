@@ -33,8 +33,8 @@ from shared.models.identity.user import User  # noqa: E402
 from shared.models.member_rank.member_rank import MemberRank  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
-from shared.services import workspace_roster  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
+from src.services import workspace_roster  # noqa: E402
 
 _UNIQUE = 0
 

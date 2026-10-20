@@ -1,8 +1,7 @@
 """Inference runner — populates v2 ``analytics.*`` tables for one tournament.
 
-Currently implements Performance v2 only (Phase 1). Shift v2, Standings v2 and
-Match Quality writers are added in subsequent phases; each follows the same
-pattern: load active artifact → build feature frame → predict → upsert.
+Each writer follows the same pattern: load active artifact → build feature
+frame → predict → upsert.
 """
 
 from __future__ import annotations
@@ -15,10 +14,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.domain.analytics import PerformanceModel, ShiftModel, StandingsModel
+from shared.services.workspace_scope import get_division_grid, get_tournament_workspace_id
 from src import models
 from src.core.analytics_exports import tournament_module
 from src.core.config import settings
-from src.core.workspace import get_division_grid, get_tournament_workspace_id
 
 from ..features.aggregations import build_match_features_with_strength
 from ..features.shift_features import build_shift_feature_frame

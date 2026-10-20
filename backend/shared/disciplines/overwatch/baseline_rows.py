@@ -1,4 +1,4 @@
-"""Pure, DB-free impact-scoring baseline aggregation (spec 2026-07-10).
+"""Pure, DB-free impact-scoring baseline aggregation.
 
 ``build_baseline_rows`` turns a per-(match, user) stat-rate frame into
 baseline component dicts. No ``AsyncSession``, ``await``, or ``asyncio`` —

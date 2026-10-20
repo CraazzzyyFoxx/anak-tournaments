@@ -1,10 +1,7 @@
 """Realtime scope: the ACL-bearing subject an event belongs to.
 
-A scope is the only place the topic format lives. Before this module it was
-spelled out in ``realtime_topics.py``, again as ``LIKE 'tournament:%:bracket'``
-in the retention job, and a third time as ``strings.CutPrefix(topic,
-"tournament:")`` in the gateway — three copies that had to be changed together
-and were only kept in step by comments saying so.
+A scope is the only place the topic format lives: publishers, the retention
+job's topic patterns and the gateway's prefix split must all agree with it.
 
 Scopes exist because visibility differs, which is why there is no single global
 invalidation topic: ``gateway/internal/acl/acl.go`` gates a tournament's topics

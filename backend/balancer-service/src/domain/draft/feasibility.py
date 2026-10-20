@@ -7,8 +7,8 @@ pick removes both the chosen slot and player before matching, which prevents a
 locally legal pick from starving another team's future roster slot.
 
 No database access, no event loop — every function here is synchronous and
-deterministic over ``entities``. ``services/draft/feasibility.py`` is the only
-file that loads rows and offloads these functions to a thread.
+deterministic over ``entities``; ``services/draft/`` loads the rows and runs
+them off the event loop.
 """
 
 from __future__ import annotations
@@ -48,11 +48,6 @@ __all__ = (
     "describe_role_deficits",
     "evaluate_pick_options",
 )
-
-
-def _as_role(value: str | None) -> str | None:
-    """Flex is a roster slot, never a rated role."""
-    return value if value != FLEX_SLOT_CODE else None
 
 
 def build_feasibility_state(
@@ -95,11 +90,9 @@ def build_feasibility_state(
         if player.status != DraftPlayerStatus.PICKED.value or player.drafted_by_team_id is None:
             continue
         # Which slot a picked player occupies: on a role-less roster there is only
-        # flex, so every pick lands there and a missing role is no longer a reason
-        # to skip the player. Otherwise the drafted role names the slot, and the
-        # "role slot already full -> spill into flex" rule lives in
-        # _remaining_capacity, where the per-team counters already exist, instead
-        # of being recomputed here and again for every hypothetical pick.
+        # flex, so every pick lands there. Otherwise the drafted role names the
+        # slot; the "role slot already full -> spill into flex" rule lives in
+        # _remaining_capacity, which applies it to hypothetical picks as well.
         if not shape.has_role_slots:
             assignments.append(
                 DraftAssignment(
@@ -133,11 +126,8 @@ def _ordered_slot_codes(slot_targets: Mapping[str, int]) -> tuple[str, ...]:
 
 
 def _slot_fits(player: EligiblePlayer, slot_code: str) -> bool:
-    """The one new rule of the slot vocabulary: flex takes anybody."""
-    if slot_code == FLEX_SLOT_CODE:
-        return True
-    role = _as_role(slot_code)
-    return role is not None and role in player.playable_roles
+    """Flex takes anybody; a role slot takes a player who plays that role."""
+    return slot_code == FLEX_SLOT_CODE or slot_code in player.playable_roles
 
 
 def describe_role_deficits(report: DraftFeasibilityReport) -> str:

@@ -1,4 +1,4 @@
-"""The match layer's answer to ingest evidence (P5, D95): may an observed log decide a game?
+"""The match layer's answer to ingest evidence: may an observed log decide a game?
 
 ``stats-service`` observes and publishes :class:`MatchIngestedEvent` -- an opaque evidence id and revision, the
 game-result basis it was bound against, canonical placements per bound team and the participants the roster
@@ -7,14 +7,14 @@ imports nothing from the stats package. Every decision, refusals included, is on
 receipt in the room journal (``record_room_event``, source ``stats-service``), written in the SAME transaction as
 whatever it decided, so a rolled-back result leaves no receipt and a redelivery applies once.
 
-Owner policy (D23) -- the only owners that can ever say yes:
+Owner policy -- the only owners that can ever say yes:
 
 * **tournament**, live encounter, exact bound team set: valid extra participants join their team as encounter
   substitutes under the roster's own rules -- whatever ``logs_official`` says and whatever the game's result state
-  is (P4 always seated them; the switch is about results, D7). Separately, with ``logs_official = true`` an
-  unaccepted, uncancelled game of an unconfirmed encounter takes the observed placements as an ``admin_log`` result.
+  is (the switch is about results). Separately, with ``logs_official = true`` an unaccepted, uncancelled game of an
+  unconfirmed encounter takes the observed placements as an ``admin_log`` result.
 * **mix** (host/co-host records directly) and **scrim** (specified: ``claims`` of both sides, result optional --
-  a scrim container is a hidden tournament row today, with no scrim owner of its own): logs never decide anything
+  a scrim container is a hidden tournament row with no scrim owner of its own): logs never decide anything
   there and never add roster members. Both are refused outright; there is no permissive branch for any other or
   unknown owner.
 
@@ -73,12 +73,12 @@ from shared.repository import (
     WorkspaceMemberRepository,
 )
 from shared.schemas.events import MatchIngestedEvent, MatchIngestExtraParticipant
-from shared.services.bracket.usability import is_encounter_live
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.encounter.participants import MemberSnapshot, active_teams, add_substitute
 from shared.services.member_rank import TOURNAMENT_ORDER, member_rank_service
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.scrim_scope import is_scrim_container
+from src.services.bracket.usability import is_encounter_live
 from src.services.encounter.games import (
     EncounterGameService,
     GameResultIn,
@@ -88,6 +88,7 @@ from src.services.encounter.games import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
+from src.services.encounter.settle import enqueue_challonge_push
 from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = (
@@ -238,6 +239,9 @@ async def _decide(
     await enqueue_tournament_recalculation(session, encounter.tournament_id)
     await emit_pick_ban_update(session, encounter.id)
     await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
+    if encounter.result_status == EncounterResultStatus.CONFIRMED:
+        # The game that completed the encounter: its result rides this delivery's transaction to Challonge.
+        await enqueue_challonge_push(session, encounter)
     return ACCEPTED, None
 
 

@@ -1662,16 +1662,6 @@
       "remove_when": "portable v1 achievement import is retired"
     },
     {
-      "path": "backend/stats-service/src/services/catalog_aliases.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "DISCIPLINE = \"overwatch\"",
-      "count": 1,
-      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
-      "owner": "P9",
-      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
-    },
-    {
       "path": "backend/stats-service/src/services/match_logs/objectiveless.py",
       "rule": "discipline-code",
       "token": "overwatch",
@@ -1703,26 +1693,6 @@
     },
     {
       "path": "backend/stats-service/src/services/match_logs/objectiveless.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "discipline=\"overwatch\",",
-      "count": 1,
-      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
-      "owner": "P9",
-      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
-    },
-    {
-      "path": "backend/stats-service/src/services/tournament/service.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "assert_discipline_enabled(workspace, \"overwatch\")",
-      "count": 1,
-      "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
-      "owner": "P9",
-      "remove_when": "P9 relocates it into shared.disciplines.overwatch"
-    },
-    {
-      "path": "backend/stats-service/src/services/tournament/service.py",
       "rule": "discipline-code",
       "token": "overwatch",
       "context": "discipline=\"overwatch\",",
@@ -2245,7 +2215,7 @@
       "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameRoom.tsx",
       "rule": "catalog-label",
       "token": "hero",
-      "context": "loop.statesByKind[loop.phase === \"hero\" || !loop.mapApplies ? \"hero\" : \"map\"].session",
+      "context": "state={loop.statesByKind[loop.phase === \"hero\" || !loop.mapApplies ? \"hero\" : \"map\"]}",
       "count": 2,
       "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
       "owner": "P9",
@@ -2792,16 +2762,6 @@
       "remove_when": "pick-ban kind is migrated to 'character'"
     },
     {
-      "path": "frontend/src/components/admin/pregame-rooms/PregameRoomsBrowser.tsx",
-      "rule": "catalog-label",
-      "token": "hero",
-      "context": "room.phase === \"hero\"",
-      "count": 1,
-      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
-      "owner": "P9",
-      "remove_when": "pick-ban kind is migrated to 'character'"
-    },
-    {
       "path": "frontend/src/components/admin/pregame-rooms/useRoomColumns.tsx",
       "rule": "catalog-label",
       "token": "heroes",
@@ -3150,6 +3110,36 @@
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
       "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "tank",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "collector wire: the person glance renders the OW native-rank (OverFast) snapshot per OW role; null for every other game",
+      "owner": "module",
+      "remove_when": "the person glance's native-rank layer is served by the OW module (rank family slot) or reads roles from the owner ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "damage",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "collector wire: the person glance renders the OW native-rank (OverFast) snapshot per OW role; null for every other game",
+      "owner": "module",
+      "remove_when": "the person glance's native-rank layer is served by the OW module (rank family slot) or reads roles from the owner ontology"
+    },
+    {
+      "path": "frontend/src/components/admin/people/PersonGlance.tsx",
+      "rule": "role-vocabulary",
+      "token": "support",
+      "context": "const ROLE_KEYS = [\"tank\", \"damage\", \"support\", \"flex\"] as const;",
+      "count": 1,
+      "reason": "collector wire: the person glance renders the OW native-rank (OverFast) snapshot per OW role; null for every other game",
+      "owner": "module",
+      "remove_when": "the person glance's native-rank layer is served by the OW module (rank family slot) or reads roles from the owner ontology"
     }
   ]
 }

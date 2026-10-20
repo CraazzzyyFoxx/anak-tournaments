@@ -1,7 +1,6 @@
 """ORM → narrow DTO conversion helpers for user/ flows.
 
-These replace the wide `to_pydantic_*` family that lived in `_internal/` —
-each function produces a DTO defined in `src.schemas.user` that contains
+Each function produces a DTO defined in `src.schemas.user` that contains
 only the fields the frontend actually renders on user-scoped pages.
 """
 
@@ -48,10 +47,7 @@ def _social_account_read(account: models.SocialAccount) -> schemas.SocialAccount
 
 
 def resolve_team_placement(team: models.Team) -> int | None:
-    """Pick the best (lowest, positive) overall_position across standings.
-
-    Replaces `_internal.team.flows.resolve_team_placement` — same logic.
-    """
+    """Pick the best (lowest, positive) overall_position across standings."""
     standings = getattr(team, "standings", None) or []
     positive_positions = [
         standing.overall_position for standing in standings if getattr(standing, "overall_position", 0) > 0
@@ -108,8 +104,8 @@ def to_user_tournament_player(
         role=player.role_ref,
         rank=player.rank,
         division=resolve_tournament_division(player.rank, tournament_grid=grid),
-        # workspace_member_id is NOT NULL (contract step, iwrefac07): the
-        # identity anchor is always workspace_member.player_id.
+        # workspace_member_id is NOT NULL: the identity anchor is always
+        # workspace_member.player_id.
         user_id=player.workspace_member.player_id,
         is_substitution=player.is_substitution,
         is_newcomer=player.is_newcomer,

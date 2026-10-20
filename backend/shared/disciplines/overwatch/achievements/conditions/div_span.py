@@ -2,7 +2,7 @@
 
 Grain: user (global).
 
-Ports the legacy ``my-drill-will-pierce-the-sky`` query: within a single role,
+Backs ``my-drill-will-pierce-the-sky``: within a single role,
 the last tournament's division minus the first (chronological) must meet a
 threshold. A drop does not count as a climb. Division resolution happens in
 Python (needs the grid/normalizer).

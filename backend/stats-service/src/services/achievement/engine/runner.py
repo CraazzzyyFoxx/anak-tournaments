@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid
 from shared.domain.achievements.context import EvalContext
-from shared.domain.achievements.evaluator import GrainMismatchError, evaluate
 from shared.domain.achievements.registry import get_specs
 from shared.domain.achievements.validation import GRAIN_ARITY, requires_normalized_divisions
 from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.messaging.config import ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.achievements.achievement import (
     AchievementGrain,
     AchievementRule,
@@ -27,10 +27,10 @@ from shared.models.achievements.achievement import (
     EvaluationRunTrigger,
 )
 from shared.models.tenancy.workspace import Workspace
-from shared.observability import publish_message
 from shared.repository.support import EvaluationRunRepository
 from shared.repository.tournament import TournamentRepository
 from shared.schemas.events import AchievementEvaluateEvent
+from shared.services.achievements.evaluator import GrainMismatchError, evaluate
 from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid,
@@ -40,7 +40,6 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizer,
 )
 from src import models
-from src.core.broker import require_broker
 
 from .differ import diff_and_apply, load_existing_results, persist_slice_for_grain
 
@@ -76,14 +75,11 @@ class AchievementEvaluationRunnerService:
 
         A ``manual`` / ``rule_version_bump`` run for an unverified workspace is
         not executed here: it gets a ``queued`` run row and a message on
-        ``achievement_evaluate.deferred``, which one low-prefetch consumer drains
-        (design §4.3). ``parse_complete`` stays inline for every tier — it is
-        already bounded by the parse that triggered it.
+        ``achievement_evaluate.deferred``, which one low-prefetch consumer drains.
+        ``parse_complete`` stays inline for every tier — it is already bounded by
+        the parse that triggered it.
 
         Args:
-            session: Database session.
-            workspace_id: Workspace to evaluate.
-            trigger: What triggered this run.
             tournament_id: If set, only evaluate for this tournament.
             match_id: If set, only evaluate for this match.
             changed_tables: If set, only evaluate rules that depend on these tables.
@@ -166,9 +162,9 @@ class AchievementEvaluationRunnerService:
             # create that lands before the queued message is consumed cannot widen what the caller asked for.
             trigger = await self._resolve_trigger(session, run.workspace_id, run.tournament_id, match_id)
             rules = await _select_rules(session, run.workspace_id, trigger.discipline, rule_ids, changed_tables)
-            await session.commit()
-            await publish_message(
-                require_broker(),
+            # Committed with the queued row, so there is never a queued run without its message.
+            await enqueue_outbox_event(
+                session,
                 AchievementEvaluateEvent(
                     workspace_id=run.workspace_id,
                     tournament_id=run.tournament_id,
@@ -176,10 +172,12 @@ class AchievementEvaluationRunnerService:
                     run_id=run.id,
                     match_id=match_id,
                     rule_ids=[rule.id for rule in rules],
-                ).model_dump(),
-                ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
-                logger=logger.bind(workspace_id=run.workspace_id, run_id=run.id),
+                    source_service="stats-service",
+                ),
+                exchange="",
+                routing_key=ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE.name,
             )
+            await session.commit()
         except Exception as exc:
             # A queued row nobody will ever pick up is worse than a visible
             # failure: record why and let the caller see it.
@@ -250,16 +248,16 @@ class AchievementEvaluationRunnerService:
             total_removed = 0
             rules_ok = 0
             # Keyed by reason, not by rule: one grid-mapping gap fails dozens of
-            # rules with the identical sentence, and one entry per rule pushed
+            # rules with the identical sentence, and one entry per rule would push
             # the real tail of the list past ``error_message``'s 1000 chars.
             failures: dict[str, list[str]] = {}
             # One memo per discipline for the whole run: per-hero rules share one query each
-            # instead of one per rule (Sentry OWT-TOURNAMENTS-2BX / -2BZ), and rules of
-            # different games never share a grid, a normalizer or a cached result.
+            # instead of one per rule, and rules of different games never share a grid,
+            # a normalizer or a cached result.
             caches = _RunCaches(session, workspace_id)
 
-            # One read per distinct persist slice for the whole run, instead of
-            # one per rule inside its savepoint (Sentry OWT-TOURNAMENTS-2BW).
+            # One read per distinct persist slice for the whole run, not one per rule
+            # inside its savepoint.
             persist_slices = {
                 rule.id: persist_slice_for_grain(rule.grain, tournament_id=tournament_id, match_id=match_id)
                 for rule in rules
@@ -375,10 +373,8 @@ class AchievementEvaluationRunnerService:
                         # The session (or its connection) is dead: Postgres restarted,
                         # the pooler dropped us, or the outer transaction is stuck in a
                         # pending rollback. Every remaining rule would fail the same
-                        # way, each one logging its own Sentry event — that is how a
-                        # single dead connection turned into thousands of duplicate
-                        # InterfaceError/ProgrammingError events. Abort the run and let
-                        # the message go to the DLQ instead.
+                        # way, each one logging its own Sentry event. Abort the run and
+                        # let the message go to the DLQ instead.
                         logger.error(
                             f"Aborting evaluation run {run_id}: lost the database connection "
                             f"while evaluating rule '{rule.slug}'"
@@ -444,11 +440,9 @@ async def _mark_run_failed(session: AsyncSession, run: EvaluationRun, exc: BaseE
     """Best-effort audit write recording why a run failed.
 
     The failure is often a lost connection, in which case the session's own
-    ``rollback``/``commit`` raise as well. Those *secondary* errors are what
-    actually reached Sentry (``cannot call Transaction.rollback(): the underlying
-    connection is closed``), burying the real cause and inflating a single
-    incident into its own top-volume issue. Bookkeeping must never mask or
-    replace the original exception, so swallow its failure with a warning.
+    ``rollback``/``commit`` raise as well. Bookkeeping must never mask or
+    replace the original exception with those secondary errors, so swallow its
+    failure with a warning.
     """
     try:
         await session.rollback()

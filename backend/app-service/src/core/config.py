@@ -6,15 +6,13 @@ from shared.core.config import BaseServiceSettings
 class Settings(BaseServiceSettings):
     project_name: str = "OWT API"
     project_url: str
-    # Gateway mount prefix for app-service. tournament-service owns the bare
-    # /api/v1 namespace, so app-service is carved out under /api/v1/core. Used as
-    # FastAPI root_path (the gateway forwards /api/v1/core/* unchanged).
+    # Gateway mount prefix for app-service: tournament-service owns the bare
+    # /api/v1 namespace, so app-service is carved out under /api/v1/core.
     api_v1_str: str = "/api/v1/core"
 
     redis_url: RedisDsn
-    # No default — require RABBITMQ_URL to be set explicitly. Previously
-    # defaulted to `guest:guest`, which silently shipped insecure credentials
-    # if the env var was missing in any environment.
+    # No default: a missing RABBITMQ_URL must fail at startup rather than fall
+    # back to insecure ``guest:guest`` credentials.
     rabbitmq_url: str
     # Same bot token discord-service runs on: the Discord pickers ask that
     # service first and only reach Discord's REST API themselves when it is down.
@@ -30,9 +28,9 @@ class Settings(BaseServiceSettings):
     # ``users_cache_ttl`` covers the *tournament-derived* /users/* read caches
     # (tournaments, tournament_stats, heroes, encounters, maps, teammates,
     # matches_summary, compare, ...). Their inputs only change on tournament
-    # ingestion, which fires a TournamentChangedEvent that broadly drops every
-    # user_* key (see services.cache_resources). The TTL is just a safety net,
-    # so it is aligned with the sibling read domains at 5 minutes.
+    # ingestion, whose tournament-resource ``CacheInvalidatedEvent`` broadly drops
+    # every user_* key (see ``services.user_cache.tournament_user_cache_patterns``).
+    # The TTL is just a safety net, aligned with the sibling read domains.
     users_cache_ttl: int = 60 * 5
     # ``user_profile`` is *identity-derived* (name/avatar/socials). App-side
     # profile edits invalidate it precisely (see services.user_cache), but

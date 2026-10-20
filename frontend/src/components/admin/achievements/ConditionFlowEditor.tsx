@@ -70,12 +70,18 @@ export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: R
     exitFullscreenLabel: t("condition.exitFullscreenLabel"),
   }), [t]);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const emptyTree = Object.keys(value).length === 0;
+  // Reading an existing tree needs no registry: its nodes name themselves. Only an
+  // empty tree has to wait for it, because an empty tree draws as a node of the
+  // game's default type and a game without one has nothing to draw. So a viewer
+  // of a stored tree never asks — a game without conditions has no registry to ask.
+  const needsRegistry = !readOnly || emptyTree;
   // The registry only changes when the engine ships a new node, so it is cached
   // for the session per game rather than refetched per editor mount.
   const { data: conditionTypes, isPending, isError, refetch } = useQuery({
     queryKey: achievementQueryKeys.conditionTypes(workspaceId, discipline),
     queryFn: () => adminService.getConditionTypes(workspaceId!, discipline),
-    enabled: !!workspaceId,
+    enabled: !!workspaceId && needsRegistry,
     staleTime: Infinity
   });
 
@@ -116,12 +122,6 @@ export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: R
     []
   );
 
-  const emptyTree = Object.keys(value).length === 0;
-
-  // Reading an existing tree needs no registry: its nodes name themselves. Only an
-  // empty tree has to wait for it, because an empty tree draws as a node of the
-  // game's default type and a game without one has nothing to draw.
-  const needsRegistry = !readOnly || emptyTree;
   if (needsRegistry && isPending) {
     return (
       <div role="status" aria-busy="true" aria-label={t("condition.loadingTypes")}>

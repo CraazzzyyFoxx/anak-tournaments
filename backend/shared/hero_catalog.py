@@ -1,4 +1,4 @@
-"""Resolve the character catalog used to validate and persist registration top-character picks.
+"""Resolve the character catalog that registration top-character picks are validated and persisted against.
 
 Characters in ``catalog.entity`` are global per discipline (not workspace-scoped), so the catalog is a flat mapping
 from character slug to a light reference carrying the entity id. The public registration path validates submitted

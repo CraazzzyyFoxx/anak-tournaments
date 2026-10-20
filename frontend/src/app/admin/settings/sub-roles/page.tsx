@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Palette, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { MasterDetail } from "@/components/kit/MasterDetail";
+import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,7 +121,20 @@ function GameSubRoleCatalog({ workspaceId, discipline }: Readonly<{ workspaceId:
   if (metadata.isError) {
     return <PageStateCard state="error" title={t("errors.load")} onAction={() => void metadata.refetch()} />;
   }
-  if (!metadata.data) return <Skeleton className="h-64" />;
+  if (!metadata.data) {
+    return (
+      <MasterDetail
+        list={<MasterListSkeleton />}
+        detail={null}
+        emptyDetail={
+          <div aria-hidden className="space-y-4">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-32" />
+          </div>
+        }
+      />
+    );
+  }
   return (
     <SubRoleCatalog
       key={`${workspaceId}:${discipline}`}
@@ -177,7 +191,7 @@ function SubRoleListing({
   return (
     <div className="space-y-6">
       {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("empty")}</p>
+        <EmptyNote>{t("empty")}</EmptyNote>
       ) : (
         games.map((entry) => {
           const entries = rows.filter((row) => row.discipline === entry.code);
@@ -215,7 +229,7 @@ function GameSubRoleGroup({
   const parents = new Map((metadata.data?.roles ?? []).map((role) => [role.code, nameOf(role)]));
   return (
     <section className="space-y-2">
-      <h2 className="text-base font-semibold">
+      <h2 className="text-ui font-semibold text-foreground">
         <GameLabel code={discipline} games={descriptors} />
       </h2>
       <ul className="divide-y divide-border border-y border-border">
@@ -401,39 +415,24 @@ function SubRoleCatalog({
 
   return (
     <MasterDetail
-      listWidth={240}
       list={
-        <nav aria-label={t("rolesLabel")} className="rounded-xl border border-border bg-card p-2">
-          <ul className="flex flex-col gap-0.5">
-            {roots.map((role) => {
-              const isSelected = role.code === selected?.code;
-              return (
-                <li key={role.id}>
-                  <button
-                    type="button"
-                    aria-current={isSelected ? "true" : undefined}
-                    onClick={() => setParams({ role: role.code })}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isSelected
-                        ? "bg-accent/40 font-medium text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <PlayerRoleIcon
-                      role={{ dimension: rated.code, role: role.code }}
-                      ontology={ontology}
-                      size={16}
-                      decorative
-                    />
-                    <span className="min-w-0 flex-1 truncate">{role.name}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+        <MasterList
+          label={t("rolesLabel")}
+          items={roots.map((role) => ({
+            key: role.code,
+            label: role.name,
+            icon: (
+              <PlayerRoleIcon
+                role={{ dimension: rated.code, role: role.code }}
+                ontology={ontology}
+                size={16}
+                decorative
+              />
+            )
+          }))}
+          selectedKey={selected?.code}
+          onSelect={(roleCode) => setParams({ role: roleCode })}
+        />
       }
       detail={
         selected ? (
@@ -507,15 +506,20 @@ function RoleSubRoles({
 
   return (
     <section className="space-y-4">
-      <h2 className="flex items-center gap-2 text-base font-semibold">
-        <PlayerRoleIcon role={{ dimension, role: role.code }} ontology={ontology} size={20} decorative />
+      <h2 className="flex items-center gap-2 text-ui font-semibold text-foreground">
+        <PlayerRoleIcon
+          role={{ dimension, role: role.code }}
+          ontology={ontology}
+          size={20}
+          decorative
+        />
         {role.name}
       </h2>
 
       {loading ? (
         <Skeleton className="h-32" />
       ) : entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("empty")}</p>
+        <EmptyNote>{t("empty")}</EmptyNote>
       ) : (
         <ul className="divide-y divide-border border-y border-border">
           {entries.map((entry) => (

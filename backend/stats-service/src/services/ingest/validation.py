@@ -300,8 +300,8 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc, pro
                 "identity id is not a valid handle for the provider",
             )
     if producer == "canonical":
-        # A caller-authored timeline must end with the match. A raw log keeps what it recorded (D96: preserve the
-        # observations and duration P4 persisted), so this is a producer rule, not a structural one.
+        # A caller-authored timeline must end with the match. A raw log keeps what it recorded (its observations and
+        # duration are preserved as decoded), so this is a producer rule, not a structural one.
         for index, event in enumerate(doc.events):
             if event.t > doc.duration_s:
                 found.add(["events", index, "t"], "event_after_end", "t exceeds duration_s")

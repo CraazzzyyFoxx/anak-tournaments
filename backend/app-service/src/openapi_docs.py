@@ -268,7 +268,7 @@ DOCS: dict[str, dict] = {
         "summary": "Remove workspace member",
         "description": "Permission: workspace `workspace_member.delete`. Removes a member from a workspace and busts their RBAC cache; refuses to remove the last owner, returns 204.",
     },
-    # ── workspace custom domain (white-label Phase 2) ───────────────────────────────
+    # ── workspace custom domain ─────────────────────────────────────────────────────
     "rpc.app.workspaces.set_custom_domain": {
         "summary": "Set workspace custom domain",
         "description": "Permission: workspace `workspace.update`. Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; 404 if workspace missing, 400 on an invalid domain.",

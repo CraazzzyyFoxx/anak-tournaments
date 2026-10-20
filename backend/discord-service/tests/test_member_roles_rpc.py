@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Importing `src.core.config` instantiates the service `Settings`, which requires
 # the whole Postgres/Redis/Rabbit block on top of the Discord credentials. Without
@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import discord  # noqa: E402
 
+from shared.messaging.config import DISCORD_MEMBER_CHANGED_QUEUE  # noqa: E402
+from src.cogs import membership  # noqa: E402
 from src.cogs.membership import MembershipEventsCog  # noqa: E402
 from src.rabbit.gateway import DiscordRabbitGateway  # noqa: E402
 from src.services.directory import DiscordDirectoryService  # noqa: E402
@@ -25,9 +27,9 @@ from src.services.directory import DiscordDirectoryService  # noqa: E402
 def _registered_handlers() -> dict[str, object]:
     """Run the real registration and index the handlers by queue name.
 
-    ``*extra`` matters: the match-log result subscriber is bound to an exchange
-    as a second positional argument, and a one-arg fake silently made it look
-    like that subscriber did not exist.
+    ``*extra`` matters: the channel-registry subscriber is bound to an exchange
+    as a second positional argument, and a one-arg fake silently made such a
+    subscriber look like it did not exist.
     """
     gateway = DiscordRabbitGateway(
         settings=MagicMock(),
@@ -35,7 +37,6 @@ def _registered_handlers() -> dict[str, object]:
         registry=MagicMock(),
         directory=MagicMock(),
         voice=MagicMock(),
-        result_waiter=MagicMock(),
         bot=MagicMock(wait_until_ready=AsyncMock()),
         session_maker=MagicMock(),
     )
@@ -71,14 +72,11 @@ def _http_exception():
 
 class HandlerRegistrationTests(IsolatedAsyncioTestCase):
     def test_match_log_result_subscriber_is_registered(self) -> None:
-        """Regression: it was once nested in an unrelated module-level function.
-
-        Nothing then consumed MATCH_LOG_RESULT_EXCHANGE, so every attachment
-        upload waited out the full 120s result timeout instead of getting its
-        parser verdict -- and the handler's own `broker` reference was undefined.
-        """
+        """Regression: it was once nested in an unrelated module-level function,
+        so nothing consumed the match-log results and no upload got its verdict."""
         names = {getattr(h, "__name__", "") for h in _registered_handlers().values()}
         self.assertIn("handle_match_log_result", names)
+        self.assertIn("handle_channel_registry_change", names)
         self.assertIn("handle_discord_command", names)
 
 
@@ -249,17 +247,24 @@ class DirectoryServiceTests(IsolatedAsyncioTestCase):
 
 
 class MembershipEventsCogTests(IsolatedAsyncioTestCase):
-    async def test_on_member_update_triggers_subscription_change(self) -> None:
+    async def test_on_member_update_publishes_the_member_change(self) -> None:
         r1 = MagicMock(id=100)
         r2 = MagicMock(id=200)
 
         before = MagicMock(id=111, roles=[r1], guild=MagicMock(id=999))
         after = MagicMock(id=111, roles=[r1, r2], guild=MagicMock(id=999))
 
-        bot = MagicMock()
-        bot.subscription_sync.resync = AsyncMock()
-        cog = MembershipEventsCog(bot)
+        broker = object()
+        publish = AsyncMock()
+        with (
+            patch.object(membership, "optional_broker", return_value=broker),
+            patch.object(membership, "publish_message", publish),
+        ):
+            await MembershipEventsCog(MagicMock()).on_member_update(before, after)
 
-        await cog.on_member_update(before, after)
-
-        bot.subscription_sync.resync.assert_awaited_once_with("999", "111", "role_update")
+        sent_broker, payload, queue = publish.await_args.args
+        self.assertIs(sent_broker, broker)
+        self.assertIs(queue, DISCORD_MEMBER_CHANGED_QUEUE)
+        self.assertEqual(
+            (payload["guild_id"], payload["discord_user_id"], payload["reason"]), ("999", "111", "role_update")
+        )

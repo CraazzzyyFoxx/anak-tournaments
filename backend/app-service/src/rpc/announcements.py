@@ -11,8 +11,8 @@ on the platform principal instead -- a workspace owner holding
 grant would let any owner speak in the platform's voice.
 
 ``audience='user'`` is not reachable here at all: personal notifications are
-written by the domain flows that cause them, from server-resolved recipients
-(Global Constraint 3). The request schema simply has no such value.
+written by the domain flows that cause them, from server-resolved recipients.
+The request schema simply has no such value.
 """
 
 from __future__ import annotations

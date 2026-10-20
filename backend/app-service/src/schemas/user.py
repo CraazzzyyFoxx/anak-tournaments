@@ -140,8 +140,8 @@ class UserTournamentPlayer(BaseModel):
     relative_player: int | None = None
     # Average MVP placement (1 = best) across this player's matches in THIS
     # tournament. Mirrors the dossier "Avg MVP" metric: per match take
-    # COALESCE(ImpactRank, Performance); ImpactRank preferred, Performance the
-    # legacy fallback. `None` when the player has no such stat rows.
+    # COALESCE(ImpactRank, Performance). `None` when the player has no such stat
+    # rows.
     avg_mvp: float | None = None
     # This player's top characters by playtime in THIS tournament (the catalog's entity
     # shape). Empty when none recorded.

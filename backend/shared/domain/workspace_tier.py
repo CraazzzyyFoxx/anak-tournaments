@@ -18,7 +18,7 @@ VERIFICATION_STATUSES = ("unverified", "verified", "trusted")
 def is_verified_or_trusted(workspace: Any) -> bool:
     """May this workspace use metered resources and appear in the public directory?
 
-    One bar for both since 2026-09-07: ``trusted`` is now a badge on the public
-    card, not a separate admission gate.
+    One bar for both: ``trusted`` is a badge on the public card, not a separate
+    admission gate.
     """
     return workspace.verification_status in ("verified", "trusted")

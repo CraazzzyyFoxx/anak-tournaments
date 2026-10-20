@@ -35,8 +35,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 os.environ["DEBUG"] = "false"
 
 from shared.disciplines import DISCIPLINES  # noqa: E402
+from src.domain.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
 
 

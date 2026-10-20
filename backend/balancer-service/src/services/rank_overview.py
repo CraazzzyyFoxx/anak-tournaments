@@ -38,12 +38,6 @@ from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
 from shared.schemas.identity import PlayerIdentityRead
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
-
-# ``_filters``/``main_handle`` are the roster's own search predicates and
-# primary-handle scalar: what ``q`` matches stays one definition, shared with
-# ``rpc.balancer.players.list``.
-from shared.services.workspace_roster import _filters as _roster_filters
-from shared.services.workspace_roster import hosts_by_user_id, main_handle
 from src.domain.mix_ranker import RankerSettings
 
 # The layer/sort vocabulary lives in the schemas module so the OpenAPI export
@@ -51,7 +45,13 @@ from src.domain.mix_ranker import RankerSettings
 from src.schemas.ranks import CURRENT_LAYERS, LAYERS, SORTS
 from src.services.mix_ranker import mix_ranker_service
 
-__all__ = ("RankOverviewFilters", "parse_layers", "rank_overview_page")
+# ``_filters``/``main_handle`` are the roster's own search predicates and
+# primary-handle scalar: what ``q`` matches stays one definition, shared with
+# ``rpc.balancer.players.list``.
+from src.services.workspace_roster import _filters as _roster_filters
+from src.services.workspace_roster import hosts_by_user_id, main_handle
+
+__all__ = ("RankOverviewFilters", "RankOverviewQueries", "parse_layers", "rank_overview_queries")
 
 _AT = sa.DateTime(timezone=True)
 
@@ -622,71 +622,78 @@ async def _game_grid(session: AsyncSession, workspace_id: int, discipline: str) 
         return None
 
 
-async def rank_overview_page(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    disciplines: Sequence[str],
-    filters: RankOverviewFilters,
-) -> tuple[list[dict[str, Any]], int]:
-    """One page of the flat rank table, plus the exact total behind it.
+class RankOverviewQueries:
+    async def page(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        disciplines: Sequence[str],
+        filters: RankOverviewFilters,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """One page of the flat rank table, plus the exact total behind it.
 
-    One code reads that game; several are the all-games view (spec §6.8): each game's branches are built on its own
-    roles, grid and identity provider, tagged with its code, and the union is filtered, sorted and paged as one.
-    """
-    if not filters.layers or not disciplines:
-        return [], 0
+        One code reads that game; several are the all-games view (spec §6.8): each game's branches are built on its
+        own roles, grid and identity provider, tagged with its code, and the union is filtered, sorted and paged as one.
+        """
+        if not filters.layers or not disciplines:
+            return [], 0
 
-    ranker = await mix_ranker_service.settings(session, workspace_id)
-    providers: dict[str, str | None] = {}
-    games: list[Any] = []
-    for code in disciplines:
-        grid = await _game_grid(session, workspace_id, code)
-        providers[code] = discipline_spec(code).identity_provider
-        members = _members_cte(workspace_id, providers[code], filters, code)
-        branches = _branches(
-            workspace_id,
-            code,
-            await CatalogRoleRepository().rated_dimension_id(session, discipline=code),
-            filters,
-            members,
-            grid if grid is not None else DivisionGrid(version_id=None, tiers=()),
-            ranker,
+        ranker = await mix_ranker_service.settings(session, workspace_id)
+        providers: dict[str, str | None] = {}
+        games: list[Any] = []
+        for code in disciplines:
+            grid = await _game_grid(session, workspace_id, code)
+            providers[code] = discipline_spec(code).identity_provider
+            members = _members_cte(workspace_id, providers[code], filters, code)
+            branches = _branches(
+                workspace_id,
+                code,
+                await CatalogRoleRepository().rated_dimension_id(session, discipline=code),
+                filters,
+                members,
+                grid if grid is not None else DivisionGrid(version_id=None, tiers=()),
+                ranker,
+            )
+            if not branches:
+                continue
+            game_rows = (
+                sa.union_all(*branches).subquery(f"rank_rows_{code}")
+                if len(branches) > 1
+                else branches[0].subquery(f"rank_rows_{code}")
+            )
+            division = (
+                division_case_expr(game_rows.c.rank_value, grid)
+                if grid is not None and grid.tiers
+                else _null(sa.Integer)
+            )
+            games.append(sa.select(game_rows, sa.literal(code).label("discipline"), division.label("division")))
+        if not games:
+            return [], 0
+
+        rows = sa.union_all(*games).subquery("rank_rows") if len(games) > 1 else games[0].subquery("rank_rows")
+        preds = _predicates(rows, filters)
+
+        total = await session.scalar(
+            sa.select(sa.func.count()).select_from(sa.select(sa.literal(1)).select_from(rows).where(*preds).subquery())
         )
-        if not branches:
-            continue
-        game_rows = (
-            sa.union_all(*branches).subquery(f"rank_rows_{code}")
-            if len(branches) > 1
-            else branches[0].subquery(f"rank_rows_{code}")
+        result = await session.execute(
+            sa.select(rows)
+            .where(*preds)
+            .order_by(*_order_by(rows, filters))
+            .limit(filters.per_page)
+            .offset(max(filters.page - 1, 0) * filters.per_page)
         )
-        division = (
-            division_case_expr(game_rows.c.rank_value, grid) if grid is not None and grid.tiers else _null(sa.Integer)
+        page = result.all()
+        author_names = await hosts_by_user_id(
+            session,
+            workspace_id=workspace_id,
+            user_ids=[row.author_user_id for row in page if row.author_user_id is not None],
         )
-        games.append(sa.select(game_rows, sa.literal(code).label("discipline"), division.label("division")))
-    if not games:
-        return [], 0
+        return [_dump(row, providers, author_names) for row in page], int(total or 0)
 
-    rows = sa.union_all(*games).subquery("rank_rows") if len(games) > 1 else games[0].subquery("rank_rows")
-    preds = _predicates(rows, filters)
 
-    total = await session.scalar(
-        sa.select(sa.func.count()).select_from(sa.select(sa.literal(1)).select_from(rows).where(*preds).subquery())
-    )
-    result = await session.execute(
-        sa.select(rows)
-        .where(*preds)
-        .order_by(*_order_by(rows, filters))
-        .limit(filters.per_page)
-        .offset(max(filters.page - 1, 0) * filters.per_page)
-    )
-    page = result.all()
-    author_names = await hosts_by_user_id(
-        session,
-        workspace_id=workspace_id,
-        user_ids=[row.author_user_id for row in page if row.author_user_id is not None],
-    )
-    return [_dump(row, providers, author_names) for row in page], int(total or 0)
+rank_overview_queries = RankOverviewQueries()
 
 
 def parse_layers(raw: Sequence[str] | None) -> tuple[str, ...]:

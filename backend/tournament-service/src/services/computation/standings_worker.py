@@ -22,12 +22,10 @@ from src.services.tournament.events import (
 )
 
 # Standings are the input to every placement-, streak- and playoff-shaped rule.
-# Those rules used to be re-evaluated only by events that fire BEFORE this job
-# writes its generation, so they read the previous standings or were skipped by
-# the dependency filter entirely (review 2026-09-16 §1.6). The outbox row goes
-# out in the same transaction as the standings themselves, so the evaluation can
-# never observe an older generation than the one that triggered it. The same job
-# flips ``Stage.is_completed``, which the stage-completion rules read.
+# The outbox row goes out in the same transaction as the standings themselves,
+# so the evaluation can never observe an older generation than the one that
+# triggered it. The same job flips ``Stage.is_completed``, which the
+# stage-completion rules read.
 _STANDINGS_CHANGED_TABLES = ["tournament.standing", "tournament.player", "tournament.team", "tournament.stage"]
 
 
@@ -82,9 +80,9 @@ async def process_standings_job(job_id: int) -> None:
             # SKIP LOCKED, not a plain wait: whoever else is writing this
             # tournament (a bracket job, an admin transition) holds this row for
             # its whole transaction, and waiting burns the full statement_timeout
-            # AND one of the three attempts — three contended passes used to
-            # leave the standings permanently stale (OWT-TOURNAMENTS-R). The
-            # outbox drains every second, so handing the job back costs a tick.
+            # AND one of the three attempts — three contended passes would
+            # leave the standings permanently stale. The outbox drains every
+            # second, so handing the job back costs a tick.
             locked = await session.scalar(
                 sa.select(models.Tournament.id)
                 .where(models.Tournament.id == current.tournament_id)
@@ -93,7 +91,7 @@ async def process_standings_job(job_id: int) -> None:
             if locked is None:
                 # SKIP LOCKED cannot tell "held by another writer" from "row is
                 # gone", and a deleted tournament must not requeue forever; it
-                # falls through to the recalculation that used to run anyway.
+                # falls through to the recalculation instead.
                 # ponytail: requeues are unbounded, add a backoff if a stuck
                 # lock ever spins a job.
                 still_exists = await session.scalar(

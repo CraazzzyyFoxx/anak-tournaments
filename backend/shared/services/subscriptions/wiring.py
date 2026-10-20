@@ -63,7 +63,7 @@ def build_strategies(
     """Map ``provider`` -> live resolution strategy.
 
     Keys are the entitlement providers stored in ``provider_config.provider``
-    (``boosty``/``twitch``), not the mechanism used to answer: Boosty's tier comes
+    (``boosty``/``twitch``), not the mechanism that answers: Boosty's tier comes
     from Discord roles, which is an implementation detail recorded in the
     verdict's ``source``.
 

@@ -1,20 +1,14 @@
-"""Token issuance/validation for the gateway's own auth middleware.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
-"""
+"""Token issuance/validation for the gateway's own auth middleware."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.schemas.rpc import rpc_error
 from src import schemas
-from src.schemas.rpc import rpc_error
 from src.services.service_tokens import service_tokens
 from src.services.token_validation import token_validation
 
@@ -31,7 +25,7 @@ def register(broker: Any, logger: Any) -> None:
         if not token or not isinstance(token, str):
             return rpc_error("bad_request", "token is required")
 
-        async def run(session: AsyncSession) -> dict:
+        async def run(session: Any) -> dict:
             payload = await token_validation.validate(session, token)
             return payload.model_dump(mode="json")
 
@@ -46,7 +40,7 @@ def register(broker: Any, logger: Any) -> None:
         """
         raw = (data or {}).get("discord_user_id")
 
-        async def run(session: AsyncSession) -> dict:
+        async def run(session: Any) -> dict:
             # Snowflakes arrive as a JSON string or, from a careless client, a
             # number; either way the stored provider_user_id is the digits.
             discord_user_id = str(raw).strip() if raw is not None else ""

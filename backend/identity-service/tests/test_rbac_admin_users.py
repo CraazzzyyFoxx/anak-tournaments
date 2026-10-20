@@ -15,7 +15,7 @@ from src import models, schemas  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.auth_users import auth_users  # noqa: E402
 from src.services.players import players  # noqa: E402
-from src.services.rbac_admin import (  # noqa: E402
+from src.services.rbac import (  # noqa: E402
     AuthUserAdminService,
     RoleAdminService,
     auth_user_admin,

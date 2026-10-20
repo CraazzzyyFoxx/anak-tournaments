@@ -2,8 +2,7 @@
 
 Default rule metadata (the canonical catalog + pure rule-builder functions)
 belongs to the discipline module and is reached through ``DisciplineSpec.achievement_catalog``; this module keeps only the
-DB-touching ``seed_workspace``/``hard_reset_workspace`` orchestration, wrapped
-in one class + singleton per ``backend/ARCHITECTURE.md``.
+DB-touching ``seed_workspace``/``hard_reset_workspace`` orchestration.
 """
 
 from __future__ import annotations
@@ -192,5 +191,3 @@ class AchievementSeederService:
 
 
 achievement_seeder_service = AchievementSeederService()
-seed_workspace = achievement_seeder_service.seed_workspace
-hard_reset_workspace = achievement_seeder_service.hard_reset_workspace

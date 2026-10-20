@@ -1,16 +1,10 @@
 """Event-type names for the live-balancer topic (``tournament:{id}:balancer``).
 
-Names only. Publication goes through ``shared.services.realtime.emit``, which
-is the single path for every event in the system; this module exists because
-both tournament-service (registration edits) and balancer-service
-(balance/config/teams edits, job lifecycle) name the same event types, and the
-frontend mirrors these literals in TypeScript.
-
-Two of them are never published from Python at all and live here so the string
-has one home: ``balancer.presence`` is synthesized by the gateway from live
-WebSocket connections, and ``balancer.drag`` is client-originated over the
-socket's ``publish`` op (the only event type the gateway's publish allowlist
-accepts).
+Names only — publication goes through ``shared.services.realtime.emit``. Shared
+by tournament-service (registration edits) and balancer-service (balance/config/
+teams edits, job lifecycle); the frontend mirrors these literals in TypeScript.
+``balancer.presence`` and ``balancer.drag`` are never published from Python and
+live here so each string has one home.
 """
 
 from __future__ import annotations
@@ -45,6 +39,7 @@ BALANCER_JOB_FAILED = "balancer_job.failed"
 # Ephemeral, gateway-synthesized from live WebSocket connections.
 BALANCER_PRESENCE = "balancer.presence"
 
-# Ephemeral live-drag overlay: client-originated over the socket and fanned out
-# to co-subscribers by the gateway, never persisted.
+# Ephemeral live-drag overlay: client-originated over the socket's ``publish`` op
+# (the only event type the gateway's publish allowlist accepts), fanned out to
+# co-subscribers by the gateway, never persisted.
 BALANCER_DRAG = "balancer.drag"

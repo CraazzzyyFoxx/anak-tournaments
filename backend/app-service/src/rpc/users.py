@@ -1,10 +1,8 @@
 """Bespoke typed-RPC read subscribers for the /users/* surface.
 
-Each handler mirrors a route in ``src/routes/user.py`` 1:1: it rebuilds the
-route's query-params model via ``build_query_model`` (or pulls ad-hoc scalars
-with ``_common.q*``), reconstructs the WorkspaceContext without FastAPI DI, and
-calls the same flow. No route sets ``response_model_exclude_none`` -> default
-``exclude_none=False`` serialization (byte-identical to FastAPI).
+Each handler rebuilds its query-params model via ``build_query_model`` (or
+pulls ad-hoc scalars with ``_common.q*``), resolves the WorkspaceContext and
+calls one flow. Responses use the default ``exclude_none=False`` serialization.
 """
 
 from __future__ import annotations
@@ -43,7 +41,7 @@ def _ws_id(data: dict[str, Any]) -> int | None:
 
     Every ``/users/*`` read is workspace-scoped and the frontend always sends
     ``workspace_id``. A missing scope is treated as a bug: returning unfiltered
-    rows would span every workspace (cross-tenant leak — see H8), so raise 400
+    rows would span every workspace (cross-tenant leak), so raise 400
     instead of defaulting to ``None``. ``workspace_id=all`` is the public
     opt-in for a deliberate cross-workspace read and resolves to ``None`` —
     the only way this helper returns one.
@@ -54,10 +52,10 @@ def _ws_id(data: dict[str, Any]) -> int | None:
 def _compare_scope(data: dict[str, Any]) -> WorkspaceScope:
     """Workspace scope for the two compare reads.
 
-    Unlike the rest of ``/users/*`` these keep their historical default: a
-    missing ``workspace_id`` is the cross-workspace read (global grid, every
-    workspace's tournaments), not a 400. A concrete id scopes the grid AND the
-    population to that workspace's tournaments.
+    Unlike the rest of ``/users/*``, a missing ``workspace_id`` is the
+    cross-workspace read (global grid, every workspace's tournaments), not a
+    400. A concrete id scopes the grid AND the population to that workspace's
+    tournaments.
     """
     scope = c.q_workspace_scope(data)
     return ALL_WORKSPACES if scope is None else scope
@@ -116,7 +114,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             discipline = _list_game(data, "role", "divisions")
             ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
-            # Route passes the QueryParams model straight to the flow (no from_query_params).
+            # The QueryParams model goes straight to the flow (no from_query_params).
             params = build_query_model(schemas.UserOverviewStatsQueryParams, data.get("query"))
             return await UserService.of(discipline).get_overview_stats(
                 session, params, grid=ws.grid, workspace_id=ws.id
@@ -224,7 +222,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             tournament_id = int(data["tournament_id"])
             await c.gate_tournament(session, data, tournament_id)
-            stats = UserService.of(await c.tournament_discipline(session, tournament_id))
+            stats = await UserService.for_tournament(session, tournament_id)
             grid = await get_division_grid(session, None, tournament_id)
             return await stats.get_tournament_with_stats(session, c.require_id(data), tournament_id, grid=grid)
 
@@ -235,7 +233,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             tournament_id = int(data["tournament_id"])
             await c.gate_tournament(session, data, tournament_id)
-            stats = UserService.of(await c.tournament_discipline(session, tournament_id))
+            stats = await UserService.for_tournament(session, tournament_id)
             return await stats.get_tournament_encounters(session, c.require_id(data), tournament_id)
 
         return await c.envelope(logger, "users.tournament_encounters", op, session_factory=_SF)
@@ -256,7 +254,7 @@ def register(broker: Any, logger: Any) -> None:
                 stat = enums.LogStatsName(raw_stat)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=f"invalid stat value: {raw_stat}") from exc
-            stats = UserService.of(await c.tournament_discipline(session, tournament_id))
+            stats = await UserService.for_tournament(session, tournament_id)
             return await stats.get_tournament_leaderboard(session, tournament_id, stat)
 
         return await c.envelope(logger, "users.tournament_leaderboard", op, session_factory=_SF)

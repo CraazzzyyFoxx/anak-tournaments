@@ -6,7 +6,6 @@ import { BadgeCheck, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -15,6 +14,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { SettingRow } from "@/components/kit/SettingRow";
 import type { Tone } from "@/components/kit/tone";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
@@ -70,7 +70,10 @@ export function WorkspaceNotListedNotice({
   );
 }
 
-/** Superuser-only trust tier control. Renders nothing for anyone else. */
+/**
+ * Superuser-only trust tier control, as a `SettingRow` of its own. Renders
+ * nothing for anyone else, so a non-superuser gets no empty row.
+ */
 export function WorkspaceVerificationControl({
   workspace,
   isSuperuser,
@@ -90,14 +93,13 @@ export function WorkspaceVerificationControl({
   if (!isSuperuser) return null;
 
   return (
-    <div>
-      <Label htmlFor="workspace-verification">{t("label")}</Label>
+    <SettingRow htmlFor="workspace-verification" label={t("label")} hint={t("description")}>
       <Select
         value={workspace.verification_status}
         disabled={mutation.isPending}
         onValueChange={(next) => mutation.mutate(next as WorkspaceVerificationStatus)}
       >
-        <SelectTrigger id="workspace-verification" className="mt-1.5 w-full sm:w-64">
+        <SelectTrigger id="workspace-verification" className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -108,9 +110,6 @@ export function WorkspaceVerificationControl({
           ))}
         </SelectContent>
       </Select>
-      <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        {t("description")}
-      </p>
-    </div>
+    </SettingRow>
   );
 }

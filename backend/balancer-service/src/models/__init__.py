@@ -1,4 +1,3 @@
-# Import all models from shared library
 from shared.models.achievements.achievement import *
 from shared.models.analytics.analytics import *
 from shared.models.balancer.balance import *

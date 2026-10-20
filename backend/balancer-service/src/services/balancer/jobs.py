@@ -33,12 +33,11 @@ from src.core.metrics import (
     BALANCER_SOLVER_SECONDS,
 )
 from src.core.security.workspace_access import WorkspaceAccessPolicy
-from src.schemas.balancer import CreateJobResponse, JobStatusResponse
-from src.services.balancer.config.provider import get_balancer_config_payload
-from src.services.balancer.config.public_contract import (
+from src.domain.balancer.config.public_contract import (
     normalize_balance_job_result_payload,
     normalize_config_payload,
 )
+from src.schemas.balancer import CreateJobResponse, JobStatusResponse
 from src.services.balancer.progress import (
     TERMINAL_STATUSES,
     ProgressEventThrottler,
@@ -58,11 +57,11 @@ _payload_parser = BalancerRequestParser()
 # cost lives in ``quota.operation``, not here.
 _JOB_OPERATION = "balancer.job"
 
-# Outer wall-clock safety net for a single solver run (review H5). The native
-# optimizer already honours ``time_limit_ms`` (max 600s); this watchdog is a
-# coarse backstop that fails the job instead of awaiting forever should the
-# solver hang or ignore its budget. Sized above the max native budget plus room
-# for polishing/serialization.
+# Outer wall-clock safety net for a single solver run. The native optimizer
+# already honours ``time_limit_ms`` (max 600s); this watchdog is a coarse
+# backstop that fails the job instead of awaiting forever should the solver
+# hang or ignore its budget. Sized above the max native budget plus room for
+# polishing/serialization.
 _SOLVER_WATCHDOG_SECONDS = 660.0
 
 # The synchronous endpoint answers inside one HTTP request, so the solver's own
@@ -116,20 +115,14 @@ def _build_job_urls(job_id: str) -> dict[str, str]:
     }
 
 
-def get_config(discipline: str | None) -> dict:
-    return get_balancer_config_payload(discipline)
-
-
 def _runtime(store=None) -> JobService:
     return JobService(store=RedisMetaStore(store or get_job_store()), concurrency=Unlimited())
 
 
-# The job store is Redis; neither the queue-time RPC (a read) nor the worker
-# writes anything to Postgres. `emit` publishes on a session's commit, so the
-# event row is the only write there is and it needs a session of its own — the
-# one case where opening one here is not the old "publish from a side session
-# after the fact" pattern, because there is no other transaction to ride.
-# Best-effort throughout: a broadcast must never fail the job it describes.
+# The job store is Redis: the queue-time RPC's session only reads and the worker
+# has none, yet `emit` writes its event row on a session's commit -- so the
+# event gets a session of its own. Best-effort throughout: a broadcast must
+# never fail the job it describes.
 async def _emit_job(tournament_id: int, event_type: str, **fields: Any) -> None:
     try:
         async with db.async_session_maker() as session, session.begin():
@@ -189,14 +182,31 @@ async def create_job(
     tournament_id: int | None = None,
     discipline: str | None = None,
 ) -> CreateJobResponse:
+    """Queue a balance job for an uploaded pool, or -- with ``uploaded_file=None`` and a ``tournament_id`` -- for
+    the tournament's own pool.
+
+    The tournament pool is built here by the same engine the draft reads (``shared.services.roster``), so the
+    balancer and the draft cannot be fed two different rank sources.
+    """
     job_store = get_job_store()
 
-    # Settled before the upload is parsed: a file over the cap is refused
-    # without paying to decode it, and without burning the request token.
-    await quota.check_payload(user, _JOB_OPERATION, workspace_id=workspace_id, size_bytes=_upload_size(uploaded_file))
-    _access_policy.ensure_workspace_access(user, workspace_id)
-
-    player_data = await _payload_parser.parse_player_data(uploaded_file)
+    if uploaded_file is None:
+        _access_policy.ensure_workspace_access(user, workspace_id)
+        rosters = await roster_engine.for_tournament(session, tournament_id, pool_only=True)
+        player_data = roster_engine.balancer_input(rosters.values())
+        if not player_data["players"]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No pool registration has a ranked role; set ranks in the balancer first",
+            )
+    else:
+        # Settled before the upload is parsed: a file over the cap is refused
+        # without paying to decode it, and without burning the request token.
+        await quota.check_payload(
+            user, _JOB_OPERATION, workspace_id=workspace_id, size_bytes=_upload_size(uploaded_file)
+        )
+        _access_policy.ensure_workspace_access(user, workspace_id)
+        player_data = await _payload_parser.parse_player_data(uploaded_file)
     config_overrides = _payload_parser.parse_config_overrides(raw_config)
 
     # Freeze the owner's projection in the payload: the tournament's, or the
@@ -262,91 +272,6 @@ async def create_job(
             actor_user_id=user.id,
         )
 
-    return CreateJobResponse(job_id=job_id, status="queued", **_build_job_urls(job_id))
-
-
-async def create_tournament_job(
-    *,
-    session,
-    tournament_id: int,
-    raw_config: str | None,
-    workspace_id: int,
-    user,
-    broker,
-) -> CreateJobResponse:
-    """Queue a balance for a tournament's own pool -- no upload, no client build.
-
-    The algorithm's input used to be assembled in the BROWSER from the admin
-    registration list, which is how the balancer and the draft ended up reading
-    two different rank sources. It is built here now, by the same engine the
-    draft reads (``shared.services.roster``), so the two cannot diverge again.
-    """
-    job_store = get_job_store()
-
-    _access_policy.ensure_workspace_access(user, workspace_id)
-
-    rosters = await roster_engine.for_tournament(session, tournament_id, pool_only=True)
-    player_data = roster_engine.balancer_input(rosters.values())
-    if not player_data["players"]:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No pool registration has a ranked role; set ranks in the balancer first",
-        )
-    config_overrides = _payload_parser.parse_config_overrides(raw_config)
-
-    format_context = await _owner_format_context(session, workspace_id, tournament_id)
-    player_data["format_context"] = format_context
-
-    job_id = uuid.uuid4().hex
-    lease = await quota.lease(
-        user,
-        _JOB_OPERATION,
-        workspace_id=workspace_id,
-        lease_id=job_id,
-        ttl_seconds=config.balancer_job_ttl_seconds,
-        item_count=_count_input_players(player_data),
-    )
-    api_key_id = _api_key_id_of(user)
-
-    try:
-        meta = await _runtime(job_store).create(
-            None,
-            JobSpec(
-                kind="balance",
-                workspace_id=workspace_id,
-                extra={
-                    "player_data": player_data,
-                    "config_overrides": config_overrides,
-                    "job_id": job_id,
-                    "tournament_id": tournament_id,
-                    "created_by": user.id,
-                    "credential_type": getattr(user, "_credential_type", "access_token"),
-                    "api_key_id": api_key_id,
-                    "role_mask": format_context["role_mask"],
-                },
-            ),
-        )
-        job_id = str(meta.get("job_id") or job_id)
-    except Exception:
-        await quota.release(lease)
-        raise
-
-    try:
-        await BalancerJobPublisher(broker, logger).publish_job_requested(job_id)
-    except Exception as exc:
-        await _runtime(job_store).mark_failed(None, job_id, error=f"Failed to enqueue balancer job: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to enqueue balancer job",
-        ) from exc
-
-    await _emit_job(
-        tournament_id,
-        BALANCER_JOB_QUEUED,
-        job_id=job_id,
-        status="queued",
-        actor_user_id=user.id,
-    )
     return CreateJobResponse(job_id=job_id, status="queued", **_build_job_urls(job_id))
 
 
@@ -540,13 +465,11 @@ async def execute_balance_job(job_id: str, *, progress_clock=None) -> None:
             raise ValueError("Job payload does not contain valid player data")
         if not isinstance(config_overrides, dict):
             raise ValueError("Job payload does not contain valid config overrides")
-        # Absent on jobs queued before the roster shape reached the balancer:
-        # ``None`` keeps the AlgorithmConfig default mask.
+        # Absent ⇒ ``None`` keeps the AlgorithmConfig default mask.
         role_mask = payload.get("role_mask") or None
         if role_mask is not None and not isinstance(role_mask, dict):
             raise ValueError("Job payload does not contain a valid role mask")
 
-        algorithm = "tournament_balancer"
         created_at = current_meta.get("created_at") if isinstance(current_meta, dict) else None
         if isinstance(created_at, (int, float)):
             queue_wait_seconds = max(0.0, time.time() - float(created_at))

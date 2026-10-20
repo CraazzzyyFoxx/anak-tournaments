@@ -29,9 +29,9 @@ __all__ = ("load_producers", "resolve_encounter_maps")
 async def load_producers(session: AsyncSession, s3: S3Client, encounter_id: int) -> dict[int, str]:
     """Job id -> ``canonical|decoded`` for every job behind the encounter's observations.
 
-    Read before any final lock (it fetches envelopes from S3). A job without an envelope is undecoded raw input,
-    which is what the Workshop path always was, so it reads as ``decoded``. Only a discipline that derives matches
-    from raw logs has anything to rewrite, so the others' envelopes are never fetched.
+    Read before any final lock (it fetches envelopes from S3). A job without an envelope is undecoded raw Workshop
+    input, so it reads as ``decoded``. Only a discipline that derives matches from raw logs has anything to rewrite,
+    so the others' envelopes are never fetched.
     """
     from src.services.ingest.jobs import load_document
 

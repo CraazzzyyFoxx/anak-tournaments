@@ -10,9 +10,9 @@ from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.models.division_grid import DivisionGridMapping, DivisionGridMappingRule, DivisionGridVersion
 from shared.repository import AnalyticsAlgorithmRepository, AnalyticsPlayerRepository, TeamRepository
 from shared.repository.stats_queries import player_facts
+from shared.services.workspace_scope import workspace_scope_filter
 from src import models
-from src.core.workspace import workspace_scope_filter
-from src.domain.encounter_maps import seat_maps
+from src.services.analytics.encounter_maps import seat_maps
 
 
 class AnalyticsService:
@@ -221,12 +221,11 @@ class AnalyticsService:
             .where(
                 models.Encounter.tournament_id.between(start_range, end_range),
                 # NOT inert, unlike the player-scoped CTEs above: this read reaches
-                # the encounters through ``joinedload``, so a scrim encounter
-                # (docs/plans/2026-08-12-scrim-rooms.md) comes back with two real
-                # teams and empty rosters, and ``prepare_openskill_data`` then calls
-                # ``PlackettLuce.rate`` with two empty sides -- a hard ValueError
-                # for every tournament whose lookback window spans the hidden scrim
-                # container. Scope it out at the source.
+                # the encounters through ``joinedload``, so a scrim encounter comes
+                # back with two real teams and empty rosters, and
+                # ``prepare_openskill_data`` then calls ``PlackettLuce.rate`` with two
+                # empty sides -- a hard ValueError for every tournament whose lookback
+                # window spans the hidden scrim container. Scope it out at the source.
                 models.Tournament.is_hidden.is_(False),
                 models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
@@ -249,10 +248,10 @@ class AnalyticsService:
         """Chronological start id for an OpenSkill lookback window.
 
         Returns the smallest tournament id among the ``look_back`` most recent
-        tournaments with ``id <= end_tournament_id`` (within scope). Replaces the
-        old ``end_tournament_id - look_back`` arithmetic: tournament ids are sparse
-        (cancelled events, cross-workspace gaps), so a numeric offset silently
-        shrank — or emptied — the history window and biased the OpenSkill ratings.
+        tournaments with ``id <= end_tournament_id`` (within scope). Not
+        ``end_tournament_id - look_back``: tournament ids are sparse (cancelled
+        events, cross-workspace gaps), so a numeric offset would shrink — or empty —
+        the history window and bias the OpenSkill ratings.
         Falls back to ``end_tournament_id`` when no rows match.
         """
         rows = await session.scalars(
@@ -260,9 +259,9 @@ class AnalyticsService:
             .where(
                 models.Tournament.id <= end_tournament_id,
                 # Hidden tournaments are containers, not seasons. The per-workspace
-                # scrim container (docs/plans/2026-08-12-scrim-rooms.md) would occupy
-                # one of the ``look_back`` slots while contributing no encounters to
-                # the replay — the same window shrinkage this helper exists to fix.
+                # scrim container would occupy one of the ``look_back`` slots while
+                # contributing no encounters to the replay — the same window
+                # shrinkage this helper exists to avoid.
                 models.Tournament.is_hidden.is_(False),
                 models.Tournament.discipline == discipline,
                 *workspace_scope_filter(workspace_id, workspace_ids),
@@ -288,8 +287,8 @@ class AnalyticsService:
         Chronology is ``(coalesce(start_date, created_at), id)``. Unlike
         :func:`lookback_start_tournament_id` this returns the explicit id list, not
         an id interval: ids are not chronological in this database (tournament 62
-        started 2025-07-19, 61 started 2026-03-14), so an ``id BETWEEN`` window
-        around an out-of-order tournament silently pulls in events played after it.
+        started months before 61), so an ``id BETWEEN`` window around an
+        out-of-order tournament would pull in events played after it.
         Result is ordered oldest → newest and includes ``end_tournament_id`` itself.
         """
         chrono = sa.func.coalesce(models.Tournament.start_date, models.Tournament.created_at)
@@ -473,12 +472,7 @@ class AnalyticsService:
         return {team.id: team for team in teams.unique()}
 
     async def get_teams_with_players(self, session: AsyncSession, tournament_id: int) -> typing.Sequence[models.Team]:
-        """Return teams of a tournament with players and player users eagerly loaded.
-
-        Inlined replacement for stats-service ``team_service.get_by_tournament(
-        session, tid, ["players", "players.user"])`` so analytics-service does not
-        depend on stats-service internals.
-        """
+        """Return teams of a tournament with players and player users eagerly loaded."""
         return await self.teams.list_by_tournament(
             session,
             tournament_id,

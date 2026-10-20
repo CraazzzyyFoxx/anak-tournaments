@@ -30,7 +30,8 @@ __all__ = (
 
 logger = logging.getLogger(__name__)
 
-#: The pre-P6 home of the concrete model classes: a pickle naming it was never converted (``scripts/convert_discipline_artifacts.py``).
+#: Module path of the concrete model classes in the pre-conversion layout: a pickle naming it was never converted
+#: (``scripts/convert_discipline_artifacts.py``).
 _OLD_MODEL_MODULES = "src.services.ml.models"
 
 
@@ -64,10 +65,9 @@ def save_artifact(obj: typing.Any, path: Path) -> str:
 
 
 def load_artifact(storage_uri: str) -> typing.Any:
-    """Load an object previously saved via :func:`save_artifact`."""
+    """Load an object saved via :func:`save_artifact`."""
     if storage_uri.startswith("file://"):
         return joblib.load(storage_uri.removeprefix("file://"))
-    # Future: s3://, gs:// — implement when the storage backend changes.
     raise NotImplementedError(f"Unsupported storage scheme: {storage_uri}")
 
 

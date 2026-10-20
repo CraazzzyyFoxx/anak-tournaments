@@ -1,8 +1,8 @@
-"""A team format (§8.3, D33, D35, D88): what a roster must look like on one event.
+"""A team format: what a roster must look like on one event.
 
 ``TeamFormat`` is the value of one ``roster.team_format`` row with its dimension modes and role rules. Three uses, all
-pure: ``check_team_format`` (an organizer's write), ``slot_shape`` (the slots the balancer and the draft fill, D33) and
-``validate_roster`` (a roster against the format, §8.3 steps 1-6). ``shared.services.team_format`` loads and stores it.
+pure: ``check_team_format`` (an organizer's write), ``slot_shape`` (the slots the balancer and the draft fill) and
+``validate_roster`` (a roster against the format). ``shared.services.team_format`` loads and stores it.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ class TeamFormat:
         )
 
     def mode(self, dimension: str) -> str:
-        """``off`` for a dimension the format does not list: an unlisted axis is ignored, not forbidden (§8.3)."""
+        """``off`` for a dimension the format does not list: an unlisted axis is ignored, not forbidden."""
         return next((entry.mode for entry in self.dimensions if entry.dimension == dimension), "off")
 
 
@@ -113,9 +113,9 @@ class Violation:
 
 @dataclass(frozen=True, slots=True)
 class RosterVerdict:
-    #: Hard: the roster is rejected (§8.3 step 5).
+    #: Hard: the roster is rejected.
     violations: tuple[Violation, ...] = ()
-    #: Soft: recommendations only; never block (§8.3 step 6).
+    #: Soft: recommendations only; never block.
     advisories: tuple[Violation, ...] = ()
 
     @property
@@ -135,7 +135,7 @@ def check_team_format(team_format: TeamFormat, ontology: Ontology) -> None:
     """Raise ``TeamFormatError`` for a format that cannot be stored for ``ontology``'s discipline and workspace.
 
     The ontology holds the module's roles and ONE workspace's sub-roles, so a rule on another workspace's sub-role is
-    an unknown role here (§14.3: "Подроль воркспейса в правиле — только того же воркспейса, что формат").
+    an unknown role here: a format may only name sub-roles of its own workspace.
     """
     if team_format.discipline != ontology.discipline:
         raise TeamFormatError(
@@ -183,11 +183,11 @@ def check_team_format(team_format: TeamFormat, ontology: Ontology) -> None:
 
 
 def slot_shape(team_format: TeamFormat, ontology: Ontology) -> RosterShape:
-    """The slots the balancer and the draft fill (D33).
+    """The slots the balancer and the draft fill.
 
     Only an ``enforced`` rated dimension makes role slots: every top-level role with a ``hard_min`` gets that many
     (``n..n`` and ``n..∞`` alike). The rest of the starting line-up is open slots under the ``flex`` key -- a slot without
-    a constraint, not a role (D86). ``hard_max``, sub-role rules and the other dimensions are checked on the result
+    a constraint, not a role. ``hard_max``, sub-role rules and the other dimensions are checked on the result
     (``validate_roster``); an open slot holds no assignment, so it never counts toward a ``hard_max``.
     """
     rated = ontology.rated.code
@@ -212,7 +212,7 @@ def validate_roster(
     starters: Sequence[Sequence[RoleNode]],
     substitutes: Sequence[Sequence[RoleNode]] = (),
 ) -> RosterVerdict:
-    """§8.3: every member is the leaf roles assigned to them (D86); the verdict lists what breaks the format.
+    """Check a roster: every member is the leaf roles assigned to them; the verdict lists what breaks the format.
 
     Quotas count distinct starters holding the role -- or, with ``include_descendants``, one of its descendants.
     Assignments on active dimensions must resolve in the ontology with matching dimension ids and codes; invalid
@@ -240,7 +240,7 @@ def validate_roster(
             continue
         dimension = ontology.dimensions[entry.dimension]
         starter_roles[entry.dimension] = []
-        # §8.3 step 3: cardinality rejects on every active dimension, whatever its mode.
+        # Cardinality rejects on every active dimension, whatever its mode.
         single = dimension.selection_mode == "single"
         high = entry.player_max_assignments
         if single:
@@ -282,7 +282,7 @@ def validate_roster(
         target = ontology.node(rule.dimension, rule.role)
         wanted = ontology.subtree(target) if rule.include_descendants else frozenset({target.id})
         count = sum(not member.isdisjoint(wanted) for member in starter_roles[rule.dimension])
-        # §8.3 step 5: an explicit hard bound rejects; the mode only decides slots (D33).
+        # An explicit hard bound rejects; the mode only decides slots.
         if rule.hard_min is not None and count < rule.hard_min:
             violations.append(Violation("role_below_hard_min", f"{rule.role}: {count} < {rule.hard_min}"))
         if rule.hard_max is not None and count > rule.hard_max:
@@ -297,12 +297,12 @@ def validate_roster(
 def export_violations(
     team_format: TeamFormat, ontology: Ontology, starters: Sequence[Sequence[RoleNode]]
 ) -> tuple[str, ...]:
-    """D33: hard rules broken by starters, with every assignment each holds."""
+    """Hard rules broken by starters, with every assignment each holds."""
     return tuple(violation.code for violation in validate_roster(team_format, ontology, starters).violations)
 
 
 def export_advisories(
     team_format: TeamFormat, ontology: Ontology, starters: Sequence[Sequence[RoleNode]]
 ) -> tuple[str, ...]:
-    """§8.3 step 6: missed recommendations; never blocks."""
+    """Missed recommendations; never blocks."""
     return tuple(advisory.code for advisory in validate_roster(team_format, ontology, starters).advisories)

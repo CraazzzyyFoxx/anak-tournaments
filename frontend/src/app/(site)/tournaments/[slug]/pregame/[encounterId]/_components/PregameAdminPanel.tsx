@@ -40,6 +40,7 @@ export function PregameAdminPanel({
   activeKind,
   seats,
   itemsByKind,
+  sideLabels,
   bestOf,
   seriesWins,
   onMutated,
@@ -53,6 +54,8 @@ export function PregameAdminPanel({
   seats: PickBanSeat[];
   /** Map and hero catalogs, so the history can name what was banned. */
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
+  /** The game's side labels in `state.sides` order: a side pick names a side by its index. */
+  sideLabels: string[];
   /** Series length and the wins already confirmed — the technical loss's
    * default score is read off them, and neither is in a pick-ban state. */
   bestOf: number;
@@ -88,6 +91,7 @@ export function PregameAdminPanel({
       encounterId={encounterId}
       seats={seats}
       itemsByKind={itemsByKind}
+      sideLabels={sideLabels}
     />
   );
 
@@ -149,6 +153,9 @@ export function PregameAdminPanel({
         selectedItemId={onThisKind ? grid.selectedItemId : null}
         selectedItemName={onThisKind ? grid.selectedItemName : null}
         itemsById={itemsByKind[kind]}
+        sideLabels={sideLabels}
+        // Games live on the map state only; a hero-only room's hero state has none to correct.
+        games={statesByKind.map.games}
         blind={onThisKind ? grid.blind : null}
         seats={seats}
         bestOf={bestOf}

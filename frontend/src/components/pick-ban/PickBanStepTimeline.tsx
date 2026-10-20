@@ -49,6 +49,8 @@ interface PickBanStepTimelineProps {
    */
   currentRound: number | null;
   itemsById: Record<number, PickBanItemLike | undefined>;
+  /** The room's side labels in `state.sides` order: a `side_pick` step's item is an index into them. */
+  sideLabels: string[];
   teamName: (teamId: number) => string;
   /** Drives the "who goes first" line under the Steps title. */
   session: PickBanSession;
@@ -62,6 +64,7 @@ export function PickBanStepTimeline({
   isComplete,
   currentRound,
   itemsById,
+  sideLabels,
   teamName,
   session
 }: Readonly<PickBanStepTimelineProps>) {
@@ -157,6 +160,13 @@ export function PickBanStepTimeline({
         {taken.length > 0 ? (
           <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
             {taken.map((item, position) => {
+              if (summary.action === "side_pick") {
+                return (
+                  <span key={`side-${item.item_id}-${position}`} className="text-xs font-semibold">
+                    {sideLabels[item.item_id] ?? `#${item.item_id}`}
+                  </span>
+                );
+              }
               const name =
                 itemsById[item.item_id]?.name ?? t(`${kind}.itemNumber`, { id: item.item_id });
               return (

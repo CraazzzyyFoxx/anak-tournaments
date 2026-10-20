@@ -19,17 +19,7 @@ class MapFlowsService:
     async def to_pydantic(
         self, session: AsyncSession, map: models.CatalogEntity, entities: list[str]
     ) -> CatalogEntityRead:
-        """
-        Converts a map catalog entity to its native read, including related entities.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            map (models.CatalogEntity): The map entity to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["parent"]).
-
-        Returns:
-            CatalogEntityRead: The native catalog entity of the map.
-        """
+        """Convert a map catalog entity to its native read (``entities``: e.g. ``["parent"]``)."""
         return map_to_read(map, entities)
 
 

@@ -1,11 +1,9 @@
 """FFA lobbies: an encounter with more than two seats.
 
-A lobby is no longer a different KIND of encounter -- there is no ``format``
-column any more (D43). It is an ``Encounter`` whose ``slot_count`` is N and
-whose ``scoring_rule`` is a ``points`` preset: the teams sit in
-``encounter.team`` like a duel's two do, and each game keeps one
-``encounter.game_team`` row per seat with its placement and the organizer's
-columns.
+A lobby is an ``Encounter`` whose ``slot_count`` is N and whose
+``scoring_rule`` is a ``points`` preset: the teams sit in ``encounter.team``
+like a duel's two do, and each game keeps one ``encounter.game_team`` row per
+seat with its placement and the organizer's columns.
 
 A lobby's truth is its games: ``best_of`` is how many it plans to play, and
 completion is DERIVED -- the rule's end formula (``games >= best_of``) is asked
@@ -54,7 +52,7 @@ from src.services.encounter.games import (
     GameResultIn,
     encounter_game_service,
 )
-from src.services.encounter.settle import push_confirmed_to_challonge
+from src.services.encounter.settle import enqueue_challonge_push
 from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = ("FfaEncounterService", "FfaStageResults", "ffa_encounter_service", "public_view")
@@ -192,10 +190,9 @@ class FfaEncounterService:
             reason=reason,
         )
         await enqueue_tournament_recalculation(session, lobby.tournament_id)
-        confirmed, lobby_id = lobby.result_status == EncounterResultStatus.CONFIRMED, lobby.id
+        if lobby.result_status == EncounterResultStatus.CONFIRMED:
+            await enqueue_challonge_push(session, lobby)
         await session.commit()
-        if confirmed:
-            await push_confirmed_to_challonge(session, lobby_id)
         return lobby
 
     async def cancel_game(
@@ -645,14 +642,14 @@ def _line_order(line: GameLine) -> tuple[int, int]:
 
 
 def public_view(lobby: FfaLobbyRead) -> FfaLobbyRead:
-    """The same table with every non-public column removed (plan §7.3).
+    """The same table with every non-public column removed.
 
     The service builds ONE lobby read, with every column on it, and the public
     endpoints trim it here -- so a hidden column cannot leak through a read
     nobody remembered to filter, and the admin endpoints need no second builder.
 
-    The formula is NOT trimmed: it is the rule the table is computed by, and a
-    viewer seeing a hidden key's NAME there was the accepted trade (plan §2).
+    The formula is NOT trimmed: it is the rule the table is computed by, so a
+    viewer may see a hidden key's NAME there.
     """
     public_keys = {column.key for column in lobby.rules.columns if column.public}
     if len(public_keys) == len(lobby.rules.columns):

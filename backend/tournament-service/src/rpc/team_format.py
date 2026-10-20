@@ -1,4 +1,4 @@
-"""A tournament's team format over typed RPC (D35, D88): read it with its slot projection, replace it."""
+"""A tournament's team format over typed RPC: read it with its slot projection, replace it."""
 
 from __future__ import annotations
 

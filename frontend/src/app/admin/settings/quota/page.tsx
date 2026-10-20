@@ -32,7 +32,7 @@ export default function WorkspaceQuotaSettingsPage() {
   if (!canAccessPermission("workspace.update", workspaceId)) {
     return (
       <PageStateCard
-        state="not-found"
+        state="error"
         title={t("notAvailable.title")}
         description={t("notAvailable.description")}
       />

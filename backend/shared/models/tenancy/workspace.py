@@ -78,10 +78,9 @@ class Workspace(db.TimeStampIntegerMixin):
     # same one. String, not BigInteger: there is no arithmetic, no range query and
     # no FK, while both consumers (DiscordRoleResolver, the HTTP boundary) want
     # `str` -- a numeric column would only buy a conversion at every edge.
-    # UNIQUE since the self-service workspace-verification design (2026-08-26):
-    # a guild is claimed by proof of Discord ownership
+    # UNIQUE: a guild is claimed by proof of Discord ownership
     # (``rpc.app.workspaces.discord_guild_verify``), never free text, so two
-    # workspaces can no longer point at the same guild.
+    # workspaces cannot point at the same guild.
     discord_guild_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
     # Who proved ownership of ``discord_guild_id`` and when — same audit shape
     # as ``custom_domain_verified_at``/``custom_domain_verification_token``
@@ -104,7 +103,7 @@ class Workspace(db.TimeStampIntegerMixin):
     owner_id: Mapped[int | None] = mapped_column(
         ForeignKey("auth.user.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Self-service trust tier (workspace self-service design §4.2). Plain
+    # Self-service trust tier. Plain
     # string, not a Postgres enum -- same "stay flexible" precedent as
     # ``newcomer_scope`` below: a fourth tier is a data change, not a
     # migration. ``unverified`` (default for every self-service creation)
@@ -125,8 +124,9 @@ class Workspace(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    #: Which disciplines this workspace may create tournaments and mixes in (D89). Codes are checked in code against
-    #: ``shared.disciplines``; a superuser enables LoL. The column goes when LoL becomes an ordinary discipline.
+    #: Which disciplines this workspace may create tournaments and mixes in, in priority order: ``[0]`` is the
+    #: default when nothing names a game. Codes are checked in code against ``shared.disciplines``; a workspace
+    #: admin (``workspace.update``) edits the list, and disabling a game only refuses NEW tournaments and mixes.
     disciplines_enabled: Mapped[list[str]] = mapped_column(
         ARRAY(String(32)), nullable=False, default=lambda: ["overwatch"], server_default=text("'{overwatch}'")
     )
@@ -167,7 +167,7 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     # Workspace-local nickname, when the workspace calls somebody by a name
     # other than their global ``players.user.name``. Falls back to that name.
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Soft removal (D66): the roster snapshots in ``encounter.team_member`` are
+    # Soft removal: the roster snapshots in ``encounter.team_member`` are
     # anchored on this row and must not lose it, so ``remove_member`` strips the
     # roles and the access and stamps this instead of deleting. NULL = active.
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

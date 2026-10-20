@@ -6,9 +6,7 @@ resources here fan out deliberately broadly — bounded by ``users_cache_ttl``.
 
 ``tests/test_cache_resources.py`` asserts this table covers every
 tournament-scoped resource; an explicitly empty tuple is how "this service
-caches nothing of that" is said out loud, which matters because the previous
-consumer expressed the same thing as ``if reason == "bracket_changed": return``
-— an early return nothing pointed at.
+caches nothing of that" is said out loud.
 """
 
 from __future__ import annotations
@@ -54,9 +52,8 @@ RESOURCE_CACHE_PATTERNS: dict[str, Callable[[int], Sequence[str]]] = {
     Resource.TOURNAMENT_DETAIL: _tournament_wide,
     Resource.TOURNAMENT_STAGES: _tournament_wide,
     # Deliberately nothing: a score report moves no aggregate this service
-    # caches, and the old consumer skipped its `bracket_changed` equivalent for
-    # exactly that reason. The expensive part here is the user-cache fan-out,
-    # and paying it per encounter write would be a self-inflicted SCAN storm.
+    # caches. The expensive part here is the user-cache fan-out, and paying it
+    # per encounter write would be a self-inflicted SCAN storm.
     Resource.TOURNAMENT_ENCOUNTERS: lambda _tid: (),
     # Registration writes move participants_count on the tournament read, which
     # this service does not serve, and no user aggregate.

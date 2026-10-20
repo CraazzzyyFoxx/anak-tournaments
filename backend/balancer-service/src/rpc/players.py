@@ -21,15 +21,12 @@ from faststream.rabbit import RabbitMessage
 from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.disciplines import DISCIPLINES
 from shared.rpc.identity import ensure_workspace_permission
-from shared.services import workspace_roster
-from shared.services.member_rank import member_rank_service
-from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
-from src.schemas import WorkspacePlayerRanksWrite, WorkspacePlayerRead, WorkspacePlayerUpsert
-from src.services.pickup_mix_realtime import emit_pickup_mix_changed
+from src.schemas import WorkspacePlayerRanksWrite, WorkspacePlayerUpsert
+from src.services import workspace_roster
+from src.services.players import workspace_players_service
 
 _SF = db.async_session_maker
 
@@ -44,25 +41,6 @@ def _member_id(data: dict[str, Any]) -> int:
         return int(raw)
     except (TypeError, ValueError):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_id is required") from None
-
-
-def _dump(member: Any, ranks: dict[str, int], author_ranks: dict[str, int]) -> WorkspacePlayerRead:
-    return WorkspacePlayerRead(
-        member_id=member.member_id,
-        player_id=member.player_id,
-        identity=member.identity,
-        display_name=member.display_name,
-        # Whether this member has a linked login identity -- a mix's host/
-        # co-host picker excludes anyone without one, since both grants are
-        # addressed by `auth.user.id` and a member who has never signed in
-        # has none.
-        auth_user_id=member.auth_user_id,
-        # Two layers side by side: the workspace canon everyone sees, and the book
-        # being read (the caller's own unless ``author_user_id`` asked otherwise).
-        # Collapsing them into one map would hide whether a number is inherited.
-        ranks=ranks,
-        author_ranks=author_ranks,
-    )
 
 
 #: What ``roster_page`` actually matches a search needle against. Reported on the
@@ -131,13 +109,6 @@ def _author_only(data: dict[str, Any]) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes")
 
 
-def _by_member(layer: dict[tuple[int, str], int]) -> dict[int, dict[str, int]]:
-    out: dict[int, dict[str, int]] = {}
-    for (member_id, role), value in layer.items():
-        out.setdefault(member_id, {})[role] = value
-    return out
-
-
 def _requested_discipline(data: dict[str, Any]) -> str | None:
     """The ``discipline`` query of a read; omitted means the workspace's first enabled discipline.
 
@@ -147,18 +118,6 @@ def _requested_discipline(data: dict[str, Any]) -> str | None:
     return str(raw) if raw else None
 
 
-async def _layers(
-    session: Any, workspace_id: int, member_ids: list[int], author_user_id: int, discipline: str
-) -> tuple[dict[int, dict[str, int]], dict[int, dict[str, int]]]:
-    canon = await member_rank_service.list_layer(
-        session, workspace_id=workspace_id, discipline=discipline, member_ids=member_ids
-    )
-    author = await member_rank_service.list_layer(
-        session, workspace_id=workspace_id, discipline=discipline, member_ids=member_ids, author_user_id=author_user_id
-    )
-    return _by_member(canon), _by_member(author)
-
-
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.balancer.players.list")
     async def _list(data: dict, msg: RabbitMessage) -> dict:
@@ -166,32 +125,18 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
-            discipline = await workspace_discipline(
-                session, workspace_id=workspace_id, requested=_requested_discipline(data)
-            )
             params = _list_params(data)
-            author_user_id = _author_to_read(data, user.id)
-            rows, total = await workspace_roster.roster_page(
+            rows, total = await workspace_players_service.page(
                 session,
                 workspace_id=workspace_id,
-                provider=DISCIPLINES[discipline].identity_provider,
+                discipline=_requested_discipline(data),
                 search=params.query or None,
                 page=params.page,
                 per_page=params.per_page,
-                author_user_id=author_user_id,
+                author_user_id=_author_to_read(data, user.id),
                 author_only=_author_only(data),
             )
-            canon, author = await _layers(
-                session, workspace_id, [row.member_id for row in rows], author_user_id, discipline
-            )
-            return pagination.paginated_dict(
-                [
-                    _dump(row, canon.get(row.member_id, {}), author.get(row.member_id, {})).model_dump(mode="json")
-                    for row in rows
-                ],
-                total,
-                params,
-            )
+            return pagination.paginated_dict([row.model_dump(mode="json") for row in rows], total, params)
 
         return await c.envelope(logger, "players.list", op, session_factory=_SF)
 
@@ -215,42 +160,31 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
             body = WorkspacePlayerUpsert.model_validate(c.payload(data))
-            discipline = await workspace_discipline(session, workspace_id=workspace_id, requested=body.discipline)
             # A mix host (``custom_game.create``) may add a game identity nobody
             # has registered yet: that is the add-players dialog's whole point.
-            # Renaming a shared roster row is still roster management.
+            # Renaming a shared roster row is still roster management, and
+            # enrolling somebody who has an account is member admission.
             can_manage_roster = user.has_workspace_permission(workspace_id, "team", "create")
             if not can_manage_roster:
                 ensure_workspace_permission(user, workspace_id, "custom_game", "create")
             if body.display_name is not None and not can_manage_roster:
                 ensure_workspace_permission(user, workspace_id, "team", "create")
-            member = await workspace_roster.ensure_member_for_identity(
+            member_id, discipline = await workspace_players_service.upsert(
                 session,
                 workspace_id=workspace_id,
-                discipline=discipline,
+                discipline=body.discipline,
                 provider=body.identity.provider,
                 handle=body.identity.handle,
+                admit_account_holders=user.has_workspace_permission(workspace_id, "workspace_member", "create"),
                 display_name=body.display_name,
-            )
-            # Workspace-wide: a renamed or newly enrolled member shows on every
-            # mix of the workspace, so no single mix id names the change.
-            await emit_pickup_mix_changed(
-                session, workspace_id, custom_game_id=None, change="member", actor_user_id=user.id
+                actor_user_id=user.id,
             )
             await session.commit()
             # Re-read through the roster query so the answer carries the resolved
             # identity and name, identically shaped to a ``players.list`` row.
-            roster = await workspace_roster.list_roster(
-                session,
-                workspace_id=workspace_id,
-                provider=DISCIPLINES[discipline].identity_provider,
-                member_ids=[member.id],
+            return await workspace_players_service.get(
+                session, workspace_id=workspace_id, member_id=member_id, author_user_id=user.id, discipline=discipline
             )
-            row = roster.get(member.id)
-            if row is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
-            canon, author = await _layers(session, workspace_id, [member.id], user.id, discipline)
-            return _dump(row, canon.get(member.id, {}), author.get(member.id, {}))
 
         return await c.envelope(logger, "players.upsert", op, session_factory=_SF)
 
@@ -261,30 +195,21 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
             body = WorkspacePlayerRanksWrite.model_validate(c.payload(data))
-            discipline = await workspace_discipline(session, workspace_id=workspace_id, requested=body.discipline)
             # ``author`` is the caller's own layer, full stop: accepting an
             # author id here would let one member rewrite another's private book.
-            # Membership alone is enough to write it -- it is self-service. The
-            # ``workspace`` (canon) layer is everyone's shared book, so writing it
-            # additionally needs the same team.update grant admin.py/binary.py
-            # require for the other roster-shaping writes.
             is_author_scope = body.scope == "author"
             if not is_author_scope:
                 ensure_workspace_permission(user, workspace_id, "team", "update")
             author_user_id = user.id if is_author_scope else None
-            # ``set_ranks`` runs ``member_in_workspace`` itself, so a member from
-            # another workspace 404s before any row is written.
-            ranks = await member_rank_service.set_ranks(
+            ranks = await workspace_players_service.set_ranks(
                 session,
                 workspace_id=workspace_id,
-                discipline=discipline,
+                discipline=body.discipline,
                 workspace_member_id=_member_id(data),
                 ranks=body.ranks,
                 clear=body.clear,
                 author_user_id=author_user_id,
-            )
-            await emit_pickup_mix_changed(
-                session, workspace_id, custom_game_id=None, change="rank", actor_user_id=user.id
+                actor_user_id=user.id,
             )
             await session.commit()
             return {"ranks": ranks}
@@ -302,15 +227,6 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
-            counts = await member_rank_service.list_authors(session, workspace_id=workspace_id)
-            names = await workspace_roster.hosts_by_user_id(
-                session, workspace_id=workspace_id, user_ids=[author_user_id for author_user_id, _ in counts]
-            )
-            return {
-                "authors": [
-                    {"user_id": author_user_id, "display_name": names.get(author_user_id), "count": count}
-                    for author_user_id, count in counts
-                ]
-            }
+            return {"authors": await workspace_players_service.authors(session, workspace_id=workspace_id)}
 
         return await c.envelope(logger, "players.authors", op, session_factory=_SF)

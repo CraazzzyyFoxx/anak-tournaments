@@ -22,10 +22,9 @@ Deviations from the specification, all on purpose:
   uncertainty collapses within a few dozen matches.
 * ``corrected`` scales the gate and the post-match pull by the hidden rating's
   own uncertainty expressed in open-rating points, ``u = sigma * df/dmu``,
-  instead of by the whole open range. In a synthetic replay (150 players,
-  noisy expert seeds, random 5v5) that cut the effective rating's error by
-  ~10% at 10-40 matches per player; ``reference`` keeps the specification's
-  range scaling, which was ~9% better at ~200 matches per player.
+  instead of by the whole open range: it tracks a player more closely over
+  their first few dozen matches. ``reference`` keeps the specification's range
+  scaling, which does better over long histories.
 * The open scale is centred on ``rating_avg`` by an offset inside the sigmoid,
   ``f(o) = R_min + span * sigmoid(o / s + c)`` with
   ``c = logit((R_avg - R_min) / span)``, instead of the specification's

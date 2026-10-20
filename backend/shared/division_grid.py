@@ -135,7 +135,7 @@ DEFAULT_GRID: DivisionGrid = _build_default_grid()
 
 @functools.cache
 def ladder_grid(discipline_code: str) -> DivisionGrid | None:
-    """The discipline's own native ladder (D87), or no in-code grid for a game without one."""
+    """The discipline's own native ladder, or no in-code grid for a game without one."""
     ladder = discipline(discipline_code).native_ladder
     if not ladder:
         return None

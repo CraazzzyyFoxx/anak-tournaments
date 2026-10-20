@@ -6,8 +6,10 @@ import dynamic from "next/dynamic";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 
 // @xyflow/react (plus its stylesheet) is the heaviest thing this route can
 // pull, and the tree is one card on a page that is mostly forms and tables —
@@ -49,7 +51,16 @@ export function ConditionTreeCard({
   saveError?: string;
 }>) {
   const t = useTranslations("adminAchievements");
+  const tCommon = useTranslations("common");
   const [draft, setDraft] = useState<Record<string, unknown>>({});
+  // The condition vocabulary is the game module's; a game that declares none has nothing to edit with, and no
+  // registry to ask. Unknown until its metadata loads, so the editor waits for an explicit yes and nothing that
+  // could ask for a registry mounts before the answer.
+  const metadata = useDisciplineMetadata("all", discipline);
+  const conditions = metadata.data?.discipline.capabilities.achievement_conditions;
+  // A stored tree draws itself without the registry; an empty one would need it, so it is only drawn for a game
+  // known to have conditions.
+  const showStored = conditions === true || Object.keys(conditionTree).length > 0;
 
   return (
     <Card>
@@ -57,7 +68,7 @@ export function ConditionTreeCard({
         <CardTitle asChild>
           <h2>{t("detail.conditionTree")}</h2>
         </CardTitle>
-        {canUpdate && !editing && (
+        {canUpdate && !editing && conditions === true && (
           <Button
             variant="outline"
             size="sm"
@@ -70,7 +81,10 @@ export function ConditionTreeCard({
           </Button>
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {conditions === false ? (
+          <p className="text-sm text-muted-foreground">{tCommon("discipline.widgetUnsupported")}</p>
+        ) : null}
         {editing ? (
           <div className="space-y-4">
             <ConditionFlowEditor value={draft} onChange={setDraft} discipline={discipline} />
@@ -85,9 +99,14 @@ export function ConditionTreeCard({
               </Button>
             </div>
           </div>
-        ) : (
+        ) : metadata.isPending ? (
+          <Skeleton className="h-75 w-full rounded-lg" />
+        ) : showStored ? (
           <ConditionFlowViewer value={conditionTree} readOnly discipline={discipline} />
-        )}
+        ) : metadata.isError ? (
+          // Whether this game has conditions is unknown, and an empty tree would have to ask the registry.
+          <PageStateCard state="error" onAction={() => void metadata.refetch()} />
+        ) : null}
       </CardContent>
     </Card>
   );

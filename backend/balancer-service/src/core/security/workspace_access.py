@@ -55,12 +55,6 @@ class WorkspaceAccessPolicy:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="API key scope required: team.create",
                 )
-            if user.has_workspace_permission(workspace_id, resource, action):
-                return
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission denied for workspace {workspace_id}: {resource}.{action} required",
-            )
 
         if user.has_workspace_permission(workspace_id, resource, action):
             return

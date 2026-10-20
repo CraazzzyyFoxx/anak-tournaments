@@ -123,10 +123,9 @@ async def _snapshot_pre_encounter_team_mu_uncached(
     snapshots: list[dict[str, typing.Any]] = []
     seen_encounters: set[int] = set()
 
-    # NOTE: ``get_matches_for_tournaments`` returns ``Sequence[models.Encounter]``
-    # (the method name is historical — the analytics flow conflates the two).
-    # Each row's own id is ``Encounter.id``; there is no ``encounter_id``
-    # attribute on the ORM object itself.
+    # ``get_matches_for_tournaments`` returns ``Sequence[models.Encounter]``
+    # despite its name: each row's own id is ``Encounter.id``; there is no
+    # ``encounter_id`` attribute on the ORM object itself.
     for encounter in matches:
         if encounter.id in seen_encounters:
             # Already snapshotted before the first match of this encounter.
@@ -213,7 +212,7 @@ async def snapshot_pre_tournament_team_mu(
 
     Deliberately uncached, unlike its per-encounter sibling: this frame exists
     for tournaments whose rosters are still being assembled, where a TTL'd
-    snapshot would forecast a field that no longer exists.
+    snapshot would forecast a field that has since changed.
     """
     exports = analytics_exports(discipline)
     teams = await analytics_service.get_teams_with_players(session, tournament_id)

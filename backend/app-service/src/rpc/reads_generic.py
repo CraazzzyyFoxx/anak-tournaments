@@ -1,8 +1,8 @@
 """Generic public-read subscribers backed by the shared CRUD engine.
 
-hero/map/gamemode/achievement get+list are dispatched here via
-``rpc.app.read.{get,list}`` (the gateway sets ``data["entity"]``). See
-``src/services/read_registry.py`` for the EntityConfig table.
+Achievement get+list are dispatched here via ``rpc.app.read.{get,list}`` (the
+gateway sets ``data["entity"]``). See ``src/services/read_registry.py`` for
+the EntityConfig table.
 """
 
 from __future__ import annotations

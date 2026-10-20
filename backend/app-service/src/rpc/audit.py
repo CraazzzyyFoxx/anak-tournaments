@@ -30,11 +30,8 @@ def _scope(user: AuthUser, workspace_id: int | None) -> int | None:
 
     ``None`` means "no workspace predicate", and it is reachable only for a
     superuser — for anyone else an absent ``workspace_id`` is a 422, never a
-    platform-wide feed. Falling back to "show everything you may see" would have
-    to union the caller's workspaces, and the one row class that has no
-    workspace at all (global roles, game catalog, global settings) would then
-    have to be excluded by a second rule; requiring the parameter keeps the
-    predicate a single equality that cannot accidentally widen.
+    platform-wide feed, so the predicate stays a single equality that cannot
+    accidentally widen.
     """
     if user.is_superuser:
         # A superuser may still narrow to one workspace by passing the param;

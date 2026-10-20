@@ -12,7 +12,8 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain.analytics import AnalyticsExports, StandingsModel
+from shared.disciplines.analytics import AnalyticsExports
+from shared.domain.analytics import StandingsModel
 from shared.repository.stats_queries import match_context, team_scores
 from src import models
 from src.core.analytics_exports import tournament_module
@@ -73,10 +74,9 @@ async def _standings_win_probability(
     """``P(home wins)`` per encounter from the discipline's active Standings v2 artifact.
 
     The predictability score is "how expected was the result" — it needs the
-    pre-match win probability. The feature frame never carries one (it is the
-    classifier's INPUT), so this used to silently stay ``None`` and every
-    encounter scored a neutral 50. Returns ``None`` (neutral everywhere) when
-    no usable artifact exists rather than failing the whole quality pass.
+    pre-match win probability, which the feature frame never carries (it is the
+    classifier's INPUT). Returns ``None`` (neutral everywhere) when no usable
+    artifact exists rather than failing the whole quality pass.
     """
     declaration = exports.MODELS["standings"]
     algorithm_id = await session.scalar(

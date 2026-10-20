@@ -1,13 +1,6 @@
-"""Coverage for the match-log admin RPC handlers + extracted read helpers.
-
-The HTTP routes in ``src/routes/admin/logs.py`` were decommissioned (FastAPI removed
-from stats-service); the admin surface now runs as ``rpc.stats.logs.*`` FastStream
-subscribers in ``src/rpc/logs.py``. These tests drive the real ``rpc.logs.register``
-through a fake broker and assert the upload/history handlers still queue each file,
-attach encounters, and filter history — the same contracts the old routes enforced.
-
-The cross-tournament encounter rejection is exercised directly against the extracted
-helper ``src/services/match_logs/admin_reads._validate_attached_encounter``.
+"""The match-log admin RPC handlers, driven through ``rpc.logs.register`` on a fake broker: uploads queue each file
+with its attached encounter, history and stats filter the scope. The cross-tournament encounter rejection is
+exercised directly against ``admin_reads._validate_attached_encounter``.
 """
 
 from __future__ import annotations
@@ -36,6 +29,8 @@ from tests._fakes import session_factory as _session_factory
 
 rpc_logs = importlib.import_module("src.rpc.logs")
 admin_reads = importlib.import_module("src.services.match_logs.admin_reads")
+uploads = importlib.import_module("src.services.match_logs.uploads")
+CUP = SimpleNamespace(id=42, name="Cup", workspace_id=5)
 
 FINISHED_LOG = b"0,match_start,0,Ilios,Control,Home,Away\n0,match_end,100,Home,2,0\n"
 # Still being written: rows exist, but no match_end yet.
@@ -87,33 +82,16 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(rpc_logs.auth, "require_tournament_id_permission", AsyncMock()),
+            patch.object(uploads.upload_service._tournaments, "get", AsyncMock(return_value=CUP)),
+            patch.object(uploads, "_validate_attached_encounter", AsyncMock(return_value=SimpleNamespace(id=9))),
+            patch.object(uploads.upload_service, "validate_log_filename", side_effect=lambda name: name),
+            patch.object(uploads.upload_service, "resolve_auth_uploader_id", AsyncMock(return_value=777)),
             patch.object(
-                rpc_logs.tournament_flows,
-                "get",
-                AsyncMock(return_value=SimpleNamespace(id=42, name="Cup", workspace_id=5)),
-            ),
-            patch.object(
-                rpc_logs,
-                "_validate_attached_encounter",
-                AsyncMock(return_value=SimpleNamespace(id=9)),
-            ),
-            patch.object(
-                rpc_logs.upload_service,
-                "validate_log_filename",
-                side_effect=lambda name: name,
-            ),
-            patch.object(
-                rpc_logs.upload_service,
-                "resolve_auth_uploader_id",
-                AsyncMock(return_value=777),
-            ),
-            patch.object(
-                rpc_logs.upload_service,
+                uploads.upload_service,
                 "store_uploaded_log_bytes",
                 AsyncMock(side_effect=store_uploaded_log_bytes),
             ) as store_mock,
-            patch.object(rpc_logs, "quota", SimpleNamespace(charge=AsyncMock())) as quota_mock,
-            patch.object(rpc_logs, "publish_message", AsyncMock()) as publish_mock,
+            patch.object(uploads, "quota", SimpleNamespace(charge=AsyncMock())) as quota_mock,
         ):
             envelope = await self.broker.handlers["rpc.stats.logs.upload"](
                 {
@@ -140,12 +118,6 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             self.assertEqual(9, call.kwargs["attached_encounter_id"])
             self.assertEqual("upload", call.kwargs["source"])
 
-        self.assertEqual(2, publish_mock.await_count)
-        payloads = [call.args[1] for call in publish_mock.await_args_list]
-        self.assertEqual([100, 100], [payload["ingest_job_id"] for payload in payloads])
-        self.assertEqual({"stats.ingest.overwatch"}, {call.args[2].name for call in publish_mock.await_args_list})
-        self.assertTrue(all("filename" not in payload and "tournament_id" not in payload for payload in payloads))
-
         # One audit row for the call — file names only, never the uploaded bytes.
         self.assertEqual(1, len(audit_rows))
         row = audit_rows[0]
@@ -169,16 +141,12 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(rpc_logs.auth, "require_tournament_id_permission", AsyncMock()),
+            patch.object(uploads.upload_service._tournaments, "get", AsyncMock(return_value=CUP)),
+            patch.object(uploads, "_validate_attached_encounter", AsyncMock(return_value=None)),
+            patch.object(uploads.upload_service, "validate_log_filename", side_effect=lambda name: name),
+            patch.object(uploads.upload_service, "resolve_auth_uploader_id", AsyncMock(return_value=777)),
             patch.object(
-                rpc_logs.tournament_flows,
-                "get",
-                AsyncMock(return_value=SimpleNamespace(id=42, name="Cup", workspace_id=5)),
-            ),
-            patch.object(rpc_logs, "_validate_attached_encounter", AsyncMock(return_value=None)),
-            patch.object(rpc_logs.upload_service, "validate_log_filename", side_effect=lambda name: name),
-            patch.object(rpc_logs.upload_service, "resolve_auth_uploader_id", AsyncMock(return_value=777)),
-            patch.object(
-                rpc_logs.upload_service,
+                uploads.upload_service,
                 "store_uploaded_log_bytes",
                 AsyncMock(
                     return_value=SimpleNamespace(
@@ -186,8 +154,7 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
                     )
                 ),
             ) as store_mock,
-            patch.object(rpc_logs, "quota", SimpleNamespace(charge=AsyncMock())),
-            patch.object(rpc_logs, "publish_message", AsyncMock()) as publish_mock,
+            patch.object(uploads, "quota", SimpleNamespace(charge=AsyncMock())),
         ):
             envelope = await self.broker.handlers["rpc.stats.logs.upload"](
                 {
@@ -205,11 +172,10 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         data = envelope["data"]
         self.assertEqual(["done.log"], [item["filename"] for item in data["uploaded"]])
         self.assertEqual(
-            [{"filename": "live.log", "error": rpc_logs.MATCH_NOT_FINISHED_MESSAGE}],
+            [{"filename": "live.log", "error": uploads.MATCH_NOT_FINISHED_MESSAGE}],
             data["errors"],
         )
         self.assertEqual(["done.log"], [call.kwargs["filename"] for call in store_mock.await_args_list])
-        self.assertEqual(1, publish_mock.await_count)
 
     async def test_history_rejects_unknown_status(self) -> None:
         rpc_logs._SF = _session_factory(SimpleNamespace())

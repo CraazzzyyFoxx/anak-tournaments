@@ -11,8 +11,7 @@ class DiscordChannelUpsert(BaseModel):
 
     channel_id is a Discord snowflake (64-bit integer), accepted as a string to
     avoid JavaScript float64 precision loss on the client side. The guild is not
-    here: it belongs to the workspace (``Workspace.discord_guild_id``) and was
-    duplicated into every tournament row while being read by nobody.
+    here: it belongs to the workspace (``Workspace.discord_guild_id``).
     """
 
     channel_id: str

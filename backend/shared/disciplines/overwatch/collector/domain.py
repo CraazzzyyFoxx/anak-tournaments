@@ -81,9 +81,7 @@ def changed_ranks(
     """The observations worth a row: those that differ from their series' last one.
 
     ``rank_snapshot`` is a series of *changes*, not of polls. A poll that finds
-    every role where the previous poll left it writes nothing -- 99.4% of the
-    rows the collector used to write (2.54M on a production restore) were
-    identical to the row before them. A series with no row yet is a change by
+    every role where the previous poll left it writes nothing. A series with no row yet is a change by
     definition, so the first poll of an account still records every role,
     unranked ones included: that is the marker every later transition is read
     against, and "went unranked" is a transition too.
@@ -158,14 +156,7 @@ def resolve_date_range(
 ) -> tuple[datetime, datetime]:
     """Apply per-granularity defaults and enforce max range for hourly/raw.
 
-    Extracted verbatim from the former ``src/routes/rank_history.py`` HTTP
-    route so the typed-RPC handlers (``src/rpc/rank.py``) can reuse it after the
-    FastAPI face was removed. ``HTTPException`` here is ``fastapi.HTTPException``
-    on purpose: the parser RPC envelope (``src/rpc/_common.py``) maps
-    ``fastapi.HTTPException`` status codes onto the ``{ok,data,error}`` envelope,
-    and a Starlette base-class instance would not be caught by that ``except``
-    clause (it is a strict subclass), silently degrading the 422 into a generic
-    500. The rest of the ``src/services`` layer raises the same type.
+    Raises ``BaseAPIException`` 422, which the RPC envelope maps onto its error code.
     """
     if granularity not in get_args(Granularity):
         raise HTTPException(status_code=422, detail=f"Unknown granularity '{granularity}'.")

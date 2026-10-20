@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import { ChevronLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 export interface MasterDetailProps {
   list: ReactNode;
@@ -64,6 +66,72 @@ export function MasterDetail({
           emptyDetail
         )}
       </div>
+    </div>
+  );
+}
+
+export interface MasterListItem<K extends string | number> {
+  key: K;
+  label: string;
+  /** Decorative mark before the label, e.g. a role icon. */
+  icon?: ReactNode;
+}
+
+/**
+ * The plain T4 list column: one frame of named rows, the selected one marked
+ * with `aria-current`. Selecting is navigation, so `onSelect` writes the
+ * caller's query param (with `mode: "push"`, see `MasterDetail`). Lists with a
+ * toolbar of their own (search, per-row actions) keep their own component.
+ */
+export function MasterList<K extends string | number>({
+  label,
+  items,
+  selectedKey,
+  onSelect
+}: Readonly<{
+  /** Accessible name of the `<nav>`. */
+  label: string;
+  items: readonly MasterListItem<K>[];
+  selectedKey: K | null | undefined;
+  onSelect: (key: K) => void;
+}>) {
+  return (
+    <nav aria-label={label} className="rounded-xl border border-border bg-card p-2">
+      <ul className="flex flex-col gap-0.5">
+        {items.map((item) => {
+          const isSelected = item.key === selectedKey;
+          return (
+            <li key={item.key}>
+              <button
+                type="button"
+                aria-current={isSelected ? "true" : undefined}
+                onClick={() => onSelect(item.key)}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  isSelected
+                    ? "bg-accent/40 font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {item.icon}
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+/** `MasterList` while its rows load: the same frame with placeholder rows. */
+export function MasterListSkeleton() {
+  return (
+    <div aria-hidden className="flex flex-col gap-0.5 rounded-xl border border-border bg-card p-2">
+      {[0, 1, 2, 3].map((row) => (
+        <Skeleton key={row} className="h-8 w-full rounded-md" />
+      ))}
     </div>
   );
 }

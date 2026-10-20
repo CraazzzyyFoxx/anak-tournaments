@@ -1,4 +1,4 @@
-"""The native match wire (P7 contracts §6) assembled from ``shared.repository.stats_reads`` contexts.
+"""The native match wire assembled from ``shared.repository.stats_reads`` contexts.
 
 One serializer for every embedder -- the public match, the encounter's matches, the admin rows, the user's match rows
 and the achievement links -- so none of them rebuilds a participant, a header or a fact on its own.

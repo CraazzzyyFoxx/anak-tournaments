@@ -107,7 +107,6 @@ class HeroService:
             tournament_id=params.tournament_id,
             workspace_id=workspace_id,
         )
-        # Default sort: descending by playtime (was params.apply_sort with the same default).
         characters = sorted(characters, key=lambda row: float(row[1]), reverse=True)
         total = len(characters)
         paginated = params.paginate_data(characters)

@@ -1,4 +1,4 @@
-"""The single way to append to an encounter's result history (D47, D68).
+"""The single way to append to an encounter's result history.
 
 ``before``/``after`` are arrays of ``{encounter_team_id, score, placement}``,
 so a duel and an N-seat lobby are recorded identically and a reader never has

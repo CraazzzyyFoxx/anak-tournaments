@@ -2,7 +2,7 @@
 
 The journal is written by ``shared.services.audit.record_audit`` inside each
 mutation's own transaction; this module only reads it. One query serves both
-surfaces the design asks for: the workspace-wide feed and the per-entity trail
+surfaces: the workspace-wide feed and the per-entity trail
 on a card, which is the same query with ``entity_type``/``entity_id`` set.
 
 ``_filters`` carries half the security weight of the feature. The other half —

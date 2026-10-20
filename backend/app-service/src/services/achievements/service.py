@@ -178,8 +178,8 @@ class AchievementService:
                 )
 
         # Bulk-fetch tournaments and matches in one DB hit each, then map back to
-        # achievements. Previous loop did one round-trip per (achievement, tid),
-        # which was O(N*M) — hot on the user-achievements endpoint.
+        # achievements: a round trip per (achievement, tid) is O(N*M) on the hot
+        # user-achievements endpoint.
         if "tournaments" in entities:
             unique_tournament_ids = sorted(
                 {tid for achievement in cache.values() for tid in achievement.tournaments_ids}

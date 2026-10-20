@@ -4,8 +4,8 @@ The read models deliberately carry the *computed* shortfall alongside the
 denormalized `status`. `status` exists for indexed filtering ("show me incomplete
 teams"); the per-slot `open_slots` is what a captain and an organizer actually act
 on, and it can only come from comparing the roster against the tournament's
-`RosterShape`. Serving only `status` is the §12.5 dead end in read-model form: the
-people in an incomplete team learn they are stuck but not what is missing.
+`RosterShape`. Serving only `status` would tell the people in an incomplete team
+they are stuck but not what is missing.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ __all__ = (
 class RegistrationTeamCreateRequest(BaseModel):
     """Create a team and register the caller as its captain, in one call.
 
-    The captain is a member like any other (decision 5), so their own registration
+    The captain is a member like any other, so their own registration
     payload rides along and goes through the identical validation a solo entrant
     gets. Splitting this into "create team" then "register captain" would allow a
     captainless team to exist between the two calls.
@@ -61,7 +61,7 @@ class RegistrationTeamInviteCreateRequest(BaseModel):
 
     ``target_registration_id`` addresses a free agent already registered for this
     tournament; omitting it produces a shareable link for someone with no account
-    yet (decision 3). Both modes are one entity, so the slot accounting cannot
+    yet. Both modes are one entity, so the slot accounting cannot
     diverge between them.
 
     A REGISTRATION id, not an account id: the captain picks from this tournament's
@@ -74,8 +74,8 @@ class RegistrationTeamInviteCreateRequest(BaseModel):
     slot_code: str
     is_substitute: bool = False
     target_registration_id: int | None = None
-    #: ``None`` means "no expiry"; the service's default is applied when the field
-    #: is omitted entirely, which is why this is not simply ``int = 7``.
+    #: An explicit ``None`` means "no expiry"; omitting the field applies the
+    #: service's default.
     ttl_days: int | None = Field(default=None, ge=1, le=90)
 
 
@@ -89,9 +89,7 @@ class RegistrationTeamAcceptRequest(BaseModel):
     ``registration`` is OPTIONAL because an invitee who already has a live
     registration is a free agent *attaching*: the service reuses their existing row
     and ignores anything sent here, so demanding a payload would make them re-answer
-    a form they already filled. Required-but-ignored is what it used to be, and the
-    client expressed that by casting an empty object — a lie the type system had no
-    way to catch.
+    a form they already filled.
 
     A genuinely new invitee who sends nothing is still rejected, by the registration
     form's own validation downstream. ``None`` rather than an empty default: a
@@ -212,11 +210,10 @@ class RegistrationTeamInviteRead(BaseModel):
     slot_code: str
     is_substitute: bool
     state: str
-    #: Who a targeted invite was addressed to, as the captain knows them. The
-    #: account id it replaced was useless to any client and was an internal
-    #: identity leaking outward; a captain managing pending offers needs a name,
-    #: otherwise two chips are indistinguishable and neither can be revoked on
-    #: purpose. ``None`` on a link invite, which has no addressee.
+    #: Who a targeted invite was addressed to, as the captain knows them: a captain
+    #: managing pending offers needs a name to tell two chips apart, and an account
+    #: id would leak an internal identity. ``None`` on a link invite, which has no
+    #: addressee.
     target_handle: str | None = None
     #: True when the invite is a shareable link. The token itself is never
     #: serialized — it is returned once, by the create call.
@@ -364,9 +361,9 @@ class RegistrationTeamInviteHistoryEntry(BaseModel):
 class RegistrationTeamInviteHistoryResponse(BaseModel):
     """The history plus the cap standing it explains.
 
-    They ship together because apart they are a riddle: the cap counts every invite
-    ever issued while only pending ones were ever visible, so a captain refused at
-    the ceiling had no way to see where it went.
+    They ship together because the cap counts every invite ever issued while the
+    live list shows only pending ones; without the history a captain refused at
+    the ceiling cannot see where the cap went.
     """
 
     items: list[RegistrationTeamInviteHistoryEntry] = Field(default_factory=list)

@@ -26,8 +26,7 @@ class HeroClass(StrEnum):
         Identical to the member name -- kept as a named boundary because it is
         the wire/storage contract (``BalancerRegistrationRole.role``,
         roster-slot projection keys, the Rust ``tournament_balancer``
-        payload), not merely a Python detail. It used to diverge for ``damage``
-        -> ``dps``; migration ``roledps01`` retired that spelling.
+        payload), not merely a Python detail.
         """
         return self.name
 
@@ -360,12 +359,12 @@ class StageType(StrEnum):
 
 
 class EncounterResultSource(StrEnum):
-    """Where an encounter's official result came from (D57).
+    """Where an encounter's official result came from.
 
     ``games`` is the aggregate of the confirmed games and is the only one a
     rule recalculation may overwrite; the other four are decisions and are
     changed only by a reopen. ``host`` -- a mix host or co-host recorded the
-    round directly (D75); a decision like the other three.
+    round directly; a decision like the other three.
     """
 
     GAMES = "games"

@@ -17,6 +17,8 @@ from datetime import timedelta
 
 from faststream import FastStream
 
+from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_DLQ
+from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
     observe_scheduled_job,
@@ -32,7 +34,7 @@ from src.core import db
 from src.core.config import settings
 from src.core.redis import close_redis, init_redis
 from src.core.s3 import s3_client
-from src.rpc import api_keys, auth, avatars, oauth, players, rbac, tokens
+from src.rpc import api_keys, auth, avatars, oauth, players, rbac, tokens, workspace_member_events
 from src.services.oauth_providers import close_http_client
 from src.services.sessions import refresh_tokens
 
@@ -64,12 +66,10 @@ _install_uvloop()
 broker = make_rabbit_broker(settings.rabbitmq_url, logger=logger, prefetch_count=settings.rpc_prefetch_count)
 app = FastStream(broker)
 
-# The enforcer is a process-global with its own Redis client and session
-# factory -- deliberately not ``src.core.redis``'s singleton, which the startup
-# hook creates later than the first handler import. identity-service meters
-# nothing itself; it configures the gate because it *administers* it: the
-# per-key limit writes and usage reads below need the same resolver every
-# metering service runs.
+# The quota enforcer is a process-global with its own Redis client and session
+# factory: ``src.core.redis``'s singleton is only created by the startup hook,
+# after the first handler import. identity-service meters nothing; it configures
+# the gate because its per-key limit writes and usage reads need the same resolver.
 configure_quota(
     session_factory=db.async_session_maker,
     redis_url=settings.REDIS_URL,
@@ -77,7 +77,7 @@ configure_quota(
     edge_workspace_metering=settings.quota_edge_workspace_metering,
 )
 
-for _module in (tokens, auth, oauth, api_keys, rbac, players, avatars):
+for _module in (tokens, auth, oauth, api_keys, rbac, players, avatars, workspace_member_events):
     _module.register(broker, logger)
 
 _purge_scheduler = IntervalScheduler(job_id="refresh_token_purge", label="Refresh-token purge", logger=logger)
@@ -93,6 +93,8 @@ async def purge_expired_refresh_tokens() -> None:
 
 @app.on_startup
 async def setup_worker() -> None:
+    await broker.connect()
+    await declare_dead_letter_queue(broker, WORKSPACE_MEMBER_CHANGED_DLQ)
     setup_sentry(
         dsn=settings.sentry_dsn,
         traces_sample_rate=settings.sentry_traces_sample_rate,

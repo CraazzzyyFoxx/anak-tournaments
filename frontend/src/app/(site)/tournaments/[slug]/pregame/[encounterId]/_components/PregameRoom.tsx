@@ -26,6 +26,8 @@ import {
 } from "@/components/pick-ban/pick-ban-model";
 import { isLobby } from "@/lib/encounter/seats";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
+import { PickBanSideAssignment } from "@/components/pick-ban/PickBanSideChoice";
+import { useSideLabel } from "@/components/pick-ban/useSideLabel";
 import { FfaPregameRoom } from "./FfaPregameRoom";
 import { PregameAdminPanel } from "./PregameAdminPanel";
 import { PregameHeader } from "./PregameHeader";
@@ -134,6 +136,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   const returnTo = safeReturnPath(searchParams?.get(RETURN_TO_PARAM), `/encounters/${encounterId}`);
   const room = usePregameRoomData(encounterId);
   const [adminOpen, setAdminOpen] = useState(false);
+  const sideLabelOf = useSideLabel();
 
   if (room.isPending) {
     return <RoomSkeleton />;
@@ -177,6 +180,10 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   const seatNameAt = (index: number) => seats[index]?.name ?? t("tbd");
   const viewerTeamId = mapState.viewer_team_id ?? room.viewerTeamId;
   const seriesSummary = mapState.series ?? null;
+  // Sides are the game's, not a kind's: a hero-only room has no map session, whose state then lists none.
+  const roomSides = heroState.sides.length > 0 ? heroState.sides : mapState.sides;
+  const sideLabel = (code: string) => sideLabelOf(encounter.discipline, code);
+  const sideLabels = roomSides.map(sideLabel);
   // The readiness gate already shows both rosters inline; every later screen
   // has its pool or report there, so the rosters sit one click away instead.
   const showRostersButton = !loop.waitingOnReadiness;
@@ -185,9 +192,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     <>
       <PregameHeader
         encounter={encounter}
-        session={
-          loop.statesByKind[loop.phase === "hero" || !loop.mapApplies ? "hero" : "map"].session
-        }
+        state={loop.statesByKind[loop.phase === "hero" || !loop.mapApplies ? "hero" : "map"]}
         activePhase={loop.phase}
         phases={loop.phases}
         round={loop.round}
@@ -277,6 +282,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             activeKind={activeKind}
             seats={seats}
             itemsByKind={room.itemsByKind}
+            sideLabels={sideLabels}
             bestOf={encounter.best_of ?? 0}
             seriesWins={seriesSummary?.wins ?? null}
             onMutated={room.invalidateRoom}
@@ -311,6 +317,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   if (loop.phase === "report" && loop.reportRound != null) {
     const reportGame = gameAtPosition(loop.games, loop.reportRound);
     const reportMapId = loop.pendingMap?.item_id ?? reportGame?.map_id ?? null;
+    const reportSides = heroState.starting_sides ?? mapState.starting_sides;
     const reportMapItem = reportMapId != null ? room.mapsById[reportMapId] : undefined;
     return (
       <div className="flex flex-col gap-4">
@@ -333,6 +340,16 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             heroName,
             room.characterClasses
           )}
+          sides={
+            reportSides?.some((entry) => entry.position === loop.reportRound) ? (
+              <PickBanSideAssignment
+                startingSides={reportSides}
+                position={loop.reportRound}
+                seats={seats}
+                sideLabel={sideLabel}
+              />
+            ) : null
+          }
           heroUndo={
             <PickBanUndoControl
               kind="hero"
@@ -340,6 +357,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
               undo={heroState.undo}
               viewerTeamId={heroState.viewer_team_id}
               itemsById={room.heroesById}
+              sideLabels={sideLabels}
               seats={seats}
               invalidateKeys={[room.mapKey, room.heroKey]}
             />

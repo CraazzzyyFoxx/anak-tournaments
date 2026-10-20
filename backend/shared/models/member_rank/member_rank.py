@@ -29,7 +29,7 @@ class MemberRank(db.TimeStampIntegerMixin):
     identity dedup comes from ``uq_workspace_member_workspace_player`` and the
     global user-merge instead of a parallel merge implementation.
 
-    Held on a module role of the discipline's rated dimension (D87): ``role_id``.
+    Held on a module role of the discipline's rated dimension: ``role_id``.
     The legacy ``role`` column is read by nothing until discipline02 drops it.
     """
 

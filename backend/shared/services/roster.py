@@ -1,15 +1,4 @@
-"""THE engine: one place that answers "which roles does this registration play,
-and at what rank".
-
-Before this module the same question had five independent answers -- the admin
-registration serializer, ``registration/_common``'s ready/incomplete verdict,
-the browser's ``buildBalancerInput``, ``tournament-service`` ``export.py``, and
-balancer-service's ``draft/rules.map_registration``. Two of them read the raw
-``balancer.registration_role.rank_value`` column and three read the resolved
-value, so a player ranked only through the workspace canon or an Overwatch
-snapshot was fully ranked in the balancer and blank in the draft.
-
-Now there is one call path and therefore one failure mode:
+"""The one resolver of "which roles does this registration play, and at what rank".
 
     RosterEngine.for_tournament(session, tournament_id)
         -> {registration_id: PlayerRoster}
@@ -18,8 +7,8 @@ Everything downstream -- admin list, pool verdict, balancer algorithm input,
 draft pool, draft board, feasibility, autopick, draft export -- projects those
 value objects. No consumer touches ``registration_role.rank_value``,
 ``member_rank`` or the snapshot tables directly, and no consumer keeps a copy;
-the only stored derivation left in the system is the ``(role, rank)`` a
-completed draft pick freezes as a historical fact.
+the only stored derivation is the ``(role, rank)`` a completed draft pick
+freezes as a historical fact.
 """
 
 from __future__ import annotations
@@ -402,10 +391,8 @@ class RosterEngine:
         if mode != "optional":
             # Role stops being a constraint: every role the tournament runs is
             # playable, so a role no layer ranked inherits the player's strongest
-            # number -- the balancer's eligibility for a role IS having one. The
-            # per-role catalogue still reports each role's own rating where it
-            # exists, because the draft SHOWS it: stamping the maximum over a real
-            # rating turned the role chooser into one number printed three times.
+            # number -- the balancer's eligibility for a role IS having one. A role
+            # with its own rating keeps it, because the draft's role chooser SHOWS it.
             best = max((entry.rank for entry in entries if entry.is_playable), default=None)
             if best is not None:
                 entries = [
@@ -414,7 +401,7 @@ class RosterEngine:
 
         # THE flex predicate. Over the roles the player actually declared AND can
         # play -- the raw ``registration_role`` rows also count inactive/unranked
-        # ones, which is how a single-role tank used to reach the balancer as
+        # ones, which would send a single-role tank to the balancer as
         # ``isFullFlex``. Synthesized roles carry no ``is_primary`` and must not
         # veto an ``all_roles`` registrant who marked every declared role primary.
         # ``forced`` makes every role primary by contract, whether or not the rows
@@ -469,9 +456,8 @@ class RosterEngine:
     ) -> dict[str, Any]:
         """The balancer algorithm's ``xv-1`` payload, built from the same rosters.
 
-        Used to be assembled in the browser from the admin list, which is why the
-        algorithm and the draft could disagree at all. ``key`` names the field the
-        result's player uuids carry, so the caller can map a solved team back.
+        ``key`` names the field the result's player uuids carry, so the caller can
+        map a solved team back.
         """
         players: dict[str, Any] = {}
         for roster in rosters:

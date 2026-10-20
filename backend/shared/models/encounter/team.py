@@ -1,4 +1,4 @@
-"""Participation: one seat of one encounter, and the roster behind it (D55).
+"""Participation: one seat of one encounter, and the roster behind it.
 
 A participation is append-only. Replacing an occupant writes a NEW row and sets
 the old one ``active = false``; nothing ever flips it back, and nothing ever
@@ -61,7 +61,7 @@ class EncounterTeam(db.TimeStampIntegerMixin):
             name="fk_team_encounter_tournament",
         ),
         # Deleting the source team empties the pointer and keeps the
-        # participation, its games and its roster (§13.3, behavioral change).
+        # participation, its games and its roster.
         ForeignKeyConstraint(
             ["team_id", "tournament_id"],
             ["tournament.team.id", "tournament.team.tournament_id"],
@@ -86,7 +86,7 @@ class EncounterTeam(db.TimeStampIntegerMixin):
     name: Mapped[str] = mapped_column(String(255))
     seed: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean(), default=True, server_default="true")
-    #: The materialized result inside the encounter (D53, D60): under the
+    #: The materialized result inside the encounter: under the
     #: ``wins`` preset this is the number of games won.
     score: Mapped[float] = mapped_column(Float(), default=0.0, server_default="0")
     #: Place inside the encounter; NULL while there is no result.
@@ -96,7 +96,7 @@ class EncounterTeam(db.TimeStampIntegerMixin):
 
 
 class EncounterTeamMember(db.TimeStampIntegerMixin):
-    """The roster of one participation, snapshotted (D27, D40, D49, D56, D66).
+    """The roster of one participation, snapshotted.
 
     ``active`` is a copy of the participation's, carried by the composite FK's
     ``ON UPDATE CASCADE`` -- that is what lets a partial unique index say "one
@@ -129,7 +129,7 @@ class EncounterTeamMember(db.TimeStampIntegerMixin):
     encounter_team_id: Mapped[int] = mapped_column(BigInteger())
     active: Mapped[bool] = mapped_column(Boolean())
     # NO ACTION, deferred: the workspace member is the anchor a roster snapshot
-    # is written against and must not be deleted out from under it (D66) --
+    # is written against and must not be deleted out from under it --
     # ``remove_member`` sets ``removed_at`` instead. Deferred so deleting the
     # whole workspace, which removes both sides at once, still works.
     workspace_member_id: Mapped[int] = mapped_column(
@@ -142,7 +142,7 @@ class EncounterTeamMember(db.TimeStampIntegerMixin):
 
 
 class EncounterTeamMemberRole(db.Base):
-    """A roster member's leaf catalog role; snapshots read its dimension and leaf codes (D86)."""
+    """A roster member's leaf catalog role; snapshots read its dimension and leaf codes."""
 
     __tablename__ = "team_member_role"
     __table_args__ = (

@@ -142,7 +142,7 @@ Absence of a row is inheritance. A stored `0` would break fall-through, so write
 
 ### Admission
 
-Two requirements, fixed order (`backend/shared/services/admission/registry.py`):
+Two requirements, fixed order (`backend/tournament-service/src/services/admission/registry.py`):
 
 1. **Open profile** — always `check_in`. There is no stage column (YAGNI until an organizer asks).
 2. **Subscription** — stage from the form; garbage/NULL defaults to `check_in` (a typo must not start refusing sign-ups).
@@ -482,7 +482,7 @@ Duplicates only what the UI needs instantly; comments cite the server symbol:
 | --- | --- |
 | Tournament phases | `backend/shared/core/tournament_state.py` |
 | Registration window | `backend/shared/services/registration_window.py` |
-| Admission | `backend/shared/services/admission/` |
+| Admission | `backend/tournament-service/src/services/admission/` |
 | Roster shape / occupancy | `backend/shared/domain/roster_shape.py`, `team_roster.py` |
 | Playable role | `backend/shared/domain/roster.py` |
 | Rank layers | `backend/shared/domain/member_rank.py` |

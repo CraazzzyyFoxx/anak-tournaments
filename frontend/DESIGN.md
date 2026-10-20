@@ -419,7 +419,7 @@ the IA is wrong — say so before inventing a surface.
 | T2  | Browser       | header → filter bar (search + chips) → table with an always-visible kebab → Inspector (`?id=`) with "Open page" when the row has a route | Tournaments, People, Teams, Matches, Achievements, Members, `content/*`, `access/*`, Audit, hub Registration entries, hub Matches |
 | T3  | Hub           | entity header (name, status, metrics, 1–2 actions) → routed tabs → optional routed sub-tabs → body                                       | tournament hub, `people/[id]`, `teams/[id]`, `achievements/[id]`                                                                  |
 | T4  | Master-detail | sortable list left (`+ Add`) → editor right; destructive actions in a menu, one parameterised confirm                                    | bracket stages, pre-game phase scopes, access roles; Divisions draft editor (full-screen variant)                                 |
-| T5  | Settings      | section nav left → the section's form → sticky save bar while dirty                                                                      | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings                                             |
+| T5  | Settings      | sticky section nav left → page header (h1, one-line description, actions) → routed tabs when a page groups sections → a stack of `SettingGroup` cards → sticky save bar while dirty | `/admin/settings/*`, tournament `settings/*`, `workspaces/[id]/*`, collector settings                                             |
 | T6  | Wizard        | step rail → step body → footer (Back · Save draft · Continue)                                                                            | new workspace, new tournament, draft setup, divisions import, Challonge sync                                                      |
 | T7  | Control room  | status hero (phase, timer, connection) → current action + lifecycle buttons → right column (presence, feasibility)                       | live draft                                                                                                                        |
 
@@ -470,12 +470,14 @@ Rules on every admin screen:
 | `kit/Inspector.tsx`                          | row detail: right panel at `lg`+, a sheet below                |
 | `kit/InspectorField.tsx`                     | a labelled fact and a titled group inside an inspector or detail dialog; no local `Field` copies |
 | `kit/ConfirmDialog.tsx`                      | every confirmation                                             |
-| `kit/SectionNav.tsx`                         | T5 navigation (`<nav>` at `md`+, `Select` below)               |
+| `kit/SectionNav.tsx`                         | T5 navigation (sticky `<nav>` at `lg`+, `Select` below); a rail item is a page, small related sections are its `LinkTabs`, never extra rail items |
+| `kit/SettingRow.tsx`                         | T5 body: `SettingGroup` is one card per group (`immediate` when its controls act without the save bar); `SettingRow` is label + hint left, control right once the group is `@xl` (36rem) wide, `stacked` for long text. Never wrap a group in another `Card` |
+| `workspace-settings/WorkspaceSettingsShell.tsx` | the workspace hub's header and tabs; `SettingsHeaderActions` puts a section's page-level controls (audit trail, discipline picker) beside the h1. Forms are capped at `max-w-3xl`, tables and list/detail pages take the column |
 | `kit/SaveBar.tsx` + `kit/useUnsavedGuard.ts` | dirty-form save/discard and the leave guard                    |
 | `kit/WizardShell.tsx`                        | T6 frame                                                       |
 | `kit/EntityHubHeader.tsx`                    | T3 header (title, status pill, middot-joined metrics, actions) |
 | `kit/PhaseStrip.tsx`                         | lifecycle position, indicator only                             |
-| `kit/MasterDetail.tsx`                       | T4 split with the narrow-viewport switch                       |
+| `kit/MasterDetail.tsx`                       | T4 split with the narrow-viewport switch; `MasterList` / `MasterListSkeleton` for the plain list column |
 | `kit/NextActionHero.tsx`                     | the single "do this next" on T1 and hub Overview               |
 | `kit/tone.ts` / `ui/tone.ts`                 | `TONE_CLASS` / `TONE_TEXT` tint recipes                        |
 | `admin/AdminDetailTable.tsx`                 | styling for a dense table inside an editor, not a browser      |

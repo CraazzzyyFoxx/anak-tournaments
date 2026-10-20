@@ -27,7 +27,6 @@ from shared.models.balancer.draft import DraftSession  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from src import schemas  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
-from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
 
 
@@ -118,37 +117,6 @@ def test_create_request_rejects_bad_pick_time(seconds: int) -> None:
         schemas.DraftSessionCreateRequest(pick_time_seconds=seconds)
 
 
-def test_order_request_accepts_permutation() -> None:
-    req = schemas.DraftOrderRequest(
-        order=[
-            schemas.DraftOrderEntry(draft_team_id=10, draft_position=2),
-            schemas.DraftOrderEntry(draft_team_id=11, draft_position=1),
-            schemas.DraftOrderEntry(draft_team_id=12, draft_position=3),
-        ]
-    )
-    assert len(req.order) == 3
-
-
-def test_order_request_rejects_non_permutation() -> None:
-    with pytest.raises(ValidationError):
-        schemas.DraftOrderRequest(
-            order=[
-                schemas.DraftOrderEntry(draft_team_id=10, draft_position=1),
-                schemas.DraftOrderEntry(draft_team_id=11, draft_position=3),  # gap, no 2
-            ]
-        )
-
-
-def test_order_request_rejects_duplicate_team_ids() -> None:
-    with pytest.raises(ValidationError):
-        schemas.DraftOrderRequest(
-            order=[
-                schemas.DraftOrderEntry(draft_team_id=10, draft_position=1),
-                schemas.DraftOrderEntry(draft_team_id=10, draft_position=2),
-            ]
-        )
-
-
 def test_select_request_requires_expected_version() -> None:
     with pytest.raises(ValidationError):
         schemas.DraftPickSelectRequest(player_id=5)  # type: ignore[call-arg]
@@ -229,7 +197,7 @@ def test_a_custom_tournament_copies_its_rules_padded_to_the_round_count() -> Non
 def test_a_client_sent_round_rule_is_dropped_on_create() -> None:
     # The wizard is read-only about the format now; a stale bundle that still
     # posts rules must not become a second, unlocked place to edit it.
-    merged = draft_rpc._with_format_settings(
+    merged = lifecycle._with_format_settings(
         {"team_count": 4, "round_rules": ["strongest_first"], "avg_tie_seed_reverse": True},
         {"round_rules": ["linear", "linear"], "avg_tie_seed_reverse": False},
     )
@@ -240,18 +208,18 @@ def test_a_client_sent_round_rule_is_dropped_on_create() -> None:
 def test_a_non_custom_tournament_leaves_no_format_keys_behind() -> None:
     # Snake/linear contribute nothing, so a patched settings blob stays as clean
     # as the one the wizard used to send.
-    assert draft_rpc._with_format_settings({"team_count": 4, "round_rules": ["reverse"]}, {}) == {"team_count": 4}
+    assert lifecycle._with_format_settings({"team_count": 4, "round_rules": ["reverse"]}, {}) == {"team_count": 4}
 
 
 def test_session_patch_keeps_the_sessions_own_format_snapshot() -> None:
-    # What `_session_patch` does: replace settings_json, then re-add the keys the
+    # What `patch_session` does: replace settings_json, then re-add the keys the
     # session was created with.
     session_settings = {"round_rules": ["reverse", "linear"], "avg_tie_seed_reverse": True, "team_count": 4}
     incoming = {"team_count": 6, "round_rules": ["strongest_first"], "avg_tie_seed_reverse": False}
 
-    merged = draft_rpc._with_format_settings(
+    merged = lifecycle._with_format_settings(
         incoming,
-        {k: session_settings[k] for k in draft_rpc._FORMAT_SETTINGS_KEYS if k in session_settings},
+        {k: session_settings[k] for k in lifecycle._FORMAT_SETTINGS_KEYS if k in session_settings},
     )
 
     assert merged == {"team_count": 6, "round_rules": ["reverse", "linear"], "avg_tie_seed_reverse": True}

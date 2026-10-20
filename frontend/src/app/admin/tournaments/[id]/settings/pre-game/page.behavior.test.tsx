@@ -342,8 +342,38 @@ const CATALOG = {
   ]
 };
 
-/** A game's catalog is its own: League has no Overwatch preset, and its module preset names a rotation. */
-const LOL_PRESET_RULESET: PickBanRuleset = { ...ANTI_ONE_TRICK, phases: [ANTI_ONE_TRICK.phases[0]] };
+/** League's module preset (contracts §1): one side choice by the opener, no champion consumed. */
+const LOL_PRESET_RULESET: PickBanRuleset = {
+  version: 2,
+  timer_seconds: 90,
+  on_timeout: "random_fill",
+  phases: [
+    {
+      id: "side_selection",
+      name: "Side selection",
+      when: {},
+      pool_filter: {},
+      generator: null,
+      steps: [
+        {
+          id: "choose_side",
+          action: "side_pick",
+          actors: "first",
+          count: 1,
+          min: null,
+          blind: false,
+          target: null,
+          lifetime: null,
+          timer_seconds: null,
+          on_timeout: null,
+          dispute: { enabled: false, max: 0 },
+          eligible: {},
+          constraints: []
+        }
+      ]
+    }
+  ]
+};
 const LOL_CATALOG = {
   ...CATALOG,
   groups: { hero: ["Mage", "Fighter"], map: [] },
@@ -831,7 +861,7 @@ describe("Settings › Pre-game phase keeps the stored rules", () => {
     expect(getRulesCatalog.mock.calls[0][0]).toBe("lol");
     expect(getRulesCatalog.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
     await click(only(en.pickBan.rules.presets));
-    expect(option("lol_side_selection")).toBeTruthy();
+    expect(option(en.pickBan.rules.preset.lol_side_selection)).toBeTruthy();
     expect(() => option(en.pickBan.rules.preset.hero_anti_one_trick)).toThrow();
   });
 
@@ -843,7 +873,19 @@ describe("Settings › Pre-game phase keeps the stored rules", () => {
     expect(CUSTOM_HERO_CONFIG.first_ban_rotation).toBe("alternate");
 
     await click(only(en.pickBan.rules.presets));
-    await click(option("lol_side_selection"));
+    await click(option(en.pickBan.rules.preset.lol_side_selection));
+    // The side step reads as one on the board and in its inspector — never as a missing key.
+    const sidePick = `${en.pickBan.rules.action.side_pick} · ${en.pickBan.rules.actors.first}`;
+    const row = [...editor().querySelectorAll<HTMLElement>("button[aria-pressed]")].find((element) =>
+      (element.textContent ?? "").includes(sidePick)
+    );
+    expect(row).toBeTruthy();
+    await click(row!);
+    const actionLabel = [...editor().querySelectorAll("label")].find(
+      (element) => (element.textContent ?? "").trim() === en.pickBan.rules.step.action
+    );
+    const trigger = document.getElementById(actionLabel?.getAttribute("for") ?? "");
+    expect(trigger?.textContent).toContain(en.pickBan.rules.action.side_pick);
     await click(only("Save rules"));
 
     const body = upsertConfig.mock.calls[0][1];

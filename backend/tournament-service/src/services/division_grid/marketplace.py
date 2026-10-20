@@ -408,19 +408,15 @@ class MarketplaceService:
     ) -> list[schemas.DivisionGridMarketplaceWorkspaceRead]:
         """List other workspaces exposing an importable division grid.
 
-        The marketplace is cross-tenant by design: the caller already proved
-        ``division_grid.read`` on ``target_workspace_id`` (checked by the RPC
-        handler before this runs), so any admin able to open that workspace's
-        grid page may browse every OTHER workspace's grids to import from --
-        not only ones they personally also belong to. This mirrors
-        ``WorkspaceService.get_all``: ``is_hidden`` only gates discoverability,
-        so a hidden source workspace stays restricted to its own
+        Cross-tenant by design: the caller already proved ``division_grid.read``
+        on ``target_workspace_id`` (the RPC handler checks it), so they may browse
+        every OTHER workspace's grids to import from, not only ones they belong
+        to. As in ``WorkspaceService.get_all``, ``is_hidden`` only gates
+        discoverability: a hidden source workspace stays restricted to its own
         members/superusers instead of the whole platform.
         """
         member_ids = set(user.get_workspace_ids())
 
-        # Multi-join grid/version aggregation: a service-level analytical query,
-        # deliberately not hidden behind a CRUD repository method.
         query = (
             sa.select(
                 models.Workspace.id,
@@ -501,8 +497,6 @@ class MarketplaceService:
         if not source_version_ids:
             return []
 
-        # Both endpoints constrained to the same id set — broader than
-        # DivisionGridMappingRepository.get_for_versions' single (source, target).
         result = await session.execute(
             self.mapping_repo.select()
             .options(*_MAPPING_RULES_OPTIONS)

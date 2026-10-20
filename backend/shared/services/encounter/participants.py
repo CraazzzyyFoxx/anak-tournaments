@@ -1,11 +1,10 @@
-"""The only writer of an encounter's seats (D55, D56).
+"""The only writer of an encounter's seats.
 
 A participation is append-only. Taking a seat from one team and giving it to
 another is :func:`vacate_slot` followed by :func:`place_team`: the retired row
 stays, inactive, with the games it played, the claims it filed and the journal
 entries that name it still pointing at it. That is what makes "who actually
-played this map" answerable after a bracket correction — the question the old
-``encounter.home_team_id`` could not answer, because it was simply overwritten.
+played this map" answerable after a bracket correction.
 
 Like the result writer beside it, nothing here commits: every change rides the
 caller's transaction, so a rolled-back correction leaves no half-moved seat.
@@ -53,15 +52,15 @@ class MemberSnapshot:
     """One roster member as the encounter will remember them.
 
     Everything is a copy taken at placement time: the workspace member is the
-    anchor (D66), the rest is what was true when the seat was filled, so a
-    renamed account or a re-ranked player does not rewrite history.
+    anchor, the rest is what was true when the seat was filled, so a renamed
+    account or a re-ranked player does not rewrite history.
     """
 
     workspace_member_id: int
     display_name: str
     rank: int | None
     is_substitute: bool
-    #: One ``(dimension, leaf code)`` pair per dimension; a sub-role IS the leaf (D86).
+    #: One ``(dimension, leaf code)`` pair per dimension; a sub-role IS the leaf.
     roles: tuple[tuple[str, str], ...]
 
 
@@ -149,7 +148,7 @@ async def vacate_slot(session: AsyncSession, encounter: Encounter, *, slot: int)
 async def add_substitute(
     session: AsyncSession, participation: EncounterTeam, member: MemberSnapshot
 ) -> EncounterTeamMember:
-    """Seat a player who joined the roster mid-encounter (D19).
+    """Seat a player who joined the roster mid-encounter.
 
     The flag is forced rather than read off the snapshot: a player added after
     the line-up was taken IS the substitute, whatever the caller filled in.

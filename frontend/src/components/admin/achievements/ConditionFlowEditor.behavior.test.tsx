@@ -192,11 +192,12 @@ describe("the condition editor follows the game's registry", () => {
     expect(container.querySelector("[data-testid=builder]")?.getAttribute("data-default")).toBe("lol_first_blood");
   });
 
-  it("keeps rendering an existing tree read-only without waiting for the registry", async () => {
+  it("keeps rendering an existing tree read-only without asking for the registry", async () => {
     getConditionTypes.mockReturnValue(new Promise(() => {}));
     await render(editor("overwatch", { readOnly: true, value: { AND: [{ type: "match_win", params: {} }] } }));
     const builder = container.querySelector("[data-testid=builder]");
     expect(builder?.getAttribute("data-readonly")).toBe("true");
+    expect(getConditionTypes).not.toHaveBeenCalled();
   });
 
   it("draws an empty read-only tree of a game without conditions as unavailable, not as a default node", async () => {

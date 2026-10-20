@@ -1,7 +1,4 @@
-"""What a chat room IS: a kind, a referent, a realtime topic, a default.
-
-Design: docs/plans/2026-09-21-shared-room-chat.md.
-"""
+"""What a chat room IS: a kind, a referent, a realtime topic, a default."""
 
 from __future__ import annotations
 
@@ -25,11 +22,9 @@ class ChatRoomKind(StrEnum):
 
 
 #: Whether people who are merely watching may READ the room, before an organizer
-#: says otherwise. The two rooms differ because the rooms differ: a draft is a
-#: show that viewers and casters follow, while a pre-game room is where the two
-#: captains exchange the custom-lobby code -- and a lobby code anyone can read is
-#: an open door for griefers. Either default is overridable per room; the
-#: pre-game one exists to be switched ON for a broadcast, not to stay off.
+#: says otherwise. A draft is a show viewers and casters follow; a pre-game room
+#: is where the captains exchange the custom-lobby code, and a lobby code anyone
+#: can read is an open door for griefers. Overridable per room.
 _SPECTATORS_CAN_READ_DEFAULT: dict[ChatRoomKind, bool] = {
     ChatRoomKind.ENCOUNTER: False,
     ChatRoomKind.DRAFT: True,

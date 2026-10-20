@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.catalog_sync import CatalogImageMirror, SourceEntity, apply_source, merge_aliases
+from shared.core.errors import ApiHTTPException
 from shared.disciplines import DISCIPLINES
 from shared.disciplines.lol import catalog_sync as lol_sync
 from shared.disciplines.overwatch import catalog_sync as overwatch_sync
@@ -126,6 +127,7 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         self.engine = create_test_async_engine()
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self.tag = f"sync{os.getpid()}x{next(_TAG)}"
+        await self._clear_summoners_rift()
 
     async def asyncTearDown(self) -> None:
         async with self.Session() as s:
@@ -133,7 +135,20 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
             await s.execute(sa.delete(CatalogEntity).where(mine, CatalogEntity.parent_id.is_not(None)))
             await s.execute(sa.delete(CatalogEntity).where(mine))
             await s.commit()
+        await self._clear_summoners_rift()
         await self.engine.dispose()
+
+    async def _clear_summoners_rift(self) -> None:
+        # Data Dragon map 11's code is fixed, not tagged: whichever test (or crashed run) left it goes. Test DB only.
+        fixed = sa.select(CatalogEntity.id).where(
+            CatalogEntity.discipline == "lol",
+            CatalogEntity.kind == "map",
+            CatalogEntity.slug == "summoners_rift",
+        )
+        async with self.Session() as s:
+            await s.execute(sa.delete(CatalogEntity).where(CatalogEntity.parent_id.in_(fixed)))
+            await s.execute(sa.delete(CatalogEntity).where(CatalogEntity.id.in_(fixed)))
+            await s.commit()
 
     async def _rows(self, discipline: str, kind: str) -> list[tuple]:
         async with self.Session() as s:
@@ -466,10 +481,176 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
             (f"{tag}monkeyking", {"class": "Fighter"}, [f"{tag}MonkeyKing"]),
         ]
         maps = await self._rows("lol", "map")
-        assert [slug for slug, *_ in maps] == [f"{tag}-abyss", f"{tag}-rift"]
-        assert f"assets/lol/map/{tag}-rift.png" in s3.keys
+        # Map 11 takes the fixed canonical code, which ``_rows`` (tagged slugs) cannot see: it is found by its name.
+        assert [slug for slug, *_ in maps] == [f"{tag}-abyss"]
+        rift = [(m.slug, m.image_path) for m in await self._lol_maps() if m.name == f"{tag} Rift"]
+        assert rift == [("summoners_rift", f"{BUCKET}assets/lol/map/summoners_rift.png")]
+        assert "assets/lol/map/summoners_rift.png" in s3.keys
         assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map11.png" in http.paths
         assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map21.png" not in http.paths
         # A map id without a name (Data Dragon 16.20 lists 453 so) is skipped, image and all.
         assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map453.png" not in http.paths
         assert await self._rows("lol", "mode") == []
+
+    # ── Data Dragon map 11 under its canonical code ``summoners_rift`` ──────────
+
+    async def _lol_maps(self) -> list[CatalogEntity]:
+        """This test's LoL maps: tagged by slug or name, plus the fixed canonical code ``_rows`` cannot see."""
+        async with self.Session() as s:
+            mine = sa.or_(
+                CatalogEntity.slug == "summoners_rift",
+                CatalogEntity.slug.like(f"{self.tag}%"),
+                CatalogEntity.name.like(f"{self.tag}%"),
+            )
+            query = sa.select(CatalogEntity).where(CatalogEntity.discipline == "lol", CatalogEntity.kind == "map", mine)
+            return list(await s.scalars(query.order_by(CatalogEntity.id)))
+
+    async def _add_lol(self, slug: str, name: str, *, kind: str = "map", **fields: object) -> int:
+        async with self.Session() as s:
+            entity = CatalogEntity(discipline="lol", kind=kind, slug=slug, name=name, **fields)
+            s.add(entity)
+            await s.commit()
+            return entity.id
+
+    async def _sync_map11(self, http: _Http | None = None, s3: _S3 | None = None) -> tuple[_Http, _S3]:
+        http, s3 = http or _Http(_map11_routes(self.tag)), s3 or _S3()
+        async with self.Session() as s:
+            await lol_sync.sync_catalog(s, CatalogImageMirror(s3), http=http)
+        return http, s3
+
+    async def _assert_refused_unchanged(self, *ids: int) -> None:
+        before = [_snapshot(m) for m in await self._lol_maps()]
+        http, s3 = _Http(_map11_routes(self.tag)), _S3()
+        with self.assertRaises(ApiHTTPException) as raised:
+            await self._sync_map11(http, s3)
+        assert raised.exception.status_code == 409
+        (error,) = raised.exception.detail
+        assert error["code"] == "catalog_conflict"
+        assert str(sorted(ids)) in error["msg"]
+        # Refused before the map batch: no row changed, none added, no map image fetched or uploaded.
+        assert [_snapshot(m) for m in await self._lol_maps()] == before
+        assert s3.keys == []
+        assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map11.png" not in http.paths
+
+    async def _adopt_legacy(self, image_path: str) -> tuple[CatalogEntity, _Http, _S3]:
+        """A row an earlier sync created under ``slugify(name)``, since edited by an admin and referenced by a child."""
+        legacy_id = await self._add_lol(
+            f"{self.tag}-rift", f"{self.tag} Rift", image_path=image_path, attrs={"custom": "kept"}, active=False
+        )
+        child_id = await self._add_lol(f"{self.tag}-child", f"{self.tag} Child", kind="character", parent_id=legacy_id)
+        http, s3 = await self._sync_map11()
+        (rift,) = await self._lol_maps()
+        assert (rift.id, rift.slug, rift.name, rift.attrs, rift.active) == (
+            legacy_id,
+            "summoners_rift",
+            f"{self.tag} Rift",
+            {"custom": "kept"},
+            False,
+        )
+        assert f"{self.tag}-rift" in rift.aliases
+        async with self.Session() as s:
+            assert await s.scalar(sa.select(CatalogEntity.parent_id).where(CatalogEntity.id == child_id)) == legacy_id
+        return rift, http, s3
+
+    async def test_map11_legacy_row_keeps_its_id_and_its_mirrored_image_under_the_canonical_code(self) -> None:
+        mirrored = f"{BUCKET}assets/lol/map/{self.tag}-rift.png"
+        rift, http, s3 = await self._adopt_legacy(mirrored)
+        assert rift.image_path == mirrored
+        assert s3.keys == []
+        assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map11.png" not in http.paths
+
+    async def test_map11_legacy_row_with_a_source_image_is_mirrored_under_the_canonical_code(self) -> None:
+        rift, _http, s3 = await self._adopt_legacy("https://src/rift.png")
+        assert rift.image_path == f"{BUCKET}assets/lol/map/summoners_rift.png"
+        assert s3.keys == ["assets/lol/map/summoners_rift.png"]
+
+    async def test_map11_repeat_sync_is_idempotent(self) -> None:
+        await self._add_lol(f"{self.tag}-rift", f"{self.tag} Rift", image_path="https://src/rift.png")
+        await self._sync_map11()
+        first = [_snapshot(m) for m in await self._lol_maps()]
+        _http, s3 = await self._sync_map11()
+        assert [_snapshot(m) for m in await self._lol_maps()] == first
+        assert [slug for _id, slug, *_ in first] == ["summoners_rift"]
+        assert s3.keys == []
+
+    async def test_map11_canonical_and_legacy_rows_together_are_a_conflict(self) -> None:
+        canonical = await self._add_lol("summoners_rift", f"{self.tag} Canonical")
+        legacy = await self._add_lol(f"{self.tag}-rift", f"{self.tag} Rift")
+        await self._assert_refused_unchanged(canonical, legacy)
+
+    async def test_map11_two_rows_aliasing_the_source_name_are_a_conflict(self) -> None:
+        first = await self._add_lol(f"{self.tag}-a", f"{self.tag} A", aliases=[f"{self.tag} Rift"])
+        second = await self._add_lol(f"{self.tag}-b", f"{self.tag} B", aliases=[f"{self.tag} Rift"])
+        await self._assert_refused_unchanged(first, second)
+
+    async def test_map11_row_found_by_name_keeps_an_admin_chosen_slug(self) -> None:
+        custom = await self._add_lol(f"{self.tag}-custom", f"{self.tag} Rift", image_path=f"{BUCKET}custom.png")
+        await self._sync_map11()
+        (rift,) = await self._lol_maps()
+        assert (rift.id, rift.slug, rift.image_path) == (custom, f"{self.tag}-custom", f"{BUCKET}custom.png")
+
+    async def test_map11_row_matched_only_by_alias_is_a_conflict(self) -> None:
+        renamed = await self._add_lol(f"{self.tag}-renamed", f"{self.tag} Renamed", aliases=[f"{self.tag} Rift"])
+        await self._assert_refused_unchanged(renamed)
+
+    async def test_map11_on_a_fresh_catalog_is_one_summoners_rift_row(self) -> None:
+        _http, s3 = await self._sync_map11()
+        (rift,) = await self._lol_maps()
+        assert (rift.slug, rift.name, rift.attrs, rift.aliases, rift.active) == (
+            "summoners_rift",
+            f"{self.tag} Rift",
+            {},
+            [],
+            True,
+        )
+        assert rift.image_path == f"{BUCKET}assets/lol/map/summoners_rift.png"
+        assert s3.keys == ["assets/lol/map/summoners_rift.png"]
+
+    async def test_map11_sync_leaves_manual_and_source_missing_maps_alone(self) -> None:
+        await self._add_lol(f"{self.tag}-manual", f"{self.tag} Manual", attrs={"note": "hand-made"}, active=False)
+        await self._add_lol(f"{self.tag}-gone", f"{self.tag} Gone", image_path=f"{BUCKET}assets/lol/map/gone.png")
+        before = [_snapshot(m) for m in await self._lol_maps()]
+        await self._sync_map11()
+        after = await self._lol_maps()
+        assert [_snapshot(m) for m in after if m.slug != "summoners_rift"] == before
+        assert [m.name for m in after if m.slug == "summoners_rift"] == [f"{self.tag} Rift"]
+
+    async def test_map11_failed_map_fetch_writes_nothing(self) -> None:
+        class _MapSourceDown(_Http):
+            async def get(self, path: str, **kwargs: object) -> _Response:
+                if path.endswith("/map.json"):
+                    raise RuntimeError("Data Dragon map.json is down")
+                return await super().get(path, **kwargs)
+
+        await self._add_lol(f"{self.tag}-rift", f"{self.tag} Rift", image_path="https://src/rift.png")
+        before = [_snapshot(m) for m in await self._lol_maps()]
+        s3 = _S3()
+        with self.assertRaisesRegex(RuntimeError, "is down"):
+            await self._sync_map11(_MapSourceDown(_map11_routes(self.tag)), s3)
+        # The fetch precedes every write: no slug rewrite, no new row, nothing mirrored.
+        assert [_snapshot(m) for m in await self._lol_maps()] == before
+        assert s3.keys == []
+
+
+def _map11_routes(tag: str) -> dict:
+    """A Data Dragon source whose only map is id 11, named ``f"{tag} Rift"``; no champions."""
+    return {
+        "/api/versions.json": ["14.1.1"],
+        "/cdn/14.1.1/data/en_US/champion.json": {"data": {}},
+        "/cdn/14.1.1/data/en_US/map.json": {
+            "data": {"11": {"MapName": f"{tag} Rift", "MapId": "11", "image": {"full": "map11.png"}}}
+        },
+    }
+
+
+def _snapshot(entity: CatalogEntity) -> tuple:
+    return (
+        entity.id,
+        entity.slug,
+        entity.name,
+        entity.image_path,
+        entity.attrs,
+        entity.aliases,
+        entity.active,
+        entity.parent_id,
+    )

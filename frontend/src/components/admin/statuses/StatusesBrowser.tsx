@@ -305,9 +305,7 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
         }
       />
 
-      <p className="text-xs text-muted-foreground">
-        {t("note")}
-      </p>
+      <p className="max-w-prose text-xs text-muted-foreground">{t("note")}</p>
 
       <Dialog
         open={createOpen}

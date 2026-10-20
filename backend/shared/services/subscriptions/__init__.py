@@ -4,7 +4,7 @@ Answers one question: does this site user have an active subscription to a
 workspace's author, and at what tier? Providers (Boosty via Discord roles, Boosty
 via challenge code, Twitch Helix) sit behind a single ``Protocol``.
 
-The tri-state contract copied from ``shared.services.profile_visibility`` is
+The tri-state contract (as in ``shared.services.profile_visibility``) is
 load-bearing: ``unknown`` fails open so a provider outage is never mistaken for a
 cancelled subscription. See ``requirement`` for how several providers compose.
 """

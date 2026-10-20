@@ -48,8 +48,14 @@ describe("slot-family loaders", () => {
     for (const load of Object.values(FAMILIES)) expect((await load("overwatch"))?.code).toBe("overwatch");
   });
 
-  it("give LoL no Overwatch renderer in any family", async () => {
-    for (const load of Object.values(FAMILIES)) await expect(load("lol")).resolves.toBeNull();
+  it("give LoL its own pregame renderer and no Overwatch renderer in any other family", async () => {
+    const lol = await loadPregameUI("lol");
+    expect(lol?.code).toBe("lol");
+    expect(Object.keys(lol?.slots ?? {})).toEqual(["pregameCharacterBans"]);
+    expect(lol?.slots.pregameCharacterBans).not.toBe((await loadPregameUI("overwatch"))?.slots.pregameCharacterBans);
+    for (const load of [loadRankUI, loadAdminUI, loadProfileUI, loadAnalyticsUI]) {
+      await expect(load("lol")).resolves.toBeNull();
+    }
   });
 
   it("keep a slot's component identity stable across loads", async () => {

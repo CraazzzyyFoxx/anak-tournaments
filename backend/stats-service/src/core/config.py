@@ -65,9 +65,6 @@ class AppConfig(BaseServiceSettings):
     discord_token: str | None = None
     twitch_client_id: str | None = None
 
-    # Challonge
-    challonge_username: str
-    challonge_api_key: str
     # RabbitMQ
     rabbitmq_url: str | None = None
 

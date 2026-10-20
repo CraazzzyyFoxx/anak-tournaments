@@ -29,8 +29,7 @@ __all__ = ("CatalogAliasService", "catalog_aliases")
 
 
 class CatalogAliasService:
-    """The alias-miss worklist: the LEFT-JOINed read (analytical, so it does not
-    belong behind a CRUD repository) plus the two transactional operations."""
+    """The alias-miss worklist: the LEFT-JOINed read plus the two transactional operations."""
 
     def __init__(
         self,

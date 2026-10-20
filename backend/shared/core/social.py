@@ -6,20 +6,16 @@ have, and for how a raw handle is canonicalized for matching / uniqueness
 (``username_normalized``).
 
 Everything a provider "is" lives in exactly one :class:`ProviderSpec` row of
-:data:`PROVIDERS`. Before this catalog, the BattleTag grammar alone existed in
-five places in three mutually incompatible spellings (two service settings, two
-frontend defaults and a sheet scanner), so the same handle was accepted by one
-service and refused by the next. Adding a sixth spelling is now impossible: the
-set, the grammar, the normalizer, the OAuth field shapes and the display label
-are all read off the same row, and the frontend is served that row rather than
-keeping its own copy.
+:data:`PROVIDERS`: the set, the grammar, the normalizer, the OAuth field shapes
+and the display label are all read off the same row, and the frontend is served
+that row rather than keeping its own copy.
 
 **Patterns match the NORMALIZED handle, never the raw input.** That is what lets
 a grammar be written once: ``discord`` may say ``[a-z0-9_.]`` without refusing
 ``CoolGuy``, because by the time the pattern runs the value is already
 ``coolguy`` — the same string that will be stored in ``username_normalized`` and
 matched against. A pattern written against raw input would have to re-encode the
-normalizer's rules, which is how the two drifted apart in the first place.
+normalizer's rules.
 """
 
 from __future__ import annotations

@@ -33,8 +33,8 @@ from shared.domain.discord_ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.schemas.events import DiscordActionButton, DiscordCard, DiscordLinkButton
 from src.domain.balancer.result_serializer import seat_rating
+from src.domain.balancer.role_naming import role_slot_code
 from src.domain.mix_lineup_image import LineupPicture, LineupSeat, LineupTeam
-from src.services.balancer.role_naming import role_slot_code
 
 __all__ = ("SignupPlayer", "lineup_card", "lineup_picture", "signup_card")
 

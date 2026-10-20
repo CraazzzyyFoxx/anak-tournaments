@@ -1,9 +1,9 @@
 """Hybrid auto-mapping rule generator for division grid versions.
 
 Given the tiers of a *source* version and a *target* version, produce the
-``DivisionGridMappingRuleWrite`` rules that map every source tier onto one or
-more target tiers, plus the list of source tiers that could not be mapped
-(conflicts) and require manual resolution.
+``MappingRule`` rules that map every source tier onto one or more target
+tiers, plus the list of source tiers that could not be mapped (conflicts) and
+require manual resolution.
 
 Strategy, per source tier:
   1. slug identity  — a target tier with the same ``slug`` wins (weight 1.0).
@@ -12,8 +12,7 @@ Strategy, per source tier:
                       overlap becomes the primary rule.
   3. conflict       — neither slug match nor any positive overlap.
 
-This is a pure function (no DB, no I/O) so it is trivially testable and reused
-by both the save orchestration and the marketplace/portable importers.
+Pure (no DB, no I/O): the division-grid service persists what it returns.
 """
 
 from __future__ import annotations
@@ -21,9 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from src import schemas
-
-__all__ = ("ConflictTier", "MappingGeneration", "TierLike", "generate_mapping_rules")
+__all__ = ("ConflictTier", "MappingGeneration", "MappingRule", "TierLike", "generate_mapping_rules")
 
 
 class TierLike(Protocol):
@@ -35,6 +32,14 @@ class TierLike(Protocol):
 
 
 @dataclass(frozen=True)
+class MappingRule:
+    source_tier_id: int
+    target_tier_id: int
+    weight: float
+    is_primary: bool
+
+
+@dataclass(frozen=True)
 class ConflictTier:
     source_tier_id: int
     slug: str
@@ -43,7 +48,7 @@ class ConflictTier:
 
 @dataclass(frozen=True)
 class MappingGeneration:
-    rules: list[schemas.DivisionGridMappingRuleWrite] = field(default_factory=list)
+    rules: list[MappingRule] = field(default_factory=list)
     conflicts: list[ConflictTier] = field(default_factory=list)
 
     @property
@@ -79,7 +84,7 @@ def generate_mapping_rules(
     ceiling = _ceiling(source_tiers, target_tiers)
     target_by_slug = {tier.slug: tier for tier in target_tiers}
 
-    rules: list[schemas.DivisionGridMappingRuleWrite] = []
+    rules: list[MappingRule] = []
     conflicts: list[ConflictTier] = []
 
     for source in source_tiers:
@@ -87,7 +92,7 @@ def generate_mapping_rules(
         exact = target_by_slug.get(source.slug)
         if exact is not None:
             rules.append(
-                schemas.DivisionGridMappingRuleWrite(
+                MappingRule(
                     source_tier_id=source.id,
                     target_tier_id=exact.id,
                     weight=1.0,
@@ -110,7 +115,7 @@ def generate_mapping_rules(
 
         if len(overlaps) == 1:
             rules.append(
-                schemas.DivisionGridMappingRuleWrite(
+                MappingRule(
                     source_tier_id=source.id,
                     target_tier_id=primary_target.id,
                     weight=1.0,
@@ -120,13 +125,13 @@ def generate_mapping_rules(
             continue
 
         total = sum(value for _, value in overlaps)
-        secondary_rules: list[schemas.DivisionGridMappingRuleWrite] = []
+        secondary_rules: list[MappingRule] = []
         for target, value in overlaps[1:]:
             weight = round(value / total, 6)
             if weight <= 0:
                 continue
             secondary_rules.append(
-                schemas.DivisionGridMappingRuleWrite(
+                MappingRule(
                     source_tier_id=source.id,
                     target_tier_id=target.id,
                     weight=weight,
@@ -136,7 +141,7 @@ def generate_mapping_rules(
 
         primary_weight = round(1.0 - sum(rule.weight for rule in secondary_rules), 6)
         rules.append(
-            schemas.DivisionGridMappingRuleWrite(
+            MappingRule(
                 source_tier_id=source.id,
                 target_tier_id=primary_target.id,
                 weight=primary_weight,

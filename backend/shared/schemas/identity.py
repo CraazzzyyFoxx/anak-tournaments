@@ -1,4 +1,4 @@
-"""A player's game identity on the wire: the owner provider and the handle as stored (D90)."""
+"""A player's game identity on the wire: the owner provider and the handle as stored."""
 
 from __future__ import annotations
 

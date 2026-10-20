@@ -9,7 +9,8 @@ from faststream.rabbit.annotations import RabbitMessage
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
-from shared.messaging.config import BALANCER_JOBS_QUEUE, PICKUP_MIX_CHANGED_DLQ
+from shared.messaging.config import BALANCER_JOBS_DLQ, BALANCER_JOBS_QUEUE, PICKUP_MIX_CHANGED_DLQ
+from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
@@ -22,6 +23,7 @@ from shared.quota import close as close_quota
 from shared.quota import configure as configure_quota
 from shared.schemas.events import BalancerJobEvent
 from shared.services.realtime import configure_realtime
+from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.caching import configure_cache
 from src.core.config import config
@@ -49,9 +51,8 @@ logger = setup_logging(
 broker = make_rabbit_broker(config.rabbitmq_url, logger=logger, prefetch_count=config.rpc_prefetch_count)
 app = FastStream(broker)
 
-# The cashews singleton is process-global with no default backend; the HTTP app
-# (main.py) configures it at import, the worker must do so before any RPC read
-# path hits the cache (see lesson: cashews-worker-not-configured).
+# The cashews singleton is process-global with no default backend; configure it
+# before any RPC read path hits the cache.
 configure_cache()
 # Same reason, same place: the realtime rail is a process-global too, and every
 # `emit` in this worker is a no-op until it knows where to publish. No
@@ -68,15 +69,11 @@ configure_quota(
     edge_workspace_metering=config.quota_edge_workspace_metering,
 )
 
-# Typed-RPC subscribers replacing the HTTP balancer-service behind the Go gateway.
-# Phase 1 — public config read + admin balance/config writes + teams import.
 rpc_config.register(broker, logger)
 rpc_admin.register(broker, logger)
 rpc_binary.register(broker, logger)
-# Phase 2 — live draft (public reads + lifecycle + pick actions).
 rpc_draft.register(broker, logger)
-# Phase 3 — public job API (create + status + result; create publishes to the
-# job queue this same worker consumes). The SSE stream is not migrated.
+# jobs.create publishes to the job queue this same worker consumes below.
 rpc_jobs.register(broker, logger)
 rpc_custom.register(broker, logger)
 rpc_players.register(broker, logger)
@@ -92,6 +89,11 @@ register_mix_card_projector(broker, logger)
 
 # Balance jobs run for minutes (MOO solver); isolate them from the RPC channel.
 _JOBS_CHANNEL = Channel(prefetch_count=2)
+
+# The relay for this service's own outbox rows (pickup_mix_changed, discord
+# commands, cache invalidations): written in the mutation's transaction,
+# published from here.
+_outbox_scheduler = IntervalScheduler(job_id="event_outbox_drain", label="Outbox drain", logger=logger)
 
 
 def _decode_balancer_message(message: Any) -> Any:
@@ -109,9 +111,10 @@ def _decode_balancer_message(message: Any) -> Any:
 @app.on_startup
 async def setup_worker_observability() -> None:
     await broker.connect()
-    # The projection queue dead-letters here; without the declaration a poison
-    # message routes to a non-existent queue and vanishes.
-    await declare_dead_letter_queue(broker, PICKUP_MIX_CHANGED_DLQ)
+    # The job and projection queues dead-letter here; without the declaration a
+    # poison or expired message routes to a non-existent queue and vanishes.
+    for dlq in (BALANCER_JOBS_DLQ, PICKUP_MIX_CHANGED_DLQ):
+        await declare_dead_letter_queue(broker, dlq)
     setup_sentry(
         dsn=config.sentry_dsn,
         traces_sample_rate=config.sentry_traces_sample_rate,
@@ -136,14 +139,14 @@ async def setup_worker_observability() -> None:
         engine=db.async_engine,
     )
     start_worker_metrics_server(config.worker_metrics_port)
+    _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     logger.info("Balancer worker started")
 
 
-# The clock supervisor outlives every message, so its handle and its Redis client
-# have to be reachable at shutdown. Left unanchored, asyncio's weak task
-# reference let it be reclaimed ("Task was destroyed but it is pending!"), and
-# nothing cancelled it before the loop closed -- so its in-flight asyncpg
-# connection kept resolving/cancelling on a dead loop ("Event loop is closed").
+# The clock supervisor outlives every message, so its handle and its Redis
+# client are module-level: asyncio holds only a weak reference to a task, and
+# shutdown must cancel it before the loop closes, or its in-flight asyncpg
+# connection unwinds on a dead loop.
 _draft_clock_task: asyncio.Task[None] | None = None
 _draft_clock_redis: Redis | None = None
 
@@ -162,6 +165,7 @@ async def start_draft_clock() -> None:
 
 @app.on_shutdown
 async def close_rpc_clients() -> None:
+    _outbox_scheduler.shutdown()
     # Gracefully close the draft realtime Redis client (worker-lifetime singleton).
     await rpc_draft.close()
 

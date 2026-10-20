@@ -1,13 +1,12 @@
 """Undo the last pick-ban step, once BOTH captains have agreed to it.
 
-A captain who banned the wrong hero used to have one way out: ask an organizer
-to reset the session, scrapping the whole round. This is the captains' own,
-surgical alternative -- and it is deliberately a two-sided consent rather than a
-unilateral take-back, because a settled step is information the opponent has
-already acted on. (The unilateral door exists too, but only for a BLIND step
+The captains' own, surgical alternative to an organizer resetting the session
+(which scraps the whole round) -- and deliberately a two-sided consent rather
+than a unilateral take-back, because a settled step is information the opponent
+has already acted on. (The unilateral door exists too, but only for a BLIND step
 that both sides replay from scratch: ``pick_ban_action.dispute_step``.) Same
 shape as the two other agreements this room runs on (``EncounterReadiness``,
-``EncounterMapReport``): one side records its consent, the other side's
+``EncounterGameClaim``): one side records its consent, the other side's
 matching call is what applies it.
 
 What "the last step" means is ``pick_ban_rules.undo_target``: the latest step
@@ -18,6 +17,10 @@ left, which is the whole revert: ``PickBanEntry`` is a projection, so nothing
 has to be un-set by hand. The restored step gets a fresh clock; without that
 ``_settle`` would re-take it at random on the very next read, the timer having
 long since run out on the step being restored.
+
+The one thing that is NOT a projection is a side: a ``side_pick`` writes the
+game's ``starting_side`` rows, so an undo of one clears them -- and refuses with
+409 ``side_locked`` once that game was played on (claimed or confirmed).
 """
 
 from __future__ import annotations
@@ -31,11 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.enums import EncounterGameState, MapVetoSessionStatus, PickBanKind
+from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
 from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
-from shared.repository import EncounterRepository, PickBanEntryRepository, PickBanSubmissionRepository
+from shared.repository import PickBanEntryRepository, PickBanSubmissionRepository
 from src.services.encounter.pick_ban_session import (
     PickBanSessionService,
     assert_not_paused,
@@ -52,6 +56,33 @@ def clear_undo_request(pick_ban: PickBanSession) -> None:
     outlive the state it was read against."""
     pick_ban.undo_requested_by_team_id = None
     pick_ban.undo_target_index = None
+
+
+def side_locked() -> HTTPException:
+    """The refusal of every rewind that would take back a side somebody played on."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=[ApiExc(code="side_locked", msg="This side was already played on; it can no longer be taken back")],
+    )
+
+
+def undone_side_positions(
+    steps: list[pbr.ResolvedStep], submissions: list[pbr.SubmissionLike], *, target: int
+) -> frozenset[int]:
+    """The positions whose sides an undo of ``target`` takes back: every
+    ``side_pick`` from the target on that still holds a live answer."""
+    return frozenset(
+        step.round or 1
+        for step in steps
+        if step.action == "side_pick"
+        and step.index >= target
+        and any(
+            row.step_index == step.index
+            and row.attempt == pbr.current_attempt(submissions, step.index)
+            and row.state != pbr.VOIDED
+            for row in submissions
+        )
+    )
 
 
 def undo_state(
@@ -141,12 +172,10 @@ class PickBanUndoService:
         *,
         entry_repo: PickBanEntryRepository = PickBanEntryRepository(),
         submission_repo: PickBanSubmissionRepository = PickBanSubmissionRepository(),
-        encounter_repo: EncounterRepository = EncounterRepository(),
         sessions: PickBanSessionService = pick_ban_session_service,
     ) -> None:
         self.entry_repo = entry_repo
         self.submission_repo = submission_repo
-        self.encounter_repo = encounter_repo
         self.sessions = sessions
 
     async def perform_undo(
@@ -167,9 +196,12 @@ class PickBanUndoService:
         Returns the resulting undo block, so the caller renders the outcome
         without a second read.
         """
-        # Same lock every committing path takes: an undo moves the step cursor
-        # exactly as taking a step does, and the consent it reads
-        # (`undo_target_index`) is compared against the log it loads below.
+        # Encounter first, then the session -- the lock every committing path
+        # takes: an undo moves the step cursor exactly as taking a step does
+        # (the consent it reads, `undo_target_index`, is compared against the
+        # log it loads below), and a side undo writes the game rows a result
+        # correction holds the encounter lock for.
+        encounter = await self.sessions._lock_encounter(session, encounter_id)
         pick_ban = await self.sessions.get_pick_ban_session(session, encounter_id, kind, for_update=True)
         if pick_ban is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick-ban session is not initialized")
@@ -190,6 +222,10 @@ class PickBanUndoService:
         if kind == PickBanKind.MAP:
             await self._assert_hero_round_unstarted(session, encounter_id, step.round)
             await self._assert_positions_unclaimed(session, encounter_id, entries, steps, submissions, target)
+        sides = undone_side_positions(steps, submissions, target=target)
+        # A withdrawal takes nothing back, so only a consent is refused.
+        if consent and sides & await self.sessions.games.played_positions(session, encounter_id):
+            raise side_locked()
 
         # One row per real change: a captain re-sending the request they already
         # have, or withdrawing one nobody opened, moves nothing worth recording.
@@ -210,12 +246,11 @@ class PickBanUndoService:
             else:
                 journaled = "undo_applied"
                 apply_undo(pick_ban, steps, submissions, entries, target=target, now=datetime.now(UTC))
+                await session.flush()
+                await self.sessions.games.clear_sides(session, encounter_id, sides)
                 if kind == PickBanKind.MAP:
                     # The pick is gone, so the position it opened must go with it.
-                    encounter = await self.encounter_repo.get(session, encounter_id)
-                    if encounter is not None:
-                        await session.flush()
-                        await self.sessions.games.sync_games_with_picks(session, encounter, pick_ban)
+                    await self.sessions.games.sync_games_with_picks(session, encounter, pick_ban)
 
         if journaled is not None:
             await record_room_event(
@@ -241,15 +276,14 @@ class PickBanUndoService:
         withdrawn, so taking the pick back with bans already committed against it
         would leave those bans attached to a map nobody has picked. The captains'
         way through is the composable one: undo the hero actions first (they are the
-        last actions of THEIR session), then the map pick — reverted hero entries no
-        longer count as committed, so this releases on its own.
+        last actions of THEIR session), then the map pick — reverted hero entries do
+        not count as committed, so this releases on its own.
         """
         hero_session = await self.sessions.get_pick_ban_session(session, encounter_id, PickBanKind.HERO)
         if hero_session is None:
             return
-        # Grouped count with a conditional round predicate, not a CRUD read: stays
-        # here rather than becoming a repository method. A carried ban never counts
-        # -- it carries no `action_index`, being a fixed copy of an earlier round's.
+        # A carried ban never counts -- it carries no `action_index`, being a
+        # fixed copy of an earlier round's.
         committed = await session.scalar(
             select(sa.func.count())
             .select_from(PickBanEntry)

@@ -2,8 +2,7 @@
 
 Exits 0 while the heartbeat file ``GatewayWatchdog`` touches is fresh, 1 when it
 is stale or absent. That file is written only on a tick that saw a live gateway
-session, so a stale one means the bot is running but deaf -- which is exactly
-the state the old ``python -c "import sys; sys.exit(0)"`` check could not see.
+session, so a stale one means the bot is running but deaf.
 
 The window is several watchdog intervals wide on purpose: one slow tick (a GC
 pause, a busy host) must not restart a healthy bot, while a genuinely dead

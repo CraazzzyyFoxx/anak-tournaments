@@ -1,4 +1,4 @@
-"""Tournament roster leaf assignments (D36, D86; spec §14.3).
+"""Tournament roster leaf assignments.
 
 Legacy player role columns remain unmapped until discipline02 drops them.
 """

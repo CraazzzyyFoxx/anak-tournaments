@@ -23,8 +23,8 @@ from shared.repository.draft import DraftPickRepository
 from shared.schemas.role import RoleRef
 from src import schemas
 from src.domain.draft.entities import DraftSnapshot
+from src.domain.draft.errors import err as _err
 from src.services.draft import loaders
-from src.services.draft._errors import err as _err
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.selection import DraftSelectionService, selection_service
 

@@ -1,6 +1,5 @@
-# Import all ORM models from the shared library.
-# Mirrors stats-service/src/models/__init__.py so that v1 analytics code that
-# does ``from src import models; models.Tournament`` keeps working unchanged.
+# Every ORM model from the shared library, so ``from src import models;
+# models.Tournament`` works.
 from shared.models.achievements.achievement import *
 from shared.models.analytics.analytics import *
 from shared.models.balancer.balance import *

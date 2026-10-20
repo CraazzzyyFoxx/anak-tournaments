@@ -73,8 +73,6 @@ class OAuthHttpClient:
 
 
 class OAuthProviderBase(ABC):
-    """Base class for OAuth providers"""
-
     provider_name: str = "generic"
 
     def __init__(self, http: OAuthHttpClient) -> None:
@@ -94,12 +92,9 @@ class OAuthProviderBase(ABC):
 
 
 class DiscordOAuthProvider(OAuthProviderBase):
-    """Discord OAuth provider implementation"""
-
     provider_name = "discord"
 
     def get_authorization_url(self, state: str) -> str:
-        """Get Discord OAuth authorization URL"""
         params = {
             "client_id": settings.DISCORD_CLIENT_ID,
             "redirect_uri": settings.OAUTH_REDIRECT,
@@ -107,11 +102,9 @@ class DiscordOAuthProvider(OAuthProviderBase):
             "scope": "identify email guilds",
             "state": state,
         }
-        # Use urlencode to properly encode all parameters including redirect_uri
         return f"{settings.DISCORD_OAUTH_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> dict[str, Any]:
-        """Exchange Discord authorization code for access token"""
         data = {
             "client_id": settings.DISCORD_CLIENT_ID,
             "client_secret": settings.DISCORD_CLIENT_SECRET,
@@ -120,10 +113,8 @@ class DiscordOAuthProvider(OAuthProviderBase):
             "redirect_uri": settings.OAUTH_REDIRECT,
         }
 
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
         try:
-            response = await self.http.client().post(settings.DISCORD_TOKEN_URL, data=data, headers=headers)
+            response = await self.http.client().post(settings.DISCORD_TOKEN_URL, data=data)
 
             if response.status_code != 200:
                 logger.warning(
@@ -137,7 +128,6 @@ class DiscordOAuthProvider(OAuthProviderBase):
             _raise_provider_call_error(exc, provider_label="Discord", error_detail="Discord authentication failed")
 
     async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
-        """Get Discord user information"""
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
@@ -202,21 +192,17 @@ def has_manage_guild(permissions: str) -> bool:
     """True when the Discord permission bitfield includes ``MANAGE_GUILD``.
 
     A user administers a guild iff Discord's ``owner`` flag is set OR this is
-    true (design: workspace self-service, §4.1) -- the caller combines both,
-    this only decodes the bitfield half.
+    true -- the caller combines both, this only decodes the bitfield half.
     """
     return (int(permissions) & _MANAGE_GUILD_BIT) != 0
 
 
 class TwitchOAuthProvider(OAuthProviderBase):
-    """Twitch OAuth provider implementation"""
-
     provider_name = "twitch"
 
     # ``user:read:subscriptions`` lets the subscription-entitlement module call
-    # Helix ``GET /subscriptions/user`` with this user's own token. Newly added:
-    # connections created before this change carry only ``user:read:email``, so
-    # the Twitch provider resolves them as ``unknown`` (fails open) with
+    # Helix ``GET /subscriptions/user`` with this user's own token. Connections
+    # granted without it resolve as ``unknown`` (fails open) with
     # ``evidence.reason == "missing_scope"`` and the UI offers a reconnect.
     SCOPES = "user:read:email user:read:subscriptions"
 
@@ -238,10 +224,9 @@ class TwitchOAuthProvider(OAuthProviderBase):
             "code": code,
             "redirect_uri": settings.OAUTH_REDIRECT,
         }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
-            response = await self.http.client().post(settings.TWITCH_TOKEN_URL, data=data, headers=headers)
+            response = await self.http.client().post(settings.TWITCH_TOKEN_URL, data=data)
             if response.status_code != 200:
                 logger.warning("Twitch token exchange failed", status_code=response.status_code)
                 raise HTTPException(
@@ -298,8 +283,6 @@ class TwitchOAuthProvider(OAuthProviderBase):
 
 
 class BattleNetOAuthProvider(OAuthProviderBase):
-    """Battle.net OAuth provider implementation"""
-
     provider_name = "battlenet"
 
     @staticmethod
@@ -323,13 +306,11 @@ class BattleNetOAuthProvider(OAuthProviderBase):
             "code": code,
             "redirect_uri": settings.OAUTH_REDIRECT,
         }
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
         try:
             response = await self.http.client().post(
                 f"{self._oauth_base_url()}/token",
                 data=data,
-                headers=headers,
                 auth=(settings.BATTLENET_CLIENT_ID, settings.BATTLENET_CLIENT_SECRET),
             )
 
@@ -392,9 +373,9 @@ class BattleNetOAuthProvider(OAuthProviderBase):
 class OAuthProviderRegistry:
     """Which providers this deployment offers, and their client instances."""
 
-    # Setting names per provider. A provider is only offered when its enable
-    # flag is on AND all three credentials are present: a half-configured
-    # provider would fail at the redirect, so it must not be advertised.
+    # A provider is only offered when its enable flag is on AND all three
+    # credentials are present: a half-configured provider would fail at the
+    # redirect, so it must not be advertised.
     PROVIDER_SETTINGS: dict[str, dict[str, str]] = {
         "discord": {
             "enabled": "DISCORD_OAUTH_ENABLED",
@@ -460,7 +441,6 @@ class OAuthProviderRegistry:
         ]
 
     def get(self, provider_name: str) -> OAuthProviderBase:
-        """Get OAuth provider by name"""
         self.ensure_enabled(provider_name)
         provider = self.providers.get(provider_name)
         if not provider:

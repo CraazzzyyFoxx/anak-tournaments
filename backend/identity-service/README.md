@@ -71,9 +71,10 @@ bearer `access_token` (injected by the gateway) and resolve the active user befo
 The full method list with request/response schemas is published at `/api/docs`, generated from
 `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 
-The service consumes only its own RPC queues: it subscribes to no event/job queue, publishes no
-domain events or outbox rows, writes no Redis realtime topics, and runs no scheduled work. Every
-state change is driven by an inbound RPC call.
+Besides its own RPC queues it consumes one event queue, `workspace_member_changed`
+(`src/rpc/workspace_member_events.py`, DLQ `workspace_member_changed.dlq`): app-service's
+`WorkspaceMemberChangedEvent`, on which it drops the cached RBAC payload of every listed user. It
+publishes no domain events or outbox rows and writes no Redis realtime topics.
 
 ## Data owned
 

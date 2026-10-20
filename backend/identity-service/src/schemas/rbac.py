@@ -40,8 +40,6 @@ __all__ = (
 
 # Permission Schemas
 class PermissionBase(BaseModel):
-    """Base permission schema"""
-
     name: str = Field(..., description="Unique permission name", max_length=100)
     resource: str = Field(..., description="Resource type (e.g., 'tournament', 'user')", max_length=100)
     action: str = Field(..., description="Action type (e.g., 'create', 'read', 'update', 'delete')", max_length=50)
@@ -66,8 +64,6 @@ class PermissionRead(PermissionBase):
 
 # Role Schemas
 class RoleBase(BaseModel):
-    """Base role schema"""
-
     name: str = Field(..., description="Unique role name", max_length=100)
     description: str | None = Field(None, description="Role description")
 

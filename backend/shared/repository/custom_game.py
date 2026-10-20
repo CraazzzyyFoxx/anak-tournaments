@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from shared import models
+from shared.core.enums import MixStatus
 from shared.core.errors import BaseAPIException
 from shared.repository.base import BaseRepository
 from shared.repository.roles import CatalogRoleRepository
@@ -25,6 +26,29 @@ class CustomGameRepository(BaseRepository[models.CustomGame]):
             query = query.where(self.model.discipline == discipline)
         result = await session.scalars(query.order_by(self.model.id.desc()))
         return result.all()
+
+    async def list_open_runnable(
+        self, session: AsyncSession, workspace_id: int, *, user_id: int | None
+    ) -> Sequence[sa.Row[tuple[int, str, int]]]:
+        """``(id, name, lobby_count)`` of the open mixes ``user_id`` hosts or co-hosts, newest first.
+
+        ``user_id=None`` drops the host filter: every open mix of the workspace.
+        """
+        query = (
+            sa.select(models.CustomGame.id, models.CustomGame.name, models.CustomGame.lobby_count)
+            .where(
+                models.CustomGame.workspace_id == workspace_id,
+                models.CustomGame.status.in_((MixStatus.DRAFT, MixStatus.BALANCED)),
+            )
+            .order_by(models.CustomGame.id.desc())
+            .limit(25)  # Discord shows at most 25 autocomplete choices
+        )
+        if user_id is not None:
+            co_hosted = sa.select(models.CustomGameCoHost.custom_game_id).where(
+                models.CustomGameCoHost.user_id == user_id
+            )
+            query = query.where(sa.or_(models.CustomGame.host_user_id == user_id, models.CustomGame.id.in_(co_hosted)))
+        return (await session.execute(query)).all()
 
 
 class CustomGamePlayerRepository(BaseRepository[models.CustomGamePlayer]):

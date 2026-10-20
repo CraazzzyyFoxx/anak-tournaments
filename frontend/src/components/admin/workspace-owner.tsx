@@ -6,8 +6,8 @@ import { useTranslations } from "next-intl";
 
 import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/kit/AuthUserSearchCombobox";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
@@ -72,7 +72,8 @@ export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: num
  *
  * Picking an account assigns it immediately, like the tier `Select` next to it:
  * there is nothing to stage, and a Save button over a single field would only
- * add a state that can be abandoned half-set.
+ * add a state that can be abandoned half-set. It is a `SettingRow` of its own,
+ * so a caller it is not offered to gets no row at all.
  */
 export function WorkspaceOwnerControl({
   workspaceId,
@@ -102,9 +103,8 @@ export function WorkspaceOwnerControl({
   if (!isSuperuser || workspaceId == null) return null;
 
   return (
-    <div className="mt-3">
-      <Label htmlFor="workspace-owner">{tc("reassignOwner")}</Label>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+    <SettingRow htmlFor="workspace-owner" label={tc("reassignOwner")}>
+      <div className="flex w-full items-center gap-2">
         <AuthUserSearchCombobox
           id="workspace-owner"
           value={owner?.auth_user_id}
@@ -125,7 +125,7 @@ export function WorkspaceOwnerControl({
           </Button>
         ) : null}
       </div>
-    </div>
+    </SettingRow>
   );
 }
 
@@ -169,19 +169,15 @@ export function WorkspaceOwnerTransferControl({
   if (workspaceId == null || !(isSuperuser || isOwner)) return null;
 
   return (
-    <div className="mt-3">
-      <Label htmlFor="workspace-owner-transfer">{tc("transferOwnership")}</Label>
-      <div className="mt-1.5">
-        <AuthUserSearchCombobox
-          id="workspace-owner-transfer"
-          value={target?.id}
-          selectedLabel={target?.label}
-          onSelect={(account) => setTarget(account ?? null)}
-          placeholder={tc("handOverTo")}
-          disabled={mutation.isPending}
-        />
-      </div>
-
+    <SettingRow htmlFor="workspace-owner-transfer" label={tc("transferOwnership")}>
+      <AuthUserSearchCombobox
+        id="workspace-owner-transfer"
+        value={target?.id}
+        selectedLabel={target?.label}
+        onSelect={(account) => setTarget(account ?? null)}
+        placeholder={tc("handOverTo")}
+        disabled={mutation.isPending}
+      />
       <ConfirmDialog
         open={target != null}
         onOpenChange={(next) => {
@@ -198,6 +194,6 @@ export function WorkspaceOwnerTransferControl({
           if (target) mutation.mutate(target.id);
         }}
       />
-    </div>
+    </SettingRow>
   );
 }

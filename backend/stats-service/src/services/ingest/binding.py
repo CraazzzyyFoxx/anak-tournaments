@@ -10,8 +10,12 @@ participants:
 * and the teams map one-to-one onto the game's seats. Team names and document order are never identity.
 
 A unique fitting game is the binding, occupied or not. Several fitting games leave the choice to an administrator;
-occupancy alone never decides. A hint (already validated by ``validate_document``) only narrows candidates: a locally
-valid hint the evidence contradicts is :class:`BindingMismatch`.
+occupancy alone never decides. Without a hint nothing narrows the search, so the one fitting game must also hold every
+participant on the line-up of the seat their team maps to; a participant outside it (unknown, rostered after the
+line-up was taken, another team's member) leaves the document to an administrator. A hint (already validated by
+``validate_document``) only narrows candidates: a locally valid hint the evidence contradicts is
+:class:`BindingMismatch`. An operator's map is checked against the line-ups (:func:`check_forced_teams`) and, for the
+participants no line-up places, against the tournament rosters (:func:`check_roster_owners`).
 
 Everything here reads; locks and writes belong to the writer.
 """
@@ -42,6 +46,7 @@ __all__ = (
     "GameSeats",
     "bound_match",
     "check_forced_teams",
+    "check_roster_owners",
     "bound_participants",
     "find_binding",
     "load_game_seats",
@@ -58,7 +63,7 @@ class BindingMismatch(ValueError):
 
 
 class MapNotInPool(ValueError):
-    """The game's map is outside the pool its tournament/stage/round allows (P4's ``map_not_in_pool``)."""
+    """The game's map is outside the pool its tournament/stage/round allows."""
 
     code = "map_not_in_pool"
 
@@ -122,6 +127,52 @@ def check_forced_teams(doc: MatchDoc, known: Mapping[str, int], game: GameSeats,
     for key, seats in _seat_hits(doc, known, game).items():
         if seats - {teams[key]}:
             raise BindingMismatch(f"team {key!r} has a participant rostered on another team of this game")
+
+
+async def check_roster_owners(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    doc: MatchDoc,
+    known: Mapping[str, int],
+    game: GameSeats,
+    teams: Mapping[str, int],
+) -> None:
+    """An operator's map against the tournament rosters, for the participants off their mapped seat's line-up.
+
+    Those reach the match layer as extras, and its owner policy refuses an extra rostered on another team of the
+    tournament (``extra_member_other_team``): a reversed map over seats without a line-up, or a third team's member.
+    The map is refused here, before anything is written, instead of a binding that stands while its evidence is refused.
+    """
+    loose = {
+        person.key: player
+        for person in doc.participants
+        if (player := known.get(person.key)) is not None and player not in game.players.get(teams[person.team], ())
+    }
+    if not loose:
+        return
+    seat, roster, anchor = models.EncounterTeam, models.Player, models.WorkspaceMember
+    seats = (
+        await session.execute(sa.select(seat.id, seat.team_id, seat.tournament_id).where(seat.id.in_(game.seats)))
+    ).all()
+    tournament_id = seats[0].tournament_id
+    if tournament_id is None:
+        return  # a mix encounter: no tournament roster owns anyone
+    team_of = {row.id: row.team_id for row in seats}
+    owners: dict[int, set[int]] = {}
+    for player, team_id in await session.execute(
+        sa.select(anchor.player_id, roster.team_id)
+        .join(anchor, anchor.id == roster.workspace_member_id)
+        .where(
+            roster.tournament_id == tournament_id,
+            anchor.workspace_id == workspace_id,
+            anchor.player_id.in_(set(loose.values())),
+        )
+    ):
+        owners.setdefault(player, set()).add(team_id)
+    for person in doc.participants:
+        if person.key in loose and owners.get(loose[person.key], set()) - {team_of[teams[person.team]]}:
+            raise BindingMismatch(f"team {person.team!r} has a participant rostered on another team of this tournament")
 
 
 async def load_game_seats(
@@ -280,7 +331,14 @@ async def find_binding(
     if len(fitting) != 1:
         return None
     game, teams = fitting[0]
+    if hint is None and linked_game_id is None and not _holds_everyone(doc.doc, known_players, game, teams):
+        return None
     return bound_match(workspace_id, doc.discipline, game, teams)
+
+
+def _holds_everyone(doc: MatchDoc, known: Mapping[str, int], game: GameSeats, teams: Mapping[str, int]) -> bool:
+    """Every participant is a known player on the line-up of the seat their team maps to."""
+    return all(known.get(person.key) in game.players.get(teams[person.team], ()) for person in doc.participants)
 
 
 async def bound_participants(
@@ -293,10 +351,10 @@ async def bound_participants(
 ) -> dict[str, BoundParticipant]:
     """Every participant as the discipline's derivation needs it: member, global player, seat, roster rank and role.
 
-    A player (substitutes registered on the team included) on the tournament roster of the seat's source team keeps P4's inputs: the current tournament-player
-    registration rank and rated role (the baselines bucket on that boundary, D96). Only a participant the tournament
-    roster does not have (substitute, virtual player) falls back to the encounter roster snapshot, and without any row
-    carries rank 0 and no role.
+    A player (substitutes registered on the team included) on the tournament roster of the seat's source team keeps
+    the current tournament-player registration rank and rated role (the baselines bucket on that boundary). Only a
+    participant the tournament roster does not have (substitute, virtual player) falls back to the encounter roster
+    snapshot, and without any row carries rank 0 and no role.
     """
     tournament_roster: dict[tuple[int, int], tuple[int, str | None]] = {}
     if game.seats:
@@ -308,7 +366,7 @@ async def bound_participants(
                 seat_row.id.in_(game.seats),
                 player.workspace_member_id.in_([anchor.id for anchor in members.values()]),
             )
-            # P4 matched every roster Player of the team, registered substitutes included; the regular row wins.
+            # Every roster Player of the team matches, registered substitutes included; the regular row wins.
             .order_by(player.is_substitution, player.id)
         ):
             tournament_roster.setdefault((seat_id, member_id), (rank, role))

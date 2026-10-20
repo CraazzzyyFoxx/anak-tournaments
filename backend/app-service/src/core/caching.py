@@ -20,7 +20,7 @@ CACHE_LOCK_PREFIX = "lock:"
 # connection with ``ping(b"LOCK")``, while ``Cache.ping`` routes by the *decoded
 # message* as if it were a cache key (cashews 7.4: wrapper/commands.py). So the
 # probe looks up a backend for the literal key ``"LOCK"`` -- unroutable without a
-# default backend, which made every ``lock=True`` read raise NotConfiguredError
+# default backend, so every ``lock=True`` read would raise NotConfiguredError
 # instead of serving the cache. ``"PING"`` is the message a bare ``cache.ping()``
 # health check sends; registered for the same reason.
 CACHE_PING_PREFIXES: tuple[str, ...] = ("LOCK", "PING")

@@ -16,11 +16,13 @@ from shared.messaging.config import (
     MATCH_INGESTED_TOURNAMENT_DLQ,
     TOURNAMENT_BRACKET_JOBS_DLQ,
     TOURNAMENT_BRACKET_JOBS_QUEUE,
+    TOURNAMENT_CHALLONGE_PUSH_DLQ,
     TOURNAMENT_COMPUTE_EXCHANGE,
+    TOURNAMENT_STANDINGS_INVALIDATED_DLQ,
     TOURNAMENT_STANDINGS_JOBS_DLQ,
     TOURNAMENT_STANDINGS_JOBS_QUEUE,
 )
-from shared.messaging.outbox import publish_pending_outbox_events
+from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
@@ -61,7 +63,7 @@ from src.services.challonge import sync as challonge_sync
 from src.services.computation.bracket_worker import process_bracket_job
 from src.services.computation.standings_worker import process_standings_job
 from src.services.division_grid.import_jobs import process_import_job, recover_stale_import_jobs
-from src.services.encounter import log_evidence_events, room_reconcile
+from src.services.encounter import challonge_push_events, log_evidence_events, room_reconcile
 from src.services.registration import sheet_sync
 from src.services.tournament import auto_transitions, recalculation_events
 from src.services.tournament.cache_invalidation import invalidate_tournament_resources
@@ -89,7 +91,7 @@ _JOBS_CHANNEL = Channel(prefetch_count=4)
 set_worker_broker(broker)
 
 # The cashews cache is a process-global singleton; the worker must configure it
-# (like the API does) or after-commit cache invalidation raises NotConfiguredError.
+# or after-commit cache invalidation raises NotConfiguredError.
 configure_cache()
 
 # Same reason, same place: ``emit`` publishes through this Redis URL and drops
@@ -140,22 +142,16 @@ registration_team_binary.register(broker, logger)
 # Tournament cover/logo upload/delete — same wire format, two slots.
 tournament_binary.register(broker, logger)
 team_format.register(broker, logger)
-# Ad-hoc scrim rooms (docs/plans/2026-08-12-scrim-rooms.md). Provisioning only —
-# a room is then played through the pre-game subjects registered just above.
+# Ad-hoc scrim rooms. Provisioning only — a room is then played through the
+# pre-game subjects registered just above.
 scrim.register(broker, logger)
-# Recalculation-event consumers (tournament.changed / standings.invalidated).
-# Previously mounted by the deleted HTTP main.py; the worker now hosts them so
+# Recalculation-event consumers (tournament.changed / standings.invalidated):
 # cache invalidation + standings recalculation run on those domain events.
 broker.include_router(recalculation_events.task_router)
 # Ingest evidence (match.ingested): the match layer alone decides whether a log becomes official.
 broker.include_router(log_evidence_events.task_router)
-
-
-async def drain_outbox() -> None:
-    async with observe_scheduled_job("event_outbox_drain"), db.async_session_maker() as session:
-        published = await publish_pending_outbox_events(session, broker, limit=100, commit=True)
-        if published:
-            logger.info("Published {} outbox events", published)
+# Confirmed results of Challonge-linked encounters, staged by every confirm path, pushed here.
+broker.include_router(challonge_push_events.task_router)
 
 
 async def settle_due_pick_ban_rooms() -> None:
@@ -194,12 +190,11 @@ async def purge_stale_realtime_events(
 ) -> None:
     """Drop realtime rows nobody can still replay: brackets, invalidations, chat.
 
-    Three statements, one per topic family, each a single unbatched DELETE (design
-    decision D2 of docs/plans/2026-08-24-realtime-shared-library.md). Bracket and
-    invalidation only, never pregame/draft: those sessions have no upper bound on
-    duration, so a 7-day floor would cut a live one. ``%:chat`` joins them because
-    chat history moved to ``chat_message`` (the chat01 migration copied these rows
-    across); what is left here is a duplicate nothing reads any more.
+    Three statements, one per topic family, each a single unbatched DELETE.
+    Bracket and invalidation only, never pregame/draft: those sessions have no
+    upper bound on duration, so a 7-day floor would cut a live one. ``%:chat``
+    joins them because chat history lives in ``chat_message``; the rows here are
+    a duplicate nothing reads.
 
     The patterns are BOUND, not inlined: a literal `:` inside ``text()`` is
     parsed as a bind-parameter marker (here `:bracket`), not a plain character,
@@ -242,6 +237,8 @@ async def start_worker() -> None:
     await declare_dead_letter_queue(broker, DIVISION_GRID_IMPORT_JOBS_DLQ)
     await declare_dead_letter_queue(broker, CACHE_INVALIDATION_TOURNAMENT_DLQ)
     await declare_dead_letter_queue(broker, MATCH_INGESTED_TOURNAMENT_DLQ)
+    await declare_dead_letter_queue(broker, TOURNAMENT_STANDINGS_INVALIDATED_DLQ)
+    await declare_dead_letter_queue(broker, TOURNAMENT_CHALLONGE_PUSH_DLQ)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,
@@ -273,7 +270,9 @@ async def start_worker() -> None:
         minutes=5,
         id="division_grid_import_recovery",
     )
-    scheduler.add_job(drain_outbox, "interval", seconds=1, id="event_outbox_drain")
+    scheduler.add_job(
+        drain_outbox, "interval", seconds=1, id="event_outbox_drain", args=(db.async_session_maker, broker)
+    )
     # A step's timer running out is the only thing that moves a room with nobody
     # writing anything, so it needs its own tick; the sweep catches rooms whose
     # last mover committed in another service. Both take the encounter lock with
@@ -318,13 +317,13 @@ async def start_worker() -> None:
 async def stop_scheduler() -> None:
     # wait=False intentionally abandons in-flight scheduled jobs (outbox drain,
     # sheet/Challonge sync) instead of blocking shutdown for up to minutes.
-    # This is safe: the outbox drain is transactional per-row, and the sync
-    # flows commit incrementally (per encounter / per batch) and are idempotent
-    # on re-run, so an interrupted job resumes cleanly on the next tick.
+    # This is safe: an abandoned outbox batch rolls back and is republished on
+    # the next tick (at-least-once), and the sync flows commit incrementally
+    # (per encounter / per batch) and are idempotent on re-run, so an
+    # interrupted job resumes cleanly on the next tick.
     scheduler.shutdown(wait=False)
-    # The realtime publisher's pooled client: unclosed, it leaks a connection per
-    # worker restart (the same leak challonge.sync's own client was fixed for
-    # — that fix was never applied to challonge.sync itself; it is now).
+    # The realtime publisher's and challonge.sync's pooled clients: unclosed,
+    # each leaks a connection per worker restart.
     await close_realtime_redis()
     await challonge_sync.close_redis()
     # Third pooled client, same leak: the quota gate opened its own above.

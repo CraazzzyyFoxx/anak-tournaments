@@ -9,7 +9,7 @@ from __future__ import annotations
 DOCS: dict[str, dict] = {
     "rpc.tournament.team_format.get": {
         "summary": "Get a tournament's team format",
-        "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).",
+        "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection.",
     },
     "rpc.tournament.team_format.put": {
         "summary": "Replace a tournament's team format",
@@ -57,7 +57,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get tournament standings",
         "description": "Permission: public; no authentication required — a hidden tournament is visible only to its workspace's admins and users on its preview allowlist. Returns the standings for a tournament with optionally hydrated related entities selected via the entities query param.",
     },
-    # ── ffa lobbies (docs/plans/2026-09-24-ffa-encounters.md) ─────────────
+    # ── ffa lobbies ────────────────────────────────────────────────────────
     "rpc.tournament.ffa_stage": {
         "summary": "Get FFA stage lobbies",
         "description": (
@@ -463,7 +463,7 @@ DOCS: dict[str, dict] = {
     # ── bespoke: tournament status / lifecycle ─────────────────────────────
     "rpc.tournament.tournament_finish": {
         "summary": "Toggle tournament finished",
-        "description": "Permission: superuser only. Toggles a tournament's legacy finished flag and returns it with stages.",
+        "description": "Permission: superuser only. Toggles a tournament's `is_finished` flag and returns it with stages.",
     },
     "rpc.tournament.tournament_status": {
         "summary": "Transition tournament status",
@@ -511,7 +511,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_pick_ban_reopen": {
         "summary": "Reopen the last revealed step",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened `side_pick` starts with an empty draft, takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.",
     },
     "rpc.tournament.admin_pick_ban_elect_opener": {
         "summary": "Elect a round's opener for a side",
@@ -550,7 +550,7 @@ DOCS: dict[str, dict] = {
     # ── bespoke: admin correction of one series position's result ──────────
     "rpc.tournament.admin_game_result": {
         "summary": "Correct a game result",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which participation won a position scraps and re-opens the round that outcome had opened, so the response is `{game, reset_downstream}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. When the room's result rotation (`result_*` first-ban rotation) opened the next round off this position and the correction changes who opens it, that round is scrapped and re-opened for the corrected opener in the same commit — provided nobody used it yet; 409 `dependent_round_started` (nothing written, no audit row) when it was already used: a submission on one of its steps, or its game given a side, claimed or confirmed. The way out is to undo that round (captains) or reset the room first. The response is `{game, reset_downstream}`. Also 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
     },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {
@@ -559,7 +559,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_pick_ban_config_upsert": {
         "summary": "Upsert pick-ban config",
-        "description": 'Permission: workspace `match.update` on the tournament\'s workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields.',
+        "description": 'Permission: workspace `match.update` on the tournament\'s workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields. A hero config whose ruleset holds a `side_pick` step but whose pool is empty is a 422 `pool_required` (save the champion pool first: a pool-less room never opens, yet its side step would hold the result of every game); a pool item that is not a catalog row of the game of the tournament and of the catalog of the kind is a 422 `pool_item_not_in_catalog`.',
     },
     "rpc.tournament.admin_pick_ban_rules_validate": {
         "summary": "Validate a pick-ban ruleset",
@@ -573,7 +573,7 @@ DOCS: dict[str, dict] = {
         "summary": "Delete pick-ban config",
         "description": "Permission: workspace `match.update` on the workspace of the config's tournament. Deletes a pick-ban config by id (running sessions keep their snapshot).",
     },
-    # ── bespoke: scrim rooms (docs/plans/2026-08-12-scrim-rooms.md) ─────────
+    # ── bespoke: scrim rooms ───────────────────────────────────────────────
     "rpc.tournament.scrim_create": {
         "summary": "Create scrim room",
         "description": "Permission: authenticated user who is a member of the target workspace (membership only — no resource grant is checked; superusers pass). Creates an ad-hoc pre-game room outside any tournament: the workspace's hidden scrims container (lazily), an isolating stage, that stage's map and optional hero pick-ban configs either copied from an existing tournament round or authored ad hoc, both teams and the encounter; returns the room with its share token. 409s when the caller's active-room cap is reached.",
@@ -785,7 +785,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get Challonge sync log",
         "description": "Permission: workspace `challonge.read` on the tournament's workspace. Returns recent Challonge sync-log entries for a tournament (limit-bounded).",
     },
-    # ── bootstrap importers (formerly parser-service rpc.parser.*) ─────────
+    # ── bootstrap importers ────────────────────────────────────────────────
     "rpc.tournament.challonge_create_tournament": {
         "summary": "Create tournament from Challonge",
         "description": "Permission: workspace `tournament.create` on the target workspace. Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot.",
@@ -1191,9 +1191,11 @@ DOCS: dict[str, dict] = {
             "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
             "Records the calling captain's consent to undo the session's last action and applies it the "
             "moment the opposing captain consents too; `consent=false` withdraws an open request (either "
-            "side may). Returns the resulting undo block. 400 when the session is not "
+            "side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting "
+            "undo block. 400 when the session is not "
             "initialized or cancelled, when there is nothing left to undo, or when the target is a map pick "
-            "whose hero round has already started -- undo those hero actions first."
+            "whose hero round has already started -- undo those hero actions first; 409 `side_locked` when "
+            "the undo would take back a side whose game already has a claim or a confirmed result."
         ),
     },
     "rpc.tournament.captain_report_game": {
@@ -1209,7 +1211,9 @@ DOCS: dict[str, dict] = {
             "`{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, "
             "409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 "
             "`map_not_selected` while the position still has no map (choose it first, through "
-            "captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's "
+            "captain_select_game_map or the map pick-ban), 409 `side_pick_pending` while the position's side "
+            "step is open, 409 `side_pick_required` while a room that picks this game's sides left them "
+            "incomplete, 409 on a `basis_version` behind the game's "
             "current one, and 409 while the stage bracket is still a preview the organizer has not "
             "activated."
         ),
@@ -1221,7 +1225,9 @@ DOCS: dict[str, dict] = {
             "Freeplay's half of what the map pick-ban does automatically: names the map an open position is "
             "played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game "
             "belongs to another encounter, 409 `result_locked` when the position's result is already "
-            "settled, and 409 `map_locked` once a captain has claimed a score against the current map."
+            "settled, 409 `side_pick_pending` / `side_pick_required` while the position's sides are not "
+            "decided where the room picks them, and 409 `map_locked` once a captain has claimed a score "
+            "against the current map."
         ),
     },
     "rpc.tournament.captain_ready": {

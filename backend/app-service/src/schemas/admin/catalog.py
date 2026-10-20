@@ -1,4 +1,4 @@
-"""Admin CRUD for ``catalog.entity``: one surface for every discipline and kind (D85)."""
+"""Admin CRUD for ``catalog.entity``: one surface for every discipline and kind."""
 
 import json
 import typing

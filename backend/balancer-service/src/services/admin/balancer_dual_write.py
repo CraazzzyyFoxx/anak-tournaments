@@ -1,8 +1,4 @@
-"""Write helpers for the balancer subsystem.
-
-These functions synchronize data to the normalized relational tables
-(team_slot, balance_variant).
-"""
+"""Sync a saved balance into the normalized ``balance_variant`` / ``team_slot`` tables."""
 
 from __future__ import annotations
 
@@ -18,14 +14,10 @@ from shared.repository import (
 )
 from shared.repository.roles import CatalogRoleRepository
 from src import models
+from src.domain.balancer.role_naming import role_slot_code
 from src.schemas.team import InternalBalancerTeamsPayload
-from src.services.balancer.role_naming import role_slot_code
 
 __all__ = ("BalancerVariantService", "balancer_variant_service")
-
-# ---------------------------------------------------------------------------
-# Balance variants + team slots  (replaces roster_json)
-# ---------------------------------------------------------------------------
 
 
 class BalancerVariantService:
@@ -52,10 +44,9 @@ class BalancerVariantService:
 
         Called after the BalancerTeam rows for the balance have been persisted.
         """
-        # Delete old variants (cascades to team_slots through variant→team FK)
+        # Cascades to team_slots through the variant→team FK.
         await self.variants.delete_for_balance(session, balance.id)
 
-        # Create single variant (the saved/selected one)
         variant = await self.variants.create(
             session,
             models.BalancerBalanceVariant(
@@ -68,10 +59,8 @@ class BalancerVariantService:
             ),
         )
 
-        # Update balance metadata
         balance.algorithm = algorithm
 
-        # Link teams to variant and create team_slots
         balancer_teams = {team.balancer_name: team for team in await self.teams.list_for_balance(session, balance.id)}
         tournament = await TournamentRepository().get(session, balance.tournament_id)
         rows = await CatalogRoleRepository().rated_rows(session, discipline=tournament.discipline, workspace_id=None)
@@ -98,8 +87,8 @@ class BalancerVariantService:
                             battle_tag_normalized=name_normalized,
                             role_row=role_row,
                             dimension_id=role_row.dimension_id if role_row is not None else None,
-                            assigned_rank=player_data.rating,
-                            discomfort=player_data.discomfort or 0,
+                            assigned_rank=player_data.assigned_rating,
+                            discomfort=player_data.role_discomfort or 0,
                             is_captain=player_data.is_captain,
                             sort_order=sort_order,
                         )

@@ -1,7 +1,6 @@
-"""A participation's claim about one game's result (D14, D58).
+"""A participation's claim about one game's result.
 
-Formerly ``tournament.encounter_map_report``, which stored one score pair per
-side. A claim now carries a row per participation, so a lobby of N claims the
+A claim carries a row per participation, so a lobby of N claims the
 same way a duel does. ``basis_version`` is the ``game.result_version`` the claim
 was made against: a claim filed against a superseded result is stale, not a
 competing truth.

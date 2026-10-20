@@ -6,10 +6,10 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.services.workspace_scope import get_tournament_workspace_id
 from src import models
 from src.core.analytics_exports import analytics_exports, supports_analytics, tournament_discipline
 from src.core.config import settings
-from src.core.workspace import get_tournament_workspace_id
 from src.domain.ratings import (
     LINEAR,
     OPEN_SKILL,
@@ -132,7 +132,7 @@ class AnalyticsFlowsService:
 
         # The shift signal is team-result only (map_diff + placement_score, computed
         # above). Individual performance is intentionally NOT folded into the Linear
-        # signal — prod analysis showed it adds ~0 over team W/L.
+        # signal: it adds ~0 over team W/L.
         return df
 
     async def create_players_shifts_is_not_exists(

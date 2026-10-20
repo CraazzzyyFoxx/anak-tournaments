@@ -15,7 +15,7 @@ to its own members (``WorkspaceService.get_all``). The two gates are
 independent and both must pass; neither is a special case of the other.
 
 Every tournament-scoped read across tournament-service AND app-service routes
-through this module. Gate coverage is the crux of the feature — see issue #115.
+through this module.
 
 Cache note: public read serializers are cashews-cached WITHOUT the viewer.
 ``assert_tournament_viewable`` / ``ensure_tournament_viewable`` read the
@@ -95,19 +95,18 @@ async def assert_tournament_viewable(session: AsyncSession, user: AuthUser | Non
     indistinguishable to outsiders.
 
     One hidden tournament is READ by a wider audience than it is LISTED to: a
-    workspace's scrim container (``docs/plans/2026-08-12-scrim-rooms.md``). A
-    scrim room is shared by link between two captains and watched by their
-    teammates, none of whom are workspace admins, and the allowlist cannot solve
-    it: a room's opponent must be able to READ the room before claiming a side,
-    and it is the claim that would have added them. So for a scrim container,
-    membership of the owning workspace is enough.
+    workspace's scrim container. A scrim room is shared by link between two
+    captains and watched by their teammates, none of whom are workspace admins,
+    and the allowlist cannot solve it: a room's opponent must be able to READ the
+    room before claiming a side, and it is the claim that would have added them.
+    So for a scrim container, membership of the owning workspace is enough.
 
     This is deliberately narrower than "any hidden tournament". A hidden PREVIEW
     tournament is an unpublished real one, and leaking it to every member is
     exactly what preview mode exists to prevent — that keeps the admin/allowlist
-    rule. It also brings this gate in line with the realtime one, which already
-    treats workspace membership as the insider signal for spectating a hidden
-    tournament (``gateway/internal/acl/acl.go:allowSpectate``).
+    rule. Workspace membership is also what the realtime gate treats as the
+    insider signal for spectating a hidden tournament
+    (``gateway/internal/acl/acl.go:allowSpectate``).
 
     The token is an address, not a security boundary: any member of the workspace
     can reach a scrim room, and ``visible_tournaments_predicate`` still keeps the

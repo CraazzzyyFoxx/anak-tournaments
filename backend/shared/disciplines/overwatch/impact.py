@@ -1,4 +1,4 @@
-"""Pure computation for MVP impact scoring (spec 2026-07-10).
+"""Pure computation for MVP impact scoring.
 
 Everything here is deterministic and DB-free: kill-feed event counting,
 role attribution, and the z-composite scoring. IO (baselines fetch,

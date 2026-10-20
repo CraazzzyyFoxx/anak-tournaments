@@ -11,30 +11,26 @@ import binascii
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
-from sqlalchemy import select
 
 from shared import quota
 from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES
-from shared.services.audit import record_admin_audit
-from src import models
 from src.core import clients as _clients
 from src.core import db
 from src.schemas.ingest import BindIngestRequest
 from src.services.ingest import jobs
 from src.services.ingest.process import bind_ingest_job, game_observation
+from src.services.match_logs.limits import max_base64_length
 
 from . import _common as c
 
 _SF = db.async_session_maker
-# Reject oversized base64 before allocating the decoded bytes.
-_MAX_ENCODED = (MAX_MATCH_DOC_BYTES // 3 + 1) * 4
 
 
 def _decode(data: dict[str, Any]) -> bytes:
     encoded = data.get("raw_base64")
     if not isinstance(encoded, str):
         raise jobs.IngestRejected(400, "invalid_request", "raw_base64 is required")
-    if len(encoded) > _MAX_ENCODED:
+    if len(encoded) > max_base64_length(MAX_MATCH_DOC_BYTES):
         raise jobs.IngestRejected(413, "match_document_too_large", "Document exceeds the maximum size")
     try:
         return base64.b64decode(encoded, validate=True)
@@ -82,24 +78,9 @@ def register(broker: Any, logger: Any) -> None:
                 request = BindIngestRequest.model_validate(c.payload(data))
             except ValueError as exc:
                 raise jobs.IngestRejected(422, "invalid_request", "The bind request is invalid") from exc
-            workspace_id = await session.scalar(
-                select(models.IngestJob.workspace_id).where(models.IngestJob.id == job_id)
+            return await bind_ingest_job(
+                session, job_id=job_id, request=request, user=user, s3=_clients.s3_client, data=data
             )
-            if workspace_id is not None and user.has_workspace_permission(workspace_id, "log", "update"):
-                await record_admin_audit(
-                    session,
-                    action="match_log.bind",
-                    actor=user,
-                    data=data,
-                    workspace_id=workspace_id,
-                    entity_type="match_log",
-                    entity_id=job_id,
-                    after={
-                        "encounter_game_id": request.encounter_game_id,
-                        "expected_revision": request.expected_revision,
-                    },
-                )
-            return await bind_ingest_job(session, job_id=job_id, request=request, user=user, s3=_clients.s3_client)
 
         return await c.envelope(logger, "ingest.bind", op, session_factory=_SF)
 

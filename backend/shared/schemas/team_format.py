@@ -1,4 +1,4 @@
-"""The wire of a team format (D35, D88): an organizer writes it, every reader gets it with its slot projection."""
+"""The wire of a team format: an organizer writes it, every reader gets it with its slot projection."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ class TeamFormatWrite(BaseModel):
 class TeamFormatRead(TeamFormatWrite):
     discipline: str
     source: FormatSourceWire
-    #: The D33 projection the balancer and the draft fill.
+    #: The slot projection the balancer and the draft fill.
     roster_shape: RosterShapeRead
 
     @classmethod

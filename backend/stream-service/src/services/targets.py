@@ -1,8 +1,7 @@
 """Which channels the poll tick asks Twitch about, and where they come from.
 
 Read-only, always. This service owns no table in ``tournament.*``, ``balancer.*``
-or ``players.*`` and writes to none of them — the boundary rule in
-``backend/docs/tournament-service-write-path-inventory.md``. Every query behind
+or ``players.*`` and writes to none of them. Every query behind
 this module lives in ``shared.repository`` (``TournamentRepository``,
 ``TournamentLinkRepository``, ``StreamTargetRepository``); this module owns the
 domain rules on top of them — which statuses count as "active", and how a

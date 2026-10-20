@@ -5,8 +5,6 @@ One set of tables serves every live room. A room is addressed by the pair
 room, ``('draft', balancer.draft_session.id)`` for a draft -- so a second room
 kind costs a resolver in its owning service and nothing here. The pair is not a
 foreign key for the reason stated on each table below.
-
-Design: docs/plans/2026-09-21-shared-room-chat.md.
 """
 
 from __future__ import annotations

@@ -1,7 +1,5 @@
 """Typed RPC surface for ad-hoc scrim rooms.
 
-Design: ``docs/plans/2026-08-12-scrim-rooms.md``.
-
 Five subjects, all thin: every rule (workspace membership, the per-creator open
 room cap, one-captain-per-person, hidden-container visibility) lives in
 ``services/scrim/service.py``, because ``claim_side`` and ``create_room`` enforce
@@ -67,9 +65,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             workspace_id = _require_q1(data, "workspace_id", int)
-            # Absent ``scope`` keeps the historical behaviour (the caller's own
-            # rooms); the service owns both the vocabulary and the staff gate the
-            # workspace-wide scope needs.
+            # Absent ``scope`` means the caller's own rooms; the service owns both
+            # the vocabulary and the staff gate the workspace-wide scope needs.
             scope = _q1(data, "scope", str, "mine")
             rooms = await scrim_service.list_rooms_for_viewer(session, user, workspace_id, scope=scope)
             return schemas.ScrimRoomListRead(rooms=[schemas.ScrimRoomRead.model_validate(r) for r in rooms])

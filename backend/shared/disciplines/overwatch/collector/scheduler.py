@@ -72,9 +72,7 @@ async def run_collection_tick(
             async with session_factory() as session:
                 cfg = await settings_provider.get_rank_collection_config(session)
                 # Export freshness before the enabled-check returns: an alert needs
-                # to tell "paused on purpose" from "quietly stopped collecting",
-                # and the September outage was invisible precisely because nothing
-                # published how old the newest capture was.
+                # to tell "paused on purpose" from "quietly stopped collecting".
                 metrics.RANK_COLLECTION_ENABLED.set(1 if cfg.enabled else 0)
                 newest = await service.last_success_at(session)
                 metrics.RANK_COLLECTION_LAST_SUCCESS_TIMESTAMP.set(newest.timestamp() if newest else 0)

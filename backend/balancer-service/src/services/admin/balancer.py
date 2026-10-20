@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-import sqlalchemy as sa
+from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -19,18 +19,18 @@ from shared.repository import (
     TournamentRepository,
     WorkspaceBalancerConfigRepository,
 )
-from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED
-from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
+from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED, BALANCER_TEAMS_CHANGED
 from src import models, schemas
-from src.schemas.team import InternalBalancerTeamsPayload
-from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
-from src.services.balancer.config.provider import normalize_tournament_config_payload
-from src.services.balancer.config.public_contract import (
+from src.domain.balancer.config.public_contract import (
     normalize_balance_response_payload,
     normalize_config_payload,
 )
-from src.services.balancer.realtime import emit_balancer_data
+from src.schemas.team import InternalBalancerTeamsPayload
+from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
+from src.services.balancer.config.provider import normalize_tournament_config_payload
+from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
 from src.services.team import to_materialization_teams
+from src.services.team_export import ExportPlan, sync_player_ranks, team_materialization
 
 __all__ = ("BalancerAdminService", "balancer_admin_service", "materialize_balance_teams")
 
@@ -81,20 +81,14 @@ class BalancerAdminService:
         if not await self.tournaments.exists(session, id=tournament_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    async def get_tournament_row(self, session: AsyncSession, tournament_id: int) -> sa.Row:
+    async def get_tournament_row(self, session: AsyncSession, tournament_id: int) -> Row:
         """Minimal tournament projection (id/name/status) for the summary RPC.
 
         Deliberately NO ``is_hidden`` filter: the summary powers the staff-facing
         balancer tool context, and hidden (preview) tournaments must stay
         resolvable for callers who already passed the workspace ``team.read`` gate.
         """
-        row = (
-            await session.execute(
-                sa.select(models.Tournament.id, models.Tournament.name, models.Tournament.status).where(
-                    models.Tournament.id == tournament_id
-                )
-            )
-        ).one_or_none()
+        row = await self.tournaments.get_summary_row(session, tournament_id)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
         return row
@@ -244,7 +238,7 @@ class BalancerAdminService:
         return balance
 
     async def export_balance(
-        self, session: AsyncSession, balance_id: int
+        self, session: AsyncSession, balance_id: int, *, actor_user_id: int
     ) -> tuple[models.BalancerBalance, int, int, list[str]]:
         balance = await self.balances.get_for_export(session, balance_id)
         if balance is None:
@@ -290,18 +284,22 @@ class BalancerAdminService:
                 on_failure=_on_failure,
             ),
         )
+        await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=actor_user_id)
+        await stage_export_invalidation(session, balance.tournament_id)
         return balance, outcome.removed_teams, outcome.imported_teams, outcome.materialization.advisories
 
-    async def export_balance_ranks(self, session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int]:
+    async def export_balance_ranks(
+        self, session: AsyncSession, balance_id: int, *, actor_user_id: int
+    ) -> tuple[models.BalancerBalance, int]:
         """Push the saved balance's ranks onto the already-exported players.
 
         Non-destructive counterpart to :meth:`export_balance`: no team is removed
         or created, so a bracket built on those teams survives. Returns the balance
         and how many player ranks actually changed.
 
-        Does NOT commit: the caller stages the staleness this causes and commits
-        both together, so no client can be told about ranks that a later failure
-        rolls back.
+        Does NOT commit: the staleness is staged beside the rank writes and the
+        caller commits both together, so no client can be told about ranks that
+        a later failure rolls back.
         """
         balance = await self.balances.get_for_export(session, balance_id)
         if balance is None:
@@ -315,6 +313,8 @@ class BalancerAdminService:
             balance.tournament_id,
             to_materialization_teams([team.to_balancer_team(dimension) for team in payload.teams]),
         )
+        await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=actor_user_id)
+        await stage_export_invalidation(session, balance.tournament_id)
         return balance, updated
 
 

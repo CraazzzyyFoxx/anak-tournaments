@@ -3,12 +3,11 @@
 Bespoke, non-job mutations: manual shift override (``POST /analytics/shift``),
 anomaly-feedback upsert (``POST /v2/player-anomalies/feedback``), and the
 deprecated OpenSkill v1 endpoint (``POST /analytics/openskill`` → always 410).
-Each mirrors its route exactly, including the underlying ``commit``. Heavier
-compute lives behind job-control (``jobs_control.py``). Wired from
+Heavier compute lives behind job-control (``jobs_control.py``). Wired from
 ``serve_rpc.py``.
 
 Auth: all require a global ``analytics.update`` permission (gateway
-``AuthRequired`` + the same ``has_permission`` check the routes use).
+``AuthRequired`` + ``has_permission``).
 """
 
 from __future__ import annotations

@@ -20,7 +20,7 @@ decision table, and duplicating either would give three places to update and two
 of them would rot.
 
 No database: ``_common_service.get_registration_form`` and
-``build_admission_resolver`` are the two seams ``admission.py`` reaches the world
+``subscription_resolver`` are the two seams ``admission.py`` reaches the world
 through, and both are patched. The session is a stub that answers the one
 ``battle_tag_state`` read ``resolve_profiles_open`` issues.
 
@@ -40,13 +40,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.services.admission import AdmissionStage, RequirementState  # noqa: E402
 from shared.services.subscriptions import (  # noqa: E402
     SubscriptionRequirement,
     SubscriptionState,
     SubscriptionVerdict,
     evaluate_requirement,
 )
+from src.services.admission import AdmissionStage, RequirementState  # noqa: E402
 from src.services.registration import admission  # noqa: E402
 from tests._subscription_fakes import resolver_rule as _rule  # noqa: E402
 
@@ -223,7 +223,7 @@ class _GateCase(IsolatedAsyncioTestCase):
 
         with (
             mock.patch.object(admission, "_common_service") as forms,
-            mock.patch.object(admission, "build_admission_resolver", return_value=resolver),
+            mock.patch.object(admission, "subscription_resolver", return_value=resolver),
         ):
             forms.get_registration_form = mock.AsyncMock(return_value=form)
             evaluation = await admission.assert_admitted_at(

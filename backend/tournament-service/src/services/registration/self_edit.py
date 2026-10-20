@@ -6,7 +6,7 @@ Three sources, resolved into one answer:
    organizer's switch, and it is CLOSED by default -- a question is frozen at
    submit unless somebody opened it in the builder. That is why this resolves an
    ALLOWLIST (``writable_keys``) rather than a deny list: a question this server
-   does not recognise, or a schema written before the flag existed, is locked.
+   does not recognise, or a stored schema without the flag, is locked.
 2. **The system floors three keys**, whatever the schema says, because changing
    them after the fact silently re-points something the organizer already acted
    on -- see :func:`_floor`.

@@ -24,16 +24,7 @@ from src.services.tournament import service as tournament_service
 
 
 def encounter_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    """
-    Generates a list of SQLAlchemy loading options for related entities of an encounter.
-
-    Parameters:
-        in_entities (list[str]): A list of entity names to load (e.g., ["tournament", "teams"]).
-        child (typing.Any | None): Optional child entity for nested loading.
-
-    Returns:
-        list[_AbstractLoad]: A list of SQLAlchemy loading options.
-    """
+    """SQLAlchemy loader options for the encounter relations named in ``in_entities``, nested under ``child``."""
     entities = []
     if "tournament" in in_entities:
         tournament_entity = utils.join_entity(child, models.Encounter.tournament)
@@ -42,13 +33,10 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
             tournament_service.tournament_entities(utils.prepare_entities(in_entities, "tournament"), tournament_entity)
         )
     # The participations load with EVERY encounter read, not behind an entity
-    # token: the seats carry what used to be columns on the row -- both teams,
-    # the score, the places -- so ``to_pydantic`` touches them for an entity-less
-    # read too, and an unloaded collection there is implicit IO
-    # (``MissingGreenlet``) rather than a missing optional nesting. The bracket
-    # position moved to ``tournament.bracket_encounter``, which the reader
-    # fetches by id; ``stage``/``stage_item``/``home_team``/``away_team`` are no
-    # longer relationships of an encounter at all (D22, D55).
+    # token: the seats carry both teams, the score and the places, so
+    # ``to_pydantic`` touches them for an entity-less read too, and an unloaded
+    # collection there is implicit IO (``MissingGreenlet``). The bracket
+    # position lives on ``tournament.bracket_encounter``, fetched by id.
     entities.append(utils.selectin_entity(child, models.Encounter.teams))
     if "matches" in in_entities:
         entities.append(utils.selectin_entity(child, models.Encounter.matches))
@@ -73,16 +61,7 @@ def _match_encounter_options(in_entities: list[str]) -> list[_AbstractLoad]:
 
 
 def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Select:
-    """
-    Joins related entities to an encounter query based on the provided entity list.
-
-    Parameters:
-        query (sa.Select): The SQLAlchemy select query.
-        in_entities (list[str]): A list of entity names to join (e.g., ["tournament"]).
-
-    Returns:
-        sa.Select: The modified query with joins.
-    """
+    """Join the tables ``in_entities`` filters on (``tournament``) onto an encounter query."""
     if "tournament" in in_entities:
         query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
     return query
@@ -117,7 +96,7 @@ def _apply_encounter_filters(
     if params.tournament_id:
         query = query.where(models.Encounter.tournament_id == params.tournament_id)
     else:
-        # Cross-tournament browse: never surface hidden tournaments (issue #115).
+        # Cross-tournament browse: never surface hidden tournaments.
         # A specific tournament_id is authorized upstream by ensure_tournament_viewable.
         query = query.where(models.Encounter.tournament_id.in_(visible_tournament_ids_subquery(None)))
     if params.discipline is not None:
@@ -250,17 +229,7 @@ class EncounterService:
         ).get(id)
 
     async def get_encounter(self, session: AsyncSession, id: int, entities: list[str]) -> models.Encounter | None:
-        """
-        Retrieves an encounter by its ID.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            id (int): The ID of the encounter to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["tournament", "teams"]).
-
-        Returns:
-            models.Encounter | None: The Encounter object if found, otherwise None.
-        """
+        """The encounter with ``entities`` loaded, or ``None``."""
         return await self.encounter_repo.get(session, id, options=encounter_entities(entities))
 
     async def get_all_encounters(
@@ -270,19 +239,7 @@ class EncounterService:
         workspace_id: int | None = None,
         viewer_auth_user_id: int | None = None,
     ) -> tuple[typing.Sequence[models.Encounter], int]:
-        """
-        Retrieves a paginated list of encounters based on search parameters.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            params (schemas.EncounterSearchParams): Search, pagination, and sorting parameters.
-            workspace_id (int | None): Optional workspace ID to filter encounters.
-
-        Returns:
-            tuple[typing.Sequence[models.Encounter], int]: A tuple containing:
-                - A sequence of Encounter objects.
-                - The total count of encounters.
-        """
+        """One page of encounters matching ``params``, and the total count."""
         # Analytical: entity-driven joins + the shared filter builder + a DISTINCT count,
         # paired so the page and its total always share one predicate set.
         query = self.encounter_repo.select().options(*encounter_entities(params.entities))
@@ -412,8 +369,7 @@ class EncounterService:
         # All same-shape scalar aggregates over `Encounter JOIN base_ids` are
         # consolidated into ONE statement via `count(*) FILTER (WHERE ...)` — the
         # base_ids subquery (which re-evaluates the full search filter) would
-        # otherwise run once per aggregate (this endpoint used to issue 22
-        # sequential round trips per cache miss).
+        # otherwise run once per aggregate.
         completed = models.Encounter.status == enums.EncounterStatus.COMPLETED
         duration_by_encounter = (
             sa.select(models.StatsMatch.encounter_id, sa.func.sum(models.StatsMatch.duration_s).label("seconds"))
@@ -433,7 +389,7 @@ class EncounterService:
         avg_series_seconds_sq = sa.select(sa.func.avg(duration_by_encounter.c.seconds)).scalar_subquery()
         # The two-seat metrics below read SEATS, not sides: slot 1 is the left
         # seat and slot 2 the right one, and anything wider than two seats is
-        # excluded rather than given an invented "home" (D55).
+        # excluded rather than given an invented "home".
         duel = models.Encounter.slot_count == 2
         seat_one = aliased(models.EncounterTeam)
         seat_two = aliased(models.EncounterTeam)

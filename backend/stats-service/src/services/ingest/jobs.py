@@ -24,18 +24,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.clients.s3 import S3Client
 from shared.core.errors import BaseAPIException
-from shared.messaging.config import ingest_queue
-from shared.messaging.outbox import enqueue_outbox_event
 from shared.models import AuthUser
 from shared.repository.catalog import CatalogAliasMissRepository
+from shared.repository.identity import UserRepository
 from shared.repository.stats import IngestJobRepository
 from shared.rpc.identity import credential_type
-from shared.schemas.events import ProcessIngestJobEvent
 from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES, IngestIssue, MatchDoc, MatchDocError, parse_match_doc
 from src.schemas.ingest import IngestBinding, IngestError, IngestJobRead
 from src.services.ingest.validation import DocumentRejected, validate_document
 from src.services.match_logs.limits import match_log_oversize_message
-from src.services.match_logs.log_records import ERROR_MESSAGE_LIMIT, log_records_service
+from src.services.match_logs.log_records import ERROR_MESSAGE_LIMIT, enqueue_ingest_request, log_records_service
 from src.services.match_logs.realtime import emit_logs_updated
 
 __all__ = (
@@ -47,7 +45,6 @@ __all__ = (
     "claim_job",
     "decode_error",
     "encode_error",
-    "enqueue_ingest_request",
     "finish_claim",
     "get_ingest_job",
     "is_current_claim",
@@ -68,6 +65,7 @@ _ENVELOPE_KEYS = frozenset({"document", "producer"})
 _RESPONSE_ISSUES = 50
 _jobs = IngestJobRepository()
 _misses = CatalogAliasMissRepository()
+_users = UserRepository()
 
 
 class IngestRejected(BaseAPIException):
@@ -304,22 +302,6 @@ def _parse_rejection(exc: MatchDocError) -> IngestRejected:
 SEMANTIC_CODES = {"unresolved_references": "unknown_code", "unknown_identity_provider": "document_invalid"}
 
 
-async def enqueue_ingest_request(
-    session: AsyncSession, job_id: int, *, discipline: str, correlation_id: str | None = None
-) -> None:
-    """Stage the work request on the transaction that made the job (or reset it) pending, on its discipline's queue."""
-    await enqueue_outbox_event(
-        session,
-        ProcessIngestJobEvent(ingest_job_id=job_id, correlation_id=correlation_id, source_service="stats-service"),
-        exchange="",
-        routing_key=ingest_queue(discipline).name,
-    )
-
-
-async def _uploader_id(session: AsyncSession, user: AuthUser) -> int | None:
-    return await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == user.id))
-
-
 async def lock_object(session: AsyncSession, ref: str) -> None:
     # The retention sweep takes the same per-object lock, so it cannot delete bytes between this PUT and the job
     # insert that makes them reachable.
@@ -359,7 +341,7 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
             raise IngestRejected(404, "binding_target_not_found", "Binding target not found") from None
         failure = rejected
 
-    uploader_id = await _uploader_id(session, user)
+    uploader_id = await _users.get_id_by_auth_user_id(session, user.id)
     raw_ref = raw_ref_for(workspace_id, sha256)
     # Hints survive a vocabulary rejection when each was validated; any unresolved/disagreeing hint voids them all.
     hint = doc.hint if failure is None or not any(i.code == "hint_unresolved" for i in failure.issues) else None

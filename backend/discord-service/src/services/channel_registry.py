@@ -1,11 +1,13 @@
 """In-memory cache of Discord channels currently monitored for match-log uploads.
 
-Backed by ``TournamentDiscordChannel`` via the repository; reloaded periodically
-so a tournament's channel starts/stops being watched without a bot restart.
+Backed by ``TournamentDiscordChannel`` via the repository; reloaded whenever a
+tournament's state or channel binding changes (``DiscordRabbitGateway``), and
+hourly as a fallback, so a channel starts/stops being watched without a restart.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
@@ -29,6 +31,7 @@ class ChannelRegistry:
         self._session_maker = session_maker
         self._channels = channels
         self._active: dict[int, int] = {}
+        self._reload_lock = asyncio.Lock()
 
     def tournament_id_for(self, channel_id: int) -> int | None:
         """The tournament this channel is currently monitored for, if any."""
@@ -39,25 +42,30 @@ class ChannelRegistry:
         return dict(self._active)
 
     async def reload(self) -> None:
-        """Reload the active-channel set from the database."""
-        finished_cutoff = datetime.now(UTC) - _FINISHED_GRACE_PERIOD
-        async with self._session_maker() as session:
-            rows = await self._channels.list_active_with_tournament(session, finished_cutoff=finished_cutoff)
+        """Reload the active-channel set from the database.
 
-        new_active: dict[int, int] = {}
-        for discord_channel, tournament in rows:
-            new_active[discord_channel.channel_id] = tournament.id
-            logger.info(f"📌 Monitoring channel {discord_channel.channel_id} for tournament {tournament.name}")
+        One at a time: a burst of change events queues reloads behind the one
+        running, so the last to finish has read the latest committed state.
+        """
+        async with self._reload_lock:
+            finished_cutoff = datetime.now(UTC) - _FINISHED_GRACE_PERIOD
+            async with self._session_maker() as session:
+                rows = await self._channels.list_active_with_tournament(session, finished_cutoff=finished_cutoff)
 
-        self._active = new_active
-        logger.success(f"✅ Loaded {len(self._active)} active channels")
+            new_active: dict[int, int] = {}
+            for discord_channel, tournament in rows:
+                new_active[discord_channel.channel_id] = tournament.id
+                logger.info(f"📌 Monitoring channel {discord_channel.channel_id} for tournament {tournament.name}")
+
+            self._active = new_active
+            logger.success(f"✅ Loaded {len(self._active)} active channels")
 
     async def list_channel_ids_for_tournament(self, tournament_id: int) -> Sequence[int]:
         """Fresh (uncached) lookup of a tournament's active channel ids.
 
         Used by the ``process_all`` RabbitMQ command, which must see the
-        authoritative database state rather than whatever the periodic reload
-        last cached.
+        authoritative database state rather than whatever the last reload
+        cached.
         """
         async with self._session_maker() as session:
             return await self._channels.list_channel_ids_for_tournament(session, tournament_id)

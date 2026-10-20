@@ -208,7 +208,7 @@ There is no separate `workspace_player` table. The balancer roster is `workspace
 
 `POST /api/v1/balancer/workspaces/{workspace_id}/players` accepts exactly
 `{discipline, identity: {provider, handle}, display_name?}`. Unknown keys (including `battle_tag`) are 422.
-`ensure_member_for_identity` (`backend/shared/services/workspace_roster.py`) validates the enabled discipline,
+`ensure_member_for_identity` (`backend/balancer-service/src/services/workspace_roster.py`) validates the enabled discipline,
 its declared provider (422 `identity.provider_mismatch`) and provider grammar before any mutation. Matching
 uses the provider-normalized **exact handle**, never the display name or a BattleTag prefix:
 
@@ -217,11 +217,24 @@ uses the provider-normalized **exact handle**, never the display name or a Battl
 3. Several distinct owners return 409 `identity_conflict` without changing either person.
 4. `get_or_create_workspace_member` performs real admission: an observation-only anchor becomes a member;
    roster reads and counts exclude observation-only anchors until that admission.
+5. **Account holders (P8 R5).** When the one owner is an auth-linked player who is not an admitted member (no
+   row, a removed row or an observation-only anchor), admission would hand them the baseline `player` role, so it
+   needs `workspace_member.create` (the RPC passes `admit_account_holders`); otherwise 403 `forbidden` (field
+   `identity.handle`, "This player has an account; only a member manager can add them to the workspace") before
+   any player, social account, member or role row is written. An admitted member is an idempotent hit for anyone;
+   unlinked and new players are unchanged.
 
-A mix host (`custom_game.create`) may add players, but changing `display_name` still needs `team.create`.
+A mix host (`custom_game.create`) may add players (unlinked handles, or account holders already admitted), but
+changing `display_name` still needs `team.create`; an account holder outside the workspace needs a member manager.
 Commits and realtime/outbox writes remain caller-owned. The response is exactly one `players.list` row;
 both rank layers remain separate. Reads select only that provider's primary account (`is_primary DESC, id ASC`)
 and search handles with the same provider normalizer. Missing provider identity stays null.
+
+The handle is the **owner game's** identity: the tournament's or mix's discipline selects the provider (`battlenet`
+for Overwatch, `riot` for League of Legends: `Name#TAG`, internal spaces kept, never an authentication or ownership
+proof). Identical handle text under two providers is two people. Registration identity conflicts are 409
+`game_identity_conflict` with the provider's field (`identity_riot`, section 7.4); roster conflicts are 409
+`identity_conflict` (several owners) or 422 `identity.provider_mismatch` / the provider's handle-format code.
 
 Registration approval/rejection/rank-check events likewise carry `identity` (never `battle_tag`): position zero
 of the owning tournament's provider. The OW collector converts only a `battlenet` identity to its native
@@ -749,6 +762,7 @@ request body selects a workspace or key.
 | A custom-domain OAuth link binding the apex session | The ticket carries only the provider identity; it is redeemed on the domain from that domain's cookie. |
 | A registration ban | `user_permission_deny` + `can_capability`; a deny beats a grant. |
 | Unlink leaving a "ghost" RBAC member | 409 while `member+` roles are still held. Leave first. |
+| A mix host enrolling an account holder to hand them workspace read access | `ensure_member_for_identity` refuses (403) an auth-linked non-member unless the actor holds `workspace_member.create` |
 | Rewriting someone else's rank book | `players.set_ranks` takes `author_user_id` from the actor only, never from the wire |
 | A superuser bypassing an avatar/social/self_register deny | No: `is_denied` is checked first. |
 
@@ -841,7 +855,7 @@ In code comments and logs a virtual player is often called a `shadow` player. Sa
 | OAuth connection | `backend/shared/models/identity/oauth.py` |
 | `workspace_member` | `backend/shared/models/tenancy/workspace.py` |
 | `get_or_create_workspace_member` | `backend/shared/repository/workspace.py` |
-| Workspace roster | `backend/shared/services/workspace_roster.py` |
+| Workspace roster | `backend/balancer-service/src/services/workspace_roster.py` |
 | Ranks (model) | `backend/shared/models/member_rank/member_rank.py` |
 | Ranks (resolver) | `backend/shared/domain/member_rank.py`, `backend/shared/services/member_rank.py` |
 | Tournament ranks | `backend/shared/services/roster.py` (`RosterEngine`) |

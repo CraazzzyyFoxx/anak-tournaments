@@ -2237,7 +2237,7 @@ export interface paths {
         put?: never;
         /**
          * Name a game's map
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Freeplay's half of what the map pick-ban does automatically: names the map an open position is played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game belongs to another encounter, 409 `result_locked` when the position's result is already settled, and 409 `map_locked` once a captain has claimed a score against the current map.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Freeplay's half of what the map pick-ban does automatically: names the map an open position is played on, moving a `planned` game to `awaiting_result`. Returns `{game}`. 404 when the game belongs to another encounter, 409 `result_locked` when the position's result is already settled, 409 `side_pick_pending` / `side_pick_required` while the position's sides are not decided where the room picks them, and 409 `map_locked` once a captain has claimed a score against the current map.
          *
          *     RPC subject: `rpc.tournament.captain_select_game_map`
          */
@@ -2259,7 +2259,7 @@ export interface paths {
         put?: never;
         /**
          * Claim a game result
-         * @description Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Files the calling captain's own claim of ONE series position's result, immediately after that game rather than at series end: `basis_version` plus one `results` line per participation (`encounter_team_id`, optional score, placement and the stage's own `column_values`). The claiming seat is taken from the caller, never from the body. Every live participation claims independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's current one, and 409 while the stage bracket is still a preview the organizer has not activated.
+         * @description Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Files the calling captain's own claim of ONE series position's result, immediately after that game rather than at series end: `basis_version` plus one `results` line per participation (`encounter_team_id`, optional score, placement and the stage's own `column_values`). The claiming seat is taken from the caller, never from the body. Every live participation claims independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 on a `basis_version` behind the game's current one, and 409 while the stage bracket is still a preview the organizer has not activated.
          *
          *     RPC subject: `rpc.tournament.captain_report_game`
          */
@@ -2413,7 +2413,7 @@ export interface paths {
         put?: never;
         /**
          * Request or withdraw an undo
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). Returns the resulting undo block. 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting undo block. 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first; 409 `side_locked` when the undo would take back a side whose game already has a claim or a confirmed result.
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_undo`
          */
@@ -5963,7 +5963,7 @@ export interface paths {
         put?: never;
         /**
          * Correct a game result
-         * @description Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which participation won a position scraps and re-opens the round that outcome had opened, so the response is `{game, reset_downstream}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. When the room's result rotation (`result_*` first-ban rotation) opened the next round off this position and the correction changes who opens it, that round is scrapped and re-opened for the corrected opener in the same commit — provided nobody used it yet; 409 `dependent_round_started` (nothing written, no audit row) when it was already used: a submission on one of its steps, or its game given a side, claimed or confirmed. The way out is to undo that round (captains) or reset the room first. The response is `{game, reset_downstream}`. Also 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.
          *
          *     RPC subject: `rpc.tournament.admin_game_result`
          */
@@ -6095,7 +6095,7 @@ export interface paths {
         put?: never;
         /**
          * Reopen the last revealed step
-         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened `side_pick` starts with an empty draft, takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_reopen`
          */
@@ -7811,7 +7811,7 @@ export interface paths {
         put?: never;
         /**
          * Toggle tournament finished
-         * @description Permission: superuser only. Toggles a tournament's legacy finished flag and returns it with stages.
+         * @description Permission: superuser only. Toggles a tournament's `is_finished` flag and returns it with stages.
          *
          *     RPC subject: `rpc.tournament.tournament_finish`
          */
@@ -7866,7 +7866,7 @@ export interface paths {
         get: operations["get__api_v1_admin_tournaments__tournament_id__pick_ban_configs"];
         /**
          * Upsert pick-ban config
-         * @description Permission: workspace `match.update` on the tournament's workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields.
+         * @description Permission: workspace `match.update` on the tournament's workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields. A hero config whose ruleset holds a `side_pick` step but whose pool is empty is a 422 `pool_required` (save the champion pool first: a pool-less room never opens, yet its side step would hold the result of every game); a pool item that is not a catalog row of the game of the tournament and of the catalog of the kind is a 422 `pool_item_not_in_catalog`.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_config_upsert`
          */
@@ -8075,7 +8075,7 @@ export interface paths {
         };
         /**
          * Get a tournament's team format
-         * @description Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).
+         * @description Permission: workspace `tournament.read`. The tournament's own team format with its slot projection.
          *
          *     RPC subject: `rpc.tournament.team_format.get`
          */
@@ -9007,7 +9007,7 @@ export interface paths {
         put?: never;
         /**
          * Run inference
-         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue; requires configured RabbitMQ (503 otherwise). Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
+         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue. Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
          *
          *     RPC subject: `rpc.analytics.infer`
          */
@@ -9075,7 +9075,7 @@ export interface paths {
         put?: never;
         /**
          * Recalculate analytics
-         * @description Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job for a tournament (optionally scoped to given algorithm_ids), replacing the legacy synchronous recompute. Metered as `analytics.recalculate`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
+         * @description Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job for a tournament (optionally scoped to given algorithm_ids). Metered as `analytics.recalculate`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
          *
          *     RPC subject: `rpc.analytics.recalculate`
          */
@@ -9119,7 +9119,7 @@ export interface paths {
         put?: never;
         /**
          * Train model
-         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue; requires configured RabbitMQ (503 otherwise). Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.
+         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue. Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.
          *
          *     RPC subject: `rpc.analytics.train`
          */
@@ -10523,7 +10523,7 @@ export interface paths {
         put?: never;
         /**
          * Upsert workspace player
-         * @description Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Admits (or reuses) the workspace member a game identity denotes and returns it shaped exactly like a roster row. The body is `{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as the old `battle_tag`) are 422.
+         * @description Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Admits (or reuses) the workspace member a game identity denotes and returns it shaped exactly like a roster row. The body is `{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as `battle_tag`) are 422.
          *
          *     RPC subject: `rpc.balancer.players.upsert`
          */
@@ -11872,7 +11872,7 @@ export interface components {
         };
         /**
          * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         * @description ``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.
          */
         "analytics.RoleRef": {
             /** Dimension */
@@ -12208,7 +12208,7 @@ export interface components {
         };
         /**
          * CatalogLegacyRead
-         * @description What an old ``overwatch.hero|map|gamemode`` id became (D84).
+         * @description What an old ``overwatch.hero|map|gamemode`` id became.
          */
         "app.CatalogLegacyRead": {
             /** Discipline */
@@ -13100,7 +13100,7 @@ export interface components {
         };
         /**
          * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         * @description ``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.
          */
         "app.RoleRef": {
             /** Dimension */
@@ -13115,7 +13115,7 @@ export interface components {
         };
         /**
          * RosterShapeRead
-         * @description A team format's slots (D33). The frontend never recomputes them.
+         * @description A team format's slots. The frontend never recomputes them.
          */
         "app.RosterShapeRead": {
             /**
@@ -14596,7 +14596,7 @@ export interface components {
              */
             mutation_strength: number | null;
             /**
-             * @description Weights of open slots without a role constraint (D86).
+             * @description Weights of open slots without a role constraint.
              * @default null
              */
             open_slot_settings: components["schemas"]["balancer.RoleSettingsOverride"] | null;
@@ -15162,10 +15162,9 @@ export interface components {
          * DraftSeedRequest
          * @description Who captains. Everything else about a player comes from their registration.
          *
-         *     There is no manual variant any more: a draft player is a reference to a
-         *     balancer registration, so a seat with hand-typed roles and ranks could not
-         *     be resolved by the engine and would reintroduce exactly the second source of
-         *     truth this contract exists to remove.
+         *     A draft player is a reference to a balancer registration, so there is no
+         *     manual seat: hand-typed roles and ranks could not be resolved by the engine
+         *     and would be a second source of truth.
          */
         "balancer.DraftSeedRequest": {
             /** @default manual */
@@ -15560,7 +15559,7 @@ export interface components {
         };
         /**
          * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         * @description ``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.
          */
         "balancer.RoleRef": {
             /** Dimension */
@@ -15605,7 +15604,7 @@ export interface components {
         };
         /**
          * RosterShapeRead
-         * @description A team format's slots (D33). The frontend never recomputes them.
+         * @description A team format's slots. The frontend never recomputes them.
          */
         "balancer.RosterShapeRead": {
             /**
@@ -15763,7 +15762,7 @@ export interface components {
          *
          *     The xv-1 input is built server-side from ``shared.services.roster`` -- the
          *     same engine the draft reads -- so the caller cannot hand the algorithm a
-         *     different set of ranks than the draft sees. Use ``BalanceRequest`` /the
+         *     different set of ranks than the draft sees. Use ``BalanceRequest`` or the
          *     multipart upload only for a payload that is genuinely not a tournament pool.
          */
         "balancer.TournamentBalanceRequest": {
@@ -16784,7 +16783,7 @@ export interface components {
         };
         /**
          * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         * @description ``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.
          */
         "stats.RoleRef": {
             /** Dimension */
@@ -18398,9 +18397,7 @@ export interface components {
          *     ``registration`` is OPTIONAL because an invitee who already has a live
          *     registration is a free agent *attaching*: the service reuses their existing row
          *     and ignores anything sent here, so demanding a payload would make them re-answer
-         *     a form they already filled. Required-but-ignored is what it used to be, and the
-         *     client expressed that by casting an empty object — a lie the type system had no
-         *     way to catch.
+         *     a form they already filled.
          *
          *     A genuinely new invitee who sends nothing is still rejected, by the registration
          *     form's own validation downstream. ``None`` rather than an empty default: a
@@ -18427,7 +18424,7 @@ export interface components {
          *
          *     Deliberately not the full ``RegistrationTeamRead``: this rides in every row of
          *     the public participants list, so it holds only what a team column and the
-         *     §12.5 status line need. In particular it carries **no invites** — a public
+         *     team status line need. In particular it carries **no invites** — a public
          *     roster must not leak who has been asked and declined.
          */
         "tournament.RegistrationTeamBrief": {
@@ -18462,7 +18459,7 @@ export interface components {
          * RegistrationTeamCreateRequest
          * @description Create a team and register the caller as its captain, in one call.
          *
-         *     The captain is a member like any other (decision 5), so their own registration
+         *     The captain is a member like any other, so their own registration
          *     payload rides along and goes through the identical validation a solo entrant
          *     gets. Splitting this into "create team" then "register captain" would allow a
          *     captainless team to exist between the two calls.
@@ -18493,7 +18490,7 @@ export interface components {
          *
          *     ``target_registration_id`` addresses a free agent already registered for this
          *     tournament; omitting it produces a shareable link for someone with no account
-         *     yet (decision 3). Both modes are one entity, so the slot accounting cannot
+         *     yet. Both modes are one entity, so the slot accounting cannot
          *     diverge between them.
          *
          *     A REGISTRATION id, not an account id: the captain picks from this tournament's
@@ -18571,9 +18568,9 @@ export interface components {
          * RegistrationTeamInviteHistoryResponse
          * @description The history plus the cap standing it explains.
          *
-         *     They ship together because apart they are a riddle: the cap counts every invite
-         *     ever issued while only pending ones were ever visible, so a captain refused at
-         *     the ceiling had no way to see where it went.
+         *     They ship together because the cap counts every invite ever issued while the
+         *     live list shows only pending ones; without the history a captain refused at
+         *     the ceiling cannot see where the cap went.
          */
         "tournament.RegistrationTeamInviteHistoryResponse": {
             /**
@@ -18921,7 +18918,7 @@ export interface components {
         };
         /**
          * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         * @description ``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.
          */
         "tournament.RoleRef": {
             /** Dimension */
@@ -18936,7 +18933,7 @@ export interface components {
         };
         /**
          * RosterShapeRead
-         * @description A team format's slots (D33). The frontend never recomputes them.
+         * @description A team format's slots. The frontend never recomputes them.
          */
         "tournament.RosterShapeRead": {
             /**
@@ -18964,7 +18961,7 @@ export interface components {
         };
         /**
          * ScoringColumnSettings
-         * @description One value a stage's games record per team (plan §3.1).
+         * @description One value a stage's games record per team.
          */
         "tournament.ScoringColumnSettings": {
             /**
@@ -19342,14 +19339,13 @@ export interface components {
         };
         /**
          * StageScoring
-         * @description How a stage scores, at all three levels (plan §5, D51).
+         * @description How a stage scores, at all three levels.
          *
          *     ``win``/``draw``/``loss`` are level 3: what one encounter's result pays in
          *     the stage table; ``None`` = the tournament's points. The rest is the
          *     ``encounter.scoring_rule`` every encounter of the stage is played and
          *     ranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the
-         *     organizer's own columns. It replaced the ``ffa_scoring`` block: once a duel
-         *     has a rule row too, "ffa" is no longer what the setting is about.
+         *     organizer's own columns.
          *
          *     Every rule field is nullable and means "the preset's default", the way
          *     ``ranking_preset`` does: the preset itself defaults to the one the stage
@@ -19887,7 +19883,7 @@ export interface components {
             id: number;
             /**
              * Identity Provider
-             * @description The discipline's player identity provider (D90).
+             * @description The discipline's player identity provider.
              */
             readonly identity_provider: string;
             /** Is Finished */
@@ -20775,7 +20771,7 @@ export interface components {
          *
          *     Separate from ``SocialVisibilityUpdate``: that one governs whether a handle is
          *     shown on the public profile at all, this one only whether the live broadcast is
-         *     surfaced. Collapsing them is the bug this endpoint exists to fix.
+         *     surfaced.
          */
         "app.StreamVisibilityUpdate": {
             /** Visible */
@@ -20783,7 +20779,7 @@ export interface components {
         };
         /**
          * TournamentReadiness
-         * @description Living-checklist aggregate for one tournament (D13, §7.1).
+         * @description Living-checklist aggregate for one tournament.
          *
          *     Field groups are masked by the caller's workspace permissions:
          *     ``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates
@@ -20836,10 +20832,7 @@ export interface components {
             /** Tournament Id */
             tournament_id: number;
         };
-        /**
-         * UserAdminUpdate
-         * @description Schema for updating a user
-         */
+        /** UserAdminUpdate */
         "app.UserAdminUpdate": {
             /**
              * Name
@@ -20847,10 +20840,7 @@ export interface components {
              */
             name: string | null;
         };
-        /**
-         * UserCreate
-         * @description Schema for creating a user
-         */
+        /** UserCreate */
         "app.UserCreate": {
             /** Name */
             name: string;
@@ -21020,8 +21010,7 @@ export interface components {
          * WorkspaceDiscordGuildOption
          * @description One guild the caller administers, as reported by
          *     ``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so
-         *     ``discord_guild_verify`` can be handed a snowflake the caller can actually
-         *     prove — instead of a free-text field that only fails after the fact.
+         *     ``discord_guild_verify`` is handed a snowflake the caller can actually prove.
          */
         "app.WorkspaceDiscordGuildOption": {
             /** Can Manage */
@@ -21145,7 +21134,7 @@ export interface components {
         };
         /**
          * CustomGameBalanceRequest
-         * @description What to balance. An empty body is the first lobby, as before there was a second.
+         * @description What to balance. An empty body is the first lobby.
          *
          *     ``scope="all"`` reshuffles every lobby at once and needs ``lobby_count >= 2``.
          */
@@ -22970,8 +22959,7 @@ export interface components {
          *
          *     channel_id is a Discord snowflake (64-bit integer), accepted as a string to
          *     avoid JavaScript float64 precision loss on the client side. The guild is not
-         *     here: it belongs to the workspace (``Workspace.discord_guild_id``) and was
-         *     duplicated into every tournament row while being read by nobody.
+         *     here: it belongs to the workspace (``Workspace.discord_guild_id``).
          */
         "stats.DiscordChannelUpsert": {
             /** Channel Id */
@@ -23204,10 +23192,7 @@ export interface components {
         };
         /**
          * LogStatsRead
-         * @description Scope-wide processing aggregate, computed in one SQL round trip.
-         *
-         *     The admin console used to derive these from the page it happened to be
-         *     showing, so "Failed: 0" only ever meant "none on this page".
+         * @description Scope-wide (not per-page) processing aggregate, computed in one SQL round trip.
          */
         "stats.LogStatsRead": {
             /** Avg Duration Seconds */
@@ -23804,8 +23789,7 @@ export interface components {
          * AdminGameResultInput
          * @description Body for the admin game-result correction: the position's numbers as the
          *     organizer decides them, one line per live participation, plus the reason
-         *     that goes into the audit journal (a correction is never anonymous --
-         *     spec §6.5).
+         *     that goes into the audit journal (a correction is never anonymous).
          */
         "tournament.AdminGameResultInput": {
             /** Reason */
@@ -25782,10 +25766,7 @@ export interface components {
              */
             tiers: components["schemas"]["tournament.DivisionGridTierWrite"][] | null;
         };
-        /**
-         * EncounterCreate
-         * @description Schema for creating an encounter
-         */
+        /** EncounterCreate */
         "tournament.EncounterCreate": {
             /**
              * Best Of
@@ -26022,11 +26003,10 @@ export interface components {
         };
         /**
          * EncounterUpdate
-         * @description Schema for updating an encounter.
+         * @description Edit an encounter's own fields; seats change only through the slot swap.
          *
-         *     Seats are not edited here: a seat changes hands through the slot swap,
-         *     which retires the old participation instead of rewriting it, so the games
-         *     it played stay attached to the row that played them (D55).
+         *     The swap retires the outgoing participation instead of rewriting it, so the
+         *     games it played stay attached to the row that played them.
          */
         "tournament.EncounterUpdate": {
             /**
@@ -26503,10 +26483,10 @@ export interface components {
         };
         /**
          * MergeGroupStagesRequest
-         * @description Merge legacy one-group stages into one grouped stage.
+         * @description Merge one-group stages into one grouped stage.
          *
          *     ``source_stage_ids`` are removed after their stage_items and stage-scoped
-         *     references are moved under the target stage from the route path.
+         *     references are moved under the target stage named by the path.
          */
         "tournament.MergeGroupStagesRequest": {
             /** Source Stage Ids */
@@ -26543,8 +26523,8 @@ export interface components {
          * PickBanAdminAct
          * @description Body for the admin act-for-a-participation route: perform one step on
          *     behalf of an absent captain. ``target_player_id`` names the opponent roster
-         *     player a per-player ban is spent on (ruleset v2 target steps); ``null``
-         *     everywhere else.
+         *     player a per-player ban is spent on (target steps); ``null`` everywhere
+         *     else.
          */
         "tournament.PickBanAdminAct": {
             /**
@@ -26614,7 +26594,7 @@ export interface components {
         /**
          * PickBanConfigSlotUpsert
          * @description One slot of a slot-mode upsert body. No ``position``: list order IS the
-         *     play order (same rationale as ``veto_admin.VetoConfigSlotUpsert``).
+         *     play order.
          */
         "tournament.PickBanConfigSlotUpsert": {
             /** Candidates */
@@ -26627,7 +26607,7 @@ export interface components {
         };
         /**
          * PickBanConfigUpsert
-         * @description Body for the generic pick-ban config upsert route (ruleset v2).
+         * @description Body for the generic pick-ban config upsert route.
          */
         "tournament.PickBanConfigUpsert": {
             /** @default fixed */
@@ -26693,10 +26673,7 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /**
-         * PlayerCreate
-         * @description Schema for creating a player
-         */
+        /** PlayerCreate */
         "tournament.PlayerCreate": {
             /**
              * Is Newcomer
@@ -26855,10 +26832,7 @@ export interface components {
              */
             sort_order: number | null;
         };
-        /**
-         * PlayerUpdate
-         * @description Schema for updating a player
-         */
+        /** PlayerUpdate */
         "tournament.PlayerUpdate": {
             /**
              * Is Newcomer
@@ -27836,10 +27810,7 @@ export interface components {
              */
             stage_item_id: number | null;
         };
-        /**
-         * StandingUpdate
-         * @description Schema for updating a standing
-         */
+        /** StandingUpdate */
         "tournament.StandingUpdate": {
             /**
              * Buchholz
@@ -28055,10 +28026,7 @@ export interface components {
              */
             verification_method: string | null;
         };
-        /**
-         * TeamCreate
-         * @description Schema for creating a team
-         */
+        /** TeamCreate */
         "tournament.TeamCreate": {
             /**
              * Balancer Name
@@ -28196,10 +28164,7 @@ export interface components {
              */
             wins: number | null;
         };
-        /**
-         * TeamUpdate
-         * @description Schema for updating a team
-         */
+        /** TeamUpdate */
         "tournament.TeamUpdate": {
             /**
              * Balancer Name
@@ -28296,10 +28261,7 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
-        /**
-         * TournamentCreate
-         * @description Schema for creating a tournament
-         */
+        /** TournamentCreate */
         "tournament.TournamentCreate": {
             /**
              * Allow Late Registration
@@ -28464,16 +28426,13 @@ export interface components {
         };
         /**
          * TournamentScheduleSet
-         * @description Schema for replacing a tournament's phase schedule (full replace).
+         * @description A tournament's whole phase schedule; replaces the stored one.
          */
         "tournament.TournamentScheduleSet": {
             /** Schedule */
             schedule: components["schemas"]["tournament.TournamentScheduleEntryInput"][];
         };
-        /**
-         * TournamentStatusTransition
-         * @description Schema for transitioning tournament status
-         */
+        /** TournamentStatusTransition */
         "tournament.TournamentStatusTransition": {
             /**
              * Force
@@ -28482,10 +28441,7 @@ export interface components {
             force: boolean;
             status: components["schemas"]["tournament.TournamentStatus"];
         };
-        /**
-         * TournamentUpdate
-         * @description Schema for updating a tournament
-         */
+        /** TournamentUpdate */
         "tournament.TournamentUpdate": {
             /**
              * Allow Late Registration

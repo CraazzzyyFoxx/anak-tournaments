@@ -8,12 +8,10 @@ scale**. Distances larger than ``threshold`` are flagged via the returned report
 
 The normalisation matters: raw Wasserstein distance is expressed in the feature's
 own units, so a fixed threshold is meaningless across features measured in SR
-(thousands), damage (tens of thousands), and win rate (0..1). With the raw
-distance every wide-range feature clears 0.25 permanently — the nightly job
-reported "50 features above threshold" for all 50 features it measured, every
-night, which is noise rather than a signal. Dividing by the baseline standard
-deviation makes the score dimensionless ("shifted by a quarter of a standard
-deviation") and comparable across features.
+(thousands), damage (tens of thousands), and win rate (0..1): with the raw
+distance every wide-range feature clears the threshold permanently. Dividing by
+the baseline standard deviation makes the score dimensionless ("shifted by a
+quarter of a standard deviation") and comparable across features.
 """
 
 from __future__ import annotations

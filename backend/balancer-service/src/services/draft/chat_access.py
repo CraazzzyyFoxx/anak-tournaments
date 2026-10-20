@@ -3,11 +3,10 @@
 The draft half of ``shared.services.chat.ChatAccess``: a domain question only
 ("captain of a team in THIS session, organizer of the owning workspace, or just
 watching?"). Whether a spectator may actually READ, and whether this account is
-muted, are room policy and belong to ``ChatService`` — see
-docs/plans/2026-09-21-shared-room-chat.md.
+muted, are room policy and belong to ``ChatService``.
 
-The room is the SESSION, not the tournament (ruling R3): a re-seed is a
-different draft with a different conversation, so ``room.ref_id`` is a
+The room is the SESSION, not the tournament: a re-seed is a different draft
+with a different conversation, so ``room.ref_id`` is a
 ``balancer.draft_session.id``.
 """
 
@@ -76,7 +75,7 @@ class DraftChatAccess:
         # Organizer staff, NOT the workspace roster: ``workspace_member`` rows
         # (and the baseline ``member`` role they autofill) exist for every
         # registrant, and the token's ``workspaces`` list is built from them, so
-        # ``is_workspace_member`` handed moderation to every player of the
+        # ``is_workspace_member`` would hand moderation to every player of the
         # workspace. ``has_admin_panel_access`` is the scoped organizer
         # predicate: superuser, a global admin-panel role, or any non-read grant
         # in THIS workspace.

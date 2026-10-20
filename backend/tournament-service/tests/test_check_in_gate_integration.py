@@ -144,11 +144,11 @@ class TestCheckInGate(IsolatedAsyncioTestCase):
         """True when the gate refuses check-in. Providers absent from ``live`` have
         no strategy and therefore resolve to ``unknown``."""
         from shared.core.errors import BaseAPIException
-        from shared.services.admission import AdmissionConfig, AdmissionStage
-        from shared.services.admission.gates import assert_admitted
-        from shared.services.admission.resolve import resolve_admission_for_gate
         from shared.services.subscriptions.entitlements import SubscriptionResolver
         from shared.services.subscriptions.wiring import build_store
+        from src.services.admission import AdmissionConfig, AdmissionStage
+        from src.services.admission.gates import assert_admitted
+        from src.services.admission.resolve import resolve_admission_for_gate
 
         resolver = SubscriptionResolver(
             store=build_store(self._session),

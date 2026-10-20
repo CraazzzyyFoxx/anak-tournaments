@@ -1,17 +1,12 @@
 """SQLite dialect shims for Postgres-only column types.
 
-Five suites need their models -- built with Postgres-specific ``JSONB``/
-``ARRAY``/``BigInteger`` columns -- to run their DDL against a real (in-memory)
-SQLite engine, for flush/cascade/query-shape tests that don't need a real
-Postgres. Each used to register its own ``@compiles`` shim for the same three
-types.
-
-That is not just duplication: ``@compiles`` registers globally on the
-SQLAlchemy type object the first time any of these modules is imported, so
-five independent definitions are an import-order footgun -- whichever module
-happens to import first "wins" and the other four silently become no-ops.
-Calling :func:`install_postgres_type_shims` once, idempotently, from every
-caller removes both the duplication and the footgun.
+Suites whose models -- built with Postgres-specific ``JSONB``/``ARRAY``/
+``BigInteger`` columns -- run their DDL against an in-memory SQLite engine
+(flush/cascade/query-shape tests that don't need a real Postgres) call
+:func:`install_postgres_type_shims`, idempotently, instead of registering their
+own ``@compiles`` shim: ``@compiles`` registers globally on the SQLAlchemy type
+object, so a second definition is an import-order footgun -- whichever module
+imports first "wins" and the others silently become no-ops.
 """
 
 from __future__ import annotations

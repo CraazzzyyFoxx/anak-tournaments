@@ -1,10 +1,8 @@
-"""Cashews cache configuration shared by the HTTP app and the headless worker.
+"""Cashews cache configuration.
 
 The cashews singleton is process-global and has no default backend; ``@cache``
-flows raise ``NotConfiguredError`` until ``cache.setup`` runs. ``main.py`` (HTTP)
-configures it at import; the worker (``serve.py``) must call ``configure_cache``
-explicitly before any RPC subscriber runs, or read paths that hit the cache fail.
-See lesson: cashews-worker-not-configured.
+flows raise ``NotConfiguredError`` until ``cache.setup`` runs, so ``serve.py``
+calls ``configure_cache`` before any RPC subscriber runs.
 """
 
 from __future__ import annotations

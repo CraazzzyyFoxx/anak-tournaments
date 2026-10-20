@@ -1,9 +1,7 @@
 """Read models for the admin parsed-matches list and detail.
 
-A parsed match is one played map, written by the log parser. Until now the only
-admin-visible signal that any of this existed was ``Encounter.has_logs: bool``,
-so «did this log actually produce the maps it should have» had no answer short of
-opening the public match page one encounter at a time.
+A parsed match is one played map, written by the log parser; these reads answer
+whether a log produced the maps it should have.
 
 ``LogRecordRef`` is declared here rather than reused from stats-service's
 ``LogRecordRead``: that schema belongs to another service and carries the log

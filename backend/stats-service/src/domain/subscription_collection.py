@@ -15,10 +15,10 @@ __all__ = ("TournamentTarget",)
 class TournamentTarget:
     """One tournament the collector should sweep, with the rule it must check.
 
-    ``providers`` comes from the form's own requirement rather than a hardcoded
-    list: resolving a provider the tournament does not require costs a provider
-    call, persists an entitlement nobody reads, and — now that attempts are
-    logged — buries the real history under ``provider_not_configured`` noise.
+    ``providers`` is exactly what the tournament's subscription rule requires:
+    resolving a provider it does not require costs a provider call, persists an
+    entitlement nobody reads, and buries the real check-log history under
+    ``provider_not_configured`` noise.
     """
 
     tournament_id: int

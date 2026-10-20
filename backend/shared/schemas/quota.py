@@ -1,8 +1,7 @@
 """Wire contracts for the ``quota`` schema's admin surface.
 
 The limit vocabulary is closed and typed on purpose: ``extra="forbid"`` makes a
-misspelled dimension fail the write instead of silently reading as "unlimited",
-which is exactly how the per-key limits this replaces became fiction.
+misspelled dimension fail the write instead of silently reading as "unlimited".
 
 ``None`` keeps the meaning it has in the tables -- "unset at this level", i.e.
 inherit in an override row and unlimited in a plan row -- so a payload that

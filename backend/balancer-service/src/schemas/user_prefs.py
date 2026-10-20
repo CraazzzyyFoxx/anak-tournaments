@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
-from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS, validate_role_settings
+from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS, validate_role_settings
 
 __all__ = (
     "MAX_POINTS_PER_WIN",

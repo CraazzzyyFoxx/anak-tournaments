@@ -2,7 +2,7 @@
 
 Grain: user_tournament.
 
-Ports the legacy ``we-work-with-what-we-have`` / ``were-so-fucked`` achievements.
+Backs ``we-work-with-what-we-have`` / ``were-so-fucked``.
 An OTP (one-trick player) for a tournament played exactly one distinct hero and
 5+ distinct matches (HeroTimePlayed > 60s). All players on a qualifying team are
 awarded.

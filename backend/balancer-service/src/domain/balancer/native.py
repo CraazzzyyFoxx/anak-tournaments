@@ -20,9 +20,9 @@ from typing import Any
 import orjson
 
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from src.domain.balancer.config.defaults import NEUTRAL_ROLE_SETTINGS, RoleSettings
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.progress import ProgressCallback
-from src.services.balancer.config.defaults import NEUTRAL_ROLE_SETTINGS, RoleSettings
 
 #: Importable as a plain module once ``maturin develop`` has built the crate.
 NATIVE_MODULE = "balancer_native"

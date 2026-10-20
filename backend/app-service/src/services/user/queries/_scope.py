@@ -1,7 +1,7 @@
 """Shared SQL scope predicates and load-option helpers for the user queries.
 
-Module-level on purpose: these are pure builders with no state, reused by
-:mod:`.overview`, :mod:`.compare`, :mod:`.profile` and :mod:`.encounters`.
+Pure stateless builders, reused by :mod:`.overview`, :mod:`.compare`,
+:mod:`.profile` and :mod:`.encounters`.
 """
 
 import typing
@@ -30,12 +30,7 @@ def team_has_played_encounter(team_id_column: typing.Any = models.Team.id) -> sa
 
 
 def _team_load_options(entities: list[str]) -> list[_AbstractLoad]:
-    """Load options for selecting Team with optional related entities.
-
-    Replaces the dependency on services/team — kept local because the only
-    consumer of this function in app-service is get_teams() below, which
-    passes entities=["tournament", "placement"].
-    """
+    """Load options for selecting Team with optional related entities."""
     opts: list[_AbstractLoad] = []
     if "tournament" in entities:
         opts.append(joinedload(models.Team.tournament))
@@ -227,9 +222,9 @@ def apply_has_logs_filter(query: sa.Select, *, discipline: str | None) -> sa.Sel
 def _apply_workspace_member_filter(query: sa.Select, workspace_id: int | None) -> sa.Select:
     """Scope a ``User``-selecting query to members of the given workspace.
 
-    Post identity/workspace refactor, workspace membership is anchored on
+    Workspace membership is anchored on
     ``workspace_member.player_id -> players.user.id``. When ``workspace_id`` is
-    ``None`` the query is returned unchanged (no scoping), mirroring the
+    ``None`` the query is returned unchanged (no scoping), matching the
     ``workspace_filter`` contract in ``core.workspace``.
     """
     if workspace_id is None:

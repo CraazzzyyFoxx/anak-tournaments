@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -126,24 +127,33 @@ export function WorkspaceQuotaCard({ workspaceId }: Readonly<{ workspaceId: numb
   }));
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-3">
-        <h2 className="text-base font-semibold">{t("usageHeading")}</h2>
+    <div className="flex flex-col gap-4">
+      <SettingGroup title={t("usageHeading")}>
         {usageQuery.data ? (
           <QuotaUsagePanel usage={usageQuery.data} />
         ) : (
-          <Skeleton className="h-40 w-full rounded-xl" />
+          // Shaped like a scope: its heading, then one bar per counter.
+          <div aria-busy="true" className="space-y-4">
+            <Skeleton className="h-4 w-40" />
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="space-y-1.5">
+                <Skeleton className="h-3 w-48" />
+                <Skeleton className="h-2 w-full" />
+              </div>
+            ))}
+          </div>
         )}
-      </section>
+      </SettingGroup>
 
-      <section className="space-y-3 border-t border-border pt-6">
-        <h2 className="text-base font-semibold">{t("overrideHeading")}</h2>
-        <p className="max-w-prose text-xs text-muted-foreground">
-          {isSuperuser ? t("overrideHint") : t("overrideHintAdmin")}
-        </p>
+      <SettingGroup
+        title={t("overrideHeading")}
+        description={isSuperuser ? t("overrideHint") : t("overrideHintAdmin")}
+      >
         {usageQuery.data ? (
-          <>
-            <LinkTabs items={tabs} activeKey={active} ariaLabel={t("overrideHeading")} />
+          // One child of the group's divided body: a hidden panel after the
+          // visible one would otherwise leave it a stray hairline underneath.
+          <div className="flex flex-col gap-4">
+            <LinkTabs items={tabs} activeKey={active} level={2} ariaLabel={t("overrideHeading")} />
             {SCOPES.map((scope) => (
               <div key={scope} hidden={scope !== active}>
                 <QuotaLimitFields
@@ -158,11 +168,20 @@ export function WorkspaceQuotaCard({ workspaceId }: Readonly<{ workspaceId: numb
                 />
               </div>
             ))}
-          </>
+          </div>
         ) : (
-          <Skeleton className="h-72 w-full rounded-xl" />
+          // The scope tabs, then label/control rows.
+          <div aria-busy="true" className="flex flex-col gap-6">
+            <Skeleton className="h-9 w-64" />
+            {[0, 1, 2].map((row) => (
+              <div key={row} className="grid gap-2 @xl:grid-cols-2 @xl:items-center @xl:gap-6">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ))}
+          </div>
         )}
-      </section>
+      </SettingGroup>
 
       <SaveBar
         dirty={changed.length > 0}

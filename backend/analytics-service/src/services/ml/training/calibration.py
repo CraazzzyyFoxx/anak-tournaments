@@ -14,10 +14,9 @@ should rise as the realised error falls. This module turns
   absolute error (should be **negative** when confidence is informative).
 
 Because the "accuracy" is a real frequency of an explicit event rather than a
-normalised error, the ECE here is not gameable by an arbitrary error scale (the
-problem with the earlier ``1 - error/scale`` formulation). It is intentionally a
-pure function so it can be unit-tested without a DB and reused both in the
-rolling backtest and ad-hoc analysis.
+normalised error, the ECE here is not gameable by an arbitrary error scale. It
+is intentionally a pure function so it can be unit-tested without a DB and
+reused both in the rolling backtest and ad-hoc analysis.
 """
 
 from __future__ import annotations

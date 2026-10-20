@@ -371,6 +371,7 @@ class PrecedenceTests(EvidenceCase):
                 ],
                 actor_user_id=None,
                 reason="wrong winner",
+                audit=AsyncMock(),
             )
         # the correction is an organizer decision on an accepted game: still locked for evidence
         self.assertEqual("result_locked", await self.deliver(self.event(2, placements=(1, 2), basis=2)))
@@ -833,32 +834,40 @@ class ConsumerTests(EvidenceCase):
         for orig in (_DriverError("23505"), _DriverError("42P01"), Exception("no state")):
             self.assertFalse(log_evidence_events.is_transient(DBAPIError("s", {}, orig)), orig)
 
-    async def test_an_accepted_completing_result_is_pushed_to_challonge_after_the_commit(self) -> None:
-        with (
-            patch.object(log_evidence_events.db, "async_session_maker", self.Session),
-            patch.object(log_evidence_events, "push_confirmed_to_challonge", AsyncMock()) as push,
-        ):
-            self.assertEqual("accepted", await log_evidence_events.process_match_ingested(self.event().model_dump()))
-            push.assert_awaited_once()
-            self.assertEqual(self.ids["e"], push.await_args.args[1])
-            self.assertEqual("duplicate", await log_evidence_events.process_match_ingested(self.event().model_dump()))
-            push.assert_awaited_once()
+    async def _challonge_pushes(self) -> list[dict]:
+        async with self.Session() as s:
+            return list(
+                await s.scalars(
+                    sa.select(EventOutbox.payload_json).where(
+                        EventOutbox.event_id.startswith(f"challonge_push:{self.ids['e']}:")
+                    )
+                )
+            )
 
-    async def test_a_push_failure_never_undoes_the_committed_decision(self) -> None:
+    async def test_an_accepted_completing_result_stages_its_challonge_push_in_the_same_commit(self) -> None:
         with (
             patch.object(log_evidence_events.db, "async_session_maker", self.Session),
-            patch.object(log_evidence_events, "push_confirmed_to_challonge", AsyncMock(side_effect=RuntimeError)),
+            patch(
+                "src.services.encounter.settle.resolve_encounter_challonge",
+                AsyncMock(side_effect=lambda _s, ids: dict.fromkeys(ids, 1)),
+            ),
         ):
             self.assertEqual("accepted", await log_evidence_events.process_match_ingested(self.event().model_dump()))
-        self.assertEqual(1, (await self.game()).result_version)
+            self.assertEqual("duplicate", await log_evidence_events.process_match_ingested(self.event().model_dump()))
+        async with self.Session() as s:
+            version = (await s.get_one(Encounter, self.ids["e"])).result_version
+        self.assertEqual([version], [push["result_version"] for push in await self._challonge_pushes()])
 
     async def test_no_push_when_nothing_became_official(self) -> None:
         with (
             patch.object(log_evidence_events.db, "async_session_maker", self.Session),
-            patch.object(log_evidence_events, "push_confirmed_to_challonge", AsyncMock()) as push,
+            patch(
+                "src.services.encounter.settle.resolve_encounter_challonge",
+                AsyncMock(side_effect=lambda _s, ids: dict.fromkeys(ids, 1)),
+            ),
         ):
             await log_evidence_events.process_match_ingested(self.event(placements=(1, None)).model_dump())
-        push.assert_not_awaited()
+        self.assertEqual([], await self._challonge_pushes())
 
     async def test_the_consumer_modules_import_no_stats_package(self) -> None:
         for module in ("log_evidence.py", "log_evidence_events.py"):

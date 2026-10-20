@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.workspace_tier import is_verified_or_trusted
+from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
 from shared.rbac import (
@@ -28,6 +30,7 @@ from shared.repository import (
     WorkspaceRepository,
     get_or_create_workspace_member,
 )
+from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.services.audit import record_audit
 from shared.services.settings_provider import settings_provider
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
@@ -44,12 +47,9 @@ _CUSTOM_DOMAIN_TOKEN_PREFIX = "owt-verify-"
 _DOMAIN_CONFLICT_MESSAGE = "This custom domain is already claimed by another workspace"
 _GUILD_CONFLICT_MESSAGE = "This Discord guild is already claimed by another workspace"
 # Internal, service-to-service subject -- no gateway route, no shared
-# RabbitQueue constant (workspace self-service design §4.1/§4.6): every other
-# rpc.identity.* subject is called the same way, by its bare subject string,
-# because the caller has always been the Go gateway until now. This is the
-# first Python-to-Python call to it; the bare string still routes correctly
-# because @broker.subscriber("rpc.identity.oauth_discord_guilds") declares a
-# same-named queue on the default exchange.
+# RabbitQueue constant: called by its bare subject string, which routes because
+# @broker.subscriber("rpc.identity.oauth_discord_guilds") declares a same-named
+# queue on the default exchange.
 _DISCORD_GUILDS_SUBJECT = "rpc.identity.oauth_discord_guilds"
 # Discord-guild list/verify fail closed on an unreachable identity-service
 # and say so identically -- one is the picker for the other. Clear does not
@@ -58,8 +58,8 @@ _GUILD_UNREACHABLE_MESSAGE = "Could not reach Discord for guild verification"
 
 MEMBERS_SORT_FIELDS = ("username", "role")
 
-# Slugs the platform keeps for itself, rejected by self-service create (design
-# §4.4). Built on the reserved subdomain labels because a slug is the natural
+# Slugs the platform keeps for itself, rejected by self-service create. Built
+# on the reserved subdomain labels because a slug is the natural
 # candidate for a workspace's ``subdomain``, plus the platform's own top-level
 # route names. Superusers are not exempt: the collision is with the platform,
 # not with a permission.
@@ -114,7 +114,7 @@ class WorkspaceService:
         return await self.workspace_repo.get_by_subdomain(session, subdomain)
 
     async def get_by_custom_domain(self, session: AsyncSession, domain: str) -> models.Workspace | None:
-        """Resolve a verified custom domain to its workspace (Phase 2 of ``by_host``).
+        """Resolve a verified custom domain to its workspace (``by_host``'s non-platform-host branch).
 
         Delegates to the verified-only repo query — an unverified ``custom_domain``
         never resolves here.
@@ -132,10 +132,10 @@ class WorkspaceService:
 
         ``public`` (the default, and what the home-page directory asks for) is
         the strict directory: ``not is_hidden`` AND a trust tier past
-        ``unverified`` (design §4.5). It has NO bypasses -- membership does not
+        ``unverified``. It has NO bypasses -- membership does not
         lift it and neither does ``is_superuser``, because the directory is one
         shared public surface and an operator browsing the home page must see
-        exactly what a visitor sees (revised 2026-09-07).
+        exactly what a visitor sees.
 
         ``admin`` is the management list: everything for a superuser, otherwise
         only the caller's own workspaces at any tier (the admin table narrows
@@ -166,7 +166,7 @@ class WorkspaceService:
             return [w for w in workspaces if w.id in member_ids]
         return [w for w in workspaces if w.id in member_ids or _is_listed(w)]
 
-    # --- custom domain (white-label Phase 2) --------------------------------
+    # --- custom domain (white-label) ----------------------------------------
 
     async def _dns_txt_contains(self, name: str, expected: str) -> bool:
         """True iff a TXT record at ``name`` has a string that exactly equals ``expected``.
@@ -368,9 +368,8 @@ class WorkspaceService:
         bare player if none exists.
 
         ``workspace_member`` is anchored on ``player_id``, so adding a member needs
-        the auth user to have a linked ``players.user``. Post-Phase-A signups get one
-        automatically, but legacy accounts (registered before that provisioning) have
-        none — and Add Member explicitly targets staff who never played. Rather than
+        the auth user to have a linked ``players.user``. Not every auth user has
+        one — and Add Member explicitly targets staff who never played. Rather than
         500 on such users, provision the identity backbone on demand (mirrors
         ``ensure_player_for_auth_user``); the auth user's existence is validated by
         the caller (member_add) before we get here.
@@ -383,10 +382,9 @@ class WorkspaceService:
     async def add_member(self, session: AsyncSession, workspace_id: int, auth_user_id: int) -> models.WorkspaceMember:
         """Create (or fetch) the membership row for the player linked to ``auth_user_id``.
 
-        Callers keep passing ``auth_user_id`` (unchanged signature); internally we
-        resolve the ``player_id`` the ``workspace_member`` row is actually
-        anchored on. No longer accepts/writes a ``role`` — the column was dropped;
-        RBAC (``user_roles``, keyed on ``auth_user_id``) is the source of truth.
+        Takes ``auth_user_id`` and resolves the ``player_id`` the
+        ``workspace_member`` row is anchored on. Writes no ``role``: RBAC
+        (``user_roles``, keyed on ``auth_user_id``) is the source of truth.
         """
         await ensure_workspace_system_roles(session, workspace_id)
         player_id = await self._resolve_player_id_for_auth_user(session, auth_user_id)
@@ -509,7 +507,28 @@ class WorkspaceService:
         )
         await self.member_repo.update_fields(session, member, {"removed_at": datetime.now(UTC)})
 
-    # --- ownership cap guard (design §4.4) ----------------------------------
+    async def _member_changed(
+        self, session: AsyncSession, workspace_id: int, auth_user_ids: typing.Iterable[int], change: str
+    ) -> None:
+        """Stage the event that makes identity drop these users' cached RBAC.
+
+        Staged in the membership write's own transaction by every transactional
+        operation that changes who holds which workspace role, so the relay
+        only ever announces a change that committed.
+        """
+        await enqueue_outbox_event(
+            session,
+            WorkspaceMemberChangedEvent(
+                workspace_id=workspace_id,
+                auth_user_ids=sorted(auth_user_ids),
+                change=change,
+                source_service="app-service",
+            ),
+            exchange="",
+            routing_key=WORKSPACE_MEMBER_CHANGED_QUEUE.name,
+        )
+
+    # --- ownership cap guard ------------------------------------------------
 
     async def ensure_create_limit(
         self,
@@ -574,6 +593,7 @@ class WorkspaceService:
         await assign_workspace_system_role(
             session, user_id=owner_auth_user_id, workspace_id=workspace.id, role_name="owner"
         )
+        await self._member_changed(session, workspace.id, [owner_auth_user_id], "added")
         await session.commit()
         await session.refresh(workspace, ["division_grid_defaults"])
         return workspace
@@ -611,6 +631,7 @@ class WorkspaceService:
         if await self.get_member(session, workspace_id, auth_user_id):
             raise HTTPException(status_code=400, detail="User is already a member")
         member = await self.add_member_with_roles(session, workspace_id, auth_user_id, role_ids=role_ids)
+        await self._member_changed(session, workspace_id, [auth_user_id], "added")
         await session.commit()
         return member
 
@@ -622,11 +643,15 @@ class WorkspaceService:
         role_ids: list[int],
     ) -> models.WorkspaceMember:
         member = await self.update_member_roles(session, member, role_ids=role_ids)
+        auth_user_id = await self.get_member_auth_user_id(session, member)
+        await self._member_changed(session, member.workspace_id, [auth_user_id], "roles_changed")
         await session.commit()
         return member
 
     async def revoke_member(self, session: AsyncSession, member: models.WorkspaceMember) -> None:
         await self.remove_member(session, member)
+        auth_user_id = await self.get_member_auth_user_id(session, member)
+        await self._member_changed(session, member.workspace_id, [auth_user_id], "removed")
         await session.commit()
 
     async def _record_domain_change(
@@ -749,7 +774,7 @@ class WorkspaceService:
         await session.commit()
         return workspace
 
-    # --- Discord guild verification (self-service design §4.1) -------------
+    # --- Discord guild verification -----------------------------------------
 
     async def verify_discord_guild(
         self,
@@ -769,7 +794,7 @@ class WorkspaceService:
         (which fails open on a missing/unreachable guild config) -- there, a
         missing answer only widens who can register for a tournament; here, it
         would let an unproven claim permanently attach to a workspace's
-        identity. See the design's Risks section.
+        identity.
 
         Raises ``HTTPException(403)`` if ``actor`` does not administer
         ``guild_id`` on Discord (owner or ``MANAGE_GUILD``, per
@@ -895,7 +920,7 @@ class WorkspaceService:
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
         return {"guilds": reply.data.get("guilds") or []}
 
-    # --- verification tier (design §4.3) -----------------------------------
+    # --- verification tier --------------------------------------------------
 
     async def set_verification_status(
         self,
@@ -945,7 +970,7 @@ class WorkspaceService:
         and has already proven ``owner_id`` names a real ``auth.user`` row.
 
         Two things this deliberately does NOT do. It does not touch RBAC: the
-        stamp and the ``owner`` role are decoupled by design (§4.4), so who may
+        stamp and the ``owner`` role are decoupled by design, so who may
         administer the workspace stays a ``member_update`` decision. And it does
         not re-check ``max_owned_per_user`` -- that cap gates self-service
         creation, and a superuser assignment is exactly the override for it; the
@@ -1028,6 +1053,9 @@ class WorkspaceService:
             entity_label=workspace.slug,
             before={"owner_id": owner_before},
             after={"owner_id": workspace.owner_id},
+        )
+        await self._member_changed(
+            session, workspace.id, {new_owner_auth_user_id, owner_before} - {None}, "owner_transferred"
         )
         await session.commit()
         return workspace

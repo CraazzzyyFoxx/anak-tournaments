@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import get_status_metas_map
+from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import GAME_PROVIDERS, normalize_social_handle
@@ -37,14 +38,10 @@ from shared.repository import (
     UserRepository,
     get_or_create_workspace_member,
 )
-from shared.services.admission import AdmissionConfig, AdmissionEvaluation
-from shared.services.admission.resolve import resolve_admission
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.social_identity import social_identity_service
-from shared.services.subscriptions.wiring import build_resolver
 from src import models
-from src.core.broker import optional_broker
-from src.core.config import settings
+from src.core.clients import subscription_resolver
 from src.schemas.registration import (
     RegistrationListRead,
     RegistrationListResponse,
@@ -61,14 +58,20 @@ from src.schemas.registration_build import (
     registration_public_keys,
     registration_read_loaders,
 )
+from src.schemas.registration_form import RegistrationFormRead
+from src.services.admission import AdmissionConfig, AdmissionEvaluation
+from src.services.admission.resolve import resolve_admission
 from src.services.registration._common import (
     _common_service,
 )
 from src.services.registration.answers import answer_service
 from src.services.registration.self_edit import self_edit_policy, submitted_late
+from src.services.registration.serializers import serialize_registration_form
+from src.services.registration.subscription_config import subscription_config_service
 from src.services.registration.windows import (
     is_check_in_window_active,
     is_registration_open,
+    windows_service,
 )
 from src.services.tournament.events import enqueue_registration_approved
 
@@ -96,8 +99,8 @@ def _require_current_schema(
 ) -> FormSchema:
     """The form's CURRENT schema, refusing a submission aimed at another version.
 
-    The server never validates against the version the client happened to hold
-    (design §4): a stale ``form_version_id`` is ``409 form_version_stale``, which
+    The server never validates against the version the client happened to hold:
+    a stale ``form_version_id`` is ``409 form_version_stale``, which
     is the client's cue to reload the questions rather than have its answers
     judged by rules the registrant never saw. A form with no version at all
     cannot be answered and lands in the same branch.
@@ -118,7 +121,7 @@ class TeamPlacement:
     Threaded into :meth:`RegistrationService.submit_public_registration` so the
     captain and invitee flows reuse the one validated self-registration writer
     instead of copying its form/subrole/hero/verified-identity validation.
-    ``None`` (the default) is exactly today's solo behaviour.
+    ``None`` (the default) is a solo registration.
     """
 
     registration_team_id: int
@@ -129,9 +132,8 @@ class TeamPlacement:
 def _role_counts(registrations: Sequence[models.BalancerRegistration]) -> dict[str, int]:
     """Primary role -> number of registrations declaring it. One bucket per row.
 
-    The primary role, or the highest-priority one when nothing is flagged primary:
-    the same rule the overview card applied to the rows it used to receive, kept in
-    ONE place now that the hidden list is the only thing that can answer it.
+    The primary role, or the highest-priority one when nothing is flagged primary.
+    ``_primary_role_select`` is the SQL form of this rule; the two must agree.
     """
     counts: dict[str, int] = {}
     for registration in registrations:
@@ -328,13 +330,12 @@ class RegistrationService:
         deleted_at IS NULL`` allows only one live registration per member per
         tournament, so if another live row already holds that member the anchor is
         skipped with a warning (the player identity — social accounts — is still
-        ensured; this mirrors how the admin user-merge skips colliding rows).
+        ensured).
 
         ``defer_collision_to_db=True`` disables that pre-check and lets the unique
         index raise ``IntegrityError`` at flush/commit instead — used by the
         self-service path, where a collision means a concurrent duplicate
-        registration and must surface as the historical 409, not a silently
-        unanchored row.
+        registration and must surface as a 409, not a silently unanchored row.
         """
         if workspace_id is None:
             workspace_id = await self.tournament_repo.get_workspace_id(session, registration.tournament_id)
@@ -395,8 +396,8 @@ class RegistrationService:
         never finds, creates or names a player.
 
         Anchors the registration on that player's ``workspace_member`` row
-        (``registration.workspace_member_id`` — the row's ONLY identity column
-        since dbarch02 dropped ``user_id``) and upserts a ``social_account`` for
+        (``registration.workspace_member_id`` — the row's ONLY identity column)
+        and upserts a ``social_account`` for
         every handle the registration carries: the owner provider's primary and
         extras, and every other provider's handle unless ANOTHER player already
         owns that normalized handle (skipped with a warning, never moved). This
@@ -417,9 +418,8 @@ class RegistrationService:
 
         ``auth_user_id`` is the *registering* account's auth identity, passed explicitly
         by self-service callers (``create_registration``); manual/sheet-sync callers have
-        no auth identity to offer and leave it ``None``. It is no longer read off the
-        registration row — ``BalancerRegistration`` has no ``auth_user_id`` column
-        (identity is anchored via ``workspace_member`` instead).
+        no auth identity to offer and leave it ``None``. ``BalancerRegistration``
+        has no ``auth_user_id`` column, so it cannot be read off the row.
 
         ``workspace_id`` is the registration's tournament's workspace when the
         caller already has it (``create_registration`` / sheet sync); when ``None``
@@ -455,16 +455,13 @@ class RegistrationService:
         the call is a no-op with ZERO queries — provided the caller eager-loaded
         ``registration.workspace_member`` so the ``session.get`` below hits the
         identity map. The set is mutated (newly ensured handles are added) so
-        repeated handles within one sync are also deduplicated. Semantics for
-        ``known_handles=None`` callers are unchanged.
+        repeated handles within one sync are also deduplicated.
         """
-        # Resolve the currently-anchored player, if any.
-        #
         # INTENTIONALLY ``session.get`` and not ``WorkspaceMemberRepository.get``:
         # only ``session.get`` is served from the identity map, which is what makes
         # the ``known_handles`` fast path below cost ZERO queries. A repository read
         # issues a SELECT unconditionally and would add one round trip per row to
-        # the 5-minute sheet-sync loop. Do not "fix" this.
+        # the 5-minute sheet-sync loop.
         linked_member: models.WorkspaceMember | None = None
         if registration.workspace_member_id is not None:
             linked_member = await session.get(models.WorkspaceMember, registration.workspace_member_id)
@@ -482,8 +479,7 @@ class RegistrationService:
                 player_id = linked_player_id
             else:
                 # No owner-provider identity on the form: the only player we can still
-                # anchor is the registering account's own (preserves the pre-dbarch02
-                # behavior where the pre-resolved player id was linked directly).
+                # anchor is the registering account's own.
                 owned = await self._find_owned_user(session, auth_user_id)
                 if owned is None:
                     return None
@@ -604,11 +600,8 @@ class RegistrationService:
 
         ``auth_user`` is the gateway-rehydrated identity (carrying the cached RBAC
         deny overlay) for the registering account, used to gate on the
-        ``registration.self_register`` capability. It is ``None`` only for
-        non-self-service callers (there are none today — sheet/CSV imports and
-        admin-created rows go through ``create_manual_registration`` instead);
-        when absent, the gate and auto-enroll are both skipped since there's no
-        account to enroll or deny.
+        ``registration.self_register`` capability. When it is ``None`` the gate
+        and auto-enroll are both skipped: there is no account to enroll or deny.
 
         ``commit=False`` flushes instead, so a caller that must land this row
         together with something else (the team flows) really can.
@@ -648,17 +641,13 @@ class RegistrationService:
         primary_identity = registration.primary_game_identity(provider=provider)
         registration.display_name = primary_identity.handle if primary_identity is not None else None
         registration = await self.registration_repo.create(session, registration)
-        # Provision the domain player identity so first-time registrants are picked
-        # up by rank collection / the open-profile gate. Done before the approval
-        # event so it carries the resolved player. ensure_player_identity itself
-        # anchors registration.workspace_member_id on the resolved player's member
-        # row for this workspace (idempotently created via
-        # get_or_create_workspace_member) — the row's only identity column since
-        # dbarch02 dropped user_id.
-        # defer_member_collision_to_db: a member collision on this path means a
-        # concurrent duplicate self-registration — let the partial unique index
-        # raise IntegrityError at commit (mapped to 409 by
-        # submit_public_registration), matching the historical behavior.
+        # Provisioned before the approval event so the event carries the player;
+        # first-time registrants become visible to rank collection and the
+        # open-profile gate. ensure_player_identity also anchors
+        # registration.workspace_member_id on that player's member row.
+        # defer_member_collision_to_db: a member collision here is a concurrent
+        # duplicate self-registration, so the partial unique index raises
+        # IntegrityError at commit (mapped to 409 by submit_public_registration).
         player_id = await self.ensure_player_identity(
             session,
             registration,
@@ -668,26 +657,18 @@ class RegistrationService:
             defer_member_collision_to_db=True,
         )
         if auth_user_id is not None and player_id is not None:
-            # Every self-service registration that resolved a domain player grants
-            # the baseline "player" RBAC role (the workspace_member enrollment
-            # already happened inside ensure_player_identity above). Idempotent,
-            # so re-registering (e.g. a second tournament in the same workspace)
-            # is a no-op past the first time.
-            #
-            # assign_workspace_system_role() calls ensure_workspace_system_roles()
-            # internally, so we don't seed the catalog explicitly here — doing so
-            # would re-upsert the whole permission catalog twice per registration
-            # on this hot path for no behavioural gain.
+            # Grant the baseline "player" RBAC role (enrollment already happened
+            # inside ensure_player_identity); idempotent across tournaments of one
+            # workspace. No explicit ensure_workspace_system_roles(): the assign call
+            # runs it internally, and seeding here would re-upsert the whole
+            # permission catalog twice per registration on this hot path.
             await assign_workspace_system_role(
                 session, user_id=auth_user_id, workspace_id=workspace_id, role_name="player"
             )
         elif auth_user_id is not None:
-            # ensure_player_identity returns None when the registration has no
-            # game identity and no account-owned player (see its docstring) —
-            # there's no domain player to anchor a workspace_member on, so
-            # auto-enroll is skipped for this registration. Logged (not raised)
-            # since a form without a game identity question is a config choice,
-            # not an error.
+            # No game identity and no account-owned player: nothing to anchor a
+            # workspace_member on. Logged, not raised: a form without a game
+            # identity question is a config choice, not an error.
             logger.debug(
                 "Skipping workspace_member auto-enroll: no player_id resolved (no game identity)",
                 tournament_id=tournament_id,
@@ -717,12 +698,11 @@ class RegistrationService:
         """Re-read a just-written row with every loader its read model needs.
 
         NOT ``session.refresh``: refresh re-runs the strategy each relationship
-        was loaded under but NOT the chain nested beneath it, so ``roles`` came
-        back with ``hero_entries`` unloaded and the roster engine's walk of it
-        raised ``MissingGreenlet`` -- a 500 on an edit that had already been
-        written. ``populate_existing`` also re-resolves the ``form_version`` an
-        edit just moved, which a stale relationship would keep pointing at the
-        version the row answered before.
+        was loaded under but NOT the chain nested beneath it, so ``roles`` would
+        come back with ``hero_entries`` unloaded and the roster engine's walk of
+        it would raise ``MissingGreenlet``. ``populate_existing`` also re-resolves
+        the ``form_version`` an edit just moved, which a stale relationship would
+        keep pointing at the version the row answered before.
         """
         await session.get(
             models.BalancerRegistration,
@@ -926,16 +906,15 @@ class RegistrationService:
         write cannot be separated by a concurrent acceptance.
 
         ``commit=False`` flushes instead, leaving the transaction boundary to the
-        caller — the same split the team-export orchestrator uses. The team flows need
-        it because consuming an invite, writing the registration and updating the
-        team's denormalized status must land together or not at all. A caller that
-        passes it also owns mapping ``IntegrityError`` at its own commit, since that
-        now fires outside this function's ``try``.
+        caller. The team flows need it because consuming an invite, writing the
+        registration and updating the team's denormalized status must land together
+        or not at all. A caller that passes it also owns mapping ``IntegrityError``
+        at its own commit, since that fires outside this function's ``try``.
         """
         form = await _common_service.get_registration_form(session, tournament_id)
         tournament = await self.tournament_repo.get(session, tournament_id)
-        # ``form is None`` still gates: a tournament with no registration form has
-        # nothing to submit against. Openness itself is now purely the schedule.
+        # ``form is None`` gates too: a tournament with no registration form has
+        # nothing to submit against. Openness itself is the schedule's alone.
         if form is None or tournament is None or not is_registration_open(tournament):
             raise HTTPException(status_code=400, detail="Registration is not open for this tournament")
         if body is None:
@@ -1021,16 +1000,11 @@ class RegistrationService:
     ) -> dict[int, AdmissionEvaluation]:
         """One admission evaluation per registration, for a whole list.
 
-        Shared by the public participants list and the admin registrations table,
-        which is the entire point: both surfaces used to ship five raw fields and
-        let the client re-derive "is this player admitted" from them, in five
-        places, two of which deliberately disagreed. They now render the same
-        object.
-
-        The predecessor of this method flattened the profile verdict back to
-        ``bool | None`` and threw the reasons away. Nothing here does: the
-        evaluation carries every requirement, its reasons and the per-provider
-        detail the row chips need, so no consumer has to ask a second time.
+        Shared by the public participants list and the admin registrations table
+        so both render the same object instead of re-deriving "is this player
+        admitted" client-side. The evaluation carries every requirement, its
+        reasons and the per-provider detail the row chips need, so no consumer has
+        to ask a second time.
 
         Batched deliberately -- resolving per registration serializes behind
         Discord's per-guild rate-limit bucket and makes a 200-row page unusable --
@@ -1046,17 +1020,10 @@ class RegistrationService:
             # ``{}`` after we had already paid for both.
             return {}
 
-        resolver = build_resolver(
-            session,
-            discord_bot_token=settings.discord_token,
-            twitch_client_id=settings.twitch_client_id,
-            broker=optional_broker(),
-            proxy=settings.proxy_url,
-        )
+        resolver = subscription_resolver(session)
         # Gated on the form flag, not on ``enforces_subscription``: that property is
         # derived FROM the rule we are about to load. A tournament with the toggle
-        # off pays nothing, which is the guarantee ``build_subscription_reads``
-        # made with the same cheapest-guard-first ordering.
+        # off pays nothing.
         rule = (
             await resolver.load_requirement(workspace_id=form.workspace_id)
             if form is not None and form.require_subscription and form.workspace_id is not None
@@ -1124,6 +1091,26 @@ class RegistrationService:
             role_total=int(role_total) if role else None,
         )
 
+    async def get_public_form(self, session: AsyncSession, tournament_id: int) -> RegistrationFormRead | None:
+        """The registration form as a registrant sees it; ``None`` when the tournament has none."""
+        form = await _common_service.get_registration_form(session, tournament_id)
+        if form is None:
+            return None
+        discipline = await _common_service.get_tournament_discipline(session, form.tournament_id)
+        subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id, discipline=discipline)
+        # The requirement is the workspace's rule; read here so the sync serializer stays free of round trips.
+        requirement = await subscription_config_service.load_workspace_requirement_blob(session, form.workspace_id)
+        is_open, registration_late = await windows_service.load_registration_state(session, tournament_id)
+        return serialize_registration_form(
+            form,
+            discipline=discipline,
+            is_open=is_open,
+            registration_late=registration_late,
+            subrole_catalog=subrole_catalog,
+            subscription_requirement=requirement,
+            stale_registrations=None,
+        )
+
     async def build_public_registration_list(
         self,
         session: AsyncSession,
@@ -1132,18 +1119,17 @@ class RegistrationService:
     ) -> RegistrationListResponse:
         """Anonymous participants-list read model.
 
-        The public RPC caches this payload (``registration_list:v2:{id}:``, same
-        TTL as other tournament reads). ``registration_changed`` invalidates it;
-        TTL still bounds admin writes that only hit the balancer WS topic.
-        In-process coalescing on the RPC builder still collapses miss herds.
+        ``public_list.build_registration_list`` caches this payload
+        (``registration_list:v2:{id}:``, same TTL as other tournament reads) and
+        coalesces concurrent misses. ``registration_changed`` invalidates it; TTL
+        bounds admin writes that only hit the balancer WS topic.
 
         ``get_status_metas_map`` is cashews-backed per workspace. That is safe
         because it caches the status *catalog*, not registrations, and all five
         catalog writes invalidate it after commit (see
-        ``shared.balancer_registration_statuses``).
-        NB: do NOT reintroduce ``cache.disabling(...)`` — it flips a *process-global*
-        flag on the shared cashews backend and races with every concurrent request
-        on this worker (see lesson_cashews_disabling_shared_cache).
+        ``shared.balancer_registration_statuses``). Never wrap this in
+        ``cache.disabling(...)``: it flips a *process-global* flag on the shared
+        cashews backend and races with every concurrent request on this worker.
         """
         # One row for two answers: the workspace this list belongs to, and the
         # phase schedule each row's ``submitted_late`` is measured against.

@@ -53,11 +53,9 @@ def _stamp_rbac(user: models.AuthUser, payload: schemas.TokenPayload) -> None:
     Mandatory, not an optimisation. Both resolvers below can return a row loaded
     with ``noload(AuthUser.roles)`` -- ``get_identity``, taken whenever the Redis
     RBAC entry is warm, and the API-key path, which has no ORM RBAC by design.
-    ``noload`` yields an EMPTY collection rather than raising, so every
-    ``has_permission`` / ``has_workspace_permission`` on such a user silently
-    answered False: a workspace owner got 403 across the RBAC admin surface as
-    soon as the cache warmed, while a superuser (a column on the row) never
-    noticed.
+    ``noload`` yields an EMPTY collection rather than raising, so without this
+    every ``has_permission`` / ``has_workspace_permission`` on such a user
+    silently answers False; only ``is_superuser`` (a column on the row) survives.
     """
     user.set_rbac_cache(
         role_names=payload.roles,
@@ -162,11 +160,6 @@ class TokenValidationService:
         The second element identifies the key the caller presented (``None`` for a
         session), so a handler can answer questions about the credential itself
         without re-parsing or re-verifying it.
-
-        A separate method rather than a flag on ``resolve_active_user``: the
-        JWT-only default is what keeps API keys out of every session-, credential-
-        and RBAC-mutating operation, so widening it has to be a visible choice at
-        the call site.
         """
         if not self.keys.is_api_key(raw_token):
             return await self.resolve_active_user(session, raw_token), None
@@ -202,7 +195,7 @@ class TokenValidationService:
         """
         credentials_exception = _credentials_error()
         # Narrow the catch to the decode only: a downstream 403/404
-        # HTTPException must not be silently collapsed into a 401 (review H-1).
+        # HTTPException must not be silently collapsed into a 401.
         try:
             payload = self.codec.decode(raw_token)
         except HTTPException:

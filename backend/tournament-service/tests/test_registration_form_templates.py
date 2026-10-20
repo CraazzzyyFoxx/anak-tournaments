@@ -828,7 +828,7 @@ class TemplateHandlersReadTheRequest(IsolatedAsyncioTestCase):
                 ),
                 patch.object(registration_admin.windows_service, "load_registration_open", _open),
                 patch.object(registration_admin.form_service, "stale_count", _stale),
-                patch.object(registration_admin, "_tournament_discipline", _discipline),
+                patch.object(registration_admin.reg_common._common_service, "get_tournament_discipline", _discipline),
             ),
         )
 

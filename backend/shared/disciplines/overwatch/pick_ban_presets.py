@@ -84,7 +84,7 @@ HERO_ROLE_BANS = _one_phase(
     ]
 )
 
-#: The 2026-10-03 tournament rules, verbatim from the design (§12).
+#: A published tournament ruleset, verbatim.
 HERO_ANTI_ONE_TRICK: dict[str, Any] = {
     "version": 2,
     "timer_seconds": 90,

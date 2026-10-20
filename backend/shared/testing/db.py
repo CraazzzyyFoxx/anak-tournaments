@@ -213,8 +213,7 @@ def ensure_test_postgres() -> None:
 def create_test_async_engine(**kwargs: Any) -> AsyncEngine:
     """Throwaway engine for ``IsolatedAsyncioTestCase`` after :func:`ensure_test_postgres`.
 
-    Uses the psycopg async dialect (same URL the balancer IsolatedAsyncioTestCase
-    files used before this helper) and ``NullPool`` so connections cannot outlive
+    Uses the psycopg async dialect and ``NullPool`` so connections cannot outlive
     the per-test event loop. ``connect_timeout`` is the libpq/psycopg knob;
     asyncpg callers should keep using :func:`real_db_sessionmaker`.
     """

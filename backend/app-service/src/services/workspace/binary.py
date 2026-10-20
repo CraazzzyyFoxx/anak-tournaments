@@ -1,8 +1,8 @@
 """Workspace-scoped binary side effects: branding icons, catalog assets, match logs.
 
-Lifted out of ``src/rpc/binary.py`` so that transport only decodes base64 and
-gates permissions. Everything with a consequence lives here: the S3 calls, the
-``workspace`` row read/write, the ``audit_log`` row and the transaction boundary.
+The transport (``src/rpc/binary.py``) only decodes base64 and gates permissions.
+Everything with a consequence lives here: the S3 calls, the ``workspace`` row
+read/write, the ``audit_log`` row and the transaction boundary.
 
 The two icon writes mutate the workspace, so each appends one ``audit_log`` row in
 the same transaction as the write.

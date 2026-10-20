@@ -129,7 +129,8 @@ At startup the app projects module-declared dimensions and roles into `catalog.r
 not deleted. `CatalogRoleRepository` resolves module roles and the owner's workspace sub-roles;
 their codes are `<parent>_<slug>` (for example `support_main`), with immutable parents.
 
-Workspace reads expose `disciplines_enabled`, writable by superusers only. Workspace default
+Workspace reads expose `disciplines_enabled` (priority order, `[0]` is the default game), writable by
+anyone with `workspace.update` on that workspace; disabling a game only refuses new tournaments and mixes in it. Workspace default
 formats are read/written through
 `GET|PUT /api/v1/workspaces/{workspace_id}/team-formats/{discipline}` using
 `TeamFormatRead` / `TeamFormatWrite`; `default_roster_slots_json` is no longer on the wire.
@@ -167,12 +168,17 @@ reaches the gateway cache directly.
 
 ### Published events
 
-None. App-service does not write to the outbox, publish domain events, or publish Redis realtime
-topics.
+`WorkspaceMemberChangedEvent`, through the transactional outbox straight onto the
+`workspace_member_changed` queue (default exchange): staged by every `WorkspaceService` operation
+that changes who holds a workspace role (create, member add/update/remove, owner transfer) and by
+the profile merge, in the write's own transaction. identity-service consumes it and drops the cached
+RBAC payload of the listed users. App-service publishes no Redis realtime topics.
 
 ### Scheduled work
 
-One debounced background job: the `stats.mv_entity_global_stats` refresh
+An `event_outbox_drain` tick every second (`shared.messaging.outbox.drain_outbox`), relaying the
+outbox rows this service writes. And one debounced background job: the
+`stats.mv_entity_global_stats` refresh
 (`src/services/hero_stats_refresh.py`). Fired best-effort at startup and on every
 `tournament_changed` event, throttled to one run per hour by a Redis-held cooldown key, guarded by a
 Postgres advisory lock, and executed with `statement_timeout` disabled and `work_mem` raised. It runs

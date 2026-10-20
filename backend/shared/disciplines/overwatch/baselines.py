@@ -1,7 +1,7 @@
 """Native, discipline-scoped impact baselines and atomic audited recomputation.
 
-The OW formula boundary deliberately retains current-registration rank, as in
-frozen P3/D96. Observation ownership and encounter snapshots are not rewritten.
+The OW formula boundary deliberately retains current-registration rank.
+Observation ownership and encounter snapshots are not rewritten.
 """
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ class BaselineService:
         return len(rows)
 
     async def _load_stats_frame(self, session: AsyncSession, *, discipline: str) -> pd.DataFrame:
-        """Global historical OW rates, preserving total/character grains and D96 rank inputs."""
+        """Global historical OW rates, preserving total/character grains and current-registration rank inputs."""
         f = player_facts(discipline=discipline).c
         totals = (
             sa.select(
@@ -153,7 +153,7 @@ class BaselineService:
         )
 
         # Project JSON extraction once; grouping by this column avoids distinct
-        # asyncpg bind positions for repeated attrs['class'] expressions in P3.
+        # asyncpg bind positions for repeated attrs['class'] expressions.
         character_times = (
             sa.select(
                 f.match_id,

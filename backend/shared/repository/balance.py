@@ -34,6 +34,25 @@ class WorkspaceBalancerConfigRepository(BaseRepository[models.WorkspaceBalancerC
     ) -> models.WorkspaceBalancerConfig | None:
         return await self.get_by(session, workspace_id=workspace_id)
 
+    async def config_with_guild(
+        self, session: AsyncSession, workspace_id: int
+    ) -> sa.Row[tuple[dict | None, str | None]] | None:
+        """``(config_json, discord_guild_id)`` of one workspace in one read; ``None`` for no such workspace.
+
+        ``config_json`` is ``None`` when the workspace never saved a balancer config.
+        """
+        return (
+            await session.execute(
+                sa.select(models.WorkspaceBalancerConfig.config_json, models.Workspace.discord_guild_id)
+                .select_from(models.Workspace)
+                .outerjoin(
+                    models.WorkspaceBalancerConfig,
+                    models.WorkspaceBalancerConfig.workspace_id == models.Workspace.id,
+                )
+                .where(models.Workspace.id == workspace_id)
+            )
+        ).first()
+
 
 class UserBalancerConfigRepository(BaseRepository[models.UserBalancerConfig]):
     def __init__(self) -> None:

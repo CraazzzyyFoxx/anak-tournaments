@@ -49,8 +49,7 @@ DEFAULT_CACHE_TTL_SECONDS = 60.0
 #: Plan for a principal acting outside any tenant -- a session user polling a
 #: job by id, an internal caller with no workspace in the request. Without it a
 #: call whose workspace cannot be named would resolve no plan at all, which
-#: reads as "unlimited": the hole a smoke test found before this constant
-#: existed. No workspace ever maps to this slug; the three tier plans do.
+#: reads as "unlimited". No workspace ever maps to this slug; the three tier plans do.
 DEFAULT_PLAN_SLUG = "default"
 
 

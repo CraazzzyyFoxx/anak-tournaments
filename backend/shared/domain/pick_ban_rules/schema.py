@@ -3,7 +3,6 @@
 The field names are the wire contract shared with the frontend
 (``PickBanRuleset*`` in ``frontend/src/types/tournament.types.ts``) and with
 ``pick_ban_config.ruleset_json`` / ``pick_ban_session.resolved_sequence_json``.
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §1, §3.
 
 Shape validation only. Everything semantic (ids unique, generator/mode
 agreement, condition trees, constraint params) lives in :mod:`.validate`, so a
@@ -27,16 +26,15 @@ TimeoutPolicy = Literal["random_fill", "lock_draft", "wait"]
 StepTarget = Literal["opponent_player"]
 Generator = Literal["bracket", "slot_veto"]
 
-#: Who takes a step, before the encounter is known (§13.4). ``slot:<n>`` names
+#: Who takes a step, before the encounter is known. ``slot:<n>`` names
 #: a seat of the card, ``side:<code>`` the participation that chose that side
-#: in an earlier ``side_pick``. ``home``/``away`` are the pre-slot spelling,
-#: still accepted when read off a stored document and resolved to slots 1 and 2
-#: -- nothing writes them any more.
+#: in an earlier ``side_pick``. ``home``/``away`` are accepted when read off a
+#: stored document and resolve to slots 1 and 2; nothing writes them.
 ACTORS_PATTERN = re.compile(
     r"^(first|second|both|system|winner_prev|loser_prev|home|away|slot:[1-9][0-9]*|side:[a-z0-9_-]{1,16})$"
 )
 
-#: Legacy actor tokens, in the slots they always meant.
+#: ``home``/``away`` and the slots they resolve to.
 LEGACY_ACTOR_SLOTS: Mapping[str, int] = {"home": 1, "away": 2}
 
 #: One resolved actor: the id of the participation that acts, or ``None`` when
@@ -252,12 +250,11 @@ def resolved_steps_from_json(
 ) -> list[ResolvedStep]:
     """The session's stored sequence as engine objects.
 
-    A sequence written before §13.4 holds ``sides: ["home"|"away"|"system"]``
-    instead of participation ids; ``actors_by_slot`` (``slot -> participation``)
-    is what turns those into the seats they always meant. A legacy row whose
-    slot is not seated raises: the room cannot be read at all in that state,
-    and resolving it to "the engine acts" would silently hand a captain's step
-    to the clock.
+    A stored sequence may hold ``sides: ["home"|"away"|"system"]`` instead of
+    participation ids; ``actors_by_slot`` (``slot -> participation``) turns
+    those into their seats. Such a row whose slot is not seated raises: the
+    room cannot be read at all in that state, and resolving it to "the engine
+    acts" would silently hand a captain's step to the clock.
     """
     return [ResolvedStep.from_json(_actors(row, actors_by_slot)) for row in data]
 

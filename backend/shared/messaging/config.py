@@ -185,15 +185,22 @@ UPLOAD_MATCH_LOG_DLQ = RabbitQueue(
 # ============================================================================
 # Match Log Result (stats worker -> discord)
 # ============================================================================
-# Fanout so every discord-service replica receives every result; the replica
-# holding the pending upload future resolves it and the rest no-op. This mirrors
-# the broadcast semantics of the pg LISTEN/NOTIFY channel it replaces, which
-# pgBouncer transaction pooling breaks. Consumers bind their own exclusive,
-# auto-deleted (server-named) queue to this exchange — no durable shared queue,
-# which would round-robin results to the wrong replica.
-MATCH_LOG_RESULT_EXCHANGE = RabbitExchange(
-    "match_log.result",
-    type=ExchangeType.FANOUT,
+# One durable work queue: the result names the Discord message it answers
+# (``channel_id``/``message_id``), so any replica can react on it -- there is no
+# in-process waiter to find.
+
+MATCH_LOG_RESULT_QUEUE = RabbitQueue(
+    "match_log_result",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "match_log_result.dlq",
+        "x-message-ttl": 300000,  # 5 minutes: past that the uploader has moved on
+    },
+)
+
+MATCH_LOG_RESULT_DLQ = RabbitQueue(
+    "match_log_result.dlq",
     durable=True,
 )
 
@@ -292,9 +299,8 @@ DIVISION_GRID_IMPORT_JOBS_DLQ = RabbitQueue(
 
 # Cache invalidation, cross-service. One topic exchange, one queue per service
 # that owns a cache, routing key `cache.invalidated.<scope_kind>.<scope_id>`.
-# Replaces the tournament.changed contour: the payload names the stale
-# RESOURCES, so a consumer maps them onto its own keys instead of re-deriving
-# intent from a shared "reason" enum.
+# The payload names the stale RESOURCES, so a consumer maps them onto its own
+# keys instead of re-deriving intent from a shared "reason" enum.
 CACHE_INVALIDATION_EXCHANGE = RabbitExchange(
     "cache.invalidation",
     type=ExchangeType.TOPIC,
@@ -387,26 +393,18 @@ TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ = RabbitQueue(
     durable=True,
 )
 
-TOURNAMENT_REGISTRATION_REJECTED_QUEUE = RabbitQueue(
-    "tournament_registration_rejected",
-    durable=True,
-    routing_key="tournament.registration.rejected",
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "tournament_registration_rejected.dlq",
-        "x-message-ttl": 600000,  # 10 minutes
-    },
-)
+# Routing keys on ``tournament.events`` that more than one binding names (the
+# bot's per-replica channel-registry queue binds both); the rest are spelled at
+# their single producer/consumer pair.
+TOURNAMENT_STATE_CHANGED_ROUTING_KEY = "tournament.state.changed"
+TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY = "tournament.discord_channel.changed"
 
-TOURNAMENT_REGISTRATION_REJECTED_DLQ = RabbitQueue(
-    "tournament_registration_rejected.dlq",
-    durable=True,
-)
-
+# Owner: analytics-worker. A ``completed`` tournament gets its compute job
+# created from here instead of waiting for someone to press "recalculate".
 TOURNAMENT_STATE_CHANGED_QUEUE = RabbitQueue(
     "tournament_state_changed",
     durable=True,
-    routing_key="tournament.state.changed",
+    routing_key=TOURNAMENT_STATE_CHANGED_ROUTING_KEY,
     arguments={
         "x-dead-letter-exchange": "dlx",
         "x-dead-letter-routing-key": "tournament_state_changed.dlq",
@@ -434,11 +432,74 @@ TOURNAMENT_STANDINGS_INVALIDATED_DLQ = RabbitQueue(
     durable=True,
 )
 
+# Owner: tournament-service. The confirmed-result push to Challonge, taken out
+# of the confirming request: the request commits the result and this row, the
+# consumer talks to Challonge with the queue's retry instead of a swallowed
+# ``logger.error``.
+TOURNAMENT_CHALLONGE_PUSH_QUEUE = RabbitQueue(
+    "tournament_challonge_push",
+    durable=True,
+    routing_key="tournament.encounter.challonge_push_requested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_challonge_push.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_CHALLONGE_PUSH_DLQ = RabbitQueue(
+    "tournament_challonge_push.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Workspace membership changes (app-service -> identity-service)
+# ============================================================================
+# ``WorkspaceMemberChangedEvent`` through the outbox, straight onto the queue:
+# identity drops the cached RBAC payload of the listed users.
+
+WORKSPACE_MEMBER_CHANGED_QUEUE = RabbitQueue(
+    "workspace_member_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "workspace_member_changed.dlq",
+        "x-message-ttl": 120000,  # 2 minutes: the cache entry it drops lives 60 s anyway
+    },
+)
+
+WORKSPACE_MEMBER_CHANGED_DLQ = RabbitQueue(
+    "workspace_member_changed.dlq",
+    durable=True,
+)
+
+# ============================================================================
+# Discord guild member changes (discord-service -> stats-worker)
+# ============================================================================
+# ``DiscordMemberChangedEvent``, published straight from the gateway event (the
+# bot has no transaction to join). stats re-resolves the member's Boosty
+# entitlement; the scheduled sweep stays as the slow reconciliation.
+
+DISCORD_MEMBER_CHANGED_QUEUE = RabbitQueue(
+    "discord_member_changed",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "discord_member_changed.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+DISCORD_MEMBER_CHANGED_DLQ = RabbitQueue(
+    "discord_member_changed.dlq",
+    durable=True,
+)
+
 # ============================================================================
 # Match ingested (stats-service -> tournament match layer)
 # ============================================================================
 # One opaque evidence id/revision/placements payload per accepted observation
-# revision. The tournament consumer decides whether it is official (D95); the
+# revision. The tournament consumer decides whether it is official; the
 # stats side never writes ``encounter.*``.
 
 MATCH_INGESTED_EXCHANGE = RabbitExchange(
@@ -466,9 +527,12 @@ MATCH_INGESTED_TOURNAMENT_DLQ = RabbitQueue(
 # ============================================================================
 # Notification delivery (notify()/broadcast() outbox -> app-service)
 # ============================================================================
-# Routing keys: ``notification.created`` (one personal row, DM) and
-# ``notification.broadcast`` (one workspace channel post). One queue, one owner:
-# app-service's delivery consumer.
+# One queue, one owner: app-service's delivery consumer.
+
+#: One personal row (DM).
+NOTIFICATION_CREATED_ROUTING_KEY = "notification.created"
+#: One workspace channel post.
+NOTIFICATION_BROADCAST_ROUTING_KEY = "notification.broadcast"
 
 NOTIFICATIONS_EXCHANGE = RabbitExchange(
     "notifications",
@@ -637,3 +701,23 @@ RANK_FETCH_PRIORITY_DLQ = RabbitQueue(
     "rank_fetch_priority.dlq",
     durable=True,
 )
+
+# ============================================================================
+# Every exchange the outbox relay may publish to, by name
+# ============================================================================
+# The drain declares an exchange before its first publish to it. A publish to an
+# exchange the broker does not know (``NOT_FOUND``) closes the channel and
+# fails the rest of the batch, and any producing service (app-svc onto
+# ``tournament.events``, say) can be the first process to publish on a fresh
+# broker, before the consumer that declares the exchange has started.
+
+EXCHANGES_BY_NAME: dict[str, RabbitExchange] = {
+    exchange.name: exchange
+    for exchange in (
+        TOURNAMENT_COMPUTE_EXCHANGE,
+        CACHE_INVALIDATION_EXCHANGE,
+        TOURNAMENT_EVENTS_EXCHANGE,
+        MATCH_INGESTED_EXCHANGE,
+        NOTIFICATIONS_EXCHANGE,
+    )
+}

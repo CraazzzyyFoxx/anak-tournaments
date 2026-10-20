@@ -1,9 +1,7 @@
 """Captain result-submission and pick-ban request schemas + viewer-seat helper.
 
-Extracted verbatim from the decommissioned ``src/routes/captain.py`` so the
-typed-RPC handlers in ``src/rpc/public_rpc.py`` keep validating the SAME bodies
-and resolving the viewer's participation identically. This module must NOT
-import fastapi.
+The typed-RPC handlers validate captain bodies and resolve the viewer's
+participation through here. This module must NOT import fastapi.
 """
 
 from __future__ import annotations
@@ -130,9 +128,8 @@ class TeamReportIn(BaseModel):
     custom_fields: dict[str, str] = Field(default_factory=dict)
 
 
-# HTTP 403 Forbidden — matched without importing fastapi so this module stays
-# fastapi-free. ``captain_service.resolve_participation`` raises a
-# ``HTTPException`` whose ``status_code`` we inspect by attribute.
+# ``captain_service.resolve_participation`` raises a ``BaseAPIException``; its
+# ``status_code`` is inspected by attribute.
 _HTTP_403_FORBIDDEN = 403
 
 

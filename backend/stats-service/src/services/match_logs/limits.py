@@ -5,6 +5,12 @@ import csv
 MATCH_NOT_FINISHED_MESSAGE = "Match is not finished yet: the log has no match_end event"
 
 
+def max_base64_length(max_bytes: int) -> int:
+    """The longest base64 text that can decode to ``max_bytes``: checked before decoding, so an oversized payload is
+    refused without materializing its bytes."""
+    return (max_bytes // 3 + 1) * 4
+
+
 def match_log_oversize_message(nbytes: int, max_bytes: int, *, filename: str | None = None) -> str | None:
     if nbytes <= max_bytes:
         return None

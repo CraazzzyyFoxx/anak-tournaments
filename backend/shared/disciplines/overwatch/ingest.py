@@ -1,7 +1,7 @@
-"""The Workshop CSV decoder and Overwatch's post-binding derivation (D95/D96).
+"""The Workshop CSV decoder and Overwatch's post-binding derivation.
 
-``decode`` turns the bytes of one finished Workshop log into a canonical ``MatchDoc``: the same observations the P4
-parser used to write, as keyed facts and typed events. It is pure CPU (no session, S3 client or roster callback) and
+``decode`` turns the bytes of one finished Workshop log into a canonical ``MatchDoc`` of keyed facts and typed
+events. It is pure CPU (no session, S3 client or roster callback) and
 creates no alias, player or row: a hero it cannot resolve is handed on under its log spelling so the one semantic
 validator reports every miss, and an unresolvable map/mode raises ``DecodeError`` carrying both misses.
 
@@ -9,9 +9,9 @@ validator reports every miss, and an unresolvable map/mode raises ``DecodeError`
 rank: ``impact_points``, ``overperformance_score`` and ``impact_rank`` -- and the ``performance`` rank, whose ties break by user id. It runs on decoded documents only; a producer's
 own document is never derived twice.
 
-Numerics are the P4 pandas pipeline unchanged. Participants are numbered in the order the document lists them and
-heroes in catalog id order, so every reduction sums in the order it always did; every rank (performance, impact) is
-computed in ``derive_match``, where ties break by user id exactly as before.
+The pandas numerics are frozen. Participants are numbered in the order the document lists them and heroes in catalog
+id order, so every reduction sums in a fixed order; every rank (performance, impact) is computed in ``derive_match``,
+where ties break by user id.
 """
 
 from __future__ import annotations
@@ -246,7 +246,7 @@ Emit = Callable[[LogStatsName, int, int, int | None, float], None]
 def _derived(df: pd.DataFrame, emit: Emit, *, mvp: bool) -> None:
     """KD/KDA/... for a pivot (and performance points for the player-level ones); adds its columns to ``df``.
 
-    The ``performance`` rank is not emitted here: ties break by user id (P4), which only binding knows.
+    The ``performance`` rank is not emitted here: ties break by user id, which only binding knows.
     """
     for stat_col in (
         LogStatsName.Eliminations,
@@ -317,7 +317,7 @@ def _stat_rows(log: _Log, pid_of: dict[str, int], heroes: _Heroes) -> pd.DataFra
 def _facts(
     log: _Log, pid_of: dict[str, int], heroes: _Heroes, kills: list[impact.KillRow], emit: Emit
 ) -> dict[int, HeroClass]:
-    """Every player/hero/round fact the P4 parser wrote except the baseline-dependent ones; returns observed roles."""
+    """Every player/hero/round fact except the baseline-dependent ones; returns observed roles."""
     cumulative = _stat_rows(log, pid_of, heroes)
     if cumulative.empty:
         logger.info("No PlayerStat events found. Skipping stat creation.")
@@ -408,7 +408,7 @@ def _facts(
 
 
 def decode(raw: bytes, ctx: DecodeContext) -> MatchDoc:
-    """One finished Workshop log -> the canonical document the P4 parser's observations map to."""
+    """One finished Workshop log -> its canonical document."""
     label = ctx.source.external_id or ctx.source.kind
     log = _Log(raw.decode("utf-8").splitlines(), label)
     log.validate()
@@ -546,7 +546,7 @@ def _derive(doc: MatchDoc, binding: BoundMatch, baseline_set: impact.BaselineSet
 
 
 def _performance_facts(kept: list, user_of: dict[str, int]) -> list[dict]:
-    """Rank each segment's players by performance points; equal points keep user-id order, as P4's pivots did."""
+    """Rank each segment's players by performance points; equal points keep user-id order."""
     rows = [
         (user_of[fact.participant], fact.segment, fact.value)
         for fact in kept

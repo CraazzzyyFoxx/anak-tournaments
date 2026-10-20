@@ -6,8 +6,8 @@ from pydantic_core import PydanticCustomError
 
 from shared.domain.encounter_scoring import DEFAULT_COLUMN_KEY, FFA_MAX_COLUMNS, FFA_MAX_LOBBY_SIZE
 from shared.domain.ffa_formula import FORMULA_MAX_LENGTH, RESERVED_NAMES, FfaFormulaError, compile_formula
-from shared.services.bracket.template import BracketTemplate
 from src.core import enums
+from src.domain.bracket import BracketTemplate
 from src.schemas.base import BaseRead
 
 __all__ = (
@@ -54,7 +54,7 @@ COLUMN_KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,23}")
 
 
 class ScoringColumnSettings(BaseModel):
-    """One value a stage's games record per team (plan §3.1)."""
+    """One value a stage's games record per team."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -62,7 +62,7 @@ class ScoringColumnSettings(BaseModel):
     #: The organizer's word for it ("Kills", "Убийства"): each stage has its
     #: own, so it is data, not a translation key.
     label: str = Field(min_length=1, max_length=32)
-    #: False = viewers see neither the column nor its values (plan §2).
+    #: False = viewers see neither the column nor its values.
     public: bool = True
     better: Literal["higher", "lower"] = "higher"
 
@@ -88,14 +88,13 @@ class ScoringColumnSettings(BaseModel):
 
 
 class StageScoring(BaseModel):
-    """How a stage scores, at all three levels (plan §5, D51).
+    """How a stage scores, at all three levels.
 
     ``win``/``draw``/``loss`` are level 3: what one encounter's result pays in
     the stage table; ``None`` = the tournament's points. The rest is the
     ``encounter.scoring_rule`` every encounter of the stage is played and
     ranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the
-    organizer's own columns. It replaced the ``ffa_scoring`` block: once a duel
-    has a rule row too, "ffa" is no longer what the setting is about.
+    organizer's own columns.
 
     Every rule field is nullable and means "the preset's default", the way
     ``ranking_preset`` does: the preset itself defaults to the one the stage

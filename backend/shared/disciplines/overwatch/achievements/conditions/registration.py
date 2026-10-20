@@ -5,7 +5,6 @@ Grain: user_tournament (user_id, tournament_id).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.enums import TournamentStatus
+from shared.core.tournament_state import as_utc
 from shared.domain.achievements.context import EvalContext
 from shared.models.achievements.achievement import AchievementGrain
 
@@ -30,11 +30,6 @@ _FLAGS: dict[str, Any] = {
     "team_manager": models.BalancerRegistration.is_team_manager,
     "checked_in": models.BalancerRegistration.checked_in,
 }
-
-
-def _as_utc(value: datetime) -> datetime:
-    """SQLite hands back naive datetimes where PostgreSQL hands back aware ones."""
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 @register(
@@ -98,7 +93,8 @@ async def execute_registration_timing(
     result = await session.execute(query)
     keys: ResultSet = set()
     for user_id, tournament_id, stamp, starts_at in result:
-        minutes = (_as_utc(stamp) - _as_utc(starts_at)).total_seconds() / 60.0
+        # SQLite hands back naive datetimes where PostgreSQL hands back aware ones.
+        minutes = (as_utc(stamp) - as_utc(starts_at)).total_seconds() / 60.0
         if not op_fn(minutes, value):
             continue
         key = (user_id, tournament_id)

@@ -28,9 +28,11 @@ interface PickBanCommandBarProps {
   /** The viewer still has to fill/lock that draft — the bar reads "your turn". */
   draftOpen?: boolean;
   kind: PickBanKind;
+  /** The catalog item's id — or, on a `side_pick` step, the chosen side's index (0 is a choice). */
   selectedItemId: number | null;
+  /** The item's name, or the chosen side's label. */
   selectedItemName: string | null;
-  /** Catalog entry behind `selectedItemId` — the confirmation shows its art, not just its name. */
+  /** Catalog entry behind `selectedItemId` — the confirmation shows its art, not just its name. A side has none. */
   selectedItem: PickBanItemLike | undefined;
   pending: boolean;
   onConfirm: (itemId: number) => void;
@@ -94,7 +96,10 @@ export function PickBanCommandBar({
       ? t("captain.confirmBan", { item: selectedItemName ?? "—" })
       : captainAction === "protect"
         ? t("captain.confirmProtect", { item: selectedItemName ?? "—" })
-        : t("captain.confirmPick", { item: selectedItemName ?? "—" });
+        : captainAction === "side_pick"
+          ? t("captain.confirmSide", { side: selectedItemName ?? "—" })
+          : t("captain.confirmPick", { item: selectedItemName ?? "—" });
+  const sidePick = captainAction === "side_pick";
 
   return (
     <OverlayBar tone={yourTurn ? "active" : "neutral"} ariaLabel={t("commandBar")}>
@@ -127,7 +132,7 @@ export function PickBanCommandBar({
                 the pool tile the captain clicked is often scrolled out of view
                 by the time they reach this bar. */}
             <span className="flex min-w-0 items-center gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
-              {selectedItemName != null ? (
+              {selectedItemName != null && !sidePick ? (
                 <PickBanItemThumb
                   kind={kind}
                   item={selectedItem}
@@ -136,7 +141,7 @@ export function PickBanCommandBar({
                 />
               ) : null}
               <span className="hidden min-w-0 truncate sm:inline">
-                {selectedItemName ?? t("captain.selectHint")}
+                {selectedItemName ?? t(sidePick ? "captain.chooseSideHint" : "captain.selectHint")}
               </span>
             </span>
             {selectedItemId != null ? (

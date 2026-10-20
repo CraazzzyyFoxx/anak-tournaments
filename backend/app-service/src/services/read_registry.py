@@ -29,8 +29,8 @@ def _entities(data: dict[str, Any]) -> list[str]:
 
 
 async def _ser(session: AsyncSession, obj: Any) -> Any:
-    # service_get hooks return a Pydantic schema (AchievementRead). No
-    # response_model_exclude_none anywhere -> exclude_none=False (FastAPI default).
+    # service_get hooks return a Pydantic schema (AchievementRead); nulls are part
+    # of the response contract, so no ``exclude_none``.
     return obj.model_dump(mode="json")
 
 

@@ -1,11 +1,8 @@
-"""The shared team writer's Player-creation site must populate
-``workspace_member_id`` (``Player.user_id`` was dropped in the contract step,
-iwrefac07) so workspace-scoped analytics readers that INNER-JOIN on it don't
-silently drop newly created roster rows.
+"""The team writer's Player-creation site must populate ``workspace_member_id`` so workspace-scoped analytics
+readers that INNER-JOIN on it don't silently drop newly created roster rows.
 
-Exercised through balancer-service's adapter (``to_materialization_teams``) so
-both the payload mapping and the writer stay covered after the writer moved to
-``shared.services.team_export``.
+Exercised through balancer-service's adapter (``to_materialization_teams``) so both the payload mapping and the
+writer stay covered.
 """
 
 from __future__ import annotations
@@ -31,10 +28,10 @@ from shared.domain.team_format import FormatDimension, TeamFormat  # noqa: E402
 from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
-from shared.services.team_export import materialization as materialization_module  # noqa: E402
 from shared.tests.test_team_format import _module_ontology  # noqa: E402
 from src.schemas.team import BalancerTeam, BalancerTeamMember  # noqa: E402
 from src.services.team import to_materialization_teams  # noqa: E402
+from src.services.team_export import materialization as materialization_module  # noqa: E402
 
 
 def _scalar_result(value):

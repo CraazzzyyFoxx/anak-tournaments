@@ -12,7 +12,6 @@ from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import Enum
-from importlib import import_module
 from inspect import unwrap
 from pathlib import Path
 from typing import Any
@@ -21,7 +20,7 @@ import pytest
 import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from shared.core.errors import ApiHTTPException
 from shared.core.impact import BADGE_THRESHOLD
@@ -389,308 +388,296 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
             ).all()
         }
     )
-    user_module = import_module("src.services.user.service")
-    original_factory = user_module.async_session_maker
-    user_module.async_session_maker = async_sessionmaker(session.bind, expire_on_commit=False)
-    try:
-        output: dict[str, Any] = {}
-        for scope, workspace_id in (
-            ("all", None),
-            ("workspace", ids["workspace"]),
-            ("workspace_other", ids["workspace_other"]),
+    output: dict[str, Any] = {}
+    for scope, workspace_id in (
+        ("all", None),
+        ("workspace", ids["workspace"]),
+        ("workspace_other", ids["workspace_other"]),
+    ):
+        scoped: dict[str, Any] = {}
+        output[scope] = scoped
+        scoped["user"] = await _user_outputs(session, ids["player"], workspace_id)
+        overview: dict[str, Any] = {}
+        for label, filters in (
+            ("all", {}),
+            ("has_logs", {"has_logs": True}),
+            ("damage", {"role": DAMAGE}),
+            ("winrate", {"has_logs": True, "sort": "winrate", "min_encounters": 0}),
+            ("winrate_threshold", {"has_logs": True, "sort": "winrate", "min_encounters": 2}),
         ):
-            scoped: dict[str, Any] = {}
-            output[scope] = scoped
-            scoped["user"] = await _user_outputs(session, ids["player"], workspace_id)
-            overview: dict[str, Any] = {}
-            for label, filters in (
-                ("all", {}),
-                ("has_logs", {"has_logs": True}),
-                ("damage", {"role": DAMAGE}),
-                ("winrate", {"has_logs": True, "sort": "winrate", "min_encounters": 0}),
-                ("winrate_threshold", {"has_logs": True, "sort": "winrate", "min_encounters": 2}),
-            ):
-                overview[label] = _json(
-                    await users.get_overview(
-                        session,
-                        schemas.UserOverviewParams(per_page=100, **({"sort": "id"} | filters)),
-                        workspace_id=workspace_id,
-                        grid=DEFAULT_GRID,
-                    )
-                )
-            for has_logs in (False, True):
-                overview[f"kpis_logs_{has_logs}"] = _json(
-                    await users.get_overview_stats(
-                        session,
-                        schemas.UserOverviewStatsQueryParams(has_logs=has_logs),
-                        workspace_id=workspace_id,
-                        grid=DEFAULT_GRID,
-                    )
-                )
-            scoped["overview"] = overview
-            scoped["compare_population"] = sorted(
-                _json(
-                    await users.compare.get_compare_population(session, workspace_id=workspace_id, grid=DEFAULT_GRID)
-                ),
-                key=lambda row: row["id"],
-            )
-            scoped["compare"] = {}
-            opponent = ids["player_other"] if workspace_id == ids["workspace_other"] else ids["player_away"]
-            for label, params in (
-                ("global", schemas.UserCompareParams()),
-                ("target", schemas.UserCompareParams(baseline="target_user", target_user_id=opponent)),
-                ("damage", schemas.UserCompareParams(baseline="cohort", role=DAMAGE)),
-            ):
-                scoped["compare"][label] = _json(
-                    await users.get_compare(
-                        session,
-                        ids["player"],
-                        params,
-                        workspace_id=workspace_id,
-                        grid=DEFAULT_GRID,
-                    )
-                )
-            scoped["hero_compare"] = {}
-            for label, filters in (
-                ("all_stats", {}),
-                ("damage", {"baseline": "cohort", "role": DAMAGE}),
-                ("hero_and_map", {"left_entity_id": ids["hero"], "right_entity_id": ids["hero"], "map_id": ids["map"]}),
-                (
-                    "target",
-                    {
-                        "baseline": "target_user",
-                        "target_user_id": opponent,
-                        "left_entity_id": ids["hero"],
-                        "right_entity_id": ids["hero_other"],
-                    },
-                ),
-                ("no_stats_target", {"baseline": "target_user", "target_user_id": ids["player_event_only"]}),
-            ):
-                scoped["hero_compare"][label] = _json(
-                    await users.get_hero_compare(
-                        session,
-                        ids["player"],
-                        schemas.UserCharacterCompareParams(stats=ALL_STATS, **filters),
-                        workspace_id=workspace_id,
-                        grid=DEFAULT_GRID,
-                    )
-                )
-            playtimes, values = await users.compare.get_users_hero_compare_stats(
-                session,
-                user_ids=None,
-                hero_id=None,
-                map_id=None,
-                stats=ALL_STATS,
-                workspace_id=workspace_id,
-                grid=DEFAULT_GRID,
-            )
-            scoped["hero_compare_raw"] = {
-                "playtime_by_user": _json(playtimes),
-                "values": [
-                    _json((user_id, stat, value))
-                    for (user_id, stat), value in sorted(
-                        values.items(), key=lambda item: (item[0][0], item[0][1].value)
-                    )
-                ],
-            }
-            scoped["hero_leaderboards"] = {}
-            for hero_key in ("hero", "hero_other"):
-                for stat in (
-                    enums.LogStatsName.Eliminations,
-                    enums.LogStatsName.Deaths,
-                    enums.LogStatsName.WeaponAccuracy,
-                    enums.LogStatsName.KD,
-                    enums.LogStatsName.KDA,
-                ):
-                    scoped["hero_leaderboards"][f"{hero_key}:{stat.value}"] = _leaderboard_page(
-                        await heroes.get_hero_leaderboard(
-                            session,
-                            discipline=OW,
-                            entity_id=ids[hero_key],
-                            params=schemas.CharacterLeaderboardParams(per_page=100, stat=stat),
-                            workspace_id=workspace_id,
-                            grid=DEFAULT_GRID,
-                        )
-                    )
-            scoped["hero_playtime_all_players"] = _json(
-                await heroes.get_playtime(
+            overview[label] = _json(
+                await users.get_overview(
                     session,
-                    schemas.CharacterPlaytimePaginationParams(per_page=100),
-                    discipline=OW,
+                    schemas.UserOverviewParams(per_page=100, **({"sort": "id"} | filters)),
                     workspace_id=workspace_id,
-                )
-            )
-            map_params = schemas.UserMapsSearchParams(
-                per_page=100,
-                sort="count",
-                order="desc",
-                entities=["parent", "characters", "character_stats"],
-            )
-            scoped["maps"] = _json(
-                await maps.get_top_user(session, ids["player"], map_params, discipline=OW, workspace_id=workspace_id)
-            )
-            scoped["maps_summary"] = _json(
-                await maps.get_top_user_summary(
-                    session,
-                    ids["player"],
-                    map_params,
-                    discipline=OW,
-                    workspace_id=workspace_id,
-                )
-            )
-            scoped["map_min_count"] = _json(
-                await maps.get_top_user(
-                    session,
-                    ids["player"],
-                    schemas.UserMapsSearchParams(per_page=100, sort="id", min_count=2),
-                    discipline=OW,
-                    workspace_id=workspace_id,
-                )
-            )
-            scoped["statistics"] = {}
-            for name, reader in (
-                ("champions", statistics.get_most_champions),
-                ("winrate", statistics.get_to_winrate_players),
-                ("won", statistics.get_to_won_players),
-            ):
-                for label, params in (
-                    ("ranked", pagination.PaginationSortParams(per_page=100, sort="value", order="desc")),
-                    ("only_count", pagination.PaginationSortParams(only_count=True)),
-                ):
-                    scoped["statistics"][f"{name}:{label}"] = _json(
-                        await reader(
-                            session,
-                            params,
-                            discipline=OW,
-                            workspace_id=workspace_id,
-                        )
-                    )
-                    scoped["statistics"][f"{name}:{label}"]["results"].sort(key=lambda row: (-row["value"], row["id"]))
-            scoped["achievements"] = await _achievement_outputs(session, ids, workspace_id)
-            scoped["encounter_pages"] = {}
-            for page in (1, 2, 100):
-                scoped["encounter_pages"][str(page)] = _json(
-                    await users.get_encounters_by_user(
-                        session,
-                        ids["player"],
-                        pagination.PaginationSortParams(page=page, per_page=1, sort="played_at"),
-                        workspace_id=workspace_id,
-                    )
-                )
-            for label, filters in (
-                ("win", {"result_filter": "win"}),
-                ("loss", {"result_filter": "loss"}),
-                ("draw", {"result_filter": "draw"}),
-                ("mvp", {"mvp1": True}),
-                ("logs", {"has_logs": True}),
-                ("no_logs", {"has_logs": False}),
-                ("opponent", {"opponent": "away"}),
-                ("group", {"stage": "group"}),
-            ):
-                scoped["encounter_pages"][label] = _json(
-                    await users.get_encounters_by_user(
-                        session,
-                        ids["player"],
-                        pagination.PaginationSortParams(per_page=100, sort="played_at"),
-                        workspace_id=workspace_id,
-                        **filters,
-                    )
-                )
-
-        output["edge_users"] = {}
-        for player in ("player_away", "player_event_only", "player_removed", "player_no_member", "player_other"):
-            output["edge_users"][player] = await _user_outputs(session, ids[player], ids["workspace"])
-        output["global_hero_records"] = [
-            _json(tuple(row))
-            for row in sorted(
-                await users.profile.get_statistics_by_heroes_all_values(session),
-                key=lambda row: (row[1], row[0].value),
-            )
-        ]
-        output["tournaments"] = {}
-        for tournament_key in ("tournament", "tournament_other", "tournament_hidden"):
-            tournament_id = ids[tournament_key]
-            tournament = await session.get(models.Tournament, tournament_id)
-            if tournament is None:
-                raise AssertionError(f"Missing shared fixture tournament {tournament_key}")
-            by_stat = await statistics_queries.get_tournament_avg_match_stat_for_user_bulk(
-                session,
-                tournament,
-                ids["player"],
-                ALL_STATS,
-            )
-            item = {
-                "profile": _json(
-                    await users.get_tournament_with_stats(
-                        session,
-                        ids["player"],
-                        tournament_id,
-                        grid=DEFAULT_GRID,
-                    )
-                ),
-                "encounters": _json(await users.get_tournament_encounters(session, ids["player"], tournament_id)),
-                "all_stat_averages": [_json(tuple(row)) for row in sorted(by_stat, key=lambda row: row[0].value)],
-                "mvp": _json(
-                    await statistics_queries.get_tournament_mvp_stat_for_user(session, tournament, ids["player"])
-                ),
-                "mvp_no_stats": _json(
-                    await statistics_queries.get_tournament_mvp_stat_for_user(
-                        session,
-                        tournament,
-                        ids["player_event_only"],
-                    )
-                ),
-                "leaderboards": {},
-            }
-            for stat in tournament_stats:
-                item["leaderboards"][stat.value] = _json(
-                    await users.get_tournament_leaderboard(session, tournament_id, stat)
-                )
-            item["hero_leaderboard"] = _leaderboard_page(
-                await heroes.get_hero_leaderboard(
-                    session,
-                    discipline=OW,
-                    entity_id=ids["hero"],
-                    params=schemas.CharacterLeaderboardParams(
-                        per_page=100,
-                        tournament_id=tournament_id,
-                        stat=enums.LogStatsName.Eliminations,
-                    ),
                     grid=DEFAULT_GRID,
                 )
             )
-            item["hero_statistics"] = _hero_stat_rows(
-                await users.profile.get_statistics_by_heroes(
+        for has_logs in (False, True):
+            overview[f"kpis_logs_{has_logs}"] = _json(
+                await users.get_overview_stats(
+                    session,
+                    schemas.UserOverviewStatsQueryParams(has_logs=has_logs),
+                    workspace_id=workspace_id,
+                    grid=DEFAULT_GRID,
+                )
+            )
+        scoped["overview"] = overview
+        scoped["compare_population"] = sorted(
+            _json(await users.compare.get_compare_population(session, workspace_id=workspace_id, grid=DEFAULT_GRID)),
+            key=lambda row: row["id"],
+        )
+        scoped["compare"] = {}
+        opponent = ids["player_other"] if workspace_id == ids["workspace_other"] else ids["player_away"]
+        for label, params in (
+            ("global", schemas.UserCompareParams()),
+            ("target", schemas.UserCompareParams(baseline="target_user", target_user_id=opponent)),
+            ("damage", schemas.UserCompareParams(baseline="cohort", role=DAMAGE)),
+        ):
+            scoped["compare"][label] = _json(
+                await users.get_compare(
                     session,
                     ids["player"],
+                    params,
+                    workspace_id=workspace_id,
+                    grid=DEFAULT_GRID,
+                )
+            )
+        scoped["hero_compare"] = {}
+        for label, filters in (
+            ("all_stats", {}),
+            ("damage", {"baseline": "cohort", "role": DAMAGE}),
+            ("hero_and_map", {"left_entity_id": ids["hero"], "right_entity_id": ids["hero"], "map_id": ids["map"]}),
+            (
+                "target",
+                {
+                    "baseline": "target_user",
+                    "target_user_id": opponent,
+                    "left_entity_id": ids["hero"],
+                    "right_entity_id": ids["hero_other"],
+                },
+            ),
+            ("no_stats_target", {"baseline": "target_user", "target_user_id": ids["player_event_only"]}),
+        ):
+            scoped["hero_compare"][label] = _json(
+                await users.get_hero_compare(
+                    session,
+                    ids["player"],
+                    schemas.UserCharacterCompareParams(stats=ALL_STATS, **filters),
+                    workspace_id=workspace_id,
+                    grid=DEFAULT_GRID,
+                )
+            )
+        playtimes, values = await users.compare.get_users_hero_compare_stats(
+            session,
+            user_ids=None,
+            hero_id=None,
+            map_id=None,
+            stats=ALL_STATS,
+            workspace_id=workspace_id,
+            grid=DEFAULT_GRID,
+        )
+        scoped["hero_compare_raw"] = {
+            "playtime_by_user": _json(playtimes),
+            "values": [
+                _json((user_id, stat, value))
+                for (user_id, stat), value in sorted(values.items(), key=lambda item: (item[0][0], item[0][1].value))
+            ],
+        }
+        scoped["hero_leaderboards"] = {}
+        for hero_key in ("hero", "hero_other"):
+            for stat in (
+                enums.LogStatsName.Eliminations,
+                enums.LogStatsName.Deaths,
+                enums.LogStatsName.WeaponAccuracy,
+                enums.LogStatsName.KD,
+                enums.LogStatsName.KDA,
+            ):
+                scoped["hero_leaderboards"][f"{hero_key}:{stat.value}"] = _leaderboard_page(
+                    await heroes.get_hero_leaderboard(
+                        session,
+                        discipline=OW,
+                        entity_id=ids[hero_key],
+                        params=schemas.CharacterLeaderboardParams(per_page=100, stat=stat),
+                        workspace_id=workspace_id,
+                        grid=DEFAULT_GRID,
+                    )
+                )
+        scoped["hero_playtime_all_players"] = _json(
+            await heroes.get_playtime(
+                session,
+                schemas.CharacterPlaytimePaginationParams(per_page=100),
+                discipline=OW,
+                workspace_id=workspace_id,
+            )
+        )
+        map_params = schemas.UserMapsSearchParams(
+            per_page=100,
+            sort="count",
+            order="desc",
+            entities=["parent", "characters", "character_stats"],
+        )
+        scoped["maps"] = _json(
+            await maps.get_top_user(session, ids["player"], map_params, discipline=OW, workspace_id=workspace_id)
+        )
+        scoped["maps_summary"] = _json(
+            await maps.get_top_user_summary(
+                session,
+                ids["player"],
+                map_params,
+                discipline=OW,
+                workspace_id=workspace_id,
+            )
+        )
+        scoped["map_min_count"] = _json(
+            await maps.get_top_user(
+                session,
+                ids["player"],
+                schemas.UserMapsSearchParams(per_page=100, sort="id", min_count=2),
+                discipline=OW,
+                workspace_id=workspace_id,
+            )
+        )
+        scoped["statistics"] = {}
+        for name, reader in (
+            ("champions", statistics.get_most_champions),
+            ("winrate", statistics.get_to_winrate_players),
+            ("won", statistics.get_to_won_players),
+        ):
+            for label, params in (
+                ("ranked", pagination.PaginationSortParams(per_page=100, sort="value", order="desc")),
+                ("only_count", pagination.PaginationSortParams(only_count=True)),
+            ):
+                scoped["statistics"][f"{name}:{label}"] = _json(
+                    await reader(
+                        session,
+                        params,
+                        discipline=OW,
+                        workspace_id=workspace_id,
+                    )
+                )
+                scoped["statistics"][f"{name}:{label}"]["results"].sort(key=lambda row: (-row["value"], row["id"]))
+        scoped["achievements"] = await _achievement_outputs(session, ids, workspace_id)
+        scoped["encounter_pages"] = {}
+        for page in (1, 2, 100):
+            scoped["encounter_pages"][str(page)] = _json(
+                await users.get_encounters_by_user(
+                    session,
+                    ids["player"],
+                    pagination.PaginationSortParams(page=page, per_page=1, sort="played_at"),
+                    workspace_id=workspace_id,
+                )
+            )
+        for label, filters in (
+            ("win", {"result_filter": "win"}),
+            ("loss", {"result_filter": "loss"}),
+            ("draw", {"result_filter": "draw"}),
+            ("mvp", {"mvp1": True}),
+            ("logs", {"has_logs": True}),
+            ("no_logs", {"has_logs": False}),
+            ("opponent", {"opponent": "away"}),
+            ("group", {"stage": "group"}),
+        ):
+            scoped["encounter_pages"][label] = _json(
+                await users.get_encounters_by_user(
+                    session,
+                    ids["player"],
+                    pagination.PaginationSortParams(per_page=100, sort="played_at"),
+                    workspace_id=workspace_id,
+                    **filters,
+                )
+            )
+
+    output["edge_users"] = {}
+    for player in ("player_away", "player_event_only", "player_removed", "player_no_member", "player_other"):
+        output["edge_users"][player] = await _user_outputs(session, ids[player], ids["workspace"])
+    output["global_hero_records"] = [
+        _json(tuple(row))
+        for row in sorted(
+            await users.profile.get_statistics_by_heroes_all_values(session),
+            key=lambda row: (row[1], row[0].value),
+        )
+    ]
+    output["tournaments"] = {}
+    for tournament_key in ("tournament", "tournament_other", "tournament_hidden"):
+        tournament_id = ids[tournament_key]
+        tournament = await session.get(models.Tournament, tournament_id)
+        if tournament is None:
+            raise AssertionError(f"Missing shared fixture tournament {tournament_key}")
+        by_stat = await statistics_queries.get_tournament_avg_match_stat_for_user_bulk(
+            session,
+            tournament,
+            ids["player"],
+            ALL_STATS,
+        )
+        item = {
+            "profile": _json(
+                await users.get_tournament_with_stats(
+                    session,
+                    ids["player"],
+                    tournament_id,
+                    grid=DEFAULT_GRID,
+                )
+            ),
+            "encounters": _json(await users.get_tournament_encounters(session, ids["player"], tournament_id)),
+            "all_stat_averages": [_json(tuple(row)) for row in sorted(by_stat, key=lambda row: row[0].value)],
+            "mvp": _json(await statistics_queries.get_tournament_mvp_stat_for_user(session, tournament, ids["player"])),
+            "mvp_no_stats": _json(
+                await statistics_queries.get_tournament_mvp_stat_for_user(
+                    session,
+                    tournament,
+                    ids["player_event_only"],
+                )
+            ),
+            "leaderboards": {},
+        }
+        for stat in tournament_stats:
+            item["leaderboards"][stat.value] = _json(
+                await users.get_tournament_leaderboard(session, tournament_id, stat)
+            )
+        item["hero_leaderboard"] = _leaderboard_page(
+            await heroes.get_hero_leaderboard(
+                session,
+                discipline=OW,
+                entity_id=ids["hero"],
+                params=schemas.CharacterLeaderboardParams(
+                    per_page=100,
                     tournament_id=tournament_id,
-                )
+                    stat=enums.LogStatsName.Eliminations,
+                ),
+                grid=DEFAULT_GRID,
             )
-            item["maps"] = _json(
-                await maps.get_top_user(
-                    session,
-                    ids["player"],
-                    schemas.UserMapsSearchParams(
-                        per_page=100,
-                        sort="id",
-                        tournament_id=tournament_id,
-                        entities=["characters", "character_stats", "parent"],
-                    ),
-                    discipline=OW,
-                )
+        )
+        item["hero_statistics"] = _hero_stat_rows(
+            await users.profile.get_statistics_by_heroes(
+                session,
+                ids["player"],
+                tournament_id=tournament_id,
             )
-            item["achievements"] = _json(
-                await achievements.get_user_achievements(
-                    session,
-                    ids["player"],
-                    ["matches", "tournaments"],
+        )
+        item["maps"] = _json(
+            await maps.get_top_user(
+                session,
+                ids["player"],
+                schemas.UserMapsSearchParams(
+                    per_page=100,
+                    sort="id",
                     tournament_id=tournament_id,
-                )
+                    entities=["characters", "character_stats", "parent"],
+                ),
+                discipline=OW,
             )
-            output["tournaments"][tournament_key] = item
-        return _legacy_catalog(_json(output))
-    finally:
-        user_module.async_session_maker = original_factory
+        )
+        item["achievements"] = _json(
+            await achievements.get_user_achievements(
+                session,
+                ids["player"],
+                ["matches", "tournaments"],
+                tournament_id=tournament_id,
+            )
+        )
+        output["tournaments"][tournament_key] = item
+    return _legacy_catalog(_json(output))
 
 
 def test_app_readers_preserve_captured_p3_outputs(stats_parity_database: tuple[str, dict[str, int]]) -> None:

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock, UserX } from "lucide-react";
 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
 import pickBanService, {
@@ -37,6 +38,8 @@ import { PickBanRevealPanel } from "@/components/pick-ban/PickBanRevealPanel";
 import { PickBanStepTimeline } from "@/components/pick-ban/PickBanStepTimeline";
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
+import { PickBanSideAssignment, PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
+import { useSideLabel } from "@/components/pick-ban/useSideLabel";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
 
 /** How long a blind draft edit waits before it is saved, so five quick clicks are one request. */
@@ -143,11 +146,28 @@ export function PickBanPanel({
       ? pickedItemId
       : null;
 
+  // A side step chooses an index into `state.sides`, never a catalog item: its own state, never filtered through
+  // the pool. It belongs to one turn — this step as it was (re)opened — and is DISCARDED the moment the turn
+  // changes, so an undo back to the same step index starts with no side chosen instead of resurrecting one.
+  const isSideStep = step?.action === "side_pick";
+  const sideKey = `${session.id}:${stepKey}:${session.current_step_started_at ?? ""}`;
+  const [pickedSide, setPickedSide] = useState<{ key: string; index: number | null }>({
+    key: sideKey,
+    index: null
+  });
+  if (pickedSide.key !== sideKey) setPickedSide({ key: sideKey, index: null });
+  const selectedSide = isSideStep && pickedSide.key === sideKey ? pickedSide.index : null;
+  const sideLabelOf = useSideLabel();
+  const sideLabel = (code: string) => sideLabelOf(encounter.discipline, code);
+  const sideLabels = state.sides.map(sideLabel);
+  const sideHintId = useId();
+
   const actionMutation = useMutation({
     mutationFn: (input: PickBanActionInput) =>
       pickBanService.performPickBanAction(kind, encounterId, input),
     onSuccess: (next) => {
       setSelectedItemId(null);
+      setPickedSide((current) => ({ ...current, index: null }));
       setSelectedTargetId(null);
       queryClient.setQueryData(queryKey, next);
     },
@@ -311,8 +331,15 @@ export function PickBanPanel({
             isComplete={state.is_complete}
             currentRound={state.current_round}
             itemsById={itemsById}
+            sideLabels={sideLabels}
             teamName={teamName}
             session={session}
+          />
+          <PickBanSideAssignment
+            startingSides={state.starting_sides}
+            position={state.current_round}
+            seats={seats}
+            sideLabel={sideLabel}
           />
           {step?.target != null && opponentTeamId != null ? (
             targetRoster.length > 0 ? (
@@ -374,28 +401,54 @@ export function PickBanPanel({
             />
           ) : null}
 
-          <PickBanGrid
-            kind={kind}
-            pool={state.pool}
-            itemsById={itemsById}
-            selectedItemId={selectedItemId}
-            canSelect={canSelect}
-            currentRound={state.current_round}
-            slotReserves={pickBanReserveMap(session)}
-            eligibleIds={eligibleIds}
-            draftItemIds={draftItemIds}
-            onSelect={(itemId) => {
-              if (isBlindStep) {
-                if (adminDrafting) toggleAdminDraftItem(itemId);
-                else toggleDraftItem(itemId);
-                return;
-              }
-              setSelectedItemId((current) => (current === itemId ? null : itemId));
-            }}
-            seats={seats}
-            header={header}
-            characterClasses={metadata.data?.discipline.character_classes}
-          />
+          {isSideStep ? (
+            // No pool on a side step: the captain chooses a side, and a champion tile here would be a 400.
+            <Card>
+              <CardHeader className="flex flex-col gap-4 pb-3">
+                {header}
+                <div className="border-t border-[color:var(--aqt-border)] pt-4">
+                  <CardTitle id={sideHintId} className="text-base">
+                    {t("captain.chooseSideHint")}
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <PickBanSideChoice
+                  labelledBy={sideHintId}
+                  labels={sideLabels}
+                  value={selectedSide}
+                  size="lg"
+                  disabled={captainAction !== "side_pick" || actionMutation.isPending}
+                  onChange={(index) =>
+                    setPickedSide({ key: sideKey, index: selectedSide === index ? null : index })
+                  }
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <PickBanGrid
+              kind={kind}
+              pool={state.pool}
+              itemsById={itemsById}
+              selectedItemId={selectedItemId}
+              canSelect={canSelect}
+              currentRound={state.current_round}
+              slotReserves={pickBanReserveMap(session)}
+              eligibleIds={eligibleIds}
+              draftItemIds={draftItemIds}
+              onSelect={(itemId) => {
+                if (isBlindStep) {
+                  if (adminDrafting) toggleAdminDraftItem(itemId);
+                  else toggleDraftItem(itemId);
+                  return;
+                }
+                setSelectedItemId((current) => (current === itemId ? null : itemId));
+              }}
+              seats={seats}
+              header={header}
+              characterClasses={metadata.data?.discipline.character_classes}
+            />
+          )}
 
           {/* Under the grid, above the admin panel: the correction path a
               captain reaches for belongs next to the pool they misclicked, and
@@ -406,14 +459,16 @@ export function PickBanPanel({
             undo={state.undo}
             viewerTeamId={viewerTeamId}
             itemsById={itemsById}
+            sideLabels={sideLabels}
             seats={seats}
             invalidateKeys={[queryKey]}
           />
 
           {adminPanel?.({
             kind,
-            selectedItemId,
-            selectedItemName,
+            // The organizer's side choice lives in the admin row; a tile picked on an earlier step is not it.
+            selectedItemId: isSideStep ? null : selectedItemId,
+            selectedItemName: isSideStep ? null : selectedItemName,
             blind: adminDrafting
               ? {
                   items: adminDraft,
@@ -468,9 +523,15 @@ export function PickBanPanel({
           }
           draftOpen={isBlindStep && state.viewer_can_act && !draftLocked && !state.is_complete}
           kind={kind}
-          selectedItemId={selectedItemId}
-          selectedItemName={selectedItemName}
-          selectedItem={selectedItemId != null ? itemsById[selectedItemId] : undefined}
+          selectedItemId={isSideStep ? selectedSide : selectedItemId}
+          selectedItemName={
+            isSideStep
+              ? selectedSide != null
+                ? (sideLabels[selectedSide] ?? `#${selectedSide}`)
+                : null
+              : selectedItemName
+          }
+          selectedItem={!isSideStep && selectedItemId != null ? itemsById[selectedItemId] : undefined}
           pending={actionMutation.isPending}
           onConfirm={(itemId) => {
             if (captainAction == null) return;
@@ -480,7 +541,11 @@ export function PickBanPanel({
               ...(step?.target != null ? { target_player_id: selectedTargetId } : {})
             });
           }}
-          onCancel={() => setSelectedItemId(null)}
+          onCancel={() =>
+            isSideStep
+              ? setPickedSide((current) => ({ ...current, index: null }))
+              : setSelectedItemId(null)
+          }
         />
       ) : null}
 

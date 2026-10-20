@@ -1,19 +1,15 @@
 """Wire shape of one :class:`AdmissionEvaluation`.
 
 Shared verbatim by the public participants read and the admin registrations
-table, and that is the point: those two surfaces used to answer "is this player
-admitted" from five separate client-side re-derivations of five raw fields, two of
-which deliberately disagreed with the other three. They now render the same
-object, and a disagreement between them becomes impossible rather than merely
-discouraged.
+table, so the two surfaces cannot disagree about whether a player is admitted.
 
 Deliberately NOT a lossy projection. Consumers need different shapes of the same
 answer -- a badge wants three states, the sort column wants an ordinal, the search
 index wants text, the registrant's progress steps want one entry per requirement
 with its own tone -- so everything they project from ships here. `requirements`
 therefore carries disabled requirements too: the progress steps are built by
-walking it, and filtering it here would push a `if require_x` branch back into the
-UI once per requirement, which is the shape this whole layer replaces.
+walking it, and filtering it here would push an `if require_x` branch into the
+UI once per requirement.
 
 `profiles_open` and `subscription_outcome` stay on the registration reads beside
 this object. They are not duplicates of the decision: the per-row Profile and
@@ -27,7 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from shared.services.admission.types import (
+from src.services.admission.types import (
     AdmissionEvaluation,
     AdmissionReason,
     RequirementVerdict,
@@ -92,11 +88,9 @@ class AdmissionRead(BaseModel):
     #: Blocked requirements the player is admitted DESPITE, because check-in --
     #: the last gate of every requirement -- is already behind them.
     #:
-    #: Word this neutrally in the UI: "requirement unmet, admission already
-    #: granted". It cannot distinguish an organizer who checked somebody in by
-    #: hand from a subscription that lapsed a week after a legitimate check-in,
-    #: because the verdicts carry no as-of time. Claiming the former would
-    #: routinely accuse an organizer of something they did not do.
+    #: Word this neutrally in the UI ("requirement unmet, admission already
+    #: granted"): the verdicts carry no as-of time, so a hand check-in and a
+    #: subscription that lapsed after a legitimate check-in look the same.
     overridden: list[RequirementVerdictRead] = Field(default_factory=list)
     checked_in: bool = False
     #: ``approved`` and holding a rank in the balancer pool. Not a requirement,
@@ -119,10 +113,8 @@ class AdmissionRead(BaseModel):
         """The read for a registration nothing was resolved for.
 
         Not ``None`` on the wire: an absent object would make every consumer write
-        a null branch, and the five copies this layer replaces were born from
-        exactly that kind of per-consumer defaulting. ``not_admitted`` with no
-        requirements is the honest reading -- nothing was checked, so nothing is
-        satisfied -- and it can only occur for a registration outside the resolved
-        batch.
+        a null branch. ``not_admitted`` with no requirements is the honest reading
+        -- nothing was checked, so nothing is satisfied -- and it can only occur
+        for a registration outside the resolved batch.
         """
         return cls(decision="not_admitted")

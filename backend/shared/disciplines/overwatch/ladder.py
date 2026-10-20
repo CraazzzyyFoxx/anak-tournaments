@@ -1,4 +1,4 @@
-"""THE Overwatch competitive ladder (the module's native ladder, D87) — the one place its shape is written down.
+"""THE Overwatch competitive ladder (the module's native ladder) — the one place its shape is written down.
 
 Everything about the ladder that is a *fact* rather than a derivation lives in
 :data:`LADDER`: the divisions, their order, the SR each one starts at, and the
@@ -52,10 +52,8 @@ TIERS_PER_DIVISION = 5
 TIER_SPAN = 100
 
 #: Site-relative path of the default OW2 rank icons (``bronze-5.png`` … ``champion-1.png``).
-#: Served from ``frontend/public/divisions``. A full CDN URL used to live here
-#: (``static.nl.craazzzyyfoxx.me``); that host is gone, and baking an S3 public
-#: URL into the ladder made every deployment depend on one bucket. Workspace
-#: grids still store their own absolute ``icon_url``s.
+#: Served from ``frontend/public/divisions``, so no deployment depends on one
+#: bucket's public URL. Workspace grids store their own absolute ``icon_url``s.
 DIVISION_ICON_BASE = "/divisions"
 
 
@@ -81,8 +79,8 @@ class LadderDivision:
 #:
 #: Nine 500-wide divisions anchored at Bronze 5 = 500, so the ladder runs
 #: 500..4899 with Champion 1 open-ended above 4900. Emerald holds the 2500 band
-#: platinum used to, which is why diamond and above kept their pre-emerald
-#: anchors when Emerald was introduced.
+#: platinum held before it, which is why diamond and above keep their
+#: pre-emerald anchors.
 LADDER: tuple[LadderDivision, ...] = (
     LadderDivision("champion", RankDivision.ultimate, 4500, open_top=True),
     LadderDivision("grandmaster", RankDivision.grandmaster, 4000),

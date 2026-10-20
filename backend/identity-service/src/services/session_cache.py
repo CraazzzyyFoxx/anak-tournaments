@@ -15,11 +15,8 @@ from shared.rbac import RBAC_USER_KEY_PREFIX
 from src.core.cache import RedisStore
 from src.core.redis import get_redis
 
-# v3: the cached payload now also carries the user's workspace memberships
-# (id + slug), so a hit answers the token path with no database round trip at
-# all. A v2 entry has no ``workspaces`` key and would look like "member of
-# nothing", so the version bump is what retires those entries rather than
-# silently stripping a user's workspaces for one TTL.
+# The cached payload carries the user's workspace memberships (id + slug) too,
+# so a hit answers the token path with no database round trip at all.
 RBAC_TTL_SECONDS = 60
 
 # Concurrent refreshes of the same token must not look like a reuse attack: the
@@ -75,9 +72,10 @@ class SessionCache:
         }
         await self._rbac.put_json(user_id, payload)
 
-    async def invalidate_rbac(self, user_id: int) -> None:
-        await self._rbac.drop(user_id)
-        logger.info(f"RBAC cache invalidated for user {user_id}")
+    async def invalidate_rbac(self, *user_ids: int) -> None:
+        for user_id in user_ids:
+            await self._rbac.drop(user_id)
+            logger.info(f"RBAC cache invalidated for user {user_id}")
 
     # --- Revoked sessions ---
 

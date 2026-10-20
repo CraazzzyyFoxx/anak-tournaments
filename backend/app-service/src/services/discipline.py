@@ -1,4 +1,4 @@
-"""Public native metadata of the installed disciplines (P7 §1).
+"""Public native metadata of the installed disciplines.
 
 Reads declarations and persisted rows only: a capability is the *presence* of a hook on the ``DisciplineSpec``, and no
 hook (catalog sync, analytics factory, condition registration, collection handler) is ever called here.

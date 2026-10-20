@@ -6,17 +6,17 @@ A ``StatsMatch`` (``stats.match``) is what a parsed log OBSERVED; an
 owns that decision end to end -- opening positions (from the map pick-ban, or
 one at a time in freeplay), accepting a result, cancelling -- for a duel and a
 lobby alike: a game's numbers live in one ``encounter.game_team`` row per active
-participation, so N seats are written the same way two are (D55, D58).
+participation, so N seats are written the same way two are.
 
 It never writes the encounter's standing itself. Every accepted or retired game
 ends in :func:`shared.services.encounter.result.refresh_from_games`, the single
 result writer, which re-scores the whole series through the encounter's own
-``scoring_rule`` and confirms it once the rule's end condition holds (D57, D68).
+``scoring_rule`` and confirms it once the rule's end condition holds.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -54,12 +54,12 @@ from shared.repository import (
     PickBanEntryRepository,
     ScoringRuleRepository,
 )
+from shared.services.encounter.events import enqueue_encounter_completed
 from shared.services.encounter.game_audit import cancel_games as _cancel_games
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import refresh_from_games
 from src.services.encounter.settle import settle_confirmed
-from src.services.encounter.veto_session import side_pick_pending
-from src.services.tournament.events import enqueue_encounter_completed
+from src.services.encounter.veto_session import side_codes, side_pick_pending, side_pick_required
 
 __all__ = ("GameResultIn", "EncounterGameService", "OPEN_STATES", "encounter_game_service", "require_filled_seats")
 
@@ -73,7 +73,7 @@ OPEN_STATES = (
 
 
 def require_filled_seats(encounter: Encounter, seats: Sequence) -> None:
-    """409 while a slot of the encounter has nobody in it (D64).
+    """409 while a slot of the encounter has nobody in it.
 
     A game does not start before its slots are filled, and a result with an
     empty slot would let the one seated captain decide an encounter alone.
@@ -224,6 +224,16 @@ class EncounterGameService:
         """Is the encounter over on the games already confirmed?"""
         return (await self.standing(session, encounter)).ended
 
+    async def played_positions(self, session: AsyncSession, encounter_id: int) -> frozenset[int]:
+        """Positions whose game is CONFIRMED or already carries a claim: the ones
+        a room may no longer rewind into -- a dispute, an undo, a reopen -- and
+        whose sides are history."""
+        games = await self.list_games(session, encounter_id)
+        claims = await self.claims_by_game(session, games)
+        return frozenset(
+            game.position for game in games if game.state == EncounterGameState.CONFIRMED or claims.get(game.id)
+        )
+
     # -- opening positions -------------------------------------------------
     async def open_game(
         self,
@@ -294,8 +304,8 @@ class EncounterGameService:
 
         ``blocked_positions`` are positions that may be NAMED but must not open
         for claims yet -- a game cannot start while a required ``side_pick`` of
-        its round is unresolved (spec §6 row 9), so the map lands and the state
-        stays ``planned`` until the pick does.
+        its round is unresolved, so the map lands and the state stays
+        ``planned`` until the pick does.
         """
         entries = list(await self.entry_repo.list_by_session(session, map_pick_ban.id))
         games = await self.list_games(session, encounter.id)
@@ -356,15 +366,34 @@ class EncounterGameService:
         return changes, stale
 
     # -- commands ----------------------------------------------------------
-    async def assert_side_settled(self, session: AsyncSession, encounter: Encounter, game: EncounterGame) -> None:
-        """409 while the position still owes a ``side_pick`` an answer.
+    async def clear_sides(self, session: AsyncSession, encounter_id: int, positions: Iterable[int]) -> None:
+        """Take back both seats' ``starting_side`` on these positions' live games.
 
-        A game cannot START before the side it is played on is decided (spec §6
-        row 9), and "started" is exactly what a map selection, a claim or an
-        accepted result make of it. Leaving the row ``planned`` was never the
-        gate -- nothing reads that state as a refusal -- so the three write
-        paths ask the room directly.
+        The caller vouches the positions are unplayed: a cancelled game is
+        history and is never touched, and a played side is never rewound
+        (:meth:`played_positions`)."""
+        wanted = set(positions)
+        if not wanted:
+            return
+        games = [game for game in await self.list_games(session, encounter_id) if game.position in wanted]
+        for row in await self.line_repo.list_for_games(session, [game.id for game in games]):
+            row.starting_side = None
+        await session.flush()
+
+    async def assert_side_settled(self, session: AsyncSession, encounter: Encounter, game: EncounterGame) -> None:
+        """409 unless the position's sides are decided, wherever the room decides them.
+
+        A game cannot START before the side it is played on is decided, and
+        "started" is exactly what a map selection, a claim or an accepted result
+        make of it. Nothing reads ``planned`` as a refusal, so the write paths
+        ask the room directly: ``side_pick_pending`` while its side step is
+        open, then ``side_pick_required`` while a room that picks this game's
+        sides left them incomplete. A game nobody picks sides for (no such room,
+        or the organizer cancelled it) is recorded the way a side-less one is.
         """
+        sides = side_codes(encounter)
+        if not sides:
+            return
         if await side_pick_pending(session, encounter.id, game.position):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -372,6 +401,23 @@ class EncounterGameService:
                     ApiExc(
                         code="side_pick_pending",
                         msg="This map's sides have not been picked yet; finish the pick-ban first",
+                    )
+                ],
+            )
+        if not await side_pick_required(session, encounter, game.position):
+            return
+        seats = await active_teams(session, encounter.id)
+        held = {
+            row.encounter_team_id: row.starting_side for row in await self.line_repo.list_for_games(session, [game.id])
+        }
+        picked = [held.get(seat.id) for seat in seats]
+        if None in picked or len(set(picked)) != len(seats) or not set(picked) <= set(sides):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=[
+                    ApiExc(
+                        code="side_pick_required",
+                        msg="This game's sides are not set; the room's side pick has to be played first",
                     )
                 ],
             )
@@ -436,14 +482,13 @@ class EncounterGameService:
             game=game,
             reason=reason,
         )
-        # Under D57 this is the MAIN way an encounter completes: the last map
-        # being accepted is what ends the series, and a lobby finishes its card
-        # the same way. So it owes what every confirmation owes -- the
-        # announcement (one consumer: achievement and MVP evaluation), the
-        # bracket advancing and the standings -- or a claim-decided series
-        # would leave its winner out of the next round.
+        # The last accepted game is the main way a series (or a lobby's card)
+        # completes, so it owes what every confirmation owes: the announcement
+        # (achievement and MVP evaluation), the bracket advancing and the
+        # standings -- or a claim-decided series leaves its winner out of the
+        # next round.
         if not was_confirmed and encounter.result_status == EncounterResultStatus.CONFIRMED:
-            await enqueue_encounter_completed(session, encounter)
+            await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
             await settle_confirmed(session, encounter)
         return outcome
 
@@ -502,8 +547,7 @@ class EncounterGameService:
         """``game_id -> the claims filed against it``, wire-shaped, every game keyed.
 
         Both participations' numbers go out as filed: the room decides what to
-        show a viewer before everyone has claimed, exactly as it did when the
-        claims were ``reports[]`` (spec §6).
+        show a viewer before everyone has claimed.
         """
         grouped = await self.claims_by_game(session, games)
         by_claim = await self.claim_repo.results_for_claims(

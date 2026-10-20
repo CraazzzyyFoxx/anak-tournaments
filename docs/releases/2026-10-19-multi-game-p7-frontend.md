@@ -90,12 +90,18 @@ rehearsal is a P9 gate.
 * A canonical name literally containing a hyphen stays unreachable by slug while its `#` twin exists (pre-existing).
 * Past tournaments of another game render their own ontology; a game whose metadata is unknown shows a neutral glyph.
 * Compare still maps stat codes through the Overwatch stat enum; a future game with other codes needs the compare queries
-  generalised (P8). `shared/core/enums.py` `LogStatsName`/`MatchEvent`/`HeroClass`, Discord/notification role copy,
-  the OW rank collector wire (`ow_*`) and the measurement script are enumerated D99 exceptions owned by P9.
+  generalised. That is **P9** (P8 deferred it as F3: LoL's `kills`/`dragons`/`kill` have no playtime stat, so LoL
+  profile/compare/leaderboard reads stay unsupported). `shared/core/enums.py` `LogStatsName`/`MatchEvent`/`HeroClass`,
+  Discord/notification role copy, the OW rank collector wire (`ow_*`) and the measurement script are enumerated D99
+  exceptions owned by P9.
+* Landed in P8 ([release note](2026-10-19-multi-game-p8-lol.md)): F4, the LoL `pregameCharacterBans` renderer
+  (`disciplines/lol/pregame.ts`); F5, the achievement condition editor gated on `capabilities.achievement_conditions`.
+  Moving the Overwatch `player_role` condition leaf stays P9.
 * Six pre-P7 direct DB writers are registered in `PENDING_REPOSITORY_MIGRATION` (owed a repository, P9).
 * Owner-side follow-ups recorded in the ledger: admin tournament hub "Open analytics" link capability gate
   (`TournamentHubShell.tsx`, owner WIP); the owner's `efdd11308` admin-kit refactor broke 11 of its own admin tests;
-  `PersonGlance` fixed role list and a stale `PregameRoomsBrowser` exception will trip D99 once that WIP is committed.
+  `PersonGlance` fixed role list and a stale `PregameRoomsBrowser` exception will trip D99 once that WIP is committed
+  (it was; P8's `419fa00ff` registered the three role rows and dropped the stale entry).
 
 ## 5. Verification (clean worktree of HEAD)
 

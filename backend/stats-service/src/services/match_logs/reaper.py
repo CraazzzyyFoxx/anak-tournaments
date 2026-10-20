@@ -4,8 +4,7 @@
 that isn't consumed within five minutes is dead-lettered — and nothing looks at
 the native ingest job again. A batch upload larger than the worker chews in
 five minutes, a worker restart, or a publish that failed after the row committed
-all leave records sitting on ``pending`` forever; that is the admin monitor
-showing files stuck on "Queued" weeks after upload. A worker killed mid-parse
+all leave records sitting on ``pending`` forever. A worker killed mid-parse
 leaves the twin defect: ``processing`` with no live consumer.
 
 Neither state self-heals, because the queue message — not the row — was the only
@@ -46,7 +45,6 @@ from shared.services.distributed_lock import (
 from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.config import settings
-from src.services.ingest.jobs import enqueue_ingest_request
 from src.services.match_logs.log_records import log_records_service
 
 __all__ = ("ReaperResult", "reclaim_stalled_logs", "stalled_conditions")
@@ -124,8 +122,8 @@ async def _claim_stalled(
             exhausted.append(record.id)
             continue
 
+        # The PENDING transition stages the ingest request on this same commit.
         await log_records_service.transition(session, record, IngestJobStatus.PENDING, now=now)
-        await enqueue_ingest_request(session, record.id, discipline=record.discipline)
         requeue.append(
             _Stalled(
                 record_id=record.id,

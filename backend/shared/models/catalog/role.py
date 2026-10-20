@@ -1,4 +1,4 @@
-"""The role ontology of every discipline (D31, D34, D86; spec §14.3).
+"""The role ontology of every discipline.
 
 A module's dimensions and roles are projected here at startup (``shared.services.ontology``); a workspace adds its own
 sub-roles as rows with ``workspace_id`` under a module role. Every role a player is assigned, prefers, is drafted on or
@@ -39,7 +39,7 @@ class RoleDimension(db.Base):
         CheckConstraint("selection_mode IN ('single', 'multi')", name="ck_role_dimension_selection_mode"),
         UniqueConstraint("discipline", "code", name="uq_role_dimension_code"),
         UniqueConstraint("id", "discipline", name="uq_role_dimension_key"),
-        # At most one rated dimension per discipline; "exactly one" is the projection's check (D32).
+        # At most one rated dimension per discipline; "exactly one" is the projection's check.
         Index("uq_role_dimension_rated", "discipline", unique=True, postgresql_where=text("rated")),
         {"schema": "catalog"},
     )
@@ -80,7 +80,7 @@ class CatalogRole(db.TimeStampIntegerMixin):
     )
 
     dimension_id: Mapped[int] = mapped_column(ForeignKey("catalog.role_dimension.id", name="fk_role_dimension"))
-    #: ``None`` -- a module role; otherwise a workspace's sub-role (D31), always under a parent.
+    #: ``None`` -- a module role; otherwise a workspace's sub-role, always under a parent.
     workspace_id: Mapped[int | None] = mapped_column(
         ForeignKey("workspace.id", ondelete="CASCADE", name="fk_role_workspace"), nullable=True
     )
@@ -91,7 +91,7 @@ class CatalogRole(db.TimeStampIntegerMixin):
     selectable: Mapped[bool] = mapped_column(Boolean(), default=True, server_default=text("true"))
     active: Mapped[bool] = mapped_column(Boolean(), default=True, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(Integer(), default=0, server_default=text("0"))
-    #: NOTE: JSONB does not track in-place mutation -- always reassign. ``icon``/``color`` arrive with P7 (D97).
+    #: NOTE: JSONB does not track in-place mutation -- always reassign.
     attrs: Mapped[dict] = mapped_column(JSONB(), nullable=False, default=dict, server_default=text("'{}'::jsonb"))
 
     dimension: Mapped[RoleDimension] = relationship(lazy="joined")

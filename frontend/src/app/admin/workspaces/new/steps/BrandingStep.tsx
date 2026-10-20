@@ -3,7 +3,10 @@
 import { useTranslations } from "next-intl";
 
 import { BrandColorField } from "@/components/admin/workspace-settings/BrandColorField";
-import { BrandPalettePreview } from "@/components/admin/workspace-settings/BrandPalettePreview";
+import {
+  BrandPalettePreview,
+  previewPalette
+} from "@/components/admin/workspace-settings/BrandPalettePreview";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -30,6 +33,7 @@ export function BrandingStep({
   onChange
 }: Readonly<{ value: BrandingForm; onChange: (next: BrandingForm) => void }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.branding");
+  const palette = previewPalette(value);
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,7 +64,14 @@ export function BrandingStep({
         </div>
       </div>
 
-      <BrandPalettePreview branding={value} />
+      {palette ? (
+        <div>
+          <h3 className={EYEBROW_CLASS}>{t("preview")}</h3>
+          <div className="mt-2">
+            <BrandPalettePreview palette={palette} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

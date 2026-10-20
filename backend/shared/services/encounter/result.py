@@ -1,4 +1,4 @@
-"""The single writer of an encounter's result (D57, D68).
+"""The single writer of an encounter's result.
 
 Every path that moves a result — the confirmed games adding up, a captain's
 series claim, an admin decision, a Challonge import, a bracket reset — ends in

@@ -9,8 +9,8 @@ game, void one game, change how many games the lobby plays. Recording and voidin
 are results and carry workspace ``match.result``; the games count is the lobby's
 format, like a duel's best-of, and carries ``match.update``. Each files an
 admin-audit row before the service runs, and refuses a correction whose
-downstream qualification is already live -- the duel result endpoints'
-contract, unchanged (``src/rpc/admin_misc.py``).
+downstream qualification is already live -- the same contract as the duel
+result endpoints (``src/rpc/admin_misc.py``).
 
 Every write answers the lobby's own table, so the admin UI re-renders the whole
 group from the response instead of refetching it.
@@ -27,28 +27,16 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.domain.encounter_scoring import GameLine
-from shared.repository import UserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.services.audit import record_admin_audit
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from src import models
 from src.core import auth
-from src.rpc._helpers import _dump, _identity, _path_int, _payload, _read, _require_id, _run
+from src.rpc._helpers import _actor_player_id, _dump, _identity, _path_int, _payload, _read, _require_id, _run
 from src.schemas.ffa import FfaGameCancelInput, FfaGameResultsInput, FfaGamesCountInput
 from src.services import visibility_resolvers
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.encounter.ffa import ffa_encounter_service, public_view
-
-_user_repo = UserRepository()
-
-
-async def _actor_player_id(session: Any, user: models.AuthUser) -> int | None:
-    """The caller's ``players.user`` id -- what the audit trail stores.
-
-    Same translation as ``admin_misc._actor_player_id``: the token carries an
-    auth id, while ``EncounterResultAudit.actor_user_id`` references a player.
-    """
-    return await _user_repo.get_id_by_auth_user_id(session, user.id)
 
 
 async def _assert_source_correction_allowed(session: Any, encounter_id: int) -> None:

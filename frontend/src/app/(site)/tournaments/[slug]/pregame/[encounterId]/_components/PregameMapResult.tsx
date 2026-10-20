@@ -48,9 +48,14 @@ interface PregameMapResultProps {
    */
   metadata: RoomMetadata;
   /**
-   * The hero session's undo affordance, rendered under the bans it would take
-   * back. Supplied as a node because the consent flow needs the room's query
-   * keys and catalog, neither of which this screen otherwise knows about.
+   * Who starts on which side of this map, when the room picked sides — read
+   * before the lobby is set up, like the bans.
+   */
+  sides?: React.ReactNode;
+  /**
+   * The hero session's undo affordance, rendered under the bans (or the sides)
+   * it would take back. Supplied as a node because the consent flow needs the
+   * room's query keys and catalog, neither of which this screen otherwise knows about.
    */
   heroUndo?: React.ReactNode;
   header: React.ReactNode;
@@ -92,6 +97,7 @@ export function PregameMapResult({
   game,
   heroBoard,
   metadata,
+  sides,
   heroUndo,
   header,
   invalidateKeys,
@@ -116,6 +122,7 @@ export function PregameMapResult({
   const bothFiled = claimOne != null && claimTwo != null;
   const disputed = game?.state === "disputed";
   const accepted = acceptedScore(game, teams);
+  const hasBoard = heroBoard.actions.length > 0 || heroBoard.banned.length > 0;
 
   /** A seat's tile shows its numbers when both claims are in, or when they are the viewer's own. */
   const visibleTo = (seat: EncounterTeam | null) =>
@@ -189,18 +196,21 @@ export function PregameMapResult({
                 captains need it in: the bans belong to the map above (they are
                 set up in its lobby) and are read before there is any result to
                 file below. */}
-            {heroBoard.actions.length > 0 || heroBoard.banned.length > 0 ? (
+            {hasBoard || sides != null ? (
               <div className="flex flex-col gap-3 border-y border-[color:var(--aqt-border)] p-4">
+                {sides != null ? <div className="mx-auto w-full max-w-2xl">{sides}</div> : null}
                 {/* Same width as the claim row below, so the bans and the score
                     they belong to read as one column rather than two widths. */}
-                <div className="mx-auto w-full max-w-2xl">
-                  <PregameCharacterBans
-                    encounterId={encounterId}
-                    metadata={metadata}
-                    board={heroBoard}
-                    teams={teams}
-                  />
-                </div>
+                {hasBoard ? (
+                  <div className="mx-auto w-full max-w-2xl">
+                    <PregameCharacterBans
+                      encounterId={encounterId}
+                      metadata={metadata}
+                      board={heroBoard}
+                      teams={teams}
+                    />
+                  </div>
+                ) : null}
                 {/* Directly under the list it corrects: a wrong ban is noticed
                     HERE, reading the lobby setup, not back in the closed grid. */}
                 {heroUndo != null ? (

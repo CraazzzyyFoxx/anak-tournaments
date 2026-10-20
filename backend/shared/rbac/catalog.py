@@ -169,7 +169,7 @@ def _host_permission_names() -> tuple[str, ...]:
     seeing rosters, standings, etc. like anyone else -- but on top of that gets
     ``custom_game`` create/update/delete so they can actually run one. See
     ``_require_mix`` in ``balancer-service/src/rpc/custom.py``: membership alone
-    no longer opens mixes, this is the grant that does.
+    alone does not open mixes, this is the grant that does.
     """
     extra = (p.name for p in PERMISSION_CATALOG if p.resource == "custom_game")
     return tuple(dict.fromkeys((*_player_permission_names(), *extra)))

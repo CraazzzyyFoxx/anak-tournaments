@@ -1,4 +1,4 @@
-"""Public native catalog reads (P7 §3.2): one discipline's characters, maps or modes, by id or as a page.
+"""Public native catalog reads: one discipline's characters, maps or modes, by id or as a page.
 
 Reuses the admin repository scoping and validation (``services/admin/catalog``) but none of its authorization: the
 catalog is global game content and these reads are public. A row of another discipline or kind is a 404, never an entity

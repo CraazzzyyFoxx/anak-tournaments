@@ -3,13 +3,11 @@
 Both are DATA events: ``encounter:{id}:map-veto`` (kind="map") and
 ``encounter:{id}:pick-ban:hero`` (kind="hero"). Two topics, not one
 parametrized by kind, so the map room's subscribers are never woken by a
-hero-only change and vice versa (design:
-docs/plans/2026-08-09-generic-pickban-engine.md).
+hero-only change and vice versa.
 
 The payload carries no state at all: subscribers refetch the pool on receipt
 (``viewer_side`` and friends are per-viewer, so there is nothing broadcastable
-to fold in). What changed is already said by the topic and the event type,
-which is why the old ``reason: "veto_changed"`` field is gone.
+to fold in). What changed is already said by the topic and the event type.
 
 Nothing here invalidates a cache: a pick-ban write touches only pick-ban tables.
 The one encounter write that does move a tournament-scoped read is a map report
@@ -21,8 +19,8 @@ call this immediately before the commit that owns the pool mutation.
 It also stages that room's RECONCILE (``room_reconcile``). Every write that
 moves a room already signals it here, so this one call site covers captain
 actions, undo, readiness, resets, map reports, corrections and the organizer's
-controls -- and the reconcile is what applies the heals the (now pure) state
-read used to perform. The reconcile's own signal re-enters here once; a pass
+controls -- and the reconcile is what heals the room, since the state read is
+pure. The reconcile's own signal re-enters here once; a pass
 that changes nothing emits nothing, so it converges.
 """
 

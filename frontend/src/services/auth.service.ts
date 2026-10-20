@@ -268,6 +268,17 @@ export const authService = {
     return res.json();
   },
 
+  async login(email: string, password: string, headers?: ForwardedAuthHeaders): Promise<TokenPair> {
+    const res = await apiFetch("/api/v1/auth/login", {
+      method: "POST",
+      headers,
+      body: { email, password },
+      throwOnError: false
+    });
+    if (!res.ok) throw await parseApiError(res);
+    return res.json();
+  },
+
   async refresh(refreshToken: string, headers?: ForwardedAuthHeaders): Promise<TokenPair> {
     const res = await apiFetch("/api/v1/auth/refresh", {
       method: "POST",

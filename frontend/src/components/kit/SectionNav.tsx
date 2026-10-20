@@ -39,9 +39,10 @@ export interface SectionNavProps {
  * The section rail for every T5 settings screen.
  *
  * A settings hub has too many sections for a tab row (tournament settings has
- * eleven), so they become a vertical list of links. Below `md` there is no
- * room for a 200px rail beside a form, so the same list becomes a `Select` —
- * still one URL per section, so a link to "Danger zone" is shareable.
+ * eleven), so they become a vertical list of links. Below `lg` the admin
+ * sidebar and a 200px rail would leave the form a sliver, so the same list
+ * becomes a `Select` — still one URL per section, so a link to "Danger zone"
+ * is shareable.
  */
 export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
   const t = useTranslations("kit.actions");
@@ -57,7 +58,7 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
 
   return (
     <>
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <Select
           value={active?.key ?? ""}
           onValueChange={(key) => {
@@ -83,7 +84,12 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
         </Select>
       </div>
 
-      <nav aria-label={t("settingsSections")} className="hidden w-[200px] shrink-0 md:block">
+      {/* Sticky below the admin top bar (`h-12`), so a long form never scrolls
+          the way out of reach. */}
+      <nav
+        aria-label={t("settingsSections")}
+        className="hidden w-[200px] shrink-0 lg:sticky lg:top-16 lg:block lg:self-start"
+      >
         {visibleGroups.map((group) => (
           <div key={group.label ?? "ungrouped"} className="mb-4 last:mb-0">
             {group.label ? <p className={cn(EYEBROW_CLASS, "mb-1.5 px-2")}>{group.label}</p> : null}

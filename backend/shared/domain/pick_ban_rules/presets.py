@@ -1,4 +1,4 @@
-"""Built-in rulesets the constructor offers as a starting point (§6, §12).
+"""Built-in rulesets the constructor offers as a starting point.
 
 Core owns the :class:`Preset` schema and the game-neutral map presets. A game's own rulesets (the character
 bans that only make sense against its classes) are declared by its module through

@@ -2,7 +2,8 @@
 
 Each module exposes ``register(broker, logger)`` and is wired in ``serve_rpc.py``.
 Handlers decode the gateway request and emit the ``{ok,data,error}`` envelope via
-``src.rpc._common``. Only stats-unique domains live here (match-log, OverFast
-rank, achievement engine + rules admin, catalog sync, settings,
-discord-channel); everything else is owned by app-service / tournament-service.
+``src.rpc._common``. Stats owns match logs, canonical ingest, OverFast rank, the
+achievement engine + rules admin, MVP impact, subscription collection, catalog
+sync, settings and discord channels; everything else is owned by app-service /
+tournament-service.
 """

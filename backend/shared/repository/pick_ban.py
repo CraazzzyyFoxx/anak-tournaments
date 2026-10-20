@@ -127,6 +127,12 @@ class PickBanSessionRepository(BaseRepository[models.PickBanSession]):
     def __init__(self) -> None:
         super().__init__(models.PickBanSession)
 
+    def add(self, session: AsyncSession, row: models.PickBanSession) -> models.PickBanSession:
+        """Stage a new session. No flush: a duplicate ``(encounter, kind)`` must surface
+        at the caller's commit, which treats it as a lost creation race."""
+        session.add(row)
+        return row
+
     async def get_for_encounter(
         self,
         session: AsyncSession,
@@ -185,6 +191,10 @@ class PickBanSessionRepository(BaseRepository[models.PickBanSession]):
 class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
     def __init__(self) -> None:
         super().__init__(models.PickBanEntry)
+
+    def add_many(self, session: AsyncSession, rows: Sequence[models.PickBanEntry]) -> None:
+        """Stage entries. No flush: they ride the same flush as their staged session."""
+        session.add_all(rows)
 
     async def list_by_session(
         self,
@@ -271,6 +281,11 @@ class PickBanSubmissionRepository(BaseRepository[models.PickBanSubmission]):
 
     def __init__(self) -> None:
         super().__init__(models.PickBanSubmission)
+
+    def add(self, session: AsyncSession, row: models.PickBanSubmission) -> models.PickBanSubmission:
+        """Stage one submission. No flush: the caller keeps mutating it until its own flush."""
+        session.add(row)
+        return row
 
     async def list_by_session(
         self,

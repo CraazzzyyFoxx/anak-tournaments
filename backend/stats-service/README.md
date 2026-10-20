@@ -21,8 +21,8 @@ delays an RPC reply and exactly one process family owns the schedules.
 | Compose service | `stats-svc` | `stats-worker` |
 | Entry point | `serve_rpc.py` | `serve_worker.py` |
 | Run command | `faststream run serve_rpc:app` | `faststream run serve_worker:app` |
-| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, the selected disciplines' own jobs (OverFast rank fetch + both registration rank checks) |
-| Schedules | none | rank collection, stall reaper (selected disciplines), failed-log retention, subscription collection |
+| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (OverFast rank fetch + both registration rank checks) |
+| Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, subscription collection, outbox drain |
 | Health | `GET :9100/health` | `GET :9100/health` |
 
 Both share `src/core/lifecycle.py` (broker/cache/realtime/quota wiring, observability, client
@@ -86,16 +86,17 @@ The full method list with request/response schemas is published at `/api/docs`, 
 
 | Queue | Event | Effect |
 | --- | --- | --- |
-| `upload_match_log` | `UploadMatchLogEvent` | Persist the original decoded bytes to a content-addressed S3 key, create/find the native ingest job, enqueue its id |
+| `upload_match_log` | `UploadMatchLogEvent` | Persist the original decoded bytes to a content-addressed S3 key, create/find the native ingest job and commit its ingest request (carrying the upload's `correlation_id`/`channel_id`/`message_id`) in the same transaction |
 | `stats.ingest.<discipline>` | `ProcessIngestJobEvent` | Process one authorized `ingest_job_id` of that discipline (a job of another discipline is rejected to the DLQ untouched); one queue per selected discipline, each on its own channel, prefetch 2 |
 | `stats.ingest.<discipline>.replay` | `ProcessIngestJobEvent` + `reparse_expected_revision` | Revision-fenced reparse of one DONE job asked for by a tournament-wide reprocess; **no message TTL** (a DONE job is not reaper-recoverable), own `.replay.dlq`, one at a time; declared/consumed only by workers selecting the discipline |
-| `process_tournament_logs` | `ProcessTournamentLogsEvent` | Requeue the tournament's actual native jobs and fan out one job-id event each, including imported raw references |
+| `process_tournament_logs` | `ProcessTournamentLogsEvent` | Re-pend the tournament's actual native jobs, each committed with its ingest request in the outbox, including imported raw references |
 | `achievement_evaluate` | `AchievementEvaluateEvent` | Run the achievement engine for a workspace |
 | `achievement_evaluate.deferred` | `AchievementEvaluateEvent` | Resumes a `queued` run an unverified workspace's manual/`rule_version_bump` recompute was parked as; own channel, prefetch 1 |
 | `tournament_encounter_completed` | `EncounterCompletedEvent` | Bound to the `tournament.events` exchange; fills in the encounter's Push/Clash map scores (`match_logs/objectiveless.py`), then enqueues an achievement evaluation |
 | `tournament_registration_approved` | — | Bound to the same exchange; prioritises and enqueues a rank check for the approved player |
 | `tournament_registration_rank_check` | `RegistrationRankCheckRequestedEvent` | Same rank check, asked for by the registrant from their own card |
 | `rank_fetch`, `rank_fetch_priority` | `FetchRankEvent` | One OverFast call per battle tag; shared channel with prefetch `RANK_FETCH_WORKER_PREFETCH` |
+| `discord_member_changed` | `DiscordMemberChangedEvent` | Re-resolves the member's Boosty entitlement in every workspace bound to the guild (`subscription_collection/member_events.py`); own channel, prefetch 2; the scheduled sweep stays the slow reconciliation |
 
 Every one of those queues carries `x-dead-letter-exchange=dlx` and an `x-message-ttl`; the worker
 declares and binds its own DLQs at startup, so an expired or rejected job is visible in
@@ -146,8 +147,12 @@ lists the selected disciplines' ingest queues.
    historical seats count). A unique fitting game is the binding whether or not it already has an
    observation; several fitting games, or none, persist `awaiting_link` with the document, a
    structured explanation and **zero** writes (no virtual identity, anchor, observation or success
-   event). A hint only narrows candidates: a hinted game the participants contradict (or that
-   plays another map) fails with `binding_mismatch`, never a binding.
+   event). Without a hint (and not pinned to a linked game by a reparse) the one fitting game must
+   also hold **every** participant on the line-up of the seat their team maps to; a participant
+   outside it (unknown, rostered after the line-up was taken, another team's member) leaves the
+   document `awaiting_link`. A hint only narrows candidates: a hinted game the participants contradict (or that
+   plays another map) fails with `binding_mismatch`, never a binding. Stage-generated seats carry their
+   team's roster line-up (tournament-service, P8); stage encounters generated before that have none.
 6. **Write atomically.** Final lock order is encounter, game, job, existing `stats.match`; the
    claim token, roster evidence, map and the tournament/stage/round map pool (`map_not_in_pool`)
    are checked again under them. Only then are virtual
@@ -169,7 +174,7 @@ lists the selected disciplines' ingest queues.
    transaction, then mark the matching claim `failed` in a separate fenced transition with a
    structured `{code, message, issues}` error (`error_message` holds that JSON; historical text
    reads as code `historical`), preserving the previous revision. A superseded claim changes
-   nothing. After commit the worker broadcasts the actual state in `MatchLogProcessedEvent` (only
+   nothing. After commit the worker sends the actual state in `MatchLogProcessedEvent` (only
    for jobs somebody waits on: a tournament hint or a correlation id).
 8. **Admin bind and reparse.** `POST /api/v1/admin/logs/{id}/bind` (`rpc.stats.ingest.bind`,
    workspace `log.update`) takes the operator's complete team map
@@ -178,7 +183,12 @@ lists the selected disciplines' ingest queues.
    job's stored document is validated, bound and published by the same writer in **one**
    transaction that also claims the job, so no broker delivery competes and a refusal
    (`stale_revision`, `binding_mismatch`, `identity_conflict`, `invalid_team_map`, `ingest_busy`)
-   leaves the parked job exactly as it was. Retry of a `done` log is refused
+   leaves the parked job exactly as it was. The operator's map is checked against the line-ups
+   (`check_forced_teams`) and, for the participants no line-up places, against the encounter's
+   tournament rosters (`check_roster_owners`): one rostered on another team of the tournament (a
+   reversed map over seats without a line-up, a third team's member) is `binding_mismatch` — the
+   match layer's `extra_member_other_team` rule applied before anything is written (mix encounters
+   skip it). Retry of a `done` log is refused
    (`reparse_required`); `retry` with `reparse=true` and the `expected_revision` the operator saw
    replays it directly with its original team mapping (document keys joined to the match's
    `source_position`): a canonical job reloads its document, a decoded one decodes its raw bytes
@@ -190,17 +200,20 @@ lists the selected disciplines' ingest queues.
    (`match_id`, `revision`, `ingest_job_id`, `is_historical`) or `null`: the authoritative `expected_revision`
    for a bind.
 
-**Correlation.** Discord sets `correlation_id` to the upload event's `event_id`, registers its
-future **before** publishing, and carries the same value through processing and result events
-(including broker correlation metadata). It then consumes the complete result, even if that
-result arrived during publish. `match_log.result` is a fanout so each replica can resolve its own
-registered correlation; filename/tournament are display fields only. Publish failure, timeout
-and cancellation remove the future. A pending or failed job is never inferred from a
+**Result routing.** A Discord upload's `channel_id`/`message_id` (and `correlation_id`) ride the
+job's `ProcessIngestJobEvent` and come back on its `MatchLogProcessedEvent`, published to the
+`match_log_result` work queue; whichever bot replica consumes it reacts on that message, so no
+replica keeps an in-memory waiter. A failure before any job exists answers with the same ids.
+Filename/tournament are display fields only. A pending or failed job is never inferred from a
 latest-by-filename database query.
 
 **Follow-up and recovery.** Successful observation writes enqueue `AchievementEvaluateEvent`
-with `stats.match`, `stats.fact` and `stats.event`; lifecycle commits use `stats.ingest_job`.
-These durable outbox rows and their creation evidence share the writing transaction. The reaper
+with `stats.match`, `stats.fact` and `stats.event`; a job reaching `done`/`failed`/`awaiting_link`
+(and a new upload) uses `stats.ingest_job`. Their `event_id` is
+`achievement:<workspace>:<tournament or 0>:<source>:<key>`, unique per emission (`event_outbox.event_id`
+is UNIQUE). Every transition to `pending` stages its ingest request. These durable outbox rows and
+their creation evidence share the writing transaction; both stats processes drain the outbox every
+second. The reaper
 claims stalled `pending`/`processing` jobs with `FOR UPDATE SKIP LOCKED`; only entering processing
 costs an attempt. Exhausted claims become `failed`. Neither `failed` nor `awaiting_link` is
 automatically retried. Explicit admin retry resets the budget after ownership/hint validation.
@@ -261,6 +274,15 @@ nothing; a LoL ingest reaches `done` and its run only reports that LoL has no co
 Overwatch award, run or event touches the LoL tournament. Analytics is a separate process and is covered by
 `analytics-service/tests/test_discipline_runtime_smoke.py`.
 
+**Verified live for both games (opt-in, `RUN_P8_LIVE_SMOKE=1`, the same stack plus app-service and balancer-service).**
+`test_two_game_live_scenarios.py` runs the Overwatch and LoL ingest lifecycle (concurrent identical uploads → one job;
+changed content or another game's document under the same key → `409 idempotency_conflict`; a new-id correction →
+same match, revision 2, exact native reads), hinted binding by seeded stage line-ups, awaiting-link → admin bind
+(stale and reversed maps refused, the right map `done`), the `logs_official` matrix (disabled, accepted, duplicate,
+late `result_locked`, admin-locked), five single-field diagnostics (`unknown_code`, alias-miss row, no observation)
+and LoL's empty condition registry (`condition-types` 200 `[]`, no LoL award). 10 passed / 1 skipped (the source flag)
+at `8588e360e`; recipe in the P5 release note, section 15.1.
+
 ### Rank synchronisation
 
 Collection is bound to a linked `social_account` (a battlenet account owned by a player), never to a
@@ -283,16 +305,19 @@ global cooldown key set on a 429.
 
 ### Events published
 
-- `match_log.result` (fanout) — `MatchLogProcessedEvent`, consumed by discord-service.
-- `stats.ingest.<discipline>` — the ingest request, staged on the outbox with the job and refanned out by the tournament-wide job, retry and the stall reaper (`stats.ingest.reclaimed` counts reaper outcomes).
-- `achievement_evaluate` — transactionally enqueued for native observations, job lifecycle changes and `EncounterCompletedEvent`.
-- `achievement_evaluate.deferred` — a manual or `rule_version_bump` run for a workspace whose
+- `match_log_result` (work queue) — `MatchLogProcessedEvent` with the upload's `channel_id`/`message_id`, consumed by discord-service.
+- `stats.ingest.<discipline>` — the ingest request, staged on the outbox with the job, and by every transition to `pending` (tournament-wide requeue, retry, the stall reaper; `stats.ingest.reclaimed` counts reaper outcomes).
+- `process_tournament_logs` — through the outbox, with the admin audit row.
+- `achievement_evaluate` — transactionally enqueued for native observations, new uploads, terminal job statuses and `EncounterCompletedEvent`.
+- `achievement_evaluate.deferred` — through the outbox, with the run row: a manual or `rule_version_bump` run for a workspace whose
   `verification_status` is `unverified`: the run row is created `queued` and the message carries its
   id, so the consumer finishes that row instead of opening a second one. `parse_complete` is never
   deferred.
 - `rank_fetch` / `rank_fetch_priority` — from the collection tick, the admin collect RPC and
   registration approval.
 - `discord_commands` — `DiscordCommandEvent` for the on-demand channel-history backfill.
+- `tournament.discord_channel.changed` (`tournament.events`) — `DiscordChannelChangedEvent`, through the outbox, whenever a
+  tournament's match-log channel binding is upserted or deleted.
 - Through the transactional outbox (`public.event_outbox`): achievement evaluation and tournament
   score/cache invalidations; `EncounterCompletedEvent` is emitted when the encounter is already
   completed, without accepting a live-game result on the log's authority.
@@ -348,7 +373,7 @@ No service ships its own migrations — there is one Alembic project at
 - **PostgreSQL** — the shared SQLAlchemy metadata from `backend/shared/`; one database for all
   services.
 - **RabbitMQ** — RPC transport, durable job queues, the tournament event exchange, the match-log
-  result fanout and the DLQs.
+  result queue and the DLQs.
 - **Redis** — scheduler leader locks, rank-collection dedup/rate-limit/cooldown keys, the cashews
   cache for impact baselines, and the realtime publish channel.
 - **S3** — new raw logs at `logs/{tournament_id}/{content_hash}` (imported keys remain unchanged)
@@ -439,7 +464,7 @@ deployment slice: its schedules are Redis leader-locked, so extra replicas are s
   every other consumer shares.
 - **DLQs.** The worker declares `upload_match_log.dlq`, `stats.ingest.<discipline>.dlq` and
   `stats.ingest.<discipline>.replay.dlq` (selected disciplines), `process_tournament_logs.dlq`, `achievement_evaluate.dlq`,
-  `achievement_evaluate.deferred.dlq` and `tournament_encounter_completed.dlq`; the Overwatch module
+  `achievement_evaluate.deferred.dlq`, `tournament_encounter_completed.dlq` and `discord_member_changed.dlq`; the Overwatch module
   declares its own (`rank_fetch.dlq`, `rank_fetch_priority.dlq`, `tournament_registration_approved.dlq`,
   `tournament_registration_rank_check.dlq`) from its `start_jobs` hook. An achievement
   evaluation that raises is rejected without requeue straight into its DLQ.

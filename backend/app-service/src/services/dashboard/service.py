@@ -1,23 +1,32 @@
-import asyncio
-
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import enums
 from shared.services.registration_window import registration_open_clause
 from src import models, schemas
-from src.core.db import async_session_maker
 
 __all__ = ("DashboardService", "dashboard")
 
 
-class DashboardService:
-    """Aggregate dashboard reads: counts, data-quality issues, active-tournament
-    stats, and the fan-out that runs the three of them concurrently."""
+def _tournament_filters(workspace_id: int | None) -> list:
+    # Hidden tournaments never contribute to the public dashboard, regardless of viewer;
+    # every dashboard query is Tournament-scoped, so this exclusion is safe across all.
+    filters: list = [models.Tournament.is_hidden.is_(False)]
+    if workspace_id is not None:
+        filters.append(models.Tournament.workspace_id == workspace_id)
+    return filters
 
-    async def get_dashboard_stats(self, *, discipline: str, workspace_id: int | None = None) -> schemas.DashboardStats:
+
+class DashboardService:
+    """Aggregate dashboard reads: counts, data-quality issues and active-tournament stats."""
+
+    async def get_dashboard_stats(
+        self, session: AsyncSession, *, discipline: str, workspace_id: int | None = None
+    ) -> schemas.DashboardStats:
         """Workspace-wide tournament counts plus ``discipline``'s catalog sizes."""
-        counts, issues, active_stats = await self._gather(workspace_id, discipline)
+        counts = await self.get_counts(session, workspace_id, discipline=discipline)
+        issues = await self.get_issues(session, workspace_id)
+        active_stats = await self.get_active_tournament_stats(session, workspace_id)
 
         active_tournament_stats = None
         if active_stats is not None:
@@ -29,24 +38,6 @@ class DashboardService:
             issues=schemas.DashboardIssues(**issues),
         )
 
-    async def _gather(self, workspace_id: int | None, discipline: str) -> tuple[dict, dict, dict | None]:
-        # AsyncSession isn't concurrency-safe for parallel .execute() — spawn
-        # independent sessions so the three independent dashboard queries
-        # actually run in parallel.
-        async def _run_counts() -> dict:
-            async with async_session_maker() as s:
-                return await self.get_counts(s, workspace_id, discipline=discipline)
-
-        async def _run_issues() -> dict:
-            async with async_session_maker() as s:
-                return await self.get_issues(s, workspace_id)
-
-        async def _run_active_stats() -> dict | None:
-            async with async_session_maker() as s:
-                return await self.get_active_tournament_stats(s, workspace_id)
-
-        return await asyncio.gather(_run_counts(), _run_issues(), _run_active_stats())
-
     async def get_counts(
         self,
         session: AsyncSession,
@@ -54,12 +45,7 @@ class DashboardService:
         *,
         discipline: str,
     ) -> dict[str, int]:
-        # Hidden tournaments (issue #115) never contribute to the public dashboard —
-        # counts, issues, or the active-tournament pick — regardless of viewer. Every
-        # query below is Tournament-scoped, so this exclusion is safe across all.
-        ws_filters: list = [models.Tournament.is_hidden.is_(False)]
-        if workspace_id is not None:
-            ws_filters.append(models.Tournament.workspace_id == workspace_id)
+        ws_filters = _tournament_filters(workspace_id)
 
         tournaments_total = sa.select(sa.func.count(models.Tournament.id)).where(*ws_filters)
         tournaments_active = sa.select(sa.func.count(models.Tournament.id)).where(
@@ -89,9 +75,8 @@ class DashboardService:
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             .where(models.Encounter.status == enums.EncounterStatus.COMPLETED, *ws_filters)
         )
-        # "Is anyone able to sign up right now" — now answered by the REGISTRATION
-        # schedule window rather than a form boolean. The join to the form row stays:
-        # a tournament with no registration form cannot be signed up for at all.
+        # Open = inside the REGISTRATION schedule window. The join to the form row
+        # stays: a tournament with no registration form cannot be signed up for at all.
         tournaments_registration_open = (
             sa.select(sa.func.count(models.Tournament.id))
             .join(
@@ -139,12 +124,7 @@ class DashboardService:
         session: AsyncSession,
         workspace_id: int | None = None,
     ) -> dict[str, int]:
-        # Hidden tournaments (issue #115) never contribute to the public dashboard —
-        # counts, issues, or the active-tournament pick — regardless of viewer. Every
-        # query below is Tournament-scoped, so this exclusion is safe across all.
-        ws_filters: list = [models.Tournament.is_hidden.is_(False)]
-        if workspace_id is not None:
-            ws_filters.append(models.Tournament.workspace_id == workspace_id)
+        ws_filters = _tournament_filters(workspace_id)
 
         encounters_missing_logs = (
             sa.select(sa.func.count(models.Encounter.id))
@@ -157,7 +137,6 @@ class DashboardService:
         # Anti-joins use correlated NOT EXISTS instead of NOT IN (subquery):
         # better plans (anti-join) and NULL-safe semantics.
 
-        # Teams that have zero players
         teams_without_players_q = (
             sa.select(sa.func.count(models.Team.id))
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
@@ -167,7 +146,6 @@ class DashboardService:
             )
         )
 
-        # Tournaments that have zero stages
         tournaments_without_stages_q = sa.select(sa.func.count(models.Tournament.id)).where(
             ~sa.exists().where(models.Stage.tournament_id == models.Tournament.id),
             *ws_filters,
@@ -214,9 +192,9 @@ class DashboardService:
         # Player identities are platform-wide, so unlike every count above there is
         # no Tournament to hang ``ws_filters`` on: the workspace is reached through
         # ``workspace_member``, the same hop the Player-identities list uses
-        # (``services.admin.user.get_users``). Without it a workspace owner — who
-        # now sees this card — would be handed the platform-wide number and land on
-        # a page listing only their own roster.
+        # (``services.admin.user.get_users``). Without it a workspace owner would be
+        # handed the platform-wide number and land on a page listing only their own
+        # roster.
         users_without_identities_q = sa.select(sa.func.count(models.User.id)).where(
             ~sa.exists().where(models.SocialAccount.user_id == models.User.id)
         )
@@ -254,12 +232,7 @@ class DashboardService:
         session: AsyncSession,
         workspace_id: int | None = None,
     ) -> dict | None:
-        # Hidden tournaments (issue #115) never contribute to the public dashboard —
-        # counts, issues, or the active-tournament pick — regardless of viewer. Every
-        # query below is Tournament-scoped, so this exclusion is safe across all.
-        ws_filters: list = [models.Tournament.is_hidden.is_(False)]
-        if workspace_id is not None:
-            ws_filters.append(models.Tournament.workspace_id == workspace_id)
+        ws_filters = _tournament_filters(workspace_id)
 
         # Most recent live tournament + its encounter counts in one round trip.
         # An empty CTE (no live tournament) yields zero rows → None.

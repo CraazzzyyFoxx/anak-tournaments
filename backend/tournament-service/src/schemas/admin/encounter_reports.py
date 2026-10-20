@@ -1,13 +1,8 @@
 """Read models for captain reports and the admin reports list.
 
-``serialize_captain_report`` used to hand-roll a dict, so the public
-``GET /api/v1/encounters/{id}/reports`` had no response schema in the OpenAPI
-manifest and documented as a generic object. One definition now serves both that
-route and the admin list, which keeps the two from drifting.
-
-The payload shape is unchanged from the hand-rolled dict — the frontend's
-``CaptainReport`` type consumes it directly — except for the additive
-``reporter_name``.
+One definition serves both the public ``GET /api/v1/encounters/{id}/reports``
+and the admin list, so the two cannot drift; the frontend's ``CaptainReport``
+type consumes it directly.
 """
 
 from __future__ import annotations

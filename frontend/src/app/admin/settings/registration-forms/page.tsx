@@ -16,7 +16,7 @@ import {
 import { registrationFormTemplatesKey } from "@/components/balancer/form/_components/TemplateMenu";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { MasterDetail } from "@/components/kit/MasterDetail";
+import { MasterDetail, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Button } from "@/components/ui/button";
 import {
@@ -257,11 +257,12 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
+
       <MasterDetail
         list={
           <div className="flex flex-col gap-2">
             {listQuery.isLoading ? (
-              <Skeleton className="h-40 w-full rounded-md" />
+              <MasterListSkeleton />
             ) : templates.length > 0 ? (
               <nav aria-label={t("listLabel")} className="rounded-xl border border-border bg-card p-2">
                 <ul className="flex flex-col gap-0.5">
@@ -335,24 +336,30 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
         }
         detail={
           selected && schema ? (
-            <section className="space-y-4">
+            <section aria-labelledby="registration-template-title" className="space-y-4">
               <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1 text-base font-semibold">
-                  <InlineEditText
-                    value={selected.name}
-                    label={t("templateName")}
-                    canEdit={canEdit}
-                    onSave={(name) =>
-                      saveMutation.mutateAsync({
-                        id: selected.id,
-                        name,
-                        // Renaming must not publish the schema being edited
-                        // below it: a rename sends what is SAVED.
-                        form_schema: selected.form_schema
-                      })
-                    }
-                  />
-                </div>
+                {/* The heading names the template; the editable text beside it
+                    is the control, so the heading's name stays the bare name
+                    rather than "name, Edit template name". */}
+                <h2 id="registration-template-title" className="sr-only">
+                  {selected.name}
+                </h2>
+                <InlineEditText
+                  className="flex-1"
+                  textClassName="text-ui font-semibold text-foreground"
+                  value={selected.name}
+                  label={t("templateName")}
+                  canEdit={canEdit}
+                  onSave={(name) =>
+                    saveMutation.mutateAsync({
+                      id: selected.id,
+                      name,
+                      // Renaming must not publish the schema being edited
+                      // below it: a rename sends what is SAVED.
+                      form_schema: selected.form_schema
+                    })
+                  }
+                />
                 {canEdit && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -399,7 +406,12 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
           ) : null
         }
         emptyDetail={
-          listQuery.isLoading || allTemplatesQuery.isLoading ? null : (
+          listQuery.isLoading || allTemplatesQuery.isLoading ? (
+            <div aria-hidden className="space-y-4">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          ) : (
             <PageStateCard
               state="empty"
               title={templates.length === 0 ? t("emptyTitle") : t("pickTitle")}

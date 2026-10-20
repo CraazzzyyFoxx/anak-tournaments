@@ -273,14 +273,7 @@ class _HasDbSettings(Protocol):
 
 
 def create_database_from_settings(settings: _HasDbSettings) -> DatabaseEngines:
-    """``create_database`` reading its nine pool knobs off a service's settings.
-
-    Every service's ``src/core/db.py`` called ``create_database(...)`` with the
-    same nine ``config.settings.db_*`` keyword arguments, copy-pasted
-    byte-for-byte across all eight services. This is the single source of
-    truth for that wiring; each service's ``core/db.py`` now just calls this
-    and re-exports the resulting engine/session-maker.
-    """
+    """``create_database`` reading its nine pool knobs off a service's settings."""
     return create_database(
         async_url=settings.db_url_asyncpg,
         pool_size=settings.db_pool_size,

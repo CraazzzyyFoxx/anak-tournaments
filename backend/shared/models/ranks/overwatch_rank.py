@@ -41,11 +41,9 @@ class UserRankSnapshot(db.Base):
     compatible with the existing DivisionGrid/balancer scale. Attached to the
     domain ``players.user`` -- never to ``auth.user``.
 
-    ``db.Base`` rather than ``TimeStampIntegerMixin`` (migration ``ranktrim01``):
-    the mixin's ``created_at`` duplicated ``captured_at`` while ``updated_at``
-    was NULL on every row of an append-only series. The raw OverFast role object
-    that used to ride along as ``raw_payload`` is gone for the same reason:
-    nothing ever read it.
+    ``db.Base`` rather than ``TimeStampIntegerMixin``: the mixin's ``created_at``
+    would duplicate ``captured_at`` while ``updated_at`` stays NULL on every row
+    of an append-only series.
     """
 
     __tablename__ = "rank_snapshot"

@@ -4,8 +4,8 @@ The tournament domain: the lifecycle of a tournament from registration through c
 generation, played encounters and final standings. It exists as its own process because it is the
 only writer of the tournament tree and because it carries the system's long-running compute — bracket
 and standings recomputation — which must not share a scheduling budget with the hot read paths in
-`app-svc`. It also hosts the single transactional-outbox sweeper for the whole backend (see
-[Operational notes](#operational-notes)).
+`app-svc`. Like every service that writes outbox rows, it runs the shared outbox drain (see
+[The transactional outbox](#the-transactional-outbox)).
 
 It is a headless FastStream worker on RabbitMQ. It serves no HTTP and listens on no API port; every
 request arrives as request/reply RPC published by the Go gateway on a `rpc.tournament.*` subject with
@@ -49,7 +49,6 @@ layering.
   and marketplace import jobs.
 - **Scrim rooms.** Ad-hoc rooms provisioned outside the tournament tree, then played through the same
   pre-game subjects.
-- **Transactional outbox sweeper.** The backend's only `event_outbox` drain.
 
 ## Interface
 
@@ -93,8 +92,9 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `tournament_standings_jobs` | `tournament.compute` | Standings computation job |
 | `division_grid_import_jobs` | `tournament.compute` | Marketplace grid import job |
 | `tournament_changed_tournament_service` | `tournament.changed` | Cache invalidation + realtime fan-out (5 min message TTL) |
-| `tournament_standings_invalidated` | `tournament.events` | Enqueues a standings recomputation |
+| `tournament_standings_invalidated` | `tournament.events` | `stats-service`'s door into the standings path (a parsed log landed): requests the same coalesced standings job an in-service write requests |
 | `match.ingested.tournament` | `match.ingested` | Ingest evidence from `stats-service`: the match layer decides (`logs_official`, owner policy) and journals one `match_ingested` receipt (10 min TTL, own DLQ) |
+| `tournament_challonge_push` | `tournament.events` | A confirmed result to push to Challonge; skipped when the encounter's `result_version` moved on or the link is gone, requeued on a transport error, Challonge 429/5xx or a transient database error, dead-lettered otherwise (own channel, `prefetch_count=2`) |
 
 The three compute queues run on a dedicated AMQP channel with `prefetch_count=4`, so a burst of
 recomputes cannot occupy the RPC channel's QoS slots. Each has a dead-letter queue, declared on
@@ -107,12 +107,22 @@ All of these go through the outbox, never directly from the request transaction:
 | Routing key | Exchange | Emitted when |
 | --- | --- | --- |
 | `tournament.changed.{tournament_id}` | `tournament.changed` | Any structure / results / registration change |
-| `tournament.state.changed` | `tournament.events` | Status transition (manual or automatic) |
+| `tournament.state.changed` | `tournament.events` | Status transition (manual or automatic); consumed by `analytics-worker`, which creates the compute job of a `completed` tournament |
 | `tournament.registration.approved` | `tournament.events` | Registration approved |
-| `tournament.registration.rejected` | `tournament.events` | Registration rejected |
 | `tournament.registration.rank_check_requested` | `tournament.events` | Registrant asked to re-check their profile |
 | `tournament.encounter.completed` | `tournament.events` | Encounter result confirmed |
+| `tournament.encounter.challonge_push_requested` | `tournament.events` | A write left a Challonge-linked encounter confirmed (every confirm path, corrections included); one per `result_version`, consumed by this service's `tournament_challonge_push` |
 | `tournament.compute.division-grid-import` | `tournament.compute` | Grid import job dispatched |
+
+A rejected registration publishes no domain event: nothing consumed one. The registrant's
+`registration.rejected` notification and the realtime invalidation still go out.
+
+Standings have one path: `jobs_service.request_standings_recalculation` creates the job row and its
+`tournament.compute.standings` outbox row in the transaction of whatever moved the inputs — a result
+write, a structure edit, a finished bracket job, an organizer's recompute — coalesced per tournament
+(`idempotency_key` plus a generation counter, and one request per transaction). Nothing in this
+service publishes `tournament.standings.invalidated`; it is only the cross-service door into that
+same call.
 
 Encounter-completed and recalculation events are suppressed for scrim containers: a scrim has no
 stage items, seeds or rosters, and recalculating one invents standings rows for its rosterless teams.
@@ -232,27 +242,27 @@ later by a separate sweeper. This is the standard remedy for the dual-write prob
 the broker from inside a request would either emit an event for a transaction that then rolls back,
 or commit a change whose event was lost to a broker hiccup. With the outbox, the event and the change
 commit or fail together, and the guarantee is **at-least-once delivery of exactly the events whose
-transactions committed**. Consumers must therefore be idempotent — the `x-event-id` header carries the
-event id for deduplication.
+transactions committed**. Consumers must therefore be idempotent, through their own state (a job
+row's status, a version fence, a cache key that is simply dropped again): no consumer dedupes on the
+`x-event-id` header.
 
-The sweeper (`drain_outbox` in `serve.py`) runs every second and:
+The drain (`shared.messaging.outbox.drain_outbox`, scheduled every second by `serve.py` and by every
+other service that writes outbox rows) is one tick of the relay:
 
 1. Selects up to 100 rows in `pending` or `failed` state whose `next_attempt_at` has passed, ordered
-   by `created_at`, with `FOR UPDATE SKIP LOCKED`. The skip-locked clause is what makes the sweeper
-   safe to run in more than one replica: two sweepers never claim the same row, and neither blocks on
-   the other.
-2. Publishes each row persistently, then marks it `published` and commits **per row** — so a crash
-   mid-batch loses at most a re-publish, never a whole batch.
+   by `created_at`, with `FOR UPDATE SKIP LOCKED`. The skip-locked clause is what makes concurrent
+   drains safe: every replica of every producing service runs one, two drains never claim the same
+   row, and neither blocks on the other.
+2. Publishes each row persistently and marks it `published`, then commits the whole batch once. The
+   batch stays locked until that commit, so no other drain can take a row this one already published;
+   a crash between a publish and the commit replays the batch.
 3. On a publish failure, marks the row `failed`, increments `attempts`, records `last_error` and sets
    `next_attempt_at` to now plus an exponential backoff of `2^(attempts-1)` seconds, capped at 300 s.
    Failed rows are retried forever; there is no poison-message limit.
 
-**Why it lives here.** `event_outbox` is a single global table with no per-service partition, and
-`tournament-svc` runs the only sweeper in the backend. Producers elsewhere — `stats-service`'s match
-log flows, and the shared encounter/computation event helpers used by several services — write rows
-that this worker drains. That makes the tournament worker a hard dependency for cross-service event
-delivery: while it is down, outbox rows accumulate and *no* service's domain events are published.
-They are not lost — the sweeper catches up on the next tick — but they are delayed.
+**No single drain.** `event_outbox` is one global table with no per-service partition, and any drain
+publishes any row. Since every producing service runs the drain, `tournament-svc` is no longer a hard
+dependency for other services' events: while it is down, the other drains keep publishing.
 
 ## Role ontology and team formats
 
@@ -402,18 +412,19 @@ subscriber readiness. No profile: the service starts with the default stack. Res
 
 ## Operational notes
 
-- **Scaling is safe but untested.** The two pieces of shared mutable state — the outbox sweeper and
+- **Scaling is safe but untested.** The two pieces of shared mutable state — the outbox drain and
   the auto-transition tick — both claim rows `FOR UPDATE SKIP LOCKED`, so a second replica cannot
   double-publish or double-transition. The APScheduler jobs are not leader-locked, though: every
   replica runs every job, and the locking makes that correct rather than free.
 - **Shutdown abandons in-flight scheduled jobs** (`scheduler.shutdown(wait=False)`). This is
-  deliberate and safe: the outbox drain commits per row and the sync flows commit incrementally and
-  are idempotent, so an interrupted job resumes on the next tick instead of blocking shutdown for
-  minutes.
-- **Dead-letter queues** exist for all three compute queues and are declared at startup. There is no
-  automatic DLQ replay; stuck jobs need manual inspection.
+  deliberate and safe: an abandoned outbox batch rolls back and is republished on the next tick
+  (at-least-once, as always), and the sync flows commit incrementally and are idempotent, so an
+  interrupted job resumes on the next tick instead of blocking shutdown for minutes.
+- **Dead-letter queues** exist for every consumed queue and are declared at startup. There is no
+  automatic DLQ replay; stuck jobs and dead-lettered Challonge pushes need manual inspection (the
+  organizer's manual "push result" re-sends one).
 - **Outbox retries are unbounded.** A permanently unroutable event retries every 300 s forever and
-  keeps its row in the sweeper's working set. Watch `Outbox publish failed` warnings.
+  keeps its row in the drain's working set. Watch `Outbox publish failed` warnings.
 - **Stale import-job recovery** runs at startup and every 5 minutes, so a restart mid-import does not
   strand a marketplace grid import.
 - **Cache invalidation is fire-and-forget** after commit, on background tasks anchored in a module

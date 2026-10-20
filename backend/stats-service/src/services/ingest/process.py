@@ -22,6 +22,7 @@ import asyncio
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
@@ -36,7 +37,8 @@ from shared.models import AuthUser
 from shared.repository.catalog import CatalogAliasMissRepository
 from shared.repository.stats import IngestJobRepository, StatsMatchRepository
 from shared.schemas.match_doc import IngestIssue, MatchDoc, MatchHint, MatchSource
-from shared.services.decode_context import load_decode_context
+from shared.services.audit import record_admin_audit
+from src import schemas
 from src.core.config import settings
 from src.schemas.ingest import BindIngestRequest, GameObservationRead, IngestJobRead
 from src.services.ingest.binding import (
@@ -47,10 +49,12 @@ from src.services.ingest.binding import (
     bound_participants,
     check_forced_teams,
     check_map_pool,
+    check_roster_owners,
     find_binding,
     load_game_seats,
     match_teams,
 )
+from src.services.ingest.decode_context import load_decode_context
 from src.services.ingest.identity import IdentityConflict, lookup_identities, resolve_identities
 from src.services.ingest.jobs import (
     SEMANTIC_CODES,
@@ -69,12 +73,20 @@ from src.services.ingest.jobs import (
 )
 from src.services.ingest.validation import DocumentRejected, ValidatedDocument, validate_document
 from src.services.ingest.writer import ClaimSuperseded, StaleTarget, lock_owners, write_observations
+from src.services.match_logs.admin_reads import record_read
 from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.limits import match_log_oversize_message
 from src.services.match_logs.log_records import compute_content_hash, log_records_service, reparse_observation
 from src.services.match_logs.objectiveless import load_producers
 
-__all__ = ("bind_ingest_job", "game_observation", "process_ingest_job", "reparse_authorized_job", "reparse_ingest_job")
+__all__ = (
+    "bind_ingest_job",
+    "game_observation",
+    "process_ingest_job",
+    "reparse_authorized_job",
+    "reparse_ingest_job",
+    "retry_log",
+)
 
 _jobs = IngestJobRepository()
 _matches = StatsMatchRepository()
@@ -528,6 +540,9 @@ async def _run_admin(
         if game.map_id != validated.map_id:
             raise BindingMismatch("the target game is played on another map than the document's")
         check_forced_teams(validated.doc, known, game, admin.teams)
+        await check_roster_owners(
+            session, workspace_id=job.workspace_id, doc=validated.doc, known=known, game=game, teams=admin.teams
+        )
         binding = bound_match(job.workspace_id, job.discipline, game, admin.teams)
         producers = await load_producers(session, s3, game.encounter_id)
         await _publish(
@@ -555,10 +570,30 @@ async def _run_admin(
 
 
 async def bind_ingest_job(
-    session: AsyncSession, *, job_id: int, request: BindIngestRequest, user: AuthUser, s3: S3Client
+    session: AsyncSession,
+    *,
+    job_id: int,
+    request: BindIngestRequest,
+    user: AuthUser,
+    s3: S3Client,
+    data: dict[str, Any] | None = None,
 ) -> IngestJobRead:
-    """Bind an ``awaiting_link``/``failed`` job to the operator's game and team map and publish it, atomically."""
+    """Bind an ``awaiting_link``/``failed`` job to the operator's game and team map and publish it, atomically.
+
+    ``data`` is the operator's request: when given, the bind is audited in the same transaction.
+    """
     job = await _load_job(session, job_id, user)
+    if data is not None:
+        await record_admin_audit(
+            session,
+            action="match_log.bind",
+            actor=user,
+            data=data,
+            workspace_id=job.workspace_id,
+            entity_type="match_log",
+            entity_id=job_id,
+            after={"encounter_game_id": request.encounter_game_id, "expected_revision": request.expected_revision},
+        )
     if job.status != Status.AWAITING_LINK and job.status != Status.FAILED:
         _check_admin(_Admin("bind", None, {}), job, None)
     try:
@@ -603,6 +638,51 @@ async def reparse_ingest_job(
     """
     job = await _load_job(session, job_id, user)
     return await _reparse(session, job, expected_revision, s3)
+
+
+async def retry_log(
+    session: AsyncSession,
+    *,
+    job_id: int,
+    workspace_id: int,
+    request: schemas.LogRetryRequest,
+    user: AuthUser,
+    data: dict[str, Any],
+    s3: S3Client,
+) -> schemas.LogRecordRead:
+    """Re-pend a log (optionally re-attaching it), or with ``reparse`` replay a done one under the revision the operator
+    saw; either way audited, and answered with the record as the history lists it."""
+    if request.reparse:
+        if request.expected_revision is None or request.expected_revision < 1:
+            raise BaseAPIException(status_code=422, detail="reparse requires expected_revision (the revision seen)")
+        if request.encounter_id is not None or request.encounter_game_id is not None:
+            raise BaseAPIException(status_code=422, detail="reparse cannot re-attach a log")
+        after = {"expected_revision": request.expected_revision}
+    elif request.expected_revision is not None:
+        raise BaseAPIException(status_code=422, detail="expected_revision is only valid with reparse")
+    else:
+        after = {"attached_encounter_id": request.encounter_id} if request.encounter_id is not None else None
+    await record_admin_audit(
+        session,
+        action="match_log.reparse" if request.reparse else "match_log.retry",
+        actor=user,
+        data=data,
+        workspace_id=workspace_id,
+        entity_type="match_log",
+        entity_id=job_id,
+        after=after,
+    )
+    if request.reparse:
+        await reparse_ingest_job(session, job_id=job_id, expected_revision=request.expected_revision, user=user, s3=s3)
+    else:
+        await log_records_service.retry(
+            session,
+            job_id,
+            workspace_id=workspace_id,
+            encounter_id=request.encounter_id,
+            encounter_game_id=request.encounter_game_id,
+        )
+    return await record_read(session, job_id)
 
 
 async def reparse_authorized_job(

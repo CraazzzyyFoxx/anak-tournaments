@@ -3,10 +3,6 @@
 Auth-account scoped, not player scoped: a favorite is keyed by the caller's own
 ``auth_user_id``, so it needs no player of the caller's own to exist and survives
 that player being re-linked or merged.
-
-This lived inline in ``rpc/users_admin.py`` with its own ``session.add`` /
-``session.delete`` / ``session.commit``; the transport now decodes the request and
-calls one method.
 """
 
 from __future__ import annotations

@@ -16,10 +16,10 @@ TREND_SHIFT_CLAMP = 3.5
 # this tournament. On balancer-formed rosters (≈equal by rank) a team that wins
 # more than expected means its players were under-rated → they deserve to move
 # up; W/L deviation is therefore a direct, low-variance mis-rating signal, not
-# "luck of the draw". Prod analysis confirms team W/L is by far the strongest
-# predictor of realised division moves (Spearman ≈0.38), and individual impact
-# adds ~0 on top of it. ``fit_raw_signal_weights`` can recalibrate; kept summing
-# to 1 so ``STABLE_SHIFT_SCALE`` keeps its meaning.
+# "luck of the draw". Team W/L is by far the strongest predictor of realised
+# division moves, and individual impact adds ~0 on top of it.
+# ``fit_raw_signal_weights`` can recalibrate; kept summing to 1 so
+# ``STABLE_SHIFT_SCALE`` keeps its meaning.
 RAW_SIGNAL_WEIGHTS: Mapping[str, float] = {
     "map_diff": 0.6,
     "placement_score": 0.4,

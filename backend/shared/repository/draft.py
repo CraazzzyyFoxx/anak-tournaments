@@ -11,10 +11,7 @@ from shared import models
 from shared.core.enums import DraftPickStatus, DraftStatus
 from shared.repository.base import BaseRepository
 
-# One active draft per tournament: SETUP/READY/LIVE/PAUSED. Single source of
-# truth for a tuple that used to be duplicated byte-for-byte in
-# balancer-service's ``services/draft/lifecycle.py`` (``_ACTIVE_STATUSES``) and
-# ``services/draft/board.py`` (``_ACTIVE``).
+# One active draft per tournament: SETUP/READY/LIVE/PAUSED.
 ACTIVE_DRAFT_STATUSES = (
     DraftStatus.SETUP.value,
     DraftStatus.READY.value,
@@ -77,6 +74,23 @@ class DraftSessionRepository(BaseRepository[models.DraftSession]):
 
     async def get_workspace_id(self, session: AsyncSession, id: int) -> int | None:
         return await session.scalar(sa.select(self.model.workspace_id).where(self.model.id == id))
+
+    async def seed_row_counts(self, session: AsyncSession, session_id: int) -> tuple[int, int, int]:
+        """``(teams, players, picks)`` row counts of a session, as three scalar subqueries in one round trip."""
+        row = (
+            await session.execute(
+                sa.select(
+                    *(
+                        sa.select(sa.func.count())
+                        .select_from(model)
+                        .where(model.session_id == session_id)
+                        .scalar_subquery()
+                        for model in (models.DraftTeam, models.DraftPlayer, models.DraftPick)
+                    )
+                )
+            )
+        ).one()
+        return int(row[0] or 0), int(row[1] or 0), int(row[2] or 0)
 
 
 class DraftTeamRepository(BaseRepository[models.DraftTeam]):
@@ -263,6 +277,33 @@ class DraftPickRepository(BaseRepository[models.DraftPick]):
             .join(self.model, self.model.session_id == models.DraftSession.id)
             .where(self.model.id == id)
         )
+
+    async def last_resolved(self, session: AsyncSession, session_id: int) -> models.DraftPick | None:
+        """The most recent pick that resolved: completed, autopicked or skipped."""
+        return await session.scalar(
+            self.select()
+            .where(
+                self.model.session_id == session_id,
+                self.model.status.in_(
+                    [
+                        DraftPickStatus.COMPLETED.value,
+                        DraftPickStatus.AUTOPICKED.value,
+                        DraftPickStatus.SKIPPED.value,
+                    ]
+                ),
+            )
+            .order_by(self.model.overall_no.desc())
+            .limit(1)
+        )
+
+    async def list_from(self, session: AsyncSession, session_id: int, overall_no: int) -> Sequence[models.DraftPick]:
+        """Picks at ``overall_no`` and after, in pick order."""
+        result = await session.scalars(
+            self.select()
+            .where(self.model.session_id == session_id, self.model.overall_no >= overall_no)
+            .order_by(self.model.overall_no.asc())
+        )
+        return result.all()
 
 
 class DraftAuditEventRepository(BaseRepository[models.DraftAuditEvent]):

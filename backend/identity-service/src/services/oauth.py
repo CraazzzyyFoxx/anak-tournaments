@@ -60,6 +60,11 @@ from src.services.oauth_providers import OAuthProviderRegistry, has_manage_guild
 from src.services.oauth_state import OAuthStateCodec, StatePayload, oauth_state
 from src.services.tickets import LINK_TICKETS, SSO_TICKETS, TicketStore, guard_digest
 
+# Every state/binding failure answers with the same text, so the response never
+# tells an attacker which check failed.
+_INVALID_STATE = "Invalid or expired OAuth state"
+_INVALID_LINK_TICKET = "Invalid or expired link ticket"
+
 
 def _discord_guild_icon_url(guild_id: object, icon: object) -> str | None:
     """CDN URL for a guild icon hash from ``GET /users/@me/guilds``.
@@ -105,13 +110,8 @@ class OAuthFlowService:
         self.sso_tickets = sso_tickets
         self.link_tickets = link_tickets
         self.config = config
-        # The nonce key never outlives the state that carried it, so the TTL
-        # mirrors the state's own expiry window.
-        self.state_nonces = RedisStore(
-            "oauth:state-nonce:",
-            ttl=max(config.OAUTH_STATE_EXPIRE_MINUTES, 1) * 60,
-            purpose="OAuth state nonce",
-        )
+        # The nonce key never outlives the state that carried it.
+        self.state_nonces = RedisStore("oauth:state-nonce:", ttl=state.ttl_seconds, purpose="OAuth state nonce")
 
     def list_providers(self) -> list[schemas.OAuthProviderAvailability]:
         return [schemas.OAuthProviderAvailability(provider=p) for p in self.providers.available()]
@@ -119,7 +119,9 @@ class OAuthFlowService:
     def authorization_url(
         self, provider: str, *, origin: str, redirect: str, action: str, csrf: str, guard_hash: str | None = None
     ) -> schemas.OAuthURL:
-        """``guard_hash`` is OPTIONAL: only the frontend's custom-domain apex
+        """Sign a ``state`` for the flow and return ``provider``'s authorization URL.
+
+        ``guard_hash`` is OPTIONAL: only the frontend's custom-domain apex
         bounce supplies one (``H = sha256_hex(G)`` of its host-only
         ``owt_xdomain_guard`` cookie). It is signed into the state verbatim —
         already a hash — and becomes the ``lg`` of any cross-domain ticket the
@@ -173,8 +175,7 @@ class OAuthFlowService:
         # it's a different registrable domain. Hand it a one-time ticket
         # instead of the raw tokens; the custom domain's own frontend route
         # redeems it via rpc.identity.sso_exchange and sets host-only cookies.
-        origin_host = urlparse(payload.origin).hostname
-        if origin_host and not is_platform_host(origin_host):
+        if self._is_custom_domain(payload):
             guard_hash = self._require_guard_hash_for_ticket(payload)
             ticket = await self.sso_tickets.issue(
                 {
@@ -212,8 +213,7 @@ class OAuthFlowService:
         """Attach a provider identity to a site account.
 
         State HMAC + csrf binding + nonce single-use are verified FIRST and are
-        completely unaffected by ``user`` or the branch below (SECURITY
-        INVARIANT #5).
+        completely unaffected by ``user`` or the branch below.
 
         ``user`` is the LIVE apex/``.owt``-subdomain session the RPC layer
         resolved from a bearer access token, if one was presented — it may be
@@ -228,11 +228,10 @@ class OAuthFlowService:
         - a workspace custom domain: this response IS the fixed apex callback,
           which never shares a cookie with that domain, so ``user`` — even if
           present — is NOT the custom domain's live session and must never be
-          linked here (SECURITY INVARIANT #1). Mint a single-use ticket
-          carrying ONLY the just-exchanged PROVIDER identity (SECURITY
-          INVARIANT #2); the custom domain's own frontend route resolves the
-          linked-to account later, from ITS OWN live session
-          (:meth:`link_complete`).
+          linked here. Mint a single-use ticket carrying ONLY the just-exchanged
+          PROVIDER identity, never a site user id; the custom domain's own
+          frontend route resolves the linked-to account later, from ITS OWN live
+          session (:meth:`link_complete`).
         """
         payload = self._verify_state_for(provider, state, expected_action="link")
         self._verify_csrf_binding(payload, csrf)
@@ -242,8 +241,7 @@ class OAuthFlowService:
         token_data = await provider_impl.exchange_code(code)
         oauth_user_info = await provider_impl.get_user_info(token_data["access_token"])
 
-        origin_host = urlparse(payload.origin).hostname
-        if origin_host and not is_platform_host(origin_host):
+        if self._is_custom_domain(payload):
             guard_hash = self._require_guard_hash_for_ticket(payload)
             ticket = await self.link_tickets.issue(
                 {"oauth_info": oauth_user_info.model_dump(mode="json"), "token_data": token_data},
@@ -299,8 +297,7 @@ class OAuthFlowService:
         THIS call — the live session on whichever host this method was invoked
         for (the custom domain's own frontend route, never the apex). That
         bearer user IS the linked-to account; nothing here reads an account
-        identifier out of the ticket, because the ticket never carries one
-        (SECURITY INVARIANTS #1, #2, #4).
+        identifier out of the ticket, because the ticket never carries one.
 
         ``guard`` must additionally match the ticket's binding, fail closed,
         EVEN THOUGH the caller already presented a valid bearer: without it a
@@ -310,15 +307,13 @@ class OAuthFlowService:
         """
         payload = await self.link_tickets.redeem(ticket, guard)
         if payload is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired link ticket")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_LINK_TICKET)
 
         try:
             oauth_user_info = schemas.OAuthUserInfo.model_validate(payload["oauth_info"])
             token_data = payload["token_data"]
         except (KeyError, TypeError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired link ticket"
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_LINK_TICKET) from exc
 
         await self.accounts.link_to_user(session, user, oauth_user_info, token_data)
         return {
@@ -343,10 +338,10 @@ class OAuthFlowService:
         ]
 
     async def discord_guilds(self, session: AsyncSession, *, auth_user_id: int) -> list[dict[str, Any]]:
-        """Guilds ``auth_user_id`` administers on Discord, live and uncached
-        (workspace self-service design, §4.1). No DB write. Used by
-        ``rpc.app.workspaces.discord_guild_verify`` to prove ownership before a
-        workspace can claim a Discord guild id.
+        """Guilds ``auth_user_id`` administers on Discord, live and uncached.
+
+        No DB write. Used by ``rpc.app.workspaces.discord_guild_verify`` to prove
+        ownership before a workspace can claim a Discord guild id.
 
         A missing connection, a missing access token, or an expired one all
         degrade to an empty list rather than an error -- no refresh-token
@@ -463,6 +458,12 @@ class OAuthFlowService:
         except ValueError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid origin") from None
 
+    @staticmethod
+    def _is_custom_domain(payload: StatePayload) -> bool:
+        """True when the signed ``origin`` is neither the platform apex nor a ``.owt`` subdomain."""
+        origin_host = urlparse(payload.origin).hostname
+        return bool(origin_host) and not is_platform_host(origin_host)
+
     def _verify_state_for(self, provider: str, state: str, *, expected_action: str) -> StatePayload:
         """Verify a signed ``state``, and that it was minted for THIS provider and action.
 
@@ -473,13 +474,10 @@ class OAuthFlowService:
         try:
             payload = self.state.verify(state)
         except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired OAuth state",
-            ) from exc
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_STATE) from exc
 
         if payload.provider != provider or payload.action != expected_action:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_STATE)
 
         return payload
 
@@ -498,10 +496,10 @@ class OAuthFlowService:
         and the raw token is only ever compared, in constant time, never logged.
         """
         if not isinstance(csrf, str) or not csrf:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_STATE)
 
         if not hmac.compare_digest(guard_digest(csrf), payload.csrf):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_STATE)
 
     @staticmethod
     def _require_guard_hash_for_ticket(payload: StatePayload) -> str:
@@ -516,7 +514,7 @@ class OAuthFlowService:
         issued-then-hopefully-rejected-later.
         """
         if not payload.guard_hash:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OAuth state")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_INVALID_STATE)
         return payload.guard_hash
 
     async def _consume_state_nonce(self, payload: StatePayload) -> None:

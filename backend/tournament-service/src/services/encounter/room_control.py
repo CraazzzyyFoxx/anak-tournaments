@@ -1,6 +1,6 @@
 """The organizer's control over a room that is NOT going the way the rules
-assumed: freeze its clock, hand a side more time, drop a session the series can
-no longer play out, and end a match nobody is going to play at all.
+assumed: freeze its clock, hand a side more time, drop a session the series
+cannot play out, and end a match nobody is going to play at all.
 
 Every command here is staff-only (`match.result`) and every one of them is a
 decision that has to survive being questioned later, so each writes a room

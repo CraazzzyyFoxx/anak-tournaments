@@ -1,5 +1,5 @@
-"""Old catalog ids → new ones (D84), for the redirect of old links. Goes with ``catalog.entity_legacy`` in
-``discipline02`` (P9)."""
+"""Old catalog ids → new ones, for the redirect of old links. Goes with ``catalog.entity_legacy`` in migration
+``discipline02``."""
 
 from __future__ import annotations
 

@@ -356,7 +356,9 @@ def test_extra_participants_are_the_members_the_bound_roster_lacks(ingest_databa
                 "role": dict(case.role),
             }
         )
-        assert await process_job(env, await submit(env, case, doc)) == Status.DONE
+        # The substitute is on no line-up: only a hint lets the rostered participants bind it.
+        hinted = {"encounter_game_id": case.game_id}
+        assert await process_job(env, await submit(env, case, doc, hint=hinted)) == Status.DONE
         snap = await snapshot(env, case)
         async with db(env) as session:
             event = (

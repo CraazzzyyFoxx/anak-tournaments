@@ -1,6 +1,6 @@
 """Tests for custom bracket templates: model, conversions and validator.
 
-Does not touch the database -- purely tests the pure-function shared library.
+Does not touch the database: ``src.domain.bracket`` is pure.
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 from pydantic import ValidationError  # noqa: E402
 
 from shared.core.enums import StageType  # noqa: E402
-from shared.services.bracket.engine import placeholder_bracket  # noqa: E402
-from shared.services.bracket.template import (  # noqa: E402
+from src.domain.bracket.engine import placeholder_bracket  # noqa: E402
+from src.domain.bracket.template import (  # noqa: E402
     BracketTemplate,
     skeleton_to_template,
     template_to_skeleton,
@@ -235,7 +235,7 @@ class TemplateBoundsTests(TestCase):
         raw["lower_seeds"] = 512
         raw["matches"][0]["id"] = 10_000
         raw["matches"][3]["round"] = -256
-        BracketTemplate.model_validate(raw)  # bounds are inclusive; §5.2 problems are the validator's job
+        BracketTemplate.model_validate(raw)  # bounds are inclusive; convention problems are the validator's job
 
 
 class TemplateRoundTripTests(TestCase):

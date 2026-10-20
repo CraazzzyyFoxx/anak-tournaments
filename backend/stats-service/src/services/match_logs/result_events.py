@@ -1,15 +1,14 @@
 """Publish match-log processing results back to the uploading bot.
 
-The result is broadcast over a fanout exchange so every discord-service replica
-receives it; the replica holding the pending upload future resolves it. This
-replaces pg ``LISTEN/NOTIFY``, which pgBouncer transaction pooling breaks.
+The result names the Discord message it answers (``channel_id``/``message_id``) and goes to one durable work queue,
+so whichever discord-service replica consumes it reacts on that message: there is no in-process waiter to find.
 """
 
 from typing import Any, Literal
 
 from loguru import logger as default_logger
 
-from shared.messaging.config import MATCH_LOG_RESULT_EXCHANGE
+from shared.messaging.config import MATCH_LOG_RESULT_QUEUE
 from shared.observability import publish_message
 from shared.schemas.events import MatchLogProcessedEvent
 
@@ -23,12 +22,14 @@ async def publish_match_log_result(
     ingest_job_id: int | None = None,
     correlation_id: str | None = None,
     error_message: str | None = None,
+    channel_id: int | None = None,
+    message_id: int | None = None,
     logger: Any = default_logger,
 ) -> None:
-    """Broadcast a single match-log result so the waiting bot can stop blocking.
+    """Send a single match-log result to the bot.
 
-    Failure to publish must never fail the worker message (the bot simply falls
-    back to its own timeout), so broker errors are logged and swallowed.
+    Failure to publish must never fail the worker message (the uploader just gets no reaction), so broker errors are
+    logged and swallowed.
     """
     event = MatchLogProcessedEvent(
         tournament_id=tournament_id,
@@ -37,15 +38,15 @@ async def publish_match_log_result(
         ingest_job_id=ingest_job_id,
         correlation_id=correlation_id,
         error_message=error_message,
+        channel_id=channel_id,
+        message_id=message_id,
         source_service="stats-service",
     )
     try:
         await publish_message(
             broker,
             event.model_dump(),
-            "",  # routing handled by the fanout exchange
-            exchange=MATCH_LOG_RESULT_EXCHANGE,
-            routing_key="",
+            MATCH_LOG_RESULT_QUEUE,
             correlation_id=correlation_id,
             logger=logger,
         )

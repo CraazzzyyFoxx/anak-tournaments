@@ -1,11 +1,10 @@
 """Shared ``AsyncIOScheduler`` lifecycle for periodic worker ticks.
 
-Every worker running one leader-locked periodic tick (OverFast rank
-collection, subscription collection, match-log stall recovery, Twitch poll)
-reimplemented the same module-level singleton by hand: guard against a
-double start, build an ``AsyncIOScheduler`` with a single non-overlapping
-interval job, and tear it down on shutdown. This wraps that shape once so
-each service keeps only its tick logic.
+Each worker running one leader-locked periodic tick (OverFast rank collection,
+subscription collection, match-log stall recovery, Twitch poll) keeps only its
+tick logic; this owns the module-level singleton: guard against a double start,
+build an ``AsyncIOScheduler`` with a single non-overlapping interval job, and
+tear it down on shutdown.
 """
 
 from __future__ import annotations

@@ -1,12 +1,10 @@
-"""Runtime semantics over submissions (§5): cursor, eligibility, validation,
+"""Runtime semantics over submissions: cursor, eligibility, validation,
 projection, reveal, undo and dispute.
 
 Pure functions over two structural protocols, so the SQLAlchemy rows satisfy
 them without this module importing a model. Submissions are the action log and
 the only source of truth; ``pick_ban_entry`` is a projection this module
 recomputes after every mutation.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §5, §6.
 """
 
 from __future__ import annotations
@@ -270,7 +268,7 @@ def history_of(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLi
 def visible_submissions(
     steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike], viewer: int | None
 ) -> list[SubmissionLike]:
-    """Blind privacy (D4): the server never serializes another participation's
+    """Blind privacy: the server never serializes another participation's
     unrevealed draft. Revealed rows, every row of an open step, and the
     viewer's own."""
     by_index = {step.index: step for step in steps}
@@ -320,7 +318,7 @@ def ready_to_reveal(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -
 def project_entries(
     entries: Sequence[EntryLike], steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike]
 ) -> None:
-    """Recompute the board from the action log (D2).
+    """Recompute the board from the action log.
 
     Deterministic and idempotent: reset every non-carried entry, then replay
     the applied items in order. Carried bans are fixed and never touched.
@@ -350,7 +348,7 @@ def project_entries(
         match applied.action:
             case "ban":
                 if entry.status != AVAILABLE:
-                    continue  # already banned by the other actor of a blind step (D8), or protected
+                    continue  # already banned by the other actor of a blind step, or protected
                 entry.status = BANNED
                 entry.picked_by_kind, entry.picked_by_team_id = kind, actor
             case "protect":

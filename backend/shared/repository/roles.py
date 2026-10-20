@@ -1,4 +1,4 @@
-"""``catalog.role_dimension`` / ``catalog.role``: the modules' ontologies and the workspaces' sub-roles (D31)."""
+"""``catalog.role_dimension`` / ``catalog.role``: the modules' ontologies and the workspaces' sub-roles."""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
         return row
 
     async def rated_dimension_id(self, session: AsyncSession, *, discipline: str) -> int | None:
-        """The discipline's rated dimension (D32): the axis every rank is held on."""
+        """The discipline's rated dimension: the axis every rank is held on."""
         dim = models.RoleDimension
         return await session.scalar(sa.select(dim.id).where(dim.discipline == discipline, dim.rated.is_(True)))
 
@@ -162,12 +162,12 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
         )
 
     async def project_module(self, session: AsyncSession, spec: DisciplineSpec) -> None:
-        """Upsert one module's discipline row, dimensions and roles (D31).
+        """Upsert one module's discipline row, dimensions and roles.
 
         Idempotent and safe from every replica at once (``ON CONFLICT`` throughout). A dimension or role the module
         stopped declaring is deactivated, never deleted: assignments may still point at it.
         """
-        spec.rated_dimension  # noqa: B018 -- LookupError before any write (D32: exactly one rated dimension)
+        spec.rated_dimension  # noqa: B018 -- LookupError before any write (exactly one rated dimension)
         for dimension in spec.dimensions:
             for declared_role in dimension.roles:
                 validate_presentation(declared_role.attrs, discipline=spec.code)

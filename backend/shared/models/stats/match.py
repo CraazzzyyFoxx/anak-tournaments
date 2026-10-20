@@ -1,4 +1,4 @@
-"""Native observation tables (§14.4). Fact identity is natural and nullable, never a physical PK."""
+"""Native observation tables. Fact identity is natural and nullable, never a physical PK."""
 
 from datetime import datetime
 

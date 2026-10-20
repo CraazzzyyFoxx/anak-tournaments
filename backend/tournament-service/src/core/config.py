@@ -31,7 +31,7 @@ class Settings(BaseServiceSettings):
     #
     # `discord_token` is the SAME bot token discord-service already uses; the bot
     # is already present in organizers' guilds. Reading one member's roles needs
-    # no privileged intent (see the design doc's fact table).
+    # no privileged intent.
     discord_token: str | None = None
     twitch_client_id: str | None = None
 

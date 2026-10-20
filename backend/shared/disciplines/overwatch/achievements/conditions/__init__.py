@@ -34,7 +34,7 @@ def register_spec(spec: LeafSpec) -> LeafSpec:
 _STAT_CODES: dict[str, str] = {m.name: m.value for m in LogStatsName}
 _VALID_STAT_CODES: frozenset[str] = frozenset(m.value for m in LogStatsName)
 _LEGACY_STAT_ALIASES: dict[str, str] = {
-    # Legacy seeded rule value renamed on 2026-04-19.
+    # A seeded rule's old spelling of the stat.
     "CriticalHitKills": "ScopedCriticalHitKills",
 }
 

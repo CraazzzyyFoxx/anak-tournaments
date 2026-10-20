@@ -70,8 +70,7 @@ from shared.testing import (
     install_postgres_type_shims,  # noqa: E402
 )
 from src import models  # noqa: E402
-from src.services.encounter import captain as captain_module  # noqa: E402
-from src.services.encounter import map_report as map_report_module  # noqa: E402
+from src.services.encounter import dispute_review  # noqa: E402
 from src.services.registration import lifecycle as lifecycle_module  # noqa: E402
 from src.services.registration import teams as teams_module  # noqa: E402
 from src.services.tournament import events as events_module  # noqa: E402
@@ -546,7 +545,7 @@ class RegistrationDecisionTests(_ProducerTestCase):
 
     async def test_reject_notifies_the_player(self) -> None:
         self.registration.status = "rejected"
-        await events_module.enqueue_registration_rejected(self.fx.shim, self.registration)
+        await events_module.notify_registration_rejected(self.fx.shim, self.registration)
         await self.fx.shim.commit()
 
         rows = self.fx.notifications()
@@ -576,7 +575,7 @@ class RegistrationDecisionTests(_ProducerTestCase):
 
 
 class DisputedReportTests(_ProducerTestCase):
-    """The two producers a contradiction reaches: the per-game claim
+    """The two disputes a contradiction reaches: the per-game claim
     (``map_report``) and the series report (``captain``).
 
     They are driven at the notifier, not through the whole claim: whether two
@@ -631,12 +630,12 @@ class DisputedReportTests(_ProducerTestCase):
         self.fx.session.flush()
 
     async def _dispute(self) -> None:
-        await map_report_module.map_report_service._notify_dispute(
+        await dispute_review.notify_dispute(
             self.fx.shim,
             self.encounter,
             game=self.game,
             seats=self.seats,
-            reporter_auth_user_id=CAPTAIN_AUTH,
+            actor_auth_user_id=CAPTAIN_AUTH,
         )
 
     async def test_disputed_game_claim_notifies_both_captains(self) -> None:
@@ -717,8 +716,8 @@ class DisputedReportTests(_ProducerTestCase):
         """
         self.fx.staff(ORGANIZER_AUTH, role_name="referee")
 
-        await captain_module.captain_service._notify_dispute(
-            self.fx.shim, self.encounter, self.seats, actor_auth_user_id=CAPTAIN_AUTH
+        await dispute_review.notify_dispute(
+            self.fx.shim, self.encounter, seats=self.seats, actor_auth_user_id=CAPTAIN_AUTH
         )
 
         rows = self.fx.notifications("encounter.dispute_review")

@@ -1,16 +1,9 @@
 """Draft-domain value types: no I/O, no algorithm, no orchestration.
 
-Every dataclass the draft domain passes between its rules/services lives
-here — mirrors ``domain/balancer/entities.py``'s role for the balancing
-engine. Kept out of ``src/schemas/`` deliberately: those are pydantic wire
-contracts for the RPC boundary; several types below (``DraftSnapshot``,
-``DraftResult``) hold live ORM rows and would force pydantic's
-``arbitrary_types_allowed`` (defeating validation) or premature ORM->dict
-flattening before a caller decided which fields the wire response needs.
-
-Producing modules re-import the names they use so every existing
-``<module>.<Type>`` access — from other draft files, ``rpc/draft.py``, and
-tests — keeps resolving unchanged.
+Every dataclass the draft domain passes between its rules and services lives
+here. Kept out of ``src/schemas/`` (the pydantic wire contracts): several types
+below (``DraftSnapshot``, ``DraftResult``) hold live ORM rows, which pydantic
+would only accept with ``arbitrary_types_allowed``.
 """
 
 from __future__ import annotations
@@ -36,7 +29,6 @@ __all__ = (
     "FitResult",
     "PoolSeat",
     "RoleEditPreview",
-    "RoleEditResult",
     "SlotDecision",
     "SlotDeficit",
     "TeamFitScore",
@@ -194,15 +186,6 @@ class RoleEditPreview:
     after: DraftFeasibilityReport
 
 
-@dataclass(frozen=True)
-class RoleEditResult:
-    player_id: int
-    role: str
-    player_version: int
-    committed: bool
-    preview: RoleEditPreview
-
-
 # --- autopick fit scoring (domain/draft/fit.py) ------------------------------
 
 
@@ -240,7 +223,7 @@ class TeamFitScore:
 
 @dataclass(frozen=True)
 class FitConfig:
-    #: Per-role impact of the owning game (``FeasibilityService.resolve_role_impact``); a role absent weighs 1.0.
+    #: Per-role impact of the owning game (``DraftFeasibilityService.resolve_role_impact``); a role absent weighs 1.0.
     role_impact: Mapping[str, float] = field(default_factory=dict)
     discomfort_weight: float = 1.0
     # Large enough that role-need dominates raw fit when filling scarce roles.

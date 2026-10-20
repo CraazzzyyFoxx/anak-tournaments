@@ -35,12 +35,7 @@ export function DiscordServerStatus({
   const name = data?.name || t("fallbackName");
 
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 rounded-lg border bg-card p-3 text-sm text-card-foreground",
-        className
-      )}
-    >
+    <div className={cn("flex items-center justify-between gap-3 text-sm", className)}>
       <div className="flex min-w-0 items-center gap-3">
         <Avatar className="size-8 rounded-full border">
           {data?.icon_url ? <AvatarImage src={data.icon_url} alt="" /> : null}

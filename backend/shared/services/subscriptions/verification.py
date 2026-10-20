@@ -6,25 +6,22 @@ Every provider has two possible mechanisms:
   bot), the Helix subscriptions endpoint for Twitch;
 - a **challenge code** — a secret published inside a subscriber-only post.
 
-They are not interchangeable, and leaving both permanently on makes two states
-unreachable, which is the whole reason this module exists:
+They are not interchangeable; with both always on, two states are unreachable:
 
-1. **Code-only was impossible.** An organizer with no Discord server leaves
+1. **Code-only.** An organizer with no Discord server leaves
    ``Workspace.discord_guild_id`` unset, the live path answers
    ``unknown("guild_not_configured")``, and ``unknown`` fails open — so the gate
-   admitted *everybody*, including people who never redeemed anything. The organizer
-   believed the code was gating entry.
-2. **Live-only was impossible.** Codes left in the config stayed redeemable, and
-   an already-redeemed code counts forever (a redeemed code is deliberately never
+   would admit *everybody*, including people who never redeemed anything.
+2. **Live-only.** Codes left in the config stay redeemable, and an
+   already-redeemed code counts forever (a redeemed code is deliberately never
    re-polled), so switching to roles could not revoke it.
 
 Hence the method is authoritative over BOTH the live call and the stored verdict:
-narrowing it must invalidate cached entitlements whose source it no longer accepts,
+narrowing it must invalidate cached entitlements whose source it does not accept,
 or yesterday's code would outlive the decision to stop accepting codes.
 
 Source classification needs no provider table: a source either *is* the challenge
-code or it is a live provider signal. That keeps a new provider from having to
-register anything here.
+code or it is a live provider signal, so a new provider registers nothing here.
 """
 
 from __future__ import annotations
@@ -66,9 +63,8 @@ VERIFICATION_METHODS: frozenset[str] = frozenset(
 def normalize_verification_method(raw: Any) -> str:
     """Coerce a stored/submitted value to a known method.
 
-    Defaults to ``ANY`` — every config written before this field existed must keep
-    behaving exactly as it did, and an unrecognised value must widen rather than
-    lock people out.
+    Defaults to ``ANY``: a config without the field accepts both mechanisms, and
+    an unrecognised value must widen rather than lock people out.
     """
     text = str(raw or "").strip().lower()
     return text if text in VERIFICATION_METHODS else VerificationMethod.ANY
@@ -100,8 +96,8 @@ def accepts_source(method: str, source: str | None) -> bool:
 
     Applied to STORED verdicts as well as fresh ones — that is what makes a
     narrowed method revoke a cached entitlement instead of silently honouring it.
-    A ``None`` source is legacy data of unknown origin; it is treated as a live
-    signal, so only an explicit ``CODE`` restriction discards it.
+    A ``None`` source (a row of unknown origin) is treated as a live signal, so
+    only an explicit ``CODE`` restriction discards it.
     """
     if source == SubscriptionSource.CHALLENGE_CODE:
         return accepts_code(method)

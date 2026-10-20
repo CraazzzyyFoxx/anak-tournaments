@@ -6,8 +6,8 @@ Three layers, all of them here, none of them touching a session:
    treats ``team_ids[0]`` as seed 1 (plays the lowest seed). Lives in
    ``Stage.seed_ranking``:
 
-   - ``slot`` (default): keep StageItemInput slot order — standings wiring,
-     manual slots, and every existing tournament stay unchanged.
+   - ``slot`` (default): keep StageItemInput slot order (standings wiring,
+     manual slots).
    - ``avg_sr``: highest ``Team.avg_sr`` is seed 1.
    - ``total_sr``: highest ``Team.total_sr`` is seed 1.
    - ``random``: ``random.Random(stage.id)`` shuffle, stable across processes.
@@ -23,8 +23,7 @@ Three layers, all of them here, none of them touching a session:
    ``cross`` or ``snake``.
 
 The one seeding rule NOT here is the engine's 1-vs-N slot layout
-(``shared.services.bracket.seeding_order``): it is shared by every service that
-builds a bracket, so it stays next to the generators that apply it.
+(``src.domain.bracket.seeding_order``): it stays next to the generators that apply it.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ from enum import StrEnum
 from typing import Any, NamedTuple, Protocol
 
 from shared.core import enums
-from shared.services.bracket.types import BracketSkeleton
+from src.domain.bracket import BracketSkeleton
 
 __all__ = (
     "SEED_TEAMS_MODES",
@@ -169,7 +168,7 @@ def resolve_seeds(skeleton: BracketSkeleton, teams: dict[int, int]) -> BracketSk
     """Swap placeholder negative seed ids for the teams they stand for.
 
     Over every SLOT of a pairing, not two sides: a pairing is ``team_ids[i]``
-    seeded into slot ``i + 1`` (D55), and a placeholder nobody named resolves
+    seeded into slot ``i + 1``, and a placeholder nobody named resolves
     to an empty seat.
     """
 

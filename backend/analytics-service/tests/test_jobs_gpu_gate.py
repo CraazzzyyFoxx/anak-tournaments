@@ -11,8 +11,9 @@ GPU compute is the expensive resource they must not reach. This drives the real
 - ``train_ml`` is untouched by this gate (still superuser-only);
 - the deprecated ``train``/``infer`` publishers gate too (defense in depth).
 
-The workspace read and the job insert are the only DB touches on this path, so
-stubbing the repository + ``create_analytics_job`` keeps this a pure unit test
+The workspace read, the job insert and the outbox enqueue are the only DB touches on
+this path, so stubbing the repositories, ``create_analytics_job`` and
+``enqueue_outbox_event`` keeps this a pure unit test
 (same no-DB approach as ``test_analytics_route_permissions_app.py``).
 """
 
@@ -35,7 +36,8 @@ if str(_SERVICE_ROOT) not in sys.path:
 
 
 from shared.models.tenancy.workspace import Workspace
-from src.core import config, db
+from src.core import db
+from src.core import jobs as core_jobs
 from src.rpc import jobs_control
 
 # workspace_id → verification_status
@@ -43,11 +45,10 @@ _WORKSPACES = {1: "unverified", 2: "verified", 3: "trusted"}
 
 
 class _FakeBroker:
-    """Capture FastStream subscribers by subject, and swallow publishes."""
+    """Capture FastStream subscribers by subject."""
 
     def __init__(self) -> None:
         self.handlers: dict[str, object] = {}
-        self.published: list = []
 
     def subscriber(self, subject: str):
         def _decorator(fn):
@@ -55,10 +56,6 @@ class _FakeBroker:
             return fn
 
         return _decorator
-
-    async def publish(self, *args, **kwargs):
-        self.published.append(args[0] if args else kwargs.get("message"))
-        return None
 
 
 class _NoopSession:
@@ -69,6 +66,9 @@ class _NoopSession:
 
     async def __aexit__(self, *exc):
         return False
+
+    async def commit(self):
+        return None
 
 
 class _FakeWorkspaces:
@@ -111,6 +111,10 @@ class AnalyticsGpuGateTests(TestCase):
         self.created: list[dict] = []
         self.tournaments = _FakeTournaments()
         self.charge = AsyncMock()
+        self.enqueued: list[tuple[object, str]] = []
+
+        async def _fake_enqueue(session, event, *, exchange, routing_key):
+            self.enqueued.append((event, routing_key))
 
         async def _fake_create(session, **kwargs):
             self.created.append(kwargs)
@@ -132,10 +136,10 @@ class AnalyticsGpuGateTests(TestCase):
             )
 
         self._patches = [
-            patch.object(jobs_control, "_workspaces", _FakeWorkspaces()),
-            patch.object(jobs_control, "_tournaments", self.tournaments),
+            patch.object(core_jobs, "_workspaces", _FakeWorkspaces()),
+            patch.object(core_jobs, "_tournaments", self.tournaments),
             patch.object(jobs_control, "create_analytics_job", _fake_create),
-            patch.object(config.settings, "rabbitmq_url", "amqp://test"),
+            patch.object(jobs_control, "enqueue_outbox_event", _fake_enqueue),
             # The gate is a process-global configured at service startup, which
             # these tests never run; the slug/workspace pairing it is handed is
             # covered where quota itself is tested.
@@ -223,9 +227,9 @@ class AnalyticsGpuGateTests(TestCase):
                 self.assertFalse(envelope["ok"])
                 self.assertEqual(envelope["error"]["code"], "forbidden")
                 self.assertEqual(envelope["error"]["message"], "workspace_not_verified")
-                self.assertEqual(self.broker.published, [])
+                self.assertEqual(self.enqueued, [])
 
-    def test_deprecated_train_publishes_for_a_trusted_workspace(self) -> None:
+    def test_deprecated_train_enqueues_for_a_trusted_workspace(self) -> None:
         self.tournaments.owner = (3, "overwatch")
         envelope = self._call(
             "rpc.analytics.train",
@@ -233,14 +237,14 @@ class AnalyticsGpuGateTests(TestCase):
         )
 
         self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual(len(self.broker.published), 1)
+        self.assertEqual([key for _, key in self.enqueued], ["analytics_train"])
 
     def _assert_refused_before_admission(self, envelope: dict, message_part: str) -> None:
         self.assertFalse(envelope["ok"], envelope)
         self.assertEqual(envelope["error"]["code"], "unprocessable")
         self.assertIn(message_part, envelope["error"]["message"])
         self.assertEqual(self.created, [])
-        self.assertEqual(self.broker.published, [])
+        self.assertEqual(self.enqueued, [])
         self.charge.assert_not_awaited()
 
     def test_explicit_requests_for_a_discipline_without_analytics_are_422_before_admission_and_charging(self) -> None:

@@ -6,11 +6,12 @@
 // out of the store. If the two ever diverge, a superuser opening someone
 // else's workspace would silently edit their own.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import type { Workspace } from "@/types/workspace.types";
 import GeneralSettingsPage from "./page";
 
@@ -22,16 +23,48 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getById = vi.fn();
 const getOwner = vi.fn();
 const setOwner = vi.fn();
+const update = vi.fn();
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getById: (...args: unknown[]) => getById(...args),
     getOwner: (...args: unknown[]) => getOwner(...args),
     setOwner: (...args: unknown[]) => setOwner(...args),
-    update: vi.fn(),
+    update: (...args: unknown[]) => update(...args),
     uploadIcon: vi.fn(),
     deleteIcon: vi.fn()
   }
+}));
+
+const GAMES = [
+  { code: "overwatch", name: "Overwatch", enabled: true },
+  { code: "lol", name: "League of Legends", enabled: false }
+] as DisciplineDescriptor[];
+
+const listGames = vi.fn();
+vi.mock("@/services/discipline.service", () => ({
+  default: { list: (...args: unknown[]) => listGames(...args) }
+}));
+
+// The drop is what the games list pins, not dnd-kit's pointer maths (which would
+// also load a second React copy under pnpm): the kit reports a reorder as the new
+// array and the dragged item, and that is what gets replayed here.
+let drop: ((next: DisciplineDescriptor[], moved: DisciplineDescriptor) => void) | undefined;
+vi.mock("@/components/kit/SortableRows", () => ({
+  SortableRows: ({
+    items,
+    onReorder,
+    children
+  }: {
+    items: readonly DisciplineDescriptor[];
+    onReorder: (next: DisciplineDescriptor[], moved: DisciplineDescriptor) => void;
+    children: (item: DisciplineDescriptor, index: number) => ReactNode;
+  }) => {
+    drop = onReorder;
+    return <div>{items.map((item, index) => children(item, index))}</div>;
+  },
+  useSortableRow: () => ({ ref: () => {}, style: {}, handleProps: {}, isDragging: false }),
+  SortableGrip: ({ label }: { label: string }) => <button type="button" aria-label={label} />
 }));
 
 vi.mock("next/navigation", () => ({
@@ -142,7 +175,23 @@ beforeEach(() => {
     avatar_url: null
   });
   setOwner.mockReset().mockResolvedValue(null);
+  update.mockReset().mockResolvedValue(OTHER_WORKSPACE);
+  drop = undefined;
+  listGames.mockReset().mockResolvedValue(GAMES);
 });
+
+async function click(node: Element | undefined) {
+  await act(async () => {
+    node?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
+}
+
+const gameSwitch = (name: string) =>
+  container.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="Enable ${name}"]`);
+
+const saveButton = () =>
+  [...container.querySelectorAll("button")].find((node) => node.textContent?.trim() === "Save changes");
 
 afterEach(async () => {
   await act(async () => root.unmount());
@@ -249,5 +298,58 @@ describe("Workspaces › [id] › General", () => {
     container.remove();
     await render();
     expect(container.querySelector("#workspace-verification")).not.toBeNull();
+  });
+
+  // The games list is the one field whose ORDER is data: `[0]` is what a
+  // tournament or grid gets when no game is named. So a pure reorder must be a
+  // change the save bar sees, and the server must receive the list as dragged.
+  describe("games", () => {
+    it("switches a game on by appending it, and never lets the last one off", async () => {
+      await render();
+
+      expect(gameSwitch("Overwatch")?.getAttribute("aria-checked")).toBe("true");
+      expect(gameSwitch("Overwatch")?.disabled).toBe(true);
+      expect(gameSwitch("League of Legends")?.getAttribute("aria-checked")).toBe("false");
+      expect(saveButton()).toBeUndefined();
+
+      await click(gameSwitch("League of Legends"));
+      expect(gameSwitch("League of Legends")?.getAttribute("aria-checked")).toBe("true");
+      // Two enabled: either may go now.
+      expect(gameSwitch("Overwatch")?.disabled).toBe(false);
+
+      await click(saveButton());
+      expect(update).toHaveBeenCalledWith(8, { disciplines_enabled: ["overwatch", "lol"] });
+    });
+
+    it("saves a drag that only reorders, with the dragged-first game as the default", async () => {
+      getById.mockResolvedValue({ ...OTHER_WORKSPACE, disciplines_enabled: ["overwatch", "lol"] });
+      await render();
+      expect(saveButton()).toBeUndefined();
+
+      const [overwatch, lol] = GAMES;
+      await act(async () => drop?.([lol, overwatch], lol));
+      await settle();
+
+      const rows = [...container.querySelectorAll('[aria-label^="Reorder "]')].map((grip) =>
+        grip.getAttribute("aria-label")
+      );
+      expect(rows).toEqual(["Reorder League of Legends", "Reorder Overwatch"]);
+      expect(gameSwitch("League of Legends")?.parentElement?.textContent).toContain("Default");
+      expect(gameSwitch("Overwatch")?.parentElement?.textContent).not.toContain("Default");
+
+      await click(saveButton());
+      expect(update).toHaveBeenCalledWith(8, { disciplines_enabled: ["lol", "overwatch"] });
+    });
+
+    // The scope pill and the game tabs list the community's games in this order: a save re-reads them.
+    it("re-reads the community's games after a save", async () => {
+      await render();
+      const reads = listGames.mock.calls.filter(([axis]) => axis === 8).length;
+
+      await click(gameSwitch("League of Legends"));
+      await click(saveButton());
+      expect(update).toHaveBeenCalledWith(8, { disciplines_enabled: ["overwatch", "lol"] });
+      expect(listGames.mock.calls.filter(([axis]) => axis === 8).length).toBeGreaterThan(reads);
+    });
   });
 });

@@ -9,7 +9,6 @@ import {
   type ScopedSettingsForm
 } from "@/components/kit/useScopedSettingsForm";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { Card, CardContent } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import adminService from "@/services/admin.service";
@@ -90,8 +89,8 @@ export function useCollectionSettings<T extends object>({
 }
 
 /**
- * UI half: the load states, the collector's own `SettingGroup`s inside one
- * card, and the save bar — the same frame as a workspace or tournament
+ * UI half: the load states, the collector's own `SettingGroup`s (each its own
+ * card) and the save bar — the same frame as a workspace or tournament
  * settings section.
  */
 export function CollectionSettingsPanel<T>({
@@ -119,11 +118,7 @@ export function CollectionSettingsPanel<T>({
 
   return (
     <>
-      <Card>
-        <CardContent className="flex flex-col gap-5 pt-6">
-          {children(settings.form, settings.patch)}
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-4">{children(settings.form, settings.patch)}</div>
       <SaveBar
         dirty={settings.dirty}
         summary={settings.summary}

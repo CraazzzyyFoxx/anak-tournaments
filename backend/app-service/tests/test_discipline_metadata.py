@@ -341,7 +341,16 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
             [r["code"] for r in meta["roles"] if r["dimension"] == "position"],
         )
         self.assertEqual([], meta["native_ladder"])
-        self.assertEqual([], meta["stat_defs"])
+        declared = DISCIPLINES["lol"].stat_defs
+        self.assertEqual(["kills", "dragons"], [s.code for s in declared])
+        self.assertEqual([s.code for s in declared], [s["code"] for s in meta["stat_defs"] if s["active"]])
+        by_code = {s["code"]: s for s in meta["stat_defs"]}
+        for spec in declared:
+            row = by_code[spec.code]
+            self.assertEqual(
+                (spec.name, spec.value_format, spec.aggregation),
+                (row["name"], row["value_format"], row["aggregation"]),
+            )
         self.assertEqual({"positions_5v5", "open_5v5"}, {p["preset_code"] for p in meta["team_format_presets"]})
         self.assertFalse(any(meta["discipline"]["capabilities"][k] for k in ("native_ladder", "analytics")))
 

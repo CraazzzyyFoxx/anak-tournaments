@@ -1,7 +1,5 @@
-"""Process-global wiring: settings, database engine, worker broker accessor.
+"""Process-global wiring: settings, database engine, Redis client, metrics.
 
-Deliberately does NOT re-export ``shared.core.errors``/``utils``/``pagination``
-the way the older services' ``src.core`` packages do — that alias exists there
-only for backward compatibility with pre-split imports. New code imports from
-``shared.core`` directly.
+Does not re-export ``shared.core.errors``/``utils``/``pagination``; import them
+from ``shared.core`` directly.
 """

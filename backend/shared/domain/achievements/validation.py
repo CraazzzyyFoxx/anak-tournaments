@@ -3,7 +3,7 @@
 Every per-node fact — result grain, which params it takes, which tables it
 reads — lives on the node's own ``@register(...)`` call in its discipline module.
 This module only enforces the shape; it never keeps a second copy of the node
-list, which is how the editor's palette and the validator used to drift apart.
+list, so the editor's palette and the validator cannot drift apart.
 Every entry point names the ``discipline`` whose conditions the tree is read against.
 """
 
@@ -34,7 +34,7 @@ GRAIN_ARITY = {
 
 # Structural limits on a condition tree, enforced at validation time (before a
 # rule is ever saved). A pathologically deep or huge tree would otherwise blow
-# the recursion limit in the evaluator on every evaluation run (review L13);
+# the recursion limit in the evaluator on every evaluation run;
 # capping here turns that into a clean validation error instead.
 MAX_CONDITION_TREE_DEPTH = 40
 MAX_CONDITION_TREE_NODES = 500
@@ -183,7 +183,6 @@ def _validate_node(
     if not node:
         return
 
-    # Logical operators
     for op in ("AND", "OR"):
         if op in node:
             children = node[op]
@@ -212,7 +211,6 @@ def _validate_node(
         _reject_mixed_grains(node, errors, path, discipline)
         return
 
-    # Leaf node
     ctype = node.get("type")
     if not ctype:
         errors.append(f"{path}: missing 'type' field")

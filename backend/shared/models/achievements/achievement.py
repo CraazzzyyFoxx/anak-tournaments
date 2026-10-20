@@ -126,7 +126,7 @@ class AchievementRule(db.TimeStampIntegerMixin):
     description_ru: Mapped[str] = mapped_column(String())
     description_en: Mapped[str] = mapped_column(String())
     image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
-    #: Which game the rule is about (D96); the entity it shows belongs to that game. No default: every writer names it.
+    #: Which game the rule is about; the entity it shows belongs to that game. No default: every writer names it.
     discipline: Mapped[str] = mapped_column(
         String(32), ForeignKey("catalog.discipline.code", name="fk_rule_discipline")
     )

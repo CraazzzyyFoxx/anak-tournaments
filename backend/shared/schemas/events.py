@@ -1,7 +1,6 @@
 """Typed Pydantic models for RabbitMQ event messages.
 
-These schemas provide type safety and validation for all inter-service messaging,
-replacing untyped dict objects with validated Pydantic models.
+These schemas provide type safety and validation for all inter-service messaging.
 """
 
 import time
@@ -267,18 +266,25 @@ class ProcessIngestJobEvent(BaseEvent):
         ge=1,
         description="Set for a revision-fenced replay of a done job: the observation revision seen when it was selected",
     )
+    # A Discord upload's message, threaded from ``UploadMatchLogEvent`` to the job's ``MatchLogProcessedEvent``.
+    channel_id: int | None = Field(default=None, description="Discord channel of the upload, echoed on the result")
+    message_id: int | None = Field(default=None, description="Discord message of the upload, echoed on the result")
 
 
 class UploadMatchLogEvent(BaseEvent):
     """Event carrying a raw match-log file to be stored + queued for processing.
 
-    Published by: discord-service (bot upload, replacing the former direct
-    ``POST http://parser:8002/logs/{id}/upload`` HTTP call).
+    Published by: discord-service (bot upload).
     Consumed by: stats-service worker, which stores the log to S3, creates or
-    reuses its native ingest job, then publishes a ``ProcessIngestJobEvent``.
+    reuses its native ingest job, then enqueues a ``ProcessIngestJobEvent``.
 
     The file bytes ride in ``content_b64`` (base64). Keep logs reasonably sized:
     the message must fit RabbitMQ's frame/size limits.
+
+    ``channel_id``/``message_id`` name the Discord message the file came from;
+    stats echoes them back on ``MatchLogProcessedEvent`` so whichever bot
+    replica consumes the result can react on that message. The bot keeps no
+    in-memory waiter.
     """
 
     event_type: str = Field(default="upload_match_log", frozen=True)
@@ -289,18 +295,18 @@ class UploadMatchLogEvent(BaseEvent):
     uploader_discord_name: str | None = Field(
         default=None, description="Discord username of the uploader, resolved to a Player on ingest"
     )
+    channel_id: int | None = Field(default=None, description="Discord channel the attachment was posted in")
+    message_id: int | None = Field(default=None, description="Discord message carrying the attachment")
 
 
 class MatchLogProcessedEvent(BaseEvent):
     """Result of processing a single match log, sent back to the uploader.
 
     Published by: stats-service (worker, after the ingest job finishes)
-    Consumed by: discord-service (resolves the pending upload future)
-
-    Broadcast over a fanout exchange so every discord-service replica receives a
-    copy; the replica holding the matching pending future resolves it and the
-    rest no-op. Replaces the former pg LISTEN/NOTIFY 'log_processed' channel,
-    which pgBouncer transaction pooling silently breaks.
+    Consumed by: discord-service ``match_log_result`` (one durable work queue,
+    competing replicas): it reacts on the originating message named by
+    ``channel_id``/``message_id``. Reactions and a per-file reply are
+    idempotent, so a redelivery repeats nothing visible.
     """
 
     event_type: str = Field(default="match_log_processed", frozen=True)
@@ -311,6 +317,8 @@ class MatchLogProcessedEvent(BaseEvent):
         default=None, gt=0, description="Absent only if upload failed before job creation"
     )
     error_message: str | None = None
+    channel_id: int | None = Field(default=None, description="Echoed from the upload event")
+    message_id: int | None = Field(default=None, description="Echoed from the upload event")
 
     @model_validator(mode="after")
     def require_completed_job(self):
@@ -376,7 +384,7 @@ class MatchIngestExtraParticipant(BaseModel):
 
 
 class MatchIngestedEvent(BaseEvent):
-    """One observation revision a stats document bound to an encounter game (D95).
+    """One observation revision a stats document bound to an encounter game.
 
     Published by: stats-service (transactional outbox), event id ``match.ingested:{evidence_id}:{revision}``.
     Consumed by: the tournament match layer, which alone decides whether it is official. Carries no raw document,
@@ -456,22 +464,15 @@ class RegistrationRankCheckRequestedEvent(RegistrationApprovedEvent):
     event_type: str = Field(default="registration_rank_check_requested", frozen=True)
 
 
-class RegistrationRejectedEvent(BaseEvent):
-    """Domain event emitted when a tournament registration is rejected."""
-
-    event_type: str = Field(default="registration_rejected", frozen=True)
-    tournament_id: int = Field(..., description="Tournament ID")
-    workspace_id: int = Field(..., description="Workspace ID")
-    registration_id: int = Field(..., description="Registration ID")
-    user_id: int | None = Field(default=None, description="Player user ID when linked")
-    identity: PlayerIdentityRead | None = Field(
-        default=None,
-        description="Rejected registration's primary handle for its tournament's identity provider",
-    )
-
-
 class TournamentStateChangedEvent(BaseEvent):
-    """Domain event emitted when tournament lifecycle state changes."""
+    """Domain event emitted when tournament lifecycle state changes.
+
+    Published by: tournament-service (``transition_status``, manual and automatic).
+    Consumed by: analytics-worker (``tournament_state_changed``: a ``completed``
+    tournament gets its compute job created without anyone clicking), and the
+    discord bot's channel registry (per-replica exclusive queue: a finished
+    tournament leaves the watched set).
+    """
 
     event_type: str = Field(default="tournament_state_changed", frozen=True)
     tournament_id: int = Field(..., description="Tournament ID")
@@ -480,11 +481,78 @@ class TournamentStateChangedEvent(BaseEvent):
     new_status: str = Field(..., description="New tournament status")
 
 
+class ChallongePushRequestedEvent(BaseEvent):
+    """A confirmed result of a Challonge-linked encounter is to be pushed to Challonge.
+
+    Published by: tournament-service, in the transaction that confirmed the
+    result (every confirm path: captain reports, organizer result, agreed claim,
+    lobby game, accepted log evidence).
+    Consumed by: tournament-service ``tournament_challonge_push``, which pushes
+    only if the encounter's ``result_version`` still matches -- a reopened and
+    re-confirmed encounter supersedes an older, not-yet-pushed request.
+
+    ``event_id`` is deterministic (``challonge_push:<encounter>:<version>``):
+    one request per result version, however many times the drain redelivers.
+    """
+
+    event_type: str = Field(default="challonge_push_requested", frozen=True)
+    tournament_id: int = Field(..., description="Tournament ID")
+    encounter_id: int = Field(..., description="Encounter whose result was confirmed")
+    result_version: int = Field(..., ge=0, description="encounter.result_version the push carries")
+
+    @model_validator(mode="after")
+    def _deterministic_id(self):
+        self.event_id = f"challonge_push:{self.encounter_id}:{self.result_version}"
+        return self
+
+
+class DiscordChannelChangedEvent(BaseEvent):
+    """A tournament's match-log Discord channel binding was created, updated or deleted.
+
+    Published by: stats-service (``rpc.stats.discord_channel.*``) in the same transaction.
+    Consumed by: the discord bot's channel registry (per-replica exclusive queue
+    on ``tournament.events``), which reloads its watched-channel set.
+    """
+
+    event_type: str = Field(default="discord_channel_changed", frozen=True)
+    tournament_id: int = Field(..., description="Tournament whose channel binding changed")
+
+
+class WorkspaceMemberChangedEvent(BaseEvent):
+    """Workspace membership or workspace roles changed for some auth users.
+
+    Published by: app-service (member add/update/remove, owner transfer,
+    workspace create, profile merge) in the same transaction as the write.
+    Consumed by: identity-service ``workspace_member_changed``, which drops the
+    cached RBAC payload of every listed user. Dropping a key is idempotent, so
+    a redelivery is harmless and the event needs no deterministic id.
+    """
+
+    event_type: str = Field(default="workspace_member_changed", frozen=True)
+    workspace_id: int | None = Field(default=None, description="Workspace ID; None for a cross-workspace merge")
+    auth_user_ids: list[int] = Field(..., min_length=1, description="Auth users whose RBAC must be reloaded")
+    change: str = Field(..., description="added | roles_changed | removed | owner_transferred | merged")
+
+
+class DiscordMemberChangedEvent(BaseEvent):
+    """A Discord guild member joined, left, or had their roles changed.
+
+    Published by: discord-service straight from the gateway event (no DB
+    transaction to join, so no outbox).
+    Consumed by: stats-worker ``discord_member_changed``, which re-resolves the
+    linked account's Boosty entitlement in every workspace bound to the guild.
+    """
+
+    event_type: str = Field(default="discord_member_changed", frozen=True)
+    guild_id: str = Field(..., description="Discord guild id")
+    discord_user_id: str = Field(..., description="Discord user id")
+    reason: str = Field(..., description="role_update | member_join | member_remove")
+
+
 class AnalyticsJobRequested(BaseEvent):
     """Unified analytics job dispatch — picked up by the analytics-worker.
 
-    Replaces the v1 ``Recalculate`` + v2 ``Train ML`` + v2 ``Run inference``
-    triggers. ``kind = 'compute'`` runs every selected v1 algorithm plus v2
+    ``kind = 'compute'`` runs every selected v1 algorithm plus v2
     inference; ``kind = 'train_ml'`` (re)trains the v2 boosters and is
     superuser-only at the HTTP layer.
     """

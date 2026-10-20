@@ -35,7 +35,9 @@ for root in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
     if root not in sys.path:
         sys.path.insert(0, root)
 
-from shared.services.admission import (  # noqa: E402
+from src.schemas.admission import AdmissionRead  # noqa: E402
+from src.schemas.registration_build import AdmissionChips  # noqa: E402
+from src.services.admission import (  # noqa: E402
     AdmissionConfig,
     AdmissionDecision,
     AdmissionSignals,
@@ -43,11 +45,9 @@ from shared.services.admission import (  # noqa: E402
     ProfileSignal,
     SubscriptionSignal,
 )
-from shared.services.admission.evaluate import evaluate  # noqa: E402
-from shared.services.admission.reasons import reason  # noqa: E402
-from shared.services.admission.registry import REQUIREMENTS  # noqa: E402
-from src.schemas.admission import AdmissionRead  # noqa: E402
-from src.schemas.registration_build import AdmissionChips  # noqa: E402
+from src.services.admission.evaluate import evaluate  # noqa: E402
+from src.services.admission.reasons import reason  # noqa: E402
+from src.services.admission.registry import REQUIREMENTS  # noqa: E402
 
 
 def _config(*, profile: bool = False, subscription: bool = False) -> AdmissionConfig:

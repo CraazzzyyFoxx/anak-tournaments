@@ -85,7 +85,7 @@ async def upload_avatar(
 ) -> UploadResult:
     """Upload an avatar image, returning the UploadResult with the public URL.
 
-    Deletes any previously uploaded avatar for the same entity (and ``variant``,
+    Deletes any existing avatar for the same entity (and ``variant``,
     when given) before uploading.
     Key format: avatars/{entity_type}/{entity_id}/[{variant}/]{content_hash}.{ext}
     """
@@ -93,7 +93,6 @@ async def upload_avatar(
     if error:
         return UploadResult(success=False, key="", error=error)
 
-    # Delete old avatar(s)
     await delete_old_avatar(s3, entity_type=entity_type, entity_id=entity_id, variant=variant)
 
     ext = _detect_extension(content_type)

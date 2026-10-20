@@ -1,4 +1,4 @@
-"""A role on the wire (D92): ``{dimension, role}`` codes, never ids and never an enum."""
+"""A role on the wire: ``{dimension, role}`` codes, never ids and never an enum."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ __all__ = ("RoleRef",)
 
 
 class RoleRef(BaseModel):
-    """``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3)."""
+    """``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input."""
 
     model_config = ConfigDict(frozen=True)
 

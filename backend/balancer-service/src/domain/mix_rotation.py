@@ -69,17 +69,14 @@ def _streak_from_end(played: Sequence[bool], *, value: bool) -> int:
 
 
 def rotation_priority(history: PlayerHistory) -> float:
-    """Single sortable score ranking one player by rotation fairness -- lower sorts first (kept
-    longest before an uneven roster's overflow trim reaches for someone).
+    """One sortable float ranking a player by rotation fairness; lower sorts first (kept longest).
 
-    Combines the same three keys ``recommend_rotation`` ranks by internally into one float wide
-    enough that no later key can outweigh an earlier one (sat-out streak beats played streak beats
-    total games, exactly like the tuple sort there), so it survives a JSON round trip as a single
-    ``identity.rotationPriority`` number on ``domain.balancer.entities.Player`` -- a caller ordering
-    the pool *before* it reaches ``run_balance`` (whose own overflow trim in
-    ``domain.balancer.runtime._prepare_balance_context`` has no fairness of its own) can make that
-    trim land on the same player the rotation hints would flag ``SHOULD_REST``, instead of an
-    arbitrary tail order Balance never explained.
+    Packs the three keys ``recommend_rotation`` ranks by (sat-out streak, played streak, total
+    games) so no later key can outweigh an earlier one, and survives a JSON round trip as
+    ``identity.rotationPriority`` on ``domain.balancer.entities.Player``. A caller that orders the
+    pool by it before ``run_balance`` makes the engine's overflow trim
+    (``domain.balancer.runtime._prepare_balance_context``, which has no fairness of its own) bench
+    the players the rotation hints would flag ``SHOULD_REST``.
     """
     sat = _streak_from_end(history.played, value=False)
     played_streak = _streak_from_end(history.played, value=True)
@@ -117,12 +114,8 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
         ]
 
     if all(not h.played for h in histories if not h.pinned_must_play):
-        # Brand-new mix (or every current row joined after the last recorded
-        # map): nobody the ranking below would compete over has a history to
-        # rank by, so its own tie-break (input order) is the only thing that
-        # would separate them -- surfacing that as a "should rest" verdict
-        # dresses up sort stability as a fairness read it never was. A pin
-        # still claims its seat, exactly like the ranking branch would.
+        # Brand-new mix, or every row joined after the last recorded map: only the
+        # input-order tie-break would rank them, which is no reason to rest anyone.
         return [
             RotationRecommendation(
                 member_id=h.member_id,

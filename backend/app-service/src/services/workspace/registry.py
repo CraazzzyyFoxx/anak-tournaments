@@ -14,7 +14,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.rpc.common import actor
 from shared.rpc.crud import CrudDispatcher, EntityConfig
 from src import models, schemas
 from src.core import db
@@ -37,8 +36,6 @@ async def _svc_update(
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     update_data = payload.model_dump(exclude_unset=True)
-    if "disciplines_enabled" in update_data and not actor(data).is_superuser:
-        raise HTTPException(status_code=403, detail="Only a superuser enables disciplines for a workspace")
     workspace = await workspace_service.update(session, workspace, update_data)
     await session.commit()
     return workspace

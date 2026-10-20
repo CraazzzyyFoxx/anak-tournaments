@@ -1,7 +1,7 @@
 """What drives ``PickBanActionService.reconcile_room``.
 
 The room's state read is pure (see ``pick_ban_action``), so nothing heals a
-room by being looked at any more. Three things heal it instead:
+room by being looked at. Three things heal it instead:
 
 * a POST-COMMIT trigger -- every write that touches a room already signals it
   through ``emit_pick_ban_update``, so staging a reconcile alongside that signal
@@ -204,9 +204,8 @@ async def _reconcile_in_new_session(scope: tuple[str, int]) -> None:
 def _fully_seated() -> Any:
     """ "Every slot of the card has a live participation" as one predicate.
 
-    The sweeps used to ask ``home_team_id IS NOT NULL AND away_team_id IS NOT
-    NULL``; counting the live seats is the same question for a card of any
-    width, and it is the same one ``creation_plan`` asks.
+    Counting the live seats answers it for a card of any width, the same
+    question ``creation_plan`` asks.
     """
     return (
         select(func.count())
@@ -293,8 +292,8 @@ async def reconcile_due_rooms() -> None:
         )
         for row in rows.scalars().all():
             submissions.setdefault(row.session_id, []).append(row)
-        # One seat read for the whole batch: a sequence written before §13.4
-        # still names slots, and translating it needs the encounter's seats.
+        # One seat read for the whole batch: a stored sequence may name slots
+        # rather than participations, and translating it needs the seats.
         slots: dict[int, dict[int, int]] = {}
         seats = await session.execute(
             select(EncounterTeam).where(

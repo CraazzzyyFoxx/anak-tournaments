@@ -1,4 +1,4 @@
-"""Discipline vocabularies projected from immutable module declarations (D31)."""
+"""Discipline vocabularies projected from immutable module declarations."""
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column

@@ -2,21 +2,13 @@
 
 Subpackages:
 
-- ``features`` — SQL → DataFrame extractors (round/match/encounter/tournament
-  granularity) + role-specific KPI lists + opponent-strength snapshots.
-- ``models`` — Performance v2 / Shift v2 / Standings v2 / Match-quality
-  estimators (added incrementally per phase).
+- ``features`` — feature-frame loading, the feature cache and opponent-strength
+  snapshots.
+- ``models`` — artifact storage and anomaly-threshold tuning.
 - ``training`` — orchestrator + time-series splits + artifact registry.
 - ``inference`` — runner that loads active artifacts and writes predictions.
-- ``explain`` — SHAP attribution utilities.
-- ``metrics`` — regression / classification / ranking metric helpers.
 """
 
 # Bump on any change to feature-frame semantics so the file/disk feature cache
-# is invalidated. v1.1: divisions normalized to the canonical OW grid.
-# v1.2: pre-encounter mu snapshot drops self-encounters (no fan-out).
-# v1.3: standings frames — pre-tournament mu (train == serve), mu max/std
-#       spread features, h2h features removed.
-# v1.4: chronological (start_date) lookback windows and splits — ids are not
-#       time-ordered; role mu gaps + roster synergy features.
+# is invalidated.
 FEATURE_VERSION = "v1.4"

@@ -3,13 +3,13 @@ a step (``act`` for an open step, ``submit`` for a blind one), the write-side
 healing that keeps the room in step with its own rules, and the state payload
 the room renders.
 
-Submissions are the source of truth (design D2/D3): every mutation writes a
+Submissions are the source of truth: every mutation writes a
 ``PickBanSubmission`` and then RE-PROJECTS ``PickBanEntry`` from the whole log,
 so the board can never drift from the actions behind it and a reopened step
 (dispute / admin) simply replaces its rows. The cursor is derived the same way
 -- there is no step counter column to get out of step with the entries.
 
-Everything the room names is a PARTICIPATION (§13.4): who may act, whose draft
+Everything the room names is a PARTICIPATION: who may act, whose draft
 is private, who a journal row belongs to. ``encounter_team_id IS NULL`` on a
 submission is the engine, and nothing else.
 
@@ -19,13 +19,10 @@ restarts the clock whenever the current step changes. It runs before every
 mutation and inside ``reconcile_room``, under the session lock.
 
 ``get_pick_ban_state`` is a PURE READ -- no row lock, no write, no commit, no
-signal. Healing it would otherwise do lives in :meth:`PickBanActionService.
-reconcile_room`, driven by ``room_reconcile``: a post-commit trigger after
-every room write plus two scheduled sweeps. A viewer's poll taking the
-encounter's row lock put every spectator behind the captains and behind each
-other, which is what this split exists to prevent.
-
-Design: docs/plans/2026-09-28-pick-ban-constructor.md §5, §7, §9.
+signal. Healing lives in :meth:`PickBanActionService.reconcile_room`, driven by
+``room_reconcile``: a post-commit trigger after every room write plus two
+scheduled sweeps. A viewer's poll that took the encounter's row lock would
+queue every spectator behind the captains and behind each other.
 """
 
 from __future__ import annotations
@@ -42,7 +39,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.enums import EncounterGameState, EncounterStatus, MapVetoSessionStatus, PickBanKind
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.disciplines import discipline as discipline_spec
 from shared.disciplines import rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain import pick_ban_engine as engine
@@ -57,9 +53,9 @@ from shared.repository import (
     PickBanEntryRepository,
     PickBanSubmissionRepository,
 )
-from shared.services.bracket.usability import is_encounter_live
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src.core.workspace import get_division_grid
+from src.services.bracket.usability import is_encounter_live
 from src.services.encounter import pick_ban_undo
 from src.services.encounter.games import OPEN_STATES, EncounterGameService, encounter_game_service
 from src.services.encounter.pick_ban_session import (
@@ -72,6 +68,7 @@ from src.services.encounter.pick_ban_session import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
+from src.services.encounter.veto_session import side_codes
 
 #: ``viewer`` default meaning "the participation that is acting". A plain
 #: ``None`` default could not tell an admin acting FOR a participation (who
@@ -319,18 +316,6 @@ class PickBanActionService:
         )
 
     # -- sides -------------------------------------------------------------
-    @staticmethod
-    def side_codes(encounter: Encounter) -> tuple[str, ...]:
-        """The sides a ``side_pick`` step hands out for this encounter (D25).
-
-        Empty for a discipline with no sides, and for one whose side count does
-        not match the card -- the same gate the ruleset validator applies, so a
-        session that somehow holds a ``side_pick`` it may not play refuses it
-        here too rather than writing half a game row.
-        """
-        sides = discipline_spec(encounter.discipline).sides
-        return sides if len(sides) == encounter.slot_count else ()
-
     async def _apply_side_pick(
         self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep, actor: int, side: str
     ) -> None:
@@ -340,14 +325,20 @@ class PickBanActionService:
         ``uq_game_team_side`` is the backstop: two participations cannot start
         one game on the same side, so a concurrent writer that got there first
         makes this transaction fail rather than quietly overwrite it.
+
+        A PLAYED position keeps the sides it was played on: only a round replayed
+        after a reset gets here for one, and a no-op keeps that room's tick from
+        failing on every pass.
         """
-        sides = self.side_codes(rt.encounter)
+        sides = side_codes(rt.encounter)
         if side not in sides:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"{rt.encounter.discipline} has no side {side!r}",
             )
         position = step.round or 1
+        if position in await self.games.played_positions(session, rt.encounter.id):
+            return
         game = next(
             (game for game in await self.games.list_games(session, rt.encounter.id) if game.position == position),
             None,
@@ -367,18 +358,22 @@ class PickBanActionService:
             row = rows.get(team_id)
             if row is None:
                 row = EncounterGameTeam(game_id=game.id, encounter_id=rt.encounter.id, encounter_team_id=team_id)
-                session.add(row)
+                self.games.line_repo.add(session, row)
                 rows[team_id] = row
             row.starting_side = side if team_id == actor else (remaining.pop(0) if remaining else None)
         await session.flush()
 
-    def _sides_state(self, rt: _Runtime, lines: dict[int, list[EncounterGameTeam]]) -> list[dict[str, Any]]:
+    def _sides_state(
+        self, rt: _Runtime, games: list[EncounterGame], lines: dict[int, list[EncounterGameTeam]]
+    ) -> list[dict[str, Any]]:
         """What each position's sides stand at, for the rooms that have any."""
-        if not self.side_codes(rt.encounter):
+        if not side_codes(rt.encounter):
             return []
+        positions = {game.id: game.position for game in games}
         return [
             {
                 "game_id": game_id,
+                "position": positions[game_id],
                 "sides": {str(row.encounter_team_id): row.starting_side for row in rows},
             }
             for game_id, rows in sorted(lines.items())
@@ -400,7 +395,7 @@ class PickBanActionService:
         unbound = [step for step in rt.steps if step.is_unbound]
         if not unbound:
             return False
-        sides = self.side_codes(rt.encounter)
+        sides = side_codes(rt.encounter)
         participants = rt.participants
         bound = False
         for index, step in enumerate(rt.steps):
@@ -425,11 +420,11 @@ class PickBanActionService:
     def side_pick_pending(self, rt: _Runtime, position: int) -> bool:
         """Whether position ``position`` still owes a ``side_pick`` an answer.
 
-        A game cannot START while the side it is played on is undecided (spec
-        §6 row 9): the position stays ``planned`` -- named, but not open for
-        claims -- until the pick resolves or the clock flips a coin for it.
+        A game cannot START while the side it is played on is undecided: the
+        position stays ``planned`` -- named, but not open for claims -- until the
+        pick resolves or the clock flips a coin for it.
         """
-        if not self.side_codes(rt.encounter):
+        if not side_codes(rt.encounter):
             return False
         return any(
             step.action == "side_pick"
@@ -531,7 +526,7 @@ class PickBanActionService:
                 state=state,
                 items_json=normalized,
             )
-            session.add(row)
+            self.submission_repo.add(session, row)
             rt.submissions.append(row)
         else:
             row.items_json = normalized
@@ -683,11 +678,11 @@ class PickBanActionService:
         """The default a ``side_pick`` nobody answered settles on: a coin flip
         between the discipline's sides, encoded as the index the item slot
         carries."""
-        return secrets.randbelow(len(self.side_codes(rt.encounter)) or 1)
+        return secrets.randbelow(len(side_codes(rt.encounter)) or 1)
 
     async def _settle_side_pick(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
         """Write the revealed side onto the round's game rows."""
-        sides = self.side_codes(rt.encounter)
+        sides = side_codes(rt.encounter)
         for actor in step.acting_actors:
             row = pbr.actor_submission(rt.submissions, step.index, actor)
             items = list(row.items_json or []) if row is not None else []
@@ -712,18 +707,21 @@ class PickBanActionService:
     async def _blocked_rounds(self, session: AsyncSession, encounter: Encounter) -> frozenset[int]:
         """Series positions that already carry a claim or an accepted result --
         the rounds a dispute may no longer reopen, whichever kind asks."""
-        games = await self.games.list_games(session, encounter.id)
-        claims = await self.games.claims_by_game(session, games)
-        return frozenset(
-            game.position for game in games if game.state == EncounterGameState.CONFIRMED or claims.get(game.id)
-        )
+        return await self.games.played_positions(session, encounter.id)
 
     # -- reopening ---------------------------------------------------------
-    def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
+    async def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
         """Void the step's current attempt and open the next one, each actor's
         draft prefilled with what they had. The clock restarts; a session that
-        had run out of sequence comes back to life."""
+        had run out of sequence comes back to life.
+
+        A ``side_pick`` is the exception: its new drafts start EMPTY -- a
+        prefilled one would simply re-apply the old side on the next action --
+        the round's side-bound steps are unbound, and the position's sides are
+        taken back, so the re-choice binds everything afresh. Callers refuse a
+        played position first."""
         attempt = pbr.current_attempt(rt.submissions, step.index)
+        side_pick = step.action == "side_pick"
         previous: dict[int, list[dict[str, Any]]] = {}
         for row in rt.submissions:
             if row.step_index != step.index or row.attempt != attempt or row.state == pbr.VOIDED:
@@ -739,10 +737,17 @@ class PickBanActionService:
                 encounter_team_id=actor,
                 attempt=attempt + 1,
                 state=pbr.DRAFT,
-                items_json=previous.get(actor, []),
+                items_json=[] if side_pick else previous.get(actor, []),
             )
-            session.add(row)
+            self.submission_repo.add(session, row)
             rt.submissions.append(row)
+        if side_pick:
+            # The `apply_undo` rule: `_bind_side_actors` rebinds only unbound steps.
+            rt.steps = [
+                other.unbound() if other.round == step.round and other.is_bound_to_side else other for other in rt.steps
+            ]
+            rt.pick_ban.resolved_sequence_json = [other.to_json() for other in rt.steps]
+            await self.games.clear_sides(session, rt.encounter.id, {step.round or 1})
         pbr.project_entries(rt.entries, rt.steps, rt.submissions)
         rt.pick_ban.current_step_started_at = step_clock(rt.pick_ban)
         if str(rt.pick_ban.status) == MapVetoSessionStatus.COMPLETED:
@@ -892,7 +897,7 @@ class PickBanActionService:
     def _assert_side_choice(self, rt: _Runtime, item_id: int) -> None:
         """A side pick names an INDEX into the discipline's sides, not a pool
         item: there is no board entry to validate it against."""
-        sides = self.side_codes(rt.encounter)
+        sides = side_codes(rt.encounter)
         if not sides:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -984,7 +989,7 @@ class PickBanActionService:
             )
         step = next(candidate for candidate in rt.steps if candidate.index == state.step_index)
         attempt = pbr.current_attempt(rt.submissions, step.index)
-        self._reopen(session, rt, step)
+        await self._reopen(session, rt, step)
         await record_room_event(
             session,
             encounter_id,
@@ -1005,7 +1010,7 @@ class PickBanActionService:
     ) -> dict[str, Any]:
         """The organizer's version of a dispute: the same replay, without the
         per-step attempt limit and without needing the step to allow disputes at
-        all (design §5) -- the escape hatch for a room that revealed something
+        all -- the escape hatch for a room that revealed something
         wrong under a rule nobody anticipated."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=False)
         rt = await self._load(session, pick_ban, encounter, refresh=True)
@@ -1016,7 +1021,9 @@ class PickBanActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="There is no settled step to reopen",
             )
-        self._reopen(session, rt, step)
+        if step.action == "side_pick" and (step.round or 1) in await self.games.played_positions(session, encounter.id):
+            raise pick_ban_undo.side_locked()
+        await self._reopen(session, rt, step)
         await record_room_event(
             session,
             encounter_id,
@@ -1106,7 +1113,7 @@ class PickBanActionService:
         what changed. Returns whether anything did.
 
         This is the ONLY place the room heals itself. The state read is pure
-        (design: a viewer's poll must never queue behind a captain's write), so
+        (a viewer's poll must never queue behind a captain's write), so
         every "a map just got picked", "the clock ran out", "a position was
         confirmed and the next map's bans are owed", "the series owes a
         position" catches up here -- after every room write (``room_reconcile``'s
@@ -1229,11 +1236,11 @@ class PickBanActionService:
         """The room as it stands RIGHT NOW. A pure read: no lock, no write, no
         commit, no signal.
 
-        It used to heal the room it was about to render, which put every viewer's
-        poll behind the encounter's row lock -- and so behind the captains and
-        behind each other. Whatever this read finds un-healed is owed to
-        :meth:`reconcile_room`, which runs after every room write and on a one-
-        second sweep, and which signals the room when it lands.
+        Healing here would put every viewer's poll behind the encounter's row
+        lock -- and so behind the captains and behind each other. Whatever this
+        read finds un-healed is owed to :meth:`reconcile_room`, which runs after
+        every room write and on a one-second sweep, and which signals the room
+        when it lands.
         """
         encounter = await self.encounter_repo.get(session, encounter_id)
         if encounter is None:
@@ -1262,7 +1269,7 @@ class PickBanActionService:
         return await self._build_state(session, rt, kind, readiness=readiness, viewer=viewer)
 
     async def _series(self, session: AsyncSession, encounter: Encounter) -> dict[str, Any]:
-        """What the confirmed games add up to, per participation (D57)."""
+        """What the confirmed games add up to, per participation."""
         standing = await self.games.standing(session, encounter)
         return {
             "ended": standing.ended,
@@ -1350,8 +1357,8 @@ class PickBanActionService:
             "draft_issues": draft_issues,
             "targets": targets,
             #: The discipline's side codes, in the order a ``side_pick`` indexes
-            #: them; empty when the game has no sides (D25).
-            "sides": list(self.side_codes(rt.encounter)),
+            #: them; empty when the game has no sides.
+            "sides": list(side_codes(rt.encounter)),
             "dispute": pbr.dispute_target(
                 rt.steps,
                 rt.submissions,
@@ -1359,12 +1366,13 @@ class PickBanActionService:
                 blocked_rounds=blocked_rounds,
             ).to_json(),
             "undo": pick_ban_undo.undo_state(rt.pick_ban, rt.steps, rt.submissions),
+            #: Every kind: a hero-only room (a game with no map veto) picks sides too.
+            "starting_sides": self._sides_state(rt, games, lines),
         }
         if kind == PickBanKind.MAP:
             payloads = await self.games.claim_payloads(session, games)
             state["games"] = [self.games.serialize(game, lines.get(game.id, []), payloads[game.id]) for game in games]
             state["series"] = await self._series(session, rt.encounter)
-            state["starting_sides"] = self._sides_state(rt, lines)
         return state
 
 

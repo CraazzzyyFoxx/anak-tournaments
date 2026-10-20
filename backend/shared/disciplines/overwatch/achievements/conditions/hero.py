@@ -90,7 +90,7 @@ async def execute_hero_kd_best(
     """Best K/D for a hero in tournament. Grain: user_tournament.
 
     One query answers every hero: the catalog seeds a rule per hero, and running
-    this per rule was an N+1 of identical scans (Sentry OWT-TOURNAMENTS-2BX).
+    this per rule would be an N+1 of identical scans.
     The per-hero winners are memoized on the run's ``leaf_cache`` and the rule's
     ``hero_slug`` is applied afterwards. Equivalent to filtering in SQL: the
     window already partitions by hero, so other heroes never change a rank.

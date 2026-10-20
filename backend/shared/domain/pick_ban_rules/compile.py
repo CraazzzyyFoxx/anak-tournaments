@@ -1,11 +1,7 @@
 """Phase selection, round resolution and the v1 -> v2 conversion.
 
-The v1 sequence generators live here now (they moved out of
-``tournament-service/.../veto_session.py`` unchanged): a ruleset phase with a
-``generator`` expands to the very same token list the flat v1 config produced,
-so a migrated bracket/slot config keeps its exact step order.
-
-Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §1, §3, §11.
+A ruleset phase with a ``generator`` expands to the same token list the flat v1
+config produces, so a converted bracket/slot config keeps its exact step order.
 """
 
 from __future__ import annotations
@@ -26,8 +22,9 @@ class UnassignedSide(ValueError):
     """``side:<code>`` read before the ``side_pick`` that hands it out.
 
     A ``ValueError`` so a caller that cannot defer (the constructor's demand
-    arithmetic, a stored ruleset read out of order) still sees the old
-    behaviour; :func:`resolve_round` catches it and leaves the step unbound.
+    arithmetic, a stored ruleset read out of order) fails as on any other
+    unresolvable token; :func:`resolve_round` catches it and leaves the step
+    unbound.
     """
 
 
@@ -69,7 +66,7 @@ def build_slot_sequence(candidate_counts: list[int], *, rotation: str) -> list[s
 
 
 def steps_from_v1_tokens(tokens: list[str], *, kind: str) -> list[Step]:
-    """Every v1 token becomes a count-1, open, single-actor step (§11).
+    """Every v1 token becomes a count-1, open, single-actor step.
 
     A hero sequence drops ``decider``: "whatever survived is the pick" is a
     map-veto idea, and a hero round leaves the whole unbanned pool playable.
@@ -97,7 +94,7 @@ def _v1_step(step_id: str, *, action: str, actors: str) -> Step:
         min=None,
         blind=False,
         target=None,
-        #: v1 bans lasted exactly the map they were made on.
+        #: A v1 ban lasts exactly the map it was made on.
         lifetime=1 if action == "ban" else None,
         timer_seconds=None,
         on_timeout=None,
@@ -117,7 +114,7 @@ def ruleset_from_v1(
     unique_attribute: str | None,
     turn_timer_seconds: int | None,
 ) -> Ruleset:
-    """Convert a v1 ``PickBanConfig`` into the equivalent ruleset (§11).
+    """Convert a v1 ``PickBanConfig`` into the equivalent ruleset.
 
     Behaviour-preserving by construction: the same steps in the same order, the
     ledger's no-repeat scope expressed as a ``banned_by`` filter, and the
@@ -183,14 +180,13 @@ def resolve_actors(
     prev_winner: int | None = None,
     sides: Mapping[str, int] | None = None,
 ) -> list[ResolvedActor]:
-    """Actor resolution (§1, §13.4): a token becomes the PARTICIPATIONS that
+    """Actor resolution: a token becomes the PARTICIPATIONS that
     take the step, or ``[None]`` when the engine takes it.
 
     ``participants`` are the encounter's live seats in slot order, so
     ``slot:<n>`` is simply the n-th of them; ``second`` is the seat after the
-    opener and ``both`` is everyone, opener first, which is what the two-seat
-    reading always meant. ``winner_prev``/``loser_prev`` fall back to
-    first/second when there is no previous round or it was drawn.
+    opener and ``both`` is everyone, opener first. ``winner_prev``/``loser_prev``
+    fall back to first/second when there is no previous round or it was drawn.
     ``side:<code>`` needs the ``side_pick`` that assigned it to have been
     resolved already -- validation refuses a ruleset where it was not.
     """

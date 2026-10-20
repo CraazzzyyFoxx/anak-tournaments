@@ -194,10 +194,9 @@ class RankStateService:
         tournament = models.Tournament
         acc = models.SocialAccount
 
-        # Registrations are anchored on workspace_member (dbarch02 dropped
-        # user_id); LEFT JOIN so member-less rows still contribute their entered
-        # battle tags (their player_id resolves to None, exactly like the old
-        # NULL user_id). The entered tags (main + smurfs) are the registration's
+        # Registrations are anchored on workspace_member; LEFT JOIN so
+        # member-less rows still contribute their entered battle tags (their
+        # player_id resolves to None). The entered tags (main + smurfs) are the registration's
         # battlenet identity rows, so that join is a LEFT JOIN too: a
         # registration with no battlenet handle still contributes its player.
         member = models.WorkspaceMember
@@ -284,7 +283,6 @@ class RankStateService:
         """
         target_ids = await self._registration_collection_targets(session, extra_accounts)
 
-        # Demote tier-1 rows that are no longer in the registration pool.
         await self.repo.demote_tier1_not_in(session, target_ids)
 
         if not target_ids:
@@ -603,7 +601,7 @@ class RankStateService:
             state.next_eligible_at = None
         else:
             # Cap the exponent: a transient outage can drive consecutive_failures
-            # arbitrarily high (it no longer disables), and 2**big is wasteful — the
+            # arbitrarily high (a transient failure never disables), and 2**big is wasteful — the
             # backoff is clamped to MAX_BACKOFF_SECONDS long before then anyway.
             backoff = min(
                 config.backoff_base_seconds * (2 ** min(state.consecutive_failures - 1, 16)),

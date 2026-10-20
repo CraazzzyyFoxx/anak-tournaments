@@ -153,15 +153,10 @@ class RegistrationFormService:
 
         The whole tail of a schema save, shared by the form upsert and by
         applying a template: version the schema, tell open tabs, commit, re-read.
-        Two call sites, one place to change the invalidation resource or the
-        reload reasoning.
         """
         await self.apply_schema(session, form, schema, actor_user_id=actor_user_id)
         # Staged before the commit that owns the write: the rail persists the
-        # row in this transaction and publishes it from after_commit. Until this
-        # existed a form edit emitted nothing at all, so open tabs only learned
-        # about it by accident, riding along with the next unrelated
-        # registration event.
+        # row in this transaction and publishes it from after_commit.
         await emit(
             session,
             scope=Scope.tournament(form.tournament_id),
@@ -245,9 +240,9 @@ class RegistrationFormService:
     ) -> int:
         """Live registrations answering something other than the current version.
 
-        ``IS DISTINCT FROM`` rather than ``!=`` so the legacy/manual rows whose
-        ``form_version_id`` is NULL are counted as stale -- they are exactly the
-        ones whose answers nobody can render against a known question set.
+        ``IS DISTINCT FROM`` rather than ``!=`` so rows whose ``form_version_id``
+        is NULL are counted as stale -- they are exactly the ones whose answers
+        nobody can render against a known question set.
         """
         return (
             await session.scalar(

@@ -101,6 +101,30 @@ class TournamentRepository(BaseRepository[models.Tournament]):
         result = await session.execute(query)
         return result.unique().scalars().all()
 
+    async def get_summary_row(self, session: AsyncSession, tournament_id: int) -> sa.Row | None:
+        """``(id, name, status)`` of the tournament, or ``None`` when it does not exist. No ``is_hidden`` filter."""
+        return (
+            await session.execute(
+                sa.select(models.Tournament.id, models.Tournament.name, models.Tournament.status).where(
+                    models.Tournament.id == tournament_id
+                )
+            )
+        ).one_or_none()
+
+    async def get_draft_format_json(self, session: AsyncSession, tournament_id: int) -> dict | None:
+        """The stored draft format rule; ``None`` when the tournament never set one (snake)."""
+        return await session.scalar(
+            sa.select(models.Tournament.draft_format_json).where(models.Tournament.id == tournament_id)
+        )
+
+    async def get_for_registration(self, session: AsyncSession, registration_id: int) -> models.Tournament | None:
+        """The tournament a balancer registration belongs to."""
+        return await session.scalar(
+            sa.select(models.Tournament)
+            .join(models.BalancerRegistration, models.BalancerRegistration.tournament_id == models.Tournament.id)
+            .where(models.BalancerRegistration.id == registration_id)
+        )
+
 
 class StageRepository(BaseRepository[models.Stage]):
     def __init__(self) -> None:
@@ -179,6 +203,60 @@ class StageItemRepository(BaseRepository[models.StageItem]):
             .order_by(models.StageItem.order.asc(), models.StageItem.id.asc())
         )
         return result.scalars().all()
+
+
+def _in_swiss_scope(
+    model: type[models.SwissBye] | type[models.SwissStoppedScope], stage_id: int, stage_item_id: int | None
+) -> tuple:
+    return model.stage_id == stage_id, model.stage_item_id.is_not_distinct_from(stage_item_id)
+
+
+class SwissByeRepository(BaseRepository[models.SwissBye]):
+    def __init__(self) -> None:
+        super().__init__(models.SwissBye)
+
+    async def team_ids(self, session: AsyncSession, stage_id: int, stage_item_id: int | None) -> list[int]:
+        result = await session.execute(
+            sa.select(models.SwissBye.team_id)
+            .where(*_in_swiss_scope(models.SwissBye, stage_id, stage_item_id))
+            .order_by(models.SwissBye.id)
+        )
+        return list(result.scalars().all())
+
+    async def delete_round(
+        self, session: AsyncSession, stage_id: int, stage_item_id: int | None, round_number: int
+    ) -> None:
+        await session.execute(
+            sa.delete(models.SwissBye).where(
+                *_in_swiss_scope(models.SwissBye, stage_id, stage_item_id), models.SwissBye.round == round_number
+            )
+        )
+
+    async def delete_scope(self, session: AsyncSession, stage_id: int, stage_item_id: int | None) -> None:
+        await session.execute(
+            sa.delete(models.SwissBye).where(*_in_swiss_scope(models.SwissBye, stage_id, stage_item_id))
+        )
+
+
+class SwissStoppedScopeRepository(BaseRepository[models.SwissStoppedScope]):
+    def __init__(self) -> None:
+        super().__init__(models.SwissStoppedScope)
+
+    async def mark(self, session: AsyncSession, stage_id: int, stage_item_id: int | None) -> None:
+        exists = await session.scalar(
+            sa.select(models.SwissStoppedScope.id).where(
+                *_in_swiss_scope(models.SwissStoppedScope, stage_id, stage_item_id)
+            )
+        )
+        if exists is None:
+            await self.create(session, models.SwissStoppedScope(stage_id=stage_id, stage_item_id=stage_item_id))
+
+    async def delete_scope(self, session: AsyncSession, stage_id: int, stage_item_id: int | None) -> None:
+        await session.execute(
+            sa.delete(models.SwissStoppedScope).where(
+                *_in_swiss_scope(models.SwissStoppedScope, stage_id, stage_item_id)
+            )
+        )
 
 
 class BracketEncounterRepository(BaseRepository[models.BracketEncounter]):
@@ -297,6 +375,15 @@ class TeamRepository(BaseRepository[models.Team]):
         result = await session.execute(query)
         return result.unique().scalars().first()
 
+    async def claim_captain(self, session: AsyncSession, team_id: int, captain_id: int) -> bool:
+        """Set ``captain_id`` only while the team has none; whether this call won it."""
+        result = await session.execute(
+            sa.update(models.Team)
+            .where(models.Team.id == team_id, models.Team.captain_id.is_(None))
+            .values(captain_id=captain_id)
+        )
+        return result.rowcount != 0
+
 
 class PlayerRepository(BaseRepository[models.Player]):
     def __init__(self) -> None:
@@ -337,10 +424,7 @@ class PlayerRepository(BaseRepository[models.Player]):
         """One roster row for a user in a tournament.
 
         ``user_id`` is a ``User.id``, reached through ``workspace_member`` — ``Player``
-        has no ``user_id`` column. It was dropped in the workspace-anchoring contract
-        step (iwrefac07); ``workspace_member_id`` is the sole identity anchor now. This
-        method previously filtered on the dead column and raised ``InvalidRequestError``
-        on every call; it had no callers, which is why nothing caught it.
+        has no ``user_id`` column; ``workspace_member_id`` is the sole identity anchor.
         """
         query = self._apply_options(
             sa.select(models.Player).where(
@@ -441,7 +525,7 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         super().__init__(models.Encounter)
 
     def select(self) -> sa.Select[tuple[models.Encounter]]:
-        """Tournament-owned encounters only (D77): a mix round is not a tournament encounter, and every
+        """Tournament-owned encounters only: a mix round is not a tournament encounter, and every
         get/lock/list here starts from this one predicate instead of trusting a join to the tournament."""
         return super().select().where(models.Encounter.tournament_id.is_not(None))
 
@@ -455,7 +539,7 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         *,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> models.Encounter | None:
-        """Locking read for every result write (D68).
+        """Locking read for every result write.
 
         ``SELECT ... FOR UPDATE`` so two concurrent writers to one encounter
         serialize instead of interleaving a read-modify-write on ``score`` and
@@ -492,9 +576,8 @@ class EncounterRepository(BaseRepository[models.Encounter]):
     ) -> models.Encounter | None:
         """The encounter a remote Challonge match maps to.
 
-        The id used to sit on the encounter row; it belongs to the import, so
-        it lives on ``tournament.challonge_match_mapping`` and is read through
-        it. One remote match maps to at most one encounter per source.
+        The id belongs to the import, so it lives on ``tournament.challonge_match_mapping``
+        and is read through it. One remote match maps to at most one encounter per source.
         """
         result = await session.execute(
             self.select()
@@ -663,6 +746,31 @@ class StandingRepository(BaseRepository[models.Standing]):
 
     async def delete_for_team(self, session: AsyncSession, team_id: int) -> None:
         await session.execute(sa.delete(models.Standing).where(models.Standing.team_id == team_id))
+
+
+class StandingPinRepository(BaseRepository[models.StandingPin]):
+    def __init__(self) -> None:
+        super().__init__(models.StandingPin)
+
+    async def replace(
+        self,
+        session: AsyncSession,
+        *,
+        stage_id: int,
+        stage_item_id: int | None,
+        pins: Sequence[models.StandingPin],
+    ) -> None:
+        """Replace one table's pins.
+
+        The delete runs before the new rows flush, so the unique indexes never see both.
+        """
+        await session.execute(
+            sa.delete(models.StandingPin).where(
+                models.StandingPin.stage_id == stage_id,
+                models.StandingPin.stage_item_id.is_not_distinct_from(stage_item_id),
+            )
+        )
+        await self.create_many(session, pins)
 
 
 class TournamentLinkRepository(BaseRepository[models.TournamentLink]):

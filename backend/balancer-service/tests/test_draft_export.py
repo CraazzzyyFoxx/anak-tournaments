@@ -19,9 +19,9 @@ from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # no
 from shared.models.catalog import CatalogRole  # noqa: E402
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
-from shared.services.team_export.materialization import resolve_slot_role  # noqa: E402
 from src.services.draft.export import _draft_to_balancer_payload  # noqa: E402
 from src.services.team import to_materialization_teams  # noqa: E402
+from src.services.team_export.materialization import resolve_slot_role  # noqa: E402
 from tests.factories import roster  # noqa: E402
 
 # The two shapes the payload behaves differently under: role slots keep rank

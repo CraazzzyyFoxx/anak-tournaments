@@ -1,7 +1,7 @@
 """The display name of an encounter: its seats, in slot order, joined by "vs".
 
 An encounter seats ``slot_count`` participations, not two sides, so the name is
-built from a sequence: a duel reads exactly as it always did ("A vs B") and a
+built from a sequence: a duel reads "A vs B" and a
 lobby of four reads "A vs B vs C vs D". An empty seat is "TBD".
 """
 

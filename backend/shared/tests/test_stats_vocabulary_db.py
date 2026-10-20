@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from shared import models
 from shared.disciplines import EventTypeSpec, StatDefSpec
 from shared.repository.stats import EventTypeRepository, StatDefRepository, StatsMatchRepository
+from shared.services.ontology import project_disciplines
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 from shared.tests.test_stats_integrity_db import seed_native_stats
@@ -180,3 +181,33 @@ class StatsVocabularyTests(IsolatedAsyncioTestCase):
                     sa.select(models.StatDef.name).where(models.StatDef.id == self.graph["stat_ids"]["points"])
                 ),
             )
+
+
+class DeclaredVocabularyProjectionTests(IsolatedAsyncioTestCase):
+    """The real modules' declarations through app-service startup's projection, not a synthetic spec."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def asyncSetUp(self) -> None:
+        ensure_test_postgres()
+        self.engine = create_test_async_engine()
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self) -> None:
+        await self.engine.dispose()
+
+    async def _project_and_read(self) -> tuple[dict[str, int], dict[str, int]]:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            await session.commit()
+            return (
+                await StatDefRepository().ids(session, discipline="lol"),
+                await EventTypeRepository().ids(session, discipline="lol"),
+            )
+
+    async def test_lol_projects_kills_dragons_and_kill_with_stable_ids(self) -> None:
+        stats, events = await self._project_and_read()
+        self.assertEqual({"kills", "dragons"}, set(stats))
+        self.assertIn("kill", events)
+        self.assertEqual((stats, events), await self._project_and_read())

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.rbac import WORKSPACE_SYSTEM_ROLE_NAMES  # noqa: E402
 from src import models, schemas  # noqa: E402
-from src.services.rbac_admin import RoleAdminService  # noqa: E402
+from src.services.rbac import RoleAdminService  # noqa: E402
 
 
 def test_listing_workspace_roles_creates_missing_system_roles(db_session) -> None:

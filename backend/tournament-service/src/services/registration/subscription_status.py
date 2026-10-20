@@ -23,8 +23,6 @@ from loguru import logger
 from redis.exceptions import RedisError
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.services.admission import AdmissionConfig, AdmissionStage
-from shared.services.admission.gates import describe_requirement
 from shared.services.subscriptions import (
     Outcome,
     SubscriptionRequirement,
@@ -35,6 +33,8 @@ from src.schemas.registration import (
     SubscriptionProviderVerdictRead,
     SubscriptionStatusRead,
 )
+from src.services.admission import AdmissionConfig, AdmissionStage
+from src.services.admission.gates import describe_requirement
 
 __all__ = (
     "REDEEM_ATTEMPT_LIMIT",
@@ -98,18 +98,13 @@ async def subscription_status_for_user(
         mode=requirement.mode,
         outcome=outcome.value,
         rule=describe_requirement(requirement),
-        # Same composition the registration gate runs, and the same opt-in: a
-        # check-in-staged tournament never refuses sign-up, so promising a block here
-        # would disable a submit button the server would happily accept. Note this
-        # read is non-forcing, so a patron who just subscribed may see a stale block
-        # for up to the entitlement TTL; the gate itself re-resolves live.
-        #
-        # The stage comes from ``AdmissionConfig``, the registry's only reader of
-        # that column, rather than from a second parse here. It keeps the
-        # fail-LOOSER rule the deleted ``enforces_at_registration`` had: an absent
-        # or unrecognised value reads as ``check_in``, because an unknown stage is
-        # a config or migration error and a typo must not start refusing sign-ups
-        # nobody asked it to refuse.
+        # Same composition and opt-in as the registration gate: a check-in-staged
+        # tournament never refuses sign-up, so promising a block here would disable a
+        # submit the server accepts. Non-forcing, so a patron who just subscribed may
+        # see a stale block for up to the entitlement TTL; the gate re-resolves live.
+        # The stage comes from ``AdmissionConfig`` (the column's only reader), where an
+        # absent or unrecognised value reads as ``check_in``: a typo must not start
+        # refusing sign-ups.
         blocks_registration=(
             AdmissionConfig.from_form(form).subscription_stage is AdmissionStage.registration
             and evaluate_requirement(requirement, verdicts, deferred_providers=code_providers).blocks_admission

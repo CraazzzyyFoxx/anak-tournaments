@@ -1,7 +1,5 @@
 """Provisioning for ad-hoc scrim rooms.
 
-Design: ``docs/plans/2026-08-12-scrim-rooms.md``.
-
 Everything a scrim room needs to run already exists — the pick-ban engine, the
 readiness gate, the pre-game room UI, the captain-identity resolver. This module
 does not extend any of them. It only assembles the rows they all expect: a
@@ -46,8 +44,7 @@ from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.pick_ban_config import has_pool
 
 # Direct imports rather than through ``src.models``: that package re-exports only
-# part of the tournament domain, and these four modules are not in it. Same as
-# ``services/encounter/pick_ban_session.py`` and ``services/admin/preview_access.py``.
+# part of the tournament domain, and these four modules are not in it.
 from shared.models.tournament.pick_ban import (
     PickBanConfig,
     PickBanConfigItem,
@@ -56,7 +53,9 @@ from shared.models.tournament.pick_ban import (
 )
 from shared.models.tournament.scrim import ScrimRoom
 from shared.repository import (
+    BracketEncounterRepository,
     EncounterRepository,
+    PickBanConfigRepository,
     ScrimRoomRepository,
     StageRepository,
     TeamRepository,
@@ -73,15 +72,7 @@ from src import models
 
 
 def _pick_ban():
-    """The pick-ban modules, imported on first use.
-
-    Deliberately NOT at module scope: ``pick_ban_session``/``pick_ban_config``/
-    ``veto_session`` are Task 8's and do not import yet (they still read
-    ``MapPickSide``/``EncounterFormat``). Provisioning a room's pool and
-    claiming its free seat are separate decisions, and only the first needs
-    them -- so the import happens where it is used instead of taking the whole
-    module down with it.
-    """
+    """The pick-ban modules, imported on first use: only pool provisioning needs them, not ``claim_side``."""
     from src.services.encounter import pick_ban_config as pick_ban_config_service  # noqa: PLC0415
     from src.services.encounter.pick_ban_session import pick_ban_session_service  # noqa: PLC0415
     from src.services.encounter.veto_session import (  # noqa: PLC0415
@@ -101,7 +92,7 @@ def _pick_ban():
     )
 
 
-#: Slot 1 is the creator's seat, slot 2 the one the share link gives away (D55).
+#: Slot 1 is the creator's seat, slot 2 the one the share link gives away.
 SLOTS = (1, 2)
 
 # The container's name is cosmetic — rooms are found through ``ScrimRoom``, never
@@ -149,9 +140,7 @@ def _may_close(room: ScrimRoom, user: models.AuthUser | None, viewer_slot: int |
     """Creator, either captain, or workspace staff.
 
     One predicate for both the endpoint and the serialized ``can_close``, so the
-    button a viewer sees and the rule the write enforces cannot drift -- they did:
-    the page offered Close only to a captain, hiding it from a creator who plays
-    neither side even though the endpoint has always accepted them.
+    button a viewer sees and the rule the write enforces cannot drift.
     """
     if user is None:
         return False
@@ -311,6 +300,8 @@ class ScrimService:
         stage_repo: StageRepository = StageRepository(),
         team_repo: TeamRepository = TeamRepository(),
         encounter_repo: EncounterRepository = EncounterRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
+        pick_ban_config_repo: PickBanConfigRepository = PickBanConfigRepository(),
         user_repo: UserRepository = UserRepository(),
     ) -> None:
         self.room_repo = room_repo
@@ -319,6 +310,8 @@ class ScrimService:
         self.stage_repo = stage_repo
         self.team_repo = team_repo
         self.encounter_repo = encounter_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
+        self.pick_ban_config_repo = pick_ban_config_repo
         self.user_repo = user_repo
 
     # ── authorization ────────────────────────────────────────────────────────
@@ -326,14 +319,11 @@ class ScrimService:
     async def _ensure_player(self, session: AsyncSession, user: models.AuthUser) -> models.User:
         """The ``players.user`` row a captain must have, created on demand.
 
-        Same provisioning the registration flow already does
-        (``services/registration/service.py``): ``Team.captain_id`` points at the
-        domain player, not the auth user, and a scrim captain may never have
-        registered for anything.
+        ``Team.captain_id`` points at the domain player, not the auth user, and a
+        scrim captain may never have registered for anything.
 
-        Deliberately not ``UserRepository.ensure_for_auth_user``: that one falls
-        back to a ``user-<id>`` name and suffixes it on collision, which writes a
-        different row than this has always written.
+        Not ``UserRepository.ensure_for_auth_user``: that one falls back to a
+        ``user-<id>`` name and suffixes it on collision.
         """
         player = await self.user_repo.get_by_auth_user_id(session, user.id)
         if player is not None:
@@ -354,15 +344,13 @@ class ScrimService:
         Serialized on an advisory lock — two members creating their first room at the
         same moment would otherwise each see "no container" and make one. A duplicate
         would be harmless (both hidden, each holding its own rooms) but permanent,
-        and the lock costs one statement, so it is not worth tolerating. Same pattern
-        as ``shared/services/tournament/computation.py``.
+        and the lock costs one statement, so it is not worth tolerating.
         """
         await session.execute(
             sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"scrim:{workspace_id}:{discipline}")))
         )
-        # Stays in the service: no repository read filters a hidden tournament by
-        # name, and the ``order_by(id).limit(1)`` is what makes a duplicate
-        # container -- harmless but permanent -- resolve to the same row every time.
+        # ``order_by(id).limit(1)`` makes a duplicate container -- harmless but
+        # permanent -- resolve to the same row every time.
         container = await session.scalar(
             self.tournament_repo.select()
             .where(
@@ -385,23 +373,16 @@ class ScrimService:
             workspace_id=workspace_id,
             discipline=discipline,
             name=CONTAINER_NAME,
-            # Deterministic, not generated: one container per workspace and game (see
-            # the lookup above), so ``(workspace_id, discipline)`` already guarantees
-            # uniqueness without the collision-checking path real tournaments go
-            # through. Never surfaced (is_hidden, not a real tournament), so a stable
-            # internal value is all the public-URL slug column needs here.
+            # Deterministic, not generated: one container per workspace and game, so
+            # ``(workspace_id, discipline)`` already makes it unique, and a hidden row's
+            # slug is never surfaced.
             slug=f"scrims-{workspace_id}-{discipline}",
             description="Container for ad-hoc scrim rooms. Not a real tournament.",
             is_hidden=True,
             status=TournamentStatus.LIVE,
-            # Both dates set, even though a container neither starts nor ends. The
-            # columns are nullable and purely informational, but ``TournamentRead``
-            # declares them NOT NULL and every one of ~15 render sites (public and
-            # admin) reads them unguarded -- a contract that held because the admin
-            # create form requires both. A container with NULL dates was the single
-            # violator and 500'd the admin tournament list, which is the one list that
-            # shows hidden rows. Its creation instant is the least misleading value
-            # available: the row did come into existence then.
+            # Both dates set, though a container neither starts nor ends: ``TournamentRead``
+            # declares them NOT NULL and its render sites read them unguarded. The
+            # creation instant is the least misleading value available.
             start_date=now,
             end_date=now,
             # Nothing schedules or advances this row; leaving automation on would let
@@ -519,7 +500,7 @@ class ScrimService:
         de-duplicate. A ``DISTINCT`` here is also outright invalid: Postgres requires
         every ORDER BY expression to appear in the select list under it, and the
         ordering below sorts on a computed ``closed_at IS NULL``, which raises
-        ``InvalidColumnReferenceError``. It shipped with one and 500'd the list.
+        ``InvalidColumnReferenceError``.
         """
         if scope not in ("mine", "workspace"):
             raise HTTPException(status_code=422, detail="scope must be 'mine' or 'workspace'")
@@ -532,8 +513,7 @@ class ScrimService:
         player_ids = sa.select(models.User.id).where(models.User.auth_user_id == user.id).scalar_subquery()
         seat = aliased(models.EncounterTeam)
         captain_team = aliased(models.Team)
-        # "Captained by me" is now a question about participations: a team I
-        # captain holds one of this encounter's live seats.
+        # "Captained by me": a team I captain holds one of this encounter's live seats.
         mine = sa.or_(
             ScrimRoom.created_by_auth_user_id == user.id,
             sa.exists()
@@ -542,10 +522,6 @@ class ScrimService:
             .where(captain_team.id == seat.team_id)
             .where(captain_team.captain_id.in_(player_ids)),
         )
-        # Stays in the service rather than ``ScrimRoomRepository.list_for_workspace``:
-        # that read filters on workspace/closed/tournament only, while this one is
-        # gated on "created by me OR captained by me" and ordered open-first. Built
-        # from the repository's select() all the same.
         rows = await session.execute(
             self.room_repo.select()
             .where(
@@ -635,8 +611,6 @@ class ScrimService:
     # ── writes ──────────────────────────────────────────────────────────────
 
     async def _assert_under_cap(self, session: AsyncSession, user: models.AuthUser, limit: int) -> None:
-        # A bare aggregate, so it stays here rather than in the repository (the
-        # ``count(*)`` also has to answer ``None`` as zero, see the guard below).
         open_rooms = await session.scalar(
             sa.select(sa.func.count())
             .select_from(ScrimRoom)
@@ -672,11 +646,9 @@ class ScrimService:
         *progress* -- nobody is ready yet, hero bans waiting on a map -- is the normal
         state of a fresh room and passes.
 
-        This closes the gap that let ``pool.source = "copy"`` brick a room: the custom
-        branch validates its own payload, but a copied config was trusted, so
-        borrowing a 3-slot round for a best-of-5 produced a room whose only screen
-        read "The pool does not cover this series -- the organizer has to add the
-        missing slots", naming a person a scrim does not have.
+        A copied pool is checked only here: the custom branch validates its own
+        payload, a copy does not, and borrowing a 3-slot round for a best-of-5 would
+        otherwise open a room that can never play.
         """
         pick_ban = _pick_ban()
         for kind in kinds:
@@ -749,7 +721,7 @@ class ScrimService:
             # One rule row per room, the ``wins`` preset: a scrim is a Bo-N
             # series and nothing about it is configurable, but
             # ``stage.scoring_rule_id`` and ``encounter.scoring_rule_id`` are
-            # both NOT NULL and the encounter layer scores every card by one (D51).
+            # both NOT NULL and the encounter layer scores every card by one.
             scoring_rule=models.ScoringRule(
                 workspace_id=workspace_id,
                 preset="wins",
@@ -760,20 +732,15 @@ class ScrimService:
             description="Scrim room",
             # The stage exists so this room's pool has a cascade level of its own
             # (``uq_pick_ban_config_level`` allows only one config per level). The type
-            # is otherwise arbitrary — but it is NOT unread, as this comment used to
-            # claim: ``standings/service.py:_build_elimination_stage_standings`` treats
-            # an elimination stage with no seeds as "derive the bracket from its
-            # encounters", and will invent placings for these two rosterless teams if
-            # it is ever handed the container. That is why the recalculation is skipped
-            # at the enqueue site (``shared/services/scrim_scope.py``,
-            # docs/plans/2026-08-12-scrim-rooms.md §5) instead of relying on the shape
-            # of a room being inert.
+            # is still read: ``_build_elimination_stage_standings`` would invent placings
+            # for these two rosterless teams, which is why ``shared/services/scrim_scope.py``
+            # skips the recalculation at the enqueue site.
             stage_type=StageType.SINGLE_ELIMINATION,
             max_rounds=1,
             order=int(next_order or 1),
             # A scrim room has no preview phase -- it is live the instant it is
             # created, so its stage must not read as an organizer's un-activated
-            # bracket (``shared.services.bracket.usability.is_encounter_live``).
+            # bracket (``src.services.bracket.usability.is_encounter_live``).
             is_published=True,
         )
         # Seeded while transient: once flushed, the first touch of a collection
@@ -782,10 +749,8 @@ class ScrimService:
         await self.stage_repo.create(session, stage)
 
         configs = await self._build_configs(session, user, pool, tournament_id=container.id, stage_id=stage.id)
-        for pick_ban_config in configs:
-            # No repository for ``PickBanConfig``: the graph below it (items, slots,
-            # slot items) is written by cascade off this one ``add``.
-            session.add(pick_ban_config)
+        # Items, slots and slot items are written by cascade off the config rows.
+        await self.pick_ban_config_repo.create_many(session, configs)
 
         captain = await self._ensure_player(session, user)
         first = models.Team(tournament_id=container.id, name=team_names[0], balancer_name=team_names[0])
@@ -804,18 +769,19 @@ class ScrimService:
             status=EncounterStatus.OPEN,
         )
         await self.encounter_repo.create(session, encounter)
-        session.add(
+        await self.bracket_encounter_repo.create(
+            session,
             models.BracketEncounter(
                 encounter_id=encounter.id,
                 tournament_id=container.id,
                 stage_id=stage.id,
                 stage_item_id=None,
                 round=1,
-            )
+            ),
         )
         # The creator takes slot 1 now; slot 2 is RESERVED, not seated -- the
         # retired participation is how the room remembers the team the creator
-        # named for an opponent until ``claim_side`` seats it (D55). That is also
+        # named for an opponent until ``claim_side`` seats it. That is also
         # what makes "is the link still open" a question about live seats alone.
         await place_team(session, encounter, slot=1, team_id=first.id, name=first.name, seed=None, members=())
         await place_team(session, encounter, slot=2, team_id=second.id, name=second.name, seed=None, members=())
@@ -871,12 +837,7 @@ class ScrimService:
         # together would both read "unclaimed" and the later flush would silently
         # overwrite the earlier captain. Winning it is also what authorizes the
         # seat below, so the seat can never be written twice.
-        claimed = await session.execute(
-            sa.update(models.Team)
-            .where(models.Team.id == reserved.team_id, models.Team.captain_id.is_(None))
-            .values(captain_id=captain.id)
-        )
-        if claimed.rowcount == 0:
+        if not await self.team_repo.claim_captain(session, reserved.team_id, captain.id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That side was just claimed")
         await place_team(
             session,

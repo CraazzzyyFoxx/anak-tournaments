@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from shared.core import enums
 from shared.core.errors import BaseAPIException
 from shared.models.encounter import Encounter, EncounterGame
+from shared.models.platform.outbox import EventOutbox
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage
 from shared.services.encounter.participants import active_teams
@@ -77,7 +78,11 @@ class ClaimSettlementTests(SettlementCase):
 
         with (
             patch("src.services.encounter.settle.enqueue_tournament_recalculation", AsyncMock()) as recalc,
-            patch("src.services.encounter.map_report.push_confirmed_to_challonge", AsyncMock()) as push,
+            # Linked to a Challonge match, so the confirmation owes a push.
+            patch(
+                "src.services.encounter.settle.resolve_encounter_challonge",
+                AsyncMock(side_effect=lambda _s, ids: dict.fromkeys(ids, 1)),
+            ),
         ):
             for position in (1, 2):
                 game = await self.open_game(source, position)
@@ -96,14 +101,22 @@ class ClaimSettlementTests(SettlementCase):
                         )
                 if position == 1:
                     recalc.assert_not_awaited()
-                    push.assert_not_awaited()
 
         async with self.Session() as s:
-            self.assertEqual(enums.EncounterResultStatus.CONFIRMED, (await s.get_one(Encounter, source)).result_status)
+            confirmed = await s.get_one(Encounter, source)
+            self.assertEqual(enums.EncounterResultStatus.CONFIRMED, confirmed.result_status)
             seated = await active_teams(s, final)
             self.assertEqual([(1, winner.team_id), (2, self.teams[2])], [(seat.slot, seat.team_id) for seat in seated])
+            pushes = list(
+                await s.scalars(
+                    sa.select(EventOutbox.payload_json).where(
+                        EventOutbox.event_id.startswith(f"challonge_push:{source}:")
+                    )
+                )
+            )
         recalc.assert_awaited_once_with(ANY, self.tournament_id)
-        push.assert_awaited_once_with(ANY, source)
+        # One request, staged by the claim that finished the series, carrying its version.
+        self.assertEqual([confirmed.result_version], [push["result_version"] for push in pushes])
 
 
 class UnfilledSlotTests(SettlementCase):

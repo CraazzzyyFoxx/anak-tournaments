@@ -18,8 +18,8 @@ from shared.services.achievement_effective import build_effective_achievement_ro
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import config, enums, pagination
-from src.domain.encounter_seats import Seat
 from src.services.discipline_queries import DisciplineQueries
+from src.services.encounter_seats import Seat
 
 from ._scope import (
     _apply_overview_role_filters,
@@ -60,10 +60,9 @@ class UserOverviewQueries(DisciplineQueries):
         """WHERE list shared by every correlated overview aggregate.
 
         ``extra`` slots in between the finished/league predicates and the
-        optional tournament pin, which is where each caller used to put its own
-        extra predicate — keeping the emitted SQL order unchanged. Every caller
-        joins ``Tournament``, so ``workspace_id`` scopes the aggregate to the
-        same workspace as the value the row displays.
+        optional tournament pin. Every caller joins ``Tournament``, so
+        ``workspace_id`` scopes the aggregate to the same workspace as the value
+        the row displays.
         """
         where_conditions: list[typing.Any] = [
             *_compare_player_scope_filters(
@@ -619,7 +618,7 @@ class UserOverviewQueries(DisciplineQueries):
         is_desc = params.order == pagination.SortOrder.DESC or params.order == "desc"
         sort_key = params.sort
 
-        # Fast path (H13): an expensive correlated sort with no search/role/division/
+        # Fast path: an expensive correlated sort with no search/role/division/
         # logs filter has a population-wide ORDER BY that depends only on
         # (workspace, sort, direction, min_encounters). Reuse a short-TTL cached id
         # order and fetch only the page, instead of re-sorting the whole population
@@ -1205,10 +1204,8 @@ class UserOverviewQueries(DisciplineQueries):
                 discipline=self.discipline,
             )
 
-        # The candidate set stays in SQL. Every sub-aggregate below semi-joins
-        # against this CTE instead of the old shape, which pulled every matching
-        # user id into Python and re-inlined it as a literal ``IN (...)`` list
-        # into four further statements.
+        # The candidate set stays in SQL: every sub-aggregate below semi-joins
+        # against this CTE rather than an inlined ``IN (...)`` id list.
         #
         # Two sets: the division chip counts are computed *without* the division
         # chips, everything else with them.
@@ -1251,8 +1248,8 @@ class UserOverviewQueries(DisciplineQueries):
         # the workspace-scoped candidate set (total_players).
         ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
 
-        # Preserve the existing global has-logs KPI over workspace-scoped candidates.
-        # Actual statistic aggregates apply their own workspace filters.
+        # has-logs counts a candidate's logs from any workspace; the statistic
+        # aggregates apply their own workspace filters.
         facts = player_facts(discipline=self._discipline)
         owns_logs = sa.select(sa.literal(1)).select_from(facts).where(facts.c.player_id == candidates.c.id).exists()
         with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(owns_logs)

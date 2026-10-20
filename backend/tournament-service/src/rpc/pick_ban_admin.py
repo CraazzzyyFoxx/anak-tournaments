@@ -1,16 +1,10 @@
 """Generic pick-ban admin methods over typed RPC (``PickBanConfig`` CRUD for
 both ``map`` and ``hero`` kinds, plus the live-session organizer overrides).
 
-Mirrors ``veto_admin.py``'s FORMER upsert/list/delete shape exactly — same
-cascade key ``(tournament_id, stage_id, round)``, now additionally
-partitioned by ``kind`` (design: docs/plans/2026-08-09-generic-pickban-engine.md)
-— plus a ``kind`` field on every route so one admin surface configures both
-map veto and hero bans. Since the map-veto cutover, this IS the sole config
-CRUD surface for both kinds.
+Configs cascade on ``(tournament_id, stage_id, round)``, partitioned by
+``kind``, so one admin surface configures both map veto and hero bans.
 
-Ruleset v2 (docs/plans/2026-09-28-pick-ban-constructor.md) replaced the flat
-token sequence with a rules DOCUMENT, so this module also carries the two
-constructor-support ops — ``rules_validate`` and ``rules_preview`` — which
+Two constructor-support ops -- ``rules_validate`` and ``rules_preview`` --
 answer "would this save?" and "what would a Bo5 look like?" without writing
 anything. They are gated exactly like the upsert they precede: an organizer
 who may not save a config may not probe the engine with one either.
@@ -18,6 +12,7 @@ who may not save a config may not probe the engine with one either.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Literal
 
 from faststream.rabbit.annotations import RabbitMessage
@@ -35,12 +30,12 @@ from shared.domain import pick_ban_rules as pbr
 from shared.repository import EncounterRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
-from shared.services.bracket.usability import assert_encounter_live
 from src import models
 from src.core import auth
 from src.rpc import admin_misc
-from src.rpc._helpers import _dump, _identity, _path_int, _payload, _q1, _require_id, _run
+from src.rpc._helpers import _actor_player_id, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
 from src.schemas import captain as captain_schemas
+from src.services.bracket.usability import assert_encounter_live
 from src.services.encounter import pick_ban_action as pick_ban_action
 from src.services.encounter import pick_ban_config, room_control, room_journal
 from src.services.encounter import pick_ban_session as pick_ban_session
@@ -58,8 +53,8 @@ async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
 
     Every admin handler here mutates the live session or a game result, and the
     game-result path re-derives the encounter score from its games -- so it takes
-    the same Encounter -> Game lock order the captain path uses (spec §7). Without
-    it a concurrent captain claim and an admin correction can each materialise a
+    the same Encounter -> Game lock order the captain path uses. Without it a
+    concurrent captain claim and an admin correction can each materialise a
     score from a stale read. ``populate_existing`` rides along: a row already in
     the identity map would otherwise be served at the version this session first
     saw, defeating the lock.
@@ -80,8 +75,8 @@ class PickBanAdminReset(BaseModel):
 class PickBanAdminAct(BaseModel):
     """Body for the admin act-for-a-participation route: perform one step on
     behalf of an absent captain. ``target_player_id`` names the opponent roster
-    player a per-player ban is spent on (ruleset v2 target steps); ``null``
-    everywhere else."""
+    player a per-player ban is spent on (target steps); ``null`` everywhere
+    else."""
 
     kind: PickBanKind
     encounter_team_id: int
@@ -184,8 +179,7 @@ class AdminGameResultLineInput(BaseModel):
 class AdminGameResultInput(BaseModel):
     """Body for the admin game-result correction: the position's numbers as the
     organizer decides them, one line per live participation, plus the reason
-    that goes into the audit journal (a correction is never anonymous --
-    spec §6.5)."""
+    that goes into the audit journal (a correction is never anonymous)."""
 
     results: list[AdminGameResultLineInput] = Field(min_length=1)
     reason: str = Field(min_length=1, max_length=500)
@@ -193,14 +187,14 @@ class AdminGameResultInput(BaseModel):
 
 class PickBanConfigSlotUpsert(BaseModel):
     """One slot of a slot-mode upsert body. No ``position``: list order IS the
-    play order (same rationale as ``veto_admin.VetoConfigSlotUpsert``)."""
+    play order."""
 
     candidates: list[int]
     reserve_item_id: int | None = None
 
 
 class PickBanConfigUpsert(BaseModel):
-    """Body for the generic pick-ban config upsert route (ruleset v2)."""
+    """Body for the generic pick-ban config upsert route."""
 
     kind: PickBanKind
     stage_id: int | None = None
@@ -425,12 +419,10 @@ def register(broker: Any, logger: Any) -> None:
         return await _run(logger, op)
 
     # ── live-session admin overrides (map + hero) ───────────────────────────
-    # Generalizes veto_admin.py's two live-session operations (reset + act
-    # for an absent captain), which had no pick-ban equivalent before the
-    # room unification. Both kinds share these routes via a ``kind`` body
-    # field instead of kind-hardcoded handlers. Gated on ``match.result``, not
-    # ``update``: they run ONE match in progress, the same staff that records
-    # its result; the rules they run on stay behind the config routes above.
+    # Both kinds share these routes via a ``kind`` body field. Gated on
+    # ``match.result``, not ``update``: they run ONE match in progress, the same
+    # staff that records its result; the rules they run on stay behind the
+    # config routes above.
 
     @broker.subscriber("rpc.tournament.admin_pick_ban_session_reset")
     async def _admin_pick_ban_session_reset(data: dict, msg: RabbitMessage) -> dict:
@@ -713,8 +705,8 @@ def register(broker: Any, logger: Any) -> None:
                 reason=body.reason,
                 actor_auth_user_id=user.id,
                 # The result audit's actor lives in PLAYER space, not auth space
-                # (admin_misc._actor_player_id explains the translation).
-                actor_player_id=await admin_misc._actor_player_id(session, user),
+                # (``_actor_player_id`` explains the translation).
+                actor_player_id=await _actor_player_id(session, user),
             )
             return await admin_misc._serialize_result(session, encounter)
 
@@ -730,22 +722,10 @@ def register(broker: Any, logger: Any) -> None:
             game_id = _path_int(data, "game_id")
             body = AdminGameResultInput.model_validate(_payload(data))
             encounter = await _load_encounter(session, encounter_id)
-            await record_admin_audit(
-                session,
-                action="encounter.game_result",
-                actor=user,
-                data=data,
-                workspace_id=ws_id,
-                entity_type="encounter",
-                entity_id=encounter.id,
-                after={
-                    "game_id": game_id,
-                    "results": [line.model_dump(mode="json") for line in body.results],
-                    "reason": body.reason,
-                },
-            )
-            # Commits internally (the accepted numbers, the live standing and
-            # any rebuilt round land together).
+            # The audit row is written by ``correct_game`` itself, once the
+            # dependent-round guard has passed: a refused correction leaves none.
+            # One commit lands it with the accepted numbers, the live standing
+            # and any rebuilt round.
             return await game_correction_service.correct_game(
                 session,
                 encounter.id,
@@ -761,6 +741,20 @@ def register(broker: Any, logger: Any) -> None:
                 ],
                 actor_user_id=user.id,
                 reason=body.reason,
+                audit=partial(
+                    record_admin_audit,
+                    action="encounter.game_result",
+                    actor=user,
+                    data=data,
+                    workspace_id=ws_id,
+                    entity_type="encounter",
+                    entity_id=encounter.id,
+                    after={
+                        "game_id": game_id,
+                        "results": [line.model_dump(mode="json") for line in body.results],
+                        "reason": body.reason,
+                    },
+                ),
             )
 
         return await _run(logger, op)

@@ -1,13 +1,8 @@
-"""Authentication dependencies for balancer-service.
+"""Token-payload user resolution and workspace-id lookups for balancer RPC handlers.
 
-Stateless user resolution still relies on the auth-service token payload;
-workspace-scoped admin access is enforced imperatively at each RPC handler via
-``rpc/_common.py::require_workspace_permission`` after resolving the resource's
+Workspace-scoped access is enforced at each RPC handler via
+``shared.rpc.identity.ensure_workspace_permission`` after resolving the resource's
 workspace id with one of the ``_get_*_workspace_id`` helpers below.
-
-``_get_tournament_workspace_id`` re-exports ``shared.rbac.workspace_lookup``
-(identical body to tournament-service's non-underscore-named version there);
-everything else here is genuinely balancer-local.
 """
 
 from typing import Any

@@ -32,9 +32,9 @@ def main() -> None:
             engine=async_engine,
         )
         start_worker_metrics_server(settings.worker_metrics_port)
-        # The Boosty re-sync resolves entitlements, which stages a
-        # workspace.subscriptions invalidation; shared/services/realtime has no
-        # settings of its own to find Redis with.
+        # A discord_message status change stages a realtime signal for the page
+        # showing it; shared/services/realtime has no settings of its own to
+        # find Redis with.
         configure_realtime(redis_url=str(settings.redis_url))
 
         bot = LogCollectorBot(settings)

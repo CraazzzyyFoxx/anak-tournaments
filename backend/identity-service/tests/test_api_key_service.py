@@ -12,13 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pytest  # noqa: E402
 
 from shared import quota  # noqa: E402
+from shared.core.pagination import paginated_dump  # noqa: E402
 from shared.quota.policy import QuotaLimits, ResolvedQuota  # noqa: E402
 from shared.rbac import ALL_SCOPE_NAMES  # noqa: E402
 from shared.rpc.identity import credential_type, rehydrate_user  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.core import key_derivation  # noqa: E402
 from src.core.config import settings  # noqa: E402
-from src.rpc import _common as c  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
 from tests._fakes import FakeExecuteResult as _FakeExecuteResult  # noqa: E402
@@ -257,6 +257,19 @@ def test_validate_api_key_narrows_owner_rbac_to_the_key_scopes(monkeypatch: pyte
     assert payload.workspaces[0].rbac_permissions == _TEAM_CREATE
     assert row.last_used_at is not None
     assert session.commit_calls == 1
+
+
+def test_validate_skips_the_last_used_write_inside_its_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every keyed request validates its key; only a stale stamp is worth a write."""
+    recently = datetime.now(UTC) - timedelta(seconds=10)
+    row = _api_key_row()
+    row.last_used_at = recently
+    session = _FakeSession([{"scalar": row}])
+    _patch_owner(monkeypatch, _owner_payload(workspace_permissions=_TEAM_CREATE))
+
+    assert asyncio.run(api_keys.validate(session, "aqt_sk_publicid_secret-token")) is not None
+    assert row.last_used_at == recently
+    assert session.commit_calls == 0
 
 
 class _KeyPolicy:
@@ -636,7 +649,7 @@ def test_list_api_key_envelope_keeps_available_scopes_on_the_wire() -> None:
     minted from the UI is inert -- and the picker, handed ``undefined``, took
     the admin page down with it.
     """
-    envelope = c.paginated_dump(
+    envelope = paginated_dump(
         {
             "results": [api_keys.describe(_api_key_row())],
             "total": 1,

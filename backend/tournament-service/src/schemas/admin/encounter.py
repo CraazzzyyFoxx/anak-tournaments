@@ -34,13 +34,11 @@ class EncounterSeatInput(BaseModel):
 
 
 class EncounterCreate(BaseModel):
-    """Schema for creating an encounter"""
-
     name: str
     tournament_id: int
     stage_id: int | None = None
     stage_item_id: int | None = None
-    #: How many seats the card has; a duel is 2 (D43, D55).
+    #: How many seats the card has; a duel is 2.
     slot_count: int = Field(default=2, ge=2)
     #: The seats to fill right away; every ``slot`` must be within the card and
     #: no two may name the same one.
@@ -55,11 +53,10 @@ class EncounterCreate(BaseModel):
 
 
 class EncounterUpdate(BaseModel):
-    """Schema for updating an encounter.
+    """Edit an encounter's own fields; seats change only through the slot swap.
 
-    Seats are not edited here: a seat changes hands through the slot swap,
-    which retires the old participation instead of rewriting it, so the games
-    it played stay attached to the row that played them (D55).
+    The swap retires the outgoing participation instead of rewriting it, so the
+    games it played stay attached to the row that played them.
     """
 
     name: str | None = None

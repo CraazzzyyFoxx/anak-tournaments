@@ -1,1 +1,1 @@
-"""Security helpers (API-key limits, policies, workspace access)."""
+"""Workspace access policy for the balancer job API."""

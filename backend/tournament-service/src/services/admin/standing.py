@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.repository import StandingRepository, TournamentRepository
+from shared.repository import StandingPinRepository, StandingRepository, TournamentRepository
 from src import models, schemas
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.computation.jobs import jobs_service
@@ -18,9 +18,11 @@ class AdminStandingService:
         self,
         *,
         standing_repo: StandingRepository = StandingRepository(),
+        standing_pin_repo: StandingPinRepository = StandingPinRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
     ) -> None:
         self.standing_repo = standing_repo
+        self.standing_pin_repo = standing_pin_repo
         self.tournament_repo = tournament_repo
 
     async def _publish_results_changed(self, session: AsyncSession, tournament_id: int) -> None:
@@ -51,10 +53,8 @@ class AdminStandingService:
     async def update_standing(
         self, session: AsyncSession, standing_id: int, data: schemas.StandingUpdate
     ) -> models.Standing:
-        """Update standing fields"""
         standing = await self.get_standing(session, standing_id)
 
-        # Update fields
         update_data = data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(standing, field, value)
@@ -64,7 +64,6 @@ class AdminStandingService:
         return await self.get_standing(session, standing.id)
 
     async def delete_standing(self, session: AsyncSession, standing_id: int) -> None:
-        """Delete standing"""
         standing = await self.standing_repo.get(session, standing_id)
 
         if not standing:
@@ -82,7 +81,6 @@ class AdminStandingService:
         requested_by_user_id: int | None = None,
     ) -> models.TournamentComputationJob:
         """Schedule a durable standings recalculation without exposing empty data."""
-        # Verify tournament exists
         tournament = await self.tournament_repo.get(session, tournament_id)
 
         if not tournament:
@@ -179,21 +177,20 @@ class AdminStandingService:
                         ),
                     )
 
-        await session.execute(
-            sa.delete(models.StandingPin).where(
-                models.StandingPin.stage_id == stage.id,
-                models.StandingPin.stage_item_id.is_not_distinct_from(data.stage_item_id),
-            )
-        )
-        session.add_all(
-            models.StandingPin(
-                tournament_id=stage.tournament_id,
-                stage_id=stage.id,
-                stage_item_id=data.stage_item_id,
-                team_id=team_id,
-                position=position,
-            )
-            for team_id, position in wanted.items()
+        await self.standing_pin_repo.replace(
+            session,
+            stage_id=stage.id,
+            stage_item_id=data.stage_item_id,
+            pins=[
+                models.StandingPin(
+                    tournament_id=stage.tournament_id,
+                    stage_id=stage.id,
+                    stage_item_id=data.stage_item_id,
+                    team_id=team_id,
+                    position=position,
+                )
+                for team_id, position in wanted.items()
+            ],
         )
         job = await jobs_service.request_standings_recalculation(
             session,

@@ -1,8 +1,7 @@
 """Prometheus metrics for the Twitch live-status poller (scraped on :9111).
 
 Poll health is metrics, not ``audit_log``: the journal has a ~300 rows/day budget
-(``docs/superpowers/specs/2026-08-12-platform-audit-log-design.md`` §4 NFR 4) and
-a tick every 60 seconds would consume it five times over on its own. Only the
+and a tick every 60 seconds would consume it five times over on its own. Only the
 manual admin re-poll is audited.
 
 ``stream_helix_ratelimit_remaining`` is the one to alert on: the bucket is shared

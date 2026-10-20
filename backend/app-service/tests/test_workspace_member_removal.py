@@ -21,6 +21,7 @@ from shared.core import enums
 from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, ScoringRule
 from shared.models.identity.auth_user import AuthUser
 from shared.models.identity.user import User
+from shared.models.platform.outbox import EventOutbox
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament.tournament import Tournament
 from shared.rbac import get_workspace_system_role, user_has_any_workspace_role
@@ -114,8 +115,26 @@ class WorkspaceMemberRemovalTests(IsolatedAsyncioTestCase):
             member = await self._add_admin(s, workspace, auth_user)
             roster = await self._roster_row(s, workspace, member)
             await s.commit()
+            last_id = await s.scalar(sa.select(sa.func.coalesce(sa.func.max(EventOutbox.id), 0)))
 
             await workspace_service.revoke_member(s, member)  # commits
+
+            # identity's RBAC-cache bust was committed with the removal itself.
+            staged = [
+                row
+                for row in await s.scalars(
+                    sa.select(EventOutbox).where(
+                        EventOutbox.id > last_id, EventOutbox.event_type == "workspace_member_changed"
+                    )
+                )
+                if row.payload_json["workspace_id"] == workspace.id
+            ]
+            await s.execute(sa.delete(EventOutbox).where(EventOutbox.id.in_([row.id for row in staged])))
+            await s.commit()
+            self.assertEqual(
+                [("workspace_member_changed", [auth_user.id], "removed")],
+                [(row.routing_key, row.payload_json["auth_user_ids"], row.payload_json["change"]) for row in staged],
+            )
 
             row = await s.scalar(sa.select(WorkspaceMember).where(WorkspaceMember.id == member.id))
             self.assertIsNotNone(row)

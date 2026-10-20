@@ -34,6 +34,7 @@ import importlib
 import os
 import re
 import sys
+import uuid
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,9 +49,14 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
+import sqlalchemy as sa  # noqa: E402
+
 from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.disciplines import DISCIPLINES, DisciplineSpec  # noqa: E402
 from shared.domain import pick_ban_rules as pbr  # noqa: E402
+from shared.models.tenancy.workspace import Workspace  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
+from shared.testing import real_db_sessionmaker  # noqa: E402
 from shared.tests import eager_loading  # noqa: E402
 
 pick_ban_admin = importlib.import_module("src.rpc.pick_ban_admin")
@@ -1441,6 +1447,31 @@ class PresetRotationRoundTrip(_SubjectCase):
         self.assertEqual("result_loser_first", pick_ban_config.serialize_pick_ban_config(config)["first_ban_rotation"])
 
 
+class PresetLolSideSelectionRoundTrip(_SubjectCase):
+    async def test_leagues_side_selection_preset_saves_with_its_rotation_and_reads_back(self) -> None:
+        offered = {row["id"]: row for row in pbr.catalog(discipline="lol")["presets"]}["lol_side_selection"]
+        body = {
+            "kind": "hero",
+            "mode": "pool",
+            "ruleset": offered["ruleset"],
+            "first_ban_rotation": offered["first_ban_rotation"],
+            "item_ids": [1, 2, 3],
+        }
+        envelope, session = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+
+        self.assertTrue(envelope["ok"], envelope)
+        (config,) = [obj for obj in session.added if isinstance(obj, pick_ban_models.PickBanConfig)]
+        self.assertEqual(enums.FirstBanRotation.RESULT_LOSER_FIRST, config.first_ban_rotation)
+        read_back = pick_ban_config.serialize_pick_ban_config(config)
+        self.assertEqual("result_loser_first", read_back["first_ban_rotation"])
+        steps = [step for phase in read_back["ruleset"]["phases"] for step in phase["steps"]]
+        self.assertEqual([("side_pick", "first")], [(step["action"], step["actors"]) for step in steps])
+
+
 class UpsertValidatesInTheTournamentsDiscipline(_SubjectCase):
     async def _upsert(self, discipline: str, group: str) -> dict:
         ruleset = deepcopy(HERO_RULESET)
@@ -1460,3 +1491,96 @@ class UpsertValidatesInTheTournamentsDiscipline(_SubjectCase):
         self.assertEqual("unprocessable", rejected["error"]["code"], rejected)
         entry = rejected["error"]["details"]["fields"][0]
         self.assertIn("unknown_group", [issue["code"] for issue in entry["issues"]])
+
+
+# ── a hero config that picks sides needs its pool (real database) ─────────────────────────────────────────────────
+
+
+class HeroSidePickNeedsItsPool(IsolatedAsyncioTestCase):
+    """``side_pick_required`` reads a resolved config's side step whether or not its room can open, and a pool-less
+    config never opens one: saved, it would hold every game's result behind a room reporting ``not_configured``. The
+    upsert refuses it (422 ``pool_required``) -- through the real handler, on a real database."""
+
+    async def asyncSetUp(self) -> None:
+        self.Session = await self.enterAsyncContext(real_db_sessionmaker())
+        tag = f"pb-pool-{uuid.uuid4().hex[:12]}"
+        async with self.Session() as session:
+            await project_disciplines(session)
+            workspace = Workspace(slug=tag, name=tag)
+            session.add(workspace)
+            await session.flush()
+            tournament = models.Tournament(workspace_id=workspace.id, name=tag, slug=tag, discipline="lol")
+            champions = [
+                catalog_models.CatalogEntity(discipline="lol", kind="character", slug=f"{tag}-{n}", name=f"{tag} {n}")
+                for n in range(2)
+            ]
+            session.add_all([tournament, *champions])
+            await session.commit()
+            self.workspace_id, self.tournament_id = workspace.id, tournament.id
+            self.champion_ids = [champion.id for champion in champions]
+        self.addAsyncCleanup(self._cleanup)
+
+    async def _cleanup(self) -> None:
+        async with self.Session() as session:
+            await session.execute(sa.delete(Workspace).where(Workspace.id == self.workspace_id))
+            await session.execute(
+                sa.delete(catalog_models.CatalogEntity).where(catalog_models.CatalogEntity.id.in_(self.champion_ids))
+            )
+            await session.commit()
+
+    async def _upsert(self, ruleset: dict, item_ids: list[int]) -> dict:
+        broker = CapturingBroker()
+        pick_ban_admin.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+        identity = make_identity(
+            workspaces=[
+                {
+                    "workspace_id": self.workspace_id,
+                    "rbac_roles": [],
+                    "rbac_permissions": [{"resource": "match", "action": "update"}],
+                }
+            ]
+        )
+        body = {"kind": "hero", "mode": "pool", "ruleset": ruleset, "item_ids": item_ids}
+        with patch.object(helpers.db, "async_session_maker", self.Session):
+            return await broker.handlers[UPSERT](
+                {"identity": identity, "id": self.tournament_id, "payload": body}, None
+            )
+
+    async def _saved_pool_sizes(self) -> list[int]:
+        config, item = pick_ban_models.PickBanConfig, pick_ban_models.PickBanConfigItem
+        async with self.Session() as session:
+            return list(
+                await session.scalars(
+                    sa.select(sa.func.count(item.id))
+                    .select_from(config)
+                    .outerjoin(item, item.pick_ban_config_id == config.id)
+                    .where(config.tournament_id == self.tournament_id)
+                    .group_by(config.id)
+                )
+            )
+
+    @staticmethod
+    def _side_ruleset() -> dict:
+        return {preset.id: preset for preset in pbr.presets_for("lol")}["lol_side_selection"].ruleset.to_json()
+
+    async def test_an_empty_pool_under_a_side_pick_is_refused_with_pool_required(self) -> None:
+        envelope = await self._upsert(self._side_ruleset(), [])
+
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+        self.assertEqual("pool_required", envelope["error"]["details"]["fields"][0]["code"], envelope)
+        self.assertIn("champion pool has to be saved first", envelope["error"]["message"], envelope)
+        self.assertEqual([], await self._saved_pool_sizes())
+
+    async def test_an_empty_pool_without_a_side_step_still_saves_as_a_template(self) -> None:
+        envelope = await self._upsert(deepcopy(HERO_RULESET), [])
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual([0], await self._saved_pool_sizes())
+
+    async def test_a_side_pick_config_with_a_champion_pool_saves(self) -> None:
+        envelope = await self._upsert(self._side_ruleset(), self.champion_ids)
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(self.champion_ids, envelope["data"]["item_ids"])
+        self.assertEqual([2], await self._saved_pool_sizes())

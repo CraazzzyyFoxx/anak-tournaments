@@ -75,6 +75,7 @@ class ProvisionOwnerTests(IsolatedAsyncioTestCase):
             patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()),
             patch.object(workspaces, "add_member", AsyncMock()),
             patch.object(workspace_service, "assign_workspace_system_role", AsyncMock()) as grant,
+            patch.object(workspace_service, "enqueue_outbox_event", AsyncMock()),
         ):
             workspace = await workspaces.provision(
                 session, payload={"slug": "acme", "name": "Acme Cup"}, owner_auth_user_id=42
@@ -95,11 +96,6 @@ class ProvisionOwnerTests(IsolatedAsyncioTestCase):
 
 
 class CreateRPCTests(IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        p = patch.object(workspaces_rpc, "_invalidate_auth_rbac_cache", AsyncMock())
-        p.start()
-        self.addCleanup(p.stop)
-
     async def _call(self, identity, payload, *, limit_error=None):
         session = _RecordingSession()
         handler = _handler(workspaces_rpc, "rpc.app.workspaces.create")

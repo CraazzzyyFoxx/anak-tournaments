@@ -41,7 +41,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.messaging.config import NOTIFICATIONS_EXCHANGE
+from shared.messaging.config import (
+    NOTIFICATION_BROADCAST_ROUTING_KEY,
+    NOTIFICATION_CREATED_ROUTING_KEY,
+    NOTIFICATIONS_EXCHANGE,
+)
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.platform.notification import Notification
 from shared.schemas.events import NotificationBroadcastEvent, NotificationCreatedEvent
@@ -490,7 +494,7 @@ async def notify(
             session,
             NotificationCreatedEvent(notification_id=row.id),
             exchange=NOTIFICATIONS_EXCHANGE,
-            routing_key="notification.created",
+            routing_key=NOTIFICATION_CREATED_ROUTING_KEY,
         )
     return row
 
@@ -548,5 +552,5 @@ async def broadcast(
             dedupe_key=dedupe_key,
         ),
         exchange=NOTIFICATIONS_EXCHANGE,
-        routing_key="notification.broadcast",
+        routing_key=NOTIFICATION_BROADCAST_ROUTING_KEY,
     )

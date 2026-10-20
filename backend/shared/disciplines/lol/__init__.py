@@ -1,4 +1,4 @@
-"""The League of Legends module (D83, D98). Core reaches it only through ``shared.disciplines``."""
+"""The League of Legends module. Core reaches it only through ``shared.disciplines``."""
 
 from __future__ import annotations
 
@@ -8,9 +8,11 @@ from shared.core.social import SocialProvider
 from shared.disciplines.spec import (
     DimensionSpec,
     DisciplineSpec,
+    EventTypeSpec,
     FormatDimensionSpec,
     FormatRuleSpec,
     RoleSpec,
+    StatDefSpec,
     TeamFormatPreset,
 )
 
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.catalog_sync import CatalogImageMirror
+    from shared.domain.pick_ban_rules.presets import Preset
 
 __all__ = ("SPEC",)
 
@@ -28,6 +31,13 @@ async def _catalog_sync(session: AsyncSession, images: CatalogImageMirror) -> No
     from shared.disciplines.lol.catalog_sync import sync_catalog
 
     await sync_catalog(session, images)
+
+
+def _pick_ban_presets() -> tuple[Preset, ...]:
+    # Imported on call: the preset parses its ruleset through the pick-ban domain, which imports this registry.
+    from shared.disciplines.lol.pick_ban import PRESETS
+
+    return PRESETS
 
 
 POSITION = DimensionSpec(
@@ -44,7 +54,7 @@ POSITION = DimensionSpec(
     ),
 )
 
-#: D98: "по позициям" (each position 1..1) and "без ролей".
+#: "по позициям" (each position 1..1) and "без ролей".
 POSITIONS_5V5 = TeamFormatPreset(
     "positions_5v5",
     "5v5 by positions",
@@ -59,6 +69,8 @@ OPEN_5V5 = TeamFormatPreset("open_5v5", "5v5 without roles", 5, 5, dimensions=(F
 SPEC = DisciplineSpec(
     "lol",
     "League of Legends",
+    #: Index 0 = blue, 1 = red: the ``side_pick`` wire index.
+    sides=("blue", "red"),
     kinds={"character": "Champion", "map": "Map"},
     #: Data Dragon champion tags; a champion's class is its first tag.
     character_classes=("Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"),
@@ -67,4 +79,7 @@ SPEC = DisciplineSpec(
     team_format_presets=(POSITIONS_5V5, OPEN_5V5),
     identity_provider=SocialProvider.RIOT,
     short_name="LoL",
+    stat_defs=(StatDefSpec("kills", "Kills"), StatDefSpec("dragons", "Dragons")),
+    event_types=(EventTypeSpec("kill", "Kill"),),
+    pick_ban_presets=_pick_ban_presets,
 )

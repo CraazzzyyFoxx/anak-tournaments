@@ -25,7 +25,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
-advancement = importlib.import_module("shared.services.bracket.advancement")
+advancement = importlib.import_module("src.services.bracket.advancement")
 
 
 def _session(rows: list[tuple]) -> SimpleNamespace:

@@ -1,6 +1,6 @@
-"""Wires the bot's Discord-facing services onto RabbitMQ: match-log uploads,
-Discord-triggered commands, and read-only guild/member RPC lookups consumed by
-other services.
+"""Wires the bot's Discord-facing services onto RabbitMQ: match-log verdicts,
+tournament changes that move the watched-channel set, Discord-triggered
+commands, and read-only guild/member RPC lookups consumed by other services.
 
 Every command that sends, edits or deletes a message the platform owns names a
 ``discord_message`` row (``message_ref``); the bot is the only process that
@@ -27,14 +27,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared import models
 from shared.messaging.config import (
+    DISCORD_COMMANDS_DLQ,
     DISCORD_COMMANDS_QUEUE,
+    DISCORD_GUILD_CHANNELS_DLQ,
     DISCORD_GUILD_CHANNELS_QUEUE,
+    DISCORD_GUILD_INFO_DLQ,
     DISCORD_GUILD_INFO_QUEUE,
+    DISCORD_GUILD_ROLES_DLQ,
     DISCORD_GUILD_ROLES_QUEUE,
+    DISCORD_MEMBER_ROLES_DLQ,
     DISCORD_MEMBER_ROLES_QUEUE,
+    DISCORD_VOICE_MOVE_DLQ,
     DISCORD_VOICE_MOVE_QUEUE,
-    MATCH_LOG_RESULT_EXCHANGE,
+    MATCH_LOG_RESULT_DLQ,
+    MATCH_LOG_RESULT_QUEUE,
+    TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY,
+    TOURNAMENT_EVENTS_EXCHANGE,
+    TOURNAMENT_STATE_CHANGED_ROUTING_KEY,
 )
+from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import make_rabbit_broker, observe_message_processing
 from shared.repository.discord_message import DiscordMessageRepository
 from shared.schemas.events import DiscordCard, DiscordCommandEvent, MatchLogProcessedEvent
@@ -43,7 +54,6 @@ from shared.services.discord_messages import emit_changed
 from src.core.broker import set_worker_broker
 from src.core.config import Settings
 from src.interactions.cards import card_view
-from src.result_waiter import ResultWaiter
 from src.services.attachment_processor import AttachmentProcessor
 from src.services.channel_registry import ChannelRegistry
 from src.services.directory import DirectoryOutcome, DiscordDirectoryService
@@ -54,6 +64,19 @@ _DIRECTORY_CODES = {
     "invalid": "bad_request",
     "error": "internal",
 }
+
+# Dead-letter queues of every durable queue this bot consumes. Each one dead-letters to
+# ``dlx`` under ``<name>.dlq``, and RabbitMQ creates nothing for that key: undeclared, an
+# expired or rejected message vanishes instead of landing where an operator can see it.
+_OWNED_DLQS = (
+    DISCORD_COMMANDS_DLQ,
+    DISCORD_MEMBER_ROLES_DLQ,
+    DISCORD_GUILD_ROLES_DLQ,
+    DISCORD_GUILD_CHANNELS_DLQ,
+    DISCORD_GUILD_INFO_DLQ,
+    DISCORD_VOICE_MOVE_DLQ,
+    MATCH_LOG_RESULT_DLQ,
+)
 
 #: How long an edit of one message waits for a newer one to replace it. The
 #: live signup post is re-rendered on every join/leave click, so a burst of
@@ -119,7 +142,6 @@ class DiscordRabbitGateway:
         registry: ChannelRegistry,
         directory: DiscordDirectoryService,
         voice: VoiceMover,
-        result_waiter: ResultWaiter,
         bot: discord.Client,
         session_maker: async_sessionmaker[AsyncSession],
         messages: DiscordMessageRepository = DiscordMessageRepository(),
@@ -129,7 +151,6 @@ class DiscordRabbitGateway:
         self._registry = registry
         self._directory = directory
         self._voice = voice
-        self._result_waiter = result_waiter
         self._bot = bot
         self._session_maker = session_maker
         self._messages = messages
@@ -151,12 +172,15 @@ class DiscordRabbitGateway:
 
         broker = make_rabbit_broker(self._settings.broker_url, logger=logger)
         self._register(broker)
+        # The DLQs exist before the first consumer can reject into them.
+        await broker.connect()
+        for dlq in _OWNED_DLQS:
+            await declare_dead_letter_queue(broker, dlq)
         await broker.start()
         # Publish to the global only once the broker is actually started: gateway
-        # member events fire as soon as discord.py connects and reach
-        # MemberSubscriptionSyncService, which resolves subscriptions through
-        # this broker. A half-initialised global there means an RPC against a
-        # broker with no connection.
+        # member events fire as soon as discord.py connects and publish through it
+        # (MembershipEventsCog). A half-initialised global there means a publish
+        # against a broker with no connection.
         set_worker_broker(broker)
         self._broker = broker
         logger.success(f"✅ RabbitMQ listener started (queue='{DISCORD_COMMANDS_QUEUE}')")
@@ -212,7 +236,7 @@ class DiscordRabbitGateway:
         """The row this send still has to produce, or ``None`` when it is settled here.
 
         The row, not the command, decides whether Discord is touched at all.
-        Nothing de-duplicates ``discord_commands`` any more, so a redelivery is
+        Nothing upstream de-duplicates ``discord_commands``, so a redelivery is
         caught here: a row past ``pending`` has already been sent (or refused)
         and the repeat is acked without a second message. A row a delete got to
         first is closed without ever being sent -- that delete acked on the
@@ -345,7 +369,7 @@ class DiscordRabbitGateway:
         if image is not None and card.attachment_name == image.filename:
             extra["attachments"] = [image]
         elif card.attachment_name is None:
-            # A card that became text drops the picture it used to show.
+            # A card that became text drops the picture it was showing.
             extra["attachments"] = []
         try:
             # No fetch: the ids are enough to edit, and the card comes from the
@@ -676,16 +700,66 @@ class DiscordRabbitGateway:
                 observation.set_status(outcome.status)
                 return _directory_reply(outcome)
 
-        # Per-instance, server-named exclusive queue bound to the fanout exchange so
-        # every replica receives every result; the one holding the matching pending
-        # future resolves it, the rest no-op. Replaces pg LISTEN/NOTIFY.
-        result_queue = RabbitQueue("", exclusive=True, auto_delete=True)
-
-        @broker.subscriber(result_queue, MATCH_LOG_RESULT_EXCHANGE)
+        @broker.subscriber(MATCH_LOG_RESULT_QUEUE)
         async def handle_match_log_result(body: dict[str, Any], msg: RabbitMessage) -> None:
-            try:
-                event = MatchLogProcessedEvent.model_validate(body)
-            except ValidationError as e:
-                logger.error(f"❌ Invalid match_log_processed payload: {e}")
-                return
-            self._result_waiter.resolve(event)
+            """Stats's verdict for one uploaded file, put on the message it came from.
+
+            One durable work queue: the event names its message, so any replica can
+            answer it. A message that is gone from Discord is not worth a retry.
+            """
+            await self._bot.wait_until_ready()
+            async with observe_message_processing(
+                queue=MATCH_LOG_RESULT_QUEUE,
+                handler="handle_match_log_result",
+                message=msg,
+                logger=logger,
+            ) as observation:
+                try:
+                    event = MatchLogProcessedEvent.model_validate(body)
+                except ValidationError as e:
+                    observation.set_status("invalid")
+                    logger.error(f"❌ Invalid match_log_processed payload: {e}")
+                    await msg.reject()  # Send to DLQ
+                    return
+
+                if event.channel_id is None or event.message_id is None:
+                    observation.set_status("no_message")
+                    logger.info(f"ℹ️ Verdict for {event.filename} names no Discord message; nothing to react on")
+                    return
+
+                channel = await self._processor.get_text_channel(event.channel_id)
+                try:
+                    message = await channel.fetch_message(event.message_id) if channel is not None else None
+                except (discord.NotFound, discord.Forbidden):
+                    message = None
+                if message is None:
+                    observation.set_status("not_found")
+                    logger.warning(
+                        f"⚠️ Message {event.message_id} in channel {event.channel_id} is gone or hidden; "
+                        f"dropping the verdict for {event.filename}"
+                    )
+                    return
+
+                await self._processor.apply_result(message, event)
+
+        # Each replica keeps its own watched-channel set, so each one needs every
+        # change: a server-named, exclusive, auto-deleted queue per replica, bound to
+        # both routing keys (FastStream binds one key per subscriber, hence two).
+        @broker.subscriber(
+            RabbitQueue("", exclusive=True, auto_delete=True, routing_key=TOURNAMENT_STATE_CHANGED_ROUTING_KEY),
+            TOURNAMENT_EVENTS_EXCHANGE,
+        )
+        @broker.subscriber(
+            RabbitQueue(
+                "", exclusive=True, auto_delete=True, routing_key=TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY
+            ),
+            TOURNAMENT_EVENTS_EXCHANGE,
+        )
+        async def handle_channel_registry_change(body: dict[str, Any], msg: RabbitMessage) -> None:
+            async with observe_message_processing(
+                queue="channel_registry",
+                handler="handle_channel_registry_change",
+                message=msg,
+                logger=logger,
+            ):
+                await self._registry.reload()

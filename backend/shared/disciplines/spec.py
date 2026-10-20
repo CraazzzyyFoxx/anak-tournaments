@@ -1,4 +1,4 @@
-"""What the code knows about a discipline, beside what the DB stores (D25, D31, D48, D83, D88, D101).
+"""What the code knows about a discipline, beside what the DB stores.
 
 Pure declarations and validation, no DB: the pick-ban engine, ruleset validator and game writer read it, and none may do
 IO to answer "does this game have sides". The role ontology and the team-format presets declared here are projected into
@@ -16,9 +16,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.catalog_sync import CatalogImageMirror
+    from shared.disciplines.analytics import AnalyticsExports
     from shared.disciplines.ingest import Decoder, DeriveMatch
     from shared.domain.achievements.context import EvalContext
-    from shared.domain.analytics import AnalyticsExports
     from shared.domain.pick_ban_rules.presets import Preset
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
     from shared.models.catalog.entity import CatalogEntity
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 #: Pull the module's catalog source into ``catalog.entity`` (commits itself).
 CatalogSync = Callable[["AsyncSession", "CatalogImageMirror"], Awaitable[None]]
 
-#: A game's native rank layer (D87): ``players.user`` ids -> ``{user_id: {role code: rank}}``, the best rank a player
+#: A game's native rank layer: ``players.user`` ids -> ``{user_id: {role code: rank}}``, the best rank a player
 #: holds per role of the rated dimension on the game's own ladder; the core places it on a division grid. Reads only.
 NativeRanks = Callable[["AsyncSession", Sequence[int]], Awaitable[dict[int, dict[str, int]]]]
 
@@ -92,7 +92,7 @@ __all__ = (
     "TeamFormatPreset",
 )
 
-#: The core's catalog vocabulary (D101): ``catalog.entity.kind`` and every kind-constant column spell these and
+#: The core's catalog vocabulary: ``catalog.entity.kind`` and every kind-constant column spell these and
 #: nothing else. What a kind is called in a game's UI is the module's label, not a new kind.
 CATALOG_KINDS: tuple[str, ...] = ("character", "map", "mode")
 
@@ -120,7 +120,7 @@ class EventTypeSpec:
 
 @dataclass(frozen=True, slots=True)
 class RoleSpec:
-    """A role the module declares (D31): projected into ``catalog.role`` with ``workspace_id IS NULL``.
+    """A role the module declares: projected into ``catalog.role`` with ``workspace_id IS NULL``.
 
     ``attrs`` carries presentation (``icon``, ``color``) into ``catalog.role.attrs``; it never confers membership.
     """
@@ -132,7 +132,7 @@ class RoleSpec:
 
 @dataclass(frozen=True, slots=True)
 class DimensionSpec:
-    """One axis of a game's roles (§8.3): ``single``/``multi``, and whether ranks hang off it (D32)."""
+    """One axis of a game's roles: ``single``/``multi``, and whether ranks hang off it."""
 
     code: str
     name: str
@@ -151,7 +151,7 @@ class FormatDimensionSpec:
 
 @dataclass(frozen=True, slots=True)
 class FormatRuleSpec:
-    """A quota on one role. ``None`` is "no rule", never zero (§8.3)."""
+    """A quota on one role. ``None`` is "no rule", never zero."""
 
     dimension: str
     role: str
@@ -164,7 +164,7 @@ class FormatRuleSpec:
 
 @dataclass(frozen=True, slots=True)
 class TeamFormatPreset:
-    """A team format the module offers (D35, D88); an owner gets a copy, never a reference."""
+    """A team format the module offers; an owner gets a copy, never a reference."""
 
     code: str
     name: str
@@ -178,7 +178,7 @@ class TeamFormatPreset:
 
 @dataclass(frozen=True, slots=True)
 class NativeTier:
-    """One sub-tier of a game's native ladder (D87), numbered 1 from the top.
+    """One sub-tier of a game's native ladder, numbered 1 from the top.
 
     ``native_division``/``native_tier`` are the names the game's rank source reports.
     """
@@ -205,16 +205,16 @@ class DisciplineSpec:
     #: Allowed ``attrs.class`` values of a ``character``; ``()`` leaves the class unchecked.
     character_classes: tuple[str, ...] = ()
     catalog_sync: CatalogSync | None = field(default=None, compare=False)
-    #: Where a player's rank on the game's own ladder comes from (D87); ``None`` when the game has none (LoL: ranks are
+    #: Where a player's rank on the game's own ladder comes from; ``None`` when the game has none (LoL: ranks are
     #: entered by the organiser).
     native_ranks: NativeRanks | None = field(default=None, compare=False)
-    #: The game's own ladder, top tier first (D87); ``()`` when the organiser enters ranks (LoL).
+    #: The game's own ladder, top tier first; ``()`` when the organiser enters ranks (LoL).
     native_ladder: tuple[NativeTier, ...] = ()
-    #: The role ontology (D31); exactly one dimension is ``rated`` (D32).
+    #: The role ontology; exactly one dimension is ``rated``.
     dimensions: tuple[DimensionSpec, ...] = ()
-    #: Team-format presets; the first is what an owner without a format of its own gets (D35).
+    #: Team-format presets; the first is what an owner without a format of its own gets.
     team_format_presets: tuple[TeamFormatPreset, ...] = ()
-    #: The provider used for default form identities, roster names and log matching (D90).
+    #: The provider used for default form identities, roster names and log matching.
     identity_provider: str | None = None
     #: Projected SMALLINT dictionaries; historical definitions are deactivated, never deleted.
     stat_defs: tuple[StatDefSpec, ...] = ()
@@ -229,7 +229,7 @@ class DisciplineSpec:
     stop_jobs: StopJobs | None = field(default=None, compare=False)
     #: RPC suffix (``rank.collect``) -> handler for the collection operations the module serves.
     collection_handlers: dict[str, CollectionHandler] = field(default_factory=dict, compare=False, hash=False)
-    #: Raw producers the module decodes (D95): source kind -> ``decode(raw, ctx)``. ``shared.disciplines.INGESTORS`` keys
+    #: Raw producers the module decodes: source kind -> ``decode(raw, ctx)``. ``shared.disciplines.INGESTORS`` keys
     #: them by ``(code, kind)``; a kind not listed here is unsupported, never routed to another producer.
     ingestors: dict[str, Decoder] = field(default_factory=dict, compare=False, hash=False)
     #: Facts that need the bound match (baselines, registration ranks); ``None`` when nothing derives after binding.
@@ -239,7 +239,7 @@ class DisciplineSpec:
     achievement_conditions: AchievementConditions | None = field(default=None, compare=False)
     achievement_catalog: AchievementCatalog | None = field(default=None, compare=False)
     achievement_eligible_keys: AchievementEligibleKeys | None = field(default=None, compare=False)
-    #: The analytics module (D83): ``None`` for a game with no features or models (LoL), which is unsupported by
+    #: The analytics module: ``None`` for a game with no features or models (LoL), which is unsupported by
     #: analytics - never served another game's module.
     analytics: AnalyticsModule | None = field(default=None, compare=False)
     #: ``pick_ban_presets()``: the module's built-in pick/ban rulesets, imported only when called; ``None`` for a game

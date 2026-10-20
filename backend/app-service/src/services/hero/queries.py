@@ -363,8 +363,8 @@ class HeroQueries(DisciplineQueries):
         ]
 
         if tournament_id is None:
-            # Cross-tournament leaderboard: exclude hidden tournaments' stats (issue
-            # #115). A specific tournament_id is authorized upstream by the handler gate.
+            # Cross-tournament leaderboard: exclude hidden tournaments' stats. A
+            # specific tournament_id is authorized upstream by the handler gate.
             base_conditions.append(
                 self._facts.c.match_id.in_(
                     sa.select(self._matches.c.id)

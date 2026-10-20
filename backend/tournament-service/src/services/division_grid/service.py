@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -186,8 +186,7 @@ class DivisionGridService:
         self.tournament_repo = tournament_repo
 
     async def get_workspace_grids(self, session: AsyncSession, workspace_id: int) -> list[models.DivisionGrid]:
-        # Not DivisionGridRepository.list_workspace_grids: that one eager-loads
-        # versions only, and DivisionGridRead needs the tiers underneath them.
+        # DivisionGridRead needs the tiers under each version, hence _GRID_OPTIONS.
         result = await session.execute(
             self.grid_repo.select()
             .options(*_GRID_OPTIONS)
@@ -245,7 +244,6 @@ class DivisionGridService:
         if discipline(grid_discipline).native_ladder:
             await self.seed_default_grid_version(session, workspace_id, grid.id, grid_discipline)
 
-        # Reload/refresh the grid relationship
         await session.refresh(grid)
         return grid
 
@@ -779,7 +777,7 @@ class DivisionGridService:
         session: AsyncSession,
         workspace: models.Workspace,
     ) -> models.DivisionGrid:
-        """Resolve the existing first-enabled discipline's managed grid until the picker is introduced."""
+        """Resolve the managed grid of the workspace's first enabled discipline."""
         discipline = workspace.disciplines_enabled[0]
         grids = [
             grid for grid in await self.get_workspace_grids(session, workspace.id) if grid.discipline == discipline
@@ -872,7 +870,7 @@ class DivisionGridService:
                     source_version_id=source_version_id,
                     target_version_id=new_version.id,
                     name=f"Auto: {source_version.label} \u2192 {new_version.label}",
-                    rules=generation.rules,
+                    rules=[schemas.DivisionGridMappingRuleWrite(**asdict(rule)) for rule in generation.rules],
                     is_complete=generation.is_complete,
                 )
 

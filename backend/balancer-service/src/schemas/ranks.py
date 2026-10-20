@@ -10,7 +10,7 @@ OW pair) are therefore optional and documented by which layer fills them.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
 
@@ -26,28 +26,21 @@ __all__ = (
 )
 
 #: Layers that describe a member's rank *now* -- the default filter.
-CURRENT_LAYERS: tuple[str, ...] = ("canon", "author", "ow", "hidden", "effective_tournament", "effective_mix")
+CurrentRankLayer = Literal["canon", "author", "ow", "hidden", "effective_tournament", "effective_mix"]
 
 #: Layers that describe a rank somebody held at some past moment.
-HISTORY_LAYERS: tuple[str, ...] = ("registration", "tournament", "casual")
+HistoryRankLayer = Literal["registration", "tournament", "casual"]
+
+RankLayer = Literal[CurrentRankLayer, HistoryRankLayer]
+
+CURRENT_LAYERS: tuple[str, ...] = get_args(CurrentRankLayer)
+HISTORY_LAYERS: tuple[str, ...] = get_args(HistoryRankLayer)
 
 #: Declaration order is also the ``layer`` sort order and the union's branch order.
 LAYERS: tuple[str, ...] = CURRENT_LAYERS + HISTORY_LAYERS
 
 #: Sortable columns; everything else in the ORDER BY is a stable tiebreak.
 SORTS: tuple[str, ...] = ("at", "rank_value", "display_name", "layer", "role", "canon_diff", "delta")
-
-RankLayer = Literal[
-    "canon",
-    "author",
-    "ow",
-    "hidden",
-    "effective_tournament",
-    "effective_mix",
-    "registration",
-    "tournament",
-    "casual",
-]
 
 #: Where an effective value actually came from -- the resolver's own vocabulary
 #: (``shared.domain.member_rank.RankScope``), minus the layers the two effective

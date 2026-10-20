@@ -609,7 +609,7 @@ DOCS: dict[str, dict] = {
             "workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity "
             "provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the "
             "provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle "
-            "is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as the old "
+            "is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as "
             "`battle_tag`) are 422."
         ),
     },

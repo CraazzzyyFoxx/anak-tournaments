@@ -6,7 +6,7 @@ from typing import Any
 
 from shared.domain.roles import Ontology
 
-# OW rank and Discord consumers retain these codes until P3 moves ranks.
+# The role codes a registration names; OW rank and Discord consumers key on them.
 REGISTRATION_ROLE_CODES: tuple[str, ...] = ("tank", "damage", "support")
 
 

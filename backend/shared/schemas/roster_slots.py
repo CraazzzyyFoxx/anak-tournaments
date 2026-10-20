@@ -12,9 +12,9 @@ __all__ = ("RosterShapeRead",)
 
 
 class RosterShapeRead(BaseModel):
-    """A team format's slots (D33). The frontend never recomputes them."""
+    """A team format's slots. The frontend never recomputes them."""
 
-    #: The rated dimension the slot codes are roles of; ``flex`` counts the open slots (not a role, D86).
+    #: The rated dimension the slot codes are roles of; ``flex`` counts the open slots (not a role).
     dimension: str | None = None
     slots: dict[str, int]
     team_size: int

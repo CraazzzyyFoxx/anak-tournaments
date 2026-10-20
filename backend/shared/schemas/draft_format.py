@@ -59,8 +59,7 @@ def session_format_from_tournament(raw: dict[str, Any] | None, rounds: int) -> t
 
     The roster shape may have changed since the format was saved, so the rules are
     padded with ``linear`` or truncated to the session's actual round count.
-    Non-custom formats contribute no keys at all -- exactly what the setup wizard
-    used to send before the format became a tournament rule.
+    Non-custom formats contribute no keys at all.
     """
     settings = DraftFormatSettings.model_validate(raw or {})
     if settings.format is not DraftFormat.CUSTOM:

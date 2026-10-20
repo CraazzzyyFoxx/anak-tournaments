@@ -66,6 +66,10 @@ class _FakeTokenRepo:
         self.calls.append(("revoke_all_for_user", user_id))
         return self._returns.get("revoke_all_for_user", (0, set()))
 
+    async def create(self, session, instance):
+        session.add(instance)
+        return instance
+
 
 def _service(**returns) -> tuple[RefreshTokenService, _FakeTokenRepo, _RecordingCache]:
     repo = _FakeTokenRepo(**returns)
@@ -137,45 +141,12 @@ def test_revoke_client_family_sql_scopes_to_one_browser() -> None:
     assert "ip_address" not in compiled
 
 
-def test_client_metadata_prefers_forwarded_headers() -> None:
-    request = SimpleNamespace(
-        headers={
-            "x-original-user-agent": "Mozilla/5.0",
-            "x-forwarded-for": "198.51.100.10, 172.18.0.9",
-            "x-real-ip": "172.18.0.9",
-            "user-agent": "node",
-        },
-        client=SimpleNamespace(host="172.18.0.9"),
-    )
-
-    user_agent, ip_address = token_codec.client_metadata(request)
-
-    assert user_agent == "Mozilla/5.0"
-    assert ip_address == "198.51.100.10"
-
-
-def test_client_metadata_falls_back_to_direct_connection() -> None:
-    request = SimpleNamespace(
-        headers={"user-agent": "Mozilla/5.0"},
-        client=SimpleNamespace(host="172.18.0.9"),
-    )
-
-    user_agent, ip_address = token_codec.client_metadata(request)
-
-    assert user_agent == "Mozilla/5.0"
-    assert ip_address == "172.18.0.9"
-
-
-def test_issue_prefers_explicit_client_metadata_over_the_request() -> None:
-    request = SimpleNamespace(
-        headers={"user-agent": "node", "x-real-ip": "172.18.0.9"},
-        client=None,
-    )
+def test_issue_stores_the_client_metadata_and_only_the_token_hash() -> None:
     service, _, _ = _service()
     db = _AddSession()
 
     record = asyncio.run(
-        service.issue(db, user_id=7, token="raw-token", user_agent="Chrome", request=request, commit=False)
+        service.issue(db, user_id=7, token="raw-token", user_agent="Chrome", ip_address="172.18.0.9", commit=False)
     )
 
     assert db.added == [record]
@@ -723,13 +694,17 @@ def test_revoke_session_rpc_journals_the_revocation_before_the_service_commits(
     async def fake_resolve(_session, _token):
         return actor
 
-    async def fake_revoke(_session, user, sid):
-        # The row is already on the session by the time the committing service runs.
+    async def fake_get_user_session(_session, user_id, sid, *, current_session_id=None):
+        return {"session_id": str(sid)}
+
+    async def fake_revoke(_session, user_id, sid):
+        # The row is already on the session by the time the committing revoke runs.
         assert [type(row).__name__ for row in staged] == ["AuditLog"]
-        revoked.append((user.id, sid))
+        revoked.append((user_id, sid))
 
     monkeypatch.setattr(token_validation, "resolve_active_user", fake_resolve)
-    monkeypatch.setattr(auth, "revoke_session", fake_revoke)
+    monkeypatch.setattr(sessions, "get_user_session", fake_get_user_session)
+    monkeypatch.setattr(refresh_tokens, "revoke_session", fake_revoke)
     monkeypatch.setattr(core_db, "async_session_maker", _FakeSessionMaker(fake_session))
 
     handler = _handler(auth_rpc, "rpc.identity.revoke_session")

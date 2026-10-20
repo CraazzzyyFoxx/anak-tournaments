@@ -1,8 +1,7 @@
 """Shared helpers for reading latest OW2 rank snapshots.
 
 Used by services that need to surface a player's current OW2 rank alongside their
-balancer/registration rank (e.g. the rank-delta highlight in the balancing pool). Keeping the
-query and role filtering here avoids duplicating it per service.
+balancer/registration rank (e.g. the rank-delta highlight in the balancing pool).
 """
 
 from __future__ import annotations

@@ -32,7 +32,7 @@ from shared.testing.stats_parity import (
     seed_native_sentinel,
 )
 from src import schemas
-from src.services import catalog_aliases
+from src.core import db
 from src.services.ingest import process as ingest_process
 from src.services.match_logs import admin_reads, reaper, retention, uploads
 from src.services.match_logs.log_records import compute_content_hash, log_records_service
@@ -288,7 +288,7 @@ async def environment(database, monkeypatch, *, with_game=True, restricted=False
             worker = create_async_engine(async_url, connect_args={"server_settings": {"role": role}})
             sf = async_sessionmaker(worker, expire_on_commit=False)
         env.sf, env.admin, env.raw, env.fixture_ids = sf, admin, RawStore(), fixture_ids
-        monkeypatch.setattr(catalog_aliases.db, "async_session_maker", sf)
+        monkeypatch.setattr(db, "async_session_maker", sf)
         yield env
     finally:
         if worker:
@@ -302,7 +302,7 @@ async def environment(database, monkeypatch, *, with_game=True, restricted=False
 
 async def upload(env, content=None, *, filename="same.log", **kwargs):
     async with env.sf() as session:
-        return await uploads.store_uploaded_log_bytes(
+        return await uploads.upload_service.store_uploaded_log_bytes(
             session,
             s3=env.raw,
             tournament_id=env.tournament,
@@ -482,7 +482,7 @@ def test_actual_byte_dedup_races_scope_and_storage_failure(stats_parity_database
                 another_id, foreign_id = another.id, foreign.id
             async with env.sf() as session:
                 with pytest.raises(BaseAPIException, match="stats_upload_scope_conflict"):
-                    await uploads.store_uploaded_log_bytes(
+                    await uploads.upload_service.store_uploaded_log_bytes(
                         session,
                         s3=env.raw,
                         tournament_id=another_id,
@@ -491,7 +491,7 @@ def test_actual_byte_dedup_races_scope_and_storage_failure(stats_parity_database
                         source="upload",
                     )
             async with env.sf() as session:
-                other = await uploads.store_uploaded_log_bytes(
+                other = await uploads.upload_service.store_uploaded_log_bytes(
                     session,
                     s3=env.raw,
                     tournament_id=foreign_id,
@@ -504,7 +504,7 @@ def test_actual_byte_dedup_races_scope_and_storage_failure(stats_parity_database
             async with env.sf() as session:
                 before = await session.scalar(sa.select(sa.func.count()).select_from(models.IngestJob))
                 with pytest.raises(BaseAPIException):
-                    await uploads.store_uploaded_log_bytes(
+                    await uploads.upload_service.store_uploaded_log_bytes(
                         session,
                         s3=env.raw,
                         tournament_id=env.tournament,
@@ -1152,6 +1152,13 @@ def test_history_and_bulk_requeue_use_native_scope_and_exact_raw_refs(stats_pari
                 )
                 ids = (await log_records_service.requeue_tournament(session, env.tournament)).queue
                 assert set(ids) == {job.id, imported.id}
+                # The imported job never had a request: the requeue committed one with its reset.
+                requested = await session.scalars(
+                    sa.select(models.EventOutbox.payload_json["ingest_job_id"].as_integer()).where(
+                        models.EventOutbox.event_type == "process_ingest_job"
+                    )
+                )
+                assert imported.id in set(requested)
                 assert imported.raw_ref == "historic/preserved/path.log"
                 assert imported.status == STATUS.PENDING and imported.attempts == 0 and imported.error_message is None
 
@@ -1339,7 +1346,8 @@ def test_reaper_requeues_through_the_outbox_and_retains_the_last_claim_timestamp
                         )
                     )
                 ).all()
-                assert [r.status for r in requests].count("pending") == 1
+                # One from the upload's own commit, one from the reaper's reset.
+                assert [r.status for r in requests].count("pending") == 2
             release.assert_awaited_once()
             # A disabled worker performs no claim/dispatch at all.
             monkeypatch.setattr(reaper.settings, "log_reaper_enabled", False)
@@ -1347,6 +1355,37 @@ def test_reaper_requeues_through_the_outbox_and_retains_the_last_claim_timestamp
             monkeypatch.setattr(reaper, "acquire_distributed_lock", acquire)
             assert (await reaper.reclaim_stalled_logs(redis=object(), session_factory=env.sf)).touched == 0
             acquire.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_only_terminal_transitions_ask_for_achievements_and_a_repeated_status_gets_its_own_id(
+    stats_parity_database, monkeypatch
+):
+    async def run():
+        async with environment(stats_parity_database, monkeypatch) as env:
+            job = await upload(env)
+            first = datetime.now(UTC)
+            async with env.sf() as session:
+                row = await session.get(models.IngestJob, job.id)
+                # A retried log fails twice: event_outbox.event_id is UNIQUE, so the second id must differ.
+                for status, now in (
+                    (STATUS.PROCESSING, None),
+                    (STATUS.FAILED, first),
+                    (STATUS.PENDING, None),
+                    (STATUS.PROCESSING, None),
+                    (STATUS.FAILED, first + timedelta(seconds=1)),
+                ):
+                    await log_records_service.transition(session, row, status, now=now)
+                    await session.commit()
+                ids = (
+                    await session.scalars(
+                        sa.select(models.EventOutbox.event_id).where(
+                            models.EventOutbox.event_id.like(f"achievement:%:job:{job.id}:%")
+                        )
+                    )
+                ).all()
+            assert len(set(ids)) == len(ids) == 2 and all(f":job:{job.id}:failed:" in event_id for event_id in ids)
 
     asyncio.run(run())
 

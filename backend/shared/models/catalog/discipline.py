@@ -1,4 +1,4 @@
-"""The disciplines the platform knows about (D48).
+"""The disciplines the platform knows about.
 
 A stub registry: a code and a label, nothing more. It exists so every owner's
 ``discipline`` column has something to reference and so a typo cannot reach the

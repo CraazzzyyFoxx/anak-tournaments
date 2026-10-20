@@ -19,19 +19,19 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
-from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
-from src.services.admin.balancer import balancer_admin_service  # noqa: E402
-from src.services.balancer.config.defaults import (  # noqa: E402
+from src.domain.balancer.config.defaults import (  # noqa: E402
     AlgorithmConfig,
     apply_config_overrides,
     default_role_settings,
 )
+from src.domain.balancer.config.public_contract import normalize_config_payload  # noqa: E402
+from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
+from src.services.admin.balancer import balancer_admin_service  # noqa: E402
 from src.services.balancer.config.provider import (  # noqa: E402
     EDITABLE_CONFIG_FIELD_KEYS,
     get_balancer_config_payload,
     normalize_tournament_config_payload,
 )
-from src.services.balancer.config.public_contract import normalize_config_payload  # noqa: E402
 
 
 def test_config_payload_exposes_complete_editable_field_metadata() -> None:
@@ -191,7 +191,7 @@ def test_normalize_balance_response_payload_upgrades_legacy_camel_case_row() -> 
     snake_case rename instead of 500-ing on ``BalanceResponse`` validation.
     """
 
-    from src.services.balancer.config.public_contract import (
+    from src.domain.balancer.config.public_contract import (
         normalize_balance_response_payload,
     )
 
@@ -309,9 +309,9 @@ def test_internal_balance_payload_accepts_public_player_shape_with_is_flex() -> 
 
     player = payload.teams[0].roster["Damage"][0]
     assert player.is_flex is True
-    assert player.rating == 2500
-    assert player.discomfort == 0
-    assert player.preferences == ["Damage", "Support"]
+    assert player.assigned_rating == 2500
+    assert player.role_discomfort == 0
+    assert player.role_preferences == ["Damage", "Support"]
 
 
 def test_internal_balance_payload_accepts_all_discomforts_snapshot() -> None:
@@ -362,7 +362,7 @@ def test_normalize_then_validate_round_trips_all_discomforts() -> None:
     schema) must not 422 when the editor sends ``all_discomforts``.
     """
 
-    from src.services.balancer.config.public_contract import (
+    from src.domain.balancer.config.public_contract import (
         normalize_balance_response_payload,
     )
 

@@ -75,7 +75,7 @@ class DashboardStats(BaseModel):
 
 
 class TournamentReadiness(BaseModel):
-    """Living-checklist aggregate for one tournament (D13, §7.1).
+    """Living-checklist aggregate for one tournament.
 
     Field groups are masked by the caller's workspace permissions:
     ``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates

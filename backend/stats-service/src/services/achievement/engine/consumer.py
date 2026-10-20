@@ -1,8 +1,4 @@
-"""RabbitMQ consumer for AchievementEvaluateEvent.
-
-This module provides the subscriber handler that should be registered
-on the stats-service worker's broker.
-"""
+"""RabbitMQ consumers for AchievementEvaluateEvent."""
 
 from __future__ import annotations
 
@@ -27,12 +23,10 @@ async def handle_achievement_evaluate(data: dict) -> None:
         tournament_id=event.tournament_id,
     ).info("Processing achievement evaluation from queue")
 
-    # run_evaluation already logs the traceback with the run id before re-raising,
-    # and FastStream logs it a third time through its logger proxy. Logging here
-    # too meant one failure produced three Sentry entries for the same event, so
-    # let the exception propagate untouched: FastStream rejects the message
-    # (AckPolicy.REJECT_ON_ERROR, requeue=False) straight into
-    # achievement_evaluate.dlq.
+    # Don't log failures here: run_evaluation already logs the traceback with the
+    # run id before re-raising, and FastStream logs it again through its logger
+    # proxy. The exception propagates untouched and FastStream rejects the message
+    # (AckPolicy.REJECT_ON_ERROR, requeue=False) straight into achievement_evaluate.dlq.
     async with db.async_session_maker() as session:
         await run_evaluation(
             session=session,

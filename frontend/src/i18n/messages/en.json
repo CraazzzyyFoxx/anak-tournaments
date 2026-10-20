@@ -4093,25 +4093,38 @@
           "ban": "Both teams ban",
           "pick": "Both teams pick",
           "protect": "Both teams protect",
-          "decider": "Decider"
+          "decider": "Decider",
+          "side_pick": "Both teams choose sides"
         },
         "side": {
           "ban": "{team} bans",
           "pick": "{team} picks",
           "protect": "{team} protects",
-          "decider": "Decider"
+          "decider": "Decider",
+          "side_pick": "{team} chooses a side"
         },
         "system": {
           "ban": "Random ban",
           "pick": "Random pick",
           "protect": "Random protect",
-          "decider": "Decider"
+          "decider": "Decider",
+          "side_pick": "Side chosen at random"
         }
       },
       "carried": {
         "badge": "from map {n}",
         "tooltip": "Banned on map {n} and still in force here"
       },
+      "characterBans": {
+        "eyebrow": "Bans for this map"
+      },
+      "sides": {
+        "lol": {
+          "blue": "Blue side",
+          "red": "Red side"
+        }
+      },
+      "sideAssignment": "{side}: {team}",
       "timer": {
         "label": "Step timer",
         "expired": "Time expired"
@@ -4138,7 +4151,8 @@
         "ban": "ban",
         "pick": "pick",
         "protect": "protect",
-        "decider": "decide"
+        "decider": "decide",
+        "side_pick": "choose a side"
       },
       "deciderResolving": "Decider is being resolved",
       "completedBanner": "Sequence completed",
@@ -4153,7 +4167,9 @@
         "confirmProtect": "Protect {item}",
         "cancel": "Cancel",
         "sending": "Sending...",
-        "actionFailed": "Action failed"
+        "actionFailed": "Action failed",
+        "confirmSide": "Choose {side}",
+        "chooseSideHint": "Choose the side your team starts on"
       },
       "draft": {
         "title": "Your draft",
@@ -4239,7 +4255,8 @@
           "stale_state": "This map's result changed while you were reporting. The room has reloaded — report again.",
           "result_locked": "This map's result is already accepted. Only an organizer can change it now.",
           "map_locked": "A captain already reported this map, so it can no longer be changed.",
-          "side_pick_pending": "The side this map is played on is not decided yet."
+          "side_pick_pending": "The side this map is played on is not decided yet.",
+          "side_pick_required": "This map's sides are chosen in the pick-ban room first."
         }
       },
       "admin": {
@@ -4247,6 +4264,7 @@
         "showUi": "Show admin UI",
         "hideUi": "Hide admin UI",
         "sideLabel": "Side",
+        "sideChoiceLabel": "Starting side",
         "actionLabel": "Action",
         "confirm": "Perform action",
         "selectItemFirst": "Select an item in the pool first",
@@ -4273,7 +4291,7 @@
         "reopen": "Reopen step",
         "reopenSuccess": "Step reopened",
         "reopenFailed": "Failed to reopen the step",
-        "downstreamStarted": "A later match has already started on this result. Roll that one back first.",
+        "dependentRoundStarted": "The next game already started on the old result. Undo that game's pick-ban, or reset the room, before correcting.",
         "readinessTitle": "Readiness (admin)",
         "readinessSet": "Mark ready",
         "readinessClear": "Clear",
@@ -4319,7 +4337,8 @@
         "verb": {
           "ban": "banned",
           "pick": "picked",
-          "protect": "protected"
+          "protect": "protected",
+          "side_pick": "chose"
         },
         "action": {
           "ready_marked": "{team} marked ready",
@@ -4570,7 +4589,8 @@
         "ban": "Ban",
         "pick": "Pick",
         "protect": "Protect",
-        "decider": "Decider"
+        "decider": "Decider",
+        "side_pick": "Side pick"
       },
       "actors": {
         "first": "Opener",
@@ -4772,7 +4792,8 @@
         "hero_role_bans": "Three blind bans, one per role",
         "hero_anti_one_trick": "Anti-one-trick (tournament)",
         "map_bracket": "Standard map veto",
-        "map_slot_veto": "Veto per map group"
+        "map_slot_veto": "Veto per map group",
+        "lol_side_selection": "Side selection: higher seed, then previous loser"
       },
       "preview": {
         "title": "Over the series",
@@ -6927,8 +6948,10 @@
     }
   },
   "subscriptionProviders": {
-    "title": "Subscription providers",
-    "description": "Choose how each provider verifies a subscription.",
+    "enabled": {
+      "label": "Enabled",
+      "hint": "Only an enabled provider can be part of the subscription requirement."
+    },
     "methodLabel": "How a subscription is proven",
     "methodAria": "Verification method",
     "methods": {
@@ -6956,6 +6979,7 @@
       }
     },
     "guild": {
+      "label": "Discord server",
       "unset": "No Discord server is set for this workspace.",
       "missing": "Live verification needs a Discord server. Set it in workspace settings.",
       "hint": "Set once per workspace, in workspace settings. Our bot must be a member of that server."
@@ -10981,6 +11005,8 @@
     },
     "workspaceSettings": {
       "overview": {
+        "identity": "Workspace",
+        "name": "Name",
         "address": "Platform address"
       },
       "setup": {
@@ -11050,11 +11076,19 @@
         "aboutHelp": "Markdown. Rendered as the “About” block of the public page.",
         "timezone": "Timezone",
         "selectTimezone": "Select timezone",
-        "timezoneHelp": "Tournament schedule times are entered and shown in this zone.",
+        "timezoneHelp": "Tournament schedule times are entered and shown in this zone, and the community page shows it as the time matches are played in.",
         "icon": "Icon",
-        "iconHelp": "PNG, JPEG, WebP or GIF, max 2 MB. Saved as soon as you pick it.",
+        "iconHelp": "PNG, JPEG, WebP or GIF, max 2 MB.",
         "owner": "Owner",
         "ownerHelp": "The account accountable for this workspace, counted against that account's workspace limit.",
+        "disciplines": {
+          "label": "Enabled games",
+          "help": "Drag to set priority: the first game is the default for new tournaments, division grids and mixes. Turning a game off keeps its tournaments and mixes; only creating new ones is refused until it is turned back on. A newly enabled game needs its own division grid before tournaments can be created in it.",
+          "default": "Default",
+          "reorder": "Reorder {name}",
+          "toggle": "Enable {name}",
+          "lastEnabled": "At least one game stays enabled"
+        },
         "linkLabels": {
           "discord": "Discord",
           "twitch": "Twitch",
@@ -11062,8 +11096,8 @@
         },
         "groups": {
           "identity": {
-            "title": "Name and icon",
-            "description": "The name and icon stand for the workspace in the site header, the workspace switcher, home page cards and notifications."
+            "title": "Name and timezone",
+            "description": "The name stands for the workspace in the site header, the workspace switcher, home page cards and notifications."
           },
           "publicPage": {
             "title": "Community page",
@@ -11074,9 +11108,13 @@
             "title": "Links",
             "description": "Each filled link becomes a button in the community page header."
           },
-          "time": {
-            "title": "Time",
-            "description": "The community page shows this zone as the time its matches are played in."
+          "disciplines": {
+            "title": "Games",
+            "description": "Which games this workspace runs, and which one is the default."
+          },
+          "iconOwnership": {
+            "title": "Icon and ownership",
+            "description": "The icon appears beside the workspace name wherever the name is shown."
           }
         },
         "auditTarget": "workspace “{name}”"
@@ -11084,6 +11122,7 @@
       "branding": {
         "siteBranding": "Site branding",
         "siteBrandingHelp": "Custom palette for this workspace on the main public site",
+        "useCustomPalette": "Use custom palette",
         "seedColours": "Seed colours",
         "primaryAccent": "Primary accent",
         "secondaryAccent": "Secondary accent",
@@ -11133,12 +11172,13 @@
         "addDomain": "Add domain",
         "addDns": "Add DNS records",
         "verifyLabel": "Verified",
-        "domainLabel": "Custom domain",
+        "domainLabel": "Domain",
         "removeDomain": "Remove domain",
         "domainPlaceholder": "tourney.example.com",
         "enterDomain": "Enter a domain such as tourney.example.com first.",
         "saveDomain": "Save domain",
         "saving": "Saving…",
+        "dnsRecords": "DNS records",
         "addRecords": "Add these two records at your DNS provider. We re-check every {seconds}s; Verify now checks at once.",
         "verifyNow": "Verify now",
         "copyTxt": "Copy TXT value",
@@ -11168,6 +11208,7 @@
         "linkHelp": "Link your Discord account (or reconnect it, so the server list is fresh) in account settings, then come back. You need to own the server or have Manage Server on it.",
         "accountSettings": "Open account settings",
         "linked": "Linked",
+        "server": "Server",
         "changeServer": "Change server",
         "moreActions": "More server actions",
         "reinvite": "Re-invite bot",
@@ -11224,6 +11265,21 @@
         "ownerName": "Owner · {name}",
         "mixLoadError": "Could not load the mix settings",
         "noVoices": "This category has no voice channels."
+      },
+      "pages": {
+        "profile": "Profile",
+        "roles": "Roles & statuses",
+        "access": "Subscriptions & limits"
+      },
+      "descriptions": {
+        "overview": "What this workspace has set up, and what it still lacks.",
+        "profile": "Name, community page, colours and who can find the workspace.",
+        "domain": "Where the workspace is served and how search engines show it.",
+        "discord": "The server this workspace runs in, its announcements and mixes.",
+        "divisions": "The rank ladder players are grouped into.",
+        "roles": "Sub-roles within each role, and the statuses shown on players.",
+        "registrationForms": "Question sets tournaments start their registration form from.",
+        "access": "Subscriptions a player needs to enter, and this workspace's rate limits."
       }
     }
   },
@@ -12268,6 +12324,9 @@
       "date": "Date",
       "time": "Time",
       "clear": "Clear"
+    },
+    "settings": {
+      "appliesImmediately": "Applies immediately"
     }
   },
   "kitAudit": {

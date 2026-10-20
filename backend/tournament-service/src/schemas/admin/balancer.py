@@ -35,7 +35,7 @@ RankAutofillOwValue = Literal["composite", "current", "peak"]
 # Priority chains for rank autofill:
 #   ow_first       -> OW (week composite) -> balancer (division history) -> analytics (past tournaments)
 #   balancer_first -> balancer -> analytics -> OW
-# Legacy presets; superseded by an explicit ``stages`` chain when one is supplied.
+# Presets; an explicit ``stages`` chain supersedes them when one is supplied.
 RankAutofillMode = Literal["ow_first", "balancer_first"]
 
 __all__ = (
@@ -209,7 +209,7 @@ class BalancerGoogleSheetMappingPreviewResponse(BaseModel):
     create_count: int = 0
     update_count: int = 0
     skip_count: int = 0
-    # Back-compat single-row fields (populated from the first preview row).
+    # The first preview row's fields, for single-row consumers.
     sample_raw_row: dict[str, str] = Field(default_factory=dict)
     parsed_fields: dict[str, Any] = Field(default_factory=dict)
 
@@ -297,7 +297,7 @@ class BalancerRegistrationRankAutofillRequest(BaseModel):
     # Apply found role ranks even when other active roles have no parsed rank (otherwise the whole
     # registration is skipped). Never clears an existing rank — unfilled roles are left untouched.
     allow_partial: bool = False
-    # Legacy preset; only used when ``stages`` is not supplied.
+    # Preset chain; only used when ``stages`` is not supplied.
     mode: RankAutofillMode = "ow_first"
     # Explicit ordered priority chain. When non-empty it supersedes ``mode``; disabled stages are
     # dropped and duplicate sources are de-duplicated, preserving order.
@@ -463,8 +463,7 @@ class BalancerRegistrationRead(BaseRead):
     reviewed_by_username: str | None = None
     balancer_profile_overridden_at: datetime | None = None
     # The single admission answer, computed server-side and byte-identical to the
-    # one the public participants read carries for the same registration -- that
-    # equality is the point, and there is a test pinning it.
+    # one the public participants read carries for the same registration.
     #
     # Resolved by the LIST read only. Single-registration mutation responses
     # carry ``AdmissionRead.unknown()`` rather than ``None``: the table
@@ -481,8 +480,8 @@ class BalancerRegistrationRead(BaseRead):
     subscription_outcome: str | None = None
     #: The player's strongest playable rank -- what a role-less slot is worth and
     #: what the pool sorts by. ``None`` when no role of theirs is playable at all.
-    #: Server-side because it is the engine's own answer: the admin table used to
-    #: re-derive it with a ``Math.max`` over the active roles' ranks.
+    #: Server-side because it is the engine's own answer; the client must not
+    #: re-derive it from the active roles' ranks.
     best_rank: int | None = None
     roles: list[BalancerRegistrationRoleRead] = Field(default_factory=list)
 
@@ -497,13 +496,13 @@ class BalancerRegistrationCreateRequest(BaseModel):
     #: When ``answers["roles"]`` and ``roles`` are both sent, ``roles`` WINS: only
     #: the admin rows can carry ``rank_value``/``is_active``.
     answers: dict[str, Any] = Field(default_factory=dict)
-    # Review state chosen in the admin editor. ``None`` keeps the historical
-    # "manual rows land approved" default.
+    # Review state chosen in the admin editor. ``None`` = approved, the default
+    # for a manual row.
     status: RegistrationStatus | None = None
     balancer_status: BalancerStatus | None = None
     roles: list[BalancerRegistrationRoleInput] = Field(default_factory=list)
     # Site account to anchor this manual registration on (its player/member).
-    # None = unlinked (the historical behavior).
+    # None = unlinked.
     auth_user_id: int | None = None
 
 

@@ -3,15 +3,16 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
-import sqlalchemy as sa
+import httpx
+from cachetools import TTLCache
+from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.core import http_status as status
@@ -23,7 +24,6 @@ from shared.core.enums import (
     MixStatus,
 )
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.social import SocialProvider
 from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.division_grid import ladder_grid
 from shared.domain.custom_game_round import winner_slot
@@ -42,6 +42,7 @@ from shared.repository import (
     ScoringRuleRepository,
     UserBalancerConfigRepository,
     UserRepository,
+    WorkspaceBalancerConfigRepository,
     WorkspaceMemberRepository,
     WorkspaceRepository,
 )
@@ -52,7 +53,6 @@ from shared.schemas.events import DiscordCard, DiscordCommandEvent
 from shared.schemas.role import RoleRef
 from shared.schemas.roster_slots import RosterShapeRead
 from shared.services import discord_messages
-from shared.services.account_links import missing_account_links
 from shared.services.discord_client import DiscordClient
 from shared.services.division_grid.access import (
     get_effective_division_grid,
@@ -68,15 +68,10 @@ from shared.services.team_format import (
     custom_game_slot_shape,
     team_format_read,
 )
-from shared.services.workspace_roster import (
-    RosterMember,
-    hosts_by_user_id,
-    list_roster,
-    workspace_member_user_ids,
-)
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
+from src.domain.balancer.role_naming import role_slot_code
 from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card
-from src.domain.mix_lineup_image import LineupPicture, load_images, render_png
+from src.domain.mix_lineup_image import LineupPicture, render_png
 from src.domain.mix_lobbies import seated_member_ids, seated_teams
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
 from src.domain.mix_ranker import Ranker
@@ -84,12 +79,18 @@ from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recom
 from src.domain.mix_self_service import MixSelfPolicy, mix_self_policy
 from src.domain.mix_stats import SeatOutcome, aggregate_mix_stats, outcome_for
 from src.domain.mix_voice import LobbyVoice, MixVoiceConfig, VoicePlan, plan_move, report, snowflake, voice_config_from
-from src.services.balancer.role_naming import role_slot_code
+from src.services.account_links import missing_account_links
 from src.services.balancer.solver import run_mix_balance as _run_balance
 from src.services.balancer.solver import serialize_format_context
 from src.services.mix_ranker import MixRankerService, RatedSeat, mix_ranker_service
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
+from src.services.workspace_roster import (
+    RosterMember,
+    hosts_by_user_id,
+    list_roster,
+    workspace_member_user_ids,
+)
 
 __all__ = ("SIGNUP_SLOT", "CustomGameService", "custom_game_service", "mix_subject")
 
@@ -129,9 +130,35 @@ _BLOCKER_STATUS = {
     "not_on_roster": status.HTTP_404_NOT_FOUND,
 }
 
+#: Fetched pictures by URL. A failure is not kept, so the next draw tries again.
+_IMAGES: TTLCache[str, bytes] = TTLCache(maxsize=256, ttl=3600)
+
+
+async def load_images(urls: Iterable[str]) -> dict[str, bytes]:
+    """The bytes behind ``urls``; one that cannot be fetched is missing from the result."""
+    wanted = set(urls)
+    missing = wanted - _IMAGES.keys()
+    if missing:
+        async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
+
+            async def fetch(url: str) -> None:
+                try:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                except httpx.HTTPError as exc:
+                    logger.warning(f"Lineup picture: could not load {url}: {exc!r}")
+                    return
+                _IMAGES[url] = response.content
+
+            await asyncio.gather(*(fetch(url) for url in missing))
+    return {url: _IMAGES[url] for url in wanted if url in _IMAGES}
+
 
 async def _png_b64(picture: LineupPicture) -> str:
-    """``picture`` drawn, base64 for the command: its pictures fetched first, the draw off the event loop."""
+    """``picture`` drawn, base64 for the command: its pictures fetched first, the draw off the event loop.
+
+    Fetches over HTTP: keep it out from under ``discord_message`` row locks (see ``redraw_lineups``).
+    """
     images = await load_images(picture.image_urls)
     return base64.b64encode(await asyncio.to_thread(render_png, picture, images)).decode("ascii")
 
@@ -417,6 +444,7 @@ class CustomGameService:
         players: UserRepository = UserRepository(),
         workspace_members: WorkspaceMemberRepository = WorkspaceMemberRepository(),
         workspaces: WorkspaceRepository = WorkspaceRepository(),
+        workspace_configs: WorkspaceBalancerConfigRepository = WorkspaceBalancerConfigRepository(),
         load_missing_links=missing_account_links,
         enroll_member=get_or_create_workspace_member,
         grant_player_role=assign_workspace_system_role,
@@ -441,6 +469,7 @@ class CustomGameService:
         self.players = players
         self.workspace_members = workspace_members
         self.workspaces = workspaces
+        self.workspace_configs = workspace_configs
         self.load_missing_links = load_missing_links
         self.enroll_member = enroll_member
         self.grant_player_role = grant_player_role
@@ -594,9 +623,8 @@ class CustomGameService:
         """Materialise the host's own rank for everyone just added to the mix.
 
         A mix resolves against the host's book (``MIX_ORDER``), so an inherited
-        number is one nobody in this mix owns: correcting it read as a per-game
-        edit and was silently a workspace-wide one, and the sheet could offer no
-        Clear because there was nothing of the host's to clear. Copying in the
+        number is one nobody in this mix owns: correcting it would silently be a
+        workspace-wide edit, and the sheet could offer no Clear. Copying in the
         value the mix would have used anyway makes the layer explicit at the
         moment of joining -- from then on every rank in a lineup is the host's,
         editable and clearable, and the canon is a seed rather than a live
@@ -659,7 +687,7 @@ class CustomGameService:
         the pool rather than carrying last week's pins and benchings. Roster
         members who have since left the workspace are dropped rather than failing
         the clone. The points knob and Discord target belong to the host and workspace.
-        The team format is frozen per mix (D88): a clone keeps its source's,
+        The team format is frozen per mix: a clone keeps its source's,
         otherwise the host's preset or the workspace default.
         """
         _require_host(actor_user_id, host_user_id)
@@ -702,7 +730,7 @@ class CustomGameService:
             source_rows = [row for row in candidates if row.workspace_member_id in surviving]
             members.update(surviving)
 
-        # The mix's own wins rule (D73): every round encounter it records is scored by it.
+        # The mix's own wins rule: every round encounter it records is scored by it.
         rule = await self.scoring_rules.create(
             session,
             models.ScoringRule(
@@ -930,8 +958,8 @@ class CustomGameService:
         """Move several roster rows between lineup states atomically.
 
         The rotation hint applies a whole verdict at once. One transaction, one
-        snapshot: applying it row by row raced on whose response the client
-        saw last, and left the lineup mid-verdict if one call failed.
+        snapshot: applied row by row, the calls race on whose response the
+        client sees last and leave the lineup mid-verdict if one fails.
         """
         game = await self._writable(
             session,
@@ -1030,9 +1058,7 @@ class CustomGameService:
         (the site's route carries one) it must agree, or this is a 404 -- the same
         answer a mix of another workspace gets everywhere else.
         """
-        game = await self.games.get(session, custom_game_id)
-        if game is None or (workspace_id is not None and game.workspace_id != workspace_id):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game not found")
+        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
         player = await self.players.get_by_auth_user_id(session, auth_user.id)
         member = (
             None
@@ -1108,7 +1134,6 @@ class CustomGameService:
                 else None,
                 "is_flex": ctx.row.is_flex,
                 "ranks": ranks,
-                # The rank badge of this mix's discipline.
                 "divisions": divisions,
                 # 0 | 1 while a balance seats them, ``null`` while it does not.
                 "current_lobby": next(
@@ -1185,23 +1210,9 @@ class CustomGameService:
 
     async def hosted_active(self, session: AsyncSession, *, workspace_id: int, auth_user: Any) -> list[dict[str, Any]]:
         """The open mixes this account may run, newest first -- what ``/mix move`` offers."""
-        query = (
-            sa.select(models.CustomGame.id, models.CustomGame.name, models.CustomGame.lobby_count)
-            .where(
-                models.CustomGame.workspace_id == workspace_id,
-                models.CustomGame.status.in_((MixStatus.DRAFT, MixStatus.BALANCED)),
-            )
-            .order_by(models.CustomGame.id.desc())
-            .limit(25)  # Discord shows at most 25 autocomplete choices
+        rows = await self.games.list_open_runnable(
+            session, workspace_id, user_id=None if auth_user.is_superuser else auth_user.id
         )
-        if not auth_user.is_superuser:
-            co_hosted = sa.select(models.CustomGameCoHost.custom_game_id).where(
-                models.CustomGameCoHost.user_id == auth_user.id
-            )
-            query = query.where(
-                sa.or_(models.CustomGame.host_user_id == auth_user.id, models.CustomGame.id.in_(co_hosted))
-            )
-        rows = (await session.execute(query)).all()
         return [{"id": game_id, "name": name, "lobby_count": lobby_count} for game_id, name, lobby_count in rows]
 
     async def self_join(
@@ -1225,10 +1236,9 @@ class CustomGameService:
         if ctx.policy.join_blocker is not None:
             raise _blocker(ctx.policy.join_blocker)
 
-        # Same two idempotent steps the tournament self-registration takes
-        # (tournament-service/src/services/registration/service.py): the
-        # membership row anchors the roster row, the baseline RBAC role makes the
-        # account an ordinary workspace player rather than a role-less anchor.
+        # Two idempotent steps: the membership row anchors the roster row, the
+        # baseline RBAC role makes the account an ordinary workspace player
+        # rather than a role-less anchor.
         member = ctx.member or await self.enroll_member(
             session, workspace_id=ctx.game.workspace_id, player_id=ctx.player.id
         )
@@ -1564,12 +1574,11 @@ class CustomGameService:
     ) -> tuple[dict[str, Any], list[SplitCandidate], dict[int, dict[str, int]]]:
         """The solver's input for these roster rows plus the same facts for the splitter.
 
-        Split out of ``balance`` because one mix is now solved lobby by lobby:
-        each lobby feeds in its own set of rows and reads them the same way. One
-        pass over one set of reads: the ranks, role order and rotation priority
-        the solver wants are exactly what the two-lobby splitter weighs, so the
-        two cannot drift apart (and ``member_rank`` is not read twice for one
-        lineup).
+        One mix is solved lobby by lobby, each lobby feeding in its own set of
+        rows and reading them the same way. One pass over one set of reads: the
+        ranks, role order and rotation priority the solver wants are exactly
+        what the two-lobby splitter weighs, so the two cannot drift apart (and
+        ``member_rank`` is not read twice for one lineup).
 
         A ranker host's players are balanced on their effective rating (the
         open rank corrected by the hidden one); their open ranks come back
@@ -1583,9 +1592,8 @@ class CustomGameService:
         # protects the player). Same fairness rank the "Apply rotation hints" button
         # reads, computed here and carried through as one number per player, since
         # `player_loader.load_players_from_dict` sorts its input by uuid and would
-        # otherwise discard any ordering placed on `lineup` itself. Left at every
-        # player's default 0.0 (no map history yet), the trim falls back to whatever
-        # order it always used.
+        # otherwise discard any ordering placed on `lineup` itself. At every
+        # player's default 0.0 (no map history yet) the trim keeps its own order.
         histories_by_member = {
             history.member_id: history for history in await self._rotation_histories(session, game, lineup)
         }
@@ -1722,9 +1730,9 @@ class CustomGameService:
     ) -> models.CustomGame:
         """Rebuild the teams of ONE lobby (the default) or of every lobby at once.
 
-        For a one-lobby mix ``scope="lobby"`` is today's behaviour whole: the
-        non-benched pool minus whoever the other lobbies are already playing goes
-        to the solver and lands in this lobby's document. ``scope="all"`` exists
+        ``scope="lobby"``: the non-benched pool minus whoever the other lobbies
+        are already playing goes to the solver and lands in this lobby's
+        document. ``scope="all"`` exists
         only for a mix running two lobbies or more: the pool is first cut into
         that many equally strong parts (``domain.mix_lobby_split``), then each
         part is solved by the same engine.
@@ -1749,7 +1757,7 @@ class CustomGameService:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
             await self._solve_lobby(session, game, lobby, candidates)
             # Benching the overflow is the one-lobby answer. With more lobbies the
-            # players left out WAIT for the next one (§Derived state), and a
+            # players left out WAIT for the next one, and a
             # BENCHED row would drop out of its candidate pool too.
             if game.lobby_count < 2:
                 _apply_balance_result(roster, lobby.balance_result_json)
@@ -1910,17 +1918,7 @@ class CustomGameService:
         jump links of its Discord posts (Discord addresses a message by all
         three ids), so the single-mix read would otherwise ask twice.
         """
-        row = (
-            await session.execute(
-                sa.select(models.WorkspaceBalancerConfig.config_json, models.Workspace.discord_guild_id)
-                .select_from(models.Workspace)
-                .outerjoin(
-                    models.WorkspaceBalancerConfig,
-                    models.WorkspaceBalancerConfig.workspace_id == models.Workspace.id,
-                )
-                .where(models.Workspace.id == workspace_id)
-            )
-        ).first()
+        row = await self.workspace_configs.config_with_guild(session, workspace_id)
         if row is None:
             return None, None
         raw, guild_id = row
@@ -1931,30 +1929,14 @@ class CustomGameService:
 
         Kept in the workspace balancer config blob
         (``balancer.workspace_config.config_json``) next to the other
-        workspace-scoped mix knobs, as digits in a string -- JSON has one
-        number type and a snowflake does not survive a float64 round-trip.
+        workspace-scoped mix knobs.
         """
-        return _mix_channel_id(
-            await session.scalar(
-                sa.select(models.WorkspaceBalancerConfig.config_json).where(
-                    models.WorkspaceBalancerConfig.workspace_id == workspace_id
-                )
-            )
-        )
+        config = await self.workspace_configs.get_by_workspace(session, workspace_id)
+        return _mix_channel_id(config.config_json if config is not None else None)
 
     async def voice_config(self, session: AsyncSession, workspace_id: int) -> MixVoiceConfig:
         """The workspace's guild, voice category and general voices, in one read."""
-        row = (
-            await session.execute(
-                sa.select(models.WorkspaceBalancerConfig.config_json, models.Workspace.discord_guild_id)
-                .select_from(models.Workspace)
-                .outerjoin(
-                    models.WorkspaceBalancerConfig,
-                    models.WorkspaceBalancerConfig.workspace_id == models.Workspace.id,
-                )
-                .where(models.Workspace.id == workspace_id)
-            )
-        ).first()
+        row = await self.workspace_configs.config_with_guild(session, workspace_id)
         return voice_config_from(row[0], row[1]) if row is not None else MixVoiceConfig(None, None, frozenset())
 
     async def set_voice_channels(
@@ -2033,27 +2015,14 @@ class CustomGameService:
     async def discord_links(self, session: AsyncSession, member_ids: Sequence[int]) -> dict[int, str]:
         """The Discord id of every one of those workspace members who linked an account.
 
-        One batched read down the identity chain -- workspace member -> player
-        -> auth user -> ``auth.oauth_connections`` -- rather than a lookup per
-        seat. A member with no linked Discord simply does not ping; the lineup
-        is not worth failing over somebody's unlinked account.
+        One batched read rather than a lookup per seat. A member with no linked
+        Discord simply does not ping; the lineup is not worth failing over
+        somebody's unlinked account.
         """
         ids = _uniq(member_ids)
         if not ids:
             return {}
-        rows = (
-            await session.execute(
-                sa.select(models.WorkspaceMember.id, models.OAuthConnection.provider_user_id)
-                .select_from(models.WorkspaceMember)
-                .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-                .join(models.OAuthConnection, models.OAuthConnection.auth_user_id == models.User.auth_user_id)
-                .where(
-                    models.WorkspaceMember.id.in_(ids),
-                    models.OAuthConnection.provider == SocialProvider.DISCORD,
-                    models.OAuthConnection.provider_user_id.is_not(None),
-                )
-            )
-        ).all()
+        rows = await self.workspace_members.discord_ids(session, ids)
         return {member_id: str(discord_id) for member_id, discord_id in rows if discord_id}
 
     async def discord_mentions(self, session: AsyncSession, member_ids: Sequence[int]) -> list[str]:
@@ -2215,11 +2184,6 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
-        # The workspace's channel, full stop. A mix used to be able to name its
-        # own, which meant an admin-only per-lobby override of the workspace's
-        # Discord that nobody could see from the workspace settings that
-        # nominally owned it; the workspace-wide setting is the one place it is
-        # configured and the one place it is read.
         channel_id = await self.workspace_discord_channel_id(session, workspace_id)
         if channel_id is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Discord channel not configured")
@@ -2245,6 +2209,8 @@ class CustomGameService:
             match_number=matches_count + 1,
             board_url_base=board_url_base,
         )
+        # Drawn before the older cards' rows are locked below: the picture's art is fetched over HTTP.
+        image_b64 = await _png_b64(picture)
         # Only the newest card of a lobby moves people: the older ones lose their buttons.
         retired = [
             command
@@ -2261,7 +2227,7 @@ class CustomGameService:
             card=card,
             workspace_id=workspace_id,
             channel_id=channel_id,
-            image_b64=await _png_b64(picture),
+            image_b64=image_b64,
             image_filename=picture.filename,
             # The card mentions the players it seats; a lineup nobody is pinged
             # by is a lineup half the lobby misses.
@@ -2284,17 +2250,8 @@ class CustomGameService:
         next_map: tuple[str, str | None] | None = None
         map_image: str | None = None
         if lobby.next_map_id is not None:
-            # The gamemode is eager-loaded: an async session raises on an
-            # unawaited lazy load, and the card names the mode next to the map.
-            row = await session.scalar(
-                sa.select(models.CatalogEntity)
-                .options(selectinload(models.CatalogEntity.parent))
-                .where(
-                    models.CatalogEntity.id == lobby.next_map_id,
-                    models.CatalogEntity.discipline == game.discipline,
-                    models.CatalogEntity.kind == "map",
-                )
-            )
+            # The card names the mode next to the map.
+            row = await self.maps.get_map_with_mode(session, lobby.next_map_id, discipline=game.discipline)
             if row is not None:
                 next_map = (row.name, row.parent.name if row.parent is not None else None)
                 map_image = row.image_path or None
@@ -2371,21 +2328,21 @@ class CustomGameService:
         Its picture's file name hashes everything drawn, so such a card compares
         equal to the row's and is skipped without drawing; a card whose text
         changed but whose picture did not is edited without a new upload.
+
+        Pictures are fetched and drawn before any row is locked. Under the lock
+        each card is rebuilt from the database (reads only) and compared with the
+        locked row, so the edit written last reflects the state read last; a
+        picture is drawn under the lock only when the mix changed in between.
         """
         if game.status in _TERMINAL:
             return []
         activity = await self.mix_rounds.activity_for_lobbies(session, game.id)
-        commands: list[DiscordCommandEvent] = []
-        for lobby in await self.lobbies.list_for_game(session, game.id):
-            live = await self._live_lineups(session, game.id, lobby.lobby_index)
-            if not live:
-                continue
-            row = await discord_messages.repository.get_for_update(session, live[-1].id)
-            if row is None or row.status not in LIVE_STATUSES:
-                continue
-            match_number = int(row.slot.rsplit(":", 1)[1])
+
+        async def draw(lobby: models.CustomGameLobby, slot: str) -> tuple[DiscordCard, LineupPicture] | None:
+            """The lobby's card for the match ``slot`` announces; ``None`` when it is not redrawn."""
+            match_number = int(slot.rsplit(":", 1)[1])
             if match_number <= activity.get(lobby.lobby_index, (0, None))[0]:
-                continue
+                return None
             result = as_lobby_document(lobby.balance_result_json)
             variants = result.get("variants") if isinstance(result, dict) else None
             index = lobby.selected_variant_index
@@ -2394,8 +2351,8 @@ class CustomGameService:
                 or not (0 <= index < len(variants))
                 or not isinstance(variants[index], Mapping)
             ):
-                continue
-            card, picture = await self._lineup(
+                return None
+            return await self._lineup(
                 session,
                 game,
                 lobby,
@@ -2404,10 +2361,42 @@ class CustomGameService:
                 match_number=match_number,
                 board_url_base=board_url_base,
             )
+
+        # (lobby, newest live row id, (filename, png) drawn without the lock)
+        drafts: list[tuple[models.CustomGameLobby, int, tuple[str, str] | None]] = []
+        for lobby in await self.lobbies.list_for_game(session, game.id):
+            live = await self._live_lineups(session, game.id, lobby.lobby_index)
+            if not live:
+                continue
+            # Read before ``get_for_update``: its ``populate_existing`` refreshes this same object.
+            newest_id, slot, shown = live[-1].id, live[-1].slot, live[-1].card_json or {}
+            drawn = await draw(lobby, slot)
+            if drawn is None:
+                continue
+            card, picture = drawn
+            png = None
+            if shown != card.model_dump(mode="json") and shown.get("image_url") != card.image_url:
+                png = (picture.filename, await _png_b64(picture))
+            drafts.append((lobby, newest_id, png))
+
+        commands: list[DiscordCommandEvent] = []
+        for lobby, row_id, png in drafts:
+            row = await discord_messages.repository.get_for_update(session, row_id)
+            if row is None or row.status not in LIVE_STATUSES:
+                continue
+            drawn = await draw(lobby, row.slot)
+            if drawn is None:
+                continue
+            card, picture = drawn
             shown = row.card_json or {}
             if shown == card.model_dump(mode="json"):
                 continue
-            image = None if shown.get("image_url") == card.image_url else await _png_b64(picture)
+            if shown.get("image_url") == card.image_url:
+                image = None
+            elif png is not None and png[0] == picture.filename:
+                image = png[1]
+            else:
+                image = await _png_b64(picture)  # the row or the mix changed since the draw above
             command = await discord_messages.edit_command(
                 session, row, card, image_b64=image, image_filename=picture.filename
             )
@@ -2608,7 +2597,7 @@ class CustomGameService:
         rated = set(rated_role_codes(discipline))
         for member_id, role, fallback, delta in shifts:
             if role not in rated:
-                continue  # An open slot is no role (D86): it moves no book.
+                continue  # An open slot is no role: it moves no book.
             base = current.get((member_id, role), fallback)
             await self.ranks.set_ranks(
                 session,
@@ -2649,7 +2638,7 @@ class CustomGameService:
             outcome = 0 if winner is None else 1 if winner == team_index + 1 else -1
             for member_id, role, open_rank, (old, new) in team:
                 if role not in rated:
-                    continue  # An open slot is no role (D86): it moves no book.
+                    continue  # An open slot is no role: it moves no book.
                 base = current.get((member_id, role), open_rank)
                 moved = round(base + ranker.open_delta(base, old, new, outcome))
                 deltas[member_id] = moved - base
@@ -2677,7 +2666,7 @@ class CustomGameService:
         actor_user_id: int,
         actor_is_superuser: bool = False,
     ) -> models.CustomGame:
-        """Record one played round as an encounter of this mix (D75).
+        """Record one played round as an encounter of this mix.
 
         Repeatable -- a mix records many matches before its host calls
         :meth:`close`, and the frozen snapshot is the only record of each: the
@@ -2916,6 +2905,13 @@ class CustomGameService:
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
         return list(await self.mix_rounds.list_for_custom_game(session, game.id))
 
+    async def round_map_info(self, session: AsyncSession, map_ids: Iterable[int]) -> dict[int, tuple[str, str | None]]:
+        """``{map_id: (name, image_path)}`` for the match history, in one read; no ids, no query."""
+        ids = set(map_ids)
+        if not ids:
+            return {}
+        return {row.id: (row.name, row.image_path) for row in await self.maps.names_and_images(session, ids)}
+
     async def mix_stats(
         self, session: AsyncSession, *, workspace_id: int, discipline: str | None, since: datetime | None
     ) -> list[dict[str, Any]]:
@@ -2998,7 +2994,7 @@ class CustomGameService:
         history entirely: it is neither a game they played nor one they sat out,
         and counting it as a rest would let somebody who has been playing
         non-stop next door outrank the people actually waiting. Empty for every
-        one-lobby mix, which is why the verdict there is unchanged.
+        one-lobby mix.
         """
         rounds = list(await self.mix_rounds.list_for_custom_game(session, game.id))
         rounds.reverse()  # newest-first -> chronological, oldest round first
@@ -3132,7 +3128,7 @@ class CustomGameService:
         )
         rule = await self.scoring_rules.get(session, game.scoring_rule_id)
         await self.games.delete(session, game)
-        # The rule is the mix's alone (D73); its round encounters went with the mix.
+        # The rule is the mix's alone; its round encounters went with the mix.
         if rule is not None:
             await self.scoring_rules.delete(session, rule)
         return commands

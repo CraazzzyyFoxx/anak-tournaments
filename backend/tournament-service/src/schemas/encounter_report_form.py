@@ -1,9 +1,9 @@
 """Wire shapes for the per-tournament captain match-report form config.
 
-Mirrors ``src.schemas.registration``'s ``built_in_fields`` + ``custom_fields``
-split so the admin builder page and the public read share one payload. The read
-model is used verbatim for the admin GET, the admin PUT response and the
-``form`` sibling of the public reports envelope.
+A ``built_in_fields`` + ``custom_fields`` split, one payload for the admin
+builder page and the public read: the read model is used verbatim for the admin
+GET, the admin PUT response and the ``form`` sibling of the public reports
+envelope.
 
 ``results`` is deliberately absent: the per-participation scoreline is the
 input to result derivation, so a report without one is meaningless.

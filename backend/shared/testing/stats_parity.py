@@ -1,6 +1,6 @@
-"""Frozen P3 rows and isolated PostgreSQL databases for the stats cutover.
+"""Frozen pre-cutover stats rows and isolated PostgreSQL databases for the stats parity tests.
 
-The legacy seed deliberately uses SQL rather than ORM models removed by P4.
+The legacy seed is raw SQL, independent of the current ORM models.
 Callers own its transaction. Normal tests only read golden files; capture is an
 explicit, separate operation against the frozen old service source.
 """
@@ -1103,7 +1103,7 @@ def seed_legacy(conn: Connection) -> dict[str, int]:
 def original_stats01_shape(conn: Connection) -> None:
     """Reproduce the original bound-head DDL on the isolated, fully proven seed.
 
-    The old three-table shapes/constraints are frozen from ffd3a56f5; facts,
+    The old three-table shapes/constraints are frozen; facts,
     observation IDs and the actual initial oracle are never regenerated.
     This is a test fixture, not an operational downgrade.
     """
@@ -1113,7 +1113,7 @@ def original_stats01_shape(conn: Connection) -> None:
         OR EXISTS(SELECT 1 FROM stats.ingest_job WHERE content_hash IS NULL OR source_kind='historical_reference')""")
     ):
         raise ValueError("original bound-head fixture requires proven games and original real hashes")
-    # Frozen ffd3a56f5 defining query: ordered averages, but no member-id best tie-break.
+    # Frozen defining query: ordered averages, but no member-id best tie-break.
     old_mv = """
 WITH qualified AS (
  SELECT DISTINCT f.match_id,f.workspace_member_id,f.entity_id FROM stats.fact f
@@ -1289,7 +1289,7 @@ def stats_parity_template() -> Iterator[tuple[str, dict[str, int]]]:
         finally:
             engine.dispose()
         # Head, not ``stats01``: the ORM selects every current model column (``tournament.logs_official``
-        # arrives with P5's ``ingest01``), so a template frozen at the P4 revision cannot serve a later model.
+        # arrives with ``ingest01``), so a template frozen at ``stats01`` cannot serve a later model.
         result = upgrade_database(url, "head")
         if result.returncode:
             raise RuntimeError(f"stats parity upgrade failed:\n{result.stdout}\n{result.stderr}")

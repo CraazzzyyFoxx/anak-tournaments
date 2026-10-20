@@ -1,46 +1,40 @@
-"""balancer-service adapter onto the shared team materialization.
+"""Maps balancer-service's ``BalancerTeam`` wire payload onto ``team_export``'s ``MaterializationTeam`` input.
 
-The writer itself now lives in :mod:`shared.services.team_export` — this module
-only maps balancer-service's ``BalancerTeam`` wire payload onto the shared
-``MaterializationTeam`` input, and offers the plain-import entry point used by the
-admin teams-import RPC.
-
-The export paths (``admin/balancer.py``, ``draft/export.py``) build their own
-:class:`~shared.services.team_export.ExportPlan` because they also need the
+Also the plain-import entry point used by the admin teams-import RPC. The export paths (``admin/balancer.py``,
+``draft/export.py``) build their own :class:`~src.services.team_export.ExportPlan` because they also need the
 destructive cleanup, the ``exported_team_id`` backfill and their own stamp.
-
-``to_materialization_teams`` stays a plain module-level function (not a class
-method): ``draft/export.py`` and ``admin/balancer.py`` both import it directly.
 """
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.disciplines import DISCIPLINES
 from shared.domain.roster_shape import FLEX_SLOT_CODE
-from shared.services.team_export import (
+from shared.repository import TournamentRepository
+from shared.services.balancer_realtime import BALANCER_TEAMS_CHANGED
+from src.schemas.team import BalancerTeam, InternalBalancerTeamsPayload
+from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
+from src.services.team_export import (
     ExportOutcome,
     ExportPlan,
     MaterializationMember,
     MaterializationTeam,
     team_materialization,
 )
-from src.schemas.team import BalancerTeam
 
 __all__ = ("TeamService", "team_service", "to_materialization_teams")
 
-logger = logging.getLogger(__name__)
-
 
 def to_materialization_teams(payload: Sequence[BalancerTeam]) -> list[MaterializationTeam]:
-    """``BalancerTeam`` -> shared writer input.
+    """``BalancerTeam`` -> materialization input.
 
     ``BalancerTeam.name`` is both the stored ``balancer_name`` and, by
     convention, the captain's battle tag; each member's ``name`` is their own
-    tag. Both stay implicit here exactly as they were in the writer this replaces.
+    tag.
     """
     return [
         MaterializationTeam(
@@ -65,21 +59,39 @@ class TeamService:
         self,
         session: AsyncSession,
         tournament_id: int,
-        payload: Sequence[BalancerTeam],
+        payload: Any,
+        payload_format: str,
+        *,
+        actor_user_id: int,
     ) -> ExportOutcome:
-        """Plain import: create teams/players, no prior-export cleanup, no stamp.
+        """Import an uploaded teams file: create teams/players, no prior-export cleanup, no stamp.
 
-        Commits once (the orchestrator owns the boundary), which is what the previous
-        ``bulk_create_from_balancer`` did internally — callers that relied on that
-        commit keep working unchanged.
+        ``auto`` reads a ``{"data": {"teams": [...]}}`` dict as atravkovs and anything else
+        as the internal format. Commits once (the orchestrator owns the boundary).
         """
+        use_atravkovs = payload_format == "atravkovs" or (
+            payload_format == "auto"
+            and isinstance(payload, dict)
+            and isinstance(payload.get("data"), dict)
+            and "teams" in payload["data"]
+        )
+        if use_atravkovs:
+            teams = [BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
+        else:
+            internal_payload = InternalBalancerTeamsPayload.model_validate(payload)
+            tournament = await TournamentRepository().get(session, tournament_id)
+            dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
+            teams = [team.to_balancer_team(dimension) for team in internal_payload.teams]
+        # ``run`` commits, so the signals are staged first to ride that commit.
+        await emit_balancer_data(session, tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=actor_user_id)
+        await stage_export_invalidation(session, tournament_id)
         return await team_materialization.run(
             session,
             ExportPlan(
                 tournament_id=tournament_id,
-                teams=to_materialization_teams(payload),
-                # Lenient, as balancer-service has always been: an unresolvable
-                # battle tag skips that player rather than failing the whole import.
+                teams=to_materialization_teams(teams),
+                # Lenient: an unresolvable battle tag skips that player rather
+                # than failing the whole import.
                 on_unresolved="skip",
             ),
         )

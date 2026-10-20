@@ -1,8 +1,8 @@
-"""A discipline's role ontology as one workspace sees it (D31, D34, D86; spec §8.3).
+"""A discipline's role ontology as one workspace sees it.
 
 Built from ``catalog.role_dimension`` and ``catalog.role`` rows -- the module's roles plus one workspace's own sub-roles
 -- by ``shared.repository.roles.CatalogRoleRepository.ontology``. Pure: team-format checks, the slot projection and every
-code <-> id translation run on it without IO. Trees are tens of nodes, so descendants are walked here (D34).
+code <-> id translation run on it without IO. Trees are tens of nodes, so descendants are walked here.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ _COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def validate_presentation(attrs: Mapping[str, object], *, discipline: str) -> None:
-    """Refuse a role ``icon``/``color`` that is not an image reference or a plain hex color (§1.5).
+    """Refuse a role ``icon``/``color`` that is not an image reference or a plain hex color.
 
     Other keys are left alone: ``attrs`` never confers role membership. Raises ``ValueError``.
     """
@@ -141,7 +141,7 @@ class Ontology:
         return None if role.parent_id is None else self._by_id.get(role.parent_id)
 
     def root(self, role: RoleNode) -> RoleNode:
-        """The top-level ancestor: what a leaf assignment counts as on its dimension (D86)."""
+        """The top-level ancestor: what a leaf assignment counts as on its dimension."""
         seen = {role.id}
         while (parent := self.parent(role)) is not None and parent.id not in seen:
             seen.add(parent.id)
@@ -149,7 +149,7 @@ class Ontology:
         return role
 
     def subtree(self, role: RoleNode) -> frozenset[int]:
-        """``role`` and every descendant, by id; cycle-safe (D34: cycles are refused on write, not trusted here)."""
+        """``role`` and every descendant, by id; cycle-safe (cycles are refused on write, not trusted here)."""
         found: set[int] = set()
         stack = [role]
         while stack:

@@ -1,7 +1,7 @@
 """Idempotent native OW backfill at every non-character segment.
 
 Raw and character facts remain untouched. The existing pandas formula and
-current-registration rank/role boundary are frozen (D96); ownership always
+current-registration rank/role boundary are frozen; ownership always
 comes from match_player, even after a roster change or removal. Each caller's
 per-match commit includes complete evidence and tracked JSON fight updates.
 """

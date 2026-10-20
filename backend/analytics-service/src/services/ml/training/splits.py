@@ -1,9 +1,9 @@
 """Rolling-origin time-series splits over tournaments.
 
 Tournaments are ordered by **start date** (``coalesce(start_date, created_at)``,
-id as tie-break). Numeric id is NOT a chronology proxy in this database:
-tournament 62 started 2025-07-19 while 61 started 2026-03-14, so id-ordered
-splits silently trained on the future. For each cutoff fold the split returns
+id as tie-break). Numeric id is NOT a chronology proxy in this database
+(tournament 62 started months before 61), so id-ordered splits would train on
+the future. For each cutoff fold the split returns
 ``(train_ids, val_id, test_id)`` where ``train`` is everything that started
 before the validation tournament.
 """
@@ -16,8 +16,8 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.services.workspace_scope import workspace_scope_filter
 from src import models
-from src.core.workspace import workspace_scope_filter
 
 __all__ = (
     "TimeSeriesSplit",
@@ -43,8 +43,8 @@ class TimeSeriesSplit:
 
         ``ids`` MUST already be chronologically ordered (the contract of
         :func:`tournament_ids_up_to`); their numeric values are opaque labels.
-        Sorting them here would re-impose id-as-time and reintroduce the very
-        future-leak this module exists to prevent.
+        Sorting them here would re-impose id-as-time — the future leak this
+        module exists to prevent.
         """
         ordered = [int(i) for i in ids if int(i) != int(test_id)]
         if not ordered:
@@ -97,9 +97,8 @@ async def tournament_ids_up_to(
             models.Tournament.id >= 1,
             models.Tournament.discipline == discipline,
             # Hidden tournaments are containers, not seasons. The per-workspace
-            # scrim container (docs/plans/2026-08-12-scrim-rooms.md) holds no
-            # ranked roster data, so admitting it here would insert a data-less
-            # fold boundary into the rolling-origin split.
+            # scrim container holds no ranked roster data, so admitting it here
+            # would insert a data-less fold boundary into the rolling-origin split.
             models.Tournament.is_hidden.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )

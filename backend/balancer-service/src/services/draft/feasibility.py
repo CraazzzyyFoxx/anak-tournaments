@@ -25,6 +25,8 @@ from shared.models.balancer.draft import DraftPick, DraftSession
 from shared.repository.balance import BalancerTournamentConfigRepository
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.services.team_format import tournament_slot_shape
+from src.domain.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
+from src.domain.balancer.config.public_contract import normalize_config_payload
 from src.domain.draft import fit as sug
 from src.domain.draft import rules
 from src.domain.draft.entities import (
@@ -41,8 +43,6 @@ from src.domain.draft.feasibility import (
     build_feasibility_state,
     evaluate_pick_options,
 )
-from src.services.balancer.config.defaults import AlgorithmConfig, apply_config_overrides, default_role_settings
-from src.services.balancer.config.public_contract import normalize_config_payload
 from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
 from src.services.draft.rosters import DraftRosterService, draft_rosters
@@ -171,11 +171,9 @@ class DraftFeasibilityService:
         """``load_snapshot`` shared by every read of the same board state in this process.
 
         Fit and the pick queue are asked per team, and every captain and admin
-        re-asks on every draft event: ~50 full snapshot loads per event, each
-        re-resolving every registration, saturated three workers (2026-09-30).
-        The players, picks and rosters are one answer for all of them, keyed
-        like the board. Teams are re-read per call because a captain's private
-        ``pick_queue`` changes without an event.
+        re-asks on every draft event, so the players, picks and rosters are one
+        answer for all of them, keyed like the board. Teams are re-read per call
+        because a captain's private ``pick_queue`` changes without an event.
 
         READ PATHS ONLY. The rows are detached from the session that loaded them
         and shared by concurrent readers: nothing may mutate them, and a write
@@ -275,7 +273,7 @@ class DraftFeasibilityService:
         if current is None:
             raise HTTPException(status_code=409, detail="Draft has no current pick")
         snapshot = await self.load_snapshot(session, draft_session)
-        available = [p for p in snapshot.players if p.status == "available"]
+        available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
         shape = await self.resolve_shape(session, draft_session)
         counts = rules.team_slot_counts(
             snapshot.players, snapshot.picks, current.draft_team_id, shape, snapshot.rosters

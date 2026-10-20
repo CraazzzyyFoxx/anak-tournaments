@@ -24,12 +24,12 @@ from shared.core import enums  # noqa: E402
 from shared.models.encounter import Encounter  # noqa: E402
 from shared.models.tournament.bracket_encounter import BracketEncounter  # noqa: E402
 from shared.models.tournament.encounter_link import EncounterLink  # noqa: E402
-from shared.services.bracket import advancement  # noqa: E402
-from shared.services.bracket import template as bracket_template
-from shared.services.bracket.engine import placeholder_seeds  # noqa: E402
 from shared.services.encounter import participants  # noqa: E402
-from shared.tests.test_bracket_positions import BracketCase  # noqa: E402
+from src.domain.bracket import template as bracket_template
+from src.domain.bracket.engine import placeholder_seeds  # noqa: E402
 from src.domain.stage.seeds import resolve_seeds  # noqa: E402
+from src.services.bracket import advancement  # noqa: E402
+from tests.test_bracket_positions import BracketCase  # noqa: E402
 from tests.test_bracket_template import _sketch  # noqa: E402
 
 

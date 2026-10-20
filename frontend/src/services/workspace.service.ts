@@ -138,6 +138,8 @@ export default class workspaceService {
       seo_title?: string | null;
       seo_description?: string | null;
       newcomer_scope?: "global" | "workspace";
+      /** Priority order; `[0]` is the workspace's default game. At least one, known codes only. */
+      disciplines_enabled?: string[];
     }
   ): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`, {

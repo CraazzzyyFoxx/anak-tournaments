@@ -7,9 +7,9 @@ override -- all of it lands here, so an organizer opening a room reads ONE
 ordered story instead of reconstructing it from the submission log, the admin
 audit and the result audit at once.
 
-:func:`record_room_event` is the only write API. It ``session.add``s and
-nothing else -- no flush, no commit -- so a mutation and its journal row land
-together or not at all. Call it BEFORE the commit that owns the change.
+:func:`record_room_event` is the only write API. It stages the row and nothing
+else -- no flush, no commit -- so a mutation and its journal row land together
+or not at all. Call it BEFORE the commit that owns the change.
 
 The read merges this table with ``encounter_result_audit``: the room decides
 the draft, the result audit decides the score, and an organizer asking "what
@@ -74,6 +74,8 @@ __all__ = (
 HISTORY_LIMIT_DEFAULT = 200
 HISTORY_LIMIT_MAX = 500
 
+_events = EncounterRoomEventRepository()
+
 
 async def record_room_event(
     session: AsyncSession,
@@ -88,7 +90,8 @@ async def record_room_event(
     data: dict[str, Any] | None = None,
 ) -> None:
     """Append one journal row to the caller's transaction. Never commits."""
-    session.add(
+    _events.add(
+        session,
         EncounterRoomEvent(
             encounter_id=encounter_id,
             action=action,
@@ -100,7 +103,7 @@ async def record_room_event(
             # what every reader branches on.
             reason=(reason or "").strip() or None,
             data=data or {},
-        )
+        ),
     )
 
 

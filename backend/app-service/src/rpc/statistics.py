@@ -26,12 +26,9 @@ _STAT_SORT = typing.Literal["id", "name", "value"]
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.statistics.dashboard")
     async def _dashboard(data: dict, msg: RabbitMessage) -> dict:
-        # ``get_dashboard_stats`` opens its own three sessions for the parallel
-        # fan-out (AsyncSession is not concurrency-safe), so the envelope's
-        # session is deliberately unused here.
-        async def op(_session: Any) -> Any:
+        async def op(session: Any) -> Any:
             return await dashboard_service.get_dashboard_stats(
-                discipline=c.require_discipline(data), workspace_id=c.q1(data, "workspace_id", int)
+                session, discipline=c.require_discipline(data), workspace_id=c.q1(data, "workspace_id", int)
             )
 
         return await c.envelope(logger, "statistics.dashboard", op, session_factory=_SF)
@@ -71,9 +68,9 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "statistics.character_leaderboard", op, session_factory=_SF)
 
-    # GET /api/v1/admin/tournaments/{id}/readiness — hub living checklist (D13, §7.1).
+    # GET /api/v1/admin/tournaments/{id}/readiness — hub living checklist.
     # Gate: ANY(tournament.read, team.read) on the tournament's workspace; the
-    # granted groups drive field masking inside compute_readiness (G-O1/D16).
+    # granted groups drive field masking inside compute_readiness.
     # Deliberately NO hidden-tournament gate: a workspace reader may see hidden
     # tournaments of their own workspace (same disposition as balancer admin RPCs).
     @broker.subscriber("rpc.app.statistics.tournament_readiness")
