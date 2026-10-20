@@ -510,9 +510,10 @@ class AdminService {
     });
   }
 
+  /** The workspace's sub-roles: one game's, or every game's without `discipline` (each row names its own). */
   async getPlayerSubRoles(params: {
     workspace_id: number;
-    discipline: string;
+    discipline?: string;
     role?: string;
     include_inactive?: boolean;
   }, signal?: AbortSignal): Promise<PlayerSubRole[]> {

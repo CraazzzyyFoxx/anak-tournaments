@@ -440,7 +440,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin.list#player_sub_role": {
         "summary": "List player sub-roles",
-        "description": "Permission: workspace `player.read`. Requires workspace_id and discipline; lists only that workspace's child roles in the requested discipline, optionally filtered by parent role and including inactive ones. Omitted discipline is rejected, never defaulted.",
+        "description": "Permission: workspace `player.read`. Requires workspace_id; lists only that workspace's child roles — every installed game's, or only the optional `discipline`'s (422 `discipline_not_installed` for an unknown code) — optionally filtered by parent role (which needs `discipline`, else 422) and including inactive ones. Each row names its own `discipline`.",
     },
     # ── generic CRUD engine: tournament_link ───────────────────────────────
     "rpc.tournament.admin.create#tournament_link": {

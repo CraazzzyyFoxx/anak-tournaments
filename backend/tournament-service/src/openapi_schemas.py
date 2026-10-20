@@ -133,7 +133,7 @@ OPERATIONS: dict[str, Op] = {
         response_array=True,
         query_params=(
             _WS,
-            QueryParam("discipline", required=True, description="Explicit discipline code."),
+            QueryParam("discipline", description="Installed discipline code; absent: every game's sub-roles."),
             QueryParam("role"),
             QueryParam("include_inactive", "boolean"),
         ),

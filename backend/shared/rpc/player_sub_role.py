@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roles import public_role_attrs
 from shared.rbac.workspace_lookup import get_player_sub_role_workspace_id
@@ -65,9 +66,12 @@ def _list_rpc(public_origin: str | None) -> Callable[[AsyncSession, dict[str, An
         query = data.get("query") or {}
         include = _first(query.get("include_inactive"))
         include_inactive = str(include).lower() in ("1", "true", "yes", "on") if include is not None else False
-        discipline = _first(query.get("discipline"))
-        if not isinstance(discipline, str) or not discipline.strip():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="missing discipline")
+        # Optional (spec §8.1): absent is every installed game's sub-roles; an unknown code is a 422, never every game.
+        discipline = _first(query.get("discipline")) or None
+        if discipline is not None and discipline not in DISCIPLINES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"discipline_not_installed: {discipline!r}"
+            )
         rows = await player_sub_role_service.list_sub_roles(
             session,
             workspace_id=_int_or_400(query.get("workspace_id"), "workspace_id"),
