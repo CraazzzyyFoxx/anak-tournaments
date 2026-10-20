@@ -39,9 +39,10 @@ vi.mock("@/services/mix-preferences.service", () => ({
     update: (preferences: unknown) => updatePreferences(preferences),
   },
 }));
-vi.mock("@/hooks/useBrowsingDiscipline", () => ({
-  useBrowsingDiscipline: () => ({ axis: "all", resolved: { kind: "concrete", code: "overwatch" }, disciplines: [], select: vi.fn() })
-}));
+vi.mock("@/hooks/useGameScope", async () => {
+  const { gameScopeStub } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeStub({ kind: "game", code: "overwatch", source: "default" }, { axis: "all" }) };
+});
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
   useDisciplineMetadata: () => ({ data: {
     discipline: { code: "overwatch" }, workspace_id: null,

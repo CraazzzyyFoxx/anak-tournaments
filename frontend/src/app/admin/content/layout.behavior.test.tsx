@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 //
 // The Game content shell (P5-1, F13; per-game since P7). What is pinned here:
-//  1. the sections are tabs of one screen — the catalogues of the selected game plus the triage queue that works on
-//     them — labelled in that game's own words, and carrying its `?discipline=`;
+//  1. the sections are tabs of one screen — the catalogues of the selected game, carrying its `?discipline=`, plus
+//     the triage queue that works on them — labelled in that game's own words;
 //  2. the path segment picks the active tab, so a deep link lands marked;
 //  3. the queue badge carries its length, and an empty queue shows no badge;
-//  4. the game is a concrete browsing choice: URL over default, canonicalized with `replace`; an invalid value is
-//     named and loads nothing; a kind the game does not declare has no tab.
+//  4. a platform page (spec §3.7): URL over the first game, the URL never rewritten on landing; the game tabs push a
+//     history entry and leave the scope alone; an invalid value is named and loads nothing; a kind the game does not
+//     declare has no tab.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -35,6 +36,8 @@ vi.mock("@/services/discipline.service", () => ({
       {
         code: "overwatch",
         name: "Overwatch",
+        short_name: "OW",
+        icon: null,
         enabled: true,
         kinds: { character: "Hero", map: "Map", mode: "Gamemode" },
         character_classes: ["tank", "damage", "support"]
@@ -42,6 +45,8 @@ vi.mock("@/services/discipline.service", () => ({
       {
         code: "lol",
         name: "League of Legends",
+        short_name: "LoL",
+        icon: null,
         enabled: true,
         kinds: { character: "Champion", map: "Map" },
         character_classes: ["Mage"]
@@ -116,7 +121,7 @@ describe("admin Game content layout", () => {
       "/admin/content/heroes?discipline=overwatch",
       "/admin/content/maps?discipline=overwatch",
       "/admin/content/gamemodes?discipline=overwatch",
-      "/admin/content/unresolved?discipline=overwatch"
+      "/admin/content/unresolved"
     ]);
     expect(labels(container).slice(0, 3)).toEqual(["Hero", "Map", "Mode"]);
     expect(container.textContent).toContain("section body");
@@ -131,11 +136,12 @@ describe("admin Game content layout", () => {
     expect(container.textContent).toContain("section body");
   });
 
-  it("canonicalizes a missing game with replace, not an extra Back entry", async () => {
-    await mount("/admin/content/maps");
+  it("lands on the platform's first game without rewriting the URL", async () => {
+    const container = await mount("/admin/content/maps");
 
-    expect(navigation.replaces).toEqual(["/admin/content/maps?discipline=overwatch"]);
+    expect(navigation.replaces).toEqual([]);
     expect(navigation.pushes).toEqual([]);
+    expect(hrefs(container)[0]).toBe("/admin/content/heroes?discipline=overwatch");
   });
 
   it("keeps an invalid game as typed, names it, and loads nothing", async () => {
@@ -169,5 +175,23 @@ describe("admin Game content layout", () => {
     getCatalogAliasMisses.mockResolvedValue({ results: [], total: 0, page: 1, per_page: 1 });
     container = await mount();
     expect(tab(container, "unresolved")?.textContent?.trim()).toBe("Unresolved names");
+  });
+
+  it("switches the game with its tabs, writing ?discipline= as a history entry and leaving the scope alone", async () => {
+    await mount("/admin/content/heroes?discipline=overwatch");
+
+    const tab = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
+      node.textContent?.includes("League of Legends")
+    );
+    expect(tab).toBeTruthy();
+    await act(async () => {
+      tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    await settle();
+
+    const url = new URL(navigation.pushes.at(-1)!, "http://x");
+    expect(url.pathname).toBe("/admin/content/heroes");
+    expect(url.searchParams.get("discipline")).toBe("lol");
+    expect(useWorkspaceStore.getState().gameScope).toBe("all");
   });
 });

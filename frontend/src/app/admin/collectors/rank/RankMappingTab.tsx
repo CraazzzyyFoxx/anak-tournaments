@@ -1,52 +1,42 @@
 "use client";
 
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadAdminUI } from "@/disciplines/registry/admin";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { useGameScope } from "@/hooks/useGameScope";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
+
+/** The collector's candidates: only the games that declare native rank collection (spec §3.7). */
+const collectsRanks = (games: DisciplineDescriptor[]) =>
+  games.filter((game) => game.capabilities.native_rank_collection);
 
 /**
- * The collector's rank-mapping tab: a concrete-browsing surface (§2.3). The game is resolved first
- * (`?discipline=`, saved choice, first installed game) and shown in the selector; only then is its
- * `native_rank_collection` capability checked by the slot host. A game that does not collect ranks gets the
- * unsupported message — never another game's mapping panel.
+ * The collector's rank-mapping tab: a platform surface. Its game tabs list every installed game that collects native
+ * ranks (axis `all`); the game is `?discipline=`, else the scope's game, else the last one, else the first. A game
+ * outside that list is named as unavailable — never replaced by another game's mapping panel.
  */
 export function RankMappingTab() {
-  // The collector settings are platform-wide, so the installed games are listed globally.
-  const browsing = useBrowsingDiscipline({ allowsAll: false, axis: "all" });
-  const { resolved, disciplines } = browsing;
+  const gameScope = useGameScope({ pageClass: "platform", axis: "all", filter: collectsRanks });
+  const { resolution, games } = gameScope;
 
-  if (resolved === null) {
-    return browsing.isError ? (
-      <PageStateCard state="error" onAction={browsing.refetch} />
+  if (resolution === null) {
+    return gameScope.isError ? (
+      <PageStateCard state="error" onAction={gameScope.refetch} />
     ) : (
       <Skeleton className="h-40 w-full rounded-xl" />
     );
   }
-  if (resolved.kind === "invalid" || resolved.kind === "empty") {
-    return (
-      <DisciplineUnavailable
-        resolved={resolved}
-        disciplines={disciplines ?? []}
-        allowsAll={false}
-        onSelect={browsing.select}
-      />
-    );
+  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
+    return <GameScopeControl scope={gameScope} variant="single" />;
   }
-  if (resolved.kind === "all") return null;
-  const descriptor = disciplines?.find((entry) => entry.code === resolved.code);
+  const descriptor = games?.find((entry) => entry.code === gameScope.game);
   if (!descriptor) return null;
 
   return (
     <div className="space-y-4">
-      <DisciplineSelector
-        disciplines={disciplines ?? []}
-        value={resolved.code}
-        allowsAll={false}
-        onSelect={browsing.select}
-      />
+      <GameScopeControl scope={gameScope} variant="single" />
       <DisciplineWidget
         discipline={descriptor.code}
         load={loadAdminUI}
