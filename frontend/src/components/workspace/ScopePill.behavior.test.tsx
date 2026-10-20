@@ -322,6 +322,15 @@ describe("the site scope pill", () => {
       expect(trigger()?.getAttribute("aria-label")).toBe("All communities · All games — change scope");
     });
 
+    it("a game block on a multi page follows the page's URL game: that game, no tabs", async () => {
+      navigation.reset("/?discipline=lol");
+      await mount(page);
+
+      expect(tab("Overwatch")).toBeUndefined();
+      expect(tab("League of Legends")).toBeUndefined();
+      expect(trigger()?.getAttribute("aria-label")).toBe("All communities · League of Legends — change scope");
+    });
+
     it("a game block on a multi page answers an invalid URL game with the multi page's way out", async () => {
       navigation.reset("/?discipline=nope");
       await mount(page);
