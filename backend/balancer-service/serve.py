@@ -51,9 +51,8 @@ logger = setup_logging(
 broker = make_rabbit_broker(config.rabbitmq_url, logger=logger, prefetch_count=config.rpc_prefetch_count)
 app = FastStream(broker)
 
-# The cashews singleton is process-global with no default backend; the HTTP app
-# (main.py) configures it at import, the worker must do so before any RPC read
-# path hits the cache (see lesson: cashews-worker-not-configured).
+# The cashews singleton is process-global with no default backend; configure it
+# before any RPC read path hits the cache.
 configure_cache()
 # Same reason, same place: the realtime rail is a process-global too, and every
 # `emit` in this worker is a no-op until it knows where to publish. No
@@ -70,15 +69,11 @@ configure_quota(
     edge_workspace_metering=config.quota_edge_workspace_metering,
 )
 
-# Typed-RPC subscribers replacing the HTTP balancer-service behind the Go gateway.
-# Phase 1 — public config read + admin balance/config writes + teams import.
 rpc_config.register(broker, logger)
 rpc_admin.register(broker, logger)
 rpc_binary.register(broker, logger)
-# Phase 2 — live draft (public reads + lifecycle + pick actions).
 rpc_draft.register(broker, logger)
-# Phase 3 — public job API (create + status + result; create publishes to the
-# job queue this same worker consumes). The SSE stream is not migrated.
+# jobs.create publishes to the job queue this same worker consumes below.
 rpc_jobs.register(broker, logger)
 rpc_custom.register(broker, logger)
 rpc_players.register(broker, logger)
@@ -148,11 +143,10 @@ async def setup_worker_observability() -> None:
     logger.info("Balancer worker started")
 
 
-# The clock supervisor outlives every message, so its handle and its Redis client
-# have to be reachable at shutdown. Left unanchored, asyncio's weak task
-# reference let it be reclaimed ("Task was destroyed but it is pending!"), and
-# nothing cancelled it before the loop closed -- so its in-flight asyncpg
-# connection kept resolving/cancelling on a dead loop ("Event loop is closed").
+# The clock supervisor outlives every message, so its handle and its Redis
+# client are module-level: asyncio holds only a weak reference to a task, and
+# shutdown must cancel it before the loop closes, or its in-flight asyncpg
+# connection unwinds on a dead loop.
 _draft_clock_task: asyncio.Task[None] | None = None
 _draft_clock_redis: Redis | None = None
 

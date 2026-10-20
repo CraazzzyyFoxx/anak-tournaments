@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import typing
 
-from src.services.balancer.config.defaults import (
+from src.domain.balancer.config.defaults import (
     MIX_ONLY_ROLE_FIELDS,
     AlgorithmConfig,
     RoleSettings,
@@ -20,8 +20,8 @@ from src.services.balancer.config.defaults import (
     field_ui,
     tournament_role_settings,
 )
-from src.services.balancer.config.presets import ConfigPresets
-from src.services.balancer.config.public_contract import (
+from src.domain.balancer.config.presets import ConfigPresets
+from src.domain.balancer.config.public_contract import (
     RETIRED_CONFIG_KEYS,
     ConfigOverrides,
     normalize_config_payload,

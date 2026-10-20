@@ -6,11 +6,11 @@ team columns around a VS seam, a tile per seat with role, rank badge, name and
 rating) over the next map's art.
 
 Pictures come by URL: the map's art as the database holds it (``image_path``)
-and the OW2 ladder's rank badge, served by the site (``mix_discord``).
-:func:`load_images` fetches them before drawing and keeps them for an
-hour; one that fails to load is simply left out of the picture, the post still
-goes. Fonts (Onest for headings, Inter for the rest -- the site's two faces) and
-the role glyphs are local copies in ``assets/lineup``.
+and the OW2 ladder's rank badge, served by the site (``mix_discord``). The
+caller fetches them (``LineupPicture.image_urls``) and hands the bytes to
+:func:`render_png`; one missing from them is simply left out of the picture,
+the post still goes. Fonts (Onest for headings, Inter for the rest -- the
+site's two faces) and the role glyphs are local copies in ``assets/lineup``.
 
 ``LineupPicture.filename`` hashes everything drawn: a card whose picture would
 come out the same names the same file, so the projector can tell an unchanged
@@ -19,21 +19,18 @@ card from a changed one without drawing anything.
 
 from __future__ import annotations
 
-import asyncio
 import colorsys
 import hashlib
 import io
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-import httpx
-from cachetools import TTLCache
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, UnidentifiedImageError
 
-__all__ = ("LineupPicture", "LineupSeat", "LineupTeam", "load_images", "render_png")
+__all__ = ("LineupPicture", "LineupSeat", "LineupTeam", "render_png")
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets" / "lineup"
 
@@ -100,33 +97,9 @@ class LineupPicture:
 
     @property
     def image_urls(self) -> set[str]:
-        """Every picture this one is drawn with, for :func:`load_images`."""
+        """Every picture this one is drawn with, by URL: what the caller fetches for :func:`render_png`."""
         icons = {seat.division_icon for team in self.teams for seat in team.seats if seat.division_icon}
         return icons | ({self.map_image} if self.map_image else set())
-
-
-#: Fetched pictures by URL. A failure is not kept, so the next draw tries again.
-_IMAGES: TTLCache[str, bytes] = TTLCache(maxsize=256, ttl=3600)
-
-
-async def load_images(urls: Iterable[str]) -> dict[str, bytes]:
-    """The bytes behind ``urls``; one that cannot be fetched is missing from the result."""
-    wanted = set(urls)
-    missing = wanted - _IMAGES.keys()
-    if missing:
-        async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
-
-            async def fetch(url: str) -> None:
-                try:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                except httpx.HTTPError as exc:
-                    logger.warning(f"Lineup picture: could not load {url}: {exc!r}")
-                    return
-                _IMAGES[url] = response.content
-
-            await asyncio.gather(*(fetch(url) for url in missing))
-    return {url: _IMAGES[url] for url in wanted if url in _IMAGES}
 
 
 @cache
@@ -303,7 +276,7 @@ def _team(
 
 
 def render_png(picture: LineupPicture, images: Mapping[str, bytes]) -> bytes:
-    """``picture`` drawn as a PNG; ``images`` are the fetched pictures by URL (:func:`load_images`)."""
+    """``picture`` drawn as a PNG; ``images`` are its ``image_urls`` as the caller fetched them, by URL."""
     image = _background(_decode(images, picture.map_image))
     draw = ImageDraw.Draw(image)
 

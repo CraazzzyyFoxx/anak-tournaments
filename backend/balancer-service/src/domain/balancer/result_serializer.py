@@ -9,10 +9,10 @@ from shared.domain.roles import Ontology
 from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.domain.team_format import TeamFormat, export_advisories, export_violations
 from src.domain.balancer.backends.base import BalanceMetrics
+from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS, AlgorithmConfig
+from src.domain.balancer.config.public_contract import serialize_algorithm_config
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.feasibility_analyzer import FeasibilityReport
-from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS, AlgorithmConfig
-from src.services.balancer.config.public_contract import serialize_algorithm_config
 
 
 def teams_to_json(
@@ -161,10 +161,8 @@ def teams_to_json(
 
 
 def _is_off_role(player: Player, role: str) -> bool:
-    """Off-role: a non-flex player sitting on a role slot that is not their main
-    role. A flex SLOT names no role, so nobody is off-role on it -- and
-    ``primary_role`` (not ``preferences[0]``, which the loader sets to ``flex``
-    whenever the roster fields one) is what "their main role" means."""
+    """Off-role: a non-flex player on a role slot other than their ``primary_role``.
+    A flex SLOT names no role, so nobody is off-role on it."""
     if player.is_flex or role == FLEX_SLOT_CODE:
         return False
     return player.primary_role is not None and player.primary_role != role
@@ -218,8 +216,7 @@ def lobby_document(payloads: typing.Iterable[typing.Any]) -> dict[str, typing.An
     discomfort detail have no reader of the stored document.
 
     Tolerant of malformed entries because :func:`as_lobby_document` also feeds
-    it documents stored by older code: a seat without a uuid is skipped, as the
-    readers always did.
+    it legacy stored documents: a seat without a uuid is skipped.
     """
     players: dict[str, dict[str, typing.Any]] = {}
     feasibility: typing.Any = None
@@ -284,10 +281,10 @@ def lobby_document(payloads: typing.Iterable[typing.Any]) -> dict[str, typing.An
 def as_lobby_document(stored: typing.Any) -> dict[str, typing.Any] | None:
     """A mix's stored solver document in the lobby form, whichever form it was written in.
 
-    Mixes balanced before :func:`lobby_document` hold ``{"variants": [payload, ...]}``
-    (or one bare payload) and are upgraded here, on read, trimmed to the cap like
-    a fresh run. Not by a migration: a release migrates while the previous
-    containers are still serving, and those cannot read the lobby form.
+    Legacy documents hold ``{"variants": [payload, ...]}`` (or one bare payload)
+    and are upgraded here, on read, trimmed to the cap like a fresh run. Not by a
+    migration: a release migrates while the previous containers are still
+    serving, and those cannot read the lobby form.
     """
     if not isinstance(stored, typing.Mapping):
         return None

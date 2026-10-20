@@ -1,11 +1,9 @@
 """Synthesize a materialization payload from pre-formed registered teams.
 
-Decision 14 of ``docs/plans/2026-08-20-team-registration.md``: rather than adding a
-third direct writer of ``tournament.team``/``tournament.player``, a registered team
-is turned into the same :class:`MaterializationTeam` payload the balancer and draft
-exports already produce, and handed to the same orchestrator. Battle-tag
-resolution, name dedup, newcomer computation and the slot-to-catalog-role mapping
-all come for free and cannot drift.
+A registered team is turned into the same :class:`MaterializationTeam` payload
+the balancer and draft exports produce and handed to the same orchestrator, so
+battle-tag resolution, name dedup, newcomer computation and the slot-to-catalog-role
+mapping are shared and cannot drift.
 
 Roles and ranks are NOT derived here. They come from ``shared.services.roster``,
 the one engine that answers "which roles does this registration play, and at what
@@ -46,7 +44,7 @@ from shared.models.registration.registration import (
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.services.roster import registration_load_options, roster_engine
-from shared.services.team_export.materialization import MaterializationMember, MaterializationTeam
+from src.services.team_export.materialization import MaterializationMember, MaterializationTeam
 
 __all__ = (
     "RegisteredExportPayload",
@@ -118,8 +116,8 @@ async def build_registered_export(
 
     ``team_ids`` narrows to a subset (one organizer exporting one team); omitted,
     every complete team is taken. Incomplete and terminal teams are reported in
-    ``skipped`` rather than silently dropped — §12.5's whole point is that the
-    people in a stuck team must be told.
+    ``skipped`` rather than silently dropped: the people in a stuck team must be
+    told.
     """
     payload = RegisteredExportPayload()
 

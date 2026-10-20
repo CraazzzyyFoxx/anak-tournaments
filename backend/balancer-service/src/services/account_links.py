@@ -4,9 +4,6 @@ Two providers, and both for a concrete reason: Discord because the bot can only
 act for an account that linked the Discord user who clicked, Battle.net because a
 mix roster row is named after a BattleTag and its ranks are resolved through the
 player identity that link creates.
-
-Reading ``auth`` through shared is allowed here (backend/ARCHITECTURE.md:293) --
-this is a read of one OAuth table, not identity business logic.
 """
 
 from __future__ import annotations
@@ -18,8 +15,7 @@ from shared.repository import OAuthConnectionRepository
 
 __all__ = ("REQUIRED_LINK_PROVIDERS", "missing_account_links")
 
-#: Order is the order a caller reports a blocker in, so it matches the admission
-#: table in docs/mix-self-signup-discord/design.md.
+#: Order is the order a caller reports a blocker in.
 REQUIRED_LINK_PROVIDERS: tuple[str, ...] = (SocialProvider.DISCORD, SocialProvider.BATTLENET)
 
 _connections = OAuthConnectionRepository()

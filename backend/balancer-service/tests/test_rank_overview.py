@@ -49,7 +49,7 @@ from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_roun
 from src.services.rank_overview import (  # noqa: E402
     RankOverviewFilters,
     _grid_rank_case,
-    rank_overview_page,
+    rank_overview_queries,
 )
 
 SUBJECT = "rpc.balancer.ranks.list"
@@ -118,7 +118,7 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
         self.page = AsyncMock(return_value=([], 0))
         with (
             patch.object(ranks_rpc, "_SF", _FakeSession),
-            patch.object(ranks_rpc, "rank_overview_page", self.page),
+            patch.object(ranks_rpc.rank_overview_queries, "page", self.page),
             patch.object(ranks_rpc, "workspace_discipline", AsyncMock(return_value="overwatch")),
         ):
             return await broker.handlers[SUBJECT]({"workspace_id": WORKSPACE_ID, "identity": identity}, None)
@@ -423,7 +423,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         overrides.setdefault("layers", LAYERS)
         overrides.setdefault("per_page", 200)
         async with self.Session() as session:
-            return await rank_overview_page(
+            return await rank_overview_queries.page(
                 session,
                 workspace_id=self.workspace_id,
                 discipline="overwatch",
@@ -571,7 +571,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                 workspace_id=self.workspace_id,
                 ratings={(self.member_id, support.id): (140.0, 20.0)},
             )
-            rows, total = await rank_overview_page(
+            rows, total = await rank_overview_queries.page(
                 session,
                 workspace_id=self.workspace_id,
                 discipline="lol",
@@ -588,7 +588,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                 "effective_tournament": 3300,
                 "effective_mix": 3400,
             }
-            ow, _ = await rank_overview_page(
+            ow, _ = await rank_overview_queries.page(
                 session,
                 workspace_id=self.workspace_id,
                 discipline="overwatch",

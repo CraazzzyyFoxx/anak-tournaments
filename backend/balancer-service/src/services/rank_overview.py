@@ -37,12 +37,6 @@ from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
 from shared.schemas.identity import PlayerIdentityRead
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
-
-# ``_filters``/``main_handle`` are the roster's own search predicates and
-# primary-handle scalar: what ``q`` matches stays one definition, shared with
-# ``rpc.balancer.players.list``.
-from shared.services.workspace_roster import _filters as _roster_filters
-from shared.services.workspace_roster import hosts_by_user_id, main_handle
 from src.domain.mix_ranker import RankerSettings
 
 # The layer/sort vocabulary lives in the schemas module so the OpenAPI export
@@ -50,7 +44,13 @@ from src.domain.mix_ranker import RankerSettings
 from src.schemas.ranks import CURRENT_LAYERS, LAYERS, SORTS
 from src.services.mix_ranker import mix_ranker_service
 
-__all__ = ("RankOverviewFilters", "parse_layers", "rank_overview_page")
+# ``_filters``/``main_handle`` are the roster's own search predicates and
+# primary-handle scalar: what ``q`` matches stays one definition, shared with
+# ``rpc.balancer.players.list``.
+from src.services.workspace_roster import _filters as _roster_filters
+from src.services.workspace_roster import hosts_by_user_id, main_handle
+
+__all__ = ("RankOverviewFilters", "RankOverviewQueries", "parse_layers", "rank_overview_queries")
 
 _AT = sa.DateTime(timezone=True)
 
@@ -603,53 +603,58 @@ def _dump(row: Any, provider: str | None, author_names: dict[int, str | None]) -
     }
 
 
-async def rank_overview_page(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    discipline: str,
-    filters: RankOverviewFilters,
-) -> tuple[list[dict[str, Any]], int]:
-    """One page of the flat rank table, plus the exact total behind it."""
-    if not filters.layers:
-        return [], 0
+class RankOverviewQueries:
+    async def page(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        discipline: str,
+        filters: RankOverviewFilters,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """One page of the flat rank table, plus the exact total behind it."""
+        if not filters.layers:
+            return [], 0
 
-    ws_grid = await get_effective_division_grid(session, workspace_id, discipline=discipline)
-    dimension_id = await CatalogRoleRepository().rated_dimension_id(session, discipline=discipline)
-    provider = discipline_spec(discipline).identity_provider
-    members = _members_cte(workspace_id, provider, filters)
-    branches = _branches(
-        workspace_id,
-        discipline,
-        dimension_id,
-        filters,
-        members,
-        ws_grid,
-        await mix_ranker_service.settings(session, workspace_id),
-    )
-    if not branches:
-        return [], 0
+        ws_grid = await get_effective_division_grid(session, workspace_id, discipline=discipline)
+        dimension_id = await CatalogRoleRepository().rated_dimension_id(session, discipline=discipline)
+        provider = discipline_spec(discipline).identity_provider
+        members = _members_cte(workspace_id, provider, filters)
+        branches = _branches(
+            workspace_id,
+            discipline,
+            dimension_id,
+            filters,
+            members,
+            ws_grid,
+            await mix_ranker_service.settings(session, workspace_id),
+        )
+        if not branches:
+            return [], 0
 
-    rows = sa.union_all(*branches).subquery("rank_rows") if len(branches) > 1 else branches[0].subquery("rank_rows")
-    preds = _predicates(rows, filters)
+        rows = sa.union_all(*branches).subquery("rank_rows") if len(branches) > 1 else branches[0].subquery("rank_rows")
+        preds = _predicates(rows, filters)
 
-    total = await session.scalar(
-        sa.select(sa.func.count()).select_from(sa.select(sa.literal(1)).select_from(rows).where(*preds).subquery())
-    )
-    result = await session.execute(
-        sa.select(rows, division_case_expr(rows.c.rank_value, ws_grid).label("division"))
-        .where(*preds)
-        .order_by(*_order_by(rows, filters))
-        .limit(filters.per_page)
-        .offset(max(filters.page - 1, 0) * filters.per_page)
-    )
-    page = result.all()
-    author_names = await hosts_by_user_id(
-        session,
-        workspace_id=workspace_id,
-        user_ids=[row.author_user_id for row in page if row.author_user_id is not None],
-    )
-    return [_dump(row, provider, author_names) for row in page], int(total or 0)
+        total = await session.scalar(
+            sa.select(sa.func.count()).select_from(sa.select(sa.literal(1)).select_from(rows).where(*preds).subquery())
+        )
+        result = await session.execute(
+            sa.select(rows, division_case_expr(rows.c.rank_value, ws_grid).label("division"))
+            .where(*preds)
+            .order_by(*_order_by(rows, filters))
+            .limit(filters.per_page)
+            .offset(max(filters.page - 1, 0) * filters.per_page)
+        )
+        page = result.all()
+        author_names = await hosts_by_user_id(
+            session,
+            workspace_id=workspace_id,
+            user_ids=[row.author_user_id for row in page if row.author_user_id is not None],
+        )
+        return [_dump(row, provider, author_names) for row in page], int(total or 0)
+
+
+rank_overview_queries = RankOverviewQueries()
 
 
 def parse_layers(raw: Sequence[str] | None) -> tuple[str, ...]:

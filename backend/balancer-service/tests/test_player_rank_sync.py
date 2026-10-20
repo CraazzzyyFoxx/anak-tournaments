@@ -24,12 +24,12 @@ from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: 
 from shared.models.tournament.player_role import PlayerRole  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
-from shared.services.team_export import (  # noqa: E402
+from shared.testing import create_sqlite_tables, install_postgres_type_shims  # noqa: E402
+from src.services.team_export import (  # noqa: E402
     MaterializationMember,
     MaterializationTeam,
     sync_player_ranks,
 )
-from shared.testing import create_sqlite_tables, install_postgres_type_shims  # noqa: E402
 
 install_postgres_type_shims()
 

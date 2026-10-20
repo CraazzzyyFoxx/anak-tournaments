@@ -18,10 +18,11 @@ from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import rated_role_codes
+from shared.rpc.identity import ensure_workspace_permission
 from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
-from src.services.rank_overview import SORTS, RankOverviewFilters, parse_layers, rank_overview_page
+from src.services.rank_overview import SORTS, RankOverviewFilters, parse_layers, rank_overview_queries
 
 _SF = db.async_session_maker
 
@@ -100,14 +101,12 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
-            # Same gate as writing the canon: this read puts every author's
-            # private book on one screen, which only roster management sees.
-            c.require_workspace_permission(data, user, workspace_id, "team", "update")
+            ensure_workspace_permission(user, workspace_id, "team", "update")
             discipline = await workspace_discipline(
                 session, workspace_id=workspace_id, requested=c.q1(data, "discipline")
             )
             filters = _filters(data, discipline)
-            rows, total = await rank_overview_page(
+            rows, total = await rank_overview_queries.page(
                 session, workspace_id=workspace_id, discipline=discipline, filters=filters
             )
             return pagination.paginated_dict(

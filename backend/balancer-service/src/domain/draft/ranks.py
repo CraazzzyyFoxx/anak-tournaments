@@ -16,7 +16,7 @@ from __future__ import annotations
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
 
-__all__ = ("captain_rank", "seat_role", "slot_rank")
+__all__ = ("captain_rank", "drafted_rank", "seat_role", "slot_rank")
 
 
 def slot_rank(roster: PlayerRoster | None, role: str | None, shape: RosterShape) -> int | None:
@@ -58,3 +58,17 @@ def captain_rank(roster: PlayerRoster | None, pinned: str | None, shape: RosterS
     so they sort as the weakest.
     """
     return slot_rank(roster, seat_role(roster, pinned), shape) or -1
+
+
+def drafted_rank(roster: PlayerRoster | None, role: str | None, shape: RosterShape, *, frozen: int | None) -> int:
+    """What a rostered player adds to their team's total; ``0`` when unranked.
+
+    ``frozen`` is the pick's ``target_rank_value`` -- the one derivation the draft
+    stores, because it is a fact about a pick that happened. A captain has no
+    pick, so ``role`` is their seat role and the rank is live. A role-less shape
+    ignores the frozen value: it was frozen against a role the shape gives no
+    meaning to, so ``slot_rank`` re-derives the maximum every other reader shows.
+    """
+    if frozen is not None and shape.has_role_slots:
+        return frozen
+    return slot_rank(roster, role, shape) or 0

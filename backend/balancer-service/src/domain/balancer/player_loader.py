@@ -58,16 +58,13 @@ def parse_player_node(
         if FLEX_SLOT_CODE in mask:
             # A flex slot has no role, so it is worth the best role the player
             # actually plays — the same "ready to play anything" policy the
-            # draft applies (see tests/test_forced_flex_parity.py). Taken over
-            # the ranks collected above, before this synthesized entry joins
-            # them. Being in ``ratings`` is what makes the slot playable and
-            # (entities.py / the Rust core) free of discomfort; ``preferences``
-            # stays the player's real roles, so ``preferences[0]`` IS their main
-            # role everywhere it is read.
+            # draft applies (pinned by tests/test_forced_flex_parity.py). Being
+            # in ``ratings`` makes the slot playable and (entities.py / the Rust
+            # core) free of discomfort; ``preferences`` stays the player's real
+            # roles, so ``preferences[0]`` IS their main role.
             ratings[FLEX_SLOT_CODE] = max(ratings.values())
         elif not preferences:
-            # No slot this player can fill: dropped, exactly as before flex
-            # slots existed.
+            # No slot this player can fill: dropped.
             return None
 
         return Player(
@@ -82,9 +79,8 @@ def parse_player_node(
             rotation_priority=rotation_priority,
         )
     except Exception as exc:
-        # One malformed node used to be swallowed into ``None`` -- the run then
-        # "succeeded" with a player quietly missing. Surface it: the caller maps
-        # ``ValueError`` to a 422 naming the player.
+        # Surface a malformed node instead of dropping the player: the caller
+        # maps ``ValueError`` to a 422 naming the player.
         raise ValueError(f"Failed to parse player {uuid}: {exc}") from exc
 
 

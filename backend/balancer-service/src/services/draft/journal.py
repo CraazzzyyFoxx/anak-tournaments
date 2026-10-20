@@ -84,7 +84,7 @@ class DraftJournalService:
         actor_auth_user_id: int | None,
         after: dict[str, Any] | None = None,
     ) -> DraftAuditEvent:
-        """A session-scoped move (start/pause/resume/rollback/cancel/complete)."""
+        """Record a session-scoped move (start/pause/resume/rollback/cancel/complete)."""
         return await self.record(
             session,
             draft_session.id,

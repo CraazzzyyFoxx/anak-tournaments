@@ -31,8 +31,8 @@ from src.domain.balancer.backends.mix_balancer import (  # noqa: E402
     build_metrics,
     quality_coefficients,
 )
+from src.domain.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 from src.domain.balancer.entities import Player  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402
 
 _MASK = {"Tank": 1, "Damage": 1}
 _METRICS = {"fairness": 1.5, "uniformity": 2.5, "role_fairness": 3.5, "role_points": 4.5, "total": 12.0}

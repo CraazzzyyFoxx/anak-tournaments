@@ -8,9 +8,9 @@ shared StrEnums so values are validated and serialize to their string form.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
 from shared.core.enums import (
     DraftAutopickStrategy,
@@ -23,11 +23,11 @@ from shared.core.enums import (
 )
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster_shape import RosterShape
+from shared.schemas.base import BaseRead
 from shared.schemas.identity import PlayerIdentityRead
 from shared.schemas.role import RoleRef
 from shared.schemas.roster_slots import RosterShapeRead
 from src.domain.draft.ranks import seat_role, slot_rank
-from src.schemas.base import BaseRead
 
 __all__ = (
     "QUEUE_MAX_PLAYERS",
@@ -36,8 +36,6 @@ __all__ = (
     "DraftFeasibilityResponse",
     "DraftJournalEntry",
     "DraftJournalResponse",
-    "DraftOrderEntry",
-    "DraftOrderRequest",
     "DraftPickAutopickRequest",
     "DraftPickExtendRequest",
     "DraftPickOverrideRequest",
@@ -69,6 +67,19 @@ __all__ = (
 _ReadConfig = ConfigDict(from_attributes=True)
 
 
+def _within(field: str, low: int, high: int) -> AfterValidator:
+    def check(value: int) -> int:
+        if not low <= value <= high:
+            raise ValueError(f"{field} must be between {low} and {high}")
+        return value
+
+    return AfterValidator(check)
+
+
+_PickTimeSeconds = Annotated[int, _within("pick_time_seconds", 10, 600)]
+_OvertimeSeconds = Annotated[int, _within("overtime_seconds", 0, 300)]
+
+
 # --------------------------------------------------------------------------- #
 # Requests
 # --------------------------------------------------------------------------- #
@@ -82,26 +93,12 @@ class DraftSessionCreateRequest(BaseModel):
 
     pool_source: DraftPoolSource = DraftPoolSource.BALANCER_BALANCE
     source_balance_id: int | None = None
-    pick_time_seconds: int = 45
+    pick_time_seconds: _PickTimeSeconds = 45
     # Grace period after the main clock, before the autopick. 0 = no overtime.
-    overtime_seconds: int = 0
+    overtime_seconds: _OvertimeSeconds = 0
     autopick_strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT
     allow_admin_override: bool = True
     settings: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("pick_time_seconds")
-    @classmethod
-    def _pick_time_range(cls, v: int) -> int:
-        if not 10 <= v <= 600:
-            raise ValueError("pick_time_seconds must be between 10 and 600")
-        return v
-
-    @field_validator("overtime_seconds")
-    @classmethod
-    def _overtime_range(cls, v: int) -> int:
-        if not 0 <= v <= 300:
-            raise ValueError("overtime_seconds must be between 0 and 300")
-        return v
 
 
 class DraftPoolCaptainInput(BaseModel):
@@ -117,10 +114,9 @@ class DraftPoolCaptainInput(BaseModel):
 class DraftSeedRequest(BaseModel):
     """Who captains. Everything else about a player comes from their registration.
 
-    There is no manual variant any more: a draft player is a reference to a
-    balancer registration, so a seat with hand-typed roles and ranks could not
-    be resolved by the engine and would reintroduce exactly the second source of
-    truth this contract exists to remove.
+    A draft player is a reference to a balancer registration, so there is no
+    manual seat: hand-typed roles and ranks could not be resolved by the engine
+    and would be a second source of truth.
     """
 
     source_balance_id: int | None = None
@@ -134,45 +130,12 @@ class DraftSeedRequest(BaseModel):
 
 
 class DraftSessionPatchRequest(BaseModel):
-    pick_time_seconds: int | None = None
-    overtime_seconds: int | None = None
+    pick_time_seconds: _PickTimeSeconds | None = None
+    overtime_seconds: _OvertimeSeconds | None = None
     autopick_strategy: DraftAutopickStrategy | None = None
     allow_admin_override: bool | None = None
     rounds: int | None = None
     settings: dict[str, Any] | None = None
-
-    @field_validator("pick_time_seconds")
-    @classmethod
-    def _pick_time_range(cls, v: int | None) -> int | None:
-        if v is not None and not 10 <= v <= 600:
-            raise ValueError("pick_time_seconds must be between 10 and 600")
-        return v
-
-    @field_validator("overtime_seconds")
-    @classmethod
-    def _overtime_range(cls, v: int | None) -> int | None:
-        if v is not None and not 0 <= v <= 300:
-            raise ValueError("overtime_seconds must be between 0 and 300")
-        return v
-
-
-class DraftOrderEntry(BaseModel):
-    draft_team_id: int
-    draft_position: int
-
-
-class DraftOrderRequest(BaseModel):
-    order: list[DraftOrderEntry]
-
-    @model_validator(mode="after")
-    def _positions_are_permutation(self) -> DraftOrderRequest:
-        positions = sorted(e.draft_position for e in self.order)
-        if positions != list(range(1, len(self.order) + 1)):
-            raise ValueError("draft_position values must be a permutation of 1..N")
-        team_ids = [e.draft_team_id for e in self.order]
-        if len(set(team_ids)) != len(team_ids):
-            raise ValueError("draft_team_id values must be unique")
-        return self
 
 
 class DraftPickSelectRequest(BaseModel):
@@ -196,14 +159,7 @@ class DraftPickExtendRequest(BaseModel):
     """
 
     expected_version: int
-    seconds: int
-
-    @field_validator("seconds")
-    @classmethod
-    def _seconds_range(cls, v: int) -> int:
-        if not 5 <= v <= 300:
-            raise ValueError("seconds must be between 5 and 300")
-        return v
+    seconds: Annotated[int, _within("seconds", 5, 300)]
 
 
 class DraftPickOverrideRequest(BaseModel):

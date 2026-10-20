@@ -1,27 +1,16 @@
-"""Shared team materialization: the single writer of tournament teams/players.
+"""Team materialization: the single writer of tournament teams/players.
 
-``materialize_teams`` replaces the two near-duplicate ``bulk_create_from_balancer``
-implementations; ``team_materialization`` owns the destructive export sequence
-(cleanup -> insert -> backfill -> stamp -> one commit) that its three callers used
-to each carry a copy of.
+``team_materialization`` owns the destructive export sequence
+(cleanup -> insert -> backfill -> stamp -> one commit).
 """
 
-from shared.services.team_export.identity import find_users_by_handles
-from shared.services.team_export.materialization import (
+from src.services.team_export.materialization import (
     MaterializationMember,
     MaterializationResult,
     MaterializationTeam,
-    OnUnresolved,
-    materialize_teams,
-    resolve_slot_role,
 )
-from shared.services.team_export.ranks import sync_player_ranks
-from shared.services.team_export.service import (
-    ExportOutcome,
-    ExportPlan,
-    TeamMaterializationService,
-    team_materialization,
-)
+from src.services.team_export.ranks import sync_player_ranks
+from src.services.team_export.service import ExportOutcome, ExportPlan, team_materialization
 
 __all__ = (
     "ExportOutcome",
@@ -29,11 +18,6 @@ __all__ = (
     "MaterializationMember",
     "MaterializationResult",
     "MaterializationTeam",
-    "OnUnresolved",
-    "TeamMaterializationService",
-    "find_users_by_handles",
-    "materialize_teams",
-    "resolve_slot_role",
     "sync_player_ranks",
     "team_materialization",
 )

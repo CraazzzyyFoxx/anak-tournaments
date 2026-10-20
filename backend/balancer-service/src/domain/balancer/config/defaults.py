@@ -11,10 +11,6 @@ Everything else is derived from it and must stay derived:
 * ``provider.EDITABLE_CONFIG_FIELD_KEYS`` / ``CONFIG_LIMITS`` /
   ``build_config_fields`` — the ``GET /config`` payload the UI draws
 * ``presets.ConfigPresets.DEFAULT``
-
-Before this, those five were hand-written parallel lists of the same ~35 names,
-kept in step by a file of drift-guard tests. Adding a knob meant editing six
-places and forgetting one meant the knob silently did nothing.
 """
 
 from __future__ import annotations
@@ -32,9 +28,8 @@ from shared.disciplines import DISCIPLINES
 ConfigGroup = typing.Literal["Algorithm", "Quality weights", "Strategy", "Solver output"]
 ConfigControl = typing.Literal["integer", "float", "boolean", "slider", "roles", "open_slot"]
 
-# Upper bound the UI has always advertised for a cost-function weight. It used
-# to live only in ``CONFIG_LIMITS``, so the slider stopped at 10000 while the
-# API happily accepted 1e9 — the bound is now the field's own.
+# Upper bound for a cost-function weight. It is the field's own constraint, so
+# the drawer slider and the API accept the same range.
 MAX_WEIGHT = 10000.0
 
 # Most balance options one run hands back, whichever solver. Past a hundred
@@ -188,11 +183,8 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Shared optimizer parameters. Budget picked by the ``quality_harness``
-    # ablation (six pool profiles x 12/24 teams x 3 seeds): the previous
-    # 60/120/4-island setup with no early stop scores bal 1.65 / com 1.27
-    # against this one, which costs 1.8s instead of 0.3s per run and stays a
-    # cheap fallback (5x lighter than ``HIGH_QUALITY``) within the API-key
-    # caps (population <= 150, generations <= 500).
+    # ablation; it stays a cheap fallback (5x lighter than ``HIGH_QUALITY``)
+    # within the API-key caps (population <= 150, generations <= 500).
     population_size: int = Field(
         default=100,
         ge=10,
@@ -272,7 +264,7 @@ class AlgorithmConfig(BaseSettings):
         json_schema_extra=knob("Role line balance", "Quality weights"),
     )
     # Per-team normalized terms (Rust divides by team count): defaults are
-    # pre-multiplied so behaviour matches the legacy sums at 4 teams.
+    # pre-multiplied so their calibration holds at 4 teams.
     intra_team_std_weight: float = Field(
         default=1.8,
         ge=0.0,
@@ -360,7 +352,7 @@ class AlgorithmConfig(BaseSettings):
 
     open_slot_settings: RoleSettings = Field(
         default=NEUTRAL_ROLE_SETTINGS,
-        description="Weights of open slots without a role constraint (D86).",
+        description="Weights of open slots without a role constraint.",
         json_schema_extra=knob("Open slot weights", "Quality weights", control="open_slot"),
     )
     effective_total_std_weight: float = Field(
@@ -441,8 +433,8 @@ class AlgorithmConfig(BaseSettings):
         json_schema_extra=knob("Crossover rate", "Strategy"),
     )
     # Defaults to the maximum so every job has a mandatory hard stop even when
-    # the client omits it (review H5); normal jobs converge long before this, so
-    # results stay deterministic in practice.
+    # the client omits it; normal jobs converge long before this, so results
+    # stay deterministic in practice.
     time_limit_ms: int | None = Field(
         default=600000,
         ge=100,

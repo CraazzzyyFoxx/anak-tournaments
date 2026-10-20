@@ -41,7 +41,7 @@ from src import (  # noqa: E402
 from src.domain.draft import ranks, rules  # noqa: E402
 from src.domain.draft.entities import DraftSnapshot, PoolSeat  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
-from src.services.draft import board, journal, lifecycle  # noqa: E402
+from src.services.draft import board, journal, lifecycle, role_edit  # noqa: E402
 from src.services.draft import feasibility as draft_feasibility  # noqa: E402
 from src.services.draft.feasibility import feasibility_service  # noqa: E402
 from src.services.draft.journal import journal_service  # noqa: E402
@@ -339,7 +339,7 @@ def test_pick_event_payload_contains_resolved_role_rank_and_version() -> None:
         version=4,
     )
 
-    payload = draft_rpc._pick_event_payload(draft, pick, dimension="player_role")
+    payload = lifecycle._pick_event_payload(draft, pick, dimension="player_role")
 
     assert payload["target_role"] == {"dimension": "player_role", "role": "support", "parent": None}
     assert payload["target_rank_value"] == 2875
@@ -395,7 +395,7 @@ def test_rpc_registers_feasibility_options_and_role_edit_subjects() -> None:
 
 
 def test_player_updated_event_does_not_expose_private_reason() -> None:
-    payload = draft_rpc._player_updated_payload(
+    payload = role_edit._player_updated_payload(
         session_id=1,
         player_id=20,
         role=RoleRef(dimension="player_role", role="support"),
@@ -519,7 +519,7 @@ def test_seed_version_guard_rejects_stale_preview_and_bumps_on_materialization()
 
 
 def test_seed_diff_builder_reports_before_and_after_counts() -> None:
-    diff = draft_rpc._seed_diff(
+    diff = lifecycle._seed_diff(
         before=(3, 15, 12),
         after=(4, 20, 16),
         version_before=7,
@@ -608,6 +608,9 @@ class _ScalarsResult:
     def all(self) -> list:
         return self._rows
 
+    def first(self):
+        return self._rows[0] if self._rows else None
+
 
 class _ExecuteResult:
     def __init__(self, rows: list) -> None:
@@ -626,7 +629,8 @@ class _BoardSession:
     ``scalar``: max(WorkspaceEvent.id) over the draft AND bracket topics, then
     the form version's ``schema_json`` (read only when some registration
     actually answered one).
-    ``execute``: teams, picks, players (repository ``list_by_session`` reads).
+    ``execute``: teams, picks, players (repository ``list_by_session`` reads),
+    then the owning tournament for every later read.
     """
 
     def __init__(self, *, schema_json: dict | None, players: list) -> None:
@@ -636,11 +640,8 @@ class _BoardSession:
     async def scalar(self, _statement):
         return self._scalar.pop(0)
 
-    async def scalars(self, _statement):
-        return SimpleNamespace(one=lambda: SimpleNamespace(discipline="overwatch"))
-
     async def execute(self, _statement) -> _ExecuteResult:
-        return _ExecuteResult(self._results.pop(0))
+        return _ExecuteResult(self._results.pop(0) if self._results else [SimpleNamespace(discipline="overwatch")])
 
 
 class _FakeRosters:

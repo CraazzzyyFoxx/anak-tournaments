@@ -6,7 +6,7 @@ from json import JSONDecodeError
 
 from pydantic import ValidationError
 
-from src.services.balancer.config.public_contract import normalize_config_payload
+from src.domain.balancer.config.public_contract import normalize_config_payload
 
 
 def _parse_json_bytes(content: bytes) -> dict:

@@ -45,7 +45,6 @@ from shared.services import (
 )
 from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.services.subscriptions.providers.discord_role import DiscordUnavailable  # noqa: E402
-from shared.services.workspace_roster import RosterMember  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
@@ -55,6 +54,7 @@ from src.services import custom_game as custom_game_module
 from src.services import mix_discord_projector  # noqa: E402
 from src.services.custom_game import _MAX_CO_HOSTS, CustomGameService  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft  # noqa: E402
+from src.services.workspace_roster import RosterMember  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
 
@@ -387,6 +387,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # The map catalogue: every id resolves unless a test says otherwise.
         self.maps = MagicMock()
         self.maps.exists = AsyncMock(return_value=True)
+        self.maps.get_map_with_mode = AsyncMock(return_value=None)
         self.roster.list_for_game = AsyncMock(return_value=[])
         self.roster.delete_for_game = AsyncMock()
         self.roster.get_by = AsyncMock(return_value=None)
@@ -401,6 +402,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.players.get_id_by_auth_user_id = AsyncMock(return_value=70)
         self.workspace_members = MagicMock()
         self.workspace_members.get_by_player = AsyncMock(return_value=None)
+        # Nobody linked a Discord unless a test says otherwise.
+        self.workspace_members.discord_ids = AsyncMock(return_value=[])
+        # The workspace saved no balancer config (no mix channel, no voices) unless a test says otherwise.
+        self.workspace_configs = MagicMock()
+        self.workspace_configs.get_by_workspace = AsyncMock(return_value=None)
+        self.workspace_configs.config_with_guild = AsyncMock(return_value=None)
         # Both required OAuth links present unless a test removes one.
         self.load_missing_links = AsyncMock(return_value=frozenset())
         self.enroll_member = AsyncMock(
@@ -496,6 +503,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             run_balance=self.run_balance,
             players=self.players,
             workspace_members=self.workspace_members,
+            workspace_configs=self.workspace_configs,
             load_missing_links=self.load_missing_links,
             enroll_member=self.enroll_member,
             grant_player_role=self.grant_player_role,
@@ -525,23 +533,20 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     def _discord_links(self, by_member: dict[int, str]) -> None:
         """The one batched read behind ``discord_mentions``: member id -> snowflake."""
-        rows = MagicMock()
-        rows.all = MagicMock(return_value=list(by_member.items()))
-        self.session.execute = AsyncMock(return_value=rows)
+        self.workspace_members.discord_ids.return_value = list(by_member.items())
+
+    def _channel(self, channel_id: str) -> None:
+        """The workspace's mix channel, as its balancer blob stores it."""
+        self.workspace_configs.get_by_workspace.return_value = _row(config_json={"mix_discord_channel_id": channel_id})
 
     def _voice_config(self, blob: dict[str, object] | None, guild_id: str | None) -> None:
         """The one row behind ``voice_config``: the workspace's balancer blob and its guild."""
-        rows = MagicMock()
-        rows.first = MagicMock(return_value=(blob, guild_id))
-        self.session.execute = AsyncMock(return_value=rows)
+        self.workspace_configs.config_with_guild.return_value = (blob, guild_id)
 
     def _voice_reads(self, blob: dict[str, object] | None, guild_id: str | None, links: dict[int, str]) -> None:
         """The two reads a move makes: the workspace's voice config, then the seats' Discord links."""
-        config_rows = MagicMock()
-        config_rows.first = MagicMock(return_value=(blob, guild_id))
-        link_rows = MagicMock()
-        link_rows.all = MagicMock(return_value=list(links.items()))
-        self.session.execute = AsyncMock(side_effect=[config_rows, link_rows])
+        self._voice_config(blob, guild_id)
+        self._discord_links(links)
 
     @staticmethod
     async def _assign_id(_session, row):
@@ -1434,7 +1439,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         state = await self.service.self_current(self.session, workspace_id=1, auth_user=_auth())
 
         self.assertEqual(state["custom_game_id"], 12)
-        self.games.get.assert_awaited_with(self.session, 12)
+        self.games.get.assert_awaited_with(self.session, 12, options=())
 
     async def test_self_current_without_an_open_mix_404(self) -> None:
         self.games.list_for_workspace = AsyncMock(
@@ -1472,7 +1477,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_signup_post_opens_the_window_and_builds_the_card(self) -> None:
         game = _game(name="Friday mix")
         self.games.get.return_value = game
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
         self.load_hosts.return_value = {9: "Foxx"}
 
         channel_id, commands = await self.service.signup_post(
@@ -1496,7 +1501,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         """The message exists as a row before the bot hears about it: without
         one there is nothing for the outcome -- or a later delete -- to land on."""
         self.games.get.return_value = _game()
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
 
         _channel_id, [post] = await self.service.signup_post(
             self.session,
@@ -1517,7 +1522,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         """Two live cards counting two rosters is the outcome to avoid, and the
         delete leads so the channel never shows both at once."""
         self.games.get.return_value = _game()
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
         previous = self.messages.add(subject="mix:11", slot="signup", status="posted")
         refused = self.messages.add(subject="mix:11", slot="signup", status="failed")
         other_mix = self.messages.add(subject="mix:12", slot="signup", status="posted")
@@ -1546,7 +1551,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         """Same refusal as posting a lineup: there is nowhere to post to."""
         game = _game()
         self.games.get.return_value = game
-        self.session.scalar = AsyncMock(return_value=None)
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.signup_post(
@@ -1588,7 +1592,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(3, 9, 2, participation=MixParticipation.BENCHED),
             _roster_row(4, 10, 3, roles=["support"], is_flex=True, participation=MixParticipation.BENCHED),
         ]
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
         self.load_hosts.return_value = {9: "Foxx"}
         self.ranks.resolve.return_value = {
             **_ranks(7, 10),
@@ -2806,7 +2810,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         """The workspace names no channel: nothing to post to."""
         self.games.get.return_value = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json={"variants": [{"teams": []}]})
-        self.session.scalar = AsyncMock(return_value=None)
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.discord_lineup(
@@ -2828,7 +2831,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.lobby_rows[0] = _lobby(0, balance_result_json={"variants": [{"teams": []}]})
         self.team_names.mapping_for_game.return_value = {}
         self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
 
         channel_id, _commands = await self.service.discord_lineup(
             self.session,
@@ -2844,7 +2847,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_discord_lineup_unknown_variant_404(self) -> None:
         self.games.get.return_value = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json={"variants": [{"teams": []}]})
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.discord_lineup(
@@ -2878,12 +2881,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.host_prefs.get_by_user.return_value = _prefs(points_per_win=25)
         self.team_names.mapping_for_game.return_value = {0: "Blue"}
         self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={0: (3, datetime(2026, 1, 1, 20, 0))})
-        # Two scalar reads in order: the workspace's channel, then the map.
-        self.session.scalar = AsyncMock(
-            side_effect=[
-                {"mix_discord_channel_id": "777"},
-                _row(id=42, name="Busan", parent=_row(name="Control"), image_path="https://s3.example/busan.jpg"),
-            ]
+        self._channel("777")
+        self.maps.get_map_with_mode.return_value = _row(
+            id=42, name="Busan", parent=_row(name="Control"), image_path="https://s3.example/busan.jpg"
         )
         # Only the first seat's account linked a Discord.
         self._discord_links({1: "111"})
@@ -2927,7 +2927,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]))
         self.team_names.mapping_for_game.return_value = {}
         self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
         self._discord_links({})
 
         _channel_id, [command] = await self.service.discord_lineup(
@@ -2958,7 +2958,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         neighbour = self.messages.add(
             subject="mix:11", slot="lineup:1:1", kind="mix.lineup", status="posted", card_json=_voice_card_json("11-1")
         )
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
         self._discord_links({})
 
         _channel_id, [edit, post] = await self.service.discord_lineup(
@@ -4301,7 +4301,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.mix_rounds.activity_for_lobbies = AsyncMock(
             return_value={0: (5, datetime(2026, 1, 1, 20, 0)), 1: (2, datetime(2026, 1, 1, 20, 5))}
         )
-        self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
+        self._channel("555")
         self._discord_links({})
 
         _channel_id, [command] = await self.service.discord_lineup(

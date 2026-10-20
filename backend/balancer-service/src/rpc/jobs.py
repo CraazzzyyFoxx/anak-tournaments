@@ -1,17 +1,16 @@
 """Public balancer compute API over typed RPC (rpc.balancer.jobs.* + rpc.balancer.balance).
 
-Ports the job endpoints from ``src/routes/balancer.py``: create (multipart upload
-arrives base64-encoded from the gateway), status poll, and result. These accept
-both access tokens and workspace-scoped API keys, so the user is rebuilt with the
-full balancer identity (``_resolve_user_from_token`` — restores credential_type +
-api_key attrs the api-key rate-limit/policy/ownership logic needs) rather than the
-generic shared rehydrate. Only ``create`` needs a DB session — it resolves the
-tournament's roster shape into the queued job; status and result are pure
-Redis-backed job-store reads.
+Job create (the multipart upload arrives base64-encoded from the gateway), status
+poll, and result. These accept both access tokens and workspace-scoped API keys,
+so the user is rebuilt with the full balancer identity (``_resolve_user_from_token``
+restores the credential_type + api_key attrs the api-key rate-limit/policy/ownership
+logic needs) rather than the generic shared rehydrate. Only the creates need a DB
+session -- they resolve the owner's roster shape into the queued job; status and
+result are pure Redis-backed job-store reads.
 
-The SSE stream endpoint is intentionally NOT migrated: it's dead code (the
-frontend tracks progress via the tournament:{id}:balancer WS topic), and a
-long-lived stream does not fit the request/reply RPC model.
+There is no SSE stream subject: the frontend tracks progress via the
+tournament:{id}:balancer WS topic, and a long-lived stream does not fit the
+request/reply RPC model.
 
 ``rpc.balancer.balance`` is the synchronous twin of that job trio: one request
 carrying the whole pool, one response carrying the teams. It lives here because
@@ -112,12 +111,7 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.balancer.jobs.create_for_tournament")
     async def _create_for_tournament(data: dict, msg: RabbitMessage) -> dict:
-        """Balance a tournament's own pool: nothing is uploaded.
-
-        The xv-1 payload is built server-side from ``shared.services.roster`` --
-        the same engine the draft reads -- so the algorithm and the draft can no
-        longer be fed two different rank sources.
-        """
+        """Balance a tournament's own pool: nothing is uploaded."""
 
         async def op(session: Any) -> Any:
             user = await _resolve_user(data)
@@ -125,13 +119,14 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = await get_tournament_workspace_id(session, tournament_id)
             payload = schemas.TournamentBalanceRequest.model_validate(c.payload(data) or {})
             overrides = payload.config_overrides
-            return await jobs.create_tournament_job(
+            return await jobs.create_job(
                 session=session,
-                tournament_id=tournament_id,
+                uploaded_file=None,
                 raw_config=json.dumps(overrides.model_dump(exclude_none=True)) if overrides else None,
                 workspace_id=workspace_id,
                 user=user,
                 broker=broker,
+                tournament_id=tournament_id,
             )
 
         return await c.envelope(logger, "jobs.create_for_tournament", op, session_factory=_SF)

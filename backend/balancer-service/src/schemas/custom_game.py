@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints, field_validator, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
 
 from shared.core.enums import MixParticipation, MixSelfSignup
 from shared.domain.mix_lobby import MAX_LOBBIES
 from shared.schemas.role import RoleRef
+from src.domain.mix_self_service import MAX_ROSTER
 
 __all__ = (
     "CustomGameBalanceRequest",
@@ -45,12 +46,19 @@ class _Request(BaseModel):
 _MixName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 
 
+def _dedupe_roles(roles: list[RoleRef]) -> list[RoleRef]:
+    return list({(ref.dimension, ref.role): ref for ref in roles}.values())
+
+
+_RoleOrder = Annotated[list[RoleRef], AfterValidator(_dedupe_roles)]
+
+
 class CustomGameCreate(_Request):
     name: _MixName
     #: Required: no game is implied. A clone keeps its source's game, so the value is the source's own.
     discipline: str
     team_format_preset: str | None = Field(default=None, max_length=64)
-    member_ids: list[int] = Field(default_factory=list, max_length=100)
+    member_ids: list[int] = Field(default_factory=list, max_length=MAX_ROSTER)
     #: Clone the pool, role setup, frozen team format, team names and co-hosts, not played state.
     clone_from_game_id: int | None = None
 
@@ -60,23 +68,16 @@ class CustomGameRename(_Request):
 
 
 class CustomGameRosterUpdate(_Request):
-    member_ids: list[int] = Field(max_length=100)
+    member_ids: list[int] = Field(max_length=MAX_ROSTER)
 
 
 class CustomGamePlayerPatch(_Request):
     participation: MixParticipation | None = None
-    roles: list[RoleRef] | None = None
+    roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
     # ``None`` is "auto": the balance places them wherever they fit. A patch that
     # does not mention the field leaves the pin exactly as it was.
     lobby_pin: int | None = Field(None, ge=0, le=MAX_LOBBIES - 1)
-
-    @field_validator("roles")
-    @classmethod
-    def _roles(cls, roles: list[RoleRef] | None) -> list[RoleRef] | None:
-        if roles is None:
-            return None
-        return list({(ref.dimension, ref.role): ref for ref in roles}.values())
 
 
 class CustomGamePlayerParticipationPatch(_Request):
@@ -119,7 +120,7 @@ class CustomGameVariantIndexPatch(_LobbyScoped):
 
 
 class CustomGameBalanceRequest(_LobbyScoped):
-    """What to balance. An empty body is the first lobby, as before there was a second.
+    """What to balance. An empty body is the first lobby.
 
     ``scope="all"`` reshuffles every lobby at once and needs ``lobby_count >= 2``.
     """
@@ -165,15 +166,8 @@ class CustomGameSelfUpdate(_Request):
     ``model_fields_set``, so a flex toggle cannot silently reset a role order.
     """
 
-    roles: list[RoleRef] | None = None
+    roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
-
-    @field_validator("roles")
-    @classmethod
-    def _roles(cls, roles: list[RoleRef] | None) -> list[RoleRef] | None:
-        if roles is None:
-            return None
-        return list({(ref.dimension, ref.role): ref for ref in roles}.values())
 
 
 class CustomGameSelfServicePatch(_Request):

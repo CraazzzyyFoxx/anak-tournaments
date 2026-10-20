@@ -65,7 +65,7 @@ class MixRankerService:
         return settings_from_json(config.ranker_json if config is not None else None)
 
     async def _role_ids(self, session: AsyncSession, discipline: str) -> dict[str, int]:
-        """Module roles of the discipline's rated dimension by code (D87)."""
+        """Module roles of the discipline's rated dimension by code."""
         rows = await self.roles.rated_rows(session, discipline=discipline, workspace_id=None)
         return {code: row.id for code, row in rows.items()}
 

@@ -16,23 +16,28 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPlayerStatus, DraftStatus
-from shared.disciplines import DISCIPLINES
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
-from shared.repository import TournamentRepository
-from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
+from shared.repository.draft import (
+    DraftPickRepository,
+    DraftPlayerRepository,
+    DraftSessionRepository,
+    DraftTeamRepository,
+)
 from shared.schemas.role import RoleRef
-from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
 from src import models
 from src.domain.draft import ranks
+from src.domain.draft.errors import err as _err
 from src.schemas.team import BalancerTeam, BalancerTeamMember
+from src.services.balancer.realtime import stage_export_invalidation
 from src.services.draft import loaders
-from src.services.draft._errors import err as _err
+from src.services.draft import realtime as draft_rt
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.rosters import DraftRosterService, draft_rosters
 from src.services.team import to_materialization_teams
+from src.services.team_export import ExportPlan, sync_player_ranks, team_materialization
 
 
 def _draft_to_balancer_payload(
@@ -49,15 +54,14 @@ def _draft_to_balancer_payload(
     ``find_users_by_handles`` resolves the captain; members carry their
     handle, the slot they were *drafted into* (tank/damage/support), and the
     rank that pick froze. Mirrors the balancer's own payload (assigned role +
-    assigned rating) so both feed ``bulk_create_from_balancer`` identically.
+    assigned rating) so both feed the shared team materialization identically.
 
     A captain has no pick, so they are valued live on their seat role -- the
     one the organizer pinned, else their lead role (``ranks.seat_role``). A
     role-less (all-flex) shape drafted nobody onto a role, so it exports the
-    ``flex`` open-slot code at the player's best
-    playable rank, the same number the board showed the captain who picked
-    them; the frozen pick rank is skipped there because it was frozen against a
-    role the shape gives no meaning to.
+    ``flex`` open-slot code at the player's best playable rank
+    (``ranks.drafted_rank``), the same number the board showed the captain who
+    picked them.
     """
     payload: list[BalancerTeam] = []
     for team in sorted(teams, key=lambda t: t.draft_position):
@@ -74,14 +78,11 @@ def _draft_to_balancer_payload(
             if shape.has_role_slots:
                 # A resolved null role is an open slot, not a missing captain pin.
                 role = pk.target_role if pk is not None else ranks.seat_role(player_roster, p.captain_role)
-                rank = (
-                    pk.target_rank_value
-                    if (pk is not None and pk.target_rank_value is not None)
-                    else (ranks.slot_rank(player_roster, role, shape) or 0)
-                )
             else:
                 role = FLEX_SLOT_CODE
-                rank = ranks.slot_rank(player_roster, None, shape) or 0
+            rank = ranks.drafted_rank(
+                player_roster, role, shape, frozen=pk.target_rank_value if pk is not None else None
+            )
             total_sr += rank
             role_entry = (
                 next((entry for entry in player_roster.roles if entry.role == role), None) if player_roster else None
@@ -106,12 +107,14 @@ class DraftExportService:
     def __init__(
         self,
         *,
+        sessions_repo: DraftSessionRepository = DraftSessionRepository(),
         teams_repo: DraftTeamRepository = DraftTeamRepository(),
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
         rosters: DraftRosterService = draft_rosters,
     ) -> None:
+        self.sessions_repo = sessions_repo
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
@@ -140,7 +143,6 @@ class DraftExportService:
         # Resolved picks carry the drafted role + its rank (frozen at finalize).
         pick_rows = await self.picks_repo.list_resolved(session, draft_session.id)
         pick_by_player_id = {pk.picked_player_id: pk for pk in pick_rows if pk.picked_player_id is not None}
-        tournament = await TournamentRepository().get(session, draft_session.tournament_id)
 
         payload = _draft_to_balancer_payload(
             teams,
@@ -148,21 +150,23 @@ class DraftExportService:
             await self.feasibility.resolve_shape(session, draft_session),
             await self.rosters.load(session, draft_session, roster_rows),
             pick_by_player_id,
-            DISCIPLINES[tournament.discipline].rated_dimension.code,
+            await loaders.rated_dimension(session, draft_session),
         )
         return teams, payload
 
     async def export(
-        self, session: AsyncSession, draft_session: DraftSession
+        self, session: AsyncSession, draft_session: DraftSession, *, actor_user_id: int | None = None
     ) -> tuple[DraftSession, int, int, list[str]]:
-        """Export a COMPLETED draft, returning session, team counts and advisories."""
+        """Export a COMPLETED draft, stage ``draft.completed`` and the export invalidation.
+
+        Returns session, team counts and advisories.
+        """
         if draft_session.status != DraftStatus.COMPLETED.value:
             raise _err("draft_not_completed", "Only a completed draft can be exported")
 
         teams, payload = await self._load_payload(session, draft_session)
         # Idempotent cleanup + insert + backfill + stamp, all in the shared
-        # orchestrator's single transaction (it used to be two: the writer committed
-        # the deletes and inserts internally, and the caller committed the backfill).
+        # orchestrator's single transaction.
         linked_ids = [t.exported_team_id for t in teams if t.exported_team_id is not None]
         session_id = draft_session.id
 
@@ -179,7 +183,7 @@ class DraftExportService:
             draft_session.export_status = "success"
 
         async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
-            fresh = await inner.get(DraftSession, session_id)
+            fresh = await self.sessions_repo.get(inner, session_id)
             if fresh is not None:
                 fresh.export_status = "failed"
 
@@ -195,6 +199,18 @@ class DraftExportService:
                 on_failure=_on_failure,
             ),
         )
+        await draft_rt.publish_draft_event(
+            session,
+            draft_session=draft_session,
+            event_type="draft.completed",
+            payload={
+                "session_id": draft_session.id,
+                "status": draft_session.status,
+                "export_status": draft_session.export_status,
+            },
+            actor_user_id=actor_user_id,
+        )
+        await stage_export_invalidation(session, draft_session.tournament_id)
         return draft_session, outcome.removed_teams, outcome.imported_teams, outcome.materialization.advisories
 
     async def export_ranks(self, session: AsyncSession, draft_session: DraftSession) -> int:
@@ -209,7 +225,10 @@ class DraftExportService:
             raise _err("draft_not_completed", "Only a completed draft can be exported")
 
         _teams, payload = await self._load_payload(session, draft_session)
-        return await sync_player_ranks(session, draft_session.tournament_id, to_materialization_teams(payload))
+        updated = await sync_player_ranks(session, draft_session.tournament_id, to_materialization_teams(payload))
+        # Ranks only: no team is removed or created, so no draft lifecycle event.
+        await stage_export_invalidation(session, draft_session.tournament_id)
+        return updated
 
 
 export_service = DraftExportService()

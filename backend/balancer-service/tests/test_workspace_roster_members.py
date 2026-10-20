@@ -17,7 +17,7 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock
 
-from shared.services import workspace_roster
+from src.services import workspace_roster
 
 
 class WorkspaceMemberUserIdsTests(IsolatedAsyncioTestCase):

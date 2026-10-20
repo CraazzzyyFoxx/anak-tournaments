@@ -9,18 +9,17 @@ from datetime import UTC, datetime
 from typing import Any, NamedTuple
 from uuid import uuid4
 
-import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.balancer.draft import DraftSession
-from shared.models.registration.registration import BalancerRegistrationForm, BalancerRegistrationFormVersion
 from shared.repository.draft import (
     DraftPickRepository,
     DraftPlayerRepository,
     DraftSessionRepository,
     DraftTeamRepository,
 )
+from shared.repository.registration import RegistrationFormVersionRepository
 from src import schemas
 from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
@@ -51,12 +50,11 @@ def _shared_read_key(session_id: int, version: int, last_event_id: int | None, p
     return f"backend:balancer:draft_read:{session_id}:{version}:{last_event_id or 0}:{tail}"
 
 
-# Cross-replica single flight. The in-process map folds a replica's own burst,
-# but every replica still rebuilds the same answer for a new board state: with
-# three replicas that was three identical snapshot rebuilds per pick
-# (2026-09-30). The TTL must outlive a realistic compute -- p50 was 8s at the
-# peak of the incident -- yet stay under the gateway's 15s read deadline, so a
-# dead leader's lock clears while its followers can still answer in time.
+# Cross-replica single flight: the in-process map folds a replica's own burst,
+# but every replica would still rebuild the same answer for a new board state.
+# The TTL must outlive a realistic compute (p50 ~8s under load) yet stay under
+# the gateway's 15s read deadline, so a dead leader's lock clears while its
+# followers can still answer in time.
 _LOCK_TTL_SECONDS = 10.0
 _LOCK_POLL_SECONDS = 0.1
 
@@ -91,7 +89,7 @@ async def _compute_once[T](key: str, compute: Callable[[], Awaitable[T]], expire
     the rest poll for that answer. A leader's failure is never a follower's
     failure -- its lock disappears without a result and the follower computes
     for itself -- and Redis is best-effort end to end: no cache, or any cache
-    error, just means everybody computes, as before.
+    error, just means everybody computes.
     """
     if not cache.is_setup():
         return await compute()
@@ -137,9 +135,8 @@ def player_custom_fields(
     """Answer + current label for each visible field this player actually filled.
 
     ``answers`` is the registration's own ``custom_fields_json``, read live --
-    the draft no longer keeps a copy, so which answers a spectator may see is
-    decided by the CURRENT form schema (public visibility) against the CURRENT
-    answers.
+    the draft keeps no copy, so which answers a spectator may see is decided by
+    the CURRENT form schema (public visibility) against the CURRENT answers.
     Unanswered fields are dropped rather than rendered empty: the inspector is a
     pick aid, and a column of dashes is noise there (unlike the admin table).
     """
@@ -160,6 +157,7 @@ class DraftBoardService:
         teams_repo: DraftTeamRepository = DraftTeamRepository(),
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         picks_repo: DraftPickRepository = DraftPickRepository(),
+        form_versions_repo: RegistrationFormVersionRepository = RegistrationFormVersionRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
         rosters: DraftRosterService = draft_rosters,
     ) -> None:
@@ -167,6 +165,7 @@ class DraftBoardService:
         self.teams_repo = teams_repo
         self.players_repo = players_repo
         self.picks_repo = picks_repo
+        self.form_versions_repo = form_versions_repo
         self.feasibility = feasibility
         self.rosters = rosters
 
@@ -194,14 +193,7 @@ class DraftBoardService:
         ``custom_fields_json`` at all (see ``registration.answers.custom_answers``);
         they reach the board through the player's own columns.
         """
-        raw = await session.scalar(
-            sa.select(BalancerRegistrationFormVersion.schema_json)
-            .join(
-                BalancerRegistrationForm,
-                BalancerRegistrationForm.current_version_id == BalancerRegistrationFormVersion.id,
-            )
-            .where(BalancerRegistrationForm.tournament_id == tournament_id)
-        )
+        raw = await self.form_versions_repo.current_schema_json(session, tournament_id)
         fields: list[VisibleCustomField] = []
         for section in (raw or {}).get("sections") or []:
             if not isinstance(section, dict):
@@ -230,21 +222,28 @@ class DraftBoardService:
     async def session_read(self, session: AsyncSession, draft_session: DraftSession) -> schemas.DraftSessionRead:
         """The only way a draft session leaves the service.
 
-        The roster shape is no longer a column on the row, so every reader resolves
-        it through the one helper that knows which ids a draft resolves from. Both
+        The roster shape is not a column on the row, so every reader resolves it
+        through the one helper that knows which ids a draft resolves from. Both
         levels are cached, so this is free on the hot board path.
         """
         shape = await self.feasibility.resolve_shape(session, draft_session)
         owner = await loaders.tournament(session, draft_session)
         return schemas.DraftSessionRead.from_session(draft_session, shape=shape, discipline=owner.discipline)
 
+    async def list_sessions(self, session: AsyncSession, tournament_id: int) -> list[schemas.DraftSessionRead]:
+        """Every session of a tournament, newest first."""
+        rows = await self.sessions_repo.list_by_tournament(session, tournament_id)
+        # The shape lookup behind session_read is cache-backed at both
+        # levels, so one call per row costs a dict hit, not a query.
+        return [await self.session_read(session, row) for row in rows]
+
     async def build_board(self, session: AsyncSession, draft_session: DraftSession) -> schemas.DraftBoardSnapshot:
         # The cheap max-event-id read runs on every request and doubles as the
         # cache key: every draft mutation persists a WorkspaceEvent in the same
         # transaction (services.draft.realtime), so new event -> new key -> fresh
         # board, and an unchanged id can safely serve the cached snapshot.
-        # Two topics, because roles and ranks are no longer copied into the draft:
-        # a rank typed in the balancer changes what this board shows, and a
+        # Two topics, because roles and ranks are not copied into the draft: a
+        # rank typed in the balancer changes what this board shows, and a
         # registration edit lands on the tournament's INVALIDATION topic
         # (tournament-service, resource ``tournament.registrations``). Keying on
         # the draft topic alone would serve the pre-edit ranks until the TTL
@@ -320,15 +319,15 @@ class DraftBoardService:
         """One computation per board state for a derived read, shared by everyone asking.
 
         Fit and the pick queue each rebuild the whole draft snapshot, and every
-        client refetches both on every draft event: 25 viewers asking within the
-        same second saturated the worker (2026-09-30, 8s p50, 504s past 15s).
-        Keyed like the board -- ``last_event_id`` -- plus the session's
-        ``version``, so any persisted change is a new key; ``parts`` must carry
-        whatever else the answer depends on that no event records (the team, its
-        private queue). Read paths only: a write that resolves after mutating
-        would read its own past. One replica leads the computation for the whole
-        cluster (``_compute_once``); the in-flight map folds the burst that
-        arrives on this one before that answer lands.
+        client refetches both on every draft event, so a room of viewers asking
+        within the same second would saturate the worker. Keyed like the board --
+        ``last_event_id`` -- plus the session's ``version``, so any persisted
+        change is a new key; ``parts`` must carry whatever else the answer depends
+        on that no event records (the team, its private queue). Read paths only: a
+        write that resolves after mutating would read its own past. One replica
+        leads the computation for the whole cluster (``_compute_once``); the
+        in-flight map folds the burst that arrives on this one before that answer
+        lands.
         """
         event_id = await draft_rt.last_event_id(session, draft_session.tournament_id)
         key = _shared_read_key(draft_session.id, draft_session.version, event_id, parts)

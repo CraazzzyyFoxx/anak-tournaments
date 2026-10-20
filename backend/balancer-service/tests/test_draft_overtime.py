@@ -60,6 +60,9 @@ class _FakeSession:
     async def __aexit__(self, *_exc: Any) -> bool:
         return False
 
+    def add(self, _instance: Any) -> None:
+        pass
+
     async def flush(self) -> None:
         self.flushes += 1
 
@@ -214,10 +217,12 @@ def _extend(draft: DraftSession, pick: DraftPick, *, seconds: int, expected_vers
             pick,
             seconds=seconds,
             expected_version=expected_version,
+            actor_auth_user_id=1,
         )
     )
 
 
+@pytest.mark.usefixtures("published")
 def test_extend_pushes_the_live_deadline_and_bumps_the_version() -> None:
     draft = _draft()
     deadline = datetime.now(UTC) + timedelta(seconds=10)
@@ -230,6 +235,7 @@ def test_extend_pushes_the_live_deadline_and_bumps_the_version() -> None:
     assert pick.version == 5
 
 
+@pytest.mark.usefixtures("published")
 def test_extend_while_paused_adds_to_the_frozen_remainder() -> None:
     draft = _draft(status=DraftStatus.PAUSED.value)
     pick = _pick(clock_expires_at=None, clock_remaining_ms=12_000, version=4)
@@ -241,6 +247,7 @@ def test_extend_while_paused_adds_to_the_frozen_remainder() -> None:
     assert pick.version == 5
 
 
+@pytest.mark.usefixtures("published")
 def test_extend_of_a_paused_pick_with_no_recorded_remainder_starts_from_a_full_timer() -> None:
     # ``_advance`` parks a re-seated pick unarmed; resume gives it a full timer,
     # so an extension before that resume has to start from the same number.

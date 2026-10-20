@@ -650,7 +650,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             current = await s.get(DraftPick, draft.current_pick_id)
             v = current.version
-            won_first = await selection.selection_service._finalize(
+            won_first = await selection.selection_service.picks_repo.finalize_if_on_clock(
                 s,
                 current.id,
                 status=DraftPickStatus.COMPLETED,
@@ -661,7 +661,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 expected_version=v,
             )
             # Second writer with the same expected_version must lose.
-            won_second = await selection.selection_service._finalize(
+            won_second = await selection.selection_service.picks_repo.finalize_if_on_clock(
                 s,
                 current.id,
                 status=DraftPickStatus.AUTOPICKED,
@@ -1403,11 +1403,11 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             await s.commit()
             # Parent is derived output, never an alternative lookup key.
-            resolved = await draft_rpc._resolve_role(
+            resolved = await lifecycle.lifecycle_service.resolve_role(
                 s, draft, RoleRef(dimension="player_role", role="damage", parent="tank")
             )
             self.assertEqual(resolved, "damage")
-            self.assertIsNone(await draft_rpc._resolve_role(s, draft, None))
+            self.assertIsNone(await lifecycle.lifecycle_service.resolve_role(s, draft, None))
 
         identity = _identity(self.captain_auth_user_ids[0], self.workspace_id, ["create"])
         for ref, error in (

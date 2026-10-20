@@ -1,6 +1,6 @@
 """Rank-only re-export: push fresh ranks onto already-materialized players.
 
-The full export (:mod:`shared.services.team_export.service`) is destructive — it
+The full export (:mod:`src.services.team_export.service`) is destructive — it
 deletes the prior ``Team``/``Player`` rows and recreates them, which is exactly
 what must NOT happen once a bracket references those teams. When only the numbers
 went stale (a rank fixed in the balancer after the export, a draft pick frozen
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.tournament.team import Player
-from shared.services.team_export.materialization import MaterializationTeam
+from src.services.team_export.materialization import MaterializationTeam
 
 __all__ = ("sync_player_ranks",)
 

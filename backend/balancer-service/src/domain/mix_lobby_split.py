@@ -2,7 +2,7 @@
 
 Pure domain algorithm: no I/O, no async, no ORM. Вызывающий
 (``CustomGameService.balance`` со ``scope="all"``) резолвит ранги, порядок
-ролей и приоритет ротации, а точную рассадку внутри лобби делает прежний
+ролей и приоритет ротации, а точную рассадку внутри лобби делает
 ``mix_balancer`` -- здесь решается только, КТО с кем в одном лобби.
 
 ``strength`` -- приближение (рейтинг роли, на которую игрока посадят первой),
@@ -194,7 +194,7 @@ def split_into_lobbies(
 
     swappable = [candidate for candidate in playing if candidate.pin is None]
     # Каждая итерация строго уменьшает неравенство, так что цикл конечен и без
-    # потолка; ``total_seats ** 2`` -- страховка спеки от патологического входа.
+    # потолка; ``total_seats ** 2`` -- страховка от патологического входа.
     for _ in range(total_seats * total_seats):
         spread = _spread(totals)
         improving = []

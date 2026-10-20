@@ -1,4 +1,4 @@
-"""Unit tests for ``shared.services.newcomer_status.load_prior_participation``.
+"""Unit tests for ``src.services.newcomer_status.load_prior_participation``.
 
 Runs the *real* queries against a real SQL engine (SQLite standing in for
 Postgres, no aiosqlite installed -- see ``_AsyncSessionShim``) rather than
@@ -34,8 +34,8 @@ from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: 
 from shared.models.tournament.player_role import PlayerRole  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
-from shared.services.newcomer_status import load_prior_participation  # noqa: E402
 from shared.testing import create_sqlite_tables, install_postgres_type_shims  # noqa: E402
+from src.services.newcomer_status import load_prior_participation  # noqa: E402
 
 install_postgres_type_shims()
 

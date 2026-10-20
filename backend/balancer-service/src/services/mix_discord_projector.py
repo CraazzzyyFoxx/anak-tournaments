@@ -6,12 +6,14 @@ and this consumer re-renders whatever live card the fact affects from the
 database as it stands NOW. A redelivered, late or duplicated event is
 therefore harmless -- it renders the same state twice.
 
-Ordering is the row lock, not the queue. ``get_for_update`` on the
-``discord_message`` row serializes everyone projecting that card, so the
-render that reads the mix last is the one that writes ``card_json`` last and
-queues its edit last. The bot coalesces edits by ``message_ref`` and shows the
-row's card at flush, so a burst of Join clicks converges on the newest roster
-whatever order RabbitMQ delivered them in.
+Ordering is the row lock, not the queue. Pictures are fetched over HTTP and
+drawn before any row is locked -- hence lineups first, ahead of the signup
+rows' locks. ``get_for_update`` on the ``discord_message`` row then
+serializes everyone projecting that card, and under it the card is rebuilt
+from the database, so the projection that reads the mix last writes
+``card_json`` last and queues its edit last. The bot coalesces edits by
+``message_ref`` and shows the row's card at flush, so a burst of Join clicks
+converges on the newest roster whatever order RabbitMQ delivered them in.
 
 Two kinds of card follow the mix. The signup card: an event naming one mix
 touches that mix's newest live card (an older live row is only ever on its way
@@ -78,6 +80,12 @@ async def project(session: Any, event: PickupMixChangedEvent) -> int:
     transaction, so a failure queues nothing and the message is retried whole.
     """
     rendered = 0
+    if event.custom_game_id is not None:
+        game = await custom_game_service.games.get(session, event.custom_game_id)
+        if game is not None:
+            commands = await custom_game_service.redraw_lineups(session, game, board_url_base=config.public_site_url)
+            await discord_messages.enqueue(session, commands)
+            rendered += len(commands)
     for row in await _targets(session, event):
         locked = await discord_messages.repository.get_for_update(session, row.id)
         # Deleted or failed between the read and the lock: it is not a card any
@@ -96,12 +104,6 @@ async def project(session: Any, event: PickupMixChangedEvent) -> int:
         if command is not None:
             await discord_messages.enqueue(session, [command])
             rendered += 1
-    if event.custom_game_id is not None:
-        game = await custom_game_service.games.get(session, event.custom_game_id)
-        if game is not None:
-            commands = await custom_game_service.redraw_lineups(session, game, board_url_base=config.public_site_url)
-            await discord_messages.enqueue(session, commands)
-            rendered += len(commands)
     await session.commit()
     return rendered
 

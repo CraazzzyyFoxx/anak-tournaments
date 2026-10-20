@@ -25,13 +25,13 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.services.team_export import service as service_module  # noqa: E402
-from shared.services.team_export.materialization import (  # noqa: E402
+from src.services.team_export import service as service_module  # noqa: E402
+from src.services.team_export.materialization import (  # noqa: E402
     MaterializationMember,
     MaterializationResult,
     MaterializationTeam,
 )
-from shared.services.team_export.service import ExportPlan, TeamMaterializationService  # noqa: E402
+from src.services.team_export.service import ExportPlan, TeamMaterializationService  # noqa: E402
 
 
 class _FakeSession:

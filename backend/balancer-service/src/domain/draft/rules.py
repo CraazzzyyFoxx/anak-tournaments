@@ -1,11 +1,8 @@
 """Pure draft business rules: validation, seat ordering, pick-slot resolution,
 role-edit validation. No database access, no async.
 
-What is deliberately NOT here any more: deriving a player's roles or ranks.
-``map_registration`` used to do that from the raw ``registration_role`` rows,
-in parallel with tournament-service's own resolver -- one engine now answers
-it (``shared.services.roster``) and every rule below takes the resolved
-``PlayerRoster`` as an argument.
+Roles and ranks are never derived here: every rule takes the ``PlayerRoster``
+the one engine (``shared.services.roster``) resolved.
 """
 
 from __future__ import annotations
@@ -109,9 +106,8 @@ def role_shortage_error(report: DraftFeasibilityReport) -> ApiHTTPException:
 def unranked_pool_error(rosters: Sequence[PlayerRoster]) -> ApiHTTPException:
     """Refuse to seat a registration the balancer cannot rank on any role.
 
-    The old seeder labelled such a player ``damage`` with a NULL rank and let
-    them into the pool, where autopick scored them 0 and took them last. There
-    is no honest default: the fix is a rank in the balancer, so say so.
+    There is no honest default role or rank: the fix is a rank in the
+    balancer, so say so.
     """
     names = ", ".join(roster.handle or roster.display_name or f"#{roster.registration_id}" for roster in rosters[:10])
     more = f" and {len(rosters) - 10} more" if len(rosters) > 10 else ""
@@ -174,9 +170,8 @@ def round_seat_order(
 
     ``seats`` is the seed order (position 1 first) and ``round_idx`` is 0-based.
     The single source of truth for what a rule MEANS, shared by seeding and
-    ``DraftLifecycleService.resync_pick_order`` -- the two used to hold separate
-    copies, which is how a rule changed after seeding could mean one thing in
-    the wizard preview and another on the board.
+    ``DraftLifecycleService.resync_pick_order``, so the wizard preview and the
+    board cannot read one rule two ways.
     """
     if fmt == DraftFormat.SNAKE:
         return list(reversed(seats)) if round_idx % 2 == 1 else list(seats)
@@ -217,11 +212,10 @@ def average_seat_order(
     Equal averages break by captain rank IN THE RULE'S DIRECTION -- under
     ``team_avg_asc`` the weaker captain picks first, exactly as the rule already
     does with the averages themselves, and mirrored under ``team_avg_desc``.
-    Without it a tie fell through to the seed order, which is whatever order the
-    organizer happened to tick the captains in (the pool lists them
-    alphabetically), so an equal-average round was decided by battle tag.
-    An unranked captain sorts as weakest, as in ``weakest_first``. Teams that
-    tie on BOTH fall to the seed, 1 -> N.
+    The seed order alone would decide such a tie by the order the organizer
+    ticked the captains in (the pool lists them alphabetically), i.e. by battle
+    tag. An unranked captain sorts as weakest, as in ``weakest_first``. Teams
+    that tie on BOTH fall to the seed, 1 -> N.
 
     ``tie_reversed`` (the session's ``avg_tie_seed_reverse`` setting) turns the
     whole tie-break around: the captain rank runs AGAINST the rule -- under
@@ -481,7 +475,7 @@ def is_on_clock_captain(
 
 # --- role edits ---------------------------------------------------------------
 #
-# An emergency role now lands on the REGISTRATION, not on a draft-local copy:
+# An emergency role lands on the REGISTRATION, not on a draft-local copy:
 # the balancer is the only writer of roles and ranks, so the board, the pool
 # verdict and the algorithm all see the edit at once. What is validated here is
 # only whether this draft may accept one.

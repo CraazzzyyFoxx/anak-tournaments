@@ -4,8 +4,8 @@ A single owner per LIVE session (Redis token lock + heartbeat renewal) sleeps
 until the on-clock pick's absolute ``clock_expires_at`` and then fires autopick.
 The clock is DB-resumable: on owner failover the new owner reads
 ``clock_expires_at`` from the DB and resumes/fires accordingly — no time is lost
-or double-counted. A manual REST pick/pause publishes to ``draft:{id}:control``
-to cancel the pending autopick wake instantly.
+or double-counted. A manual pick/pause publishes to ``draft:{id}:control`` to
+cancel the pending autopick wake instantly.
 """
 
 from __future__ import annotations
@@ -174,9 +174,7 @@ class DraftClockService:
                         "draft_team_id": result.pick.draft_team_id,
                         "picked_player_id": result.pick.picked_player_id,
                         # A trace, not a signal: no consumer reads it
-                        # (draft-logic branches on event_type). Named
-                        # `autopick_reason` so it cannot be read as anything
-                        # but this pick's cause.
+                        # (draft-logic branches on event_type).
                         "autopick_reason": "timeout",
                     },
                 )

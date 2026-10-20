@@ -48,20 +48,8 @@ class InternalBalancerPlayer(BaseModel):
     # Per-role discomfort snapshot the editor attaches to every player so it can
     # re-derive discomfort on drag-and-drop without re-running the solver. Mirror
     # of ``PlayerData.all_discomforts`` so the save round-trip accepts it.
-    # Defaulted for legacy payloads.
+    # Defaulted so payloads without it still validate.
     all_discomforts: dict[str, int] = Field(default_factory=dict)
-
-    @property
-    def rating(self) -> int:
-        return self.assigned_rating
-
-    @property
-    def discomfort(self) -> int | None:
-        return self.role_discomfort
-
-    @property
-    def preferences(self) -> list[str]:
-        return self.role_preferences
 
 
 class InternalBalancerTeam(BaseModel):

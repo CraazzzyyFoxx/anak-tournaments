@@ -22,11 +22,11 @@ from shared import models  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.models.identity.rbac import Role, user_roles  # noqa: E402
-from shared.services import workspace_roster  # noqa: E402
 from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.services.social_identity import social_identity_service  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src.rpc import players  # noqa: E402
+from src.services import workspace_roster  # noqa: E402
 
 
 class _Broker:
@@ -298,7 +298,7 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
         assert response["error"]["details"]["fields"][0]["field"] == "battle_tag"
 
     async def test_display_name_never_proves_identity_and_riot_export_uses_exact_accounts(self):
-        from shared.services.team_export.identity import find_users_by_handles
+        from src.services.team_export.identity import find_users_by_handles
 
         handle = f"Named {uuid4().hex[:5]}#EUW"
         unrelated = models.User(name=handle)

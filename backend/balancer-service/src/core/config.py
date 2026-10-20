@@ -60,5 +60,4 @@ class Settings(BaseServiceSettings):
         return v
 
 
-# Global configuration instance
 config = Settings()

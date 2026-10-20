@@ -103,7 +103,7 @@ def _filters(
 ) -> list[sa.ColumnElement[bool]]:
     filters: list[sa.ColumnElement[bool]] = [
         models.WorkspaceMember.workspace_id == workspace_id,
-        # An observation anchor is not a member (P5): the roster never shows it.
+        # An observation anchor is not a member: the roster never shows it.
         models.WorkspaceMember.observed_only.is_(False),
     ]
     if author_only and author_user_id is not None:
@@ -266,19 +266,15 @@ async def hosts_by_user_id(
     against -- not ``workspace_member.player_id``.
     A player can exist with no linked account (``User.auth_user_id`` is a
     nullable 1:0..1 link to ``auth.user``, set only once somebody signs in), so
-    joining on ``player_id`` used to resolve nothing for a real host/co-host and
-    something wrong for a same-numbered player, letting a member with no login
-    identity through ``transfer_host``/``add_co_host``'s membership check only
-    to fail at the ``custom_game.host_user_id`` foreign key itself.
+    joining on ``player_id`` would resolve nothing for a real host/co-host and
+    something wrong for a same-numbered player.
 
     Left-joined, not inner: an author who rank-corrected someone here (any
     workspace member can) need never have added *themselves* as a player/
     member of this workspace's own roster -- an admin fixing ranks without
-    playing is the common case. An inner join on ``workspace_member`` dropped
-    that account's row entirely, so the caller fell back to ``#<id>`` for
-    every such author instead of a name. ``auth.user.username`` is the final
-    fallback: it is required and unique, so it resolves for every id that
-    still names a real account.
+    playing is the common case. ``auth.user.username`` is the final fallback:
+    it is required and unique, so it resolves for every id that still names a
+    real account.
     """
     ids = {uid for uid in user_ids if uid is not None}
     if not ids:

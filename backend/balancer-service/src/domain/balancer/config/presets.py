@@ -9,17 +9,17 @@ weight set rather than a delta, so a change of defaults cannot silently move
 their tuning. Tuning evidence lives in ``native/balancer_native``'s
 ``quality_harness`` ablations.
 
-Only the Rust MOO solver is supported, so presets no longer carry an
-``algorithm`` key. Role weights are a game's: each preset's role tweaks are
-declared by the module (``DisciplineSpec.balancer_role_settings[<preset>]``)
-and joined in by ``provider.get_balancer_config_payload(discipline)``.
+There is one solver, so presets carry no ``algorithm`` key. Role weights are a
+game's: each preset's role tweaks are declared by the module
+(``DisciplineSpec.balancer_role_settings[<preset>]``) and joined in by
+``provider.get_balancer_config_payload(discipline)``.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from src.services.balancer.config.defaults import AlgorithmConfig
+from src.domain.balancer.config.defaults import AlgorithmConfig
 
 
 class ConfigPresets:

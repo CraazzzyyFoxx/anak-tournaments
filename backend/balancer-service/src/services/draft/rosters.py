@@ -6,8 +6,8 @@ board, feasibility, the pick options, autopick and the team export all read the
 same numbers -- the numbers the balancer shows -- and none of them derives
 anything.
 
-Nothing here caches across requests: the point of deleting the draft's roles
-snapshot was that a cache is exactly what went stale.
+Nothing here caches across requests, so the draft never reads a rank the
+balancer has since changed.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ class DraftRosterService:
         draft_session: DraftSession,
         players: Collection[DraftPlayer],
     ) -> dict[int, PlayerRoster]:
-        """``{draft_player.id: PlayerRoster}`` for the given seats.
+        """Resolve ``{draft_player.id: PlayerRoster}`` for the given seats.
 
         Two leniencies, because the two kinds of seat need opposite ones. A seat
         that is no longer AVAILABLE (picked, removed) is history: a registration
@@ -47,9 +47,7 @@ class DraftRosterService:
         ``resolve_pick_slot`` raises ``player_unranked``).
 
         They differ only in WHICH registrations resolve, never in how, so the
-        pool narrows to ids first and ONE engine pass resolves the union. Running
-        the engine once per leniency re-selected, re-ranked and rebuilt every
-        registration a second time on every read (2026-09-30).
+        pool narrows to ids first and ONE engine pass resolves the union.
         """
         if not players:
             return {}

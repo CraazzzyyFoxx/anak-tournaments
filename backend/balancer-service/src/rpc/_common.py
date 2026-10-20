@@ -1,18 +1,13 @@
 """Shared helpers for the balancer-service typed-RPC handlers.
 
-The gateway envelope/param-decoding plumbing this shares with the other
-typed-RPC services (``q``/``q1``/``payload``/``actor``/``require_active``/
-``require_id``/``dump``/``require_path_int``) now lives in
-``shared.rpc.common``, the single source of truth. Everything below that is
-genuinely balancer-local: the workspace-RBAC admin gate, the dict-detail
-``_http_error`` variant the job API needs, and the session-less ``call``
-envelope (the job API uses the Redis-backed job store + broker, not a
-SQLAlchemy session).
+Re-exports the gateway envelope/param-decoding plumbing from ``shared.rpc.common``
+and adds the balancer-local gates plus the session-less ``call`` envelope.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
 from pydantic import ValidationError
@@ -32,9 +27,12 @@ from shared.rpc.common import (
     validation_error,
 )
 from shared.rpc.common import (
+    envelope as _envelope,
+)
+from shared.rpc.common import (
     require_path_int as path_int,
 )
-from shared.rpc.identity import MissingIdentityError, ensure_workspace_permission
+from shared.rpc.identity import MissingIdentityError
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
 
 __all__ = (
@@ -42,7 +40,6 @@ __all__ = (
     "q1",
     "payload",
     "actor",
-    "require_workspace_permission",
     "require_member",
     "require_active",
     "active_actor",
@@ -55,27 +52,8 @@ __all__ = (
 )
 
 
-def require_workspace_permission(
-    data: dict[str, Any], user: AuthUser, workspace_id: int, resource: str, action: str
-) -> None:
-    """Imperative form of ``src/core/auth.py::_require_workspace_permission``.
-
-    Credential type is deliberately *not* consulted. An API key reaches us with
-    a payload identity-service already narrowed to exactly one workspace, whose
-    ``rbac_permissions`` are the requested scopes intersected with what the key's
-    owner effectively holds there -- so a key can never out-reach its owner, and
-    workspace RBAC is the whole gate, same as a session. ``data`` is unused; it
-    stays in the signature so every handler keeps one gate call shape.
-    """
-    ensure_workspace_permission(user, workspace_id, resource, action)
-
-
 def active_actor(data: dict[str, Any]) -> AuthUser:
-    """Rehydrate identity and enforce the active check.
-
-    Every authenticated balancer/draft endpoint resolves through
-    ``get_current_active_user``, so handlers use this instead of bare ``actor``.
-    """
+    """Rehydrate identity and reject an inactive account; authenticated handlers use this, not bare ``actor``."""
     user = actor(data)
     require_active(user)
     return user
@@ -87,11 +65,7 @@ def require_member(user: AuthUser, workspace_id: int) -> None:
 
 
 def require_admin_panel(user: AuthUser) -> None:
-    """Mirror the admin balancer router-level ``require_admin_panel_access()`` gate.
-
-    Same check + same 403 detail as ``shared.core.auth``'s dependency so the error
-    body is byte-identical to the HTTP service.
-    """
+    """Raise 403 unless ``user`` has admin-panel access."""
     if not user.has_admin_panel_access():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -112,20 +86,7 @@ def _map_error(logger: Any, label: str, exc: Exception) -> dict[str, Any]:
     return rpc_error("internal", "internal error")
 
 
-async def envelope(
-    logger: Any,
-    label: str,
-    op: Callable[[Any], Awaitable[Any]],
-    *,
-    session_factory: Callable[[], Any],
-    exclude_none: bool = False,
-) -> dict[str, Any]:
-    """Run ``op`` inside a DB session and wrap the result/exception in the envelope."""
-    try:
-        async with session_factory() as session:
-            return rpc_ok(dump(await op(session), exclude_none))
-    except Exception as exc:  # noqa: BLE001 — mapped to the envelope below
-        return _map_error(logger, label, exc)
+envelope = partial(_envelope, service="balancer")
 
 
 async def call(

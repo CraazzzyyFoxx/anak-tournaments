@@ -5,9 +5,9 @@ from typing import Any
 from loguru import logger
 
 from src.domain.balancer import native
+from src.domain.balancer.config.defaults import AlgorithmConfig
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
 from src.domain.balancer.entities import Player, Team
-from src.services.balancer.config.defaults import AlgorithmConfig
 
 #: Engine metric name -> the name this domain reports it under.
 _METRIC_NAMES = {

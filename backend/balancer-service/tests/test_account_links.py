@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from shared.core.social import SocialProvider
-from shared.services import account_links
+from src.services import account_links
 
 SESSION = object()  # the stub never touches it
 

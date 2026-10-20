@@ -21,9 +21,9 @@ for candidate in (str(ROOT), str(SERVICE)):
 from shared.core.enums import MixParticipation, MixRoleSelectionMode  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
-from shared.services.workspace_roster import RosterMember  # noqa: E402
 from src.rpc import custom  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
+from src.services.workspace_roster import RosterMember  # noqa: E402
 
 
 def _service(provider_seen: list) -> CustomGameService:

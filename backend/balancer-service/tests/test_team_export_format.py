@@ -15,10 +15,10 @@ from shared.core.errors import ApiHTTPException
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat
 from shared.repository.roles import CatalogRoleRepository
 from shared.services.ontology import project_disciplines
-from shared.services.team_export.materialization import MaterializationMember, MaterializationTeam, materialize_teams
 from shared.services.team_format import save_tournament_format
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
+from src.services.team_export.materialization import MaterializationMember, MaterializationTeam, materialize_teams
 
 
 class TeamExportFormatTests(IsolatedAsyncioTestCase):

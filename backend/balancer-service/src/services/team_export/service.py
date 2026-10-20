@@ -1,29 +1,22 @@
 """One orchestrator for every path that materializes tournament teams.
 
-Three call sites need the same destructive, order-sensitive sequence:
+Every caller needs the same destructive, order-sensitive sequence:
 
     guard -> cleanup prior export -> insert teams+players -> backfill links
           -> stamp the source row (+ maybe emit an event) -> ONE commit
 
-Before this module, ``admin/balancer.py::export_balance`` and
-``draft/export.py::export`` each carried their own copy of it, and a third copy
-was about to be added for registered teams. The sequence now lives here once and
-each caller supplies only what actually differs: the team list, the prior-export
-ids to clean, and callbacks to unlink/stamp its own row.
+Each caller supplies only what differs: the team list, the prior-export ids to
+clean, and callbacks to unlink/stamp its own row.
 
 Transaction ownership
 ---------------------
-The writer used to commit internally, which produced a genuinely broken failure
-path: ``export_balance`` deletes the previous ``Standing``/``Player``/``Team``
-rows *without* an intervening commit, and its ``except`` branch stamped
-``export_status='failed'`` and committed — flushing those pending DELETEs. A
-failed re-export therefore left the tournament with its old teams gone and no
-replacements.
-
-So the commit moved here, and failure is explicitly **two transactions**: roll
-back the data work first (the deletes and partial inserts vanish), then stamp the
-failure in a fresh, short transaction. Rolling back alone would lose the operator
-diagnostics; committing alone destroys data.
+This service commits; nothing below it does. The prior export's
+``Standing``/``Player``/``Team`` rows are deleted without an intervening commit,
+so failure is explicitly **two transactions**: roll back the data work first (the
+deletes and partial inserts vanish), then stamp the failure in a fresh, short
+transaction. Stamping without the rollback would flush the pending DELETEs and
+leave the tournament with its old teams gone and no replacements; rolling back
+alone would lose the operator diagnostics.
 """
 
 from __future__ import annotations
@@ -38,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.models.tournament.standings import Standing
 from shared.models.tournament.team import Player, Team
-from shared.services.team_export.materialization import (
+from src.services.team_export.materialization import (
     MaterializationResult,
     MaterializationTeam,
     OnUnresolved,
@@ -68,9 +61,9 @@ class ExportPlan:
     prior_team_ids: Sequence[int] = ()
     on_unresolved: OnUnresolved = "skip"
     #: Refuse to run when standings exist for teams this export does not own.
-    #: Off for the balancer/draft paths, which have always re-exported
-    #: destructively; on for registered teams, where re-export after a bracket
-    #: exists would silently invalidate it.
+    #: Off for the balancer/draft paths, which re-export destructively; on for
+    #: registered teams, where re-export after a bracket exists would silently
+    #: invalidate it.
     guard_standings: bool = False
     unlink: UnlinkHook | None = None
     finalize: FinalizeHook | None = None
@@ -128,8 +121,7 @@ class TeamMaterializationService:
 
         # Re-queried rather than taken from ``materialization.created_teams``: a
         # team reused by name keeps whatever ``balancer_name`` it already had, and
-        # both existing callers have always linked back only what this query
-        # matches. Narrowing that is a behaviour change, not a cleanup.
+        # callers link back only what this query matches.
         by_name: Mapping[str, Team] = {}
         names = [team.balancer_name for team in plan.teams]
         if names:

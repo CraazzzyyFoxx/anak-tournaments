@@ -1,26 +1,9 @@
 """The single writer of ``tournament.team`` + ``tournament.player``.
 
-Consolidates two near-duplicate implementations of ``bulk_create_from_balancer``
-(``balancer-service/src/services/team.py`` and
-``stats-service/src/services/team/flows.py``), which had drifted apart on four
-axes. Each divergence is now an explicit parameter rather than an accident of
-which service you happened to call:
+``on_unresolved`` selects skip-vs-raise for both an unresolvable identity and an
+unknown slot code. Substitutes are supported.
 
-======================  ==========================  ==========================
-Axis                    balancer-service            stats-service
-======================  ==========================  ==========================
-Unresolvable tag        skipped the player           raised 400 ``not_found``
-Unknown slot code       returned ``None``            raised 400
-Transaction             committed internally         committed internally
-Substitutes             unsupported                  unsupported
-======================  ==========================  ==========================
-
-Resolved as: ``on_unresolved`` selects skip-vs-raise for BOTH identity and slot
-code (each old caller was uniformly lenient or uniformly strict, so one flag
-reproduces both faithfully); the commit moves to the caller; substitutes are
-supported.
-
-This function **never commits** — see :mod:`shared.services.team_export.service`
+This module **never commits** — see :mod:`src.services.team_export.service`
 for why the transaction boundary belongs to the orchestrator.
 """
 
@@ -48,10 +31,10 @@ from shared.models.tournament.tournament import Tournament
 from shared.repository import get_or_create_workspace_member
 from shared.repository.roles import CatalogRoleRepository
 from shared.schemas.role import RoleRef
-from shared.services.newcomer_status import load_prior_participation
 from shared.services.ontology import rated_leaf, resolve_role_ref
-from shared.services.team_export.identity import find_users_by_handles
 from shared.services.team_format import tournament_format
+from src.services.newcomer_status import load_prior_participation
+from src.services.team_export.identity import find_users_by_handles
 
 __all__ = (
     "MaterializationMember",
@@ -106,7 +89,7 @@ class MaterializationMember:
 
     @property
     def identity_handle(self) -> str | None:
-        """The handle to resolve this member by; ``name`` is the historical default."""
+        """The handle to resolve this member by (``name`` unless ``handle`` is set)."""
         if self.workspace_member_id is not None:
             return None
         return self.handle if self.handle is not None else self.name
@@ -116,10 +99,9 @@ class MaterializationMember:
 class MaterializationTeam:
     """One team to be written as a ``tournament.team`` row.
 
-    ``balancer_name`` is stored verbatim on ``Team.balancer_name`` and is also,
-    by long-standing convention, the captain's handle; ``Team.name`` is the
-    part before ``#``. Pass ``captain_player_id`` to anchor a captain without a
-    handle lookup.
+    ``balancer_name`` is stored verbatim on ``Team.balancer_name`` and doubles as
+    the captain's handle; ``Team.name`` is the part before ``#``. Pass
+    ``captain_player_id`` to anchor a captain without a handle lookup.
     """
 
     balancer_name: str
@@ -129,8 +111,6 @@ class MaterializationTeam:
 
     @property
     def display_name(self) -> str:
-        # ``str.split`` cannot raise; the old callers wrapped this in a
-        # ``try/except ValueError`` that could never fire.
         return self.balancer_name.split("#")[0]
 
     @property
@@ -164,8 +144,8 @@ async def materialize_teams(
 ) -> MaterializationResult:
     """Create tournament teams and players. Flushes; never commits.
 
-    Front-loads identity/history queries. Role pairs are resolved once per distinct pair,
-    not per player; the old identity/history query fan was O(players x 5) round-trips.
+    Front-loads identity/history queries; role pairs are resolved once per distinct
+    pair, not per player.
 
     Idempotent twice over: a team whose lowercased ``name`` already exists in the
     tournament is reused rather than duplicated, and a player already placed in
@@ -188,7 +168,7 @@ async def materialize_teams(
 
     # ── Batch phase: resolve everything the build loop needs up front ──────────
     # 1. Resolve every handle (captains + members) in one pass under the tournament's identity
-    #    provider. Ordered so a strict caller raises on the same handle it always did.
+    #    provider. Ordered so a strict caller raises on the first unresolved handle in payload order.
     ordered_handles: list[str] = []
     for team_data in teams:
         for handle in (team_data.captain_lookup, *(m.identity_handle for m in team_data.members)):

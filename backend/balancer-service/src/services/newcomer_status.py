@@ -1,10 +1,8 @@
 """Chronologically-correct "has this identity played before" resolution.
 
-Replaces 3 independent, order-of-*import*-dependent computations
-(balancer-service ``services/team.py``, stats-service ``services/team/flows.py``,
-stats-service ``services/match_logs/flows.py``) that used "does a ``Player`` row
-for this identity already exist in the DB right now" -- which freezes wrong the
-moment historical data is imported out of chronological order.
+Prior participation is judged by tournament chronology, not by whether a
+``Player`` row for the identity happens to exist yet, so importing historical
+data out of chronological order cannot freeze a wrong answer.
 
 Ordering matches the codebase's one established "tournament chronology"
 convention (``division.py``/``streak.py``/``tournament/service.py``):

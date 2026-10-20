@@ -60,10 +60,7 @@ class Player:
         # roster trims first: ascending, lower sorts first (kept longer). A
         # caller with a fairness read on who is owed a seat (e.g. a pickup
         # mix's rotation recommender) sets this so the trim's leftover lines
-        # up with what it already told the host to expect; left at the
-        # default 0.0 for everyone, the trim is a stable no-op and behaves
-        # exactly as before -- the tournament balancer, which has no such
-        # read, never sets it.
+        # up with what it already told the host to expect.
         self.rotation_priority = rotation_priority
         self._max_rating = max(ratings.values()) if ratings else 0
         self._mask = mask
@@ -108,10 +105,6 @@ class Team:
         "_cached_discomfort",
         "_cached_intra_std",
         "_cached_max_pain",
-        "_cached_subrole_collisions",
-        "_cached_role_totals",
-        "_cached_role_spread_var",
-        "_cached_role_spread_counted",
         "_is_dirty",
         "_mask",
     )
@@ -125,26 +118,7 @@ class Team:
         self._cached_discomfort = 0.0
         self._cached_intra_std = 0.0
         self._cached_max_pain = 0
-        self._cached_subrole_collisions = 0
-        self._cached_role_totals: dict[str, float] = {}
-        self._cached_role_spread_var = 0.0
-        self._cached_role_spread_counted = False
         self._is_dirty = True
-
-    def copy(self) -> Team:
-        new_team = Team(self.id, self._mask)
-        new_team.roster = {role: players[:] for role, players in self.roster.items()}
-        new_team._cached_mmr = self._cached_mmr
-        new_team._cached_total_rating = self._cached_total_rating
-        new_team._cached_discomfort = self._cached_discomfort
-        new_team._cached_intra_std = self._cached_intra_std
-        new_team._cached_max_pain = self._cached_max_pain
-        new_team._cached_subrole_collisions = self._cached_subrole_collisions
-        new_team._cached_role_totals = self._cached_role_totals.copy()
-        new_team._cached_role_spread_var = self._cached_role_spread_var
-        new_team._cached_role_spread_counted = self._cached_role_spread_counted
-        new_team._is_dirty = self._is_dirty
-        return new_team
 
     def add_player(self, role: str, player: Player) -> bool:
         if len(self.roster[role]) < self._mask[role]:
@@ -152,10 +126,6 @@ class Team:
             self._is_dirty = True
             return True
         return False
-
-    def replace_player(self, role: str, index: int, new_player: Player) -> None:
-        self.roster[role][index] = new_player
-        self._is_dirty = True
 
     def calculate_stats(self) -> None:
         if not self._is_dirty:
@@ -166,19 +136,12 @@ class Team:
         count = 0
         total_pain = 0
         max_pain_in_team = 0
-        subrole_collisions = 0
-
-        role_totals: dict[str, float] = {}
-        role_avg_sum = 0.0
-        role_avg_sum2 = 0.0
-        role_avg_count = 0
 
         for role, players in self.roster.items():
             if not players:
                 continue
 
             role_sum_rating = 0.0
-            subrole_counts: dict[str, int] = {}
             for player in players:
                 rating = player.ratings.get(role, 0)
                 discomfort = player.discomfort_map.get(role, 5000)
@@ -188,21 +151,7 @@ class Team:
                 count += 1
                 if discomfort > max_pain_in_team:
                     max_pain_in_team = discomfort
-
-                subtype = player.subclasses.get(role, "")
-                if subtype:
-                    subrole_counts[subtype] = subrole_counts.get(subtype, 0) + 1
-
             sum_rating += role_sum_rating
-            role_totals[role] = role_sum_rating
-            role_avg = role_sum_rating / len(players)
-            role_avg_sum += role_avg
-            role_avg_sum2 += role_avg * role_avg
-            role_avg_count += 1
-
-            for occurrences in subrole_counts.values():
-                if occurrences > 1:
-                    subrole_collisions += occurrences * (occurrences - 1) // 2
 
         self._cached_total_rating = sum_rating
 
@@ -215,17 +164,6 @@ class Team:
 
         self._cached_discomfort = total_pain
         self._cached_max_pain = max_pain_in_team
-        self._cached_subrole_collisions = subrole_collisions
-        self._cached_role_totals = role_totals
-
-        if role_avg_count >= 2:
-            spread_var = (role_avg_sum2 / role_avg_count) - (role_avg_sum / role_avg_count) ** 2
-            self._cached_role_spread_var = spread_var if spread_var > 0.0 else 0.0
-            self._cached_role_spread_counted = True
-        else:
-            self._cached_role_spread_var = 0.0
-            self._cached_role_spread_counted = False
-
         self._is_dirty = False
 
     @property
@@ -257,18 +195,6 @@ class Team:
         if self._is_dirty:
             self.calculate_stats()
         return self._cached_max_pain
-
-    @property
-    def subrole_collisions(self) -> int:
-        if self._is_dirty:
-            self.calculate_stats()
-        return self._cached_subrole_collisions
-
-    def is_full(self) -> bool:
-        for role, needed in self._mask.items():
-            if len(self.roster.get(role, [])) < needed:
-                return False
-        return True
 
 
 __all__ = ["Player", "Team"]

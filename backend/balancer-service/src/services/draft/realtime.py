@@ -15,11 +15,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.balancer.draft import DraftSession
-from shared.models.platform.realtime import WorkspaceEvent
+from shared.repository.realtime import WorkspaceEventRepository
 from shared.services.realtime import DomainEvent, Scope, emit
 
 __all__ = ("DRAFT_BOARD_RESOURCE", "last_event_id", "publish_draft_event")
@@ -29,6 +28,8 @@ __all__ = ("DRAFT_BOARD_RESOURCE", "last_event_id", "publish_draft_event")
 # key, so a generic applier folds the delta into the cached draft board instead
 # of refetching it.
 DRAFT_BOARD_RESOURCE = "draft.board"
+
+_events = WorkspaceEventRepository()
 
 
 async def publish_draft_event(
@@ -63,4 +64,4 @@ async def last_event_id(session: AsyncSession, tournament_id: int) -> int | None
     """
     scope = Scope.tournament(tournament_id)
     topics = (scope.domain_topic("draft"), scope.invalidation_topic)
-    return await session.scalar(sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic.in_(topics)))
+    return await _events.last_id_for_topics(session, topics)

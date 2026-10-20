@@ -2,10 +2,8 @@
 
 Everything here is derived from :class:`AlgorithmConfig`: the writable key set,
 the :class:`ConfigOverrides` request schema, and the one normalizer every write
-path goes through. There used to be a second hand-written copy of all ~35 knobs
-in ``src/schemas/balancer.py`` plus five differently-named wrappers around a
-single normalize step; a knob missing from either list was accepted by the API
-and then silently dropped.
+path goes through, so a knob cannot be accepted by the API and then silently
+dropped.
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, create_model
 from pydantic.fields import FieldInfo
 
-from src.services.balancer.config.defaults import AlgorithmConfig, RoleSettings, validate_role_settings
+from src.domain.balancer.config.defaults import AlgorithmConfig, RoleSettings, validate_role_settings
 
 # Not the operator's to set, so absent from the write allowlist:
 #   * ``role_mask`` is a projection of the tournament roster shape, resolved per
@@ -33,18 +31,17 @@ NON_WRITABLE_CONFIG_KEYS = frozenset({"role_mask", "rating_scale_ceiling"})
 PUBLIC_CONFIG_KEYS = frozenset(AlgorithmConfig.model_fields) - NON_WRITABLE_CONFIG_KEYS
 
 # Accepted and silently dropped instead of rejected, on the paths that write a
-# stored config: a config saved before these keys stopped being writable is
-# still in the database and must stay loadable.
+# stored config: rows already in the database may carry them and must stay
+# loadable.
 #   * ``role_mask`` / ``rating_scale_ceiling`` -- see above
 #   * ``intra_team_variance_weight`` / ``role_spread_weight`` -- never read by
 #     the cost function; the live weights are ``intra_team_std_weight`` and
 #     ``internal_role_spread_weight``
-#   * the rest belonged to the removed pure-Python genetic solver
+#   * the rest are knobs no solver reads
 #
-# ``algorithm`` is deliberately NOT here: it names a solver that no longer
-# exists, so an operator writing it gets a 422 rather than silence. Read paths
-# still tolerate it -- it is simply not a field, so the allowlist filter below
-# drops it.
+# ``algorithm`` is deliberately NOT here: there is one solver, so an operator
+# writing it gets a 422 rather than silence. Read paths still tolerate it -- it
+# is simply not a field, so the allowlist filter below drops it.
 RETIRED_CONFIG_KEYS = NON_WRITABLE_CONFIG_KEYS | frozenset(
     {
         "input_role_mapping",
@@ -88,8 +85,7 @@ RoleSettingsOverride: type[BaseModel] = create_model(
 #: Public write schema: every :class:`AlgorithmConfig` knob, optional.
 #:
 #: ``extra="forbid"`` so a misspelled knob is a 422 rather than a silently
-#: ignored field on a request whose whole point is being self-describing -- which
-#: is also what rejects the flat per-role knobs ``role_settings`` replaced.
+#: ignored field on a request whose whole point is being self-describing.
 ConfigOverrides: type[BaseModel] = create_model(
     "ConfigOverrides",
     __doc__="Optional public configuration overrides for the balancing algorithm.",

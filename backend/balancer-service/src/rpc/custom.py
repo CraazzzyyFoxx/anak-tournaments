@@ -45,16 +45,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, TypeVar
 
-import sqlalchemy as sa
 from faststream.rabbit import RabbitMessage
 from pydantic import BaseModel, ValidationError
 
-from shared import models
 from shared.core import http_status as status
 from shared.core.enums import MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.domain.custom_game_round import winner_slot
+from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.schemas.role import RoleRef
@@ -150,13 +149,13 @@ def _body(schema: type[_Body], data: dict[str, Any]) -> _Body:
         ) from exc
 
 
-def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str) -> None:
+def _require_mix(user: Any, workspace_id: int, action: str) -> None:
     """A write stops at workspace membership; only ``create`` needs a role grant.
 
     Reads never come through here: a mix board is public (see the module
     docstring), so there is no membership question to ask on the way in.
 
-    ``create`` is the only action still checked against the workspace-level
+    ``create`` is the only action checked against the workspace-level
     permission: it has no existing game to hold a per-game grant, so the
     ``host``/``admin``/``owner`` role (``custom_game.create``) is the only gate
     available for starting a *new* mix.
@@ -164,13 +163,13 @@ def _require_mix(data: dict[str, Any], user: Any, workspace_id: int, action: str
     ``update``/``delete`` deliberately skip the coarse workspace permission:
     every mutating use case re-loads the game and re-checks host-or-co-host
     itself (``CustomGameService._writable``), which is the check that actually
-    knows about co-hosts. Gating here too used to 403 a co-host who held only
-    the plain ``member`` role before that check ever ran.
+    knows about co-hosts. Gating here too would 403 a co-host who holds only
+    the plain ``member`` role before that check ever runs.
     """
     c.require_member(user, workspace_id)
     if action != "create":
         return
-    c.require_workspace_permission(data, user, workspace_id, "custom_game", action)
+    ensure_workspace_permission(user, workspace_id, "custom_game", action)
 
 
 def _require_workspace_admin(user: Any, workspace_id: int) -> None:
@@ -353,7 +352,7 @@ def _dump_game(
         "status": game.status,
         "settings": settings,
         # How many lobbies this mix runs, and what each of them is showing: the
-        # matchup, the pager and the rolled map are per-lobby facts now.
+        # matchup, the pager and the rolled map are per-lobby facts.
         "lobby_count": game.lobby_count,
         "lobbies": [
             _dump_lobby(
@@ -511,8 +510,8 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     )
 
 
-def _dump_round(round_: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, Any]:
-    """One recorded round as the history wire spells it (D78): the two seats by slot, the winning slot."""
+def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]]) -> dict[str, Any]:
+    """One recorded round as the history wire spells it: the two seats by slot, the winning slot."""
     encounter = round_.encounter
     teams = sorted(encounter.teams, key=lambda team: team.slot)
     map_id = encounter.games[0].map_id if encounter.games else None
@@ -538,16 +537,9 @@ def _dump_round(round_: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, 
 
 
 async def _dump_rounds(session: Any, rounds: list[Any]) -> list[dict[str, Any]]:
-    """Bulk-resolves map name + thumbnail in one query instead of one per row."""
+    """Dump match history, resolving every round's map name and thumbnail in one read."""
     map_ids = {round_.encounter.games[0].map_id for round_ in rounds if round_.encounter.games} - {None}
-    map_info: dict[int, tuple[str, str]] = {}
-    if map_ids:
-        rows = await session.execute(
-            sa.select(models.CatalogEntity.id, models.CatalogEntity.name, models.CatalogEntity.image_path).where(
-                models.CatalogEntity.id.in_(map_ids)
-            )
-        )
-        map_info = {row.id: (row.name, row.image_path) for row in rows}
+    map_info = await custom_game_service.round_map_info(session, map_ids)
     return [_dump_round(round_, map_info) for round_ in rounds]
 
 
@@ -591,7 +583,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "create")
+            _require_mix(user, workspace_id, "create")
             body = _body(schemas.CustomGameCreate, data)
             game = await custom_game_service.create(
                 session,
@@ -666,7 +658,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameRosterUpdate, data)
             game = await custom_game_service.update_roster(
                 session,
@@ -689,7 +681,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGamePlayerPatch, data)
             game = await custom_game_service.update_player(
                 session,
@@ -712,16 +704,16 @@ def register(broker: Any, logger: Any) -> None:
     async def _set_participation(data: dict, msg: RabbitMessage) -> dict:
         """Move several roster rows between lineup states in ONE transaction.
 
-        The rotation-hint button applies a whole verdict at once. Sent as N
-        single-row patches it raced on whose response landed last and needed a
-        follow-up refetch to converge; one request settles the whole lineup and
-        emits one realtime signal.
+        The rotation-hint button applies a whole verdict at once. N single-row
+        patches would race on whose response lands last and need a follow-up
+        refetch to converge; one request settles the whole lineup and emits one
+        realtime signal.
         """
 
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGamePlayersParticipationPatch, data)
             game = await custom_game_service.set_participation(
                 session,
@@ -849,7 +841,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameSelfServicePatch, data)
             game = await custom_game_service.set_self_service(
                 session,
@@ -875,7 +867,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameLobbyCountPatch, data)
             game = await custom_game_service.set_lobby_count(
                 session,
@@ -898,7 +890,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameRename, data)
             game = await custom_game_service.rename(
                 session,
@@ -922,7 +914,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameBalanceRequest, data)
             game = await custom_game_service.balance(
                 session,
@@ -947,7 +939,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameTeamNamesPatch, data)
             game = await custom_game_service.set_team_names(
                 session,
@@ -970,7 +962,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameNextMapPatch, data)
             game = await custom_game_service.set_next_map(
                 session,
@@ -997,7 +989,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameVariantIndexPatch, data)
             game = await custom_game_service.set_variant_index(
                 session,
@@ -1021,7 +1013,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGamePostDiscord, data)
             channel_id, commands = await custom_game_service.discord_lineup(
                 session,
@@ -1050,7 +1042,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameVoicePatch, data)
             game = await custom_game_service.set_voice_channels(
                 session,
@@ -1081,7 +1073,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             return await custom_game_service.voice_options(
                 session,
                 discord=_voice_discord(broker),
@@ -1102,7 +1094,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             custom_game_id = _game_id(data)
             workspace_id = await _voice_workspace_id(session, data, custom_game_id)
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameVoiceRun, data)
             return await custom_game_service.voice_move(
                 session,
@@ -1124,7 +1116,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             custom_game_id = _game_id(data)
             workspace_id = await _voice_workspace_id(session, data, custom_game_id)
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameVoiceRun, data)
             return await custom_game_service.voice_return(
                 session,
@@ -1145,7 +1137,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGamePostSignup, data)
             channel_id, commands = await custom_game_service.signup_post(
                 session,
@@ -1183,7 +1175,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             game, commands = await custom_game_service.delete_discord_post(
                 session,
                 workspace_id=workspace_id,
@@ -1208,7 +1200,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameHostTransfer, data)
             game = await custom_game_service.transfer_host(
                 session,
@@ -1232,7 +1224,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameCoHostPatch, data)
             game = await custom_game_service.add_co_host(
                 session,
@@ -1255,7 +1247,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             game = await custom_game_service.remove_co_host(
                 session,
                 workspace_id=workspace_id,
@@ -1279,7 +1271,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameSeatSwap, data)
             game = await custom_game_service.swap_seats(
                 session,
@@ -1305,7 +1297,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             body = _body(schemas.CustomGameRecordOutcome, data)
             game = await custom_game_service.record_outcome(
                 session,
@@ -1342,7 +1334,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             game = await custom_game_service.undo_last_match(
                 session,
                 workspace_id=workspace_id,
@@ -1401,7 +1393,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "update")
+            _require_mix(user, workspace_id, "update")
             game = await custom_game_service.close(
                 session,
                 workspace_id=workspace_id,
@@ -1422,7 +1414,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
-            _require_mix(data, user, workspace_id, "delete")
+            _require_mix(user, workspace_id, "delete")
             game = await custom_game_service.cancel(
                 session,
                 workspace_id=workspace_id,

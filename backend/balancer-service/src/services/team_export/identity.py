@@ -1,4 +1,4 @@
-"""Batch owner-provider handle resolution for team materialization; legacy BattleTag imports retain their name pass."""
+"""Batch handle resolution under a tournament's identity provider, for team materialization."""
 
 from __future__ import annotations
 
@@ -22,18 +22,16 @@ async def find_users_by_handles(session: AsyncSession, handles: list[str], *, pr
     """Resolve owner-provider handles in a batch.
 
     Non-BattleTag providers require exact normalized accounts, never display names or prefixes.
-    Legacy BattleTag imports retain their historical name/initcap + bare-name passes; that
-    portable-import heuristic is not used by native roster admission.
+    BattleTag imports also match by user name (as-is or initcap) and by the bare in-game name;
+    native roster admission does not use that heuristic.
     """
     tags = {tag for tag in handles if tag}
-    if not tags:
+    if not tags or provider is None:
         return {}
     tag_list = list(tags)
     resolved: dict[str, User] = {}
-    spec = get_provider(provider) if provider is not None else None
+    spec = get_provider(provider)
     if spec is None or spec.normalize != "battletag":
-        if provider is None:
-            return {}
         normalized = {normalize_social_handle(provider, tag) for tag in tags}
         rows = await session.execute(
             sa.select(User, SocialAccount.username_normalized)
@@ -67,21 +65,22 @@ async def find_users_by_handles(session: AsyncSession, handles: list[str], *, pr
             if candidate in tags:
                 resolved.setdefault(candidate, user)
 
-    # Pass 2: the provider's social account (normalized handle, or in-game name part for BattleTags),
+    # Pass 2: the BattleTag social account (normalized tag or in-game name part),
     # only for tags not already resolved by name.
     remaining = [tag for tag in tag_list if tag not in resolved]
-    if remaining and provider is not None:
-        spec = get_provider(provider)
-        bare_name = spec is not None and spec.normalize == "battletag"
+    if remaining:
         norm_to_tag = {normalize_social_handle(provider, tag): tag for tag in remaining}
-        lower_to_tag = {tag.lower(): tag for tag in remaining} if bare_name else {}
-        matches = [SocialAccount.username_normalized.in_(list(norm_to_tag.keys()))]
-        if bare_name:
-            matches.append(_name_part().in_(list(lower_to_tag.keys())))
+        lower_to_tag = {tag.lower(): tag for tag in remaining}
         handle_query = (
             sa.select(User, SocialAccount.username_normalized, _name_part().label("name_part"))
             .join(SocialAccount, User.id == SocialAccount.user_id)
-            .where(SocialAccount.provider == provider, sa.or_(*matches))
+            .where(
+                SocialAccount.provider == provider,
+                sa.or_(
+                    SocialAccount.username_normalized.in_(list(norm_to_tag)),
+                    _name_part().in_(list(lower_to_tag)),
+                ),
+            )
         )
         for user, username_normalized, name_part in (await session.execute(handle_query)).unique().all():
             tag = norm_to_tag.get(username_normalized) or lower_to_tag.get(name_part)

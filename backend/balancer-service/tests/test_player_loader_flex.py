@@ -37,6 +37,9 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 os.environ["DEBUG"] = "false"
 
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
+from src.domain.balancer.config.defaults import AlgorithmConfig  # noqa: E402
+from src.domain.balancer.config.presets import ConfigPresets  # noqa: E402
+from src.domain.balancer.config.public_contract import PUBLIC_CONFIG_KEYS  # noqa: E402
 from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
 from src.domain.balancer.player_loader import (  # noqa: E402
@@ -45,10 +48,7 @@ from src.domain.balancer.player_loader import (  # noqa: E402
 )
 from src.domain.balancer.result_serializer import teams_to_json  # noqa: E402
 from src.domain.balancer.runtime import _prepare_balance_context, balance_teams  # noqa: E402
-from src.services.balancer.config.defaults import AlgorithmConfig  # noqa: E402
-from src.services.balancer.config.presets import ConfigPresets  # noqa: E402
 from src.services.balancer.config.provider import EDITABLE_CONFIG_FIELD_KEYS  # noqa: E402
-from src.services.balancer.config.public_contract import PUBLIC_CONFIG_KEYS  # noqa: E402
 
 FLEX_ONLY_MASK = {FLEX_SLOT_CODE: 6}
 ROLE_MASK = {"tank": 1, "damage": 2, "support": 2}

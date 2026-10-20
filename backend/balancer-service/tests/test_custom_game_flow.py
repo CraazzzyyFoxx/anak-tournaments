@@ -31,9 +31,9 @@ from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services import ontology  # noqa: E402
-from shared.services.workspace_roster import RosterMember  # noqa: E402
 from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
+from src.services.workspace_roster import RosterMember  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
 _MEMBERS = (7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
