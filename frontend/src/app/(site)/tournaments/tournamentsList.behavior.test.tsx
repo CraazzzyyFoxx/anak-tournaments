@@ -72,7 +72,7 @@ const replace = vi.fn((url: string) => {
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/tournaments",
-  useRouter: () => ({ replace, push: replace }),
+  useRouter: () => ({ replace, push: replace, refresh: vi.fn() }),
   useSearchParams: () => new URLSearchParams(window.location.search)
 }));
 vi.mock("next/link", () => ({

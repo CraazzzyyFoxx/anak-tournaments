@@ -96,6 +96,12 @@ export function useGameScope(
       for (const param of dropParams) next.delete(param);
       const query = next.toString();
       router.push(query ? `${pathname}?${query}` : pathname);
+      // Every push follows a cookie write. The client cache keys renders by URL, not cookie (`staleTimes.dynamic`), so the
+      // push alone can re-show a render made under the previous cookies (a param-less URL, the page itself). The refresh
+      // is queued behind the push and re-reads the server tree on the new URL, without a history entry of its own.
+      // ponytail: a URL the cache lacks is fetched twice (push, then refresh); one fetch needs a pre-navigation cache drop
+      // Next does not offer.
+      router.refresh();
     },
     [pathname, router, searchParams]
   );

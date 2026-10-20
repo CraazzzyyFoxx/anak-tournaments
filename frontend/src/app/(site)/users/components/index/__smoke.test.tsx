@@ -22,7 +22,7 @@ const { search, push } = vi.hoisted(() => ({ search: { current: new URLSearchPar
 vi.mock("next/navigation", () => ({
   usePathname: () => "/users",
   useSearchParams: () => search.current,
-  useRouter: () => ({ push, replace: vi.fn() })
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() })
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
