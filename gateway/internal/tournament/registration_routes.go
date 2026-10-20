@@ -107,7 +107,7 @@ var RegistrationAdminRoutes = []edge.RouteSpec{
 	// Workspace registration-form templates — the library side of the two
 	// tournament routes above. PUT, not PATCH: a template IS its name plus its
 	// question set, and a partial merge of a question set is not a thing.
-	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/registration-form-templates", Queue: "rpc.tournament.regform_template_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/registration-form-templates", Queue: "rpc.tournament.regform_template_list", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired, Timeout: regReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/registration-form-templates", Queue: "rpc.tournament.regform_template_create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PUT", Pattern: "/api/v1/admin/ws/{workspace_id}/registration-form-templates/{template_id}", Queue: "rpc.tournament.regform_template_update", Path: []string{"workspace_id", "template_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/admin/ws/{workspace_id}/registration-form-templates/{template_id}", Queue: "rpc.tournament.regform_template_delete", Path: []string{"workspace_id", "template_id"}, Auth: edge.AuthRequired, Success: 204},

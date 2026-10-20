@@ -11,6 +11,10 @@ Names are unique per workspace, case-insensitively. The database says so --
 lower(name))`` -- but this module checks first anyway, so the ordinary collision
 answers a structured 409 instead of letting an ``IntegrityError`` escape as a
 500. The ``IntegrityError`` is caught too, for the race the read cannot close.
+
+A template belongs to one game (``discipline``): created for a game the workspace runs, never moved to another
+(409 ``template_discipline_immutable``), applied only to that game's tournaments (409
+``template_discipline_mismatch``), and a snapshot of a tournament's form takes the tournament's game.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.forms import FormSchema
 from shared.repository import RegistrationFormTemplateRepository
+from shared.services.ontology import assert_discipline_enabled
 from src import models
 from src.schemas.registration_form import (
     RegistrationFormTemplateUpsert,
@@ -70,8 +75,9 @@ class RegistrationFormTemplateService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str | None = None,
     ) -> Sequence[models.BalancerRegistrationFormTemplate]:
-        return await self.template_repo.list_for_workspace(session, workspace_id)
+        return await self.template_repo.list_for_workspace(session, workspace_id, discipline=discipline)
 
     async def create(
         self,
@@ -83,9 +89,21 @@ class RegistrationFormTemplateService:
     ) -> models.BalancerRegistrationFormTemplate:
         """Store a new named schema. Commits internally."""
         name = _clean_name(body.name)
+        if body.discipline is None:
+            raise _fail(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "discipline_required",
+                "A template belongs to one game",
+                field="discipline",
+            )
+        workspace = await session.get(models.Workspace, workspace_id)
+        if workspace is None:
+            raise _fail(status.HTTP_404_NOT_FOUND, "workspace_not_found", "Workspace not found")
+        assert_discipline_enabled(workspace, body.discipline)
         await self._ensure_name_free(session, workspace_id=workspace_id, name=name)
         template = models.BalancerRegistrationFormTemplate(
             workspace_id=workspace_id,
+            discipline=body.discipline,
             name=name,
             schema_json=body.form_schema.model_dump(mode="json"),
             created_by=actor_user_id,
@@ -115,6 +133,13 @@ class RegistrationFormTemplateService:
         that was.
         """
         template = await self._require(session, workspace_id, template_id)
+        if body.discipline is not None and body.discipline != template.discipline:
+            raise _fail(
+                status.HTTP_409_CONFLICT,
+                "template_discipline_immutable",
+                f"This template belongs to {template.discipline!r}; its game cannot change",
+                field="discipline",
+            )
         name = _clean_name(body.name)
         await self._ensure_name_free(session, workspace_id=workspace_id, name=name, excluding=template.id)
         template.name = name
@@ -151,6 +176,13 @@ class RegistrationFormTemplateService:
         invisible to the other.
         """
         template = await self._require(session, workspace_id, template_id)
+        tournament_discipline = await self._tournament_discipline(session, tournament_id)
+        if template.discipline != tournament_discipline:
+            raise _fail(
+                status.HTTP_409_CONFLICT,
+                "template_discipline_mismatch",
+                f"Template is for {template.discipline!r}, the tournament is {tournament_discipline!r}",
+            )
         schema = FormSchema.model_validate(template.schema_json)
 
         form = await form_service.get_form(session, tournament_id)
@@ -180,7 +212,8 @@ class RegistrationFormTemplateService:
         """Snapshot a tournament form's CURRENT questions under a new name.
 
         A snapshot, not a link: the template keeps what the form asked at this
-        moment, and the form moving on afterwards leaves it alone.
+        moment, and the form moving on afterwards leaves it alone. The template
+        takes the tournament's game.
         """
         form = await form_service.get_form(session, tournament_id)
         if form is None:
@@ -192,8 +225,17 @@ class RegistrationFormTemplateService:
         return await self.create(
             session,
             workspace_id=workspace_id,
-            body=RegistrationFormTemplateUpsert(name=name, form_schema=form_service.schema_of(form)),
+            body=RegistrationFormTemplateUpsert(
+                name=name,
+                discipline=await self._tournament_discipline(session, tournament_id),
+                form_schema=form_service.schema_of(form),
+            ),
             actor_user_id=actor_user_id,
+        )
+
+    async def _tournament_discipline(self, session: AsyncSession, tournament_id: int) -> str:
+        return str(
+            await session.scalar(sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id))
         )
 
     async def _require(

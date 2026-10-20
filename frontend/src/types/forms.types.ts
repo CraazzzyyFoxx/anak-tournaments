@@ -98,10 +98,12 @@ export interface RolesParams {
  *  kind stores — string, number, boolean, string[], or a role array. */
 export type Answers = Record<string, unknown>;
 
-/** One saved schema, reusable across tournaments of a workspace. */
+/** One saved schema, owned by one game, reusable across that game's tournaments of a workspace. */
 export interface RegistrationFormTemplate {
   id: number;
   workspace_id: number;
+  /** The game the template belongs to; never changes. */
+  discipline: string;
   name: string;
   form_schema: FormSchema;
   updated_at: string;
@@ -109,5 +111,7 @@ export interface RegistrationFormTemplate {
 
 export interface RegistrationFormTemplateUpsert {
   name: string;
+  /** Required on create; omitted (or equal) on update. */
+  discipline?: string;
   form_schema: FormSchema;
 }

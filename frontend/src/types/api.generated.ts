@@ -4919,7 +4919,7 @@ export interface paths {
         put?: never;
         /**
          * Apply template to registration form
-         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`).
+         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Copies the template's question set onto the tournament's registration form and returns the form. An ordinary schema save: a changed question set appends a new version, an identical one appends nothing. The form is NOT linked to the template afterwards, so editing the template later never rewrites a live form. The template must belong to the tournament's workspace (else 404 `template_not_found`). The template's game must be the tournament's (else 409 `template_discipline_mismatch`).
          *
          *     RPC subject: `rpc.tournament.regform_template_apply`
          */
@@ -4941,7 +4941,7 @@ export interface paths {
         put?: never;
         /**
          * Save registration form as template
-         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision.
+         * @description Permission: workspace `registration_form.update` on the tournament's workspace. Snapshots the tournament form's CURRENT question set into a new workspace template under the given name (201 Created). A snapshot, not a link: later edits to either side are invisible to the other. 404 `form_not_configured` when the tournament has no form yet; 409 `template_name_taken` on a case-insensitive name collision. The template takes the tournament's game.
          *
          *     RPC subject: `rpc.tournament.regform_template_save_from_form`
          */
@@ -8893,7 +8893,7 @@ export interface paths {
         };
         /**
          * List registration form templates
-         * @description Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name.
+         * @description Permission: workspace `registration_form.read` on the workspace in the path. Lists that workspace's named registration-form question sets, ordered by name; each carries its game (`discipline`). The optional `discipline` narrows to one game's (422 `discipline_not_installed` for an unknown code).
          *
          *     RPC subject: `rpc.tournament.regform_template_list`
          */
@@ -8901,7 +8901,7 @@ export interface paths {
         put?: never;
         /**
          * Create registration form template
-         * @description Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for the workspace (201 Created). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.
+         * @description Permission: workspace `registration_form.update` on the workspace in the path. Stores a named question set for one game of the workspace (201 Created). `discipline` is required (422 `discipline_required`) and must be enabled for the workspace (422 `discipline_not_enabled`). Names are unique per workspace, case-insensitively: a collision is 409 `template_name_taken` on field `name`.
          *
          *     RPC subject: `rpc.tournament.regform_template_create`
          */
@@ -8922,7 +8922,7 @@ export interface paths {
         get?: never;
         /**
          * Update registration form template
-         * @description Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.
+         * @description Permission: workspace `registration_form.update` on the workspace in the path. Replaces a template's name and question set wholesale. Its game never changes: `discipline` is omitted or equal, another game is 409 `template_discipline_immutable`. 404 `template_not_found` when the id belongs to another workspace; 409 `template_name_taken` on a case-insensitive name collision.
          *
          *     RPC subject: `rpc.tournament.regform_template_update`
          */
@@ -27260,6 +27260,8 @@ export interface components {
         };
         /** RegistrationFormTemplateRead */
         "tournament.RegistrationFormTemplateRead": {
+            /** Discipline */
+            discipline: string;
             form_schema: components["schemas"]["tournament.FormSchema-Output"];
             /** Id */
             id: number;
@@ -27283,6 +27285,11 @@ export interface components {
         };
         /** RegistrationFormTemplateUpsert */
         "tournament.RegistrationFormTemplateUpsert": {
+            /**
+             * Discipline
+             * @default null
+             */
+            discipline: string | null;
             form_schema: components["schemas"]["tournament.FormSchema-Input"];
             /** Name */
             name: string;
@@ -63198,7 +63205,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__registration_form_templates: {
         parameters: {
-            query?: never;
+            query?: {
+                discipline?: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;

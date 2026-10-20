@@ -117,6 +117,8 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       return registrationFormTemplatesService.create(
         workspaceId as number,
         name,
+        // An identity provider is only resolved for a resolved game.
+        discipline as string,
         defaultFormSchema(identityProvider)
       );
     },

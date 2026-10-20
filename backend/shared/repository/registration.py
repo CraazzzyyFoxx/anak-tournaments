@@ -97,12 +97,18 @@ class RegistrationFormTemplateRepository(BaseRepository[models.BalancerRegistrat
         self,
         session: AsyncSession,
         workspace_id: int,
+        *,
+        discipline: str | None = None,
     ) -> Sequence[models.BalancerRegistrationFormTemplate]:
-        result = await session.execute(
+        """The workspace's templates by name; ``discipline`` narrows to one game's."""
+        query = (
             sa.select(models.BalancerRegistrationFormTemplate)
             .where(models.BalancerRegistrationFormTemplate.workspace_id == workspace_id)
             .order_by(models.BalancerRegistrationFormTemplate.name.asc())
         )
+        if discipline is not None:
+            query = query.where(models.BalancerRegistrationFormTemplate.discipline == discipline)
+        result = await session.execute(query)
         return result.scalars().all()
 
     async def get_for_workspace(

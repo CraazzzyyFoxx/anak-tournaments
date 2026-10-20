@@ -271,7 +271,11 @@ OPERATIONS: dict[str, Op] = {
         request=reg_form_schemas.RegistrationFormUpsert, response=reg_form_schemas.RegistrationFormRead
     ),
     "rpc.tournament.regform_template_list": Op(
-        response=reg_form_schemas.RegistrationFormTemplateRead, response_array=True
+        response=reg_form_schemas.RegistrationFormTemplateRead,
+        response_array=True,
+        query_params=(
+            QueryParam("discipline", description="One installed discipline; omitted = every game's templates."),
+        ),
     ),
     "rpc.tournament.regform_template_create": Op(
         request=reg_form_schemas.RegistrationFormTemplateUpsert,

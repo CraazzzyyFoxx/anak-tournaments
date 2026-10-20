@@ -1068,11 +1068,13 @@ CREATE TABLE balancer.registration_form_template (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
 	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
 	name VARCHAR(64) NOT NULL,
 	schema_json JSON NOT NULL,
 	created_by BIGINT,
 	PRIMARY KEY (id),
 	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	CONSTRAINT fk_registration_form_template_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
 	FOREIGN KEY(created_by) REFERENCES auth."user" (id) ON DELETE SET NULL
 );
 

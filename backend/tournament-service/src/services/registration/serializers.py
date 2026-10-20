@@ -222,6 +222,7 @@ def serialize_registration_form_template(
     return RegistrationFormTemplateRead(
         id=template.id,
         workspace_id=template.workspace_id,
+        discipline=template.discipline,
         name=template.name,
         form_schema=FormSchema.model_validate(template.schema_json),
         # ``updated_at`` is only set by ``onupdate`` -- NULL until the first edit.
