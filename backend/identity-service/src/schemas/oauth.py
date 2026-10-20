@@ -40,7 +40,6 @@ class OAuthProvider(str, Enum):
     BATTLENET = "battlenet"
     GOOGLE = "google"
     GITHUB = "github"
-    # Add more providers as needed
 
 
 class OAuthURL(BaseModel):
@@ -58,8 +57,6 @@ class OAuthProviderAvailability(BaseModel):
 
 
 class OAuthCallbackRequest(BaseModel):
-    """OAuth callback request"""
-
     code: str
     state: str
 
@@ -72,7 +69,7 @@ class OAuthCallbackResult(Token):
     on ``origin``).
 
     ``mode="cookie"`` (platform apex / ``.owt`` subdomain) carries the raw
-    tokens, same as before -- the frontend sets cookies directly.
+    tokens -- the frontend sets cookies directly.
     ``mode="ticket"`` (custom domain) carries a one-time Redis ``ticket``
     instead: cookies set on the apex are not readable on a custom domain, so
     the tokens themselves never leave identity-svc's Redis until the custom
@@ -91,7 +88,7 @@ class OAuthCallbackResult(Token):
 
 
 class OAuthLinkResult(BaseModel):
-    """Result of an account-linking attempt (``oauth_flows.link``, Task 10R).
+    """Result of an account-linking attempt (``oauth.link``).
 
     ``mode="linked"`` (default; platform apex / a ``.owt`` subdomain): the
     provider identity was attached directly to the LIVE bearer-authenticated
@@ -99,12 +96,12 @@ class OAuthLinkResult(BaseModel):
 
     ``mode="link_ticket"`` (a workspace custom domain): nothing was linked.
     This response is produced by the ONE fixed apex callback, which shares
-    no cookie with a custom domain (see ``oauth_flows`` module docstring), so
+    no cookie with a custom domain (see the ``src.services.oauth`` docstring), so
     there is no live session here to attach the provider identity to.
     ``ticket`` carries a single-use handle to that PROVIDER identity only
-    (never a site user id -- SECURITY INVARIANT #2); the custom domain's own
-    frontend route redeems it (``rpc.identity.link_complete``, itself
-    bearer-authenticated there) against ITS OWN live session. ``message``/
+    (never a site user id); the custom domain's own frontend route redeems it
+    (``rpc.identity.link_complete``, itself bearer-authenticated there) against
+    ITS OWN live session. ``message``/
     ``provider``/``username`` are omitted in this mode.
     """
 

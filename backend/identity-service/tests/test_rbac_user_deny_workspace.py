@@ -24,7 +24,7 @@ from shared.repository import UserPermissionDenyRepository
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.services.rbac_admin import PermissionDenyService  # noqa: E402
+from src.services.rbac import PermissionDenyService  # noqa: E402
 from tests._fakes import FakeSessionCache as _NoopCache  # noqa: E402
 from tests._fakes import make_root_actor as _current_user  # noqa: E402
 
@@ -82,6 +82,9 @@ class _QueueSession:
 
     def add(self, obj) -> None:
         self.added.append(obj)
+
+    async def flush(self) -> None:
+        return None
 
     async def commit(self) -> None:
         self.commit_called = True

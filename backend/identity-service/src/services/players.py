@@ -1,19 +1,15 @@
 """Player linking with ownership checks.
 
-Single-link model (identity/workspace refactor): a player↔auth-user link is
-stored as ``players.user.auth_user_id`` (nullable, unique FK to ``auth.user.id``)
-rather than the former ``auth.user_player`` M2M table. Because the FK is unique,
-an auth user links to at most one player, so the historical ``is_primary``
-bookkeeping is meaningless. The ``is_primary`` parameter is kept on the public
-signatures purely as a transition shim so the RPC wire schema, gateway, and
-frontend do not have to change; it is ignored internally and every
-returned/linked player is treated as primary. Removing it from the wire schema
-is later work.
+A player↔auth-user link is ``players.user.auth_user_id`` (nullable, unique FK to
+``auth.user.id``), so an auth user links to at most one player. ``is_primary`` on
+the public signatures and the RPC wire schema is accepted but ignored; every
+linked player is reported as primary.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +32,16 @@ __all__ = ("PlayerLinkService", "players")
 
 def _normalized(values: Iterable[str | None]) -> set[str]:
     return {value.strip().casefold() for value in values if value and value.strip()}
+
+
+def describe_link(player: models.User) -> dict[str, Any]:
+    """Wire shape of a player link; ``is_primary`` is always True (one link per auth user)."""
+    return {
+        "player_id": player.id,
+        "player_name": player.name,
+        "is_primary": True,
+        "linked_at": player.created_at.isoformat(),
+    }
 
 
 class PlayerLinkService:
@@ -269,15 +275,10 @@ class PlayerLinkService:
         """Link a game player to the current auth user."""
         logger.info(f"Linking player {link_data.player_id} to user {current_user.username}")
 
-        # ``is_primary`` is always True in the response (one link per auth user).
         player = await self.link(session, current_user, link_data.player_id, link_data.is_primary)
-        linked_player = schemas.LinkedPlayer(
-            player_id=player.id,
-            player_name=player.name,
-            is_primary=True,
-            linked_at=player.created_at.isoformat(),
+        return schemas.PlayerLinkResponse(
+            message="Player linked successfully", player=schemas.LinkedPlayer(**describe_link(player))
         )
-        return schemas.PlayerLinkResponse(message="Player linked successfully", player=linked_player)
 
     async def linked_payload(
         self,
@@ -286,13 +287,7 @@ class PlayerLinkService:
     ) -> list[schemas.LinkedPlayer]:
         """Get all linked players for the current auth user."""
         return [
-            schemas.LinkedPlayer(
-                player_id=player.id,
-                player_name=player.name,
-                is_primary=True,
-                linked_at=player.created_at.isoformat(),
-            )
-            for player in await self.linked_players(session, current_user)
+            schemas.LinkedPlayer(**describe_link(player)) for player in await self.linked_players(session, current_user)
         ]
 
     async def confirm_primary(
@@ -301,13 +296,10 @@ class PlayerLinkService:
         current_user: models.AuthUser,
         player_id: int,
     ) -> dict:
-        """Set a linked player as primary for the current auth user.
+        """Confirm ``player_id`` is the caller's linked player; mutates nothing.
 
-        Single-link model: an auth user has at most one linked player
-        (``players.user.auth_user_id``), so there is nothing to reassign. This is
-        validate-only — it confirms ``player_id`` is the caller's single linked
-        player and returns success without any mutation. The endpoint is retained
-        (no route/gateway churn); the wire response is unchanged.
+        An auth user has at most one linked player (``players.user.auth_user_id``),
+        so it is already primary and there is nothing to reassign.
         """
         logger.info(f"Setting player {player_id} as primary for user {current_user.username}")
 

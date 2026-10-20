@@ -3,11 +3,11 @@
 Schemas-only module consumed by the export script — see ``shared.rpc.openapi``.
 The gateway's identity HTTP handler (gateway/internal/identity) is a transparent
 pass-through of the RPC envelope's ``data``, so the client response body == the
-Python handler's returned model. Models mirror the service return annotations /
-direct model construction in serve.py + src/services/**.
+Python handler's returned model. Models mirror the return annotations / direct
+model construction in src/rpc/** + src/services/**.
 
 Handlers returning ``rpc_ok(None)`` (204) or ad-hoc dicts are omitted (generic).
-No generic-CRUD engine; KEY = the full RPC subject string.
+Keys are full RPC subject strings.
 """
 
 from __future__ import annotations

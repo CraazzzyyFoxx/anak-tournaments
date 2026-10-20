@@ -14,7 +14,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.schemas.user_merge_auth import AuthMergeFinalizationRequest
 from src.core import cache as cache_module  # noqa: E402
 from src.core import redis as redis_module  # noqa: E402
-from src.services.rbac_admin import AuthUserAdminService
+from src.services.rbac import AuthUserAdminService
 from src.services.session_cache import session_cache  # noqa: E402
 
 

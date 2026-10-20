@@ -4,10 +4,6 @@ Authed RPC methods resolve the active user from the gateway-injected bearer
 access_token via ``c.with_active_user``, then the admin services run the full
 permission checks, the exact 403/404 semantics, and the RBAC cache
 invalidation side effects.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
 """
 
 from __future__ import annotations
@@ -17,12 +13,12 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dump
 from shared.rpc.common import actor
 from shared.rpc.query import build_query_model
 from shared.schemas.user_merge_auth import AuthMergeFinalizationRequest
 from src import schemas
-from src.services.rbac_admin import (
+from src.services.rbac import (
     auth_user_admin,
     permission_admin,
     permission_denies,
@@ -53,7 +49,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: AsyncSession, user: Any) -> dict:
             qp = build_query_model(schemas.PermissionListQueryParams, data.get("query"))
             params = schemas.PermissionListParams.from_query_params(qp)
-            return c.paginated_dump(await permission_admin.list(session, user, params))
+            return paginated_dump(await permission_admin.list(session, user, params))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 
@@ -92,7 +88,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: AsyncSession, user: Any) -> dict:
             qp = build_query_model(schemas.RoleListQueryParams, data.get("query"))
             params = schemas.RoleListParams.from_query_params(qp)
-            return c.paginated_dump(await role_admin.list(session, user, params))
+            return paginated_dump(await role_admin.list(session, user, params))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 
@@ -159,7 +155,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: AsyncSession, user: Any) -> dict:
             qp = build_query_model(schemas.AuthUserListQueryParams, data.get("query"))
             params = schemas.AuthUserListParams.from_query_params(qp)
-            return c.paginated_dump(await auth_user_admin.list(session, user, params))
+            return paginated_dump(await auth_user_admin.list(session, user, params))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 
@@ -265,15 +261,11 @@ def register(broker: Any, logger: Any) -> None:
         data = data or {}
 
         async def op(session: AsyncSession, user: Any) -> list[dict]:
-            user_id = c.opt_int(data, "user_id")
-            permission_id = c.opt_int(data, "permission_id")
-            if user_id is None or permission_id is None:
-                raise HTTPException(status_code=422, detail="user_id and permission_id are required")
             return await permission_denies.add(
                 session,
                 user,
-                user_id,
-                permission_id,
+                c.require_int(data, "user_id"),
+                c.require_int(data, "permission_id"),
                 reason=data.get("reason"),
                 workspace_id=c.opt_int(data, "workspace_id"),
                 ip_address=data.get("ip_address"),
@@ -287,15 +279,11 @@ def register(broker: Any, logger: Any) -> None:
         data = data or {}
 
         async def op(session: AsyncSession, user: Any) -> list[dict]:
-            user_id = c.opt_int(data, "user_id")
-            permission_id = c.opt_int(data, "permission_id")
-            if user_id is None or permission_id is None:
-                raise HTTPException(status_code=422, detail="user_id and permission_id are required")
             return await permission_denies.remove(
                 session,
                 user,
-                user_id,
-                permission_id,
+                c.require_int(data, "user_id"),
+                c.require_int(data, "permission_id"),
                 workspace_id=c.opt_int(data, "workspace_id"),
                 ip_address=data.get("ip_address"),
                 user_agent=data.get("user_agent"),
@@ -310,7 +298,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: AsyncSession, user: Any) -> dict:
             qp = build_query_model(schemas.OAuthConnectionListQueryParams, data.get("query"))
             params = schemas.OAuthConnectionListParams.from_query_params(qp)
-            return c.paginated_dump(await auth_user_admin.list_oauth_connections(session, user, params))
+            return paginated_dump(await auth_user_admin.list_oauth_connections(session, user, params))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 
@@ -321,7 +309,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: AsyncSession, user: Any) -> dict:
             qp = build_query_model(schemas.SessionListQueryParams, data.get("query"))
             params = schemas.SessionListParams.from_query_params(qp)
-            return c.paginated_dump(await session_admin.list_auth_sessions(session, user, params))
+            return paginated_dump(await session_admin.list_auth_sessions(session, user, params))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 

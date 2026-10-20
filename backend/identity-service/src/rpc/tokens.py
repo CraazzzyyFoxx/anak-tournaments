@@ -1,9 +1,4 @@
-"""Token issuance/validation for the gateway's own auth middleware.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
-"""
+"""Token issuance/validation for the gateway's own auth middleware."""
 
 from __future__ import annotations
 
@@ -13,8 +8,8 @@ from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.schemas.rpc import rpc_error
 from src import schemas
-from src.schemas.rpc import rpc_error
 from src.services.service_tokens import service_tokens
 from src.services.token_validation import token_validation
 

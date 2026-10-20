@@ -1,9 +1,4 @@
-"""Module-level S3 client for identity-svc (fastapi-free).
-
-Relocated out of the (now removed) HTTP-over-RPC tunnel so the avatar typed-RPC
-handlers can reuse a single client instance. Started/closed by the FastStream
-worker lifecycle hooks in serve.py.
-"""
+"""Process-wide S3 client for the avatar RPC handlers; serve.py's lifecycle hooks start and close it."""
 
 from __future__ import annotations
 

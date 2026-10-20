@@ -1,9 +1,4 @@
-"""OAuth login/link flows, including the custom-domain ticket handoff.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
-"""
+"""OAuth login/link flows, including the custom-domain ticket handoff."""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from src.schemas.rpc import rpc_error, rpc_ok
+from shared.schemas.rpc import rpc_error, rpc_ok
 from src.services.oauth import oauth
 from src.services.token_validation import token_validation
 
@@ -23,16 +18,11 @@ from . import _common as c
 __all__ = ("register",)
 
 
-# Isolated QoS: these three flows block on an external provider (Discord/Twitch/
-# Battle.net token + userinfo exchanges), which is why the gateway had to raise
-# its identity RPC timeout to 20s for them. On the DEFAULT channel a handful of
-# slow provider calls occupy the process-wide RPC_PREFETCH_COUNT slots that
-# ``rpc.identity.validate_token`` -- the hot path every authenticated request on
-# the platform goes through -- needs, and the gateway then sheds token
-# validations while identity-svc is merely waiting on someone else's HTTP
-# (Sentry OWT-TOURNAMENTS-20B / 2A9). Their own channel bounds that to 8 and
-# leaves the default channel's slots to the cheap, Redis-cached RPCs -- mirrors
-# balancer ``_JOBS_CHANNEL`` and tournament ``reg_pub_list``.
+# Isolated QoS: these flows block on external provider HTTP (token + userinfo
+# exchanges). On the default channel a few slow calls would occupy the
+# process-wide RPC_PREFETCH_COUNT slots that ``rpc.identity.validate_token`` --
+# the hot path of every authenticated request -- needs, and the gateway would
+# shed token validations. Their own channel bounds them to 8.
 _PROVIDER_CHANNEL = Channel(prefetch_count=8)
 
 
@@ -57,9 +47,9 @@ def register(broker: Any, logger: Any) -> None:
         csrf = data.get("csrf")
         if not csrf or not isinstance(csrf, str):
             return rpc_error("bad_request", "csrf is required")
-        # Optional (Task 10R fix 1): only the frontend's custom-domain apex bounce
-        # supplies this (see oauth-login.ts). Anything not a non-empty string is
-        # treated as absent -- the state carries it only when present.
+        # Optional: only the frontend's custom-domain apex bounce supplies this
+        # (see oauth-login.ts). Anything not a non-empty string is treated as
+        # absent -- the state carries it only when present.
         guard_hash = data.get("guard_hash")
         if not isinstance(guard_hash, str) or not guard_hash:
             guard_hash = None
@@ -103,7 +93,7 @@ def register(broker: Any, logger: Any) -> None:
         after the callback returned `mode="ticket"`. The ticket is single-use
         (Redis GETDEL); a missing, expired, already-redeemed, or unknown ticket all
         look identical from here, as does a `guard` cookie that fails the
-        browser-binding check (Task 10R fix 1).
+        browser-binding check.
         """
         data = data or {}
         ticket = data.get("ticket")
@@ -117,7 +107,7 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.identity.oauth_link", channel=_PROVIDER_CHANNEL)
     async def _oauth_link(data: dict, msg: RabbitMessage) -> dict:
-        """Custom-domain-aware account-link callback (Task 10R re-architecture).
+        """Custom-domain-aware account-link callback.
 
         Unlike every OTHER authenticated RPC method here, a missing bearer is NOT
         rejected up front -- `oauth.link` decides whether one is required, branching
@@ -152,11 +142,11 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.identity.link_complete")
     async def _link_complete(data: dict, msg: RabbitMessage) -> dict:
         """Redeem a pending-link ticket and attach its PROVIDER identity to the
-        bearer-authenticated caller (step 6 of the Task 10R end-ticket flow).
+        bearer-authenticated caller.
 
-        A bearer is mandatory here (SECURITY INVARIANT #4): this is the step that
-        resolves the linked-to site account, and that resolution must come from
-        nothing but the live session presented on THIS call. `guard` is the raw
+        A bearer is mandatory here: this is the step that resolves the linked-to
+        site account, and that resolution must come from nothing but the live
+        session presented on THIS call. `guard` is the raw
         `owt_xdomain_guard` cookie; the redemption fails closed on a mismatch even
         though the bearer is valid.
         """
@@ -202,7 +192,7 @@ def register(broker: Any, logger: Any) -> None:
 
         Internal, service-to-service only (no gateway route) -- called by
         ``rpc.app.workspaces.discord_guild_verify`` to prove ownership before a
-        workspace can claim a guild id (workspace self-service design, §4.1).
+        workspace can claim a guild id.
         Trusted broker traffic, so the caller passes ``auth_user_id`` directly
         rather than a bearer token, same trust boundary as every other
         internal-only subject in this stack.

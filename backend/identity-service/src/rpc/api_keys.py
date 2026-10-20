@@ -1,9 +1,4 @@
-"""Personal API keys of the calling user.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
-"""
+"""Personal API keys of the calling user."""
 
 from __future__ import annotations
 
@@ -14,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.pagination import paginated_dump
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.services.api_keys import api_keys
@@ -21,6 +17,13 @@ from src.services.api_keys import api_keys
 from . import _common as c
 
 __all__ = ("register",)
+
+
+def _key_id(api_key: Any) -> int:
+    """The id of the key the caller authenticated with; 403 for a session credential."""
+    if api_key is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key credential required")
+    return api_key.id
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -31,7 +34,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: AsyncSession, user: Any) -> dict:
             qp = build_query_model(schemas.ApiKeyListQueryParams, data.get("query"))
             params = schemas.ApiKeyListParams.from_query_params(qp)
-            return c.paginated_dump(await api_keys.list(session, user=user, params=params))
+            return paginated_dump(await api_keys.list(session, user=user, params=params))
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 
@@ -94,12 +97,7 @@ def register(broker: Any, logger: Any) -> None:
         # validated on the way in. The four CRUD handlers above stay JWT-only, so
         # a key can neither mint a sibling nor extend its own life.
         async def op(session: AsyncSession, _user: Any, api_key: Any) -> dict:
-            if api_key is None:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="API key credential required",
-                )
-            result = await api_keys.describe_self(session, api_key_id=api_key.id)
+            result = await api_keys.describe_self(session, api_key_id=_key_id(api_key))
             return result.model_dump(mode="json")
 
         return await c.with_active_principal(logger, data.get("access_token"), op)
@@ -140,16 +138,11 @@ def register(broker: Any, logger: Any) -> None:
     async def _api_key_self_quota(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
 
-        # Sibling of ``api_key.self`` rather than a field on it: the descriptor
-        # is a cheap row read, this one talks to Redis, and a client polling its
-        # budget must not drag the whole descriptor along.
+        # Separate from ``api_key.self``: the descriptor is a cheap row read,
+        # this one talks to Redis, and a client polling its budget must not
+        # drag the whole descriptor along.
         async def op(session: AsyncSession, _user: Any, api_key: Any) -> dict:
-            if api_key is None:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="API key credential required",
-                )
-            result = await api_keys.self_quota_usage(session, api_key_id=api_key.id)
+            result = await api_keys.self_quota_usage(session, api_key_id=_key_id(api_key))
             return result.model_dump(mode="json")
 
         return await c.with_active_principal(logger, data.get("access_token"), op)

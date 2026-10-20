@@ -2,7 +2,6 @@
 Models for auth service - imported from shared library
 """
 
-# Import auth models from shared
 from shared.models.identity.api_key import ApiKey, ApiKeyScope
 from shared.models.identity.auth_user import AuthUser, RefreshToken
 from shared.models.identity.oauth import OAuthConnection

@@ -109,41 +109,11 @@ class TokenCodec:
         lookup still match tokens persisted under the pre-domain-separation
         HMAC. They migrate to the derived hash naturally on the next rotation.
         """
-        new_hash = key_derivation.hmac_sha256_hex(self._refresh_key, token)
+        new_hash = self.hash_refresh_token(token)
         legacy_hash = key_derivation.legacy_hmac_sha256_hex(self._config.JWT_SECRET_KEY, token)
         if new_hash == legacy_hash:
             return [new_hash]
         return [new_hash, legacy_hash]
-
-    @staticmethod
-    def client_metadata(request: Any | None) -> tuple[str | None, str | None]:
-        """Extract original client metadata, preferring proxy-forwarded headers."""
-        if request is None:
-            return None, None
-
-        headers = request.headers
-
-        user_agent = headers.get("x-original-user-agent") or headers.get("user-agent")
-
-        forwarded_for = headers.get("x-forwarded-for") or headers.get("x-vercel-forwarded-for")
-        ip_address = None
-        if forwarded_for:
-            for candidate in forwarded_for.split(","):
-                candidate = candidate.strip()
-                if candidate and candidate.lower() != "unknown":
-                    ip_address = candidate
-                    break
-
-        if ip_address is None:
-            ip_address = (
-                headers.get("x-real-ip")
-                or headers.get("cf-connecting-ip")
-                or headers.get("true-client-ip")
-                or headers.get("x-client-ip")
-                or (request.client.host if request.client else None)
-            )
-
-        return user_agent, ip_address
 
 
 passwords = PasswordHasher()

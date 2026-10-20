@@ -1,24 +1,19 @@
 """Domain-separated key derivation for the identity service.
 
-Historically a single ``JWT_SECRET_KEY`` was reused verbatim as the HMAC key for
-four unrelated purposes: signing access/service JWTs, hashing refresh tokens,
-signing OAuth ``state``, and hashing API-key secrets. Reusing one key across
-domains means a weakness (or leak) in any one usage compromises all of them, and
-cross-protocol confusion attacks become possible.
-
-This module derives a distinct 32-byte subkey per purpose from the master secret
-using HKDF-SHA256 (RFC 5869), implemented with the standard library only
-(``hashlib`` + ``hmac``) so no new dependency is introduced.
+Derives a distinct 32-byte subkey per purpose (refresh-token hashing, OAuth
+``state`` signing, API-key secret hashing) from the master secret with
+HKDF-SHA256 (RFC 5869, stdlib ``hashlib`` + ``hmac``). One key shared across
+domains means a weakness or leak in any one usage compromises all of them and
+opens cross-protocol confusion attacks.
 
 Notes:
   * The **access/service JWT** keeps signing with the raw master secret, because
     the Go gateway validates those tokens locally with the same raw secret.
-    Deriving a JWT subkey here would silently invalidate every issued token and
-    break edge validation — out of scope for this service. JWTs therefore remain
-    the master key's single "raw" use; the other three domains are separated.
-  * Callers that must preserve already-persisted hashes (refresh tokens,
-    API-key secrets) verify against BOTH the derived and the legacy raw-secret
-    HMAC, while writing only the derived form — see ``legacy_*`` helpers.
+    Deriving a JWT subkey here would invalidate every issued token and break
+    edge validation. JWTs therefore remain the master key's single "raw" use.
+  * Refresh-token and API-key hashes are verified against BOTH the derived and
+    the raw-secret HMAC (``legacy_hmac_sha256_hex``) but written only in the
+    derived form, so already-persisted hashes keep verifying.
 """
 
 from __future__ import annotations
@@ -73,9 +68,9 @@ def hmac_sha256_hex(key: bytes, message: str) -> str:
 
 
 def legacy_hmac_sha256_hex(master_secret: str, message: str) -> str:
-    """The pre-domain-separation HMAC: raw master secret as the key.
+    """HMAC keyed with the raw master secret; verify-only.
 
-    Kept only so already-persisted refresh-token / API-key hashes keep verifying
-    during the transition; never used for new writes.
+    Matches refresh-token / API-key hashes persisted with the raw secret; never
+    used for new writes.
     """
     return hmac.new(master_secret.encode("utf-8"), message.encode("utf-8"), _HASH).hexdigest()

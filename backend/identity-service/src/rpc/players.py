@@ -1,9 +1,4 @@
-"""Linking site accounts to tournament players.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
-"""
+"""Linking site accounts to tournament players."""
 
 from __future__ import annotations
 

@@ -1,11 +1,11 @@
 """Envelope + param helpers shared by the identity typed-RPC handlers.
 
-Identity predates ``shared.rpc.common`` and its gateway contract is a different
-shape: most methods take a flat ``data`` dict rather than the
-``{payload, query, identity}`` envelope, and the caller arrives as a bearer
-``data["access_token"]`` this service resolves itself instead of a gateway-
-injected identity block. So these stay identity-local; the reply envelope
-itself (``rpc_ok``/``rpc_error``/``status_to_code``) is the shared one.
+Identity's gateway contract differs from ``shared.rpc.common``: most methods
+take a flat ``data`` dict rather than the ``{payload, query, identity}``
+envelope, and the caller arrives as a bearer ``data["access_token"]`` this
+service resolves itself instead of a gateway-injected identity block. So these
+stay identity-local; the reply envelope itself
+(``rpc_ok``/``rpc_error``/``status_to_code``) is the shared one.
 """
 
 from __future__ import annotations
@@ -17,9 +17,8 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.pagination import paginated_dump
+from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
 from src.core import db
-from src.schemas.rpc import rpc_error, rpc_ok, status_to_code
 from src.services.token_validation import token_validation
 
 __all__ = (
@@ -29,7 +28,6 @@ __all__ = (
     "with_active_principal",
     "opt_int",
     "require_int",
-    "paginated_dump",
 )
 
 
@@ -120,9 +118,9 @@ async def with_active_principal(
     of the two decides that itself, since "no current key" is a 403 here and a
     non-answer everywhere else.
 
-    A distinct helper rather than a keyword on ``with_active_user``: the JWT-only
-    default is the boundary keeping keys away from session, credential and RBAC
-    mutations, so every widening of it is one grep away.
+    The JWT-only default of ``with_active_user`` is the boundary keeping keys
+    away from session, credential and RBAC mutations; every widening goes
+    through this helper, so it stays one grep away.
     """
     if not access_token or not isinstance(access_token, str):
         return rpc_error("forbidden", "Not authenticated")
@@ -149,8 +147,3 @@ def require_int(data: dict, key: str) -> int:
     if value is None:
         raise HTTPException(status_code=422, detail=f"{key} is required")
     return value
-
-
-# ``paginated_dump`` lives in the shared kernel now (app-service and
-# stats-service list handlers repeated the same key-enumeration bug); re-exported
-# here so the identity handlers keep importing it off ``_common``.

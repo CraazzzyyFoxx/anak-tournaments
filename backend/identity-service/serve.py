@@ -66,12 +66,10 @@ _install_uvloop()
 broker = make_rabbit_broker(settings.rabbitmq_url, logger=logger, prefetch_count=settings.rpc_prefetch_count)
 app = FastStream(broker)
 
-# The enforcer is a process-global with its own Redis client and session
-# factory -- deliberately not ``src.core.redis``'s singleton, which the startup
-# hook creates later than the first handler import. identity-service meters
-# nothing itself; it configures the gate because it *administers* it: the
-# per-key limit writes and usage reads below need the same resolver every
-# metering service runs.
+# The quota enforcer is a process-global with its own Redis client and session
+# factory: ``src.core.redis``'s singleton is only created by the startup hook,
+# after the first handler import. identity-service meters nothing; it configures
+# the gate because its per-key limit writes and usage reads need the same resolver.
 configure_quota(
     session_factory=db.async_session_maker,
     redis_url=settings.REDIS_URL,

@@ -1,9 +1,4 @@
-"""Registration, login, session lifecycle and the current-user profile.
-
-Transport only: parse the RPC payload, resolve the caller when the method needs
-one, hand off to a service object, serialise the result. Every authorization
-decision, query and error message belongs to ``src/services/**``.
-"""
+"""Registration, login, session lifecycle and the current-user profile."""
 
 from __future__ import annotations
 
@@ -14,9 +9,7 @@ from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.services.audit import record_admin_audit
 from src import schemas
-from src.schemas.rpc import rpc_error
 from src.services.auth import auth
 
 from . import _common as c
@@ -70,13 +63,11 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.identity.logout")
     async def _logout(data: dict, msg: RabbitMessage) -> dict:
         data = data or {}
-        refresh_token = data.get("refresh_token")
-        if not data.get("access_token"):
-            return rpc_error("forbidden", "Not authenticated")
-        if not refresh_token:
-            return rpc_error("unprocessable", "refresh_token is required")
 
         async def op(session: AsyncSession, user: Any) -> None:
+            refresh_token = data.get("refresh_token")
+            if not refresh_token:
+                raise HTTPException(status_code=422, detail="refresh_token is required")
             await auth.logout(session, user, refresh_token)
 
         return await c.with_active_user(logger, data.get("access_token"), op, label="logout")
@@ -110,19 +101,9 @@ def register(broker: Any, logger: Any) -> None:
                 session_uuid = UUID(str(raw_session_id))
             except (TypeError, ValueError):
                 raise HTTPException(status_code=400, detail="Invalid session id")
-            # ``auth.revoke_session`` commits, so the journal row has to be on the
-            # session before it — and it is discarded with the rest if the revoke
-            # raises instead (no commit ever runs).
-            await record_admin_audit(
-                session,
-                action="session.revoke",
-                actor=user,
-                data=data,
-                workspace_id=None,
-                entity_type="session",
-                after={"session_id": str(session_uuid)},
+            await auth.revoke_session(
+                session, user, session_uuid, ip_address=data.get("ip_address"), user_agent=data.get("user_agent")
             )
-            await auth.revoke_session(session, user, session_uuid)
 
         return await c.with_active_user(logger, data.get("access_token"), op)
 

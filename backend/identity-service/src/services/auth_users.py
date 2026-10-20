@@ -122,15 +122,16 @@ class AuthUserService:
                 detail=self.REGISTRATION_CONFLICT_DETAIL,
             )
 
-        user = models.AuthUser(
-            email=data.email,
-            username=data.username,
-            hashed_password=self.hasher.hash(data.password),
-            first_name=data.first_name,
-            last_name=data.last_name,
+        user = await self.users.create(
+            session,
+            models.AuthUser(
+                email=data.email,
+                username=data.username,
+                hashed_password=self.hasher.hash(data.password),
+                first_name=data.first_name,
+                last_name=data.last_name,
+            ),
         )
-        session.add(user)
-        await session.flush()
 
         await self.assign_default_role(session, user.id)
         # The players.user identity backbone every auth user needs to anchor a
@@ -138,10 +139,8 @@ class AuthUserService:
         await self.ensure_player(session, user)
 
         await session.commit()
-        # No session.refresh() before this reload: the reload targets the same
-        # primary key, so the identity map hands back this very instance with
-        # its state repopulated. Refreshing first only paid for a second
-        # SELECT of the same row.
+        # The reload targets the same primary key, so the identity map hands back
+        # this very instance repopulated; a refresh() first would be a second SELECT.
         reloaded = await self.get_with_rbac(session, user.id)
         assert reloaded is not None  # just committed under this session
         return reloaded
@@ -166,8 +165,7 @@ class AuthUserService:
         than once for the same account never creates a duplicate.
 
         ``players.user.name`` is UNIQUE, and the repository suffixes the hint
-        with the auth id on collision instead of raising IntegrityError — the
-        old module-level helper let that surface to the caller.
+        with the auth id on collision instead of raising IntegrityError.
         """
         return await self.players.ensure_for_auth_user(
             session,

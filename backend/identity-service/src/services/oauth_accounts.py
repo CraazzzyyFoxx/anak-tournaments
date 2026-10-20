@@ -34,6 +34,30 @@ from src.services.auth_users import AuthUserService, auth_users
 from src.services.oauth_providers import OAuthProviderRegistry, oauth_providers
 
 
+def _token_expires_at(token_data: dict[str, Any]) -> datetime | None:
+    if "expires_in" not in token_data:
+        return None
+    return datetime.now(UTC) + timedelta(seconds=token_data["expires_in"])
+
+
+def _new_connection(
+    auth_user: models.AuthUser, oauth_info: schemas.OAuthUserInfo, token_data: dict[str, Any]
+) -> models.OAuthConnection:
+    return models.OAuthConnection(
+        auth_user_id=auth_user.id,
+        provider=oauth_info.provider.value,
+        provider_user_id=oauth_info.provider_user_id,
+        email=oauth_info.email,
+        username=oauth_info.username,
+        display_name=oauth_info.display_name,
+        avatar_url=oauth_info.avatar_url,
+        access_token=token_data["access_token"],
+        refresh_token=token_data.get("refresh_token"),
+        provider_data=oauth_info.raw_data,
+        token_expires_at=_token_expires_at(token_data),
+    )
+
+
 class OAuthAccountService:
     """Matches a proven provider identity to a site account, or creates one."""
 
@@ -57,19 +81,10 @@ class OAuthAccountService:
     async def handle_callback(
         self, session: AsyncSession, provider_name: str, code: str
     ) -> tuple[models.AuthUser, dict[str, Any]]:
-        """
-        Handle OAuth callback for any provider
-        Returns (auth_user, token_data)
-        """
+        """Exchange ``code`` with the provider and resolve the account: ``(auth_user, token_data)``."""
         provider = self.providers.get(provider_name)
-
-        # Exchange code for token
         token_data = await provider.exchange_code(code)
-
-        # Get user info from provider
         oauth_user_info = await provider.get_user_info(token_data["access_token"])
-
-        # Find or create user
         auth_user = await self.find_or_create_user(session, oauth_user_info, token_data)
 
         return auth_user, token_data
@@ -79,11 +94,10 @@ class OAuthAccountService:
         session: AsyncSession,
         oauth_info: schemas.OAuthUserInfo,
     ) -> models.User | None:
-        """
-        Find the player (players.user) via the unified ``social_account`` table
+        """Find the player (players.user) via the unified ``social_account`` table
         WITHOUT requiring an AuthUser link. Returns None if not found.
 
-        FAIL-CLOSED (review H3): only a cryptographically-confirmed match on the
+        FAIL-CLOSED: only a cryptographically-confirmed match on the
         provider's ``provider_user_id`` links a player automatically. Matching by
         a free-text handle (Discord ``global_name`` / battletag / twitch login) is
         deliberately NOT done here — those fields are attacker-controllable, so a
@@ -133,11 +147,10 @@ class OAuthAccountService:
         session: AsyncSession,
         player: models.User,
     ) -> models.AuthUser | None:
-        """
-        Fallback lookup: scan OAuthConnections for any social accounts attached to
-        this player (Discord, Twitch, BattleTag). Used when the player has no
-        ``auth_user_id`` set yet (e.g. created via legacy code path that omitted
-        the link). Returns None if none or more than one distinct AuthUser is found.
+        """Fallback lookup: scan OAuthConnections for any social accounts attached to
+        this player (Discord, Twitch, BattleTag), for a player with no
+        ``auth_user_id`` set yet. Returns None if none or more than one distinct
+        AuthUser is found.
         """
         accounts = await self.socials.list_by_user(session, player.id)
         handles: list[tuple[str, str]] = [(account.provider, account.username.lower()) for account in accounts]
@@ -145,8 +158,7 @@ class OAuthAccountService:
             return None
 
         # One statement for the whole candidate set: the decision below only needs
-        # to know whether the handles converge on a single auth user, so probing
-        # them one at a time cost a query per social account for no extra signal.
+        # to know whether the handles converge on a single auth user.
         auth_user_ids = await self.connections.auth_user_ids_for_handles(session, handles)
 
         if len(auth_user_ids) == 1:
@@ -209,10 +221,7 @@ class OAuthAccountService:
         a profile merge -- while the caller just cryptographically proved
         ownership of it. So the leftover is released (verified mark and pin
         cleared, handle row kept, exactly as the flow layer's ``unlink`` does)
-        and the identity is attached to THIS auth user's own player. Without
-        that release the leftover captured the verification instead: the link
-        reported success while the linking user's profile gained nothing, with
-        no error anywhere to explain it.
+        and the identity is attached to THIS auth user's own player.
         """
         provider = social_provider_for_oauth(oauth_info.provider.value)
         if provider is None:
@@ -311,8 +320,8 @@ class OAuthAccountService:
         session: AsyncSession,
         oauth_info: schemas.OAuthUserInfo,
     ) -> tuple[models.AuthUser | None, models.User | None]:
-        """
-        Returns (auth_user, matched_player).
+        """Returns (auth_user, matched_player).
+
         - auth_user  — existing AuthUser to reuse (may be None)
         - matched_player — player found in provider table (may be None if no match)
 
@@ -325,24 +334,23 @@ class OAuthAccountService:
         first-login duplicates for players who already exist as a shadow identity
         but were never OAuth-verified.
 
-        FAIL-CLOSED (review C1/C2): a matching email is NEVER used to reuse an
-        existing account. Email is not proof that the OAuth caller owns the
-        account (emails can be changed without verification, and some providers
-        return an email with no verified flag), so reusing an account by email
-        enabled full account takeover. Reuse is therefore anchored only on the
+        FAIL-CLOSED: a matching email alone NEVER reuses an existing account.
+        Email is not proof that the OAuth caller owns the account (emails can be
+        changed without verification, and some providers return an email with no
+        verified flag), so reuse by email would be a full account takeover. Reuse
+        is therefore anchored only on the
         cryptographically-confirmed ``provider_user_id`` — either an existing
         ``OAuthConnection`` (handled by the caller) or a player already pinned to
         this exact provider subject. Anything else is treated as a NEW user; a
         real owner links additional providers via the authenticated link flow.
         """
-        # Provider-subject player lookup (provider_user_id only — see method doc).
         player = await self._find_player_by_provider_record(session, oauth_info)
         if player is None:
-            # Relaxed reconciliation (requested): no verified provider_user_id
-            # yet, so fall back to an UNOWNED player already carrying this
-            # provider's handle (their shadow tournament identity). Returned as
-            # matched_player (auth_user=None) so the caller creates the AuthUser,
-            # links the player, and pins the now-verified provider_user_id via
+            # Relaxed reconciliation: no verified provider_user_id yet, so fall
+            # back to an UNOWNED player already carrying this provider's handle
+            # (their shadow tournament identity). Returned as matched_player
+            # (auth_user=None) so the caller creates the AuthUser, links the
+            # player, and pins the now-verified provider_user_id via
             # _attach_verified_social_account — next login uses the fast path.
             player = await self._find_unowned_player_by_handle(session, oauth_info)
             if player is None:
@@ -356,8 +364,7 @@ class OAuthAccountService:
 
         # Fallback: scan OAuthConnections for the player's other social accounts.
         # Safe because the anchor `player` is itself confirmed by provider_user_id
-        # above; this only backfills the auth_user_id link for legacy players
-        # created before the link was auto-populated on first login.
+        # above; this only backfills a missing auth_user_id link.
         auth_user = await self._find_auth_user_via_oauth_connections(session, player)
         # Return player regardless of whether auth_user is found, so the caller
         # can set matched_player.auth_user_id when building a new AuthUser.
@@ -381,32 +388,25 @@ class OAuthAccountService:
     async def find_or_create_user(
         self, session: AsyncSession, oauth_info: schemas.OAuthUserInfo, token_data: dict[str, Any]
     ) -> models.AuthUser:
-        """
-        Find existing user by OAuth connection or create new user
-        """
-        # Check if OAuth connection already exists
+        """Find the existing user by OAuth connection, or create a new one."""
         oauth_conn = await self.connections.get_by_provider_subject(
             session, provider=oauth_info.provider.value, provider_user_id=oauth_info.provider_user_id
         )
 
         if oauth_conn:
-            # Update OAuth connection info
             oauth_conn.username = oauth_info.username
             oauth_conn.display_name = oauth_info.display_name
             oauth_conn.avatar_url = oauth_info.avatar_url
             oauth_conn.email = oauth_info.email
             oauth_conn.access_token = token_data["access_token"]
             oauth_conn.refresh_token = token_data.get("refresh_token")
-
-            if "expires_in" in token_data:
-                oauth_conn.token_expires_at = datetime.now(UTC) + timedelta(seconds=token_data["expires_in"])
-
+            if (expires_at := _token_expires_at(token_data)) is not None:
+                oauth_conn.token_expires_at = expires_at
             oauth_conn.provider_data = oauth_info.raw_data
 
             await session.commit()
             await session.refresh(oauth_conn)
 
-            # Get associated auth user
             auth_user = await self.users.get(session, oauth_conn.auth_user_id)
 
             # Keep primary avatar in sync (used by /me)
@@ -441,7 +441,6 @@ class OAuthAccountService:
                         player_id=matched_player.id,
                     )
 
-        # Create new user if doesn't exist
         if not auth_user:
             # One rule for every provider: the name people see there (Discord
             # global name, BattleTag without "#1234", Twitch display name), not
@@ -454,14 +453,13 @@ class OAuthAccountService:
             auth_user = models.AuthUser(
                 email=oauth_info.email or f"{oauth_info.provider_user_id}@{oauth_info.provider.value}.oauth",
                 username=username,
-                hashed_password=None,  # OAuth users don't have password
+                hashed_password=None,
                 first_name=oauth_info.display_name,
                 avatar_url=oauth_info.avatar_url,
                 is_verified=bool(oauth_info.raw_data.get("verified")),
             )
-            session.add(auth_user)
             try:
-                await session.flush()  # Get the user ID
+                await self.users.create(session, auth_user)
 
                 await self.accounts.assign_default_role(session, auth_user.id)
 
@@ -498,25 +496,8 @@ class OAuthAccountService:
 
             logger.info(f"New user created via {oauth_info.provider}: {username}")
 
-        # Create OAuth connection
-        oauth_conn = models.OAuthConnection(
-            auth_user_id=auth_user.id,
-            provider=oauth_info.provider.value,
-            provider_user_id=oauth_info.provider_user_id,
-            email=oauth_info.email,
-            username=oauth_info.username,
-            display_name=oauth_info.display_name,
-            avatar_url=oauth_info.avatar_url,
-            access_token=token_data["access_token"],
-            refresh_token=token_data.get("refresh_token"),
-            provider_data=oauth_info.raw_data,
-            token_expires_at=datetime.now(UTC) + timedelta(seconds=token_data["expires_in"])
-            if "expires_in" in token_data
-            else None,
-        )
-
-        session.add(oauth_conn)
         try:
+            await self.connections.create(session, _new_connection(auth_user, oauth_info, token_data))
             await session.commit()
         except IntegrityError as exc:
             await session.rollback()
@@ -548,24 +529,19 @@ class OAuthAccountService:
         that provider (it lands on that other account), delete it in account
         settings, then link again.
         """
-        # Check if this OAuth account is already linked to another user
         existing_conn = await self.connections.get_by_provider_subject(
             session, provider=oauth_info.provider.value, provider_user_id=oauth_info.provider_user_id
         )
 
         # A user may link MULTIPLE accounts of the same provider (e.g. two
-        # battle.net) — each a distinct verified social identity. We only block
-        # re-linking the *same* external account to a *different* user (below).
-
+        # battle.net) — each a distinct verified social identity. Only re-linking
+        # the *same* external account to a *different* user is blocked (below).
         if existing_conn:
             if existing_conn.auth_user_id == auth_user.id:
-                # Already linked to this user, just update tokens
                 existing_conn.access_token = token_data["access_token"]
                 existing_conn.refresh_token = token_data.get("refresh_token")
-
-                if "expires_in" in token_data:
-                    existing_conn.token_expires_at = datetime.now(UTC) + timedelta(seconds=token_data["expires_in"])
-
+                if (expires_at := _token_expires_at(token_data)) is not None:
+                    existing_conn.token_expires_at = expires_at
                 await session.commit()
                 await session.refresh(existing_conn)
                 return existing_conn
@@ -578,24 +554,7 @@ class OAuthAccountService:
                 ),
             )
 
-        # Create new OAuth connection
-        oauth_conn = models.OAuthConnection(
-            auth_user_id=auth_user.id,
-            provider=oauth_info.provider.value,
-            provider_user_id=oauth_info.provider_user_id,
-            email=oauth_info.email,
-            username=oauth_info.username,
-            display_name=oauth_info.display_name,
-            avatar_url=oauth_info.avatar_url,
-            access_token=token_data["access_token"],
-            refresh_token=token_data.get("refresh_token"),
-            provider_data=oauth_info.raw_data,
-        )
-
-        if "expires_in" in token_data:
-            oauth_conn.token_expires_at = datetime.now(UTC) + timedelta(seconds=token_data["expires_in"])
-
-        session.add(oauth_conn)
+        oauth_conn = await self.connections.create(session, _new_connection(auth_user, oauth_info, token_data))
         await session.commit()
         await session.refresh(oauth_conn)
 
