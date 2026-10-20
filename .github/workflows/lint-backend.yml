@@ -69,6 +69,15 @@ jobs:
       - name: Discipline import boundaries
         run: uv run lint-imports --config .importlinter
         working-directory: backend
+      # The 5-layer rule inside each service (backend/ARCHITECTURE.md): no SQL in
+      # rpc/, no session in domain/, services never import rpc.
+      - name: Per-service import layering
+        run: |
+          for svc in *-service; do
+            [ -f "$svc/.importlinter" ] || continue
+            (cd "$svc" && uv run --project .. lint-imports)
+          done
+        working-directory: backend
       # D99: a game's vocabulary (codes, roles, catalog labels, identity, stat
       # codes, asset folders) is written only inside its module, across the
       # Python, TS/TSX, Go and JSON runtime roots. Every deliberate exception is

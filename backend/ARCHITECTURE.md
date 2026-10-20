@@ -135,10 +135,11 @@ beyond this set is fine; a `core/` module that grew a query or a business rule i
 ## `shared/` vs `src/`, for session-taking code
 
 `shared/domain/` is the easy half (pure logic, two+ consumers). The harder half is
-`shared/services/` — ~50 modules that *do* take an `AsyncSession`: `bracket/`, `encounter/`,
-`team_export/`, `workspace_scope`, `registration_window`, `subscription_*`, `audit`,
-`distributed_lock`, `realtime_publisher`. Something belongs there **iff two or more services
-already need it** (not "might"), and it can be written without importing any service's `src.*`.
+`shared/services/` — modules that *do* take an `AsyncSession`: `encounter/`,
+`workspace_scope`, `registration_window`, `subscriptions/`, `audit`, `distributed_lock`,
+`realtime_publisher`. Something belongs there **iff two or more services already import it**
+(not "might"), and it can be written without importing any service's `src.*`; a module with one
+consumer lives in that service's `src/services/`.
 Per-service inputs — a Redis URL, a feature flag, a settings object — arrive as arguments, never
 as `from src.core import config`. A `shared/services/` module that needs one service's settings
 is that service's `services/` file, and the second consumer should call it over RPC.
@@ -422,19 +423,24 @@ stay for reconciliation until `discipline02`, with no runtime reads or writes.
 The [P2 release guide](../docs/multi-game-p2-roles-release.md) lists wire changes and cutover gates.
 
 
-## Import layering between domains, when it's worth enforcing
+## Import layering, enforced
 
-Most services are a flat set of mutually-non-importing domains (`balancer-service`'s
-`admin/*`/`draft/*`; most of `identity-service`) — nothing to enforce beyond "don't import
-another domain's private module," checked by grep at review time, not by tooling.
+Every RPC service carries an `.importlinter` with the three contracts that fall out of the five
+layers, checked by `uv run --project .. lint-imports` from the service directory and by CI
+("Per-service import layering" in `lint-backend.yml`):
 
-Only reach for an `.importlinter` contract when a service has grown a genuine multi-level
-dependency hierarchy — `app-service`'s `services.achievements` → `services.{dashboard,user}` →
-`services.{hero,map,statistics,workspace}` (`app-service/.importlinter`,
-`backend/docs/architecture/layering.md`). The contract states the layers, forbids the reverse
-direction, and grandfathers pre-existing violations by name so they can't grow silently. Adding
-one to a flat service (`balancer-service`) would enforce nothing real; skip it there and say so
-in the plan doc, as `docs/plans/2026-08-21-balancer-service-oop-repositories.md` §5/§7 do.
+- `rpc-no-sql` — `src.rpc` imports no `sqlalchemy` (handlers annotate the session as `Any`);
+- `domain-is-pure` — `src.domain` imports neither `src.services`, `src.rpc`, `src.core.db` nor
+  `sqlalchemy`, directly or transitively (so a domain module cannot reach a wire schema that
+  pulls in the ORM either);
+- `services-dont-import-rpc`.
+
+`app-service` adds a `services-layers` contract because it alone has a multi-level hierarchy
+(`services.achievements` → `services.{dashboard,user}` → `services.{hero,map,statistics,workspace}`);
+it grandfathers three pre-existing imports by name so they cannot grow silently. A flat service
+needs nothing beyond the three above. `backend/.importlinter` covers the `shared` kernel
+(`shared.*` never imports a discipline module directly). A new service copies
+`stats-service/.importlinter`.
 
 ## What actually lives in `serve.py`
 

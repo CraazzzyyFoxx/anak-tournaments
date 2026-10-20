@@ -354,7 +354,7 @@
       "summary": "Recompute points"
     },
     "rpc.analytics.recalculate": {
-      "description": "Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job for a tournament (optionally scoped to given algorithm_ids), replacing the legacy synchronous recompute. Metered as `analytics.recalculate`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
+      "description": "Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job for a tournament (optionally scoped to given algorithm_ids). Metered as `analytics.recalculate`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
       "query_params": [
         {
           "name": "workspace_id",
@@ -4974,7 +4974,7 @@
       "summary": "Get workspace roster summary"
     },
     "rpc.balancer.players.upsert": {
-      "description": "Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Admits (or reuses) the workspace member a game identity denotes and returns it shaped exactly like a roster row. The body is `{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as the old `battle_tag`) are 422.",
+      "description": "Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Admits (or reuses) the workspace member a game identity denotes and returns it shaped exactly like a roster row. The body is `{discipline, identity: {provider, handle}, display_name?}`; `discipline` must be enabled for the workspace (422 `discipline_not_enabled`), `identity.provider` must be that discipline's identity provider (422 `identity.provider_mismatch`) and the handle must fit its grammar (422 with the provider's format code, e.g. `identity.riot.format`). Several distinct players carrying the handle is 409 `identity_conflict`; no player yet creates an unlinked one. Unknown keys (such as `battle_tag`) are 422.",
       "request": {
         "array": false,
         "ref": "balancer.WorkspacePlayerUpsert"
@@ -10984,7 +10984,7 @@
       "summary": "Set workspace subscription requirement"
     },
     "rpc.tournament.team_format.get": {
-      "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).",
+      "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection.",
       "response": {
         "array": false,
         "ref": "tournament.TeamFormatRead"
@@ -11020,7 +11020,7 @@
       "summary": "Upload team image"
     },
     "rpc.tournament.tournament_finish": {
-      "description": "Permission: superuser only. Toggles a tournament's legacy finished flag and returns it with stages.",
+      "description": "Permission: superuser only. Toggles a tournament's `is_finished` flag and returns it with stages.",
       "response": {
         "array": false,
         "ref": "tournament.TournamentRead"
@@ -12336,7 +12336,7 @@
       "type": "object"
     },
     "analytics.RoleRef": {
-      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "description": "``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.",
       "properties": {
         "dimension": {
           "maxLength": 32,
@@ -14670,7 +14670,7 @@
       "type": "object"
     },
     "app.CatalogLegacyRead": {
-      "description": "What an old ``overwatch.hero|map|gamemode`` id became (D84).",
+      "description": "What an old ``overwatch.hero|map|gamemode`` id became.",
       "properties": {
         "discipline": {
           "title": "Discipline",
@@ -18262,7 +18262,7 @@
       "type": "object"
     },
     "app.RoleRef": {
-      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "description": "``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.",
       "properties": {
         "dimension": {
           "maxLength": 32,
@@ -18297,7 +18297,7 @@
       "type": "object"
     },
     "app.RosterShapeRead": {
-      "description": "A team format's slots (D33). The frontend never recomputes them.",
+      "description": "A team format's slots. The frontend never recomputes them.",
       "properties": {
         "dimension": {
           "anyOf": [
@@ -18589,7 +18589,7 @@
       "type": "object"
     },
     "app.StreamVisibilityUpdate": {
-      "description": "Self-service veto on surfacing the owner's live stream on tournament pages.\n\nSeparate from ``SocialVisibilityUpdate``: that one governs whether a handle is\nshown on the public profile at all, this one only whether the live broadcast is\nsurfaced. Collapsing them is the bug this endpoint exists to fix.",
+      "description": "Self-service veto on surfacing the owner's live stream on tournament pages.\n\nSeparate from ``SocialVisibilityUpdate``: that one governs whether a handle is\nshown on the public profile at all, this one only whether the live broadcast is\nsurfaced.",
       "properties": {
         "visible": {
           "title": "Visible",
@@ -18755,7 +18755,7 @@
       "type": "object"
     },
     "app.TournamentReadiness": {
-      "description": "Living-checklist aggregate for one tournament (D13, \u00a77.1).\n\nField groups are masked by the caller's workspace permissions:\n``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates\nthe registration/pool/balance/draft fields \u2014 a missing group yields ``None``\nso the checklist renders \"no-access\" instead of zeros.",
+      "description": "Living-checklist aggregate for one tournament.\n\nField groups are masked by the caller's workspace permissions:\n``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates\nthe registration/pool/balance/draft fields \u2014 a missing group yields ``None``\nso the checklist renders \"no-access\" instead of zeros.",
       "properties": {
         "balance_exported_at": {
           "anyOf": [
@@ -19173,7 +19173,6 @@
       "type": "object"
     },
     "app.UserAdminUpdate": {
-      "description": "Schema for updating a user",
       "properties": {
         "name": {
           "anyOf": [
@@ -20059,7 +20058,6 @@
       "type": "object"
     },
     "app.UserCreate": {
-      "description": "Schema for creating a user",
       "properties": {
         "name": {
           "title": "Name",
@@ -22460,7 +22458,7 @@
       "type": "object"
     },
     "app.WorkspaceCustomDomainSet": {
-      "description": "Body for ``set_custom_domain``. Normalization/validation of the domain\nitself (FQDN shape, platform-zone rejection) happens in the service layer\nvia ``normalize_custom_domain`` so both this RPC and any future caller share\none source of truth for what counts as a valid custom domain.",
+      "description": "Body for ``set_custom_domain``. The domain itself (FQDN shape,\nplatform-zone rejection) is validated in the service layer by\n``normalize_custom_domain``.",
       "properties": {
         "custom_domain": {
           "maxLength": 255,
@@ -22476,7 +22474,7 @@
       "type": "object"
     },
     "app.WorkspaceDiscordGuildOption": {
-      "description": "One guild the caller administers, as reported by\n``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so\n``discord_guild_verify`` can be handed a snowflake the caller can actually\nprove \u2014 instead of a free-text field that only fails after the fact.",
+      "description": "One guild the caller administers, as reported by\n``rpc.identity.oauth_discord_guilds``. Feeds the settings guild picker, so\n``discord_guild_verify`` is handed a snowflake the caller can actually prove.",
       "properties": {
         "can_manage": {
           "title": "Can Manage",
@@ -24602,7 +24600,7 @@
             }
           ],
           "default": null,
-          "description": "Weights of open slots without a role constraint (D86)."
+          "description": "Weights of open slots without a role constraint."
         },
         "polish_max_passes": {
           "anyOf": [
@@ -24828,7 +24826,7 @@
     },
     "balancer.CustomGameBalanceRequest": {
       "additionalProperties": false,
-      "description": "What to balance. An empty body is the first lobby, as before there was a second.\n\n``scope=\"all\"`` reshuffles every lobby at once and needs ``lobby_count >= 2``.",
+      "description": "What to balance. An empty body is the first lobby.\n\n``scope=\"all\"`` reshuffles every lobby at once and needs ``lobby_count >= 2``.",
       "properties": {
         "lobby_index": {
           "default": 0,
@@ -26669,7 +26667,7 @@
       "type": "object"
     },
     "balancer.DraftSeedRequest": {
-      "description": "Who captains. Everything else about a player comes from their registration.\n\nThere is no manual variant any more: a draft player is a reference to a\nbalancer registration, so a seat with hand-typed roles and ranks could not\nbe resolved by the engine and would reintroduce exactly the second source of\ntruth this contract exists to remove.",
+      "description": "Who captains. Everything else about a player comes from their registration.\n\nA draft player is a reference to a balancer registration, so there is no\nmanual seat: hand-typed roles and ranks could not be resolved by the engine\nand would be a second source of truth.",
       "properties": {
         "captain_order": {
           "$ref": "#/components/schemas/balancer.DraftCaptainOrder",
@@ -28011,7 +28009,7 @@
       "type": "object"
     },
     "balancer.RoleRef": {
-      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "description": "``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.",
       "properties": {
         "dimension": {
           "maxLength": 32,
@@ -28114,7 +28112,7 @@
       "type": "object"
     },
     "balancer.RosterShapeRead": {
-      "description": "A team format's slots (D33). The frontend never recomputes them.",
+      "description": "A team format's slots. The frontend never recomputes them.",
       "properties": {
         "dimension": {
           "anyOf": [
@@ -28478,7 +28476,7 @@
       "type": "object"
     },
     "balancer.TournamentBalanceRequest": {
-      "description": "Balance a tournament's own pool. Carries no players on purpose.\n\nThe xv-1 input is built server-side from ``shared.services.roster`` -- the\nsame engine the draft reads -- so the caller cannot hand the algorithm a\ndifferent set of ranks than the draft sees. Use ``BalanceRequest`` /the\nmultipart upload only for a payload that is genuinely not a tournament pool.",
+      "description": "Balance a tournament's own pool. Carries no players on purpose.\n\nThe xv-1 input is built server-side from ``shared.services.roster`` -- the\nsame engine the draft reads -- so the caller cannot hand the algorithm a\ndifferent set of ranks than the draft sees. Use ``BalanceRequest`` or the\nmultipart upload only for a payload that is genuinely not a tournament pool.",
       "properties": {
         "config_overrides": {
           "anyOf": [
@@ -33527,7 +33525,7 @@
       "type": "object"
     },
     "stats.DiscordChannelUpsert": {
-      "description": "Schema for creating or updating a tournament Discord sync channel.\n\nchannel_id is a Discord snowflake (64-bit integer), accepted as a string to\navoid JavaScript float64 precision loss on the client side. The guild is not\nhere: it belongs to the workspace (``Workspace.discord_guild_id``) and was\nduplicated into every tournament row while being read by nobody.",
+      "description": "Schema for creating or updating a tournament Discord sync channel.\n\nchannel_id is a Discord snowflake (64-bit integer), accepted as a string to\navoid JavaScript float64 precision loss on the client side. The guild is not\nhere: it belongs to the workspace (``Workspace.discord_guild_id``).",
       "properties": {
         "channel_id": {
           "title": "Channel Id",
@@ -34369,7 +34367,7 @@
       "type": "object"
     },
     "stats.LogStatsRead": {
-      "description": "Scope-wide processing aggregate, computed in one SQL round trip.\n\nThe admin console used to derive these from the page it happened to be\nshowing, so \"Failed: 0\" only ever meant \"none on this page\".",
+      "description": "Scope-wide (not per-page) processing aggregate, computed in one SQL round trip.",
       "properties": {
         "avg_duration_seconds": {
           "anyOf": [
@@ -35535,7 +35533,7 @@
       "type": "object"
     },
     "stats.RoleRef": {
-      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "description": "``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.",
       "properties": {
         "dimension": {
           "maxLength": 32,
@@ -36534,7 +36532,7 @@
       "type": "object"
     },
     "tournament.AdminGameResultInput": {
-      "description": "Body for the admin game-result correction: the position's numbers as the\norganizer decides them, one line per live participation, plus the reason\nthat goes into the audit journal (a correction is never anonymous --\nspec \u00a76.5).",
+      "description": "Body for the admin game-result correction: the position's numbers as the\norganizer decides them, one line per live participation, plus the reason\nthat goes into the audit journal (a correction is never anonymous).",
       "properties": {
         "reason": {
           "maxLength": 500,
@@ -42106,7 +42104,6 @@
       "type": "object"
     },
     "tournament.EncounterCreate": {
-      "description": "Schema for creating an encounter",
       "properties": {
         "best_of": {
           "default": 3,
@@ -44145,7 +44142,7 @@
       "type": "object"
     },
     "tournament.EncounterUpdate": {
-      "description": "Schema for updating an encounter.\n\nSeats are not edited here: a seat changes hands through the slot swap,\nwhich retires the old participation instead of rewriting it, so the games\nit played stay attached to the row that played them (D55).",
+      "description": "Edit an encounter's own fields; seats change only through the slot swap.\n\nThe swap retires the outgoing participation instead of rewriting it, so the\ngames it played stay attached to the row that played them.",
       "properties": {
         "best_of": {
           "anyOf": [
@@ -46284,7 +46281,7 @@
       "type": "object"
     },
     "tournament.MergeGroupStagesRequest": {
-      "description": "Merge legacy one-group stages into one grouped stage.\n\n``source_stage_ids`` are removed after their stage_items and stage-scoped\nreferences are moved under the target stage from the route path.",
+      "description": "Merge one-group stages into one grouped stage.\n\n``source_stage_ids`` are removed after their stage_items and stage-scoped\nreferences are moved under the target stage named by the path.",
       "properties": {
         "source_stage_ids": {
           "items": {
@@ -46852,7 +46849,7 @@
       "type": "object"
     },
     "tournament.PickBanAdminAct": {
-      "description": "Body for the admin act-for-a-participation route: perform one step on\nbehalf of an absent captain. ``target_player_id`` names the opponent roster\nplayer a per-player ban is spent on (ruleset v2 target steps); ``null``\neverywhere else.",
+      "description": "Body for the admin act-for-a-participation route: perform one step on\nbehalf of an absent captain. ``target_player_id`` names the opponent roster\nplayer a per-player ban is spent on (target steps); ``null`` everywhere\nelse.",
       "properties": {
         "action": {
           "enum": [
@@ -46986,7 +46983,7 @@
       "type": "object"
     },
     "tournament.PickBanConfigSlotUpsert": {
-      "description": "One slot of a slot-mode upsert body. No ``position``: list order IS the\nplay order (same rationale as ``veto_admin.VetoConfigSlotUpsert``).",
+      "description": "One slot of a slot-mode upsert body. No ``position``: list order IS the\nplay order.",
       "properties": {
         "candidates": {
           "items": {
@@ -47015,7 +47012,7 @@
       "type": "object"
     },
     "tournament.PickBanConfigUpsert": {
-      "description": "Body for the generic pick-ban config upsert route (ruleset v2).",
+      "description": "Body for the generic pick-ban config upsert route.",
       "properties": {
         "first_ban_rotation": {
           "$ref": "#/components/schemas/tournament.FirstBanRotation",
@@ -47217,7 +47214,6 @@
       "type": "object"
     },
     "tournament.PlayerCreate": {
-      "description": "Schema for creating a player",
       "properties": {
         "is_newcomer": {
           "default": false,
@@ -47681,7 +47677,6 @@
       "type": "object"
     },
     "tournament.PlayerUpdate": {
-      "description": "Schema for updating a player",
       "properties": {
         "is_newcomer": {
           "anyOf": [
@@ -49104,7 +49099,7 @@
       "type": "object"
     },
     "tournament.RegistrationTeamAcceptRequest": {
-      "description": "Redeem an invite by token or by id.\n\nExactly one reference must be given. Accepting both would leave which one\nauthorizes the acceptance ambiguous \u2014 and since a link invite is bearer while a\ntargeted one is not, the ambiguity is a privilege question, not a cosmetic one.\n\n``registration`` is OPTIONAL because an invitee who already has a live\nregistration is a free agent *attaching*: the service reuses their existing row\nand ignores anything sent here, so demanding a payload would make them re-answer\na form they already filled. Required-but-ignored is what it used to be, and the\nclient expressed that by casting an empty object \u2014 a lie the type system had no\nway to catch.\n\nA genuinely new invitee who sends nothing is still rejected, by the registration\nform's own validation downstream. ``None`` rather than an empty default: a\nsubmission carries the ``form_version_id`` it answered, and there is no honest\nvalue to invent for someone who answered nothing.",
+      "description": "Redeem an invite by token or by id.\n\nExactly one reference must be given. Accepting both would leave which one\nauthorizes the acceptance ambiguous \u2014 and since a link invite is bearer while a\ntargeted one is not, the ambiguity is a privilege question, not a cosmetic one.\n\n``registration`` is OPTIONAL because an invitee who already has a live\nregistration is a free agent *attaching*: the service reuses their existing row\nand ignores anything sent here, so demanding a payload would make them re-answer\na form they already filled.\n\nA genuinely new invitee who sends nothing is still rejected, by the registration\nform's own validation downstream. ``None`` rather than an empty default: a\nsubmission carries the ``form_version_id`` it answered, and there is no honest\nvalue to invent for someone who answered nothing.",
       "properties": {
         "invite_id": {
           "anyOf": [
@@ -49189,7 +49184,7 @@
       "type": "object"
     },
     "tournament.RegistrationTeamBrief": {
-      "description": "The registered team a roster read carries inline.\n\nDeliberately not the full ``RegistrationTeamRead``: this rides in every row of\nthe public participants list, so it holds only what a team column and the\n\u00a712.5 status line need. In particular it carries **no invites** \u2014 a public\nroster must not leak who has been asked and declined.",
+      "description": "The registered team a roster read carries inline.\n\nDeliberately not the full ``RegistrationTeamRead``: this rides in every row of\nthe public participants list, so it holds only what a team column and the\nteam status line need. In particular it carries **no invites** \u2014 a public\nroster must not leak who has been asked and declined.",
       "properties": {
         "id": {
           "title": "Id",
@@ -49248,7 +49243,7 @@
       "type": "object"
     },
     "tournament.RegistrationTeamCreateRequest": {
-      "description": "Create a team and register the caller as its captain, in one call.\n\nThe captain is a member like any other (decision 5), so their own registration\npayload rides along and goes through the identical validation a solo entrant\ngets. Splitting this into \"create team\" then \"register captain\" would allow a\ncaptainless team to exist between the two calls.",
+      "description": "Create a team and register the caller as its captain, in one call.\n\nThe captain is a member like any other, so their own registration\npayload rides along and goes through the identical validation a solo entrant\ngets. Splitting this into \"create team\" then \"register captain\" would allow a\ncaptainless team to exist between the two calls.",
       "properties": {
         "name": {
           "maxLength": 255,
@@ -49298,7 +49293,7 @@
       "type": "object"
     },
     "tournament.RegistrationTeamInviteCreateRequest": {
-      "description": "Offer one roster slot.\n\n``target_registration_id`` addresses a free agent already registered for this\ntournament; omitting it produces a shareable link for someone with no account\nyet (decision 3). Both modes are one entity, so the slot accounting cannot\ndiverge between them.\n\nA REGISTRATION id, not an account id: the captain picks from this tournament's\nown free agents, so no global account search \u2014 and no new identity surface \u2014\nis needed. The server resolves the account behind it and stores that, because\nidentity is what an invite is bound to; a registration can be withdrawn and\nresubmitted underneath it.",
+      "description": "Offer one roster slot.\n\n``target_registration_id`` addresses a free agent already registered for this\ntournament; omitting it produces a shareable link for someone with no account\nyet. Both modes are one entity, so the slot accounting cannot\ndiverge between them.\n\nA REGISTRATION id, not an account id: the captain picks from this tournament's\nown free agents, so no global account search \u2014 and no new identity surface \u2014\nis needed. The server resolves the account behind it and stores that, because\nidentity is what an invite is bound to; a registration can be withdrawn and\nresubmitted underneath it.",
       "properties": {
         "is_substitute": {
           "default": false,
@@ -49428,7 +49423,7 @@
       "type": "object"
     },
     "tournament.RegistrationTeamInviteHistoryResponse": {
-      "description": "The history plus the cap standing it explains.\n\nThey ship together because apart they are a riddle: the cap counts every invite\never issued while only pending ones were ever visible, so a captain refused at\nthe ceiling had no way to see where it went.",
+      "description": "The history plus the cap standing it explains.\n\nThey ship together because the cap counts every invite ever issued while the\nlive list shows only pending ones; without the history a captain refused at\nthe ceiling cannot see where the cap went.",
       "properties": {
         "cap_limit": {
           "default": 0,
@@ -50227,7 +50222,7 @@
       "type": "object"
     },
     "tournament.RoleRef": {
-      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "description": "``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.",
       "properties": {
         "dimension": {
           "maxLength": 32,
@@ -50314,7 +50309,7 @@
       "type": "object"
     },
     "tournament.RosterShapeRead": {
-      "description": "A team format's slots (D33). The frontend never recomputes them.",
+      "description": "A team format's slots. The frontend never recomputes them.",
       "properties": {
         "dimension": {
           "anyOf": [
@@ -50382,7 +50377,7 @@
     },
     "tournament.ScoringColumnSettings": {
       "additionalProperties": false,
-      "description": "One value a stage's games record per team (plan \u00a73.1).",
+      "description": "One value a stage's games record per team.",
       "properties": {
         "better": {
           "default": "higher",
@@ -51789,7 +51784,7 @@
     },
     "tournament.StageScoring": {
       "additionalProperties": false,
-      "description": "How a stage scores, at all three levels (plan \u00a75, D51).\n\n``win``/``draw``/``loss`` are level 3: what one encounter's result pays in\nthe stage table; ``None`` = the tournament's points. The rest is the\n``encounter.scoring_rule`` every encounter of the stage is played and\nranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the\norganizer's own columns. It replaced the ``ffa_scoring`` block: once a duel\nhas a rule row too, \"ffa\" is no longer what the setting is about.\n\nEvery rule field is nullable and means \"the preset's default\", the way\n``ranking_preset`` does: the preset itself defaults to the one the stage\nTYPE implies, which only the service knows.",
+      "description": "How a stage scores, at all three levels.\n\n``win``/``draw``/``loss`` are level 3: what one encounter's result pays in\nthe stage table; ``None`` = the tournament's points. The rest is the\n``encounter.scoring_rule`` every encounter of the stage is played and\nranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the\norganizer's own columns.\n\nEvery rule field is nullable and means \"the preset's default\", the way\n``ranking_preset`` does: the preset itself defaults to the one the stage\nTYPE implies, which only the service knows.",
       "properties": {
         "columns": {
           "anyOf": [
@@ -52568,7 +52563,6 @@
       "type": "object"
     },
     "tournament.StandingUpdate": {
-      "description": "Schema for updating a standing",
       "properties": {
         "buchholz": {
           "anyOf": [
@@ -53126,7 +53120,6 @@
       "type": "object"
     },
     "tournament.TeamCreate": {
-      "description": "Schema for creating a team",
       "properties": {
         "balancer_name": {
           "anyOf": [
@@ -53820,7 +53813,6 @@
       "type": "object"
     },
     "tournament.TeamUpdate": {
-      "description": "Schema for updating a team",
       "properties": {
         "balancer_name": {
           "anyOf": [
@@ -54118,7 +54110,6 @@
       "type": "object"
     },
     "tournament.TournamentCreate": {
-      "description": "Schema for creating a tournament",
       "properties": {
         "allow_late_registration": {
           "default": false,
@@ -54799,7 +54790,7 @@
           "type": "integer"
         },
         "identity_provider": {
-          "description": "The discipline's player identity provider (D90).",
+          "description": "The discipline's player identity provider.",
           "readOnly": true,
           "title": "Identity Provider",
           "type": "string"
@@ -55030,7 +55021,7 @@
       "type": "object"
     },
     "tournament.TournamentScheduleSet": {
-      "description": "Schema for replacing a tournament's phase schedule (full replace).",
+      "description": "A tournament's whole phase schedule; replaces the stored one.",
       "properties": {
         "schedule": {
           "items": {
@@ -55101,7 +55092,6 @@
       "type": "string"
     },
     "tournament.TournamentStatusTransition": {
-      "description": "Schema for transitioning tournament status",
       "properties": {
         "force": {
           "default": false,
@@ -55119,7 +55109,6 @@
       "type": "object"
     },
     "tournament.TournamentUpdate": {
-      "description": "Schema for updating a tournament",
       "properties": {
         "allow_late_registration": {
           "anyOf": [
