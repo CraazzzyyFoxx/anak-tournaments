@@ -4,17 +4,22 @@
 // is a conflicting selection to name, not an Overwatch hero to relabel or rank.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
+import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { catalogEntity } from "@/test/catalog";
+import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import { navigation } from "@/test/url-navigation";
 import { PillPick } from "@/test/pill-pick";
 
+import HeroesComparePage from "../page";
 import HeroLeaderboardContent from "./HeroLeaderboardContent";
 
 declare global {
@@ -29,6 +34,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
+// The server's view of the visitor: no saved game (all games), League of Legends picked last.
+vi.mock("@/lib/site/tenant-host", () => ({
+  resolveStatsScope: async () => "all",
+  resolveServerDisciplineScope: async () => ({ stored: "all", lastGame: "lol", axis: "all", hostLockedWorkspaceId: null })
+}));
 // Real installed-game fixtures (descriptors + metadata): the comparison slots resolve the browsed game's module.
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 vi.mock("@/services/catalog.service", () => ({
@@ -64,6 +74,11 @@ async function settleUntil(done: () => boolean, deadline = Date.now() + 4000) {
 
 let client: QueryClient;
 
+const GAMES = [OW_METADATA.discipline, LOL_METADATA.discipline];
+
+/** The server render's inputs for a visitor with no saved game. */
+const INITIAL: GameScopeInit = { stored: "all", lastGame: null, axis: "all", hostLockedWorkspaceId: null, disciplines: GAMES };
+
 async function mount(url: string, keepClient = false) {
   navigation.reset(url);
   if (!keepClient) client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
@@ -71,7 +86,7 @@ async function mount(url: string, keepClient = false) {
     root.render(
       <NextIntlClientProvider locale="en" messages={messages}>
         <QueryClientProvider client={client}>
-          <HeroLeaderboardContent scope="all" />
+          <HeroLeaderboardContent scope="all" initial={INITIAL} />
           <PillPick code="lol" />
         </QueryClientProvider>
       </NextIntlClientProvider>
@@ -232,5 +247,43 @@ describe("hero leaderboard selection", () => {
       expect(mocks.getEntity.mock.calls.length).toBeGreaterThan(callsBefore);
       expect(container.textContent).not.toContain("Could not check that hero");
     });
+  });
+});
+
+describe("the server render", () => {
+  it("draws the game tabs under all games, and the browser hydrates it without a mismatch", async () => {
+    navigation.reset("/users/heroes-compare");
+    const page = await HeroesComparePage();
+    // The same tree on both sides; only the query client differs, as one request's and the browser's do.
+    const tree = (queryClient: QueryClient) => (
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QueryClientProvider client={queryClient}>{page}</QueryClientProvider>
+      </NextIntlClientProvider>
+    );
+    const html = renderToString(tree(new QueryClient()));
+    expect(html).toContain('role="tablist"');
+
+    // The browser already holds the area's games (the header read them) when the page's boundary hydrates, and its
+    // store carries the visitor's cookies.
+    client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
+    client.setQueryData(disciplineQueryKeys.list("all"), GAMES);
+    useWorkspaceStore.setState({ lastGame: "lol" });
+    const host = document.body.appendChild(document.createElement("div"));
+    host.innerHTML = html;
+    const recoverable: unknown[] = [];
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    let hydrated: Root | undefined;
+    await act(async () => {
+      hydrated = hydrateRoot(host, tree(client), { onRecoverableError: (error) => void recoverable.push(error) });
+    });
+    await settle();
+    const mismatches = errors.mock.calls.filter((call) => String(call[0]).toLowerCase().includes("hydrat"));
+    errors.mockRestore();
+
+    expect(recoverable).toEqual([]);
+    expect(mismatches).toEqual([]);
+    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("League of Legends");
+    await act(async () => hydrated?.unmount());
+    host.remove();
   });
 });

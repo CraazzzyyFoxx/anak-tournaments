@@ -18,6 +18,7 @@ import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { isDivisionGridRequired } from "@/lib/api/error";
+import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 const colorOf = (entity: { attrs: Record<string, unknown> } | undefined) =>
@@ -27,11 +28,12 @@ const imageOf = (entity: { image_path: string | null } | undefined) => entity?.i
 /** The URL ids and filters of one game: a tab or a pill pick of another game leaves them behind (spec §4.4, R5). */
 const COMPARE_GAME_PARAMS = ["role", "div_min", "div_max", "tournament_id", "left_hero_id", "right_hero_id", "map_id"];
 
-const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const PageContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: GameScopeInit }>) => {
   const t = useTranslations();
   const compareParams = useUserCompareSearchParams();
   // A single page (spec §4.3): the scope's game, else `?discipline=` / the last game / the first game with local tabs.
-  const gameScope = useGameScope({ pageClass: "single" });
+  // The server's inputs drive the first render, so the tabs it draws are the ones the browser hydrates.
+  const gameScope = useGameScope({ pageClass: "single", initial });
   useGameBoundParams(COMPARE_GAME_PARAMS);
   const discipline = gameScope.game;
   const roleMetadata = useDisciplineMetadata(gameScope.axis, discipline);
@@ -239,9 +241,9 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   );
 };
 
-const CompareClient = ({ scope }: Readonly<{ scope: StatsScope }>) => (
+const CompareClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: GameScopeInit }>) => (
   <Suspense fallback={null}>
-    <PageContent scope={scope} />
+    <PageContent scope={scope} initial={initial} />
   </Suspense>
 );
 

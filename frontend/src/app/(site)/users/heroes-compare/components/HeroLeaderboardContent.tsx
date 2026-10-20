@@ -19,6 +19,7 @@ import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useGameScope } from "@/hooks/useGameScope";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
+import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -35,7 +36,7 @@ const HERO_GAME_PARAMS = PAGE_PARAMS.filter((param) => param !== "discipline");
  * catalog and owns the tournament scope; the game's module reads and draws the comparison (`characterCompare`,
  * `characterCompareSummary` profile slots). A game without a renderer is told so, and nothing is read for it.
  */
-const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
+const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: GameScopeInit }>) => {
   const t = useTranslations();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -58,7 +59,8 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     router.replace(`${pathname}?${params.toString()}`);
   };
 
-  const gameScope = useGameScope({ pageClass: "single" });
+  // The server's inputs drive the first render, so the tabs it draws are the ones the browser hydrates.
+  const gameScope = useGameScope({ pageClass: "single", initial });
   useGameBoundParams(HERO_GAME_PARAMS);
   const discipline = gameScope.game;
   const heroesQuery = useCatalogEntities(discipline, "character");

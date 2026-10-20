@@ -50,6 +50,8 @@ function tournament(id: number, discipline: string, name: string): Tournament {
 }
 
 const POOL = [tournament(1, "overwatch", "Spring Cup"), tournament(2, "lol", "Rift Cup")];
+/** Another community's tournament: a read without a workspace returns it too. */
+const ELSEWHERE = tournament(3, "overwatch", "Other Community Cup");
 
 let root: Root;
 let container: HTMLDivElement;
@@ -84,8 +86,10 @@ const rowText = (name: string) =>
 
 beforeEach(() => {
   viewport.mobile = false;
-  getAll.mockReset().mockImplementation(async (_isLeague: unknown, _workspace: unknown, discipline?: string | null) => {
-    const results = POOL.filter((entry) => !discipline || entry.discipline === discipline);
+  getAll.mockReset().mockImplementation(async (_isLeague: unknown, workspace?: number | null, discipline?: string | null) => {
+    const results = (workspace === 1 ? POOL : [...POOL, ELSEWHERE]).filter(
+      (entry) => !discipline || entry.discipline === discipline
+    );
     return { results, total: results.length, page: 1, per_page: -1 };
   });
   useWorkspaceStore.setState({
@@ -110,7 +114,7 @@ describe("admin tournaments list across games", () => {
   it("lists every game's tournaments under all games, with a Game column naming each row's game", async () => {
     await mount("/admin/tournaments");
 
-    expect(getAll).toHaveBeenCalledWith(null, undefined, null);
+    expect(getAll).toHaveBeenCalledWith(null, 1, null);
     expect(headers().some((text) => text.includes(en.common.discipline.column))).toBe(true);
     expect(rowText("Rift Cup")).toContain("League of Legends");
     expect(rowText("Spring Cup")).toContain("Overwatch");
@@ -119,7 +123,7 @@ describe("admin tournaments list across games", () => {
   it("asks the server for one game's tournaments under a game, without the column", async () => {
     await mount("/admin/tournaments?discipline=lol");
 
-    expect(getAll).toHaveBeenLastCalledWith(null, undefined, "lol");
+    expect(getAll).toHaveBeenLastCalledWith(null, 1, "lol");
     expect(headers().some((text) => text.includes(en.common.discipline.column))).toBe(false);
     expect(rowText("Rift Cup")).toBeDefined();
     expect(rowText("Spring Cup")).toBeUndefined();
@@ -138,7 +142,7 @@ describe("admin tournaments list across games", () => {
     await settle();
 
     expect(navigation.current()).toBe("/admin/tournaments");
-    expect(getAll).toHaveBeenCalledWith(null, undefined, null);
+    expect(getAll).toHaveBeenCalledWith(null, 1, null);
     expect(rowText("Rift Cup")).toContain("League of Legends");
   });
 
@@ -162,5 +166,18 @@ describe("admin tournaments list across games", () => {
     expect(rift).toContain("League of Legends");
     expect(rift).toContain(en.common.statusBadge.registration);
     expect(cards.find((text) => text.includes("Spring Cup"))).toContain("Overwatch");
+  });
+
+  it("reads nothing on a first visit until the community is known, then reads that community's list once", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: null });
+    await mount("/admin/tournaments");
+    expect(getAll).not.toHaveBeenCalled();
+
+    await act(async () => useWorkspaceStore.setState({ currentWorkspaceId: 1 }));
+    await settle();
+
+    expect(getAll.mock.calls).toEqual([[null, 1, null]]);
+    expect(rowText("Spring Cup")).toBeDefined();
+    expect(rowText("Other Community Cup")).toBeUndefined();
   });
 });

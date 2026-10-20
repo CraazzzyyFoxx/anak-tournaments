@@ -108,7 +108,7 @@ export function EncountersBrowser({
     : parseTournamentQueryParam(searchParams?.get(TOURNAMENT_QUERY_PARAM) ?? null);
   const scopeTournamentId = tournamentId ?? chipTournamentId;
 
-  const scope = useEncounterScope({ tournamentId, scopeTournamentId });
+  const scope = useEncounterScope({ tournamentId, scopeTournamentId, workspaceId });
   const { stages, teams } = scope;
 
   const defs = useMemo(() => {
@@ -147,7 +147,8 @@ export function EncountersBrowser({
   const form = useEncounterForm({ scopeTournamentId, stages, onSaved: invalidate });
   const formScope = useEncounterScope({
     tournamentId: form.tournamentId,
-    scopeTournamentId: form.tournamentId
+    scopeTournamentId: form.tournamentId,
+    workspaceId
   });
 
   const deleteMutation = useMutation({
@@ -267,6 +268,7 @@ export function EncountersBrowser({
           }}
           queryKey={(page, search, pageSize, sortField, sortDir) => [
             "encounters",
+            workspaceId,
             scopeTournamentId,
             page,
             search,
@@ -284,7 +286,7 @@ export function EncountersBrowser({
               pageSize,
               sortField,
               sortDir,
-              undefined,
+              workspaceId,
               {
                 stage_id: stageFilter ? Number(stageFilter) : null,
                 stage_item_id: groupFilter ? Number(groupFilter) : null,

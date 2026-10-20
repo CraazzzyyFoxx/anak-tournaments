@@ -20,6 +20,7 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { scoreLine } from "@/lib/encounter/detail";
@@ -89,8 +90,8 @@ export function ParsedMatchesBrowser({
   const mapsQuery = useCatalogEntities(discipline, "map", { enabled: workspaceId != null });
 
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.list(),
-    queryFn: () => tournamentService.getAll(null),
+    queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, workspaceId),
     enabled: workspaceId != null && tournamentId == null
   });
 

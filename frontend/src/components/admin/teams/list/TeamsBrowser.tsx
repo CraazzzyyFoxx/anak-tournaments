@@ -20,12 +20,12 @@ import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import teamService from "@/services/team.service";
 import tournamentService from "@/services/tournament.service";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Team } from "@/types/team.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -47,11 +47,13 @@ const PAGE_SIZE = 15;
  * A multi list (spec §6.9): `discipline: null` is every game's teams with a "Game" column; a code is that game's
  * teams, filtered on the server through the team's tournament.
  */
-export function TeamsBrowser({ discipline }: Readonly<{ discipline: string | null }>) {
+export function TeamsBrowser({
+  workspaceId,
+  discipline
+}: Readonly<{ workspaceId: number; discipline: string | null }>) {
   const t = useTranslations("adminPeople.teams");
   const tGame = useTranslations("common.discipline");
   const { canAccessPermission } = usePermissions();
-  const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const queryClient = useQueryClient();
   // `id` is the inspector, not a filter: opening a row must not drop the page
   // the row sits on, so nothing resets here.
@@ -66,8 +68,8 @@ export function TeamsBrowser({ discipline }: Readonly<{ discipline: string | nul
   const [pendingDelete, setPendingDelete] = useState<Team | null>(null);
 
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.list(),
-    queryFn: () => tournamentService.getAll(null)
+    queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, workspaceId)
   });
 
   // The tournament chip is one game's (spec §6.2): under "all games" it is hidden and `?tournament=` is ignored;
@@ -177,6 +179,7 @@ export function TeamsBrowser({ discipline }: Readonly<{ discipline: string | nul
             )}
             queryKey={(page, search, pageSize, sortField, sortDir) => [
               "teams",
+              workspaceId,
               selectedTournamentId,
               page,
               search,
@@ -187,6 +190,7 @@ export function TeamsBrowser({ discipline }: Readonly<{ discipline: string | nul
             ]}
             queryFn={(page, search, pageSize, sortField, sortDir) =>
               teamService.getAll({
+                workspaceId,
                 tournamentId: selectedTournamentId,
                 page,
                 perPage: pageSize,

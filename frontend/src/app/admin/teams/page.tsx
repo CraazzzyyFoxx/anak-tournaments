@@ -42,7 +42,14 @@ export default function TeamsPage() {
   return (
     <div className="space-y-4">
       <AdminPageHeader title={t("title")} />
-      <GameScopeGate scope={scope}>{(game) => <TeamsBrowser discipline={game} />}</GameScopeGate>
+      {workspaceId === null ? (
+        // The rosters are the workspace's: a first visit learns its community after mounting, and reads nothing before.
+        <Skeleton className="h-64 w-full rounded-xl" />
+      ) : (
+        <GameScopeGate scope={scope}>
+          {(game) => <TeamsBrowser workspaceId={workspaceId} discipline={game} />}
+        </GameScopeGate>
+      )}
     </div>
   );
 }

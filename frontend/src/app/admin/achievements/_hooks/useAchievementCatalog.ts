@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import adminService from "@/services/admin.service";
 import tournamentService from "@/services/tournament.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 /**
@@ -26,9 +27,11 @@ export function useAchievementCatalog({
   /** An open evaluate dialog needs every rule, not just the current page. */
   pickersOpen: boolean;
 }) {
+  // The workspace's tournaments: nothing is read until the workspace is known.
   const { data: tournaments } = useQuery({
-    queryKey: tournamentQueryKeys.list(),
-    queryFn: () => tournamentService.getAll(null),
+    queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, workspaceId),
+    enabled: workspaceId !== null,
   });
 
   const { data: overrides } = useQuery({

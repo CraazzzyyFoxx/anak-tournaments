@@ -57,11 +57,12 @@ export function TournamentsBrowser() {
 
   const [pendingDelete, setPendingDelete] = useState<Tournament | null>(null);
 
-  // Every game of the workspace under "all games", one game's under a game (spec §6.9); the server filters.
+  // Every game of the workspace under "all games", one game's under a game (spec §6.9); the server filters. The list is
+  // the workspace's: a first visit learns its community after mounting, and nothing is read until then.
   const gameScope = useGameScope({ axis: currentWorkspaceId ?? "all" });
   const discipline = gameScope.game;
   const gameKind = gameScope.resolution?.game.kind;
-  const ready = gameKind === "all" || gameKind === "game";
+  const ready = currentWorkspaceId !== null && (gameKind === "all" || gameKind === "game");
   const descriptors = useGameDescriptors();
   const games =
     gameScope.resolution !== null && showsGameMarks(gameScope.resolution, gameScope.games ?? [])
@@ -69,8 +70,8 @@ export function TournamentsBrowser() {
       : undefined;
 
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.adminList(discipline ?? ALL_DISCIPLINES),
-    queryFn: () => tournamentService.getAll(null, undefined, discipline),
+    queryKey: tournamentQueryKeys.adminList(currentWorkspaceId, discipline ?? ALL_DISCIPLINES),
+    queryFn: () => tournamentService.getAll(null, currentWorkspaceId, discipline),
     enabled: ready
   });
   const tournaments = useMemo(() => tournamentsQuery.data?.results ?? [], [tournamentsQuery.data]);

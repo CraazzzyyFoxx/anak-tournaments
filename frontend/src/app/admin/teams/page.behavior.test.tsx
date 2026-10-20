@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Player, Team } from "@/types/team.types";
 import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 import TeamsPage from "./page";
 
 declare global {
@@ -35,10 +36,6 @@ vi.mock("@/hooks/usePermissions", () => ({
     isLoaded: true,
     isSuperuser: false
   })
-}));
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) =>
-    selector({ currentWorkspaceId: 1 })
 }));
 vi.mock("@/services/team.service", () => ({
   default: { getAll: (...args: unknown[]) => getTeams(...args) }
@@ -223,6 +220,7 @@ function setViewportWidth(width: number) {
 }
 
 beforeEach(() => {
+  useWorkspaceStore.setState({ currentWorkspaceId: 1 });
   scopeGame.value = "overwatch";
   permitted = true;
   replace.mockClear();
@@ -390,5 +388,27 @@ describe("/admin/teams", () => {
 
     expect(getTeams).toHaveBeenLastCalledWith(expect.objectContaining({ discipline: "lol" }));
     expect(Array.from(container.querySelectorAll("th")).map((cell) => cell.textContent?.trim())).not.toContain("Game");
+  });
+
+  it("reads nothing on a first visit until the community is known, then reads that community's teams once", async () => {
+    useWorkspaceStore.setState({ currentWorkspaceId: null });
+    // Without a workspace the server answers with every community's rosters.
+    getTeams.mockImplementation(async ({ workspaceId }: { workspaceId?: number }) => ({
+      results: workspaceId === 1 ? [team()] : [team(), team({ id: 77, name: "Other Community Squad", tournament_id: 9 })],
+      total: workspaceId === 1 ? 1 : 2,
+      page: 1,
+      per_page: 15
+    }));
+    const container = await mount();
+    expect(getTeams).not.toHaveBeenCalled();
+    expect(getTournaments).not.toHaveBeenCalled();
+
+    await act(async () => useWorkspaceStore.setState({ currentWorkspaceId: 1 }));
+    await waitFor(() => container.textContent?.includes("Wombat Warriors"), "the team row");
+
+    expect(getTeams).toHaveBeenCalledTimes(1);
+    expect(getTeams).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 1 }));
+    expect(getTournaments.mock.calls).toEqual([[null, 1]]);
+    expect(container.textContent).not.toContain("Other Community Squad");
   });
 });
