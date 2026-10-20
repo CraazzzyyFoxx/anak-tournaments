@@ -81,7 +81,8 @@ the frontend omits `discipline` under "all games", which the previous backends r
   card's mark narrows the scope), "Турниры", "Матчи", "Ачивки" across games with marks (league history groups never
   merge two games); every other tab reads one game chosen by local tabs (last game if played, else the main game) from
   that game's own profile. Under a game: that game's card, from the profile bound to it; a player who never played it
-  gets "{player} не играл в {game}" with "Показать все игры".
+  gets "{player} не играл в {game}" with "Показать все игры". A game change on the profile (its tabs or the pill) drops
+  the tournament it pinned (`tournamentId`, `achievementTournamentId`, `selectedTournamentId`).
 * A community with one enabled game behaves as that game everywhere: no marks, no column, no tabs.
 
 ## 3. Migration `regtpl01`
@@ -102,7 +103,7 @@ Pinned by `backend/tests/test_regtpl01_upgrade.py`.
 
 ## 5. Verification
 
-Final matrix on the merge commit:
+Final matrix on the merged head (`13dec0e81`: develop `5ff718ff0` merged in as `d246e7d71`):
 
 * backend (cwd `backend`): `uv run bash scripts/lint.sh`; `bash scripts/export_openapi_schemas.sh --check`;
   `uv run python scripts/export_ow_ladder.py --check`; `uv run python scripts/export_erd.py --check`;
@@ -113,5 +114,60 @@ Final matrix on the merge commit:
 * gateway (cwd `gateway`): `go test ./...`.
 * frontend (cwd `frontend`): `bun run typecheck`, `bun run lint`, `bun run lint:zones`, `bunx vitest run`,
   `bun run build`.
-* browser (spec §11, local dev stack): `make dev-up && make dev-health`; the pill, tenant, mobile, multi, single and
-  owner checks at desktop width and at 375 px; `make dev-down`.
+* browser (spec §11): a throwaway local stack (own Postgres database, Redis, S3 and RabbitMQ; `next dev --webpack`)
+  instead of `make dev-up`; the pill, tenant, mobile, multi, single and owner checks at 1440 px and 375 px.
+  Screenshots were kept locally, not committed.
+
+Results:
+
+* backend gates: `lint.sh`, OpenAPI, ERD, RPC docs, import-linter and `check_discipline_literals.py` ok.
+  `export_ow_ladder.py --check` reports a byte mismatch only (CRLF checkout on Windows; regenerating gives no content
+  diff).
+* backend shared: 1689 passed, 12 skipped.
+* backend app-service: 883 passed, 3 skipped, 95 failed — the same 95 fail before the merge and on develop's own
+  fixtures: seeded user ids 79/461/583/599 absent from the ephemeral test database, searches for seeded names,
+  `models.Player.div` in `test_user.py`, `test_get_champions`, `test_achievements.py`.
+* backend stats-service: 533 passed, 34 skipped, 2 failed — `test_stats_derived_parity.py` and
+  `test_stats_native_isolation.py` expect no active impact baseline and find one left by an earlier test in the shared
+  database; both pass alone.
+* backend balancer-service: 1060 passed, 3 skipped, 1 failed (pre-existing
+  `test_admin_summary.py::TournamentSummaryRpcTests::test_summary_returns_hidden_tournament_for_team_read`).
+* backend tournament-service: 1914 passed, 29 skipped.
+* backend analytics-service: 287 passed; discord-service: 122 passed; stream-service: 107 passed.
+* backend identity-service: 320 passed, 1 failed, 5 errors — pre-existing (the service is unchanged by this branch;
+  same result alone).
+* backend root `tests`: on the merged head only the files develop changed and the migration-chain tests
+  (`test_messaging_config.py`, `test_outbox.py`, `test_repository_boundaries.py`, `test_regtpl01_upgrade.py`,
+  `test_achievement06_upgrade.py`): 15 passed. The full root suite before the merge (without the two stats01 receipt
+  files, which stall for 45+ minutes): 568 passed, 2 failed — `test_enclayer01_upgrade.py` (pre-existing) and
+  `test_repository_boundaries.py` (fixed in `2c8329aff`).
+* gateway: ok.
+* frontend: typecheck ok; lint 0 errors (46 warnings); lint:zones: develop's Z4 finding only; vitest 475 files /
+  4020 tests, 1 failed (`nativeMatch.behavior.test.tsx`, a timeout under load; 11/11 alone); `bun run build`
+  (Turbopack) refuses this worktree's linked `node_modules`, `bunx next build --webpack` compiles (75 static pages).
+
+Browser matrix:
+
+* a. site pill, `/tournaments` — 1440 PASS, 375 PASS.
+* b. admin pill, `/admin`, `/admin/tournaments`, `/admin/content/heroes` — 1440 PASS, 375 PASS.
+* c. tenant host, `/tournaments` on a two-game and a one-game tenant — 1440 PASS, 375 PASS.
+* d. mobile trigger and popover, `/tournaments` — 375 PASS (desktop counterpart 1440 PASS).
+* e. multi `/tournaments`: saved game, all games, explicit `?discipline=lol` — 1440 PASS, 375 PASS.
+* f. single `/users/compare` — 1440 PASS, 375 PASS; the hydration error under all games (D1) was fixed in
+  `289b64cb4` and re-checked PASS.
+* g. owner `/tournaments/<slug>` of another game: locked pill, saved scope unchanged — 1440 PASS, 375 PASS.
+* h. admin multi lists `/admin/ranks`, `/admin/tournaments` — 1440 PASS, 375 PASS; a first visit without a community
+  cookie listed every community's rows (D2), fixed in `289b64cb4`, re-checked PASS on `/admin/tournaments` and
+  `/admin/teams`.
+* profile `/users/<slug>` under all games — the game cards' and role split's hydration errors (D3, D4) were fixed in
+  `77f5995f2`, re-checked PASS at 1440 and 375; all six tabs PASS.
+* final-review fixes — streamed `/encounters` rows name their game in the server HTML; a pill pick drops the
+  profile's `achievementTournamentId`; achievement-rule and sub-role creation default to the saved scope's game under
+  `?discipline=lol`; the profile's last-tournament card names its role on first paint: PASS.
+* profile game tab after pinning a tournament (D5, fixed in `57e9dead6`) and pill picks on server-rendered pages
+  (`/users/<slug>`, `/statistics`, `/workspace/<slug>`, `/`, `/tournaments`; D6, fixed in `13dec0e81`) render the new
+  scope without a reload: PASS on the merged head.
+* develop's features on the merged head — reordering or enabling games in General updates both pills and the local
+  tabs without a reload; `/balancer/mix` marks each mix's game; a mix page locks the pill to its game: PASS.
+* hydration and console sweep — 22 site URLs and 9 admin URLs on the merged head: no hydration error; the only
+  console errors are 404s for missing seed art.
