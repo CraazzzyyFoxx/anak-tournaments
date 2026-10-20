@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Tournament, TournamentFacets, TournamentStatus } from "@/types/tournament.types";
+import { useWorkspaceStore } from "@/stores/workspace.store";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -40,8 +41,8 @@ const getOverallStatistics = vi.fn();
 vi.mock("@/services/discipline.service", () => ({
   default: {
     list: async () => [
-      { code: "overwatch", name: "Overwatch", enabled: true },
-      { code: "lol", name: "League of Legends", enabled: true }
+      { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
+      { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true }
     ]
   }
 }));
@@ -56,17 +57,6 @@ vi.mock("@/services/encounter.service", () => ({
 }));
 vi.mock("@/services/statistics.service", () => ({
   default: { getOverallStatistics: (...args: unknown[]) => getOverallStatistics(...args) }
-}));
-vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({
-      currentWorkspaceId: 1,
-      workspaces: [{ id: 1, name: "OWT" }],
-      statsScope: "workspace",
-      hostLockedWorkspaceId: null,
-      gameScope: "all",
-      setGameScope: () => {}
-    })
 }));
 
 /**
@@ -282,6 +272,14 @@ function urlsWritten() {
 }
 
 beforeEach(() => {
+  useWorkspaceStore.setState({
+    currentWorkspaceId: 1,
+    workspaces: [{ id: 1, name: "OWT", disciplines_enabled: ["overwatch", "lol"] }] as never,
+    statsScope: "workspace",
+    hostLockedWorkspaceId: null,
+    gameScope: "all",
+    lastGame: null
+  });
   replace.mockClear();
   listTournaments.mockReset().mockImplementation(
     async ({ page = 1, status }: { page?: number; status?: TournamentStatus }) => {
@@ -336,7 +334,7 @@ describe("tournaments list", () => {
 
     await click(radio(en.tournamentsList.view.list));
 
-    expect(urlsWritten()).toContain("/tournaments?discipline=all&view=list");
+    expect(urlsWritten()).toContain("/tournaments?view=list");
     expect(container.querySelector("table.tn")).toBeTruthy();
     // The list view ships BOTH layouts and lets the viewport pick: the table is
     // desktop-only (two of its six columns fit on a phone), the grid is the
@@ -370,7 +368,7 @@ describe("tournaments list", () => {
 
     await click(chip(en.common.statusBadge.live));
 
-    expect(urlsWritten()).toContain("/tournaments?discipline=all&status=live");
+    expect(urlsWritten()).toContain("/tournaments?status=live");
     // 2, not 26: the pages fetched under the previous filter belong to a
     // different list and must not carry over.
     expect(cards(container)).toHaveLength(2);
@@ -406,7 +404,7 @@ describe("tournaments list", () => {
     expect(listTournaments.mock.calls.length).toBe(before + 1);
     expect(getFacets.mock.calls.length).toBe(facetsBefore + 1);
     expect(listCalls().at(-1)).toMatchObject({ query: "spring", page: 1 });
-    expect(urlsWritten()).toContain("/tournaments?discipline=all&q=spring");
+    expect(urlsWritten()).toContain("/tournaments?q=spring");
   });
 
   it("counts the chips from the facets, not from the rows it has loaded", async () => {
@@ -465,9 +463,11 @@ describe("tournaments list", () => {
     // The platform totals have no per-game reader: a game's page states none rather than another scope's.
     expect(getOverallStatistics).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain(en.common.playersLabel);
+    // One game on screen: no card repeats it.
+    expect(cards(container)[0]?.textContent).not.toContain("Overwatch");
   });
 
-  it("reads every game on the all-games directory", async () => {
+  it("reads an old ?discipline=all link as no parameter: every game", async () => {
     await mount("?discipline=all");
 
     expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
@@ -481,5 +481,31 @@ describe("tournaments list", () => {
     expect(getFacets).not.toHaveBeenCalled();
     expect(container.textContent).toContain("starcraft");
     expect(urlsWritten()).toEqual([]);
+  });
+
+  it("marks every card with its game when the list spans every game", async () => {
+    const container = await mount();
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
+    expect(cards(container)[0]?.textContent).toContain("Overwatch");
+  });
+
+  it("narrows the list to the saved game scope without writing it into the URL", async () => {
+    useWorkspaceStore.setState({ gameScope: "lol" });
+    const container = await mount();
+
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: "lol" })]);
+    expect(urlsWritten()).toEqual([]);
+    expect(cards(container)[0]?.textContent).not.toContain("Overwatch");
+  });
+
+  it("offers every game as the way out of an unknown one, dropping the parameter", async () => {
+    await mount("?discipline=starcraft");
+
+    await click(button(en.common.discipline.showAll));
+
+    expect(new URL(urlsWritten().at(-1)!, "http://x").search).toBe("");
+    expect(useWorkspaceStore.getState().gameScope).toBe("all");
+    expect(listCalls()).toEqual([expect.objectContaining({ discipline: null })]);
   });
 });

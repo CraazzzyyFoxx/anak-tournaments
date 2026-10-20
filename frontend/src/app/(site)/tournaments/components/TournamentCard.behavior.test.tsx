@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Tournament } from "@/types/tournament.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -82,10 +83,10 @@ function tournament(over: Partial<Tournament> = {}): Tournament {
   };
 }
 
-function render(over: Partial<Tournament> = {}) {
+function render(over: Partial<Tournament> = {}, games?: Map<string, DisciplineDescriptor>) {
   const html = renderToStaticMarkup(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TournamentCard tournament={tournament(over)} />
+      <TournamentCard tournament={tournament(over)} games={games} />
     </NextIntlClientProvider>
   );
   const host = document.createElement("div");
@@ -161,5 +162,14 @@ describe("TournamentCard", () => {
   it("omits the team count when the read did not carry one", () => {
     // `teams_count: null` means "entity not requested", not "zero teams".
     expect(render({ teams_count: null }).textContent).not.toContain("0 teams");
+  });
+
+  it("names its game only when the list spans several games", () => {
+    const games = new Map([
+      ["lol", { code: "lol", name: "League of Legends", short_name: "LoL", icon: null } as DisciplineDescriptor]
+    ]);
+
+    expect(render({ discipline: "lol" }, games).textContent).toContain("League of Legends");
+    expect(render({ discipline: "lol" }).textContent).not.toContain("League of Legends");
   });
 });

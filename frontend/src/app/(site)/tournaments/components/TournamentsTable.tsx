@@ -11,9 +11,17 @@ import { cn } from "@/lib/utils";
 import { getTournamentStatusMeta } from "@/lib/tournament/status";
 import { tournamentHref } from "@/lib/tournament/url";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
+import { GameLabel } from "@/components/workspace/GameLabel";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 import { stageProgress } from "./tournaments-helpers";
 
-const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
+const TournamentRow = ({
+  tournament,
+  games
+}: {
+  tournament: Tournament;
+  games?: Map<string, DisciplineDescriptor>;
+}) => {
   const t = useTranslations();
   const format = useFormatter();
   const { variant } = getTournamentStatusMeta(tournament.status);
@@ -50,6 +58,12 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
           </span>
           <span className="sub">
             {formatDateRange(format, tournament.start_date, tournament.end_date)}
+            {games ? (
+              <>
+                <span className="sep">·</span>
+                <GameLabel code={tournament.discipline} games={games} />
+              </>
+            ) : null}
             {tournament.is_league && (
               <>
                 <span className="sep">·</span>
@@ -130,9 +144,11 @@ const TournamentRow = ({ tournament }: { tournament: Tournament }) => {
  */
 const TournamentsTable = ({
   tournaments,
+  games,
   className
 }: {
   tournaments: Tournament[];
+  games?: Map<string, DisciplineDescriptor>;
   className?: string;
 }) => {
   const t = useTranslations();
@@ -171,7 +187,7 @@ const TournamentsTable = ({
         </thead>
         <tbody>
           {tournaments.map((tournament) => (
-            <TournamentRow key={tournament.id} tournament={tournament} />
+            <TournamentRow key={tournament.id} tournament={tournament} games={games} />
           ))}
         </tbody>
         </table>

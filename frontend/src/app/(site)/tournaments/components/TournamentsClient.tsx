@@ -17,9 +17,10 @@ import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { StatsScope } from "@/lib/site/stats-scope";
-import type { BrowsingDisciplineInit } from "@/lib/site/discipline-scope";
-import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
-import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { showsGameMarks, type GameScopeInit } from "@/lib/site/discipline-scope";
+import { useGameScope } from "@/hooks/useGameScope";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 
 import TournamentsHero from "./TournamentsHero";
 import FeaturedLive from "./FeaturedLive";
@@ -74,7 +75,7 @@ const TournamentsPageSkeleton = () => (
 const TournamentsClient = ({
   scope,
   initial
-}: Readonly<{ scope: StatsScope; initial?: BrowsingDisciplineInit }>) => {
+}: Readonly<{ scope: StatsScope; initial?: GameScopeInit }>) => {
   const t = useTranslations();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
@@ -85,13 +86,16 @@ const TournamentsClient = ({
       ? t("common.scope.all")
       : workspaces.find((w) => w.id === currentWorkspaceId)?.name;
 
-  // The directory's game: all games by default, one game when chosen. Only the list and its
-  // facets know games server-side; they wait for the resolution and never read a guessed one.
-  const browsing = useBrowsingDiscipline({ allowsAll: true, initial });
-  const resolved = browsing.resolved;
-  const disciplineFilter = resolved?.kind === "concrete" ? resolved.code : null;
+  // The directory's game (spec §4.3, multi): `?discipline=`, else the saved scope, else every game. Only the list
+  // and its facets know games server-side; they wait for the resolution and never read a guessed one.
+  const gameScope = useGameScope({ initial });
+  const resolution = gameScope.resolution;
+  const disciplineFilter = gameScope.game;
   const disciplineKey = disciplineFilter ?? "all";
-  const ready = resolved?.kind === "all" || resolved?.kind === "concrete";
+  const ready = resolution?.game.kind === "all" || resolution?.game.kind === "game";
+  // Under every game of a multi-game area each card names its game (§6.1).
+  const descriptors = useGameDescriptors();
+  const games = resolution !== null && showsGameMarks(resolution, gameScope.games ?? []) ? descriptors : undefined;
 
   // Filters live in the URL, so a filtered view survives a reload and can be
   // shared. Scroll depth deliberately does NOT: it belongs to the query cache,
@@ -202,7 +206,7 @@ const TournamentsClient = ({
     queryKey: tournamentQueryKeys.overallStatistics(workspaceId),
     queryFn: () =>
       statisticsService.getOverallStatistics(workspaceId != null ? { workspaceId } : undefined),
-    enabled: resolved?.kind === "all"
+    enabled: resolution?.game.kind === "all"
   });
 
   const results = useMemo(
@@ -213,10 +217,10 @@ const TournamentsClient = ({
   // The overview is read for the chosen game, so its live strip is that game's before the server limit.
   const liveGroups = useMemo(() => groupLiveByTournament(overview?.featured.live ?? []), [overview]);
 
-  if (resolved === null) {
-    return browsing.isError ? (
+  if (resolution === null) {
+    return gameScope.isError ? (
       <div className="aqt-tn">
-        <PageStateCard state="error" onAction={browsing.refetch} />
+        <PageStateCard state="error" onAction={gameScope.refetch} />
       </div>
     ) : (
       <div className="aqt-tn">
@@ -225,15 +229,10 @@ const TournamentsClient = ({
     );
   }
 
-  if (resolved.kind === "invalid" || resolved.kind === "empty") {
+  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
     return (
       <div className="aqt-tn">
-        <DisciplineUnavailable
-          resolved={resolved}
-          disciplines={browsing.disciplines ?? []}
-          allowsAll
-          onSelect={browsing.select}
-        />
+        <GameScopeControl scope={gameScope} variant="multi" />
       </div>
     );
   }
@@ -270,15 +269,6 @@ const TournamentsClient = ({
         <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
           {t("tournamentsList.heading.count", { count: matchedTotal })}
         </span>
-        {browsing.disciplines ? (
-          <DisciplineSelector
-            className="ml-auto w-52"
-            disciplines={browsing.disciplines}
-            value={resolved.kind === "all" ? "all" : disciplineFilter ?? undefined}
-            allowsAll
-            onSelect={browsing.select}
-          />
-        ) : null}
       </div>
 
       <FeaturedLive groups={liveGroups} />
@@ -321,11 +311,11 @@ const TournamentsClient = ({
                whatever `?view=` says — and a JS media query would have to flash
                the wrong one through hydration first. */
             <>
-              <TournamentsTable tournaments={results} className="max-md:hidden" />
-              <TournamentsGrid tournaments={results} className="md:hidden" />
+              <TournamentsTable tournaments={results} games={games} className="max-md:hidden" />
+              <TournamentsGrid tournaments={results} games={games} className="md:hidden" />
             </>
           ) : (
-            <TournamentsGrid tournaments={results} />
+            <TournamentsGrid tournaments={results} games={games} />
           )}
 
           <InfiniteScrollFooter
