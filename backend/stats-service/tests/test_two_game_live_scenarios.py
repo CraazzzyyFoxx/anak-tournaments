@@ -1610,6 +1610,8 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
             live.s("SELECT count(*) FROM auth.user_roles"),
         )
 
+    typed, off_game = f"Typed Host {ids['tag']}#EUW", f"Off Game {ids['tag']}#EUW"
+    _private(live, typed, off_game)  # before the first request: a failing refusal publishes its response
     before = counts()
     mismatch = upsert("host", {"discipline": LOL, "identity": {"provider": PROVIDER[OW], "handle": "Mismatch#1234"}})
     refused(mismatch, 422, code="identity.provider_mismatch")
@@ -1624,7 +1626,7 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
     refused(owners, 409, code="identity_conflict")
     disabled = upsert(
         "host",
-        {"discipline": LOL, "identity": {"provider": PROVIDER[LOL], "handle": f"Off Game {ids['tag']}#EUW"}},
+        {"discipline": LOL, "identity": {"provider": PROVIDER[LOL], "handle": off_game}},
         ws=c,
     )
     refused(disabled, 422, contains="discipline_not_enabled")
@@ -1632,7 +1634,6 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
     assert old_wire.status == 422, old_wire.raw[:300]
     assert counts() == before, (before, counts())
 
-    typed = f"Typed Host {ids['tag']}#EUW"
     added = upsert("host", {"discipline": LOL, "identity": {"provider": PROVIDER[LOL], "handle": typed}})
     assert added.status == 200, added.raw[:400]
     assert added.json()["identity"] == {"provider": PROVIDER[LOL], "handle": typed}
@@ -1648,7 +1649,6 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
         "host", {"discipline": LOL, "identity": {"provider": PROVIDER[LOL], "handle": typed}, "display_name": "Renamed"}
     )
     refused(renamed, 403, code="forbidden")
-    _private(live, typed, f"Off Game {ids['tag']}#EUW")
 
     # Registration never moves an owned handle: the joiner typing an account holder's Riot ID (target U's) or an
     # unlinked roster player's (the host's typed one) is refused at that answer; nobody's ownership, auth link,
@@ -2585,13 +2585,12 @@ def encounter_pregame(live: Live, ids: dict[str, Any]) -> None:
         lambda: (s := _sides(live, e6["g1"])) and None not in s.values() and s, "the timed-out side pick", timeout=60
     )
     assert sorted(sides.values()) == ["blue", "red"], sides
-    # A champion class never supplies a position.
-    assert all(
-        r[0] in POSITIONS
-        for r in live.q(
-            "SELECT c.code FROM catalog.role c JOIN catalog.role_dimension d ON d.id=c.dimension_id WHERE d.discipline='lol'"
-        )
+    # A champion class never supplies a position (module roles only: B's sub-role of ``top`` is a workspace child).
+    module_roles = live.q(
+        "SELECT c.code FROM catalog.role c JOIN catalog.role_dimension d ON d.id=c.dimension_id "
+        "WHERE d.discipline='lol' AND c.workspace_id IS NULL"
     )
+    assert all(r[0] in POSITIONS for r in module_roles), module_roles
 
 
 def canonical_ingest(live: Live, ids: dict[str, Any]) -> None:
