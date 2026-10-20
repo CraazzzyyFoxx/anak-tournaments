@@ -20,12 +20,10 @@ vi.mock("@/services/admin.service", () => ({ default: {
 vi.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ canAccessPermission: (permission: string) => !denied.includes(permission) }) }));
 vi.mock("@/stores/workspace.store", () => ({ useWorkspaceStore: (selector: (state: { currentWorkspaceId: number }) => unknown) => selector({ currentWorkspaceId: 1 }) }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
+// The game is the saved scope's (a URL game narrows the list only and never starts a new sub-role).
 vi.mock("@/hooks/useGameScope", async () => {
-  const { LOL_GAME, OW_GAME, gameScopeStub } = await import("@/test/game-scope");
-  return {
-    useGameScope: () =>
-      gameScopeStub({ kind: "game", code: discipline, source: "url" }, { axis: 1, games: [OW_GAME, LOL_GAME] })
-  };
+  const { gameScopeState } = await import("@/test/game-scope");
+  return { useGameScope: () => gameScopeState(discipline) };
 });
 // A wide viewport: the first role opens without a `?role=`.
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => false }));
@@ -87,7 +85,7 @@ describe("native sub-role settings", () => {
     const input = document.querySelector<HTMLInputElement>("#sub-role-label")!;
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Solo"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     await click(button("Save"));
-    // The game field started on the page's game; the body carries no icon or color.
+    // The game field started on the saved scope's game; the body carries no icon or color.
     expect(createPlayerSubRole).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol", role: "top", label: "Solo" });
   });
   it("cancels old reads and does not render delayed previous-game children", async () => {

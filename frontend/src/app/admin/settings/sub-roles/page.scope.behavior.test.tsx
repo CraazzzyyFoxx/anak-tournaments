@@ -12,6 +12,8 @@ const getPlayerSubRoles = vi.fn();
 const createPlayerSubRole = vi.fn();
 /** The saved scope: `null` is every game. */
 let scoped: string | null = null;
+/** An explicit `?discipline=` narrowing the list past the saved scope. */
+let urlGame: string | null = null;
 /** A game whose metadata read fails. */
 let failingMetadata: string | null = null;
 const refetchMetadata = vi.fn();
@@ -30,8 +32,13 @@ vi.mock("@/stores/workspace.store", () => ({
 }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/hooks/useGameScope", async () => {
-  const { gameScopeState } = await import("@/test/game-scope");
-  return { useGameScope: () => gameScopeState(scoped) };
+  const { gameScopeState, multiResolution } = await import("@/test/game-scope");
+  return {
+    useGameScope: () => {
+      const shown = urlGame ?? scoped;
+      return gameScopeState(shown, { resolution: { ...multiResolution(shown), scope: scoped ?? "all" } });
+    }
+  };
 });
 vi.mock("@/hooks/useGameDescriptors", async () => {
   const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
@@ -136,6 +143,7 @@ beforeEach(() => {
   getPlayerSubRoles.mockReset().mockResolvedValue(CATALOG);
   createPlayerSubRole.mockReset().mockResolvedValue(CATALOG[1]);
   scoped = null;
+  urlGame = null;
   failingMetadata = null;
   refetchMetadata.mockClear();
 });
@@ -225,5 +233,20 @@ describe("an opened sub-role under a saved game", () => {
     await click(button("Back"));
     expect(container.querySelector("[data-owner-game]")).toBeNull();
     expect(container.querySelector("nav button")?.textContent).toBe(first);
+  });
+});
+
+describe("sub-role creation under a saved game", () => {
+  it("starts on the saved scope's game, not on a URL game that only narrows the list", async () => {
+    scoped = "overwatch";
+    urlGame = "lol";
+    window.history.replaceState(null, "", "/admin/settings/sub-roles?discipline=lol");
+    await mount();
+    await click(button("New sub-role"));
+
+    const picked = document.getElementById("sub-role-game")!.querySelector('[role="radio"][aria-checked="true"]');
+    expect(picked?.textContent).toContain("Overwatch");
+    const parents = document.querySelectorAll('[aria-labelledby="sub-role-parent-label"] [role="radio"]');
+    expect([...parents].map((node) => node.textContent)).toEqual(["Tank", "Damage", "Support"]);
   });
 });

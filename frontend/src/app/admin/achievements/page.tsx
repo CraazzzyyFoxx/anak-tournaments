@@ -123,8 +123,9 @@ export default function AchievementsPage() {
     setEvalGame(null);
   }
 
-  // A new rule starts in the page's game, else the creation default (spec §7.2); its game field can change it.
-  const createGame = game ?? defaultCreationGame({ scope: scope.resolution?.scope ?? ALL_DISCIPLINES, lastGame, games });
+  // A new rule starts in the creation default (spec §7.2): the saved scope's game, else the last game, else the first
+  // — an explicit `?discipline=` narrows the list only. Its game field can change it.
+  const createGame = defaultCreationGame({ scope: scope.resolution?.scope ?? ALL_DISCIPLINES, lastGame, games });
   const form = useAchievementRuleForm(workspaceId, createGame);
 
   const actions = useAchievementRuleActions({

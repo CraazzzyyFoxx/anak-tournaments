@@ -31,7 +31,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { notify } from "@/lib/notify";
 import { ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
-import { ALL_DISCIPLINES, defaultCreationGame } from "@/lib/site/discipline-scope";
+import { ALL_DISCIPLINES, defaultCreationGame, type GameScope } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -66,7 +66,8 @@ function presentationOf(entry: PlayerSubRole): Presentation {
 /**
  * The workspace's sub-role catalog (T4), a multi page (spec §6.11). Under a game: that game's rated roles on the
  * left, the selected role's sub-roles on the right. Under "all games": every game's sub-roles, grouped by game.
- * Creation is one dialog in both modes (spec §7.2): its game field starts on the scoped game.
+ * Creation is one dialog in both modes (spec §7.2): its game field starts on the creation default — the saved scope's
+ * game, else the last game, else the first; an explicit `?discipline=` narrows the list only.
  */
 export default function WorkspaceSubRolesSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
@@ -102,7 +103,7 @@ export default function WorkspaceSubRolesSettingsPage() {
             <CreateSubRoleDialog
               workspaceId={workspaceId}
               games={games}
-              initialGame={game}
+              scope={scope.resolution?.scope ?? ALL_DISCIPLINES}
               onClose={() => setCreating(false)}
             />
           ) : null}
@@ -242,19 +243,19 @@ function GameSubRoleGroup({
 }
 
 /**
- * Sub-role creation in both list modes (spec §7.2): the game field (the scoped game, else the creation default), then
- * a parent among that game's rated roles.
+ * Sub-role creation in both list modes (spec §7.2): the game field (the creation default from the saved scope), then a
+ * parent among that game's rated roles.
  */
 function CreateSubRoleDialog({
   workspaceId,
   games,
-  initialGame,
+  scope,
   onClose
 }: Readonly<{
   workspaceId: number;
   games: DisciplineDescriptor[];
-  /** The page's game; `null` under "all games". */
-  initialGame: string | null;
+  /** The effective saved scope (`resolution.scope`), whatever game the list shows. */
+  scope: GameScope;
   onClose: () => void;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
@@ -262,9 +263,7 @@ function CreateSubRoleDialog({
   const nameOf = useRoleName();
   const queryClient = useQueryClient();
   const lastGame = useWorkspaceStore((state) => state.lastGame);
-  const [discipline, setDiscipline] = useState(
-    () => initialGame ?? defaultCreationGame({ scope: ALL_DISCIPLINES, lastGame, games })
-  );
+  const [discipline, setDiscipline] = useState(() => defaultCreationGame({ scope, lastGame, games }));
   const [role, setRole] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const metadata = useDisciplineMetadata(workspaceId, discipline);
