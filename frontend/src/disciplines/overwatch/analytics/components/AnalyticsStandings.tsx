@@ -42,7 +42,7 @@ import type {
 } from "@/types/analytics.types";
 import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
 import { standingsRank } from "@/disciplines/overwatch/analytics/analytics.helpers";
-import AnomalyFlag from "@/disciplines/overwatch/analytics/components/AnomalyFlag";
+import AnomalyFlag, { AnomalyKinds } from "@/disciplines/overwatch/analytics/components/AnomalyFlag";
 import DeltaText, { moveTone } from "@/disciplines/overwatch/analytics/components/DeltaText";
 import DivisionMark from "@/disciplines/overwatch/analytics/components/DivisionMark";
 import ExplanationPopover from "@/disciplines/overwatch/analytics/components/ExplanationPopover";
@@ -201,8 +201,6 @@ function TeamRows({
 
   // Role … the column before Forecast: the team's identity spans the per-player detail columns.
   const leadSpan = canReadV2 ? 8 : 6;
-  const shownFlags = team.anomalies.slice(0, 2);
-  const hiddenFlags = team.anomalies.length - shownFlags.length;
 
   const facts: ReactNode[] = [];
   if (distribution) {
@@ -310,25 +308,7 @@ function TeamRows({
           ) : null}
         </TableCell>
         <TableCell className={CELL_CLASS}>
-          {team.anomalies.length > 0 ? (
-            <span className="flex items-center gap-1.5">
-              {shownFlags.map((anomaly, index) => (
-                <AnomalyFlag
-                  key={`${anomaly.player_id}-${anomaly.kind}-${index}`}
-                  kind={anomaly.kind}
-                  reasons={anomaly.reasons}
-                />
-              ))}
-              {hiddenFlags > 0 ? (
-                <span className="aqt-tnum text-[color:var(--aqt-fg-dim)]">
-                  <span aria-hidden>+{hiddenFlags}</span>
-                  <span className="sr-only">
-                    {t("analytics.standings.moreFlags", { count: hiddenFlags })}
-                  </span>
-                </span>
-              ) : null}
-            </span>
-          ) : null}
+          <AnomalyKinds anomalies={team.anomalies} />
         </TableCell>
       </TableRow>
       {open
@@ -403,12 +383,13 @@ function TeamRows({
                 </TableCell>
                 <TableCell className={CELL_CLASS}>
                   {player.anomalies.length > 0 ? (
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       {player.anomalies.map((anomaly, index) => (
                         <AnomalyFlag
                           key={`${player.id}-${anomaly.kind}-${index}`}
                           kind={anomaly.kind}
                           reasons={anomaly.reasons}
+                          label="short"
                         />
                       ))}
                     </span>

@@ -239,9 +239,9 @@ export default function MatchQualityCard({ tournamentId, onExplain, playerNames 
                         {flags.map((flag, index) => (
                           <span
                             key={`${flag.player_id}-${flag.kind}-${index}`}
-                            className="inline-flex items-center gap-0.5"
+                            className="inline-flex items-center gap-1.5"
                           >
-                            <AnomalyFlag kind={flag.kind} reasons={flag.reasons} />
+                            <AnomalyFlag kind={flag.kind} reasons={flag.reasons} label="short" />
                             {playerNames?.get(flag.player_id) ? (
                               <span className="text-caption text-[color:var(--aqt-fg-muted)]">
                                 {playerNames.get(flag.player_id)?.split("#")[0]}

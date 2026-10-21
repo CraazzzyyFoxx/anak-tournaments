@@ -224,7 +224,7 @@ const AnalyticsContentSkeleton = () => (
       <Skeleton className="h-8 w-72 max-w-full rounded-lg" />
       <Skeleton className="h-8 w-28 rounded-lg" />
     </div>
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(21rem,1fr)]">
       <div className="space-y-px overflow-hidden rounded-xl border border-[color:var(--aqt-border)]">
         {Array.from({ length: 8 }).map((_, index) => (
           <Skeleton key={index} className="h-[3.75rem] rounded-none" />

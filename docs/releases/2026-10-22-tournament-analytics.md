@@ -12,13 +12,15 @@ the glossary.
   climbing and dropping are coloured. The figures no longer switch the list mode: the mode toggle above the list does
   that. "How this works" moved from the foot of the page into the header.
 * **Standings list.** One framed list. The place shows as on the Teams tab: a medal for 1–3 once the tournament has
-  ended, `#N` otherwise. A row shows its group chip only when the bracket has several groups. Record and flags are text.
+  ended, `#N` otherwise. A row shows its group chip only when the bracket has several groups. The record is text, and
+  the flags are listed by kind, each with its glyph, short name and count.
   The predicted → actual connector is drawn with tokens (hidden below 640px), and its sentence is in `title` and
   `aria-label`. The delta is coloured text. "Watch list" is offered only while something is flagged. The selected row
   gets a background, not a coloured left edge.
-* **Team and player panels.** Each is one card with sections divided by hairlines (they were stacks of cards).
-  - A watch flag is an amber flag icon with the kind's name. Every kind uses the same colour; the three per-kind palettes
-    are gone.
+* **Team and player panels.** Each is one card with sections divided by hairlines (they were stacks of cards). The panel
+  takes about 40% of the row (at least 21rem), as wide as before.
+  - A watch flag is its kind's glyph and short name (smurf, throw, griefing, sandbag) in the one warning colour; the
+    three contradictory per-kind palettes are gone. In a roster line it sits in the meta line beside the impact bar.
   - Newcomer and new-role marks are the roster cards' icons.
   - The kind's name replaces the raw API value in the copy.
   - Numbers are formatted through next-intl.

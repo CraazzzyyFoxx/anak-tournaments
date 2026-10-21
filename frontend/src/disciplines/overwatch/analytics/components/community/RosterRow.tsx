@@ -36,11 +36,12 @@ export default function RosterRow({ player, tournamentGrid, ontology, onSelect }
       <PlayerRoleIcon role={player.role} ontology={ontology} size={18} />
       <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={28} />
       <span className="flex min-w-0 flex-col gap-1.5">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <PlayerNick player={player} className="text-ui font-semibold" />
-          {flag ? <AnomalyFlag kind={flag.kind} reasons={flag.reasons} /> : null}
+        <PlayerNick player={player} className="text-ui font-semibold" />
+        {/* The flag is a word in the meta line (DESIGN.md §4), beside the impact it qualifies. */}
+        <span className="flex min-w-0 items-center gap-3">
+          <ImpactBar value={player.impact} className="w-full max-w-[8rem]" />
+          {flag ? <AnomalyFlag kind={flag.kind} reasons={flag.reasons} label="short" /> : null}
         </span>
-        <ImpactBar value={player.impact} className="max-w-[8rem]" />
       </span>
       <MoveMark
         direction={player.predicted_direction}

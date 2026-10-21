@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ChevronRight, Flag } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
@@ -13,6 +13,7 @@ import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { formatPlace, standingsRank } from "@/disciplines/overwatch/analytics/analytics.helpers";
 import type { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
 
+import { AnomalyKinds } from "./AnomalyFlag";
 import DeltaText, { moveTone } from "./DeltaText";
 
 export type StandingsMode = "standings" | "movers" | "watch";
@@ -182,18 +183,10 @@ export default function StandingsList({
                     <span className="aqt-tnum">
                       {team.wins}–{team.losses}
                     </span>
-                    {team.flagCount > 0 ? (
+                    {team.anomalies.length > 0 ? (
                       <>
                         <span className="text-[color:var(--aqt-fg-dim)]">·</span>
-                        <span className="inline-flex items-center gap-1 text-[color:var(--aqt-amber)]">
-                          <Flag aria-hidden className="size-3" />
-                          {t(
-                            team.flagCount === 1
-                              ? "analytics.community.standings.flagCountOne"
-                              : "analytics.community.standings.flagCount",
-                            { count: team.flagCount }
-                          )}
-                        </span>
+                        <AnomalyKinds anomalies={team.anomalies} />
                       </>
                     ) : null}
                   </span>

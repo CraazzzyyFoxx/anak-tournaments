@@ -1836,7 +1836,6 @@
       "sortShift": "By shift",
       "sortLabel": "Sort teams",
       "togglePlayers": "Players of {team}",
-      "moreFlags": "{count, plural, one {# more flag} other {# more flags}}",
       "record": "record",
       "predicted": "Predicted #{place}",
       "predictedRange": "Predicted {mean} (p10–p90 {p10}–{p90})",
@@ -2022,18 +2021,22 @@
       },
       "smurf": {
         "label": "Possible smurf",
+        "short": "Smurf",
         "plain": "Playing well above their division — could be a strong player on an under-ranked account."
       },
       "throw": {
         "label": "Possible throw",
+        "short": "Throw",
         "plain": "Looks like they stopped trying mid-series — play dropped sharply below their own usual level."
       },
       "troll": {
         "label": "Possible griefing",
+        "short": "Griefing",
         "plain": "Repeatedly playing below their own level, dragging their team down."
       },
       "sandbag": {
         "label": "Possible sandbag",
+        "short": "Sandbag",
         "plain": "One unexpectedly weak tournament that stands out against the player's own track record."
       },
       "reasonsLabel": "Why flagged",
@@ -2047,6 +2050,7 @@
       },
       "watch": {
         "label": "Watch flags",
+        "short": "Flag",
         "plain": "Automatic heads-ups when someone's results look unusual. A prompt for a human to look — never a verdict."
       },
       "avg_confidence": {
@@ -2099,8 +2103,6 @@
         "sortStandings": "Standings",
         "sortMovers": "Biggest movers",
         "sortWatch": "Watch list",
-        "flagCount": "{count} flags",
-        "flagCountOne": "{count} flag",
         "onForm": "on form",
         "viewList": "List",
         "viewTable": "Table",

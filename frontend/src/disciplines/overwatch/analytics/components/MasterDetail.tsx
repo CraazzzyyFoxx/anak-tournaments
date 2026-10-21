@@ -194,7 +194,8 @@ export default function MasterDetail({
       : null;
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+    // The panel takes ~40% of the row (never under 21rem): a roster line keeps its nick, flag and move on one line.
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(21rem,1fr)]">
       {list}
       {/* Sticky under the site header; scrolls inside itself when a player's panel outgrows the window. */}
       <aside className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">

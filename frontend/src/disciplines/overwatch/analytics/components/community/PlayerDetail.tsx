@@ -208,7 +208,7 @@ export default function PlayerDetail({
       {flag ? (
         <section className={SECTION}>
           <h3 className="flex items-center gap-0.5">
-            <AnomalyFlag kind={flag.kind} reasons={flag.reasons} withLabel />
+            <AnomalyFlag kind={flag.kind} reasons={flag.reasons} label="full" />
             {isAnomalyGlossaryTerm(flag.kind) ? <InfoDot term={flag.kind} onExplain={onExplain} /> : null}
           </h3>
           <p className="mt-1 text-caption text-[color:var(--aqt-fg-muted)]">
