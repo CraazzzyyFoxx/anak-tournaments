@@ -168,26 +168,28 @@ export function usePlayerEditForm({
     () => registrationRoles(ontology).map((role) => role.code),
     [ontology]
   );
-  // A one-role game edits its sole role's rank alone, with no switch to turn it off: the editor holds exactly that
-  // one entry, declared on. A stored entry keeps its rank and sub-role; a registration without one gets a fresh one.
+  // A one-role game edits its sole role's rank alone, with no switch to turn it off: its entry is always declared on,
+  // keeping its stored rank and sub-role, and a registration without one gets a fresh one. Every other stored entry
+  // (a role the module retired, with its character preferences) is saved back unchanged: a save replaces the roles.
   const soleRole = showsRoles(ontology) ? null : (selectableRoleCodes[0] ?? null);
   const roleEntries = useMemo<BalancerPlayerRoleEntry[]>(() => {
     if (soleRole === null) return editedEntries;
-    const stored = editedEntries.find((entry) => entry.role === soleRole);
-    return [
-      {
-        ...(stored ?? {
+    if (!editedEntries.some((entry) => entry.role === soleRole)) {
+      return [
+        ...editedEntries,
+        {
           role: soleRole,
           subtype: null,
+          priority: editedEntries.length + 1,
           division_number: null,
           rank_value: null,
           is_active: false,
+          is_declared_active: true,
           ow_rank_value: null
-        }),
-        priority: 1,
-        is_declared_active: true
-      }
-    ];
+        }
+      ];
+    }
+    return editedEntries.map((entry) => (entry.role === soleRole ? { ...entry, is_declared_active: true } : entry));
   }, [editedEntries, soleRole]);
   const addableRole =
     selectableRoleCodes.find((code) => !roleEntries.some((entry) => entry.role === code)) ?? null;
@@ -371,6 +373,8 @@ export function usePlayerEditForm({
     divisionGrid,
     workspaceGrid,
     roleEntries,
+    /** A one-role game's only role: the one entry the sheet shows. `null` when the game names roles (or is loading). */
+    soleRole,
     isFlex,
     setIsFlex,
     notes,

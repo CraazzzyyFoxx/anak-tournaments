@@ -602,4 +602,32 @@ describe("owner game role and rank capabilities", () => {
       expect.objectContaining({ role: "agent", subtype: "duelist", is_declared_active: true, rank_value: 1500 })
     ]);
   });
+
+  it("keeps a one-role registration's other stored role entries when only the notes change", async () => {
+    // A role the module no longer declares stays stored: the sheet edits the sole role's rank, never deletes the rest.
+    const retired = {
+      ...player.role_entries_json[0],
+      role: "tank",
+      subtype: "main",
+      priority: 2,
+      rank_value: 2500,
+      division_number: 1,
+      is_active: false,
+      is_declared_active: false
+    };
+    await render(deadlockSheet([{ ...player.role_entries_json[0], role: "agent", rank_value: 1500 }, retired]));
+    expect(document.querySelectorAll('input[inputmode="numeric"]')).toHaveLength(1);
+    const notes = document.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(notes, "Plays evenings");
+      notes.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await clickButton("Save");
+
+    expect(onSave.mock.calls[0][1].admin_notes).toBe("Plays evenings");
+    expect(onSave.mock.calls[0][1].role_entries_json).toEqual([
+      expect.objectContaining({ role: "agent", is_declared_active: true, rank_value: 1500 }),
+      expect.objectContaining(retired)
+    ]);
+  });
 });

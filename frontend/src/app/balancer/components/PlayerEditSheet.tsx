@@ -272,23 +272,26 @@ export function PlayerEditModal({
               onReorder={form.reorderRoles}
               className="space-y-2"
             >
-              {(entry, index) => (
-                <SortableRoleEntry
-                  key={`${entry.role}-${index}`}
-                  id={`${entry.role}-${index}`}
-                  entry={entry}
-                  index={index}
-                  grid={form.divisionGrid}
-                  resolveDivision={form.resolveDivision}
-                  getDivisionName={form.getDivisionName}
-                  onUpdate={form.updateEntry}
-                  onRemove={form.removeEntry}
-                  subtypeOptions={form.subtypeOptions}
-                  ontology={ontology}
-                  nativeRankName={nativeRankName}
-                  showsRole={showsRoleList}
-                />
-              )}
+              {(entry, index) =>
+                // A one-role game shows its sole role's rank alone; any other stored entry is kept, not shown.
+                form.soleRole === null || entry.role === form.soleRole ? (
+                  <SortableRoleEntry
+                    key={`${entry.role}-${index}`}
+                    id={`${entry.role}-${index}`}
+                    entry={entry}
+                    index={index}
+                    grid={form.divisionGrid}
+                    resolveDivision={form.resolveDivision}
+                    getDivisionName={form.getDivisionName}
+                    onUpdate={form.updateEntry}
+                    onRemove={form.removeEntry}
+                    subtypeOptions={form.subtypeOptions}
+                    ontology={ontology}
+                    nativeRankName={nativeRankName}
+                    showsRole={showsRoleList}
+                  />
+                ) : null
+              }
             </SortableRows>
           </div>
 
