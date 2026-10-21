@@ -1,6 +1,6 @@
 import type { DivisionGrid } from "@/types/workspace.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
-import { ratedDimension, registrationRoles, slotRank, type RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension, registrationRoles, showsRoles, slotRank, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 import { OPEN_SLOT_CODE, solverSlotCode, type RosterShape } from "@/lib/roster/shape";
 import {
@@ -170,6 +170,13 @@ export type MixOwner = {
   dimension: string | null;
   /** Roles a lineup row may play, in the game's declared order. */
   roles: readonly string[];
+  /**
+   * More than one role to choose between. A one-role game (Deadlock) shows no role UI: no role order, no role-supply
+   * strip, no slot labels. Derived from the role count, not a flag.
+   */
+  showsRoles: boolean;
+  /** The game has Full flex players (`discipline.flex`); `false` hides the switch and never sends one. `false` until metadata loads. */
+  flex: boolean;
   /** Seats ONE lobby needs per role (`TEAMS_PER_LOBBY ×` the shape's slots); roles the format has no seat for are absent. */
   demand: Readonly<Record<string, number>>;
   /** Seats one lobby's balance can actually fill (`TEAMS_PER_LOBBY × team_size`); `null` while the shape is unknown. */
@@ -206,6 +213,8 @@ export function buildMixOwner(
     nativeRankName: metadata?.discipline.capabilities.native_rank_collection ? metadata.discipline.name : null,
     dimension: ontology ? (ratedDimension(ontology)?.code ?? null) : null,
     roles,
+    showsRoles: showsRoles(ontology),
+    flex: metadata?.discipline.flex ?? false,
     demand,
     lobbySize: shape ? TEAMS_PER_LOBBY * shape.team_size : null,
     grid,
@@ -234,6 +243,8 @@ export type RoleSupply = {
  * so this deliberately does not match "how many chips are lit".
  */
 export function summarizeRoleSupply(rows: CustomGamePlayer[], owner: MixOwner, lobbyCount = 1): RoleSupply[] {
+  // One role is no shortage to read: the lobby count already says how many are missing.
+  if (!owner.showsRoles) return [];
   return owner.roles
     .filter((role) => (owner.demand[role] ?? 0) > 0)
     .map((role) => {

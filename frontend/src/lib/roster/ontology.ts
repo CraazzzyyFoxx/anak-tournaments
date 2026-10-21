@@ -48,6 +48,15 @@ export function registrationRoles(ontology: RoleOntology | null | undefined): On
 }
 
 /**
+ * Whether a game's UI names roles at all: more than one registration role to tell apart. A game with ONE rated role
+ * (Deadlock) shows no role order, role filter, role strip, role glyph or slot label anywhere -- derived from the role
+ * count, never a flag. `false` for missing metadata, so nothing is drawn from a guess.
+ */
+export function showsRoles(ontology: RoleOntology | null | undefined): boolean {
+  return registrationRoles(ontology).length > 1;
+}
+
+/**
  * What a roster editor's role picker offers: the game's selectable roles, the open slot last. A stored role the
  * game's catalog no longer offers (retired, unknown) keeps an option, or the trigger would render empty.
  */

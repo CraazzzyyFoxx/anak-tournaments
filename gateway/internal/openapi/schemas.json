@@ -16243,6 +16243,10 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "flex": {
+          "title": "Flex",
+          "type": "boolean"
+        },
         "icon": {
           "anyOf": [
             {
@@ -16295,6 +16299,7 @@
         "kinds",
         "character_classes",
         "identity_provider",
+        "flex",
         "capabilities",
         "short_name",
         "icon"

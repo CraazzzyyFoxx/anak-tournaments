@@ -21,7 +21,7 @@ import {
   teamNamesByIndex,
   toggleRole,
 } from "./pickup-lineup";
-import { LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner } from "./mix-owner.fixture";
 
 const OW_ORDER = slotCodeOrder(OW_METADATA);
 const LOL_ORDER = slotCodeOrder(LOL_METADATA);
@@ -167,6 +167,18 @@ describe("buildMixOwner", () => {
     expect(owner.lobbySize).toBe(10);
   });
 
+  it("reads a one-role game without Full flex: Deadlock seats agents only and names no role", () => {
+    expect(DEADLOCK_OWNER).toMatchObject({
+      roles: ["agent"],
+      dimension: "agent",
+      demand: { agent: 12 },
+      lobbySize: 12,
+      flex: false,
+      showsRoles: false,
+    });
+    expect(OW_OWNER).toMatchObject({ flex: true, showsRoles: true });
+  });
+
   it("is empty until metadata and shape load: nothing is guessed", () => {
     const pending = buildMixOwner(undefined, null, { tiers: [] });
     expect(pending).toMatchObject({ ontology: null, dimension: null, roles: [], demand: {}, lobbySize: null });
@@ -253,6 +265,10 @@ describe("summarizeRoleSupply", () => {
 
   it("has no entry for a game whose format asks no role of anyone", () => {
     expect(summarizeRoleSupply([row()], flexOnlyOwner())).toEqual([]);
+  });
+
+  it("has no entry for a one-role game, though every seat is that role", () => {
+    expect(summarizeRoleSupply([row({ ranks: { agent: 2400 } })], DEADLOCK_OWNER)).toEqual([]);
   });
 });
 

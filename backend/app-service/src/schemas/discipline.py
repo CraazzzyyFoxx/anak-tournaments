@@ -44,6 +44,8 @@ class DisciplineDescriptor(BaseModel):
     character_classes: list[str]
     #: ``None``: the game has no identity input/upsert.
     identity_provider: str | None
+    #: The game has open slots and Full flex players (``DisciplineSpec.flex``); ``False`` hides Full flex.
+    flex: bool
     capabilities: DisciplineCapabilities
     #: The game's monogram ("OW"); the module's ``short_name``, else its name.
     short_name: str

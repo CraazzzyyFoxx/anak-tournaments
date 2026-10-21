@@ -1,4 +1,4 @@
-import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import { ratedDimension } from "@/lib/roster/ontology";
 import type { RosterShape } from "@/lib/roster/shape";
 
@@ -31,6 +31,9 @@ export const LOL_SHAPE: RosterShape = {
   dimension: "position",
 };
 
+/** Deadlock's 6v6: no open slot, so all six seats are the game's one role. */
+const DEADLOCK_SHAPE: RosterShape = { ...shapeOf({ agent: 6 }), dimension: "agent" };
+
 /** Test grids carry no tiers: the lineup only needs *a* grid object, crests are the grid tests' business. */
 const EMPTY_GRID = { tiers: [] };
 
@@ -39,6 +42,9 @@ export const OW_OWNER: MixOwner = buildMixOwner(OW_METADATA, OW_SHAPE, EMPTY_GRI
 
 /** The League mix owner: five positions, demand 2 each, lobby of ten. */
 export const LOL_OWNER: MixOwner = buildMixOwner(LOL_METADATA, LOL_SHAPE, EMPTY_GRID);
+
+/** The Deadlock mix owner: one role, demand 12, lobby of twelve, no Full flex. */
+export const DEADLOCK_OWNER: MixOwner = buildMixOwner(DEADLOCK_METADATA, DEADLOCK_SHAPE, EMPTY_GRID);
 
 /** An Overwatch mix whose format is a role-less flex roster: no role asks for a seat. */
 export function flexOnlyOwner(): MixOwner {

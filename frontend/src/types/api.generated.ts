@@ -12470,6 +12470,8 @@ export interface components {
             code: string;
             /** Enabled */
             enabled: boolean;
+            /** Flex */
+            flex: boolean;
             /** Icon */
             icon: string | null;
             /** Identity Provider */
