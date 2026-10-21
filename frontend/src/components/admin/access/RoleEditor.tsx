@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { Lock, MoreHorizontal, Trash2 } from "lucide-react";
 
 import {
   PermissionPicker,
   type PermissionCatalogEntry
 } from "@/components/admin/access/PermissionPicker";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -155,66 +156,82 @@ function RoleForm({
   const patch = (next: Partial<RoleDraft>) => setDraft({ ...(draft ?? baseline), ...next });
 
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-start gap-3 border-b border-border pb-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground">
-            {detail.name}
-          </h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {detail.workspace_id
-              ? (workspaceName ?? tc("workspaceFallback", { id: detail.workspace_id }))
-              : tc("global")}
-          </p>
-          {detail.is_system ? (
-            <p className="mt-1 text-caption text-muted-foreground">{t("systemDescription")}</p>
+    <div className="min-w-0 space-y-6">
+      <div className="space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="min-w-0 truncate font-display text-lg font-semibold text-foreground">
+                {detail.name}
+              </h2>
+              {detail.is_system ? (
+                <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                  <Lock aria-hidden className="size-3" />
+                  {tc("system")}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {detail.workspace_id
+                ? (workspaceName ?? tc("workspaceFallback", { id: detail.workspace_id }))
+                : tc("global")}
+            </p>
+          </div>
+
+          {canDelete && !detail.is_system ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" aria-label={t("actions", { name: detail.name })}>
+                  <MoreHorizontal aria-hidden className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="gap-2 text-danger focus:text-danger"
+                  onSelect={onRequestDelete}
+                >
+                  <Trash2 aria-hidden className="size-3.5" />
+                  {tc("deleteRole")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
 
-        {canDelete && !detail.is_system ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" aria-label={t("actions", { name: detail.name })}>
-                <MoreHorizontal aria-hidden className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="gap-2 text-danger focus:text-danger"
-                onSelect={onRequestDelete}
-              >
-                <Trash2 aria-hidden className="size-3.5" />
-                {tc("deleteRole")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="role-name">{tc("name")}</Label>
-          <Input
-            id="role-name"
-            value={current.name}
-            disabled={readOnly}
-            onChange={(event) => patch({ name: event.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="role-description">{tc("description")}</Label>
-          <Input
-            id="role-description"
-            value={current.description}
-            disabled={readOnly}
-            placeholder={t("descriptionPlaceholder")}
-            onChange={(event) => patch({ description: event.target.value })}
-          />
-        </div>
+        {readOnly ? (
+          <>
+            {detail.description ? (
+              <p className="max-w-prose text-sm text-foreground/90">{detail.description}</p>
+            ) : null}
+            {detail.is_system ? (
+              <p className="max-w-prose text-xs text-muted-foreground">{t("systemDescription")}</p>
+            ) : null}
+          </>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="role-name">{tc("name")}</Label>
+              <Input
+                id="role-name"
+                value={current.name}
+                onChange={(event) => patch({ name: event.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="role-description">{tc("description")}</Label>
+              <Input
+                id="role-description"
+                value={current.description}
+                placeholder={t("descriptionPlaceholder")}
+                onChange={(event) => patch({ description: event.target.value })}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <PermissionPicker
-        mode="matrix"
+        mode="chips"
         readOnly={readOnly}
         catalog={catalog}
         wildcards={wildcards}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { Lock } from "lucide-react";
 
@@ -19,11 +19,14 @@ import type { RbacRole } from "@/types/rbac.types";
 export function RoleList({
   roles,
   selectedRoleId,
-  onSelect
+  onSelect,
+  actions
 }: Readonly<{
   roles: RbacRole[];
   selectedRoleId: number | null;
   onSelect: (roleId: number) => void;
+  /** The scope switch and Create role, above the narrowing box. */
+  actions?: ReactNode;
 }>) {
   const t = useTranslations("adminAccess.common");
   const [query, setQuery] = useState("");
@@ -34,7 +37,8 @@ export function RoleList({
 
   return (
     <div className="rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-3 py-3">
+      <div className="space-y-2 border-b border-border p-3">
+        {actions}
         <SearchField
           label={t("filterRoles")}
           placeholder={t("searchRoles")}
@@ -62,7 +66,7 @@ export function RoleList({
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "bg-accent/40" : "hover:bg-accent/40"
+                    selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
                   )}
                 >
                   <span className="min-w-0">

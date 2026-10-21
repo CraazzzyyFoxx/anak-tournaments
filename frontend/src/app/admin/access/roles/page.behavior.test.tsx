@@ -8,9 +8,9 @@
 //  2. `?role=` IS the selection — no param shows the empty detail, picking a
 //     role PUSHES a linkable URL (a `replace` would break `MasterDetail`'s
 //     narrow-viewport Back), and a deep link opens that role's editor;
-//  3. the `scope` chip lives in the URL and re-scopes the role query;
+//  3. the scope select lives in the URL and re-scopes the role query;
 //  4. one permission toggle end to end through the shared `PermissionPicker`:
-//     checking a matrix cell dirties the `SaveBar`, and saving PATCHes the
+//     checking a permission chip dirties the `SaveBar`, and saving PATCHes the
 //     role with the resolved permission ids.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
@@ -109,7 +109,16 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: ReactNode;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -233,9 +242,9 @@ function button(text: string) {
   );
 }
 
-function commandItem(label: string) {
-  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
-    item.textContent?.trim().startsWith(label)
+function option(label: string) {
+  return Array.from(document.querySelectorAll('[role="option"]')).find(
+    (item) => item.textContent?.trim() === label
   );
 }
 
@@ -343,13 +352,12 @@ describe("Access › Roles · ?role= is the selection", () => {
     expect(getRole).toHaveBeenCalledWith(12);
   });
 
-  it("re-scopes the role query from the scope chip", async () => {
+  it("re-scopes the role query from the scope select", async () => {
     const container = await mount();
     await waitFor(() => container.textContent?.includes("caster"), "the role list");
 
-    await click(container.querySelector('button[aria-label="Add filter"]'));
-    await click(await waitFor(() => commandItem("Scope"), "the Scope filter"));
-    await click(await waitFor(() => commandItem("Anak"), "the workspace option"));
+    await click(container.querySelector('button[role="combobox"][aria-label="Scope"]'));
+    await click(await waitFor(() => option("Anak"), "the workspace option"));
 
     expect(new URLSearchParams(window.location.search).get("scope")).toBe("3");
     await waitFor(() => lastRolesScope() === 3, "the workspace-scoped role query");

@@ -2,28 +2,35 @@
 
 import { useTranslations } from "next-intl";
 
-import { StatusPill } from "@/components/kit/StatusPill";
+import { TONE_TEXT, type Tone } from "@/components/kit/tone";
 import { StatusDot } from "@/components/ui/status-dot";
+import { cn } from "@/lib/utils";
+
+type AccessStatus = "active" | "expired" | "revoked";
+
+const STATUS_TONE: Record<AccessStatus, Tone> = {
+  active: "success",
+  revoked: "warning",
+  expired: "neutral"
+};
 
 /**
- * Status of a session or an API key. `active` is a live pill where it wants
- * attention (a signed-in session) and nothing where it is the norm (a key);
- * `expired` and `revoked` are finished, so a muted dot and word.
+ * Status of a session or an API key as a tinted dot and word. `active` shows
+ * only where it is news (a signed-in session), not where it is the norm (a key).
  */
 export function AccessStatusCell({
   status,
-  activePill
-}: Readonly<{ status: "active" | "expired" | "revoked"; activePill: boolean }>) {
+  showActive
+}: Readonly<{ status: AccessStatus; showActive: boolean }>) {
   const t = useTranslations("adminAccess.common");
-  if (status === "active") {
-    return activePill ? (
-      <StatusPill tone="success" dot>
-        {t("active")}
-      </StatusPill>
-    ) : null;
-  }
+  if (status === "active" && !showActive) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-xs font-medium",
+        TONE_TEXT[STATUS_TONE[status]]
+      )}
+    >
       <StatusDot />
       {t(status)}
     </span>

@@ -8,6 +8,7 @@ import { AccountSection, invalidateAccount } from "@/components/admin/access/Acc
 import { Combobox } from "@/components/kit/Combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { notify } from "@/lib/notify";
 import { rbacService } from "@/services/rbac.service";
@@ -107,7 +108,15 @@ export function AccountRoles({
             onSearchValueChange={setSearch}
             searchPlaceholder={tc("searchRoles")}
             emptyMessage={
-              catalogQuery.isLoading ? t("loading") : t("noOtherRole")
+              catalogQuery.isLoading ? (
+                <div role="status" className="space-y-2 px-2">
+                  <span className="sr-only">{t("loading")}</span>
+                  <Skeleton aria-hidden className="h-4 w-full" />
+                  <Skeleton aria-hidden className="h-4 w-2/3" />
+                </div>
+              ) : (
+                t("noOtherRole")
+              )
             }
           >
             {orderedGroups.map((group) => (
