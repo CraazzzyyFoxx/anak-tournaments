@@ -169,10 +169,10 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
   // shape. All of it is empty until the game's metadata loads: nothing falls back to another game's vocabulary.
   const discipline = game?.discipline ?? initialGame.discipline;
   const metadataQuery = useDisciplineMetadata(workspaceId, discipline);
-  const grid = useDivisionGrid(discipline);
+  const workspaceGrid = useDivisionGrid(discipline);
   const owner = useMemo(
-    () => buildMixOwner(metadataQuery.data, game?.roster_shape, grid),
-    [metadataQuery.data, game?.roster_shape, grid],
+    () => buildMixOwner(metadataQuery.data, game?.roster_shape, workspaceGrid),
+    [metadataQuery.data, game?.roster_shape, workspaceGrid],
   );
   // The mix's own game's maps with their modes: the roll pool for the next map and the manual picker. Which map is
   // *chosen* is the lobby's own `next_map_id`, so a co-host in another tab sees the same roll.

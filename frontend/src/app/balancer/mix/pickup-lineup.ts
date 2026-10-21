@@ -174,15 +174,18 @@ export type MixOwner = {
   demand: Readonly<Record<string, number>>;
   /** Seats one lobby's balance can actually fill (`TEAMS_PER_LOBBY × team_size`); `null` while the shape is unknown. */
   lobbySize: number | null;
-  /** The grid a mix's ranks are on: the owner game's effective grid in the mix's workspace. */
+  /** The grid a mix's ranks are on: the owner game's global ladder, never the workspace's tournament grid. */
   grid: DivisionGrid;
 };
 
-/** The owner view of one mix from its game's metadata and the mix's own roster shape. */
+/**
+ * The owner view of one mix from its game's metadata and the mix's own roster shape. `workspaceGrid` is read only
+ * for a game without a native ladder: there the workspace grid is the scale its ranks are entered on.
+ */
 export function buildMixOwner(
   metadata: DisciplineMetadata | null | undefined,
   shape: RosterShape | null | undefined,
-  grid: DivisionGrid,
+  workspaceGrid: DivisionGrid,
 ): MixOwner {
   const ontology = metadata ?? null;
   const roles = registrationRoles(ontology).map((role) => role.code);
@@ -193,6 +196,10 @@ export function buildMixOwner(
       demand[role] = TEAMS_PER_LOBBY * seats;
     }
   }
+  // Mix ranks live on the game's own scale in every workspace; a workspace grid (e.g. tournament divisions 1-20)
+  // would read a 3500 as its top tier. Empty while metadata loads.
+  const ladder = metadata?.native_ladder ?? [];
+  const grid = ladder.length > 0 || metadata == null ? { tiers: [...ladder] } : workspaceGrid;
   return {
     ontology,
     gameName: metadata?.discipline.name ?? null,

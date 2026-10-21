@@ -230,9 +230,7 @@ describe("PickupPlayerSheet ranks", () => {
     expect(scope.textContent).not.toContain("Rank for this mix");
   });
 
-  // balancer-service resolves a mix's ranks against the effective grid of the MIX'S OWN game in the mix's
-  // workspace (`get_effective_division_grid(session, game.workspace_id, discipline=game.discipline)`), so the
-  // sheet labels them on `owner.grid` -- never a fixed Overwatch ladder, and never another game's tiers.
+  // The sheet labels ranks on `owner.grid` (the owner game's ladder, see `buildMixOwner`) -- never another game's tiers.
   it("labels ranks with the mix owner's grid", async () => {
     const scope = await mount();
 

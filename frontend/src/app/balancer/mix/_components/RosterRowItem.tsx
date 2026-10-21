@@ -96,8 +96,8 @@ export function RosterRowItem({
           {owner.roles.map((role) => {
             const own = row.authorRanks[role] ?? null;
             const inherited = own == null ? (row.ranks[role] ?? null) : null;
-            // The owner game's grid in this mix's workspace: the same scale the server
-            // resolved these ranks on, so the crest names the number the balance will use.
+            // The owner game's global ladder: the scale these ranks are on in every
+            // workspace, so the crest names the number the balance will use.
             const division = resolveDivisionFromRank(grid, own ?? inherited);
             const rank = own ?? inherited;
             const roleName = slotLabel(role);

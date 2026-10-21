@@ -304,8 +304,8 @@ function RoleCardBody({
             disabled={disabled}
             onClear={rank.onClear}
             onChange={rank.onChange}
-            // The owner game's grid in this mix's workspace: the scale the server
-            // resolved the value on, so the crest and the slider name the same tiers.
+            // The owner game's global ladder: the scale the value is on, so the
+            // crest and the slider name the same tiers.
             grid={owner.grid}
           />
         </div>

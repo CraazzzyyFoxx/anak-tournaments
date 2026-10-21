@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { slotCodeOrder } from "@/lib/roster/ontology";
 import type { CustomGamePlayer, RotationRecommendation } from "@/services/custom-game.service";
 import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { TEST_LADDER_TIERS } from "@/test/native-ladder";
 
 import {
   averageRank,
@@ -20,7 +21,7 @@ import {
   teamNamesByIndex,
   toggleRole,
 } from "./pickup-lineup";
-import { LOL_OWNER, LOL_SHAPE, OW_OWNER, flexOnlyOwner } from "./mix-owner.fixture";
+import { LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner } from "./mix-owner.fixture";
 
 const OW_ORDER = slotCodeOrder(OW_METADATA);
 const LOL_ORDER = slotCodeOrder(LOL_METADATA);
@@ -169,6 +170,18 @@ describe("buildMixOwner", () => {
   it("is empty until metadata and shape load: nothing is guessed", () => {
     const pending = buildMixOwner(undefined, null, { tiers: [] });
     expect(pending).toMatchObject({ ontology: null, dimension: null, roles: [], demand: {}, lobbySize: null });
+  });
+
+  it("reads ranks on the game's global ladder, not the workspace's tournament grid", () => {
+    // A workspace running tournament divisions 1-20 (top tier from 2000) must not turn every 3500 into Division 1.
+    const workspaceGrid = { tiers: [{ number: 1, name: "Division 1", rank_min: 2000, rank_max: null, icon_url: "" }] };
+    const owner = buildMixOwner({ ...OW_METADATA, native_ladder: TEST_LADDER_TIERS }, OW_SHAPE, workspaceGrid);
+    expect(owner.grid.tiers.map((tier) => tier.name)).toEqual(TEST_LADDER_TIERS.map((tier) => tier.name));
+  });
+
+  it("falls back to the workspace grid only for a game without a ladder", () => {
+    const workspaceGrid = { tiers: [{ number: 1, name: "Division 1", rank_min: 2000, rank_max: null, icon_url: "" }] };
+    expect(buildMixOwner({ ...OW_METADATA, native_ladder: [] }, OW_SHAPE, workspaceGrid).grid).toBe(workspaceGrid);
   });
 
   it("names the native rank layer after the game", () => {
