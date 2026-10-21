@@ -172,12 +172,15 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   const matchImportGames = matchImport
     ? (encounter.games ?? []).filter((game) => game.state !== "cancelled")
     : [];
+  // The organizer import routes are gated on `match.result` (any other management grant is not enough); everyone
+  // else files as a captain of the encounter.
+  const importsAsOrganizer = workspaceId != null && hasWorkspacePermission(workspaceId, "match.result");
 
   if (loop.unconfigured) {
     // Without a pick-ban the room only exists to file the series' matches by id; until the game's metadata says
     // whether it can, neither screen is the right one.
     if (seriesReport && room.metadata.status === "pending") return <RoomSkeleton />;
-    if (matchImportGames.length > 0 && (isAdmin || viewerTeamId != null)) {
+    if (matchImportGames.length > 0 && (importsAsOrganizer || viewerTeamId != null)) {
       return (
         <Card>
           <CardContent className="flex flex-col gap-4 p-6">
@@ -188,7 +191,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
               <h1 className="font-display text-title font-semibold">{encounter.name}</h1>
             </div>
             {/* An organizer files through the organizer route, whose rows carry the warnings. */}
-            <MatchImport encounterId={encounterId} games={matchImportGames} admin={isAdmin} />
+            <MatchImport encounterId={encounterId} games={matchImportGames} admin={importsAsOrganizer} />
             <div>
               <Button variant="outline" asChild>
                 <Link href={returnTo}>
@@ -323,7 +326,8 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             seriesWins={seriesSummary?.wins ?? null}
             onMutated={room.invalidateRoom}
             grid={grid}
-            matchImportGames={matchImportGames}
+            // The panel opens for any management grant; its import section files through the organizer route.
+            matchImportGames={importsAsOrganizer ? matchImportGames : []}
           />
         </CollapsibleContent>
       </Collapsible>

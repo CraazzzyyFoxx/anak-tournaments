@@ -48,7 +48,7 @@ export function PregameRoomLink({
   className
 }: Readonly<PregameRoomLinkProps>) {
   const t = useTranslations();
-  const { isSuperuser, isWorkspaceAdmin, hasWorkspacePermission } = usePermissions();
+  const { hasWorkspacePermission } = usePermissions();
   const mapQuery = useQuery({
     queryKey: encounterQueryKeys.pregameMapState(encounterId),
     queryFn: () => pickBanService.getPickBanState("map", encounterId)
@@ -68,8 +68,8 @@ export function PregameRoomLink({
     heroQuery.data != null &&
     liveGames > 0 &&
     metadata.data?.discipline.capabilities.match_fetch === true;
-  const organizer =
-    isSuperuser || isWorkspaceAdmin(workspaceId) || hasWorkspacePermission(workspaceId, "match.result");
+  // The room files as an organizer only with `match.result` (the organizer route's gate); anyone else must captain.
+  const organizer = hasWorkspacePermission(workspaceId, "match.result");
   const roleQuery = useQuery({
     queryKey: encounterQueryKeys.myRole(encounterId),
     queryFn: () => captainService.getMyRole(encounterId),
