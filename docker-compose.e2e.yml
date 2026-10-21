@@ -104,6 +104,12 @@ services:
     ports: !reset []
     environment:
       NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
+    # Cold `next dev` compiles of ~150 routes dominate a run.
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4096M
 
   nginx:
     # IPv4 loopback only: Docker Desktop's ::1 forward resets responses slower
