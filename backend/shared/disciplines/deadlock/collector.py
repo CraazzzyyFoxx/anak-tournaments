@@ -4,10 +4,10 @@ LoL's collector (``shared/disciplines/lol/collector.py``), keyed ``deadlock_rank
 leader-locked tick claims up to ``MAX_BATCH`` due ``rank.account_state`` rows and publishes them as ONE fetch; the
 consumer asks ``GET /v1/players/rank?account_ids=`` once for the whole batch with no DB transaction open, then writes
 every account's outcome in one transaction. A ranked badge appends a snapshot only when it changed (ok -> interval);
-badge 0 is ok and unranked (a row only when a rank was lost); an account the answer leaves out is not_found (8x
-interval); a handle that is no Steam account id never resolves (``disabled`` after ``max_consecutive_failures``). A
-failed batch (5xx, timeout, open circuit, 429) defers every claimed account by ``backoff_base_seconds`` and logs one
-summary row; a 429 also sets a global cooldown of ``Retry-After``, else 60 s. ``rate_limit_per_minute`` counts
+badge 0, or an account the answer leaves out, is ok and unranked (a row only when a rank was lost); a handle that is no
+Steam account id never resolves (``disabled`` after ``max_consecutive_failures``). A failed batch (5xx, timeout, open
+circuit, 429) defers every claimed account by ``backoff_base_seconds`` with no failure count and logs the failure
+against each of them; a 429 also sets a global cooldown of ``Retry-After``, else 60 s. ``rate_limit_per_minute`` counts
 deadlock-api requests (batches), shared by every fetch through a per-minute Redis window. Steam account ids never
 change: no PUUID, region or rename.
 """
@@ -75,7 +75,6 @@ __all__ = (
     "fetch_badges",
     "handle_registration_approved",
     "mark_invalid",
-    "mark_not_found",
     "mark_ok",
     "process_fetch",
     "rank_client",
@@ -89,7 +88,6 @@ SETTINGS_KEY = "deadlock.rank_collection"
 TICK_SECONDS = 60
 LEADER_LOCK_KEY = "deadlock_rank:scheduler:leader"
 COOLDOWN_KEY = "deadlock_rank:cooldown"
-NOT_FOUND_INTERVAL_FACTOR = 8
 MAX_BACKOFF_SECONDS = 6 * 60 * 60
 MANUAL_PRIORITY_TIER = 2
 FETCH_LOG_RETENTION = timedelta(days=7)
@@ -201,7 +199,7 @@ def _retry_after(response: httpx.Response) -> float | None:
 
 async def fetch_badges(http: Any, account_ids: Sequence[int]) -> dict[int, int]:
     """``account_id -> badge`` (``tier * 10 + subrank``, 0 unranked) of every account the answer names; at most
-    ``MAX_BATCH`` ids per call. An account the answer leaves out is one deadlock-api has no rank for."""
+    ``MAX_BATCH`` ids per call. An account the answer leaves out has no rank: the caller reads it as badge 0."""
     response = await http.get("/v1/players/rank", params={"account_ids": ",".join(map(str, account_ids))})
     if response.status_code == 429:
         raise DeadlockRateLimited(_retry_after(response))
@@ -250,16 +248,6 @@ def mark_ok(state: Any, *, now: datetime, config: RankCollectionConfig) -> None:
     state.consecutive_failures = 0
     state.last_error = None
     state.next_eligible_at = now + timedelta(seconds=jittered_interval(config.interval_seconds, config.jitter_fraction))
-
-
-def mark_not_found(state: Any, *, now: datetime, config: RankCollectionConfig) -> None:
-    state.status = enums.RankCollectionStatus.not_found.value
-    state.last_checked_at = now
-    state.consecutive_failures = 0
-    state.last_error = None
-    state.next_eligible_at = now + timedelta(
-        seconds=jittered_interval(config.interval_seconds * NOT_FOUND_INTERVAL_FACTOR, config.jitter_fraction)
-    )
 
 
 def mark_invalid(state: Any, *, now: datetime, config: RankCollectionConfig) -> None:
@@ -337,7 +325,7 @@ async def _defer(session: AsyncSession, social_account_ids: Sequence[int], *, de
 def _log(
     session: AsyncSession,
     *,
-    social_account_id: int | None,
+    social_account_id: int,
     handle: str,
     status: str,
     source: str,
@@ -424,39 +412,35 @@ def _record_batch(
 ) -> None:
     """Every account's outcome of one answered batch: state, fetch_log row and the snapshot when the rank changed."""
     for account_id, owners in targets.items():
-        badge = badges.get(account_id)
+        # An account the answer leaves out has no rank: badge 0, so a rank it held ends with an unranked row.
+        row = account_rank(badges.get(account_id, 0))
         for target in owners:
             state = states[target.social_account_id]
             state.handle = target.handle
-            if badge is None:
-                mark_not_found(state, now=now, config=config)
-                status, written = enums.RankCollectionStatus.not_found.value, 0
-            else:
-                row = changed_rank(account_rank(badge), latest.get(target.social_account_id))
-                if row is not None:
-                    session.add(
-                        models.UserRankSnapshot(
-                            discipline=DISCIPLINE,
-                            user_id=target.user_id,
-                            social_account_id=target.social_account_id,
-                            handle=target.handle,
-                            division=row.division,
-                            tier=row.tier,
-                            rank_value=row.rank_value,
-                            is_ranked=row.is_ranked,
-                            captured_at=now,
-                            source=source,
-                        )
+            changed = changed_rank(row, latest.get(target.social_account_id))
+            if changed is not None:
+                session.add(
+                    models.UserRankSnapshot(
+                        discipline=DISCIPLINE,
+                        user_id=target.user_id,
+                        social_account_id=target.social_account_id,
+                        handle=target.handle,
+                        division=changed.division,
+                        tier=changed.tier,
+                        rank_value=changed.rank_value,
+                        is_ranked=changed.is_ranked,
+                        captured_at=now,
+                        source=source,
                     )
-                mark_ok(state, now=now, config=config)
-                status, written = enums.RankCollectionStatus.ok.value, int(row is not None)
+                )
+            mark_ok(state, now=now, config=config)
             _log(
                 session,
                 social_account_id=target.social_account_id,
                 handle=target.handle,
-                status=status,
+                status=enums.RankCollectionStatus.ok.value,
                 source=source,
-                written=written,
+                written=int(changed is not None),
             )
 
 
@@ -526,17 +510,20 @@ async def process_fetch(
             # The shared request window is full: the batch waits for the next one (no fetch_log row, no failure).
             await _defer(session, claimed, delay_seconds=deferred)
         elif failure is not None:
-            # A failed batch says nothing about any one account: defer them all, one summary row for the batch.
+            # A failed batch says nothing about any one account: defer them all with no failure count, and log the
+            # failure against each one so a workspace-scoped reader sees it (one row per account, like a success).
             status, error = failure
             await _defer(session, claimed, delay_seconds=config.backoff_base_seconds)
-            _log(
-                session,
-                social_account_id=None,
-                handle=f"batch of {len(targets)}",
-                status=status,
-                source=request.source,
-                error=error,
-            )
+            for owners in targets.values():
+                for target in owners:
+                    _log(
+                        session,
+                        social_account_id=target.social_account_id,
+                        handle=target.handle,
+                        status=status,
+                        source=request.source,
+                        error=error,
+                    )
         elif badges is not None:
             _record_batch(
                 session,
