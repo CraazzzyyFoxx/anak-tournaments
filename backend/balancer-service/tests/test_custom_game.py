@@ -29,10 +29,12 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
+from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.division_grid import ladder_grid  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roles import UnknownRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import TeamFormat, slot_shape  # noqa: E402
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
@@ -2497,6 +2499,76 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(calls, {(7, (("tank", 2400),)), (9, (("tank", 2400),))})
         # The undone match was the whole history, so the rebuilt book is empty.
         self.assertEqual(self.ranker.hidden.book, {})
+
+    async def _record_a_balanced_deadlock_round(self, prefs: SimpleNamespace) -> dict[int, int]:
+        """Balance a two-player Deadlock mix, record a team-1 win; ``member -> agent rank written to the host's book``.
+
+        ``slot_shape`` runs for real on the Deadlock module's 6v6 preset (only its database load is stubbed), and the
+        solver stand-in seats one player per team in the bucket the mask names, the way the engine keys a roster by
+        the mask's codes. The bucket is the whole point: a seat in an open slot moves no rank book.
+        """
+        self.games.get.return_value = _game(discipline="deadlock")
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0), _roster_row(2, 9, 1)]
+        self.ranks.resolve.return_value = {
+            (7, "agent"): ResolvedRank(2400, "workspace"),
+            (9, "agent"): ResolvedRank(2400, "workspace"),
+        }
+        self.ranks.list_layer = AsyncMock(return_value={(7, "agent"): 2400, (9, "agent"): 2400})
+        self.host_prefs.get_by_user.return_value = prefs
+        six = TeamFormat.from_preset("deadlock", DISCIPLINES["deadlock"].preset())
+        self.slot_shape.return_value = slot_shape(six, _module_ontology("deadlock"))
+
+        async def solve(payload, _config, _progress, role_mask):
+            (bucket,) = role_mask
+            teams = [
+                {"roster": {bucket: [self._seat(uuid, f"P{uuid}", 2400, bucket, all_ratings={bucket: 2400})]}}
+                for uuid in sorted(payload["players"])
+            ]
+            return lobby_document([{"teams": teams}])
+
+        self.run_balance.side_effect = solve
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+        await self.service.record_outcome(
+            self.session, workspace_id=1, custom_game_id=11, winner=1, variant_index=0, actor_user_id=9
+        )
+        return {
+            call.kwargs["workspace_member_id"]: call.kwargs["ranks"]["agent"]
+            for call in self.ranks.set_ranks.await_args_list
+        }
+
+    async def test_a_deadlock_round_moves_the_hosts_agent_rank_by_points(self) -> None:
+        moved = await self._record_a_balanced_deadlock_round(_prefs(points_per_win=25))
+
+        self.assertEqual(moved, {7: 2425, 9: 2375})
+
+    async def test_a_deadlock_round_moves_the_hosts_agent_rank_by_the_ranker(self) -> None:
+        moved = await self._record_a_balanced_deadlock_round(_prefs(rating_mode="ranker"))
+
+        self.assertEqual(set(moved), {7, 9})
+        self.assertGreater(moved[7], 2400)
+        self.assertLess(moved[9], 2400)
+
+    async def test_a_deadlock_lineup_stored_before_the_fix_records_without_moving_a_rank(self) -> None:
+        # Not retroactive: a stored lineup still keyed by the open slot records as it did, moving nothing.
+        stored = [
+            {
+                "teams": [
+                    {"roster": {"flex": [self._seat("7", "P7", 2400, "flex")]}},
+                    {"roster": {"flex": [self._seat("9", "P9", 2400, "flex")]}},
+                ]
+            }
+        ]
+        self.games.get.return_value = _game(discipline="deadlock", status="balanced")
+        self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(stored))
+        self.host_prefs.get_by_user.return_value = _prefs(rating_mode="ranker")
+        self.ranks.list_layer = AsyncMock(return_value={(7, "agent"): 2400, (9, "agent"): 2400})
+
+        await self.service.record_outcome(
+            self.session, workspace_id=1, custom_game_id=11, winner=1, variant_index=0, actor_user_id=9
+        )
+
+        self.write_round.assert_awaited_once()
+        self.ranks.set_ranks.assert_not_awaited()
 
     async def test_balance_by_ranker_feeds_effective_ratings_and_keeps_the_open_ones(self) -> None:
         self.games.get.return_value = _game()

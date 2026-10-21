@@ -186,6 +186,8 @@ Export into `tournament.team` skips waitlisted / incomplete / empty and records 
 
 Codes: `tank | damage | support | flex`. Built-in 5v5: `{tank: 1, damage: 2, support: 2}`.
 
+A game without open slots (`DisciplineSpec.flex = False`: Deadlock) gives every open starter to its single rated role — Deadlock 6v6 is `{agent: 6}`; with several rated roles such a format is refused (`team_format_open_slots_without_flex`).
+
 Team size **2–12**. A one-slot roster is forbidden (nothing to draft or balance). `draft_rounds = team_size - 1`.
 
 Resolve: tournament override → workspace default → built-in 5v5. The client receives the already-resolved shape; it does not recompute `team_size` / `draft_rounds` except as a preview of an unconfirmed editor total.

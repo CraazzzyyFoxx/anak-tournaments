@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import chain
 
+from shared.disciplines import discipline as discipline_spec
 from shared.disciplines.spec import TeamFormatPreset
 from shared.domain.roles import Ontology, RoleNode, UnknownRole
 from shared.domain.roster_shape import FLEX_SLOT_CODE, MAX_TEAM_SIZE, RosterShape
@@ -189,6 +190,9 @@ def slot_shape(team_format: TeamFormat, ontology: Ontology) -> RosterShape:
     (``n..n`` and ``n..∞`` alike). The rest of the starting line-up is open slots under the ``flex`` key -- a slot without
     a constraint, not a role. ``hard_max``, sub-role rules and the other dimensions are checked on the result
     (``validate_roster``); an open slot holds no assignment, so it never counts toward a ``hard_max``.
+
+    A game without open slots (``DisciplineSpec.flex`` false) gives every starter to its single rated role --
+    Deadlock's 6v6 is ``{agent: 6}`` -- and refuses a format that would leave open slots beside several rated roles.
     """
     rated = ontology.rated.code
     entries: list[tuple[str, int]] = []
@@ -201,6 +205,15 @@ def slot_shape(team_format: TeamFormat, ontology: Ontology) -> RosterShape:
             "team_format_slots_exceed_starters",
             f"role slots need {team_format.starter_max - open_slots} players; the format starts {team_format.starter_max}",
         )
+    if open_slots and not discipline_spec(ontology.discipline).flex:
+        roles = ontology.roots(rated)
+        if len(roles) != 1:
+            raise TeamFormatError(
+                "team_format_open_slots_without_flex",
+                f"{ontology.discipline} has no open slots: {open_slots} starters need a role slot",
+            )
+        # One role: whatever the format pinned to it plus the open starters is every starter.
+        return RosterShape(entries=((roles[0].code, team_format.starter_max),))
     if open_slots:
         entries.append((FLEX_SLOT_CODE, open_slots))
     return RosterShape(entries=tuple(entries))
