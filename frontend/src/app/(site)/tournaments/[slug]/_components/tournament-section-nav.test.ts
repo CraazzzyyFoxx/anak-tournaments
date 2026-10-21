@@ -59,6 +59,7 @@ function model(
     status,
     stages,
     hasTeams: true,
+    hasMapPool: true,
     pathname
   });
 }
@@ -188,8 +189,24 @@ describe("buildTournamentSectionNav", () => {
     const ids = model("registration", `/tournaments/${tournamentId}`).map((item) => item.id);
 
     expect(ids.indexOf("maps")).toBeLessThan(ids.indexOf("bracket"));
-    // Reference data, never gated: the pool is published before play.
+    // Reference data, never locked: the pool is published before play.
     expect(model("registration").find((item) => item.id === "maps")?.available).toBe(true);
+  });
+
+  it("shows Maps only when a map pool is configured", () => {
+    // Absent, not locked — an empty Maps tab would promise a pool nobody
+    // configured, in either phase order.
+    for (const status of ["registration", "live"] as const) {
+      const ids = buildTournamentSectionNav({
+        tournamentId,
+        status,
+        stages: [stage()],
+        hasTeams: true,
+        pathname: `/tournaments/${tournamentId}`
+      }).map((item) => item.id);
+
+      expect(ids).not.toContain("maps");
+    }
   });
 
   it("shows Stream only when there is something to watch", () => {

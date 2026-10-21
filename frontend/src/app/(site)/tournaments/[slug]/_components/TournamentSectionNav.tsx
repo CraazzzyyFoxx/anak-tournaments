@@ -59,6 +59,7 @@ type TournamentSectionNavProps = {
   hasTeams?: boolean;
   hasStreams?: boolean;
   hasRules?: boolean;
+  hasMapPool?: boolean;
   /**
    * Rendered in the rail's leading slot only while the page's big title is out
    * of view, so the viewer never loses the tournament's name without the rail
@@ -79,6 +80,7 @@ export default function TournamentSectionNav({
   hasTeams,
   hasStreams,
   hasRules,
+  hasMapPool,
   collapsedTitle,
   collapsedActions,
   collapsed = false,
@@ -100,9 +102,10 @@ export default function TournamentSectionNav({
         hasTeams,
         hasStreams,
         hasRules,
+        hasMapPool,
         pathname
       }),
-    [hasRules, hasTeams, hasStreams, pathname, stages, status, tournamentId]
+    [hasMapPool, hasRules, hasTeams, hasStreams, pathname, stages, status, tournamentId]
   );
   const setActiveRef = (node: HTMLElement | null) => {
     activeRef.current = node;

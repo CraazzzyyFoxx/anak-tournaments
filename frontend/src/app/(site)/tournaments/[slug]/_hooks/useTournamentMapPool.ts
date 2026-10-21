@@ -7,6 +7,7 @@ import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
 import pickBanService from "@/services/pickBan.service";
 import tournamentService from "@/services/tournament.service";
+import { mapPoolConfigsQueryOptions } from "@/lib/tournament/map-pool-query";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanConfig } from "@/types/tournament.types";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
@@ -90,6 +91,18 @@ export function collectPoolIds(configs: PickBanConfig[]): Set<number> {
     }
   }
   return ids;
+}
+
+/**
+ * Whether any map veto config names a map — the Maps tab's present-or-absent
+ * gate. Same key the Maps route prefetches, so there it is already hydrated.
+ */
+export function useTournamentHasMapPool(tournamentId: number | undefined): boolean {
+  const { data } = useQuery({
+    ...mapPoolConfigsQueryOptions(tournamentId ?? -1),
+    enabled: tournamentId !== undefined
+  });
+  return collectPoolIds((data?.configs ?? []).filter((config) => config.kind === "map")).size > 0;
 }
 
 export function groupByGamemode(maps: CatalogEntityRead[]): MapPoolView {

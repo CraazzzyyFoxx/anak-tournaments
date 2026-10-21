@@ -22,6 +22,7 @@ import { useInvalidation } from "@/hooks/useInvalidation";
 import { useTournamentQuery } from "@/hooks/useTournamentClientData";
 import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { useTournamentStreamsQuery } from "../_hooks/useTournamentStreams";
+import { useTournamentHasMapPool } from "../_hooks/useTournamentMapPool";
 import type { Tournament } from "@/types/tournament.types";
 
 import { useTranslations } from "next-intl";
@@ -131,6 +132,8 @@ export default function TournamentClientLayout({
   const streamsTournamentId =
     tournament && areStreamsVisible(tournament.status) ? tournamentId : undefined;
   const streams = useTournamentStreamsQuery(streamsTournamentId).data;
+
+  const hasMapPool = useTournamentHasMapPool(tournamentId);
 
   const [heroRef, heroScrolledPast] = useScrolledPast<HTMLDivElement>();
 
@@ -342,6 +345,7 @@ export default function TournamentClientLayout({
         hasTeams={teamsCount > 0}
         hasStreams={(streams?.official?.length ?? 0) > 0 || (streams?.participants?.length ?? 0) > 0}
         hasRules={Boolean(tournament.rules?.trim())}
+        hasMapPool={hasMapPool}
         collapsed={heroScrolledPast}
         collapsedTitle={
           <span title={tournament.name}>{collapsedRailTitle(tournament.name)}</span>
