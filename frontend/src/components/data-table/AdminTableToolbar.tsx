@@ -109,19 +109,18 @@ export function AdminTableToolbar({
             {t("selectedOnOtherPages", { count: offPageSelected })}
           </span>
         ) : null}
-        {canExport ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={onExportCsv}
-            title={selectedCount > 0 ? t("exportSelected", { count: selectedCount }) : t("exportCurrent")}
-          >
-            <Download aria-hidden className="size-3.5" />
-            {t("csv")}
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={onExportCsv}
+          disabled={!canExport}
+          title={selectedCount > 0 ? t("exportSelected", { count: selectedCount }) : t("exportCurrent")}
+        >
+          <Download aria-hidden className="size-3.5" />
+          {t("csv")}
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -134,24 +133,22 @@ export function AdminTableToolbar({
         >
           {density === "compact" ? <Rows3 aria-hidden className="size-3.5" /> : <Rows4 aria-hidden className="size-3.5" />}
         </Button>
+        <AdminSavedViews
+          storageKey={prefsKey}
+          extra={{ get: () => visibility, apply: (next) => onVisibilityChange(next as Record<string, boolean>) }}
+        />
         {pickerColumns ? (
-          <>
-            <AdminSavedViews
-              storageKey={prefsKey}
-              extra={{ get: () => visibility, apply: (next) => onVisibilityChange(next as Record<string, boolean>) }}
-            />
-            <CategorizedColumnPicker<AdminColumnCategory, PickerColumn>
-              columns={pickerColumns}
-              categories={["core", "meta", "admin"]}
-              categoryLabel={(category) => t(category)}
-              visibility={visibility}
-              onToggle={onToggleColumn}
-              onReset={onResetColumns}
-              triggerLabel={t("columns")}
-              resetLabel={t("resetColumns")}
-              isMandatory={(id) => pickerColumns.some((column) => column.id === id && column.mandatory)}
-            />
-          </>
+          <CategorizedColumnPicker<AdminColumnCategory, PickerColumn>
+            columns={pickerColumns}
+            categories={["core", "meta", "admin"]}
+            categoryLabel={(category) => t(category)}
+            visibility={visibility}
+            onToggle={onToggleColumn}
+            onReset={onResetColumns}
+            triggerLabel={t("columns")}
+            resetLabel={t("resetColumns")}
+            isMandatory={(id) => pickerColumns.some((column) => column.id === id && column.mandatory)}
+          />
         ) : null}
         {actions}
       </div>

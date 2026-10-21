@@ -115,6 +115,7 @@ export function useAdminTable<TData>({
     isMultiSortEvent: (event) => (event as React.MouseEvent).shiftKey,
     enableColumnResizing: true,
     // One write per drag rather than one per pointer move: sizing is persisted.
+    // `DataTable` still redraws the drag live from `columnSizingInfo`.
     columnResizeMode: "onEnd",
     onColumnSizingChange: setColumnSizing,
     onSortingChange: setSorting,

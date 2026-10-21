@@ -156,7 +156,9 @@ describe("DataTable drag selection", () => {
     // Only one row is in the Tab order; the rest are reached with the arrows.
     expect(rowEl(1).tabIndex).toBe(0);
     expect(rowEl(2).tabIndex).toBe(-1);
-    rowEl(1).focus();
+    await act(async () => {
+      rowEl(1).focus();
+    });
 
     await key({ key: "ArrowDown", shiftKey: true });
     expect(document.activeElement).toBe(rowEl(2));

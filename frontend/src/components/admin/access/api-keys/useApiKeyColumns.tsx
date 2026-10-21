@@ -103,7 +103,7 @@ export function useApiKeyColumns({
         enableSorting: false,
         meta: columnMeta<AccountApiKey>({ align: "center" }),
         cell: ({ row }) => (
-          <AccessStatusCell status={getApiKeyStatus(row.original)} activePill={false} />
+          <AccessStatusCell status={getApiKeyStatus(row.original)} showActive={false} />
         )
       },
       {

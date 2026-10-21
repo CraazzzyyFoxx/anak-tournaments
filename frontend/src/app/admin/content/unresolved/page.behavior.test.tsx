@@ -267,8 +267,11 @@ describe("admin Game content › Unresolved names", () => {
   it("attaches the raw name to the entity picked in the row", async () => {
     const container = await mount();
 
-    // Nothing picked yet, so there is nothing to attach to: the action is absent.
-    expect(button("Attach")).toBeUndefined();
+    // Nothing picked yet: Attach is there but disabled, saying what to pick.
+    const blocked = button("Attach");
+    expect(blocked?.disabled).toBe(true);
+    const reason = document.getElementById(blocked?.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toBe("Pick the map this name means first");
 
     await click(container.querySelector('[aria-label="Pick a map…"]'));
     await click(commandItem("Ilios"));

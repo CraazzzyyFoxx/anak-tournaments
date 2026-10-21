@@ -65,7 +65,6 @@ export function usePeopleColumns({
         id: "identities",
         header: t("columns.identities"),
         enableSorting: false,
-        meta: columnMeta<User>({ align: "center" }),
         cell: ({ row }) =>
           row.original.social_accounts?.length ? (
             <SocialAccountList accounts={row.original.social_accounts} linkify={false} />

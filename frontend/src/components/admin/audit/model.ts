@@ -17,6 +17,8 @@ export const SORTABLE: Record<string, AuditSortField> = {
 export const SCOPE_PARAM = "scope";
 /** The scope toggle chip's URL value: `?scope=1` widens the feed to every workspace. */
 export const ALL_WORKSPACES = "1";
+/** What links said before the scope became a toggle chip; still read, rewritten to `1`. */
+export const LEGACY_ALL_WORKSPACES = "all";
 
 /** The chip values that narrow which rows are in the feed, as `listAudit` takes them. */
 export function auditFeedFilters(values: Record<string, FilterValue>) {

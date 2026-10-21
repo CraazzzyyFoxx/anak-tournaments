@@ -66,13 +66,10 @@ export function TournamentMobileCard({
 
 /** The tournament row: what it is, whether it wants attention, when, and how it is staged. */
 export function useTournamentColumns({
-  canCreate,
   canDelete,
   onDelete,
   games
 }: Readonly<{
-  /** `tournament.create`: the wizard a stage-less draft resumes in. */
-  canCreate: boolean;
   canDelete: boolean;
   /** Stable identity required: the kebab closes over it. */
   onDelete: (tournament: Tournament) => void;
@@ -134,11 +131,6 @@ export function useTournamentColumns({
         (tournament) => [
           { label: t("openHub"), href: `/admin/tournaments/${tournament.id}` },
           {
-            label: t("resumeWizard"),
-            href: `/admin/tournaments/new?resume=${tournament.id}`,
-            hidden: !canCreate || !tournament.is_hidden || (tournament.stages ?? []).length > 0
-          },
-          {
             label: t("delete"),
             onSelect: () => onDelete(tournament),
             destructive: true,
@@ -148,6 +140,6 @@ export function useTournamentColumns({
         { rowLabel: (tournament) => tournament.name }
       )
     ],
-    [canCreate, canDelete, format, games, onDelete, t, tDiscipline]
+    [canDelete, format, games, onDelete, t, tDiscipline]
   );
 }

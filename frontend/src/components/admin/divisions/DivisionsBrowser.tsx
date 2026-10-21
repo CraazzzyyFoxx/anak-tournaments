@@ -90,8 +90,11 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     ownerGame: ownerGrid?.discipline ?? null
   });
   // Picking another game than the pinned grid's unpins it, or the pick would show nothing; clearing the filter keeps it.
-  const gameDefs = gameFilterDefs(gameScope.games, gameT("column"), (next) =>
-    ownerGrid !== null && next !== null && next !== ownerGrid.discipline ? ["grid"] : []
+  const gameDefs = gameFilterDefs(
+    gameScope.games,
+    gameT("column"),
+    (next) => (ownerGrid !== null && next !== null && next !== ownerGrid.discipline ? ["grid"] : []),
+    gameT("all")
   );
   const filters = useFilters(gameDefs);
   const browsedDiscipline = gameScope.game;

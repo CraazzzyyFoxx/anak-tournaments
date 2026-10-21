@@ -277,16 +277,7 @@ describe("/admin/audit", () => {
     await waitFor(() => container.textContent?.includes("Tournament updated"), "the audit row");
     replace.mockClear();
 
-    await click(document.querySelector('button[aria-label^="Actions for"]'));
-    await click(
-      await waitFor(
-        () =>
-          Array.from(document.querySelectorAll('[role="menuitem"]')).find(
-            (item) => item.textContent?.trim() === "Only this record"
-          ),
-        "the record filter in the row menu"
-      )
-    );
+    await click(linkButton("Only this record"));
 
     const params = new URLSearchParams(window.location.search);
     expect(params.get("entity_type")).toBe("tournament");
@@ -307,6 +298,14 @@ describe("/admin/audit", () => {
 
     expect(new URLSearchParams(window.location.search).get("scope")).toBe("1");
     await waitFor(() => feedQuery().allWorkspaces === true, "the platform-wide request");
+  });
+
+  it("still opens an old `?scope=all` link platform-wide, and rewrites it to the chip's value", async () => {
+    superuser = true;
+    await mount("?scope=all");
+
+    await waitFor(() => feedQuery().allWorkspaces === true, "the platform-wide request");
+    expect(new URLSearchParams(window.location.search).get("scope")).toBe("1");
   });
 
   it("opens the inspector on a row instead of a dialog", async () => {

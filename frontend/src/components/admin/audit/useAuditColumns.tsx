@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useTranslations } from "next-intl";
 
-import { createKebabColumn } from "@/components/data-table";
 import {
   auditDiffRows,
   auditSourceLabel,
@@ -16,6 +15,7 @@ import {
   useAuditTranslator
 } from "@/components/kit/audit-log";
 import type { FilterState } from "@/components/kit/useFilters";
+import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { AuditLogRead } from "@/types/admin.types";
@@ -78,16 +78,28 @@ export function useAuditColumns({
         accessorKey: "actor_label",
         header: t("actor"),
         cell: ({ row }) => (
-          // A machine actor is a fact, not a missing name (FR3), so it reads as
-          // one instead of as an em dash.
-          <p
-            className={cn(
-              "truncate text-sm",
-              isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
-            )}
-          >
-            {formatAuditActor(row.original, auditT)}
-          </p>
+          <div className="min-w-0">
+            {/* A machine actor is a fact, not a missing name (FR3), so it reads
+                as one instead of as an em dash. */}
+            <p
+              className={cn(
+                "truncate text-sm",
+                isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
+              )}
+            >
+              {formatAuditActor(row.original, auditT)}
+            </p>
+            {row.original.actor_auth_user_id != null ? (
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0"
+                onClick={() => setFilter("actor_user_id", String(row.original.actor_auth_user_id))}
+              >
+                {t("onlyActor")}
+              </Button>
+            ) : null}
+          </div>
         ),
       },
       {
@@ -97,9 +109,29 @@ export function useAuditColumns({
           const target = formatAuditTarget(row.original, auditT);
           if (!target) return null;
           return (
-            <p className="truncate text-sm" title={target}>
-              {target}
-            </p>
+            <div className="min-w-0">
+              <p className="truncate text-sm" title={target}>
+                {target}
+              </p>
+              {row.original.entity_type && row.original.entity_id != null ? (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  // The type and the id are one filter in two params, so they go
+                  // in one write: `set` twice would start from the same URL
+                  // snapshot and only the second would survive.
+                  onClick={() =>
+                    setFilters({
+                      entity_type: row.original.entity_type ?? null,
+                      entity_id: String(row.original.entity_id),
+                    })
+                  }
+                >
+                  {t("onlyRecord")}
+                </Button>
+              ) : null}
+            </div>
           );
         },
       },
@@ -136,28 +168,6 @@ export function useAuditColumns({
           );
         },
       },
-      createKebabColumn<AuditLogRead>(
-        (row) => [
-          {
-            label: t("onlyActor"),
-            hidden: row.actor_auth_user_id == null,
-            onSelect: () => setFilter("actor_user_id", String(row.actor_auth_user_id))
-          },
-          {
-            label: t("onlyRecord"),
-            hidden: !row.entity_type || row.entity_id == null,
-            // The type and the id are one filter in two params, so they go in
-            // one write: `set` twice would start from the same URL snapshot and
-            // only the second would survive.
-            onSelect: () =>
-              setFilters({
-                entity_type: row.entity_type ?? null,
-                entity_id: String(row.entity_id),
-              })
-          }
-        ],
-        { rowLabel: (row) => describeAuditAction(row.action, auditT).label }
-      ),
     ],
     [format, setFilter, setFilters, t, tk, auditT],
   );

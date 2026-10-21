@@ -69,9 +69,13 @@ export function buildColumnLayout<TData>({
       const width = Math.max(column.columnDef.size ?? 0, ADMIN_ACTION_COLUMN_MIN_WIDTH);
       return { width, minWidth: width, maxWidth: width };
     }
-    const resized = columnSizing[column.id] !== undefined;
+    const dragged = columnSizing[column.id];
+    const resized = dragged !== undefined;
     if (resized || explicitlySizedColumnIds.has(column.id)) {
-      const configuredSize = column.getSize();
+      // The map, not `column.getSize()`: mid-drag it carries the live width.
+      // Clamped the way `getSize()` clamps a committed one.
+      const { minSize = 0, maxSize = Number.MAX_SAFE_INTEGER } = column.columnDef;
+      const configuredSize = resized ? Math.min(Math.max(dragged, minSize), maxSize) : column.getSize();
       // Auto table layout treats `width` as a floor; a user-dragged width is a
       // ceiling too, or shrinking a column would visibly do nothing.
       return resized

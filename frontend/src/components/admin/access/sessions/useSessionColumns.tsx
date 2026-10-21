@@ -55,7 +55,7 @@ export function useSessionColumns() {
         accessorKey: "status",
         header: t("status"),
         meta: columnMeta<AdminAuthSession>({ align: "center" }),
-        cell: ({ row }) => <AccessStatusCell status={row.original.status} activePill />
+        cell: ({ row }) => <AccessStatusCell status={row.original.status} showActive />
       },
       {
         accessorKey: "login_at",

@@ -70,14 +70,9 @@ export function AdminTablePagination({
     pages.push(pageButton(totalPageCount));
   }
 
-  // One page is not a choice: only the count stays.
-  if (totalPageCount <= 1) {
-    return (
-      <div className="border-t border-border/40 px-4 py-2 text-sm tabular-nums text-muted-foreground">
-        {t("range", { start: rangeStart, end: rangeEnd, total })}
-      </div>
-    );
-  }
+  // One page: the count and the page size stay (a larger page is how a reader
+  // gets back a split list); only the pager goes.
+  const single = totalPageCount <= 1;
 
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-2">
@@ -98,27 +93,29 @@ export function AdminTablePagination({
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
-          disabled={currentPage <= 1}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
-          aria-label={t("previousPage")}
-        >
-          <ChevronLeft aria-hidden className="size-4" />
-        </button>
+      {single ? null : (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
+            disabled={currentPage <= 1}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+            aria-label={t("previousPage")}
+          >
+            <ChevronLeft aria-hidden className="size-4" />
+          </button>
 
-        {pages}
+          {pages}
 
-        <button
-          onClick={() => onPageChange(Math.min(currentPage + 1, totalPageCount))}
-          disabled={currentPage >= totalPageCount}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
-          aria-label={t("nextPage")}
-        >
-          <ChevronRight aria-hidden className="size-4" />
-        </button>
-      </div>
+          <button
+            onClick={() => onPageChange(Math.min(currentPage + 1, totalPageCount))}
+            disabled={currentPage >= totalPageCount}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+            aria-label={t("nextPage")}
+          >
+            <ChevronRight aria-hidden className="size-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

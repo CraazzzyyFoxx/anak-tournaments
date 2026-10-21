@@ -34,7 +34,9 @@ const MESSAGES = {
   kit: en.kit,
   kitAudit: en.kitAudit,
   kitTable: en.kitTable,
-  registrationsAdmin: en.registrationsAdmin
+  registrationsAdmin: en.registrationsAdmin,
+  registrationOrganizer: en.registrationOrganizer,
+  rosterShape: en.rosterShape
 };
 
 vi.mock("@/services/balancer-admin.service", () => ({

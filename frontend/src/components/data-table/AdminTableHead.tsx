@@ -1,7 +1,8 @@
 "use client";
 
 import type { Header } from "@tanstack/react-table";
-import type { Ref, ThHTMLAttributes } from "react";
+import type { MouseEvent, Ref, ThHTMLAttributes, TouchEvent } from "react";
+import { flushSync } from "react-dom";
 
 import { TableHead } from "@/components/ui/table";
 import { useTranslations } from "next-intl";
@@ -30,6 +31,18 @@ export function AdminTableHead<TData>({
 }: Readonly<AdminTableHeadProps<TData>>) {
   const t = useTranslations("kitTable.dataTableExtra");
   const resizeHandler = header.getResizeHandler();
+  // TanStack drags from `getSize()`, which for a column nobody sized is its
+  // 150px default, not the width it is drawn at: the live edge would jump off
+  // the pointer. Pin the drawn width before the drag reads it.
+  const startResize = (event: MouseEvent<HTMLDivElement> | TouchEvent<HTMLDivElement>) => {
+    const { table, column } = header.getContext();
+    const th = event.currentTarget.parentElement;
+    if (th && table.getState().columnSizing[column.id] === undefined) {
+      const width = th.getBoundingClientRect().width;
+      flushSync(() => table.setColumnSizing((old) => ({ ...old, [column.id]: width })));
+    }
+    resizeHandler(event);
+  };
   return (
     <TableHead ref={ref} {...rest} className={cn(className, "relative select-none")} style={style}>
       {children}
@@ -40,8 +53,8 @@ export function AdminTableHead<TData>({
           aria-label={t("resize", { id: header.column.id })}
           title={t("resizeHint")}
           onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={resizeHandler}
-          onTouchStart={resizeHandler}
+          onMouseDown={startResize}
+          onTouchStart={startResize}
           onDoubleClick={() => header.column.resetSize()}
           className={cn(
             "absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none hover:bg-primary/40",

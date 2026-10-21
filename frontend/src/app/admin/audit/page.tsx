@@ -1,28 +1,36 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AuditBrowser } from "@/components/admin/audit/AuditBrowser";
-import { ALL_WORKSPACES, SCOPE_PARAM } from "@/components/admin/audit/model";
+import { ALL_WORKSPACES, LEGACY_ALL_WORKSPACES, SCOPE_PARAM } from "@/components/admin/audit/model";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useQueryParams } from "@/hooks/useQueryParams";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 export default function AdminAuditPage() {
   const t = useTranslations("adminMatches.audit");
   const { isSuperuser, canAccessPermission, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const searchParams = useSearchParams();
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
+  const scope = searchParams?.get(SCOPE_PARAM) ?? null;
+  // An old `?scope=all` link still opens the platform-wide feed, and is
+  // rewritten to the toggle chip's `1` so the chip shows it as on.
+  useEffect(() => {
+    if (scope === LEGACY_ALL_WORKSPACES) setParams({ [SCOPE_PARAM]: ALL_WORKSPACES });
+  }, [scope, setParams]);
   // A superuser with no workspace picked has no narrower scope to fall back to,
   // so the feed IS platform-wide, and the empty state must not claim a
   // workspace it is not filtering by. Read off the scope chip's own param: the
   // gate below needs it before the chips exist.
   const allWorkspaces =
-    isSuperuser && (searchParams.get(SCOPE_PARAM) === ALL_WORKSPACES || workspaceId == null);
+    isSuperuser &&
+    (scope === ALL_WORKSPACES || scope === LEGACY_ALL_WORKSPACES || workspaceId == null);
 
   if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
 

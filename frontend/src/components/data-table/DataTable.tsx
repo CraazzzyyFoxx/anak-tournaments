@@ -232,10 +232,21 @@ export function DataTable<TData>({
   const hasRowAction = Boolean(onRowClick || onRowDoubleClick);
   const hasLeadingColumn = Boolean(enableRowSelection || renderExpanded);
   const visibleLeafColumns = table.getVisibleLeafColumns();
+  // Resizing commits once, on release (`columnResizeMode: "onEnd"`); mid-drag
+  // the width lives in `columnSizingInfo`. Folding it in redraws the columns
+  // as the handle moves, the same way TanStack will commit them.
+  const { columnSizingStart, deltaPercentage } = table.getState().columnSizingInfo;
+  const liveColumnSizing = useMemo(() => {
+    if (deltaPercentage === null) return columnSizing;
+    const live = { ...columnSizing };
+    for (const [id, size] of columnSizingStart) live[id] = size + size * deltaPercentage;
+    return live;
+  }, [columnSizing, columnSizingStart, deltaPercentage]);
   // The body rows are memoised and compare it by identity.
   const layout = useMemo(
-    () => buildColumnLayout({ visibleColumns: visibleLeafColumns, columns, columnSizing, hasLeadingColumn, density }),
-    [visibleLeafColumns, columns, columnSizing, hasLeadingColumn, density]
+    () =>
+      buildColumnLayout({ visibleColumns: visibleLeafColumns, columns, columnSizing: liveColumnSizing, hasLeadingColumn, density }),
+    [visibleLeafColumns, columns, liveColumnSizing, hasLeadingColumn, density]
   );
   const { visibleColumns, bodyColumnCount } = layout;
 

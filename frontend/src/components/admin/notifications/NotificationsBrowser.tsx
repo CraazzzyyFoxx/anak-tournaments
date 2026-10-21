@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -55,6 +55,7 @@ export function NotificationsBrowser({
   const [confirming, setConfirming] = useState<{ ids?: number[]; kind?: string } | null>(null);
   // Seen from the table's own fetch: the kind retire is pointless on an empty kind.
   const [total, setTotal] = useState<number | null>(null);
+  const retireReasonId = useId();
 
   // The filter lives in the URL, not in component state: it decides which rows
   // a bulk retire would take, so "which kind was I looking at" must survive a
@@ -109,19 +110,27 @@ export function NotificationsBrowser({
         title={t("notifications.workspaceAdmin.title")}
         description={t("notifications.workspaceAdmin.description")}
         actions={
-          // Only offered with a kind chosen: "retire everything this workspace
-          // ever sent" is not a button, and the server refuses it too.
-          canRetire && kindFilter ? (
-            <Button
-              size="sm"
-              variant="outline"
-              data-field="retire-kind"
-              disabled={retire.isPending || total === 0}
-              onClick={() => setConfirming({ kind: kindFilter })}
-            >
-              <Archive aria-hidden className="size-4" />
-              {t("notifications.workspaceAdmin.retire.kindAction")}
-            </Button>
+          // "Retire everything this workspace ever sent" is not a button, and
+          // the server refuses it too: until a kind is chosen the action waits.
+          canRetire ? (
+            <>
+              {kindFilter ? null : (
+                <span id={retireReasonId} className="text-caption text-muted-foreground">
+                  {t("notifications.workspaceAdmin.retire.pickKind")}
+                </span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                data-field="retire-kind"
+                disabled={!kindFilter || retire.isPending || total === 0}
+                aria-describedby={kindFilter ? undefined : retireReasonId}
+                onClick={() => kindFilter && setConfirming({ kind: kindFilter })}
+              >
+                <Archive aria-hidden className="size-4" />
+                {t("notifications.workspaceAdmin.retire.kindAction")}
+              </Button>
+            </>
           ) : undefined
         }
         footer={

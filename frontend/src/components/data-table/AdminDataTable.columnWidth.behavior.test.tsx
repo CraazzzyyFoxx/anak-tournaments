@@ -72,4 +72,47 @@ describe("DataTable column widths", () => {
     // Explicitly sized column keeps its own pixel width, untouched.
     expect(actor.style.width).toBe("300px");
   });
+
+  function header(label: string) {
+    return [...container.querySelectorAll("thead th")].find((h) => h.textContent?.includes(label)) as HTMLElement;
+  }
+
+  function drag(th: HTMLElement, steps: number[]) {
+    const handle = th.querySelector('[role="separator"]') as HTMLElement;
+    act(() => {
+      handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 0 }));
+    });
+    for (const clientX of steps) {
+      act(() => {
+        document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX }));
+      });
+    }
+  }
+
+  function release(clientX: number) {
+    act(() => {
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX }));
+    });
+  }
+
+  it("redraws a dragged column while the pointer moves, then keeps that width on release", async () => {
+    localStorage.clear();
+    await render();
+    const actor = header("Actor");
+    vi.spyOn(actor, "getBoundingClientRect").mockReturnValue({ width: 300 } as DOMRect);
+    drag(actor, [40, 80]);
+    expect(header("Actor").style.width).toBe("380px");
+    release(80);
+    expect(header("Actor").style.width).toBe("380px");
+  });
+
+  it("starts dragging a flexible column from the width it is drawn at", async () => {
+    localStorage.clear();
+    await render();
+    const when = header("When");
+    vi.spyOn(when, "getBoundingClientRect").mockReturnValue({ width: 240 } as DOMRect);
+    drag(when, [10]);
+    expect(header("When").style.width).toBe("250px");
+    release(10);
+  });
 });

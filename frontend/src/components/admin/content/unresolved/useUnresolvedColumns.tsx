@@ -119,7 +119,7 @@ export function useUnresolvedColumns({
       },
       {
         id: "actions",
-        size: 120,
+        size: 168,
         cell: ({ row }) => {
           const miss = row.original;
           if (!isSuperuser || miss.resolved_at) {
@@ -128,33 +128,43 @@ export function useUnresolvedColumns({
 
           const entityId = targets.get(miss.id);
           const busy = miss.id === attachingId || miss.id === dismissingId;
-          // Attach exists only once a target is picked; until then the picker is the next step.
-          const canAttach = attachableKind(miss) !== null && entityId !== undefined;
+          const kind = attachableKind(miss);
+          // Attach waits on the picker: shown disabled, saying what to pick.
+          const reasonId = `miss-attach-reason-${miss.id}`;
+          const blocked = kind !== null && entityId === undefined;
 
           return (
-            <div className="flex items-center gap-1.5">
-              {canAttach && (
+            <div className="flex flex-col items-start gap-1">
+              <div className="flex items-center gap-1.5">
+                {kind !== null && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={blocked || busy}
+                    aria-describedby={blocked ? reasonId : undefined}
+                    onClick={() => onAttach({ miss, entityId: entityId! })}
+                  >
+                    {miss.id === attachingId ? <Spinner /> : <Check aria-hidden className="h-4 w-4" />}
+                    {t("actions.attach")}
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
+                  variant="ghost"
                   disabled={busy}
-                  onClick={() => onAttach({ miss, entityId: entityId! })}
+                  aria-label={t("actions.dismiss")}
+                  title={t("actions.dismiss")}
+                  onClick={() => onDismiss(miss)}
                 >
-                  {miss.id === attachingId ? <Spinner /> : <Check aria-hidden className="h-4 w-4" />}
-                  {t("actions.attach")}
+                  {miss.id === dismissingId ? <Spinner /> : <EyeOff aria-hidden className="h-4 w-4" />}
                 </Button>
-              )}
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                disabled={busy}
-                aria-label={t("actions.dismiss")}
-                title={t("actions.dismiss")}
-                onClick={() => onDismiss(miss)}
-              >
-                {miss.id === dismissingId ? <Spinner /> : <EyeOff aria-hidden className="h-4 w-4" />}
-              </Button>
+              </div>
+              {blocked ? (
+                <p id={reasonId} className="text-caption text-muted-foreground">
+                  {t("catalog.pickFirst", { entity: t(`catalog.kinds.${kind}`).toLowerCase() })}
+                </p>
+              ) : null}
             </div>
           );
         },

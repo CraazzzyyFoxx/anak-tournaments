@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -75,6 +75,7 @@ export function TeamsBrowser({
   const [pageRows, setPageRows] = useState<Team[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Team | null>(null);
+  const createReasonId = useId();
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.adminList(workspaceId, ALL_DISCIPLINES),
@@ -144,13 +145,25 @@ export function TeamsBrowser({
                 defs={defs}
                 filters={filters}
                 trailing={
-                  // A team belongs to one tournament, so the action exists only
-                  // once the list is scoped to one.
-                  canCreateTeam && selectedTournamentId != null ? (
-                    <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
-                      <Plus className="size-4" aria-hidden />
-                      {t("create")}
-                    </Button>
+                  // A team belongs to one tournament: until the list is scoped
+                  // to one, the action is there but says what it is waiting for.
+                  canCreateTeam ? (
+                    <>
+                      {selectedTournamentId == null ? (
+                        <span id={createReasonId} className="text-caption text-muted-foreground">
+                          {t("pickTournament")}
+                        </span>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        disabled={selectedTournamentId == null}
+                        aria-describedby={selectedTournamentId == null ? createReasonId : undefined}
+                        onClick={() => setCreateDialogOpen(true)}
+                      >
+                        <Plus className="size-4" aria-hidden />
+                        {t("create")}
+                      </Button>
+                    </>
                   ) : null
                 }
               />

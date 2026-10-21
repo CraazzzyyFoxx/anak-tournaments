@@ -1,7 +1,7 @@
 "use client";
 
 import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import type { LadderedOntology } from "@/lib/roster/ontology";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
@@ -73,8 +73,8 @@ export function buildBalancerRegistrationColumns(
     save: (registration: AdminRegistration, next: string) => Promise<unknown>;
     canEdit: (registration: AdminRegistration) => boolean;
   },
-  /** The tournament owner's role dictionary the roles column names and draws roles from. */
-  ontology: RoleOntology | null = null,
+  /** The tournament owner's role dictionary the roles column names and draws roles from; its native ladder crests answers. */
+  ontology: LadderedOntology | null = null,
 ): ColumnDef<AdminRegistration>[] {
   // Built apart from the list below only to keep its old place between check-in
   // and admission instead of being appended after the admin columns.
@@ -114,7 +114,7 @@ export function buildBalancerRegistrationColumns(
     // Free-form answers: the old client-side sort had no case for them either.
     enableSorting: false,
     cell: ({ row }) => (
-      <AnswerValue value={row.original.answers?.[field.key] ?? null} kind={field.kind} />
+      <AnswerValue value={row.original.answers?.[field.key] ?? null} kind={field.kind} ontology={ontology} />
     ),
     meta: columnMeta<AdminRegistration>({
       category: "admin",

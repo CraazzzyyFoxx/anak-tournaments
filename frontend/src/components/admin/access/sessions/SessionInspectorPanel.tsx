@@ -18,7 +18,7 @@ export function SessionInspectorPanel({ session }: Readonly<{ session: AdminAuth
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <InspectorField label={t("status")}>
-          <AccessStatusCell status={session.status} activePill />
+          <AccessStatusCell status={session.status} showActive />
         </InspectorField>
         <InspectorField label={ts("network")}>
           {session.ip_address ? <span className="tabular-nums">{session.ip_address}</span> : null}
