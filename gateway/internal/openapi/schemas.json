@@ -8114,6 +8114,26 @@
       },
       "summary": "Get a parsed match"
     },
+    "rpc.tournament.admin_match_import": {
+      "description": "Permission: workspace `match.result` on the encounter's workspace. Same request and refusals as the captain submission.",
+      "request": {
+        "array": false,
+        "ref": "tournament.MatchImportInput"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.MatchImportRead"
+      },
+      "summary": "Import a game's match by its external id (organizer)"
+    },
+    "rpc.tournament.admin_match_imports": {
+      "description": "Permission: workspace `match.read` on the encounter's workspace. The game's import requests, newest first, each with its organizer `warnings`, derived on read: `fetch_failed` (the request gave up; `last_error` says why), `participants_dropped` (`count` players fewer than the tournament format's starters were observed on the game's teams, e.g. anonymous accounts the decoder dropped) and `banned_character_played` (`characters` the observation shows that this game's hero room banned). Warnings never change a result.",
+      "response": {
+        "array": true,
+        "ref": "tournament.MatchImportRead"
+      },
+      "summary": "List a game's match imports with warnings (organizer)"
+    },
     "rpc.tournament.admin_matches_list": {
       "description": "Permission: workspace `match.read` on the workspace named by `workspace_id`. Every observed duel map across the workspace, not one encounter: every game's, or only the optional `discipline`'s (422 for an unknown code); each row names its own `discipline`. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.",
       "query_params": [
@@ -8396,6 +8416,26 @@
         "ref": "tournament.PregameRoomsRead"
       },
       "summary": "List pre-game rooms"
+    },
+    "rpc.tournament.captain_match_import": {
+      "description": "Permission: authenticated user who captains one of the encounter's live teams (403 otherwise). Body `{external_id}`: the game's match as its discipline's source names it. The stats service fetches it, retrying with backoff for 24 h while the source does not serve it yet, then stores it like an uploaded log and ingests it as evidence for this game (binding, `logs_official` and evidence rules unchanged). Returns the request `{id, status (pending|done|failed), attempts, last_error, external_id, created_at, warnings}`; re-submitting the same id for the same game returns it, a failed one restarts. 422 `unsupported_ingestor` when the encounter's discipline has no match source, 422 `invalid_external_id`, 422 `match_import_tournament_only` outside tournaments (mix, scrim), 404 when the game belongs to another encounter or is cancelled, 409 `match_already_imported` when another game of the workspace holds the same match, 503 when the stats service is unreachable.",
+      "request": {
+        "array": false,
+        "ref": "tournament.MatchImportInput"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.MatchImportRead"
+      },
+      "summary": "Import a game's match by its external id"
+    },
+    "rpc.tournament.captain_match_imports": {
+      "description": "Permission: authenticated captain of one of the encounter's live teams. The game's import requests, newest first, shaped like the submit's answer; `warnings` is always empty on this read.",
+      "response": {
+        "array": true,
+        "ref": "tournament.MatchImportRead"
+      },
+      "summary": "List a game's match imports"
     },
     "rpc.tournament.captain_my_role": {
       "description": "Permission: authenticated user; self-service \u2014 the answer is only about the caller's own captaincy. Returns the calling user's participation for an encounter as `{encounter_team_id, slot}`, both null if they captain none of its seats.",
@@ -16108,6 +16148,10 @@
           "title": "Catalog Sync",
           "type": "boolean"
         },
+        "match_fetch": {
+          "title": "Match Fetch",
+          "type": "boolean"
+        },
         "native_ladder": {
           "title": "Native Ladder",
           "type": "boolean"
@@ -16121,6 +16165,7 @@
         "catalog_sync",
         "native_rank_collection",
         "native_ladder",
+        "match_fetch",
         "achievement_conditions",
         "analytics"
       ],
@@ -31453,6 +31498,7 @@
         "twitch",
         "battlenet",
         "riot",
+        "steam",
         "google",
         "github"
       ],
@@ -46788,6 +46834,119 @@
         "entities"
       ],
       "title": "MatchEventsRead",
+      "type": "object"
+    },
+    "tournament.MatchImportInput": {
+      "description": "The game's match as its discipline's source names it (a match id); the stats service checks the shape.",
+      "properties": {
+        "external_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "external_id"
+      ],
+      "title": "MatchImportInput",
+      "type": "object"
+    },
+    "tournament.MatchImportRead": {
+      "description": "One request to import a game's match by external id (``stats.match_fetch``).",
+      "properties": {
+        "attempts": {
+          "title": "Attempts",
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "external_id": {
+          "title": "External Id",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "last_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error"
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.MatchImportWarningRead"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "attempts",
+        "external_id",
+        "created_at"
+      ],
+      "title": "MatchImportRead",
+      "type": "object"
+    },
+    "tournament.MatchImportWarningRead": {
+      "description": "An organizer warning about an import: ``fetch_failed``, ``participants_dropped`` (``count`` players fewer than\nthe format's starters were observed) or ``banned_character_played`` (``characters`` the game's hero room banned).",
+      "properties": {
+        "characters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Characters",
+          "type": "array"
+        },
+        "code": {
+          "enum": [
+            "fetch_failed",
+            "participants_dropped",
+            "banned_character_played"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "title": "MatchImportWarningRead",
       "type": "object"
     },
     "tournament.MatchParticipantRead": {

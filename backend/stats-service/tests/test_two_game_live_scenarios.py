@@ -2905,6 +2905,7 @@ def unsupported_and_diagnostics(live: Live, ids: dict[str, Any]) -> None:
         "catalog_sync": True,
         "native_rank_collection": True,
         "native_ladder": True,
+        "match_fetch": False,
         "achievement_conditions": False,
         "analytics": False,
     }, capabilities

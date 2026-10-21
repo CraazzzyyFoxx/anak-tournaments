@@ -22,7 +22,7 @@ delays an RPC reply and exactly one process family owns the schedules.
 | Entry point | `serve_rpc.py` | `serve_worker.py` |
 | Run command | `faststream run serve_rpc:app` | `faststream run serve_worker:app` |
 | Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (rank fetch + both registration rank checks: OverFast for Overwatch, Riot API for LoL) |
-| Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, subscription collection, outbox drain |
+| Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, match fetch (selected disciplines), subscription collection, outbox drain |
 | Health | `GET :9100/health` | `GET :9100/health` |
 
 Both share `src/core/lifecycle.py` (broker/cache/realtime/quota wiring, observability, client
@@ -349,13 +349,14 @@ idempotent (`ow_rank_fetch_log_purge`; `lol_rank_fetch_log_purge`, daily, 7-day 
 | LoL rank collection | 60s tick | The same for League (`lol_rank:*` keys, `lol.rank_collection` settings): claims due Riot accounts and publishes one fetch each. Off by default. |
 | Match-log stall reaper | `LOG_REAPER_TICK_SECONDS` (300s) | Requeues native jobs dropped by the queue: `pending` older than `LOG_REAPER_PENDING_AFTER_SECONDS` and `processing` older than `LOG_REAPER_PROCESSING_AFTER_SECONDS`. Exhausted attempts become `failed`; awaiting-link is never claimed. Keep the pending threshold above the queue TTL. |
 | Failed match-log retention | 1h tick | Deletes only expired failed jobs whose raw reference is unused by another job or match. A linked match keeps both its job row and raw object, not an orphaned object with no usable reference. Storage deletion failure keeps the row; an upload's raw-key lock prevents concurrent deletion. Alias breadcrumb SET NULL and deleted-owner evidence share the deletion transaction. Invalid/uncompleted uploads are rejected before persistence; processing never deletes raw bytes as validation cleanup. |
+| Match fetch | 60s tick (selected disciplines with a `match_fetchers` entry) | Import by external id (`stats.match_fetch`, `src/services/ingest/fetch.py`): calls the module's fetcher for up to 20 due `pending` rows. `MatchFetchNotReady` backs off 1, 2, 5, 10, 20, 40 min then hourly, until 24 h after the request (`failed`, `last_error`); `MatchFetchFailed` fails at once. Fetched bytes are stored and queued exactly like an upload (`logs/{tournament}/{sha256}`, the normal ingest job with the game hint). Requests come from tournament-service over the internal `rpc.stats.ingest.fetch` / `fetch_list`; organizer warnings (`fetch_failed`, `participants_dropped`, `banned_character_played`) are derived on the list read. |
 | Subscription collection | 60s heartbeat | Decides inside the tick whether the admin-configured `interval_seconds` has elapsed (read from the append-only check log), then re-checks entitlements for active tournament participants. |
 
 ## Data owned
 
 Writes:
 
-- `stats` — `ingest_job`, `match`, `match_team`, `match_player`, `segment`, `fact`, `event` and
+- `stats` — `ingest_job`, `match_fetch`, `match`, `match_team`, `match_player`, `segment`, `fact`, `event` and
   `stat_baseline`. `stats.discord_channel` sits in this schema but discord-service writes it.
 - `rank` — `account_state`, `rank_snapshot`, `fetch_log` (every game; `discipline` names it).
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.

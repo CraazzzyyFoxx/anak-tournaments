@@ -552,6 +552,47 @@ DOCS: dict[str, dict] = {
         "summary": "Correct a game result",
         "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. When the room's result rotation (`result_*` first-ban rotation) opened the next round off this position and the correction changes who opens it, that round is scrapped and re-opened for the corrected opener in the same commit — provided nobody used it yet; 409 `dependent_round_started` (nothing written, no audit row) when it was already used: a submission on one of its steps, or its game given a side, claimed or confirmed. The way out is to undo that round (captains) or reset the room first. The response is `{game, reset_downstream}`. Also 409 `side_pick_pending` while the position's side step is open, 409 `side_pick_required` while a room that picks this game's sides left them incomplete, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
     },
+    # ── a game's match imported by external id (src/rpc/match_import.py) ──
+    "rpc.tournament.captain_match_import": {
+        "summary": "Import a game's match by its external id",
+        "description": (
+            "Permission: authenticated user who captains one of the encounter's live teams (403 otherwise). Body "
+            "`{external_id}`: the game's match as its discipline's source names it. The stats service fetches it, "
+            "retrying with backoff for 24 h while the source does not serve it yet, then stores it like an uploaded "
+            "log and ingests it as evidence for this game (binding, `logs_official` and evidence rules unchanged). "
+            "Returns the request `{id, status (pending|done|failed), attempts, last_error, external_id, created_at, "
+            "warnings}`; re-submitting the same id for the same game returns it, a failed one restarts. 422 "
+            "`unsupported_ingestor` when the encounter's discipline has no match source, 422 `invalid_external_id`, "
+            "422 `match_import_tournament_only` outside tournaments (mix, scrim), 404 when the game belongs to "
+            "another encounter or is cancelled, 409 `match_already_imported` when another game of the workspace "
+            "holds the same match, 503 when the stats service is unreachable."
+        ),
+    },
+    "rpc.tournament.captain_match_imports": {
+        "summary": "List a game's match imports",
+        "description": (
+            "Permission: authenticated captain of one of the encounter's live teams. The game's import requests, "
+            "newest first, shaped like the submit's answer; `warnings` is always empty on this read."
+        ),
+    },
+    "rpc.tournament.admin_match_import": {
+        "summary": "Import a game's match by its external id (organizer)",
+        "description": (
+            "Permission: workspace `match.result` on the encounter's workspace. Same request and refusals as the "
+            "captain submission."
+        ),
+    },
+    "rpc.tournament.admin_match_imports": {
+        "summary": "List a game's match imports with warnings (organizer)",
+        "description": (
+            "Permission: workspace `match.read` on the encounter's workspace. The game's import requests, newest "
+            "first, each with its organizer `warnings`, derived on read: `fetch_failed` (the request gave up; "
+            "`last_error` says why), `participants_dropped` (`count` players fewer than the tournament format's "
+            "starters were observed on the game's teams, e.g. anonymous accounts the decoder dropped) and "
+            "`banned_character_played` (`characters` the observation shows that this game's hero room banned). "
+            "Warnings never change a result."
+        ),
+    },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {
         "summary": "List pick-ban configs",

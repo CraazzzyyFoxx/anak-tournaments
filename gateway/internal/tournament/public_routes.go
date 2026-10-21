@@ -27,6 +27,9 @@ var PublicWriteRoutes = []edge.RouteSpec{
 	// map twice and only the position tells the two plays apart.
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/report", Queue: "rpc.tournament.captain_report_game", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/map", Queue: "rpc.tournament.captain_select_game_map", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
+	// match_import.py — a captain imports the game's match by its external id; the stats service fetches it.
+	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/match-import", Queue: "rpc.tournament.captain_match_import", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/games/{game_id}/match-import", Queue: "rpc.tournament.captain_match_imports", IDParam: "encounter_id", Path: []string{"game_id"}, Auth: edge.AuthRequired},
 	// pick_ban_session.py — captain ready-up gate, shared by BOTH pick-ban kinds
 	// (one confirmation per side covers map veto and hero bans together).
 	{Method: "POST", Pattern: "/api/v1/encounters/{encounter_id}/ready", Queue: "rpc.tournament.captain_ready", IDParam: "encounter_id", Auth: edge.AuthRequired},

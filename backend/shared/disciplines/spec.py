@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from shared.catalog_sync import CatalogImageMirror
     from shared.disciplines.analytics import AnalyticsExports
-    from shared.disciplines.ingest import Decoder, DeriveMatch
+    from shared.disciplines.ingest import Decoder, DeriveMatch, MatchFetcher
     from shared.domain.achievements.context import EvalContext
     from shared.domain.pick_ban_rules.presets import Preset
     from shared.models.achievements.achievement import AchievementGrain, AchievementRule
@@ -248,6 +248,9 @@ class DisciplineSpec:
     #: Raw producers the module decodes: source kind -> ``decode(raw, ctx)``. ``shared.disciplines.INGESTORS`` keys
     #: them by ``(code, kind)``; a kind not listed here is unsupported, never routed to another producer.
     ingestors: dict[str, Decoder] = field(default_factory=dict, compare=False, hash=False)
+    #: Producers stats core can pull a match from by external id: source kind -> ``fetch(external_id) -> bytes``, the
+    #: bytes ``ingestors[kind]`` decodes. A kind not listed here cannot be imported by id (``unsupported_ingestor``).
+    match_fetchers: dict[str, MatchFetcher] = field(default_factory=dict, compare=False, hash=False)
     #: Facts that need the bound match (baselines, registration ranks); ``None`` when nothing derives after binding.
     derive_match: DeriveMatch | None = field(default=None, compare=False)
     #: Achievement kernel hooks, all lazy and all ``None`` for a game with no conditions (LoL): a missing hook is

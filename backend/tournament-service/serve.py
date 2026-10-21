@@ -47,6 +47,7 @@ from src.rpc import (
     admin_misc,
     ffa,
     integrations,
+    match_import,
     pick_ban_admin,
     public_rpc,
     registration_admin,
@@ -135,6 +136,8 @@ pick_ban_admin.register(broker, logger)
 # FFA lobbies: the public table reads and the organizer's three result levers.
 ffa.register(broker, logger)
 public_rpc.register(broker, logger)
+# A game's match imported by external id (captain or organizer), forwarded to the stats service.
+match_import.register(broker, logger)
 # Team logo upload/delete (binary body, base64 on the wire).
 team_binary.register(broker, logger)
 # Registered-team crest upload/delete — same wire format, captain-gated.

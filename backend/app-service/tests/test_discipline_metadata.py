@@ -173,6 +173,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
                 "catalog_sync": True,
                 "native_rank_collection": True,
                 "native_ladder": True,
+                "match_fetch": False,
                 "achievement_conditions": True,
                 "analytics": True,
             },
@@ -183,6 +184,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
                 "catalog_sync": True,
                 "native_rank_collection": True,
                 "native_ladder": True,
+                "match_fetch": False,
                 "achievement_conditions": False,
                 "analytics": False,
             },
@@ -463,6 +465,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
             register_jobs=spy("register_jobs"),
             start_jobs=spy("start_jobs"),
             collection_handlers={"rank.collect": spy("rank.collect")},
+            match_fetchers={"probe": spy("match_fetch")},
         )
         with patch.dict(discipline_service.DISCIPLINES, {"overwatch": probed}):
             listed = await self.list("all")
@@ -487,6 +490,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
                 "catalog_sync": False,
                 "native_rank_collection": False,  # another collection handler is not rank collection
                 "native_ladder": False,
+                "match_fetch": False,
                 "achievement_conditions": False,
                 "analytics": False,
             },

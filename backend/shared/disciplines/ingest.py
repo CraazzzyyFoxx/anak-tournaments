@@ -8,6 +8,10 @@ again.
 
 ``INGESTORS`` is assembled by ``shared.disciplines`` from every spec's ``ingestors`` (``(discipline, source kind)``
 pairs) and rejects a duplicate pair; an unknown pair is the caller's ``unsupported_ingestor``, never a fallback.
+
+A ``MatchFetcher`` is the only IO a module offers ingest: ``fetch(external_id) -> raw bytes`` for a source kind its
+decoder reads. Stats core owns the pending row, the retries and the job; the fetcher raises ``MatchFetchNotReady``
+while the source does not serve the match yet and ``MatchFetchFailed`` when it never will.
 """
 
 from __future__ import annotations
@@ -31,6 +35,9 @@ __all__ = (
     "DecodeError",
     "Decoder",
     "DeriveMatch",
+    "MatchFetchFailed",
+    "MatchFetchNotReady",
+    "MatchFetcher",
     "assemble_ingestors",
 )
 
@@ -103,6 +110,17 @@ class DecodeError(ValueError):
 Decoder = Callable[[bytes, DecodeContext], "MatchDoc"]
 #: ``(session, doc, binding) -> doc``: baseline/rank-context-dependent facts, after binding.
 DeriveMatch = Callable[["AsyncSession", "MatchDoc", BoundMatch], Awaitable["MatchDoc"]]
+#: ``fetch(external_id) -> raw bytes`` of one match from the source kind's producer (the bytes an upload would carry).
+MatchFetcher = Callable[[str], Awaitable[bytes]]
+
+
+class MatchFetchNotReady(Exception):
+    """The source does not serve the match yet (not found, rate limited, down): stats core retries later."""
+
+
+class MatchFetchFailed(Exception):
+    """The source will never serve this match (refused, malformed id or payload): stats core stops retrying."""
+
 
 #: ``(discipline, source kind) -> decoder``, filled by ``shared.disciplines`` when the registry is imported.
 INGESTORS: dict[tuple[str, str], Decoder] = {}

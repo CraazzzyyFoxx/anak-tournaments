@@ -3,5 +3,6 @@
 
 from .defs import *
 from .discord_channel import *
+from .fetch import *
 from .ingest import *
 from .match import *

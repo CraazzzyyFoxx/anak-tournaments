@@ -482,6 +482,15 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.captain_report_game": Op(request=captain_schemas.GameClaimIn),
     "rpc.tournament.captain_select_game_map": Op(request=captain_schemas.GameMapSelectInput),
     "rpc.tournament.admin_game_result": Op(request=pick_ban_admin.AdminGameResultInput),
+    # ── a game's match imported by external id (src/rpc/match_import.py) ──
+    "rpc.tournament.captain_match_import": Op(
+        request=captain_schemas.MatchImportInput, response=captain_schemas.MatchImportRead
+    ),
+    "rpc.tournament.captain_match_imports": Op(response=captain_schemas.MatchImportRead, response_array=True),
+    "rpc.tournament.admin_match_import": Op(
+        request=captain_schemas.MatchImportInput, response=captain_schemas.MatchImportRead
+    ),
+    "rpc.tournament.admin_match_imports": Op(response=captain_schemas.MatchImportRead, response_array=True),
     # ── organizer pick-ban: config CRUD, the constructor, live overrides ───
     # Same rationale: the config upsert answers a serialized config dict and the
     # live-session ops answer the room state, so only the bodies are mapped.

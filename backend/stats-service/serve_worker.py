@@ -3,7 +3,7 @@
 Consumes ``stats.ingest.<discipline>`` for the disciplines ``STATS_DISCIPLINES`` selects (every installed one when
 unset), the upload/tournament fanout, achievement evaluation, ``tournament.encounter.completed``, Discord member changes
 and each selected discipline module's own jobs (the OverFast rank collector), and runs the reaper, failed-log retention,
-subscription and outbox-drain schedules. Run: ``faststream run serve_worker:app``.
+match-fetch (import by external id), subscription and outbox-drain schedules. Run: ``faststream run serve_worker:app``.
 """
 
 from collections.abc import Awaitable
@@ -36,6 +36,7 @@ from src.services.achievement.engine.consumer import (
     handle_achievement_evaluate_deferred,
 )
 from src.services.ingest import consumers as ingest_consumers
+from src.services.ingest import fetch as match_fetch
 from src.services.match_logs import consumers as match_log_consumers
 from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import retention as logs_retention
@@ -101,6 +102,8 @@ async def start_worker() -> None:
     logs_reaper.start_scheduler(redis=realtime_redis, disciplines=[spec.code for spec in SELECTED])
     # Drop failed match logs (S3 object + record) past their retention window.
     logs_retention.start_scheduler(redis=realtime_redis, s3=s3_client)
+    # Pull the selected disciplines' matches requested by external id (a no-op without a module fetcher).
+    match_fetch.start_scheduler(redis=realtime_redis, s3=s3_client, disciplines=[spec.code for spec in SELECTED])
     subscription_scheduler.start_scheduler()
     _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     readiness.bind()
@@ -118,6 +121,7 @@ async def stop_worker() -> None:
     _pending_closes.extend(discipline_jobs.stop_jobs(SELECTED))
     logs_reaper.shutdown_scheduler()
     logs_retention.shutdown_scheduler()
+    match_fetch.shutdown_scheduler()
     subscription_scheduler.shutdown_scheduler()
     _outbox_scheduler.shutdown()
 

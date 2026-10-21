@@ -29,6 +29,8 @@ class DisciplineCapabilities(BaseModel):
     catalog_sync: bool
     native_rank_collection: bool
     native_ladder: bool
+    #: A match can be imported by its external id (``DisciplineSpec.match_fetchers``).
+    match_fetch: bool
     achievement_conditions: bool
     analytics: bool
 

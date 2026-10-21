@@ -2,6 +2,9 @@
 
 The gateway relays the original request bytes untouched as ``raw_base64`` next to the trusted ``identity`` it resolved;
 nothing in the body can overwrite the identity, and workspace/key come only from the rehydrated credential.
+
+``rpc.stats.ingest.fetch`` and ``rpc.stats.ingest.fetch_list`` are internal: no gateway route reaches them, only
+tournament-service, which authorized the caller for the encounter and names the game (``services.ingest.fetch``).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES
 from src.core import clients as _clients
 from src.core import db
 from src.schemas.ingest import BindIngestRequest
-from src.services.ingest import jobs
+from src.services.ingest import fetch, jobs
 from src.services.ingest.process import bind_ingest_job, game_observation
 from src.services.match_logs.limits import max_base64_length
 
@@ -93,3 +96,20 @@ def register(broker: Any, logger: Any) -> None:
             return await game_observation(session, encounter_game_id=c.require_id(data), user=user)
 
         return await c.envelope(logger, "ingest.game_observation", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.stats.ingest.fetch")
+    async def _fetch(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            return await fetch.submit_fetch(session, data=c.payload(data), requested_by_user_id=c.actor(data).id)
+
+        return await c.envelope(logger, "ingest.fetch", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.stats.ingest.fetch_list")
+    async def _fetch_list(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            body = c.payload(data)
+            return await fetch.list_fetches(
+                session, encounter_game_id=int(body["encounter_game_id"]), with_warnings=bool(body.get("warnings"))
+            )
+
+        return await c.envelope(logger, "ingest.fetch_list", op, session_factory=_SF)

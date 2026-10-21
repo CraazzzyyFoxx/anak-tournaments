@@ -63,6 +63,10 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	// encounter_game correction — one series position's result, admin-decided and
 	// always reasoned (spec §6.5). Same worker-side "match"/"result" gate.
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/games/{game_id}/result", Queue: "rpc.tournament.admin_game_result", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
+	// A game's match imported by external id (src/rpc/match_import.py): the submit is gated "match"/"result", the
+	// list (with the organizer warnings) "match"/"read".
+	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/games/{game_id}/match-import", Queue: "rpc.tournament.admin_match_import", IDParam: "encounter_id", Path: []string{"game_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/encounters/{encounter_id}/games/{game_id}/match-import", Queue: "rpc.tournament.admin_match_imports", IDParam: "encounter_id", Path: []string{"game_id"}, Auth: edge.AuthRequired},
 	// FFA lobby results (src/rpc/ffa.py) — one game of a lobby is identified by
 	// its POSITION, like the duel game correction above: a lobby may replay a
 	// cancelled position, and only the position tells the two plays apart. The
