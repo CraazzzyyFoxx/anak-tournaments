@@ -30,7 +30,7 @@ from src.rpc import _common as c
 from src.services.workspace.binary import workspace_binary
 
 _SF = db.async_session_maker
-_ASSET_TYPES = ("achievements", "divisions")
+_ASSET_TYPES = ("achievements", "divisions", "catalog")
 
 
 def _decode(data: dict[str, Any]) -> bytes:

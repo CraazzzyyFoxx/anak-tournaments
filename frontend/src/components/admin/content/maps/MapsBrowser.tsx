@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
 import { DataTable } from "@/components/data-table";
-import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
+import { CatalogAliasesField, CatalogImageField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogSyncDialog } from "@/components/admin/CatalogSyncDialog";
 import { CatalogToolbarActions } from "@/components/admin/CatalogToolbarActions";
 import { FilterBar } from "@/components/kit/FilterBar";
@@ -128,6 +128,16 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
 
       <CatalogEntityDialogs crud={crud} kindLabel={kindLabel}>
         <CatalogNameField id={nameFieldId} value={formData.name} onChange={(name) => setFormData({ ...formData, name })} />
+
+        <CatalogImageField
+          discipline={discipline}
+          kind={kind}
+          label={t("catalog.entity.image", { kind: kindLabel })}
+          name={formData.name || kindLabel}
+          value={formData.image_path}
+          onChange={(image_path) => setFormData((form) => ({ ...form, image_path }))}
+          width={128}
+        />
 
         {hasModes && (
           <div className="space-y-2">

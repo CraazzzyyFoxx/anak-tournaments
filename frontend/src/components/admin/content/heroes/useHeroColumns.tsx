@@ -41,7 +41,7 @@ export function useHeroColumns({
             <AssetPreview
               imagePath={entity.image_path}
               name={entity.name}
-              assetLabel={t("catalog.entity.imageUrl", { kind: kindLabel })}
+              assetLabel={t("catalog.entity.image", { kind: kindLabel })}
               shape="circle"
               className="mx-auto h-10 w-10"
             />

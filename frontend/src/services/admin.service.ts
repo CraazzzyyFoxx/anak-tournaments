@@ -913,6 +913,21 @@ class AdminService {
   }
 
   /**
+   * Stores an image for a catalog entity in our bucket and returns its public URL; the caller saves it as
+   * `image_path`. A fresh key per upload, so a replaced image is never served from a cache.
+   */
+  async uploadCatalogImage(discipline: string, kind: CatalogKind, file: File): Promise<{ key: string; public_url: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    const response = await apiFetch(`/api/v1/assets/catalog/${discipline}-${kind}-${suffix}`, {
+      method: "POST",
+      body: formData
+    });
+    return response.json();
+  }
+
+  /**
    * Every character of one discipline's catalog, for a workspace's achievement editor. A read open to the
    * workspace's achievement editors (the platform catalog list is superuser-only).
    */

@@ -10991,7 +10991,7 @@
           "createTitle": "Create {kind}",
           "updateTitle": "Edit {kind}",
           "creating": "Creating…",
-          "imageUrl": "{kind} image URL",
+          "image": "{kind} image",
           "deleteTitle": "Delete {kind}",
           "deleteDescription": "“{name}” will be permanently removed from the catalog. This cannot be undone."
         },
@@ -10999,8 +10999,7 @@
           "selectClass": "Select class",
           "color": "Color",
           "pickColor": "Pick color",
-          "pickColorWithValue": "Pick color {color}",
-          "iconLink": "Direct link to the portrait image."
+          "pickColorWithValue": "Pick color {color}"
         },
         "unavailableTitle": "{game} has no {kind} catalog",
         "unavailable": "{game} does not use this kind of content, so there is nothing to list or create here.",
@@ -11055,6 +11054,8 @@
         "name": "Name",
         "aliases": "Aliases",
         "aliasesHelp": "One alias per line, as it appears in match logs.",
+        "imageHelp": "Click or drop a PNG, JPEG, WebP or GIF up to 5 MB. An uploaded image is kept by the catalog sync.",
+        "imageUploadError": "Could not upload the image",
         "registrationOpened": "Registration opened",
         "checkInOpened": "Check-in opened",
         "encounterScheduled": "Match scheduled",

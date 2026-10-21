@@ -111,7 +111,7 @@ async def upload_avatar(
 async def upload_asset(
     s3: S3Client,
     *,
-    asset_type: Literal["achievements", "divisions"],
+    asset_type: Literal["achievements", "divisions", "catalog"],
     slug: str,
     file_data: bytes,
     content_type: str,

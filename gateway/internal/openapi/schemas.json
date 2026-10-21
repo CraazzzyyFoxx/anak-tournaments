@@ -595,11 +595,11 @@
       "summary": "Edit an announcement"
     },
     "rpc.app.assets.delete": {
-      "description": "Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.",
+      "description": "Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions/catalog asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.",
       "summary": "Delete asset"
     },
     "rpc.app.assets.upload": {
-      "description": "Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions asset to S3, returning its key and public URL; 422 on invalid asset_type.",
+      "description": "Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions/catalog asset to S3, returning its key and public URL; 422 on invalid asset_type.",
       "summary": "Upload asset"
     },
     "rpc.app.audit_list": {
@@ -6874,8 +6874,20 @@
       "summary": "Validate condition tree"
     },
     "rpc.stats.catalog.sync": {
-      "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon; Deadlock: deadlock-api) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync; 503 `catalog_source_unavailable` when the source times out, is unreachable or answers an error (rows already applied stay; run it again).",
-      "summary": "Sync a discipline's catalog"
+      "description": "Permission: superuser only. Starts a background sync of the discipline module's catalog source (named in the snapshot's `source`) into catalog.entity, mirroring images to S3, and returns its first snapshot (`status: running`) at once. Existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. Stages run in order: `source`, then the discipline's kinds `mode`, `map`, `character`; a kind counts the images it actually downloads (`done`/`total`) and reports the rows it created, committing on its own. Every change is published whole as `catalog_sync.progress` on the caller's `user:{id}:catalog-sync` topic (non-durable). A failed sync is `status: failed` with `error.code` `catalog_source_unavailable` (the source timed out, is unreachable or answered an error), the code of the module's refusal (e.g. `catalog_conflict`), `interrupted` or `internal_error`; the stage it died in is `failed`, finished stages stay `done`. 404 for a discipline without a sync; 409 `catalog_sync_running` while a sync of the same discipline runs.",
+      "response": {
+        "array": false,
+        "ref": "stats.CatalogSyncState"
+      },
+      "summary": "Start a discipline's catalog sync"
+    },
+    "rpc.stats.catalog.sync_status": {
+      "description": "Permission: superuser only. The discipline's last catalog sync snapshot, the same body `catalog_sync.progress` carries; `null` when nothing ran in the last 15 minutes, or when a running sync stopped reporting for 5 minutes (its worker died). 404 for a discipline without a sync.",
+      "response": {
+        "array": false,
+        "ref": "stats.CatalogSyncState"
+      },
+      "summary": "Read a discipline's catalog sync"
     },
     "rpc.stats.impact.recompute_baselines": {
       "description": "Permission: superuser. Rebuilds the native Overwatch baselines used for MVP-impact scoring (`stats.stat_baseline`) for the active formula version, aggregating a mean/standard deviation per (role id, rank bucket, stat code) from whole-match player facts across workspaces. Returns the row count and formula version. Each run atomically replaces that discipline/version's rows and aborts rather than wiping them when aggregation yields nothing. Repeated runs are safe but scan the historical facts and clear the 10-minute baseline cache.",
@@ -34772,6 +34784,156 @@
         "teams"
       ],
       "title": "BindIngestRequest",
+      "type": "object"
+    },
+    "stats.CatalogSyncError": {
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "msg": {
+          "title": "Msg",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "msg"
+      ],
+      "title": "CatalogSyncError",
+      "type": "object"
+    },
+    "stats.CatalogSyncStage": {
+      "properties": {
+        "created": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created"
+        },
+        "done": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Done"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "running",
+            "done",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Total"
+        }
+      },
+      "required": [
+        "key",
+        "state",
+        "done",
+        "total",
+        "created"
+      ],
+      "title": "CatalogSyncStage",
+      "type": "object"
+    },
+    "stats.CatalogSyncState": {
+      "description": "One discipline's catalog sync: the snapshot ``GET`` reads and every ``catalog_sync.progress`` event carries.",
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stats.CatalogSyncError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/components/schemas/stats.CatalogSyncStage"
+          },
+          "title": "Stages",
+          "type": "array"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "started_by": {
+          "title": "Started By",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "running",
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "discipline",
+        "status",
+        "source",
+        "started_by",
+        "started_at",
+        "updated_at",
+        "error",
+        "stages"
+      ],
+      "title": "CatalogSyncState",
       "type": "object"
     },
     "stats.CollectTriggerRequest": {

@@ -403,11 +403,11 @@ DOCS: dict[str, dict] = {
     # ── assets (binary, workspace-scoped) ────────────────────────────────────────────
     "rpc.app.assets.upload": {
         "summary": "Upload asset",
-        "description": "Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions asset to S3, returning its key and public URL; 422 on invalid asset_type.",
+        "description": "Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions/catalog asset to S3, returning its key and public URL; 422 on invalid asset_type.",
     },
     "rpc.app.assets.delete": {
         "summary": "Delete asset",
-        "description": "Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.",
+        "description": "Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions/catalog asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.",
     },
     # ── match log (binary download) ──────────────────────────────────────────────────
     "rpc.app.matches.log": {

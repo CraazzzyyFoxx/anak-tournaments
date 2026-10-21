@@ -10991,7 +10991,7 @@
           "createTitle": "Создание: {kind}",
           "updateTitle": "Редактирование: {kind}",
           "creating": "Создание…",
-          "imageUrl": "URL изображения: {kind}",
+          "image": "Изображение: {kind}",
           "deleteTitle": "Удалить: {kind}",
           "deleteDescription": "«{name}» будет удалена из каталога навсегда. Это действие нельзя отменить."
         },
@@ -10999,8 +10999,7 @@
           "selectClass": "Выберите класс",
           "color": "Цвет",
           "pickColor": "Выбрать цвет",
-          "pickColorWithValue": "Выбрать цвет: {color}",
-          "iconLink": "Прямая ссылка на портрет."
+          "pickColorWithValue": "Выбрать цвет: {color}"
         },
         "unavailableTitle": "У игры {game} нет каталога: {kind}",
         "unavailable": "Игра {game} не использует этот тип данных — списка и создания здесь нет.",
@@ -11055,6 +11054,8 @@
         "name": "Название",
         "aliases": "Алиасы",
         "aliasesHelp": "По одному алиасу на строку, как в логах матчей.",
+        "imageHelp": "Нажмите или перетащите PNG, JPEG, WebP или GIF до 5 МБ. Загруженное изображение сохраняется при синхронизации каталога.",
+        "imageUploadError": "Не удалось загрузить изображение",
         "registrationOpened": "Регистрация открыта",
         "checkInOpened": "Чек-ин открыт",
         "encounterScheduled": "Матч запланирован",

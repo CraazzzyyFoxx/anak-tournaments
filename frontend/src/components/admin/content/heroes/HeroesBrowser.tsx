@@ -4,8 +4,7 @@ import { useCallback, useId, useMemo } from "react";
 import { useTranslations } from "next-intl";
 
 import { DataTable } from "@/components/data-table";
-import { AssetPreview } from "@/components/admin/AssetPreview";
-import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
+import { CatalogAliasesField, CatalogImageField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogSyncDialog } from "@/components/admin/CatalogSyncDialog";
 import { CatalogToolbarActions } from "@/components/admin/CatalogToolbarActions";
 import { FilterBar } from "@/components/kit/FilterBar";
@@ -46,7 +45,6 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
-  const imageFieldId = `${formId}-image`;
   const classFieldId = `${formId}-class`;
   const colorFieldId = `${formId}-color`;
   const colorPickerId = `${formId}-color-picker`;
@@ -123,26 +121,15 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
       <CatalogEntityDialogs crud={crud} kindLabel={kindLabel}>
         <CatalogNameField id={nameFieldId} value={formData.name} onChange={(name) => setFormData({ ...formData, name })} />
 
-        <div className="space-y-2">
-          <Label htmlFor={imageFieldId}>{t("catalog.entity.imageUrl", { kind: kindLabel })}</Label>
-          <div className="flex items-center gap-3">
-            <AssetPreview
-              imagePath={formData.image_path}
-              name={formData.name || kindLabel}
-              assetLabel={t("catalog.entity.imageUrl", { kind: kindLabel })}
-              shape="circle"
-              className="h-10 w-10 shrink-0"
-            />
-            <Input
-              id={imageFieldId}
-              type="url"
-              value={formData.image_path || ""}
-              onChange={(e) => setFormData({ ...formData, image_path: e.target.value })}
-              className="flex-1"
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">{t("catalog.character.iconLink")}</p>
-        </div>
+        <CatalogImageField
+          discipline={discipline}
+          kind={kind}
+          label={t("catalog.entity.image", { kind: kindLabel })}
+          name={formData.name || kindLabel}
+          value={formData.image_path}
+          onChange={(image_path) => setFormData((form) => ({ ...form, image_path }))}
+          shape="circle"
+        />
 
         {classes.length > 0 && (
           <div className="space-y-2">
