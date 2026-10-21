@@ -133,6 +133,10 @@ playable  ⇔  is_active  AND  a rank number was found (> 0)
 
 Form flex mode: `optional` | `all_roles` | `forced`. Unreadable form → `optional`.
 
+A game with one rated role (Deadlock) is normalized like `forced` on every write path: the role set is always that role,
+primary; a write naming no role keeps the stored row (and its rank); a new registration without a `roles` answer gets
+it; a public sign-up's absent `roles` answer is that role (`_common.only_role_answer`) — its form shows no role step.
+
 Rank resolution (`pick_rank`, first non-null layer wins):
 
 - Tournament: `registration → workspace → ow`

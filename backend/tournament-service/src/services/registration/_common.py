@@ -118,6 +118,15 @@ def apply_all_roles(
     return result
 
 
+def only_role_answer(role_codes: Sequence[str]) -> list[dict[str, Any]] | None:
+    """The ``roles`` answer a game with ONE rated role implies -- that role, primary; ``None`` with several.
+
+    Such a game asks no role question (the single-role rule hides the step), yet the tournament balancer and the draft
+    read the registration's role rows: without one the registrant is ranked on no role at all.
+    """
+    return [{"role": role_codes[0], "is_primary": True}] if len(role_codes) == 1 else None
+
+
 def build_registration_roles(
     roles: list[Any] | None,
     *,
@@ -156,9 +165,11 @@ def build_registration_roles(
                 max_heroes=resolved_max,
             )
         entries.append(entry)
-    if mode in ("all_roles", "forced"):
+    # A one-role game plays that role whatever was answered: normalized like ``forced``.
+    single = len(role_codes) == 1
+    if mode in ("all_roles", "forced") or single:
         entries = apply_all_roles(
-            entries, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced"
+            entries, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced" or single
         )
     return entries
 
@@ -206,9 +217,14 @@ def replace_registration_roles(
 
         next_roles.append(registration_role)
 
-    if mode in ("all_roles", "forced"):
+    single = len(role_codes) == 1
+    if single and not next_roles:
+        # A one-role game keeps its only row -- and the rank the autofill or an organizer put on it -- when a write
+        # names no role (a sheet without role columns, an organizer's empty role list).
+        next_roles = list(registration.roles)
+    if mode in ("all_roles", "forced") or single:
         next_roles = apply_all_roles(
-            next_roles, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced"
+            next_roles, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced" or single
         )
 
     registration.roles[:] = next_roles

@@ -49,7 +49,7 @@ from shared.domain.forms import (
 )
 from shared.domain.roster import flex_role_mode_from_schema
 from shared.hero_catalog import HeroCatalog
-from src.services.registration._common import build_registration_roles
+from src.services.registration._common import build_registration_roles, only_role_answer
 from src.services.registration.roles_rules import validate_roles
 
 __all__ = (
@@ -162,10 +162,14 @@ class RegistrationAnswerService:
         the OAuth gate does not run, because the organizer authoring the row IS
         the authority the gate exists to substitute for.
         """
+        role_codes = tuple(role.code for role in DISCIPLINES[discipline].rated_dimension.roles)
+        implied = only_role_answer(role_codes)
+        if implied is not None and not partial and schema.builtin("roles") is not None and not answers.get("roles"):
+            # A one-role game asks no role question: the sign-up still plays that role, required question or not.
+            answers = {**answers, "roles": implied}
         normalized = normalize_answers(schema, answers, partial=partial, enforce_required=enforce_required)
         values = normalized.values
         errors: list[FieldError] = list(normalized.errors)
-        role_codes = tuple(role.code for role in DISCIPLINES[discipline].rated_dimension.roles)
         for field in schema.fields():
             if field.kind == "role_ranks" and isinstance(values.get(field.key), dict):
                 unknown = tuple(sorted(set(values[field.key]) - set(role_codes)))
@@ -309,10 +313,14 @@ class RegistrationAnswerService:
             value = values[key]
             setattr(registration, column, bool(value) if column in _BOOL_COLUMNS else (value or None))
         self._apply_identities(registration, values, schema=schema)
-        if "roles" in values:
+        roots = [code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None]
+        # A NEW registration of a one-role game gets that role even when nothing asked (organizer and sheet rows
+        # validate partially, so ``validate`` implied nothing). A stored row is edited, never re-seeded: its roles may
+        # not even be loaded.
+        if "roles" in values or (registration.id is None and len(roots) == 1):
             self._apply_roles(
                 registration,
-                values["roles"] or [],
+                values.get("roles") or [],
                 schema=schema,
                 hero_catalog=hero_catalog,
                 catalog_roles=catalog_roles,
