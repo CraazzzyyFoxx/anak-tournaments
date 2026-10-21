@@ -633,7 +633,10 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           the left (view switch, status chips), how you are narrowing it on the
           right (search, division, columns). The switch stays put when the view
           changes — `.filter-search` owns the single `auto` margin between the
-          clusters, and a second one would scatter the controls across the bar. */}
+          clusters, and a second one would scatter the controls across the bar.
+          Below `sm` the chips take their own line and scroll sideways instead
+          of wrapping into a third and fourth row; from `sm` up their wrapper is
+          `display: contents`, so the desktop bar stays one flex row. */}
       {!listHidden && !trueEmpty && (
         <div
           className="filters"
@@ -661,9 +664,13 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             />
           )}
           {view === "table" && (
-            <>
+            // The negative margins give the chips' 4px focus ring room inside
+            // the scroll clip and run the row to the card's right edge; the
+            // basis adds them back so the row still owns the whole line.
+            <div className="-my-1 -ml-1 -mr-2.5 flex min-w-0 shrink-0 basis-[calc(100%+0.875rem)] gap-2 overflow-x-auto py-1 pl-1 pr-2.5 [scrollbar-width:none] sm:contents [&::-webkit-scrollbar]:hidden">
               <FilterChip
                 active={statusFilter === "all"}
+                className="shrink-0"
                 count={registrations.length}
                 onClick={() => navigateParticipantUrl({ type: "status", value: "all" })}
               >
@@ -675,6 +682,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
                   <FilterChip
                     key={status}
                     active={statusFilter === status}
+                    className="shrink-0"
                     count={statusCounts[status] ?? 0}
                     dotColor={meta?.dot ?? "var(--aqt-fg-dim)"}
                     onClick={() =>
@@ -688,7 +696,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
                   </FilterChip>
                 );
               })}
-            </>
+            </div>
           )}
           <div className="filter-search">
             <Search size={13} aria-hidden />

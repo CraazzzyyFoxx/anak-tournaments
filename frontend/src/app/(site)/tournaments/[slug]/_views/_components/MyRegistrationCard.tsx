@@ -133,7 +133,14 @@ const IDENTITY_ICONS: Record<
   },
   discord: { Icon: DiscordIcon, className: "text-[color:var(--aqt-brand-discord)]" },
   twitch: { Icon: TwitchIcon, className: "text-[color:var(--aqt-brand-twitch)]" },
-  boosty: { Icon: BoostyIcon, className: "text-[color:var(--aqt-brand-boosty)]" }
+  boosty: { Icon: BoostyIcon, className: "text-[color:var(--aqt-brand-boosty)]" },
+  riot: {
+    Icon: (props) => (
+      // eslint-disable-next-line @next/next/no-img-element -- small static asset from /public
+      <img alt="Riot Games" className={props.className} src="/riot.png" />
+    ),
+    className: ""
+  }
 };
 
 type RegistrationStepTone = "done" | "active" | "failed" | "idle";

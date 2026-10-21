@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { FormField } from "@/types/forms.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
@@ -198,7 +199,7 @@ describe("participant column model", () => {
     const status = buildParticipantColumns(form(), t, OWNER).find((column) => column.id === "_status")!;
     const render = (reg: unknown) =>
       renderToStaticMarkup(
-        <NextIntlClientProvider locale="en" messages={{}}>
+        <NextIntlClientProvider locale="en" messages={en}>
           {status.render(reg as never, 0)}
         </NextIntlClientProvider>,
       );

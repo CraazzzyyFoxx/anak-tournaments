@@ -298,9 +298,6 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
                       }}
                       type="button"
                     >
-                      <span className={styles.participantExpanderLabel}>
-                        {t("registration.myCard.details")}
-                      </span>
                       {expanded ? (
                         <ChevronUp aria-hidden="true" className="size-4" />
                       ) : (

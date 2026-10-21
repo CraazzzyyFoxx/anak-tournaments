@@ -5,7 +5,7 @@ import { Crown } from "lucide-react";
 import type { RegistrationForm } from "@/types/registration.types";
 import { answerSearchText } from "@/lib/forms/answers";
 import { identityKey, identityMaxCount, isBuiltinKey, isGameIdentityKey } from "@/lib/forms/builtin-keys";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import type { LadderedOntology } from "@/lib/roster/ontology";
 import type { CatalogEntityChip } from "@/types/catalog.types";
 
 import {
@@ -68,8 +68,8 @@ export interface ParticipantColumnOwner {
   discipline: string;
   /** Its identity provider (Battle.net, Riot, …); `null` while metadata loads or when it declares none. */
   identityProvider: string | null;
-  /** Its scoped ontology (role names and glyphs); `null` while it loads. */
-  ontology: RoleOntology | null;
+  /** Its scoped ontology (role names and glyphs) and native ladder (answer crests); `null` while it loads. */
+  ontology: LadderedOntology | null;
 }
 
 export function buildParticipantColumns(
@@ -228,6 +228,7 @@ export function buildParticipantColumns(
             value={reg.answers?.[field.key] ?? null}
             kind={field.kind}
             labels={{ yes: t("common.yes"), no: t("common.no") }}
+            ontology={owner.ontology}
           />
         ),
         searchValue: (reg) => answerSearchText(reg.answers?.[field.key]),
