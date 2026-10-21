@@ -82,7 +82,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
@@ -92,7 +92,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "damage",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
@@ -102,7 +102,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "support",
       "context": "\"ru\": {\"tank\": \"Танк\", \"damage\": \"Дамаг\", \"support\": \"Саппорт\", \"flex\": \"Флекс\"},",
@@ -112,7 +112,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
@@ -122,7 +122,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "damage",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
@@ -132,7 +132,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "support",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
@@ -142,7 +142,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "Tank",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
@@ -152,7 +152,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "Damage",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
@@ -162,7 +162,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/domain/notification_render.py",
+      "path": "backend/discord-service/src/render/notifications.py",
       "rule": "role-vocabulary",
       "token": "Support",
       "context": "\"en\": {\"tank\": \"Tank\", \"damage\": \"Damage\", \"support\": \"Support\", \"flex\": \"Flex\"},",
@@ -392,7 +392,7 @@
       "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "path": "backend/discord-service/src/render/mix.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
@@ -402,7 +402,7 @@
       "remove_when": "the mix card counts the mix game's roles"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "path": "backend/discord-service/src/render/mix.py",
       "rule": "role-vocabulary",
       "token": "damage",
       "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
@@ -412,7 +412,7 @@
       "remove_when": "the mix card counts the mix game's roles"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "path": "backend/discord-service/src/render/mix.py",
       "rule": "role-vocabulary",
       "token": "support",
       "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
@@ -422,7 +422,7 @@
       "remove_when": "the mix card counts the mix game's roles"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "path": "backend/discord-service/src/render/mix.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "f\" · {emoji('tank')} {counts['tank']}\"",
@@ -432,7 +432,7 @@
       "remove_when": "the mix card counts the mix game's roles"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "path": "backend/discord-service/src/render/mix.py",
       "rule": "role-vocabulary",
       "token": "damage",
       "context": "f\" · {emoji('damage')} {counts['damage']}\"",
@@ -442,7 +442,7 @@
       "remove_when": "the mix card counts the mix game's roles"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_discord.py",
+      "path": "backend/discord-service/src/render/mix.py",
       "rule": "role-vocabulary",
       "token": "support",
       "context": "f\" · {emoji('support')} {counts['support']}\"",
@@ -1282,7 +1282,7 @@
       "remove_when": "provider is removed"
     },
     {
-      "path": "backend/shared/domain/discord_ui.py",
+      "path": "backend/discord-service/src/ui.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "\"tank\": \"🛡️\",",
@@ -1292,7 +1292,7 @@
       "remove_when": "role emoji come from the module's role presentation"
     },
     {
-      "path": "backend/shared/domain/discord_ui.py",
+      "path": "backend/discord-service/src/ui.py",
       "rule": "role-vocabulary",
       "token": "damage",
       "context": "\"damage\": \"⚔️\",",
@@ -1302,7 +1302,7 @@
       "remove_when": "role emoji come from the module's role presentation"
     },
     {
-      "path": "backend/shared/domain/discord_ui.py",
+      "path": "backend/discord-service/src/ui.py",
       "rule": "role-vocabulary",
       "token": "support",
       "context": "\"support\": \"💉\",",
@@ -1312,7 +1312,7 @@
       "remove_when": "role emoji come from the module's role presentation"
     },
     {
-      "path": "backend/shared/domain/discord_ui.py",
+      "path": "backend/discord-service/src/ui.py",
       "rule": "role-vocabulary",
       "token": "tank",
       "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
@@ -1322,7 +1322,7 @@
       "remove_when": "role emoji come from the module's role presentation"
     },
     {
-      "path": "backend/shared/domain/discord_ui.py",
+      "path": "backend/discord-service/src/ui.py",
       "rule": "role-vocabulary",
       "token": "damage",
       "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
@@ -1332,7 +1332,7 @@
       "remove_when": "role emoji come from the module's role presentation"
     },
     {
-      "path": "backend/shared/domain/discord_ui.py",
+      "path": "backend/discord-service/src/ui.py",
       "rule": "role-vocabulary",
       "token": "support",
       "context": "ROLE_EMOJI: dict[str, str] = {\"tank\": \"tank\", \"damage\": \"damage\", \"support\": \"support\", \"f",
@@ -1462,6 +1462,16 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
+      "path": "backend/shared/models/mix/custom_game.py",
+      "rule": "role-vocabulary",
+      "token": "player_role",
+      "context": "__tablename__ = \"player_role\"",
+      "count": 1,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
+    },
+    {
       "path": "backend/shared/models/division_grid/division_grid.py",
       "rule": "discipline-code",
       "token": "overwatch",
@@ -1527,16 +1537,6 @@
       "token": "overwatch",
       "context": "String(32), ForeignKey(\"catalog.discipline.code\"), default=\"overwatch\", server_default=\"ov",
       "count": 2,
-      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
-      "owner": "P9",
-      "remove_when": "identifier is migrated with its data/URL"
-    },
-    {
-      "path": "backend/shared/repository/catalog.py",
-      "rule": "catalog-label",
-      "token": "gamemode",
-      "context": "return [selectinload(models.CatalogEntity.parent)] if \"gamemode\" in entities else []",
-      "count": 1,
       "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
       "owner": "P9",
       "remove_when": "identifier is migrated with its data/URL"
