@@ -15,7 +15,9 @@ export function GameLabel({
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
       {game ? <GameMark discipline={game} size={14} decorative /> : null}
-      <span className="truncate">{game?.name ?? code}</span>
+      {/* `self-baseline` makes the name, not the icon's bottom edge, the label's baseline: inline in a text line the
+          label then sits on that line's baseline instead of lifting the name and growing the line. */}
+      <span className="self-baseline truncate">{game?.name ?? code}</span>
     </span>
   );
 }
