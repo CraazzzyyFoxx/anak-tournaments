@@ -14,7 +14,6 @@ from shared import models
 from shared.core import enums, pagination
 from shared.disciplines import DISCIPLINES, discipline, rated_role_codes
 from shared.division_grid import DivisionGrid
-from shared.repository.stats_queries import player_facts
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.division_grid.access import tournament_effective_version_id_expr
@@ -30,6 +29,7 @@ from ._scope import (
     apply_has_logs_filter,
     overview_division_number_expr,
     player_role_filter,
+    user_has_logs,
 )
 
 if typing.TYPE_CHECKING:
@@ -1065,9 +1065,11 @@ class UserOverviewQueries(DisciplineQueries):
 
         # has-logs counts a candidate's logs from any workspace; the statistic
         # aggregates apply their own workspace filters.
-        facts = player_facts(discipline=self._discipline)
-        owns_logs = sa.select(sa.literal(1)).select_from(facts).where(facts.c.player_id == candidates.c.id).exists()
-        with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(owns_logs)
+        with_logs_query = (
+            sa.select(sa.func.count())
+            .select_from(candidates)
+            .where(user_has_logs(candidates.c.id, discipline=self._discipline))
+        )
         with_logs_count = (await session.execute(with_logs_query)).scalar_one() or 0
 
         tournaments_query = (

@@ -213,10 +213,28 @@ def _apply_overview_role_filters(
     return query.where(role_exists)
 
 
+def user_has_logs(user_id: typing.Any, *, discipline: str | None) -> sa.Exists:
+    """The user owns a parsed player-total row of the game (``None``: of any game).
+
+    A total row exists for every observed player of a match (``fk_fact_player`` pins facts to ``match_player``), and
+    probing totals per member rides the partial ``ix_fact_member_stat_total``. A bare ``player_facts`` EXISTS has no
+    member index to use and hash-joins every fact: 47 s on the dev dataset against 20 ms here.
+    """
+    f, m, wm = models.StatsFact, models.StatsMatch, models.WorkspaceMember
+    return sa.exists().where(
+        wm.player_id == user_id,
+        f.workspace_member_id == wm.id,
+        f.segment == 0,
+        f.entity_id.is_(None),
+        m.id == f.match_id,
+        m.workspace_id == wm.workspace_id,
+        *([m.discipline == discipline] if discipline is not None else []),
+    )
+
+
 def apply_has_logs_filter(query: sa.Select, *, discipline: str | None) -> sa.Select:
     """Keep users with observed facts of the selected game (``None``: of any game)."""
-    facts = player_facts(discipline=discipline)
-    return query.where(sa.exists(sa.select(1).select_from(facts).where(facts.c.player_id == models.User.id)))
+    return query.where(user_has_logs(models.User.id, discipline=discipline))
 
 
 def _apply_workspace_member_filter(query: sa.Select, workspace_id: int | None) -> sa.Select:
