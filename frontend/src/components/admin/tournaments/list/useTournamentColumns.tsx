@@ -28,14 +28,20 @@ function TournamentName({ tournament }: Readonly<{ tournament: Tournament }>) {
 }
 
 /**
- * Unpublished first: a hidden tournament is a draft whatever its phase. A finished one renders nothing, the absence
- * says it.
+ * Unpublished first: a hidden tournament is a draft whatever its phase. A finished one is plain muted text: a pill
+ * only for a state that wants attention, but a blank cell reads as missing data.
  */
 function TournamentStatus({ tournament }: Readonly<{ tournament: Tournament }>) {
   const t = useTranslations("adminTournaments.list");
   const tStatus = useTranslations("common.statusBadge");
   if (tournament.is_hidden) return <StatusPill tone="neutral">{t("status.unpublished")}</StatusPill>;
-  if (tournament.is_finished || tournament.status === "completed" || tournament.status === "archived") return null;
+  if (tournament.is_finished || tournament.status === "completed" || tournament.status === "archived") {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {tStatus(tournament.status === "archived" ? "archived" : "completed")}
+      </span>
+    );
+  }
   return <StatusPill tone={TOURNAMENT_STATUS_TONE[tournament.status]}>{tStatus(tournament.status)}</StatusPill>;
 }
 
