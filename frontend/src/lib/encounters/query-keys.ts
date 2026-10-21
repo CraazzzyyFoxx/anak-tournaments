@@ -44,5 +44,7 @@ export const encounterQueryKeys = {
   /** One game's match imports; the organizer read (`admin`) adds the warnings a captain does not see. */
   matchImports: (encounterId: KeyPart, gameId: KeyPart, admin: boolean) =>
     ["encounter", encounterId, "match-imports", gameId, admin ? "admin" : "captain"] as const,
+  /** Every game's match imports of one encounter, both reads: what an observation written for it stales. */
+  matchImportsOf: (encounterId: KeyPart) => ["encounter", encounterId, "match-imports"] as const,
   bracket: () => ["bracket"] as const,
 };

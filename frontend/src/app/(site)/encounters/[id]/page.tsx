@@ -278,6 +278,9 @@ const EncounterPage = async (props: {
               <PregameRoomLink
                 encounterId={encounter.id}
                 tournamentId={encounter.tournament_id}
+                workspaceId={encounter.workspace_id}
+                discipline={encounter.discipline}
+                liveGames={(encounter.games ?? []).filter((game) => game.state !== "cancelled").length}
                 className={styles.button}
               />
               {logs.length > 0 ? (

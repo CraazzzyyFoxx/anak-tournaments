@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronDown, FileUp, ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileUp, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
@@ -11,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
+import { MatchImport } from "@/components/pick-ban/MatchImport";
 import { TournamentLogUploadDialog } from "@/components/logs/TournamentLogUploadDialog";
 import { usePermissions } from "@/hooks/usePermissions";
 import { RETURN_TO_PARAM, safeReturnPath } from "@/lib/auth/return-to";
@@ -156,7 +158,49 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
 
   const loop = derivePregameLoop(encounter, mapState, heroState);
 
+  const workspaceId = encounter.tournament?.workspace_id ?? null;
+  const isAdmin =
+    workspaceId != null &&
+    (isSuperuser ||
+      isWorkspaceAdmin(workspaceId) ||
+      hasWorkspacePermission(workspaceId, "match.result"));
+  const viewerTeamId = mapState.viewer_team_id ?? room.viewerTeamId;
+  // A tournament game of a discipline that declares a match fetcher can be filed by its match id (a scrim room
+  // publishes no result). Filing needs no pick-ban session: the positions are the encounter's own live games.
+  const matchImport =
+    seriesReport && room.metadata.status === "ready" && room.metadata.metadata.discipline.capabilities.match_fetch;
+  const matchImportGames = matchImport
+    ? (encounter.games ?? []).filter((game) => game.state !== "cancelled")
+    : [];
+
   if (loop.unconfigured) {
+    // Without a pick-ban the room only exists to file the series' matches by id; until the game's metadata says
+    // whether it can, neither screen is the right one.
+    if (seriesReport && room.metadata.status === "pending") return <RoomSkeleton />;
+    if (matchImportGames.length > 0 && (isAdmin || viewerTeamId != null)) {
+      return (
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-6">
+            <div className="flex flex-col gap-1">
+              <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+                {t("matchImport.title")}
+              </span>
+              <h1 className="font-display text-title font-semibold">{encounter.name}</h1>
+            </div>
+            {/* An organizer files through the organizer route, whose rows carry the warnings. */}
+            <MatchImport encounterId={encounterId} games={matchImportGames} admin={isAdmin} />
+            <div>
+              <Button variant="outline" asChild>
+                <Link href={returnTo}>
+                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+                  {t("back")}
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
     return (
       <EmptyRoomCard
         icon={UNAVAILABLE_ICON.unconfigured}
@@ -167,18 +211,10 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     );
   }
 
-  const workspaceId = encounter.tournament?.workspace_id ?? null;
-  const isAdmin =
-    workspaceId != null &&
-    (isSuperuser ||
-      isWorkspaceAdmin(workspaceId) ||
-      hasWorkspacePermission(workspaceId, "match.result"));
-
   const series = buildSeriesMaps(loop, room.mapsById, (id) => t("map.itemNumber", { id }));
   const heroName = (id: number) => t("hero.itemNumber", { id });
   const seats = pickBanSeats(encounter.teams);
   const seatNameAt = (index: number) => seats[index]?.name ?? t("tbd");
-  const viewerTeamId = mapState.viewer_team_id ?? room.viewerTeamId;
   const seriesSummary = mapState.series ?? null;
   // Sides are the game's, not a kind's: a hero-only room has no map session, whose state then lists none.
   const roomSides = heroState.sides.length > 0 ? heroState.sides : mapState.sides;
@@ -188,10 +224,6 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   // has its pool or report there, so the rosters sit one click away instead.
   const showRostersButton = !loop.waitingOnReadiness;
   const canUploadLog = workspaceId != null && hasWorkspacePermission(workspaceId, "log.create");
-  // A tournament game of a discipline that declares a match fetcher can be filed by its match id (a scrim room
-  // publishes no result).
-  const matchImport =
-    seriesReport && room.metadata.status === "ready" && room.metadata.metadata.discipline.capabilities.match_fetch;
   const header = (
     <>
       <PregameHeader
@@ -291,7 +323,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             seriesWins={seriesSummary?.wins ?? null}
             onMutated={room.invalidateRoom}
             grid={grid}
-            matchImport={matchImport}
+            matchImportGames={matchImportGames}
           />
         </CollapsibleContent>
       </Collapsible>

@@ -224,6 +224,9 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
   // Parsed logs add/replace matches without moving the game's accepted score.
   // The parser names affected encounters on the tournament invalidation, so
   // only this room's explicit encounter changes join the full-refresh batch.
+  // The same signal is what a fetched match's ingest emits once its observation
+  // is written: the import rows' warnings appear only then, after the fetch
+  // itself already reads `done` and stopped polling.
   const tournamentId = encounterQuery.data?.tournament_id;
   useRealtimeTopic<{
     resources?: string[];
@@ -236,6 +239,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
       if (Array.isArray(resources) && resources.includes("tournament.encounters") &&
           Array.isArray(ids) && ids.includes(encounterId)) {
         invalidateRoom();
+        void queryClient.invalidateQueries({ queryKey: encounterQueryKeys.matchImportsOf(encounterId) });
       }
     }
   );

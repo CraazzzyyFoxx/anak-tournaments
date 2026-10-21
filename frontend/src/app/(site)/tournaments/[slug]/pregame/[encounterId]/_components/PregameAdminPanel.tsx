@@ -46,7 +46,7 @@ export function PregameAdminPanel({
   seriesWins,
   onMutated,
   grid = null,
-  matchImport = false
+  matchImportGames = []
 }: Readonly<{
   encounterId: number;
   statesByKind: Record<PickBanKind, PickBanState>;
@@ -66,8 +66,11 @@ export function PregameAdminPanel({
   onMutated: () => void;
   /** The board on screen, when one is: its selection and its own reset. */
   grid?: PickBanAdminSlot | null;
-  /** Offer filing each game's match by its id: a tournament of a discipline with a match fetcher. */
-  matchImport?: boolean;
+  /**
+   * The live positions (`encounter.games`, cancelled ones dropped) whose match an organizer may file by its id; empty
+   * unless the encounter is a tournament game of a discipline with a match fetcher.
+   */
+  matchImportGames?: ReadonlyArray<{ id: number; position: number }>;
 }>) {
   const t = useTranslations("pickBan.room");
   const withSession = KINDS.filter((kind) => statesByKind[kind].session != null);
@@ -98,6 +101,17 @@ export function PregameAdminPanel({
       sideLabels={sideLabels}
     />
   );
+  // Filing a match needs no pick-ban session, so it is offered on every branch below.
+  const matchImport =
+    matchImportGames.length > 0 ? (
+      <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <FileDown className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
+          <h2 className="text-sm font-semibold">{t("matchImport.title")}</h2>
+        </div>
+        <MatchImport encounterId={encounterId} games={matchImportGames} admin />
+      </section>
+    ) : null;
 
   if (kind == null) {
     // Only `not_ready` is a gate an organizer can lift from here: unknown
@@ -106,7 +120,14 @@ export function PregameAdminPanel({
     // would be a button that changes nothing.
     // The journal stays on screen even with nothing to override: "why is this
     // room not open yet" is one of the questions it answers.
-    if (!KINDS.some((value) => statesByKind[value].reason === "not_ready")) return history;
+    if (!KINDS.some((value) => statesByKind[value].reason === "not_ready")) {
+      return (
+        <div className="flex flex-col gap-3">
+          {matchImport}
+          {history}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-3">
         <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
@@ -142,14 +163,13 @@ export function PregameAdminPanel({
             })}
           </div>
         </section>
+        {matchImport}
         {history}
       </div>
     );
   }
 
   const onThisKind = grid != null && grid.kind === kind;
-  // A cancelled position was never played, so it has no match to file.
-  const importable = (statesByKind.map.games ?? []).filter((game) => game.state !== "cancelled");
   return (
     <div className="flex flex-col gap-3">
       <PregameAdminControls
@@ -193,15 +213,7 @@ export function PregameAdminPanel({
           ) : null
         }
       />
-      {matchImport && importable.length > 0 ? (
-        <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <FileDown className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
-            <h2 className="text-sm font-semibold">{t("matchImport.title")}</h2>
-          </div>
-          <MatchImport encounterId={encounterId} games={importable} admin />
-        </section>
-      ) : null}
+      {matchImport}
       {history}
     </div>
   );
